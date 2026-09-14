@@ -1970,6 +1970,11 @@ pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
     GenericCompletionModel<super::OpenAICompletions, H>;
 
 impl<Ext, H> GenericCompletionModel<Ext, H> {
+    /// The provider client this model sends through.
+    pub fn client(&self) -> &crate::client::Client<Ext, H> {
+        &self.client
+    }
+
     pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
         Self {
             client,

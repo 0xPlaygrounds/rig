@@ -20,7 +20,7 @@ use rig_ecs::{
         content::parts::read_message,
         scene::{WorldScene, load_world, save_world},
     },
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 use std::sync::{Arc, Mutex};
@@ -48,7 +48,7 @@ fn setup(
     app.world_mut().entity_mut(agent).insert(MaxTurns(limit));
     app.world_mut()
         .spawn((Grant(add), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "count", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "count", false, None);
     (app, run, requests)
 }
 fn committed(world: &mut World, run: Entity, number: usize) -> bool {
@@ -214,7 +214,7 @@ fn one_held_run_does_not_stop_an_unrelated_run() {
     let (other_model, other_requests) = Capturing::new("other/model", "free");
     let model = register(&mut app, "other/model", other_model);
     let agent = spawn_agent(app.world_mut(), "other", model);
-    let other = spawn_run(app.world_mut(), agent, &[], "other", false, None);
+    let other = app.world_mut().spawn_run(agent, &[], "other", false, None);
     tick_until(&mut app, "other settled", |w| {
         w.get::<Settled>(other).is_some()
     });
@@ -295,7 +295,9 @@ fn partial_out_of_order_parallel_batch_has_no_commit_until_every_result_lands() 
         .insert((MaxTurns(2), rig_ecs::agent::ToolPolicy { concurrency: 3 }));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "parallel", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "parallel", false, None);
     let seen = observe(&mut app);
     hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
     for (count, index) in [2, 1, 0].into_iter().enumerate() {
@@ -532,7 +534,7 @@ fn released_checkpoint_provider_retry_preserves_request_and_does_not_repeat_tool
         .insert((MaxTurns(2), rig_ecs::agent::ProviderRetries(1)));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     let seen = observe(&mut app);
     hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
     tick_until(&mut app, "held", |w| committed(w, run, 1));
@@ -587,7 +589,9 @@ fn output_tool_settlement_commits_only_a_real_mixed_batch_and_ignores_hold() {
             }).count();
             assert_eq!(count, usize::from(mixed), "terminal observers must see the complete commit");
         });
-        let run = spawn_run(app.world_mut(), agent, &[], "extract", false, None);
+        let run = app
+            .world_mut()
+            .spawn_run(agent, &[], "extract", false, None);
         let seen = observe(&mut app);
         hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
         tick_until(&mut app, "output settled", |w| {
@@ -670,7 +674,7 @@ fn invalid_call_retry_feedback_is_not_a_completed_tool_batch() {
     ));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     let seen = observe(&mut app);
     hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
     tick_until(&mut app, "real batch committed", |w| committed(w, run, 2));
@@ -712,7 +716,9 @@ fn terminal_cleanup_suppresses_commit_notification_for_deleted_run() {
             commands.entity(event.entity).despawn();
         });
     let seen = observe(&mut app);
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, None);
     tick_until(&mut app, "terminal cleanup", |w| w.get_entity(run).is_err());
     assert_eq!(requests.lock().unwrap().len(), 1);
     assert!(

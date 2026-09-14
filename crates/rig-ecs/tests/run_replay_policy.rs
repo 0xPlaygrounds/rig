@@ -11,7 +11,7 @@ use rig_ecs::{
     agent::{InvalidCalls, MaxTurns, PolicyVersion, Preamble, ToolPolicy, Unhandled},
     bus::{EffectLogResource, Scope},
     replay::{check_replayable, spec_hash, stamp_run},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use run_support::*;
@@ -24,7 +24,7 @@ fn setup() -> (bevy_app::App, Entity, Entity, EffectLog) {
     app.world_mut()
         .entity_mut(agent)
         .insert(PolicyVersion("test/v1".into()));
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     let recorder = EffectLogRecorder::new();
     EffectLogResource::install(app.world_mut(), recorder.clone());
     stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");

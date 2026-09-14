@@ -170,6 +170,14 @@ pub(crate) enum ToolKind {
     CheckpointStep,
     CheckpointBatch,
     CheckpointLarge,
+    /// The long tool loop's repository (`super::long_loop`): `list_files`.
+    RepoListFiles,
+    /// `read_file`.
+    RepoReadFile,
+    /// `write_file`.
+    RepoWriteFile,
+    /// `run_tests`.
+    RepoRunTests,
     /// `add` (`crate::support::Adder`).
     Adder,
     /// `lookup_harbor_label`.

@@ -38,7 +38,7 @@ use rig_ecs::{
         ToolPolicy,
     },
     bus::{BusSet, EffectLogResource, EffectOutcome, Issued, PendingEffect, RigSchedule},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 use rig_effect_log::EffectLogRecorder;
 use run_support::*;
@@ -169,7 +169,9 @@ fn assert_active_tools(allowed: &[&str], executable: bool) {
         &mut app,
         narrow_tools.after(RigSet::Advance).before(RigSet::Assemble),
     );
-    let run = spawn_run(app.world_mut(), agent, &[], "add numbers", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add numbers", false, None);
     ended(&mut app, run, "restricted tool decision");
     let requests = requests.lock().expect("requests");
     let advertised: Vec<_> = requests[0]
@@ -221,7 +223,9 @@ fn active_tools_keeps_an_allowed_tool_executable() {
 #[test]
 fn a_turn_with_two_calls_is_a_batch_and_the_results_are_one_utterance() {
     let (mut app, agent, adder, requests) = tooling(two_calls_then_text());
-    let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add twice", false, None);
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
@@ -336,7 +340,9 @@ fn tool_policy_sets_how_many_calls_are_in_flight() {
                 app.world_mut()
                     .entity_mut(agent)
                     .insert(ToolPolicy { concurrency });
-                let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+                let run = app
+                    .world_mut()
+                    .spawn_run(agent, &[], "add twice", false, None);
                 tick_until(&mut app, "requested calls entered their gates", |_| {
                     gated.entered.load(Ordering::SeqCst) == concurrency
                 });
@@ -419,7 +425,7 @@ fn a_judge_system_replaces_a_tool_result_and_the_record_keeps_the_answer() {
         vec![AssistantContent::text("99")],
     ]);
     add_system(&mut app, replace_tool_results.in_set(BusSet::Judge));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     ended(&mut app, run, "answered");
     let requests = requests.lock().unwrap();
     assert_eq!(
@@ -525,7 +531,9 @@ fn a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release() {
     app.world_mut()
         .entity_mut(agent)
         .insert(ToolPolicy { concurrency: 1 });
-    let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add twice", false, None);
     tick_until(&mut app, "the first call landed", |world| {
         tool_children(world)
             .first()
@@ -633,7 +641,9 @@ fn a_gate_hold_is_not_lifted_by_the_batch_release() {
         app.world_mut()
             .entity_mut(agent)
             .insert(ToolPolicy { concurrency });
-        let run = spawn_run(app.world_mut(), agent, &[], "add twice", false, None);
+        let run = app
+            .world_mut()
+            .spawn_run(agent, &[], "add twice", false, None);
         tick_until(&mut app, "the batch is out", |world| {
             tool_children(world).len() == 2
         });
@@ -671,7 +681,7 @@ fn a_gate_denial_is_a_skipped_result_and_no_record() {
         vec![AssistantContent::text("I could not add them.")],
     ]);
     add_system(&mut app, deny_tool_calls.in_set(BusSet::Gate));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     ended(&mut app, run, "answered");
     let requests = requests.lock().unwrap();
     assert_eq!(
@@ -699,7 +709,7 @@ fn despawn_tool_calls(
 fn despawning_a_tool_child_fails_the_run_cancelled() {
     let (mut app, agent, _, _) = tooling(two_calls_then_text());
     add_system(&mut app, despawn_tool_calls.in_set(BusSet::Gate));
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     ended(&mut app, run, "cancelled");
     assert!(matches!(
         app.world().get::<Failed>(run),
@@ -725,7 +735,9 @@ fn a_system_repairs_an_invalid_call_to_a_granted_tool() {
         vec![AssistantContent::text("5")],
     ]);
     add_system(&mut app, repair_to_add.in_set(RigSet::Judge));
-    let run = spawn_run(app.world_mut(), agent, &[], "multiply", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "multiply", false, None);
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
@@ -814,14 +826,9 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
         app.world_mut()
             .spawn((Grant(peer), Order(1), ChildOf(agent)));
         add_system(&mut app, repair_to_add.in_set(RigSet::Judge));
-        let run = spawn_run(
-            app.world_mut(),
-            agent,
-            &[],
-            "repair only the invalid call",
-            false,
-            None,
-        );
+        let run =
+            app.world_mut()
+                .spawn_run(agent, &[], "repair only the invalid call", false, None);
         ended(&mut app, run, "typed repair complete");
         assert!(app.world().get::<Failed>(run).is_none());
         let requests = requests.lock().unwrap();
@@ -911,7 +918,9 @@ fn a_system_retries_an_invalid_call_with_feedback() {
         unhandled: rig_ecs::agent::Unhandled::Fail,
     });
     add_system(&mut app, retry_with_feedback.in_set(RigSet::Judge));
-    let run = spawn_run(app.world_mut(), agent, &[], "multiply", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "multiply", false, None);
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
@@ -974,14 +983,9 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
             unhandled: rig_ecs::agent::Unhandled::Fail,
         });
         add_system(&mut app, retry_with_feedback.in_set(RigSet::Judge));
-        let run = spawn_run(
-            app.world_mut(),
-            agent,
-            &[],
-            "retry invalid identity",
-            false,
-            None,
-        );
+        let run = app
+            .world_mut()
+            .spawn_run(agent, &[], "retry invalid identity", false, None);
         ended(&mut app, run, "typed retry complete");
         assert!(app.world().get::<Failed>(run).is_none());
         let log = app.world().resource::<EffectLogResource>().log();
@@ -1046,7 +1050,9 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                 .world_mut()
                 .entity_mut(agent)
                 .insert(ToolPolicy { concurrency });
-            spawn_run(original.world_mut(), agent, &[], "add numbers", false, None);
+            original
+                .world_mut()
+                .spawn_run(agent, &[], "add numbers", false, None);
             let started = std::time::Instant::now();
             let held = loop {
                 original.world_mut().run_schedule(RigSchedule);
@@ -1148,7 +1154,9 @@ fn approving_a_batch_held_call_by_any_route_keeps_the_batch_and_the_scene_consis
     use rig_ecs::{bus::Held, systems::BatchHeld};
     for route in ["remove Held", "release the batch owner"] {
         let (mut app, agent, _, _) = tooling(two_calls_then_text());
-        let run = spawn_run(app.world_mut(), agent, &[], "add numbers", false, None);
+        let run = app
+            .world_mut()
+            .spawn_run(agent, &[], "add numbers", false, None);
         // One schedule pass at a time: an `update` runs to quiescence and
         // would land the batch before the hold is observable.
         let started = std::time::Instant::now();

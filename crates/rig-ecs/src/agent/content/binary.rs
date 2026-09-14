@@ -113,6 +113,10 @@ pub struct BinaryAssets {
     spellings: BTreeMap<[u8; 32], BinaryId>,
     bytes: usize,
     limits: BinaryLimits,
+    // Bumped by every collection: a cached utterance view (`cache`) holds
+    // resolved payloads and is keyed by this, so a collection is the one
+    // store change that drops views. Not persisted.
+    generation: u64,
 }
 
 impl BinaryAssets {
@@ -346,7 +350,15 @@ impl BinaryAssets {
         self.payloads.retain(|id, _| roots.contains(id));
         self.spellings.retain(|_, id| roots.contains(id));
         self.bytes = self.payloads.values().map(Vec::len).sum();
+        self.generation = self.generation.wrapping_add(1);
         Ok(())
+    }
+
+    /// How many collections (`retain`) this store has had: the key a cached
+    /// utterance view's resolved payloads are valid under.
+    #[must_use]
+    pub fn generation(&self) -> u64 {
+        self.generation
     }
 
     /// Assets in deterministic content-hash order for scene construction.

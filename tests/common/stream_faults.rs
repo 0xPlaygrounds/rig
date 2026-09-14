@@ -33,7 +33,7 @@ use rig::tool::{Tool, ToolContext};
 use rig_ecs::{
     agent::{Failure, Order, Role, Utterance},
     bus::{Streamed, Witnessing},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use rig_effect_log::EffectLog;
 
@@ -678,7 +678,10 @@ pub(crate) async fn native_run(
     let mut ecs = EcsAgent::new(model, preamble, 2);
     configure(&mut ecs);
     let trace = witness.then(|| witnessed(&mut ecs.app));
-    let run = spawn_run(ecs.app.world_mut(), ecs.agent, &[], prompt, true, None);
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], prompt, true, None);
     let outcome = ecs.wait_for_outcome(run).await;
     // The run's ending lands before a despawned or dropped handler has
     // necessarily closed its record; give the owned task the same window

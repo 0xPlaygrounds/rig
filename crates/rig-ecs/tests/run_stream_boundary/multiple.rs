@@ -82,7 +82,9 @@ fn setup(first: Resolution, stages: Vec<Stage>) -> (bevy_app::App, Entity) {
         .add_systems(RigSchedule, decide.in_set(RigSet::Judge));
     let model = register(&mut app, "boundary/model", Stages(Mutex::new(stages)));
     let agent = spawn_agent(app.world_mut(), "boundary", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "calls", true, Some(2));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "calls", true, Some(2));
     (app, run)
 }
 

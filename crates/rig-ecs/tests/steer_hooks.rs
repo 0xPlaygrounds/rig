@@ -40,7 +40,7 @@ use rig_ecs::{
     },
     bus::{EffectLogResource, Handlers, PendingEffect, RigSchedule},
     replay::required_row,
-    systems::{Fresh, RigSet, spawn_run},
+    systems::{Fresh, RigSet, RunCommands},
 };
 use rig_effect_log::EffectLogRecorder;
 use run_support::*;
@@ -80,7 +80,7 @@ fn cancelled_at_start_dispatches_nothing_and_names_the_reason() {
     let (model, _) = Capturing::new(MODEL, "never");
     let model = register(&mut app, MODEL, model);
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     app.world_mut()
         .entity_mut(run)
         .insert(Cancelled("stopped at run start".to_owned()));
@@ -116,7 +116,7 @@ fn cancelled_in_patch_leaves_no_record() {
     let model = register(&mut app, MODEL, model);
     let agent = spawn_agent(app.world_mut(), "t", model);
     add_system(&mut app, stop_in_patch.in_set(RigSet::Patch));
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     ended(&mut app, run, "cancelled");
     app.update();
     assert!(
@@ -174,7 +174,9 @@ fn a_request_patch_is_folded_into_the_turn() {
             .after(RigSet::Advance)
             .before(RigSet::Assemble),
     );
-    let run = spawn_run(app.world_mut(), agent, &[], "What is my name?", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "What is my name?", false, None);
     ended(&mut app, run, "answered");
     let requests = requests.lock().unwrap();
     assert_eq!(
@@ -231,7 +233,7 @@ fn a_retry_with_feedback_asks_again() {
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
     add_system(&mut app, demand_done.in_set(RigSet::Judge));
-    let run = spawn_run(app.world_mut(), agent, &[], "say it", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
@@ -268,7 +270,7 @@ fn a_retry_written_on_an_empty_turn_asks_again() {
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
     add_system(&mut app, demand_done.in_set(RigSet::Judge));
-    let run = spawn_run(app.world_mut(), agent, &[], "say it", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
     ended(&mut app, run, "answered after an empty turn");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
@@ -329,7 +331,7 @@ fn uses_model_written_before_select_routes_the_turn() {
         row.get(&HandlerKey::from(FAST)),
         Some(&EffectFamily::Completion)
     );
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
@@ -350,7 +352,9 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
         .world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
-    let _run = spawn_run(first.world_mut(), agent, &[], "say it", false, None);
+    let _run = first
+        .world_mut()
+        .spawn_run(agent, &[], "say it", false, None);
     tick_until(&mut first, "the turn answered", |world| {
         world
             .query_filtered::<&rig_ecs::agent::Outputs, With<rig_ecs::agent::Turn>>()
@@ -412,7 +416,7 @@ fn open_run() -> (bevy_app::App, Entity, Entity) {
         },
     );
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "say it", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
     tick_until(&mut app, "the completion in flight", |world| {
         world
             .query_filtered::<(), (With<PendingEffect>, With<rig_ecs::bus::InFlight>)>()
@@ -628,7 +632,7 @@ fn a_part_patch_is_not_sticky_on_a_judge_retry() {
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
     add_system(&mut app, demand_done.in_set(RigSet::Judge));
-    let run = spawn_run(app.world_mut(), agent, &[], "say it", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
     let target = app
         .world_mut()
         .query::<(Entity, &TextPart)>()

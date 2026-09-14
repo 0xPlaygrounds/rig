@@ -4,6 +4,8 @@ mod corpus_faults;
 mod corpus_matrix;
 #[path = "cassette/corpus_matrix_checkpoint.rs"]
 mod corpus_matrix_checkpoint;
+#[path = "cassette/corpus_matrix_long_loop.rs"]
+mod corpus_matrix_long_loop;
 #[path = "cassette/ecs_completion.rs"]
 mod ecs_completion;
 #[path = "cassette/ecs_faults.rs"]
@@ -14,6 +16,8 @@ mod ecs_matrix;
 mod ecs_matrix_checkpoint;
 #[path = "cassette/ecs_matrix_extra.rs"]
 mod ecs_matrix_extra;
+#[path = "cassette/ecs_matrix_long_loop.rs"]
+mod ecs_matrix_long_loop;
 #[path = "cassette/ecs_termination.rs"]
 mod ecs_termination;
 mod prompt_caching;

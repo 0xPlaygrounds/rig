@@ -1,0 +1,20 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":32,"messages":[{"content":[{"text":"The crate''s test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file''s complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5-20251001","system":[{"text":"You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result''s text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.","type":"text"}],"temperature":0.0,"tools":[{"description":"List every file in the repository, one path per line.","input_schema":{"additionalProperties":false,"properties":{},"type":"object"},"name":"list_files"},{"description":"Read one repository file and return its complete text. Errors when the path does not exist.","input_schema":{"additionalProperties":false,"properties":{"path":{"description":"The file''s path relative to the repository root, e.g. src/lib.rs.","type":"string"}},"required":["path"],"type":"object"},"name":"read_file"},{"description":"Replace one repository file''s complete text (or create it). Always send the whole file.","input_schema":{"additionalProperties":false,"properties":{"content":{"description":"The complete new text of the file.","type":"string"},"path":{"description":"The file''s path relative to the repository root.","type":"string"}},"required":["path","content"],"type":"object"},"name":"write_file"},{"description":"Run the crate''s test suite and return the runner''s report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.","input_schema":{"additionalProperties":false,"properties":{},"type":"object"},"name":"run_tests"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_1
+  body: '{"container":null,"content":[{"text":"I''ll follow the protocol you''ve specified. Let me start by listing the files in the repository.","type":"text"}],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"max_tokens","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":1071,"output_tokens":32,"service_tier":"standard"}}'

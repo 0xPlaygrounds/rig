@@ -141,7 +141,7 @@ fn whole_scene_pools_effect_copies_and_escapes_application_json() {
         agent::scene::{WorldScene, save_world},
         agent::{Owner, Prompt, UsesModel},
         bus::{Bus, Handlers, RigSchedule},
-        systems::{install_agent, spawn_run},
+        systems::{RunCommands, install_agent},
     };
     let mut world = World::new();
     Bus::with_policy(ServingPolicy::default()).install(&mut world);
@@ -168,7 +168,7 @@ fn whole_scene_pools_effect_copies_and_escapes_application_json() {
             ..Default::default()
         }),
     ]);
-    spawn_run(&mut world, agent, &[], prompt, false, None);
+    world.spawn_run(agent, &[], prompt, false, None);
     world.run_schedule(RigSchedule);
     let mut scene = save_world(&mut world).unwrap();
     assert_eq!(

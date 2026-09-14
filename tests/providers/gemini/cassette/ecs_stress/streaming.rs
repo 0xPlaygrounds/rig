@@ -12,7 +12,7 @@ use rig::{
 use rig_ecs::{
     agent::{Outputs, RequestPatch, Temperature, ToolCallSlot, Turn},
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, Streamed},
-    systems::{Fresh, Materialised, RigSet, spawn_run},
+    systems::{Fresh, Materialised, RigSet, RunCommands},
 };
 use std::{
     collections::BTreeMap,
@@ -192,14 +192,10 @@ pub(super) async fn prompt(
     streamed: bool,
     taps: Vec<EventTap>,
 ) -> String {
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        prompt,
-        streamed,
-        Some(max_turns),
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], prompt, streamed, Some(max_turns));
     ecs.app.world_mut().entity_mut(run).insert(Taps(taps));
     // Shared native consumer waits for stream EOF and actual settlement, rejects
     // every public stream error (including after Final), and requires RunResult.

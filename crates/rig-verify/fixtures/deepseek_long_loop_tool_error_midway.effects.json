@@ -1,0 +1,5528 @@
+{
+  "header": {
+    "run_spec": 1992913015268583623,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:list_files#0",
+        "family": {
+          "family": "tool",
+          "name": "list_files",
+          "description": "List every file in the repository, one path per line.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:read_file#1",
+        "family": {
+          "family": "tool",
+          "name": "read_file",
+          "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:write_file#2",
+        "family": {
+          "family": "tool",
+          "name": "write_file",
+          "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string",
+                "description": "The file's path relative to the repository root."
+              },
+              "content": {
+                "type": "string",
+                "description": "The complete new text of the file."
+              }
+            },
+            "required": [
+              "path",
+              "content"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:run_tests#3",
+        "family": {
+          "family": "tool",
+          "name": "run_tests",
+          "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+          "parameters": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:list_files#0": "tool",
+      "golden/tool:read_file#1": "tool",
+      "golden/tool:run_tests#3": "tool",
+      "golden/tool:write_file#2": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:list_files#0": "tool",
+      "golden/tool:read_file#1": "tool",
+      "golden/tool:run_tests#3": "tool",
+      "golden/tool:write_file#2": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "I'll start by listing the repository files."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "list_files",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 742,
+            "output_tokens": 29,
+            "total_tokens": 771,
+            "cached_input_tokens": 512,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_1",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "I'll start by listing the repository files.",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_1",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "list_files",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 29,
+              "prompt_tokens": 742,
+              "prompt_cache_hit_tokens": 512,
+              "prompt_cache_miss_tokens": 230,
+              "total_tokens": 771,
+              "prompt_tokens_details": {
+                "cached_tokens": 512
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "golden/tool:list_files#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "list_files",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_2"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_2"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "README.md"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 804,
+            "output_tokens": 38,
+            "total_tokens": 842,
+            "cached_input_tokens": 640,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_2",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_2",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\":\"README.md\"}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 38,
+              "prompt_tokens": 804,
+              "prompt_cache_hit_tokens": 640,
+              "prompt_cache_miss_tokens": 164,
+              "total_tokens": 842,
+              "prompt_tokens_details": {
+                "cached_tokens": 640
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 4,
+      "key": "golden/tool:read_file#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "read_file",
+        "args": "{\"path\":\"README.md\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 5,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_3"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_3"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "tests/basic.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 920,
+            "output_tokens": 40,
+            "total_tokens": 960,
+            "cached_input_tokens": 768,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_3",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_3",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_3",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\":\"tests/basic.rs\"}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 40,
+              "prompt_tokens": 920,
+              "prompt_cache_hit_tokens": 768,
+              "prompt_cache_miss_tokens": 152,
+              "total_tokens": 960,
+              "prompt_tokens_details": {
+                "cached_tokens": 768
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 6,
+      "key": "golden/tool:read_file#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "read_file",
+        "args": "{\"path\":\"tests/basic.rs\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 7,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_4"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_4"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "src/lib.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1051,
+            "output_tokens": 39,
+            "total_tokens": 1090,
+            "cached_input_tokens": 896,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_4",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_4",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_4",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\":\"src/lib.rs\"}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 39,
+              "prompt_tokens": 1051,
+              "prompt_cache_hit_tokens": 896,
+              "prompt_cache_miss_tokens": 155,
+              "total_tokens": 1090,
+              "prompt_tokens_details": {
+                "cached_tokens": 896
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 8,
+      "key": "golden/tool:read_file#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "read_file",
+        "args": "{\"path\":\"src/lib.rs\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 9,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_5"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_5"
+              },
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1135,
+            "output_tokens": 22,
+            "total_tokens": 1157,
+            "cached_input_tokens": 896,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_5",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_5",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_5",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "run_tests",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 22,
+              "prompt_tokens": 1135,
+              "prompt_cache_hit_tokens": 896,
+              "prompt_cache_miss_tokens": 239,
+              "total_tokens": 1157,
+              "prompt_tokens_details": {
+                "cached_tokens": 896
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 10,
+      "key": "golden/tool:run_tests#3",
+      "kind": {
+        "effect": "tool_call",
+        "name": "run_tests",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "error",
+            "value": {
+              "kind": "other",
+              "message": "transient runner failure: the test runner crashed before running any test; call run_tests again",
+              "model_output": [
+                {
+                  "type": "text",
+                  "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
+                }
+              ],
+              "retryable": null,
+              "code": null,
+              "http_status": null,
+              "refusal": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 11,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The runner reported a transient failure, so I'll call it again."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_6"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_6"
+              },
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1188,
+            "output_tokens": 35,
+            "total_tokens": 1223,
+            "cached_input_tokens": 1024,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_6",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_6",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "The runner reported a transient failure, so I'll call it again.",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_6",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "run_tests",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 35,
+              "prompt_tokens": 1188,
+              "prompt_cache_hit_tokens": 1024,
+              "prompt_cache_miss_tokens": 164,
+              "total_tokens": 1223,
+              "prompt_tokens_details": {
+                "cached_tokens": 1024
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 12,
+      "key": "golden/tool:run_tests#3",
+      "kind": {
+        "effect": "tool_call",
+        "name": "run_tests",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 13,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The runner reported a transient failure, so I'll call it again."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_7"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_7"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/lib.rs",
+                  "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1379,
+            "output_tokens": 108,
+            "total_tokens": 1487,
+            "cached_input_tokens": 1152,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_7",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_7",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_7",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "write_file",
+                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 108,
+              "prompt_tokens": 1379,
+              "prompt_cache_hit_tokens": 1152,
+              "prompt_cache_miss_tokens": 227,
+              "total_tokens": 1487,
+              "prompt_tokens_details": {
+                "cached_tokens": 1152
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 14,
+      "key": "golden/tool:write_file#2",
+      "kind": {
+        "effect": "tool_call",
+        "name": "write_file",
+        "args": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "wrote 112 bytes to src/lib.rs"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 15,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The runner reported a transient failure, so I'll call it again."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "wrote 112 bytes to src/lib.rs"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_8"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_8"
+              },
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1508,
+            "output_tokens": 22,
+            "total_tokens": 1530,
+            "cached_input_tokens": 1280,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_8",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_8",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_8",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "run_tests",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 22,
+              "prompt_tokens": 1508,
+              "prompt_cache_hit_tokens": 1280,
+              "prompt_cache_miss_tokens": 228,
+              "total_tokens": 1530,
+              "prompt_tokens_details": {
+                "cached_tokens": 1280
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 16,
+      "key": "golden/tool:run_tests#3",
+      "kind": {
+        "effect": "tool_call",
+        "name": "run_tests",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... ok\ntest a_week_has_7_days ... FAILED\n(the runner stops at the first failing test; 0 later test(s) did not run)\n\nfailures:\n\n---- a_week_has_7_days stdout ----\nthread 'a_week_has_7_days' panicked at tests/basic.rs:11:5:\nassertion `left == right` failed\n  left: 8\n right: 7\nnote: `days_in_week` is defined in src/calendar.rs\n\ntest result: FAILED. 1 passed; 1 failed; 0 ignored; 0 not run\n"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 17,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The runner reported a transient failure, so I'll call it again."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "wrote 112 bytes to src/lib.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... ok\ntest a_week_has_7_days ... FAILED\n(the runner stops at the first failing test; 0 later test(s) did not run)\n\nfailures:\n\n---- a_week_has_7_days stdout ----\nthread 'a_week_has_7_days' panicked at tests/basic.rs:11:5:\nassertion `left == right` failed\n  left: 8\n right: 7\nnote: `days_in_week` is defined in src/calendar.rs\n\ntest result: FAILED. 1 passed; 1 failed; 0 ignored; 0 not run\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The next failing assertion points at `days_in_week` in src/calendar.rs. Let me read it first."
+            },
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_9"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_9"
+              },
+              "function": {
+                "name": "read_file",
+                "arguments": {
+                  "path": "src/calendar.rs"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1699,
+            "output_tokens": 63,
+            "total_tokens": 1762,
+            "cached_input_tokens": 1536,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_9",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_9",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "The next failing assertion points at `days_in_week` in src/calendar.rs. Let me read it first.",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_9",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\":\"src/calendar.rs\"}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 63,
+              "prompt_tokens": 1699,
+              "prompt_cache_hit_tokens": 1536,
+              "prompt_cache_miss_tokens": 163,
+              "total_tokens": 1762,
+              "prompt_tokens_details": {
+                "cached_tokens": 1536
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 18,
+      "key": "golden/tool:read_file#1",
+      "kind": {
+        "effect": "tool_call",
+        "name": "read_file",
+        "args": "{\"path\":\"src/calendar.rs\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    8\n}\n"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 19,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The runner reported a transient failure, so I'll call it again."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "wrote 112 bytes to src/lib.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... ok\ntest a_week_has_7_days ... FAILED\n(the runner stops at the first failing test; 0 later test(s) did not run)\n\nfailures:\n\n---- a_week_has_7_days stdout ----\nthread 'a_week_has_7_days' panicked at tests/basic.rs:11:5:\nassertion `left == right` failed\n  left: 8\n right: 7\nnote: `days_in_week` is defined in src/calendar.rs\n\ntest result: FAILED. 1 passed; 1 failed; 0 ignored; 0 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The next failing assertion points at `days_in_week` in src/calendar.rs. Let me read it first."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_9"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_9"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/calendar.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_9"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_9"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    8\n}\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_10"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_10"
+              },
+              "function": {
+                "name": "write_file",
+                "arguments": {
+                  "path": "src/calendar.rs",
+                  "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1798,
+            "output_tokens": 79,
+            "total_tokens": 1877,
+            "cached_input_tokens": 1664,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_10",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_10",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_10",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "write_file",
+                        "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 79,
+              "prompt_tokens": 1798,
+              "prompt_cache_hit_tokens": 1664,
+              "prompt_cache_miss_tokens": 134,
+              "total_tokens": 1877,
+              "prompt_tokens_details": {
+                "cached_tokens": 1664
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 20,
+      "key": "golden/tool:write_file#2",
+      "kind": {
+        "effect": "tool_call",
+        "name": "write_file",
+        "args": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "wrote 73 bytes to src/calendar.rs"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 21,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The runner reported a transient failure, so I'll call it again."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "wrote 112 bytes to src/lib.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... ok\ntest a_week_has_7_days ... FAILED\n(the runner stops at the first failing test; 0 later test(s) did not run)\n\nfailures:\n\n---- a_week_has_7_days stdout ----\nthread 'a_week_has_7_days' panicked at tests/basic.rs:11:5:\nassertion `left == right` failed\n  left: 8\n right: 7\nnote: `days_in_week` is defined in src/calendar.rs\n\ntest result: FAILED. 1 passed; 1 failed; 0 ignored; 0 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The next failing assertion points at `days_in_week` in src/calendar.rs. Let me read it first."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_9"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_9"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/calendar.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_9"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_9"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    8\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_10"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_10"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/calendar.rs",
+                      "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_10"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_10"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "wrote 73 bytes to src/calendar.rs"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_11"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_11"
+              },
+              "function": {
+                "name": "run_tests",
+                "arguments": {}
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1899,
+            "output_tokens": 22,
+            "total_tokens": 1921,
+            "cached_input_tokens": 1664,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_11",
+          "finish_reason": "tool_calls",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_11",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "",
+                  "tool_calls": [
+                    {
+                      "id": "call_REDACTED_11",
+                      "index": 0,
+                      "type": "function",
+                      "function": {
+                        "name": "run_tests",
+                        "arguments": "{}"
+                      }
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "tool_calls"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 22,
+              "prompt_tokens": 1899,
+              "prompt_cache_hit_tokens": 1664,
+              "prompt_cache_miss_tokens": 235,
+              "total_tokens": 1921,
+              "prompt_tokens_details": {
+                "cached_tokens": 1664
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": {},
+      "id": 22,
+      "key": "golden/tool:run_tests#3",
+      "kind": {
+        "effect": "tool_call",
+        "name": "run_tests",
+        "args": "{}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "run_tests: PASS\nrunning 2 tests\ntest a_common_year_has_365_days ... ok\ntest a_week_has_7_days ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored\n"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 23,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result's text. Your final answer must be exactly the single word done, given only after run_tests reports PASS."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The crate's test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; if run_tests reports a transient runner failure, call run_tests again before doing anything else; (6) call write_file on the one file the failing assertion points at, with that file's complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "I'll start by listing the repository files."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "list_files",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "list_files",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Cargo.toml\nREADME.md\nsrc/calendar.rs\nsrc/lib.rs\ntests/basic.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "README.md"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_2"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_2"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "# repo_fixture\n\nA tiny library crate with two functions, `days_in_year` (src/lib.rs) and\n`days_in_week` (src/calendar.rs), and one test for each.\nRun the test suite with the run_tests tool; the runner stops at the first\nfailing test.\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "tests/basic.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_3"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_3"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use repo_fixture::calendar::days_in_week;\nuse repo_fixture::days_in_year;\n\n#[test]\nfn a_common_year_has_365_days() {\n    assert_eq!(days_in_year(), 365);\n}\n\n#[test]\nfn a_week_has_7_days() {\n    assert_eq!(days_in_week(), 7);\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/lib.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_4"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_4"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    360\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_5"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_5"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "transient runner failure: the test runner crashed before running any test; call run_tests again"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The runner reported a transient failure, so I'll call it again."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_6"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_6"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... FAILED\n(the runner stops at the first failing test; 1 later test(s) did not run)\n\nfailures:\n\n---- a_common_year_has_365_days stdout ----\nthread 'a_common_year_has_365_days' panicked at tests/basic.rs:6:5:\nassertion `left == right` failed\n  left: 360\n right: 365\nnote: `days_in_year` is defined in src/lib.rs\n\ntest result: FAILED. 0 passed; 1 failed; 0 ignored; 1 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/lib.rs",
+                      "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_7"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_7"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "wrote 112 bytes to src/lib.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_8"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_8"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: FAIL\nrunning 2 tests\ntest a_common_year_has_365_days ... ok\ntest a_week_has_7_days ... FAILED\n(the runner stops at the first failing test; 0 later test(s) did not run)\n\nfailures:\n\n---- a_week_has_7_days stdout ----\nthread 'a_week_has_7_days' panicked at tests/basic.rs:11:5:\nassertion `left == right` failed\n  left: 8\n right: 7\nnote: `days_in_week` is defined in src/calendar.rs\n\ntest result: FAILED. 1 passed; 1 failed; 0 ignored; 0 not run\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "text": "The next failing assertion points at `days_in_week` in src/calendar.rs. Let me read it first."
+                },
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_9"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_9"
+                  },
+                  "function": {
+                    "name": "read_file",
+                    "arguments": {
+                      "path": "src/calendar.rs"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_9"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_9"
+                  },
+                  "name": "read_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    8\n}\n"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_10"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_10"
+                  },
+                  "function": {
+                    "name": "write_file",
+                    "arguments": {
+                      "path": "src/calendar.rs",
+                      "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n"
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_10"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_10"
+                  },
+                  "name": "write_file",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "wrote 73 bytes to src/calendar.rs"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_11"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_11"
+                  },
+                  "function": {
+                    "name": "run_tests",
+                    "arguments": {}
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_11"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_11"
+                  },
+                  "name": "run_tests",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "run_tests: PASS\nrunning 2 tests\ntest a_common_year_has_365_days ... ok\ntest a_week_has_7_days ... ok\n\ntest result: ok. 2 passed; 0 failed; 0 ignored\n"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "list_files",
+              "description": "List every file in the repository, one path per line.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "read_file",
+              "description": "Read one repository file and return its complete text. Errors when the path does not exist.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root, e.g. src/lib.rs."
+                  }
+                },
+                "required": [
+                  "path"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "write_file",
+              "description": "Replace one repository file's complete text (or create it). Always send the whole file.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "description": "The file's path relative to the repository root."
+                  },
+                  "content": {
+                    "type": "string",
+                    "description": "The complete new text of the file."
+                  }
+                },
+                "required": [
+                  "path",
+                  "content"
+                ],
+                "additionalProperties": false
+              }
+            },
+            {
+              "name": "run_tests",
+              "description": "Run the crate's test suite and return the runner's report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.",
+              "parameters": {
+                "type": "object",
+                "properties": {},
+                "additionalProperties": false
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": {
+            "thinking": {
+              "type": "disabled"
+            }
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "done"
+            }
+          ],
+          "usage": {
+            "input_tokens": 1988,
+            "output_tokens": 1,
+            "total_tokens": 1989,
+            "cached_input_tokens": 1792,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_12",
+          "finish_reason": "stop",
+          "provider": "deepseek",
+          "model": "deepseek-flash",
+          "raw": {
+            "id": "chatcmpl-REDACTED_12",
+            "model": "deepseek-flash",
+            "object": "chat.completion",
+            "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": "done"
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "completion_tokens": 1,
+              "prompt_tokens": 1988,
+              "prompt_cache_hit_tokens": 1792,
+              "prompt_cache_miss_tokens": 196,
+              "total_tokens": 1989,
+              "prompt_tokens_details": {
+                "cached_tokens": 1792
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

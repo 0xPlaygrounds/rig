@@ -10,7 +10,7 @@ use rig::{prelude::*, providers::openai, tool::Tool};
 use rig_ecs::{
     agent::{AdditionalParams, Failure, MaxTokens, ToolCallSlot},
     bus::{PendingEffect, Streamed},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -119,8 +119,7 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
         }
     }
     let streamed = cell.transport == Transport::Streaming;
-    let run = spawn_run(
-        ecs.app.world_mut(),
+    let run = ecs.app.world_mut().spawn_run(
         ecs.agent,
         &[],
         prompt(cell.shape),

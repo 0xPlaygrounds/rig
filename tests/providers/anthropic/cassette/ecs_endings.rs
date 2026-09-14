@@ -19,7 +19,7 @@ use rig::{
 use rig_ecs::{
     agent::{AdditionalParams, Failed, Failure, PolicyVersion, RunResult, Settled, Temperature},
     bus::{BusSet, EffectOutcome, PendingEffect, RigSchedule},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 #[path = "ecs_endings/policies.rs"]
 mod policies;
@@ -160,14 +160,10 @@ async fn unary_tool_run(
             )),
         ));
     }
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        ADD_PROMPT,
-        false,
-        Some(3),
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], ADD_PROMPT, false, Some(3));
     cancelled_run(&mut ecs, run, reason).await;
     let log = ecs.effect_log();
     assert_eq!(families(&log), shape);
@@ -190,7 +186,10 @@ async fn streamed_run(
         Streamed::Note => ecs.tool(WriteNote),
         Streamed::Essay => {}
     }
-    let run = spawn_run(ecs.app.world_mut(), ecs.agent, &[], prompt, true, Some(3));
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], prompt, true, Some(3));
     cancelled_run(&mut ecs, run, reason).await;
     for _ in 0..64 {
         tokio::task::yield_now().await;
@@ -249,14 +248,10 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
         "corpus_endings/answer_outcome_cancelled",
         |client| async move {
             let mut ecs = agent(&client, CancelAnswer, BASIC_PREAMBLE, false);
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                BASIC_PROMPT,
-                false,
-                None,
-            );
+            let run = ecs
+                .app
+                .world_mut()
+                .spawn_run(ecs.agent, &[], BASIC_PROMPT, false, None);
             cancelled_run(&mut ecs, run, CANCEL_ANSWER).await;
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);

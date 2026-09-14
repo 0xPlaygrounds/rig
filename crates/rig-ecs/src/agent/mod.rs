@@ -536,9 +536,30 @@ impl MessageParts {
 }
 
 /// A run's prompt: the parts of the user message it opens with — text,
-/// or text and images in the order given (`spawn_run`).
-#[derive(Debug, Clone, PartialEq)]
+/// or text and images in the order given. A component on a fresh run
+/// (`RunCommands::spawn_run` puts it there; a host assembling a run by
+/// hand does the same), consumed when the run opens: the pass after
+/// [`Ready`] is on the run, `systems::open_runs` spawns it as the run's
+/// last utterance and takes the component off. A scene saved before then
+/// carries it (§13).
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(
+    feature = "reflect",
+    derive(bevy_reflect::Reflect),
+    reflect(Component, opaque, Debug, PartialEq, Serialize, Deserialize)
+)]
 pub struct Prompt(pub Vec<UserContent>);
+
+/// The host's word that a run's graph is complete — its history
+/// utterances in place, its [`Prompt`] on it — and the run may start.
+/// `RunCommands::spawn_run` inserts it once the utterances exist; a host
+/// that populates a run by hand inserts it last. `systems::open_runs`
+/// gives a `Ready` run its first phase, and `Advance` takes only `Ready`
+/// runs: a run without it is never assembled, however complete. Kept for
+/// the life of the run; a scene saves and restores it (§13).
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct Ready;
 
 impl From<&str> for Prompt {
     fn from(text: &str) -> Self {

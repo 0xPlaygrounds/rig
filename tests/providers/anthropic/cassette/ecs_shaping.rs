@@ -14,7 +14,7 @@ use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6}
 use rig_ecs::{
     agent::*,
     bus::{Handlers, RigSchedule},
-    systems::{RigSet, spawn_run},
+    systems::{RigSet, RunCommands},
 };
 #[path = "ecs_shaping/policies.rs"]
 mod policies;
@@ -95,14 +95,10 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
                 .entity_mut(ecs.agent)
                 .insert(PolicyVersion("ecs-shaping/v1:none_second".into()));
 
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                SUM_EVENT_PROMPT,
-                false,
-                Some(3),
-            );
+            let run =
+                ecs.app
+                    .world_mut()
+                    .spawn_run(ecs.agent, &[], SUM_EVENT_PROMPT, false, Some(3));
             let outcome = ecs.wait_for_outcome(run).await;
             let log = ecs.effect_log();
             // The patched turn answers in text, the run's output validation

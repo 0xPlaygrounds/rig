@@ -34,7 +34,7 @@ use rig_core::{effect::HandlerKey, error::ErrorKind};
 use rig_ecs::{
     agent::{Assembling, Failed, Failure, Settled},
     bus::{Bound, Handlers, PendingEffect},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 
@@ -44,7 +44,7 @@ fn deregistered_model_before_first_dispatch_fails_without_issuing_an_effect() {
     let (handler, requests) = Capturing::new("model", "ok");
     let model = register(&mut app, "model", handler);
     let agent = spawn_agent(app.world_mut(), "test", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     Handlers::with(app.world_mut(), |handlers| {
         handlers.deregister(&HandlerKey::from("model"))
     })
@@ -75,7 +75,7 @@ fn selected_model_without_a_bound_descriptor_fails() {
     let (handler, requests) = Capturing::new("model", "ok");
     let model = register(&mut app, "model", handler);
     let agent = spawn_agent(app.world_mut(), "test", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     app.world_mut().entity_mut(model).remove::<Bound>();
     app.update();
     assert!(app.world().get::<Failed>(run).is_some());
@@ -93,7 +93,7 @@ fn selected_model_with_a_non_completion_descriptor_fails_with_its_key() {
         },
     );
     let agent = spawn_agent(app.world_mut(), "test", tool);
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     app.update();
     assert!(matches!(&app.world().get::<Failed>(run).unwrap().0,
         Failure::Provider(report) if report.message.contains("wrong-model")
@@ -139,7 +139,7 @@ fn deregistered_model_between_turns_fails_after_the_outstanding_tool_finishes() 
     app.world_mut().entity_mut(agent).insert(MaxTurns(2));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     tick_until(&mut app, "tool parked", |_| started.load(Ordering::SeqCst));
     Handlers::with(app.world_mut(), |handlers| {
         handlers.deregister(&HandlerKey::from("model"))

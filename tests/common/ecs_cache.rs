@@ -12,7 +12,7 @@ use rig::effect::{EffectKind, Outcome};
 use rig_ecs::{
     agent::{DefaultMaxTurns, Order, Temperature, Turn},
     bus::{EffectOutcome, PendingEffect},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 /// Run the original cache-growth workload and preserve its full neutral validator.
@@ -22,14 +22,10 @@ pub async fn assert_cache_growth(mut ecs: EcsAgent, support: &CacheSupport, cont
         .entity_mut(ecs.agent)
         .insert((DefaultMaxTurns(None), Temperature(Some(0.0))));
     ecs.tool(CacheProbeLookupTool);
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        AGENT_CACHE_PROMPT,
-        false,
-        Some(6),
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], AGENT_CACHE_PROMPT, false, Some(6));
     ecs.wait_for_success(run).await;
     let world = ecs.app.world_mut();
     let mut usages: Vec<_> = world

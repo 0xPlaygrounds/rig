@@ -6,7 +6,7 @@ use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig_ecs::{
     agent::{AdditionalParams, DefaultMaxTurns, Failure, MaxTokens},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use std::sync::{
     Arc,
@@ -30,14 +30,10 @@ async fn agent_blocking_truncated_call_is_not_invoked() {
                 invocations: invocations.clone(),
             });
             ecs_observation::install_observers(&mut ecs);
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                INCIDENT_PROMPT,
-                false,
-                None,
-            );
+            let run = ecs
+                .app
+                .world_mut()
+                .spawn_run(ecs.agent, &[], INCIDENT_PROMPT, false, None);
             // The truncated turn reaches the loop and, answerless under
             // `Length`, fails as rig-agent's does (CONTRACT §4): a response
             // error naming the reason, never the provider's reply.
@@ -87,14 +83,10 @@ async fn agent_streaming_truncated_call_is_not_invoked() {
                 invocations: invocations.clone(),
             });
             ecs_observation::install_observers(&mut ecs);
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                INCIDENT_PROMPT,
-                true,
-                Some(1),
-            );
+            let run = ecs
+                .app
+                .world_mut()
+                .spawn_run(ecs.agent, &[], INCIDENT_PROMPT, true, Some(1));
             // The truncated turn reaches the loop and, answerless under
             // `Length`, fails as rig-agent's does (CONTRACT §4): a response
             // error naming the reason, never the provider's reply.
@@ -145,14 +137,10 @@ async fn agent_blocking_empty_arguments_on_length_are_not_invoked() {
                 invocations: invocations.clone(),
             });
             ecs_observation::install_observers(&mut ecs);
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                INCIDENT_PROMPT,
-                false,
-                None,
-            );
+            let run = ecs
+                .app
+                .world_mut()
+                .spawn_run(ecs.agent, &[], INCIDENT_PROMPT, false, None);
             // The truncated turn reaches the loop and, answerless under
             // `Length`, fails as rig-agent's does (CONTRACT §4): a response
             // error naming the reason, never the provider's reply.
@@ -204,14 +192,10 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
                 invocations: invocations.clone(),
             });
             ecs_observation::install_observers(&mut ecs);
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                INCIDENT_PROMPT,
-                true,
-                Some(1),
-            );
+            let run = ecs
+                .app
+                .world_mut()
+                .spawn_run(ecs.agent, &[], INCIDENT_PROMPT, true, Some(1));
             // The truncated turn reaches the loop and, answerless under
             // `Length`, fails as rig-agent's does (CONTRACT §4): a response
             // error naming the reason, never the provider's reply.

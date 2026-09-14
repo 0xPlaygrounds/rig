@@ -21,7 +21,7 @@ use rig_ecs::{
         OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
     bus::{Bus, EffectLogResource, Handlers, IdCounter, run_to_quiescence},
-    systems::{install_agent, spawn_run},
+    systems::{RunCommands, install_agent},
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use wasm_bindgen_test::wasm_bindgen_test;
@@ -117,9 +117,7 @@ async fn the_smoke_golden_replays_through_the_graph_on_wasm() {
             UsesModel(model),
         ))
         .id();
-    let run = spawn_run(
-        app.world_mut(),
-        agent,
+    let run = app.world_mut().spawn_run(agent,
         &[],
         "In one or two sentences, explain what Rust programming language is and why memory safety matters.",
         false,
@@ -163,8 +161,7 @@ async fn the_text_reprompt_golden_replays_through_the_graph_on_wasm() {
             UsesModel(model),
         ))
         .id();
-    let run = spawn_run(
-        app.world_mut(),
+    let run = app.world_mut().spawn_run(
         agent,
         &[],
         "Return a concise event object for a local Rust meetup in Seattle.",

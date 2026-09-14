@@ -33,7 +33,7 @@ use rig_ecs::{
         Bus, EffectLogResource, Handlers, IdCounter, InFlight, Issued, PendingEffect, Replay,
         RigSchedule, run_to_quiescence,
     },
-    systems::{install_agent, spawn_run},
+    systems::{RunCommands, install_agent},
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use run_support::{GUARD, NeverAnswers};
@@ -111,8 +111,7 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
             UsesModel(model),
         ))
         .id();
-    let run = spawn_run(
-        app.world_mut(),
+    let run = app.world_mut().spawn_run(
         agent,
         &[],
         "Return a concise event object for a local Rust meetup in Seattle.",
@@ -251,9 +250,7 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
             UsesModel(model),
         ))
         .id();
-    let _run = spawn_run(
-        app.world_mut(),
-        agent,
+    let _run = app.world_mut().spawn_run(agent,
         &[],
         "In one or two sentences, explain what Rust programming language is and why memory safety matters.",
         false,
@@ -411,7 +408,9 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
         rig_ecs::agent::Order(0),
         ChildOf(agent),
     ));
-    let _run = spawn_run(app.world_mut(), agent, &[], "what?", false, Some(1));
+    let _run = app
+        .world_mut()
+        .spawn_run(agent, &[], "what?", false, Some(1));
     run_support::tick_until(&mut app, "the retrieval out", |world| {
         world
             .query_filtered::<(), (

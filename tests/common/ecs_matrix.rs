@@ -47,6 +47,10 @@ pub(crate) mod extra;
 pub(crate) mod faults;
 #[path = "ecs_matrix/image.rs"]
 pub(crate) mod image;
+#[path = "ecs_matrix/long_loop.rs"]
+pub(crate) mod long_loop;
+#[path = "ecs_matrix/long_loop_world.rs"]
+pub(crate) mod long_loop_world;
 #[path = "ecs_matrix/reasoning.rs"]
 pub(crate) mod reasoning;
 #[path = "ecs_matrix/stream_delivery.rs"]
@@ -55,6 +59,8 @@ pub(crate) mod stream_delivery;
 pub(crate) mod world;
 
 use rig::completion::CompletionModel;
+use rig::http_client::BoxedHttpClient;
+use rig_ecs::bus::{ProviderBinding, ProviderKind};
 
 use cells::Cell;
 use corpus::Program;
@@ -113,5 +119,113 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     /// The route model, for a cell that selects one.
     pub(crate) fn route(&self) -> M {
         self.route.clone().expect("the wire names a route model")
+    }
+
+    /// The default model as data (CONTRACT §12): the `ProviderBinding` a
+    /// head world binds `golden/model:default` through instead of a
+    /// hand-registered adapter, beside what the harness `Materializer`
+    /// resolves and sends through — the head client's own key (under the
+    /// reference [`CASSETTE_CREDENTIAL`]) and its own transport, so the
+    /// materialized client is the head client rebuilt: same model id, same
+    /// base URL, same headers, same cassette. `None` for a model the
+    /// harness cannot describe (a wrapped transport, a mock): that wire
+    /// stays hand-registered.
+    pub(crate) fn binding(&self) -> Option<WireBinding> {
+        let model: &dyn std::any::Any = &self.model;
+        let key = format!("{OWNER}/model:default");
+        let describe = |kind: ProviderKind,
+                        model_id: &str,
+                        client_base_url: &str,
+                        api_key: Option<String>,
+                        transport: &BoxedHttpClient| {
+            Some(WireBinding {
+                binding: ProviderBinding::new(key.clone(), kind, model_id, CASSETTE_CREDENTIAL)
+                    .labelled("default")
+                    .at(client_base_url),
+                api_key: api_key?,
+                transport: transport.clone(),
+            })
+        };
+        if let Some(model) = model.downcast_ref::<rig::providers::anthropic::CompletionModel>() {
+            let client = model.client();
+            return describe(
+                ProviderKind::Anthropic,
+                &model.model,
+                client.base_url(),
+                header(client.headers(), "x-api-key", None),
+                client.http_client(),
+            );
+        }
+        if let Some(model) = model.downcast_ref::<rig::providers::openai::CompletionModel>() {
+            let client = model.client();
+            return describe(
+                ProviderKind::OpenAiChat,
+                &model.model,
+                client.base_url(),
+                header(client.headers(), "authorization", Some("Bearer ")),
+                client.http_client(),
+            );
+        }
+        if let Some(model) =
+            model.downcast_ref::<rig::providers::openai::ResponsesCompletionModel>()
+        {
+            let client = model.client();
+            return describe(
+                ProviderKind::OpenAiResponses,
+                &model.model,
+                client.base_url(),
+                header(client.headers(), "authorization", Some("Bearer ")),
+                client.http_client(),
+            );
+        }
+        if let Some(model) = model.downcast_ref::<rig::providers::gemini::CompletionModel>() {
+            let client = model.client();
+            return describe(
+                ProviderKind::Gemini,
+                &model.model,
+                client.base_url(),
+                Some(client.provider().api_key().to_owned()),
+                client.http_client(),
+            );
+        }
+        if let Some(model) = model.downcast_ref::<rig::providers::deepseek::CompletionModel>() {
+            let client = model.client();
+            return describe(
+                ProviderKind::DeepSeek,
+                &model.model,
+                client.base_url(),
+                header(client.headers(), "authorization", Some("Bearer ")),
+                client.http_client(),
+            );
+        }
+        None
+    }
+}
+
+/// The credential reference every wire binding names; the harness
+/// resolver maps it to the cassette's key.
+pub(crate) const CASSETTE_CREDENTIAL: &str = "cassette";
+
+/// A wire's default model as a binding, with what the harness
+/// `Materializer` needs to rebuild the head client from it.
+pub(crate) struct WireBinding {
+    /// The binding, under `golden/model:default`.
+    pub binding: ProviderBinding,
+    /// The head client's key: what `cassette` resolves to.
+    pub api_key: String,
+    /// The head client's transport: what the factory hands every client.
+    pub transport: BoxedHttpClient,
+}
+
+/// A header the client sends on every request, with `prefix` stripped.
+fn header(
+    headers: &rig::http_client::HeaderMap,
+    name: &str,
+    prefix: Option<&str>,
+) -> Option<String> {
+    let value = headers.get(name)?.to_str().ok()?;
+    match prefix {
+        Some(prefix) => value.strip_prefix(prefix).map(str::to_owned),
+        None => Some(value.to_owned()),
     }
 }

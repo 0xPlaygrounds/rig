@@ -19,7 +19,7 @@ use rig_ecs::{
         scene::{load_world, save_world},
     },
     bus::{BusSet, EffectOutcome, Held, PendingEffect, RigSchedule, Streamed, release_hold},
-    systems::{BatchHeld, RigSet, RunBusy, despawn_run, spawn_run},
+    systems::{BatchHeld, RigSet, RunBusy, RunCommands},
 };
 use rig_effect_log::RequestCheck;
 
@@ -60,14 +60,10 @@ pub(crate) async fn error_facts<M: CompletionModel + 'static>(model: M, probe: E
         AdditionalParams(probe.additional_params.clone()),
     ));
     let trace = witnessed(&mut ecs.app);
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        probe.prompt,
-        probe.streamed,
-        None,
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], probe.prompt, probe.streamed, None);
     let outcome = ecs.wait_for_outcome(run).await;
     let report = match &outcome {
         Err(Failure::Provider(report)) => report.clone(),
@@ -128,7 +124,10 @@ pub(crate) async fn error_facts<M: CompletionModel + 'static>(model: M, probe: E
         "the adapter's status: {events:?}"
     );
     // The failed run despawns: its one effect has landed.
-    despawn_run(ecs.app.world_mut(), run).expect("a failed run despawns");
+    ecs.app
+        .world_mut()
+        .despawn_run(run)
+        .expect("a failed run despawns");
 }
 
 /// How a host approves a batch-held call (CONTRACT §8.1).
@@ -154,8 +153,7 @@ pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
     let mut program = wire.program(cell);
     program.fixture = cell.name;
     let (mut app, agent, recorder, _gates) = open(wire, cell, &program);
-    let run = spawn_run(
-        app.world_mut(),
+    let run = app.world_mut().spawn_run(
         agent,
         &[],
         program.prompt,
@@ -254,8 +252,7 @@ pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
     let cell = &cells::SERVING_CONCURRENT_CONCURRENCY_TWO;
     let program = wire.program(cell);
     let (mut app, agent, recorder, _gates) = open(wire, cell, &program);
-    let run = spawn_run(
-        app.world_mut(),
+    let run = app.world_mut().spawn_run(
         agent,
         &[],
         program.prompt,
@@ -325,7 +322,7 @@ pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
         results, ids,
         "the adjacent utterance answers both, in call order"
     );
-    despawn_run(world, run).expect("a settled run despawns");
+    world.despawn_run(run).expect("a settled run despawns");
     ids.iter().map(|id| id.to_string()).collect()
 }
 
@@ -447,14 +444,9 @@ pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
             RigSchedule,
             cancel_at_cut.after(BusSet::Collect).before(RigSet::Fold),
         );
-    let run = spawn_run(
-        app.world_mut(),
-        agent,
-        &[],
-        program.prompt,
-        true,
-        program.max_turns,
-    );
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], program.prompt, true, program.max_turns);
     let start = Instant::now();
     loop {
         app.update();
@@ -487,7 +479,7 @@ pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
     match cut {
         Cut::FirstTextDelta | Cut::FirstToolCallDelta => {
             assert_eq!(in_flight, 1, "{cut:?}: the stream is left to its handler");
-            assert_eq!(despawn_run(app.world_mut(), run), Err(RunBusy::InFlight));
+            assert_eq!(app.world_mut().despawn_run(run), Err(RunBusy::InFlight));
             gates.stream.add_permits(1);
         }
         Cut::AfterTerminal => {
@@ -531,6 +523,8 @@ pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
         [rig_ecs::agent::Role::User],
         "{cut:?}: nothing is committed"
     );
-    despawn_run(app.world_mut(), run).expect("a drained run despawns");
+    app.world_mut()
+        .despawn_run(run)
+        .expect("a drained run despawns");
     assert!(app.world().get_entity(run).is_err(), "the run is gone");
 }

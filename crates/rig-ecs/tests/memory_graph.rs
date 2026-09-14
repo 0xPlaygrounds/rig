@@ -41,7 +41,7 @@ use rig_ecs::{
     },
     bus::{EffectOutcome, PendingEffect},
     replay::required_row,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 
@@ -226,7 +226,9 @@ fn memory_loads_before_the_first_turn_and_appends_at_the_settle() {
     app.world_mut()
         .entity_mut(agent)
         .insert((Remembers(memory), Conversation("c1".to_owned())));
-    let run = spawn_run(app.world_mut(), agent, &[], "What is my name?", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "What is my name?", false, None);
     tick_until(&mut app, "the run", |world| {
         ended(world, run) && quiet(world)
     });
@@ -275,7 +277,9 @@ fn memory_is_bypassed_by_history() {
         .entity_mut(agent)
         .insert((Remembers(memory), Conversation("c1".to_owned())));
     let history = vec![MessageParts::from_message(&Message::user("earlier")).unwrap()];
-    let run = spawn_run(app.world_mut(), agent, &history, "now", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &history, "now", false, None);
     tick_until(&mut app, "the run", |world| {
         ended(world, run) && quiet(world)
     });
@@ -300,7 +304,7 @@ fn memory_a_failed_load_fails_the_run() {
     app.world_mut()
         .entity_mut(agent)
         .insert((Remembers(memory), Conversation("c1".to_owned())));
-    let run = spawn_run(app.world_mut(), agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     tick_until(&mut app, "the run", |world| {
         ended(world, run) && quiet(world)
     });
@@ -322,11 +326,11 @@ fn memory_a_second_run_loads_what_the_first_appended() {
     app.world_mut()
         .entity_mut(agent)
         .insert((Remembers(memory), Conversation("c1".to_owned())));
-    let first = spawn_run(app.world_mut(), agent, &[], "one", false, None);
+    let first = app.world_mut().spawn_run(agent, &[], "one", false, None);
     tick_until(&mut app, "the first run", |world| {
         ended(world, first) && quiet(world)
     });
-    let second = spawn_run(app.world_mut(), agent, &[], "two", false, None);
+    let second = app.world_mut().spawn_run(agent, &[], "two", false, None);
     tick_until(&mut app, "the second run", |world| {
         ended(world, second) && quiet(world)
     });
@@ -420,7 +424,7 @@ fn memory_retrieval_attaches_documents_and_tools() {
         Order(4),
         ChildOf(agent),
     ));
-    let run = spawn_run(world, agent, &[], "subtract one from three", false, None);
+    let run = world.spawn_run(agent, &[], "subtract one from three", false, None);
     tick_until(&mut app, "the run", |world| {
         ended(world, run) && quiet(world)
     });
@@ -573,7 +577,7 @@ fn check_static_retrieval_fallback(ordered: bool) {
     if ordered {
         link.insert(Order(3));
     }
-    let run = spawn_run(world, agent, &[], "hello", false, None);
+    let run = world.spawn_run(agent, &[], "hello", false, None);
     tick_until(
         &mut app,
         "run without an available retrieval handler",

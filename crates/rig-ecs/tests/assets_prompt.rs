@@ -28,10 +28,10 @@ use rig_core::serve::ServingPolicy;
 use rig_ecs::{
     agent::{Grant, Grants, Order, Preamble, Settled},
     assets::{
-        Applied, AssetsPlugin, AssetsSet, Prompt, PromptHandle, ToolDefinitions, ToolsHandle,
+        Applied, AssetsPlugin, AssetsSet, PromptAsset, PromptHandle, ToolDefinitions, ToolsHandle,
     },
     bus::{Bus, run_to_quiescence},
-    systems::{install_agent, spawn_run},
+    systems::{RunCommands, install_agent},
 };
 use run_support::*;
 
@@ -77,7 +77,7 @@ fn a_prompt_and_tool_definitions_become_the_preamble_and_the_grants() {
         ToolsHandle(server.load("agent.tools.json")),
     ));
     tick_until(&mut app, "the assets applied", |world| {
-        world.get::<Applied<Prompt>>(agent).is_some()
+        world.get::<Applied<PromptAsset>>(agent).is_some()
             && world.get::<Applied<ToolDefinitions>>(agent).is_some()
     });
     let world = app.world_mut();
@@ -100,7 +100,7 @@ fn a_prompt_and_tool_definitions_become_the_preamble_and_the_grants() {
     assert_eq!(grants[0].1, add);
     // The relationship's target is the tool: it lists the one grant.
     assert_eq!(world.get::<Grants>(add).map(|g| g.len()), Some(1));
-    let run = spawn_run(world, agent, &[], "go", false, None);
+    let run = world.spawn_run(agent, &[], "go", false, None);
     tick_until(&mut app, "the run", |world| {
         world.get::<Settled>(run).is_some()
     });

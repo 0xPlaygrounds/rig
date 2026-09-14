@@ -209,12 +209,18 @@ where
 
 fn typed_tool(
     builder: AgentBuilder<WithBuilderTools>,
+    cell: &Cell,
     tool: ToolKind,
 ) -> AgentBuilder<WithBuilderTools> {
+    use super::long_loop::{ListFiles, ReadFile, RunTests, WriteFile, repo};
     match tool {
         ToolKind::CheckpointStep => builder.tool(super::checkpoint::CheckpointStep),
         ToolKind::CheckpointBatch => builder.tool(super::checkpoint::CheckpointBatch),
         ToolKind::CheckpointLarge => builder.tool(super::checkpoint::CheckpointLarge),
+        ToolKind::RepoListFiles => builder.tool(ListFiles(repo(cell))),
+        ToolKind::RepoReadFile => builder.tool(ReadFile(repo(cell))),
+        ToolKind::RepoWriteFile => builder.tool(WriteFile(repo(cell))),
+        ToolKind::RepoRunTests => builder.tool(RunTests(repo(cell))),
         ToolKind::Adder => builder.tool(Adder),
         ToolKind::Alpha => builder.tool(AlphaSignal),
         ToolKind::Beta => builder.tool(BetaSignal),
@@ -259,6 +265,12 @@ fn grant<M: CompletionModel + Clone + 'static>(
                 ToolKind::CheckpointStep => builder.tool(super::checkpoint::CheckpointStep),
                 ToolKind::CheckpointBatch => builder.tool(super::checkpoint::CheckpointBatch),
                 ToolKind::CheckpointLarge => builder.tool(super::checkpoint::CheckpointLarge),
+                ToolKind::RepoListFiles => {
+                    builder.tool(super::long_loop::ListFiles(super::long_loop::repo(cell)))
+                }
+                ToolKind::RepoReadFile | ToolKind::RepoWriteFile | ToolKind::RepoRunTests => {
+                    unreachable!("the repository toolset is granted in its registration order")
+                }
                 ToolKind::Adder => builder.tool(Adder),
                 ToolKind::Alpha => builder.tool(AlphaSignal),
                 ToolKind::Beta => builder.tool(BetaSignal),
@@ -268,7 +280,7 @@ fn grant<M: CompletionModel + Clone + 'static>(
                 ToolKind::Lookup => unreachable!("the nesting tool is granted alone"),
             };
             for tool in rest {
-                builder = typed_tool(builder, *tool);
+                builder = typed_tool(builder, cell, *tool);
             }
             finish(builder, wire, cell, program)
         }
@@ -452,6 +464,20 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
     if cell.name.starts_with("checkpoint_") {
         super::checkpoint::write_attempt(cell, &log);
         super::checkpoint::assert_log(cell, &log);
+    }
+    if super::long_loop::is_long_loop(cell) {
+        super::long_loop::write_attempt(cell, &log);
+        super::long_loop::assert_log(cell, wire.thinking, &log);
+        for response in &responses {
+            super::long_loop::assert_transcript(
+                cell,
+                &log,
+                response
+                    .messages
+                    .as_deref()
+                    .expect("a run has a transcript"),
+            );
+        }
     }
     if cell.image.is_some() {
         super::image::assert_log(cell, &log);

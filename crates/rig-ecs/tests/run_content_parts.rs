@@ -230,7 +230,7 @@ fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
     use rig_ecs::{
         agent::{MaxTurns, Owner, UsesModel},
         bus::{Bus, Handlers, PendingEffect, RigSchedule},
-        systems::{install_agent, spawn_run},
+        systems::{RunCommands, install_agent},
     };
     let mut world = World::new();
     Bus::with_policy(ServingPolicy::default()).install(&mut world);
@@ -249,7 +249,7 @@ fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
     let agent = world
         .spawn((Owner("owner".into()), UsesModel(model), MaxTurns(1)))
         .id();
-    let run = spawn_run(&mut world, agent, &[], "hello", false, None);
+    let run = world.spawn_run(agent, &[], "hello", false, None);
     world.run_schedule(RigSchedule);
     let utterance = world
         .query_filtered::<(Entity, &ChildOf), With<Utterance>>()

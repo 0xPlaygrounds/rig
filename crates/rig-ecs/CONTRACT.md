@@ -26,6 +26,24 @@ explained in [the test guide](../../tests/ecs_parity/README.md).
 
 The fold is the only constructor of a `CompletionRequest` in the crate (`tests/core/rig_ecs_bus_module.rs::the_agent_modules_hold_the_discipline`).
 
+A run is spawned through `systems::RunCommands` — `spawn_run(agent, history,
+prompt, streamed, max_turns)` on `World` (at once) or on `Commands` (the
+entity reserved, the work queued: the run exists when the commands apply,
+and `Advance` sees it on the first schedule pass after that). Either form
+spawns the `RunBundle` (`Run`, `RunOf`, `RunSeq`, `StreamRequested`,
+`Cursor`, the retry tallies, `OutputToolName`, `Usage`, `Scope`) with the
+`Prompt` component and an optional `MaxTurns`, the history utterances
+`ChildOf` the run in `Order`, then `Ready`, then opens the run. A host
+assembling a run by hand spawns the same bundle and `Prompt`, its
+utterances, and writes `Ready` last. `open_runs` (first in
+`RigSet::Advance`) opens every `Ready` run that has no phase and no
+ending: the `Prompt` is spawned as the run's last utterance and taken off
+the run, then the first phase — `Assembling`, or `LoadingMemory` with the
+conversation's `Load` effect for an agent that `Remembers` given no history
+(§11). `Advance` takes only `Ready` runs in `Assembling`: before `Ready`
+nothing reads the run, so assembly never sees a half-populated prompt or
+history. Pinned by `tests/run_commands.rs`.
+
 A user utterance's content is the caller's, verbatim: `spawn_run` takes a
 `Prompt` (a user message's parts), and those parts — text and image, in the order given, each
 image's bytes or URL, media type and options unchanged — are what every
@@ -65,6 +83,28 @@ collect after releasing owners/pins; otherwise the retained store remains subjec
 to its allocation limit. `run_content_binary` and `run_content_parts` cover source spelling,
 all existing content variants, nested JSON/image results, metadata and shared
 asset lifetime.
+
+Cached utterance views: `assemble` keeps the DTO it renders for an utterance
+on that utterance as `content::cache::CachedMessage` — the verbatim
+`MessageParts` `read_message` gives, before any request edit or limit — and
+reads it on later turns instead of walking the part subtree again. A view is
+dropped by Bevy change detection, relative to `assemble`'s own last run:
+a change, addition or removal of any component of the utterance (`Role`,
+`MessageId`, `Children`) or of any entity in its part subtree at any depth
+(the typed parts, `Order`, `ChildOf`, a tool result's `Children`), a
+`write_message`, a reparenting into or out of it, and an asset collection
+(`collect_binary_assets` / `BinaryAssets::retain`, keyed by the store's
+generation). Removals reach the cache through `RemovedComponents`, which
+Bevy double-buffers: a part component removed from a live entity while
+the schedule is skipped for two or more app updates is not seen by the
+cache (a change, read by its tick, is seen whenever the schedule next
+runs). A view made by another `ENCODER_VERSION` is a miss. The turn's
+`RequestPartEdit`s and the `ToolResultLimit` are applied over the view, as
+over a fresh render, and an utterance an edit targets is rendered with the
+edit, uncached. The request is unchanged: every folded `chat_history` equals
+a fresh uncached render (`run_message_cache.rs`). Views are runtime state, never
+scene or memory data (§13); `AssemblyStats` counts renders, hits, evictions
+and assemblies for measurement.
 
 ## 2. The verbatim strings
 
@@ -140,6 +180,8 @@ preamble through real provider adapters.
 | a provider's reply becomes an `ErrorReport` through the one funnel (`rig_core::provider_response`): `kind: provider_response`, `http_status` the reply's, `retryable` by the status table (`rig_core::error::retryable_status`), `code` the transport's own when it gave one apart from the body, else the string the body names under `error.code`, `error.status` or `error.type` (`ProviderResponseError::machine_code`), else `None`; the body itself stays on `provider_response.body` | every `ecs_faults` setup cell; `provider_response::tests` |
 | a non-retryable report, a cancellation, or a spent budget ends the run `Failed(Provider)` with that report, as before; no tool is ever re-run by a retry, and the log holds every attempt as its own effect | `tests/run_provider_retry.rs` |
 | time is the host's: the library issues the retry on the next pass; a backoff is a hold a `Gate` system acquires on the re-issued effect and releases when due, so replay needs no clock | `tests/run_provider_retry.rs` (`a_host_hold_is_where_a_backoff_goes...`) |
+| `RunCommands::cancel_run(run, reason)` writes `Cancelled(reason)` (§9.1) — at once on `World`, when the commands apply on `Commands`; a cancel queued behind a `spawn_run` ends the run before its first pass, and no request is ever made; an ended run keeps its ending; a non-run is left alone; a run cancelled before it opened (`Ready` by hand, no pass yet) fails with its unread `Prompt` still on it, and a scene saves that prompt with the failed run | `tests/run_commands.rs` (`a_cancel_queued_behind_the_spawn_ends_the_run_before_it_starts`) |
+| `RunCommands::despawn_run(run)` takes an ended run and its whole graph out of the world; refused (`RunBusy::{NotARun, Unsettled, InFlight}`, nothing despawned) while the run has not ended or an effect of it is in flight or unanswered. The `World` form returns the refusal; the `Commands` form triggers `RunDespawnRefused { entity, reason }` on the run when the command applies, `NotARun` on an id an earlier command already despawned. A run despawned before or while `spawn_run` populates it (a host `Add<Run>` observer refusing it) is simply gone: the steps after the despawn do nothing, and no utterance is spawned under it | `tests/run_lifetime.rs`; `tests/run_commands.rs` (`a_queued_despawn_is_refused_by_event_while_the_run_lives`, `a_reserved_run_despawned_before_it_was_populated_is_gone`, `a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run`) |
 
 ## 6. The header
 
@@ -183,6 +225,8 @@ A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool
 | the output tool's call in a turn beside a granted tool's call | unpinned: no golden; the batch runs and the output tool's call is read when it lands | (none) |
 | a replaced result | history holds the replacement, the record the handler's answer (a `Judge` rewrite of the child's `EffectOutcome`) | `anthropic_hooks_replace_tool_result` `/records/1/outcome` (`42`) vs `/records/2/…/chat_history/3` (`99`) |
 | a patched call | the record holds the patched arguments, history the model's | `anthropic_hooks_patch_tool_args` `/records/1/kind/args` (`{"x":40,"y":2}`) vs `/records/2/…/chat_history/2` (`{17, 25}`) |
+| the status, as data | beside each `ToolResultPart` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
+| the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `assemble` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
 
 ### 8.2 Invalid calls beside the batch
 
@@ -343,6 +387,11 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 | `replay::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
 
+`ToolResultLimit` (§8.1) is request shaping, like `RequestPatch`: it is
+not an input of `spec_json`, so a limit set, changed or removed between
+runs does not change the policy hash, and a recorded run replays under any
+limit — the request the log holds is the cut one, as it was sent.
+
 Replayers retain recorded model identity/capabilities and include every
 `programs[*].required` row. They clear executable layer metadata until the
 application reapplies its middleware: a program recorded under a layer is
@@ -429,6 +478,60 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route bound after the agent exists (`late_route`) | `UsesModel` inserted on the run by a system (§9.2); not in the row | `anthropic_shaping_late_route` |
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
+### 12.1 A model bound as data
+
+A `bus::ProviderBinding` component is the data half of a provider-served
+key: `kind` (`anthropic`, `openai_chat`, `openai_responses`, `gemini`,
+`deepseek`), `model`, `label` (the `ModelRef` the descriptor advertises;
+the model id unless set), `base_url` (`None` is the provider's default), a
+`credential` *reference* (a name the host's resolver knows — never a
+secret) and per-kind `extra_params` (`anthropic_version` /
+`anthropic_betas`; `system_instructions_as_messages` for
+`openai_responses`; none elsewhere, unknown keys refused). It holds
+nothing executable. The executable half is built on the host's word:
+`materialize_bindings(world)` (or the `materialize` system, which leaves a
+refusal in `MaterializeFailed`) reads the host-installed `Materializer`
+resource — a credential resolver and a transport factory, both host
+closures; rig-ecs reads no environment variable and picks no transport —
+builds the rig-core client for every binding nothing serves yet and
+registers a `CompletionAdapter` under the binding's key through
+`Handlers::register_erased`, on the binding's own entity, so the bound
+`HandlerDescriptor` is the one a hand-registered adapter produces and the
+policy hash (§10) is unchanged by how the key came to be served. A binding
+changes no `HandlerDescriptor`: every golden is unchanged. Secrets never
+enter the world: the resolver returns a `Secret` whose `Debug` is redacted,
+the secret lives only inside the built client, and the binding's `Debug`,
+JSON and every `MaterializeError` name the reference alone.
+
+Precedence and refusals, all or nothing per call — every credential
+resolved, every client built and every registration checked before the
+first registration: a key is registered only when it is free or bound on
+the binding's own entity with the descriptor about to be registered, so
+`Handlers::bind` (which refuses only a key bound to another family) cannot
+refuse one, and every error leaves the handlers as they were. Should a
+registration nonetheless be refused, what the call registered before it is
+unserved again and every `Bound` the call inserted is taken out or put back
+as saved (`Register`):
+
+| the world holds | `materialize_bindings` |
+|---|---|
+| a binding on an entity nothing serves, no `Bound` | built, `Bound` inserted, served: `materialized` |
+| a binding beside a `Bound` nothing serves (a scene load) | built; the built descriptor must equal the saved one, else `DescriptorDrift`; served: `materialized` |
+| a binding beside a `Bound` something serves (a hand-registered handler, an earlier materialization, a replayer) | left alone: `kept` — the existing handler wins, no credential resolved, no transport built |
+| a binding whose key another entity's `Bound` holds — served there (a hand registration made before the binding's own `Bound` was spawned, a replayer) or not, and whether or not the binding carries a `Bound` of its own | left alone: `kept` — the existing handler wins, the binding's own `Bound` untouched |
+| two binding entities with one key | `DuplicateKey` |
+| a binding beside a `Bound` of another key | `KeyMismatch` |
+| no `Materializer` | `NoMaterializer` |
+| a reference the resolver refuses | `MissingCredential { key, credential, detail }` |
+| `extra_params` the kind does not take, or a builder that refuses | `ExtraParams`, `Client` |
+
+A kind the reader does not know is refused by serde before anything is
+spawned. Pinned by `run_binding.rs`; the harness (`tests/common/ecs_matrix/world.rs`)
+binds `golden/model:default` this way on every ungated cassette wire, with
+a resolver that maps the reference `cassette` to the cassette's key and a
+factory that hands out the cassette transport, and every cell's request is
+the byte-identical one a hand-registered adapter sent.
+
 ## 13. Resume is a scene load; two runs
 
 The graph scene includes typed content children and a `binaries` table in
@@ -489,6 +592,37 @@ Only supported library state and explicitly registered graph extensions are
 saved. Effect-entity application components, resources, system-local and
 external state are host-owned. Insertion observers/change detection can fire
 on load; install application observers afterward or guard restoration.
+
+Provider bindings (§12.1) are scene data: `WorldScene.bindings` holds every
+`ProviderBinding` the world carries, by key, each with the descriptor its
+`Bound` held when saved (none for one never materialized). Loading is
+data only — no credential is resolved, no transport built, no client made:
+each binding is spawned as it was, bound under its saved descriptor so the
+graph's links to the key resolve, and left unserved (a dispatch to it is
+`HandlerUnavailable`) until the host calls `materialize_bindings`, which
+must then build the saved descriptor exactly. A key the loading world
+already serves keeps its handler — the binding rides on that entity and a
+later materialization reports it `kept` — so a world over the log's
+replayers loads the same scene unchanged. Refused before any spawn: a key
+bound twice in the scene, a descriptor saved under another key, a served
+key of another family. Pinned by `run_binding.rs`
+(`a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word`,
+`a_scene_load_validates_its_bindings`) and by every world-resume cell
+whose restored world materializes `golden/model:default` from the scene.
+
+`Ready` and an unread `Prompt` are scene data (`ready`, `prompt`): a run
+saved before it opened loads unopened — `Ready`, `Prompt`, no phase — and
+opens on the loaded world's first pass; a run saved mid-run loads with its
+`Ready` and its phase and goes on. A run without `Ready` never advances,
+loaded or not. Pinned by `tests/run_commands.rs`
+(`a_ready_run_saved_before_it_opened_starts_after_the_load`) and by every
+resumed world cell.
+
+Cached utterance views (§1) are not saved: a loaded utterance holds no
+`CachedMessage`, the first assembly after a load renders every utterance of
+the run from the graph and caches it, and the request it folds is the one
+the saving world would have folded (`run_message_cache.rs`
+`a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views`).
 
 
 The live-handler regressions in `tests/memory_resume.rs` cover memory finalization before

@@ -32,7 +32,7 @@ use rig::completion::{
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, Outcome};
 use rig::error::ErrorKind;
 use rig::serve::{
-    ErasedHandler,
+    ErasedHandler, Serve,
     adapters::{CompletionAdapter, MemoryAdapter, ToolAdapter},
 };
 use rig::streaming::{Delta, StreamEvent, StreamEvents, StreamingCompletionResponse};
@@ -47,11 +47,12 @@ use rig_ecs::{
         scene::{WorldScene, load_world, save_world},
     },
     bus::{
-        BusSet, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight, Intake,
-        PendingEffect, Policy, Progress, RigSchedule, Streamed, run_to_quiescence,
+        BusSet, CredentialRef, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight,
+        Intake, Materializer, PendingEffect, Policy, Progress, RigSchedule, Secret, Streamed,
+        materialize_bindings, run_to_quiescence,
     },
     replay::{stamp_legacy_builder_header, stamp_run},
-    systems::{Fresh, RigSet, RunBusy, despawn_run, install_agent, spawn_run},
+    systems::{Fresh, RigSet, RunBusy, RunCommands, install_agent},
 };
 use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, RequestCheck};
 use tokio::sync::Semaphore;
@@ -59,6 +60,7 @@ use tokio::sync::Semaphore;
 use super::cells::{Cell, Memory, ToolKind};
 use super::corpus::{self, CANCEL_ADD_OUTCOME, Ending, Hook, LayerAt, Program, Unhandled};
 use super::faults::{BROKEN_ORCHARD, FailingOrchard, Fault, Scene};
+use super::{CASSETTE_CREDENTIAL, WireBinding};
 use super::{OWNER, Wire};
 use crate::ecs_agent::RuntimeHandler;
 use crate::goldens::{
@@ -354,6 +356,13 @@ fn at_cut(world: &mut World, run: Entity, tool_turns: usize) -> bool {
     true
 }
 
+/// The families whose cut is the #2514 hold after a committed tool turn
+/// (`hold_after_tool_turn`, owner `matrix/checkpoint`): the checkpoint
+/// rows and the long tool loop.
+fn holds_tool_turn(cell: &Cell) -> bool {
+    cell.name.starts_with("checkpoint_") || super::long_loop::is_long_loop(cell)
+}
+
 /// A tool adapter as an erased handler over the test's runtime.
 fn tool_handler<S>(adapter: S, runtime: &tokio::runtime::Handle) -> ErasedHandler
 where
@@ -501,25 +510,87 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             runtime: runtime.clone(),
         })
     };
-    let model = match gate {
-        Some(tool) => ErasedHandler::new(RuntimeHandler {
-            inner: Arc::new(CompletionAdapter::new(
-                "default",
-                FirstDelta {
-                    inner: wire.model.clone(),
-                    tool,
-                    release: gates.stream.clone(),
-                },
-            )),
-            runtime: runtime.clone(),
-        }),
-        None => model_handler(wire.model.clone(), "default"),
+    // The default model as data (CONTRACT §12, §13): a head world whose
+    // wire the harness can describe, and whose stream is not gated, binds
+    // `golden/model:default` through a `ProviderBinding` the harness
+    // `Materializer` builds the client for — the head client rebuilt from
+    // the binding — so the scene it saves carries the binding and a world
+    // opened over that scene materializes the model from scene data
+    // instead of a hand-registered adapter. A gated model (`FirstDelta`)
+    // and a wire the harness cannot describe stay hand-registered, and a
+    // scene without the binding is served as it was.
+    let default_key = HandlerKey::from(format!("{OWNER}/model:default"));
+    let data_bound: Option<WireBinding> = match (gate, scene) {
+        (None, None) => wire.binding(),
+        (_, Some(scene))
+            if scene
+                .bindings
+                .iter()
+                .any(|saved| saved.binding.key == default_key) =>
+        {
+            Some(wire.binding().expect("the scene's binding is this wire's"))
+        }
+        _ => None,
     };
-    let model = Handlers::with(world, |handlers| {
-        handlers.register_erased(format!("{OWNER}/model:default"), model)
-    })
-    .expect("bus installed")
-    .expect("fresh model key");
+    let model: Option<Entity> = match &data_bound {
+        Some(data) => {
+            install_materializer(world, data, &runtime);
+            if scene.is_some() {
+                // Spawned by the load, materialized after it.
+                None
+            } else {
+                world.spawn(data.binding.clone());
+                let report =
+                    materialize_bindings(world).expect("the head materializes its binding");
+                assert_eq!(report.materialized, vec![default_key.clone()]);
+                let entity = world
+                    .query_filtered::<Entity, With<rig_ecs::bus::ProviderBinding>>()
+                    .single(world)
+                    .expect("the binding's entity is the handler's");
+                // The binding captures the model id, base URL, credential
+                // and transport; the materialized handler must describe
+                // itself exactly as the hand-registered adapter over the
+                // wire's own model would, so a wire with model-level
+                // settings the binding does not carry cannot diverge
+                // silently.
+                let by_hand = CompletionAdapter::new("default", wire.model.clone()).descriptor();
+                let bound = world
+                    .get::<rig_ecs::bus::Bound>(entity)
+                    .expect("the materialized binding is bound");
+                assert_eq!(bound.key, default_key);
+                assert_eq!(bound.descriptor.key, default_key);
+                assert_eq!(
+                    (&bound.descriptor.family, &bound.descriptor.layers),
+                    (&by_hand.family, &by_hand.layers),
+                    "the materialized descriptor is the hand-registered adapter's"
+                );
+                Some(entity)
+            }
+        }
+        None => {
+            let model = match gate {
+                Some(tool) => ErasedHandler::new(RuntimeHandler {
+                    inner: Arc::new(CompletionAdapter::new(
+                        "default",
+                        FirstDelta {
+                            inner: wire.model.clone(),
+                            tool,
+                            release: gates.stream.clone(),
+                        },
+                    )),
+                    runtime: runtime.clone(),
+                }),
+                None => model_handler(wire.model.clone(), "default"),
+            };
+            Some(
+                Handlers::with(world, |handlers| {
+                    handlers.register_erased(default_key.clone(), model)
+                })
+                .expect("bus installed")
+                .expect("fresh model key"),
+            )
+        }
+    };
     if !cell.bus.declared() {
         memory = register_memory(world);
     }
@@ -575,6 +646,36 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
                 "checkpoint_large",
                 tool_handler(
                     ToolAdapter::new(super::checkpoint::CheckpointLarge),
+                    &runtime,
+                ),
+            ),
+            // The repository tree is host state, leased per cell and rebound
+            // unchanged to a restored world (`super::long_loop`).
+            ToolKind::RepoListFiles => (
+                "list_files",
+                tool_handler(
+                    ToolAdapter::new(super::long_loop::ListFiles(super::long_loop::repo(cell))),
+                    &runtime,
+                ),
+            ),
+            ToolKind::RepoReadFile => (
+                "read_file",
+                tool_handler(
+                    ToolAdapter::new(super::long_loop::ReadFile(super::long_loop::repo(cell))),
+                    &runtime,
+                ),
+            ),
+            ToolKind::RepoWriteFile => (
+                "write_file",
+                tool_handler(
+                    ToolAdapter::new(super::long_loop::WriteFile(super::long_loop::repo(cell))),
+                    &runtime,
+                ),
+            ),
+            ToolKind::RepoRunTests => (
+                "run_tests",
+                tool_handler(
+                    ToolAdapter::new(super::long_loop::RunTests(super::long_loop::repo(cell))),
                     &runtime,
                 ),
             ),
@@ -636,6 +737,18 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
 
     let agent = if let Some(scene) = scene {
         let loaded = load_world(scene, world).expect("the scene binds to fresh live handlers");
+        if data_bound.is_some() {
+            // The scene's binding, bound and unserved by the load, served now
+            // on the host's word: the client built from scene data.
+            let report =
+                materialize_bindings(world).expect("the restored world materializes its binding");
+            assert_eq!(
+                report.materialized,
+                vec![default_key.clone()],
+                "{}: the restored model is materialized from scene data",
+                cell.name
+            );
+        }
         if super::stream_delivery::applicable(cell) {
             super::stream_delivery::assert_hydration(world, cell);
         }
@@ -674,7 +787,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
                         Unhandled::Ignore => WorldUnhandled::Ignore,
                     },
                 },
-                UsesModel(model),
+                UsesModel(model.expect("a head world's model is bound")),
             ))
             .id();
         if let Some(retries) = cell.provider_retries {
@@ -730,6 +843,34 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         ),
     );
     (app, agent, recorder, gates)
+}
+
+/// The harness `Materializer`: `cassette` resolves to the head client's
+/// key, every client sends through the head client's transport, and each
+/// built adapter is served under the test runtime as a hand-registered
+/// one is. Any other reference is refused.
+fn install_materializer(world: &mut World, data: &WireBinding, runtime: &tokio::runtime::Handle) {
+    let api_key = data.api_key.clone();
+    let transport = data.transport.clone();
+    let runtime = runtime.clone();
+    world.insert_resource(
+        Materializer::new(
+            move |credential: &CredentialRef| {
+                if credential.as_str() == CASSETTE_CREDENTIAL {
+                    Ok(Secret::new(api_key.clone()))
+                } else {
+                    Err(format!("the harness resolves only `{CASSETTE_CREDENTIAL}`"))
+                }
+            },
+            move || transport.clone(),
+        )
+        .serving(move |handler| {
+            ErasedHandler::new(RuntimeHandler {
+                inner: Arc::new(handler),
+                runtime: runtime.clone(),
+            })
+        }),
+    );
 }
 
 /// The run ended as the program says (the corpus's `assert_ending`, over
@@ -1073,7 +1214,7 @@ fn assert_despawn(app: &mut App, agent: Entity, run: Entity, before: usize) {
             .is_some_and(|runs| runs.runs().contains(&run)),
         "the agent lists its run"
     );
-    despawn_run(world, run).expect("a settled run despawns");
+    world.despawn_run(run).expect("a settled run despawns");
     assert!(
         !world
             .get::<Runs>(agent)
@@ -1631,14 +1772,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     for (n, prompt) in prompts.into_iter().enumerate() {
         before.push(live_entities(app.world_mut()));
         let world = app.world_mut();
-        let mut run = spawn_run(
-            world,
-            agent,
-            &history,
-            prompt,
-            program.streamed,
-            program.max_turns,
-        );
+        let mut run = world.spawn_run(agent, &history, prompt, program.streamed, program.max_turns);
         if cell.name == "checkpoint_parallel_batch" {
             super::checkpoint_world::bind_parallel_run(world, run);
         }
@@ -1662,7 +1796,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             );
         }
         let cut_after = (n == last).then_some(cell.resume_after).flatten();
-        if cell.name.starts_with("checkpoint_")
+        if holds_tool_turn(cell)
             && let Some(cut_after) = cut_after
         {
             world.init_resource::<CheckpointCut>();
@@ -1689,7 +1823,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 world.get::<Failed>(run)
             );
             assert_eq!(
-                despawn_run(world, run),
+                world.despawn_run(run),
                 Err(RunBusy::InFlight),
                 "{}: the tool is still in flight",
                 cell.name
@@ -1728,12 +1862,21 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             let (scene, _, _) = cut.take().expect("the tool-result cut");
             let encoded_scene = serde_json::to_string(&scene).expect("scene JSON");
             let encoded_head = serde_json::to_string(&recorder.log()).expect("head JSON");
-            super::checkpoint::write_cut_evidence(
-                cell,
-                cut_after.expect("cut number"),
-                &encoded_scene,
-                &encoded_head,
-            );
+            if super::long_loop::is_long_loop(cell) {
+                super::long_loop::write_cut_evidence(
+                    cell,
+                    cut_after.expect("cut number"),
+                    &encoded_scene,
+                    &encoded_head,
+                );
+            } else {
+                super::checkpoint::write_cut_evidence(
+                    cell,
+                    cut_after.expect("cut number"),
+                    &encoded_scene,
+                    &encoded_head,
+                );
+            }
             let witness = gates.witness.clone();
             if cell.name == "checkpoint_parallel_batch" {
                 super::checkpoint_world::assert_parallel_complete(app.world());
@@ -1749,7 +1892,15 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             let restore_started = Instant::now();
             (app, agent, recorder, gates) =
                 open_inner(wire, cell, &program, None, Some(&scene), witness);
-            if cell.name.starts_with("checkpoint_") {
+            if super::long_loop::is_long_loop(cell) {
+                super::long_loop::write_restore_timing(
+                    cell,
+                    cut_after.expect("cut number"),
+                    encoded_scene.len(),
+                    encoded_head.len(),
+                    restore_started.elapsed().as_micros(),
+                );
+            } else if cell.name.starts_with("checkpoint_") {
                 eprintln!(
                     "CHECKPOINT_SCENE {}",
                     serde_json::json!({
@@ -1772,7 +1923,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 corpus::program_hooks(&program, OWNER),
             );
             stamp_run(app.world_mut(), run, &recorder).expect("stamp restored run");
-            if cell.name.starts_with("checkpoint_") {
+            if holds_tool_turn(cell) {
                 assert!(
                     app.world().get::<ToolTurnHolds>(run).is_some(),
                     "scene retains hold"
@@ -1807,6 +1958,12 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
         super::checkpoint_world::assert_parallel_complete(app.world());
     }
     if let Some(mut head) = saved_head {
+        // The head's signature froze at the cut; the tail's recorder saw
+        // the handlers the head never reached. Join both, as one recorder
+        // over the whole run would have.
+        for (key, family) in log.header.signature.iter() {
+            head.header.signature.insert_if_absent(key.clone(), *family);
+        }
         head.records.extend(log.records);
         log = head;
     }
@@ -1872,6 +2029,11 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     }
     if two_signals {
         assert_batch(&mut app, cell);
+    }
+    if super::long_loop::is_long_loop(cell) {
+        super::long_loop::assert_log(cell, wire.thinking, &log);
+        let history = super::reasoning::assistant_history(app.world_mut(), run);
+        super::long_loop::assert_transcript(cell, &log, &history);
     }
     assert_fault(&mut app, cell, run, &log, &gates);
     // (3) the cut, resumed; the failed run's scene, loaded.

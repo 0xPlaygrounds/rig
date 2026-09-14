@@ -1,5 +1,5 @@
 //! Prompts and tool definitions as assets (the `assets` feature): a
-//! [`Prompt`] is a Markdown or text file, a [`ToolDefinitions`] a JSON
+//! [`PromptAsset`] is a Markdown or text file, a [`ToolDefinitions`] a JSON
 //! array of `ToolDefinition`s, each with a `bevy_asset` loader; a handle
 //! on an agent ([`PromptHandle`], [`ToolsHandle`]) becomes the agent's
 //! [`Preamble`] and its [`Grant`]s — to the bound handlers the definitions
@@ -25,20 +25,21 @@ use crate::{
     systems::next_order_in,
 };
 
-/// A prompt: the file's text (the preamble it becomes is trimmed at the
-/// end, so a file's final newline is not the model's).
+/// A prompt file's text — the asset, not the run's `agent::Prompt` (the
+/// preamble it becomes is trimmed at the end, so a file's final newline is
+/// not the model's).
 #[derive(Asset, TypePath, Debug, Clone, PartialEq, Eq)]
-pub struct Prompt {
+pub struct PromptAsset {
     /// The text, as the file has it.
     pub text: String,
 }
 
-/// Loads a `.md` or `.txt` file as a [`Prompt`].
+/// Loads a `.md` or `.txt` file as a [`PromptAsset`].
 #[derive(Debug, Default, Clone, Copy, TypePath)]
 pub struct PromptLoader;
 
 impl AssetLoader for PromptLoader {
-    type Asset = Prompt;
+    type Asset = PromptAsset;
     type Settings = ();
     type Error = std::io::Error;
 
@@ -47,11 +48,11 @@ impl AssetLoader for PromptLoader {
         reader: &mut dyn Reader,
         _settings: &(),
         _context: &mut LoadContext<'_>,
-    ) -> Result<Prompt, Self::Error> {
+    ) -> Result<PromptAsset, Self::Error> {
         let mut bytes = Vec::new();
         reader.read_to_end(&mut bytes).await?;
         let text = String::from_utf8(bytes).map_err(std::io::Error::other)?;
-        Ok(Prompt { text })
+        Ok(PromptAsset { text })
     }
 
     fn extensions(&self) -> &[&str] {
@@ -94,7 +95,7 @@ impl AssetLoader for ToolDefinitionsLoader {
 
 /// The prompt an agent reads its [`Preamble`] from.
 #[derive(Component, Debug, Clone)]
-pub struct PromptHandle(pub Handle<Prompt>);
+pub struct PromptHandle(pub Handle<PromptAsset>);
 
 /// The definitions an agent's [`Grant`]s come from.
 #[derive(Component, Debug, Clone)]
@@ -110,11 +111,11 @@ impl<A: Asset> Default for Applied<A> {
     }
 }
 
-/// A loaded [`Prompt`] on an agent becomes its [`Preamble`].
+/// A loaded [`PromptAsset`] on an agent becomes its [`Preamble`].
 pub fn apply_prompts(
     mut commands: Commands,
-    prompts: Res<Assets<Prompt>>,
-    agents: Query<(Entity, &PromptHandle), Without<Applied<Prompt>>>,
+    prompts: Res<Assets<PromptAsset>>,
+    agents: Query<(Entity, &PromptHandle), Without<Applied<PromptAsset>>>,
 ) {
     for (agent, handle) in &agents {
         let Some(prompt) = prompts.get(&handle.0) else {
@@ -122,7 +123,7 @@ pub fn apply_prompts(
         };
         commands.entity(agent).insert((
             Preamble(Some(prompt.text.trim_end().to_owned())),
-            Applied::<Prompt>::default(),
+            Applied::<PromptAsset>::default(),
         ));
     }
 }
@@ -187,7 +188,7 @@ impl Plugin for AssetsPlugin {
             app.world().contains_resource::<OrderCounter>(),
             "AssetsPlugin needs install_agent first: its grants take the agent's order counter"
         );
-        app.init_asset::<Prompt>()
+        app.init_asset::<PromptAsset>()
             .register_asset_loader(PromptLoader)
             .init_asset::<ToolDefinitions>()
             .register_asset_loader(ToolDefinitionsLoader)

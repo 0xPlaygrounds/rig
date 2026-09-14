@@ -13,7 +13,7 @@ use rig_ecs::{
         content::parts::*, scene::RunScene,
     },
     bus::{Bus, Handlers, PendingEffect, RigSchedule},
-    systems::{Fresh, install_agent, spawn_run},
+    systems::{Fresh, RunCommands, install_agent},
 };
 
 fn fixture() -> (World, Entity, Entity, Entity, Entity) {
@@ -32,7 +32,7 @@ fn fixture() -> (World, Entity, Entity, Entity, Entity) {
     .unwrap()
     .unwrap();
     let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
-    let run = spawn_run(&mut world, agent, &[], "original", false, None);
+    let run = world.spawn_run(agent, &[], "original", false, None);
     let utterance = world
         .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(&world)

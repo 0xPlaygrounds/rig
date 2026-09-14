@@ -27,7 +27,7 @@ use rig_ecs::{
     },
     bus::IdCounter,
     reflect::ReflectedScene,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 
@@ -53,7 +53,9 @@ fn ran() -> bevy_app::App {
         .insert(rig_ecs::agent::MaxTurns(2));
     app.world_mut()
         .spawn((Grant(add), Order(0), ChildOf(agent)));
-    let run = spawn_run(app.world_mut(), agent, &[], "add one and two", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "add one and two", false, None);
     tick_until(&mut app, "the run", |world| {
         world.get::<Settled>(run).is_some()
     });

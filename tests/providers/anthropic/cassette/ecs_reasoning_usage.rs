@@ -8,7 +8,7 @@ use rig::{effect::Outcome, prelude::*, providers::anthropic};
 use rig_ecs::{
     agent::{AdditionalParams, DefaultMaxTurns, MaxTokens, Order, Turn},
     bus::EffectOutcome,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 #[tokio::test]
@@ -28,14 +28,10 @@ async fn agent_blocking_thinking() {
                 MaxTokens(Some(2048)),
                 AdditionalParams(Some(budget_thinking(1024))),
             ));
-            let run = spawn_run(
-                ecs.app.world_mut(),
-                ecs.agent,
-                &[],
-                THINKING_PROMPT,
-                false,
-                None,
-            );
+            let run = ecs
+                .app
+                .world_mut()
+                .spawn_run(ecs.agent, &[], THINKING_PROMPT, false, None);
             ecs.wait_for_success(run).await;
             let world = ecs.app.world_mut();
             let usage = world

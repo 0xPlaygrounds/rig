@@ -25,6 +25,8 @@ mod cassette {
     mod corpus_matrix_checkpoint_responses;
     mod corpus_matrix_image_chat;
     mod corpus_matrix_image_responses;
+    mod corpus_matrix_long_loop_chat;
+    mod corpus_matrix_long_loop_responses;
     mod corpus_matrix_responses;
     mod corpus_output;
     mod corpus_retrieval;
@@ -43,6 +45,8 @@ mod cassette {
     mod ecs_matrix_extra_responses;
     mod ecs_matrix_image_chat;
     mod ecs_matrix_image_responses;
+    mod ecs_matrix_long_loop_chat;
+    mod ecs_matrix_long_loop_responses;
     mod ecs_matrix_responses;
     mod ecs_ordering;
     mod ecs_parity;

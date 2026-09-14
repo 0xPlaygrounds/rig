@@ -26,7 +26,7 @@ use rig_ecs::{
     agent::{Failed, Grant, MaxTurns, Order, PolicyVersion, RunResult, Settled},
     bus::{Bound, EffectLogResource, Handlers, Replay},
     replay::stamp_run,
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use rig_effect_log::EffectLogRecorder;
 use run_support::*;
@@ -196,8 +196,8 @@ fn concurrent_runs_replay_the_live_tool_identities() {
         },
     );
     let agent = two_run_agent(&mut live, model, tool);
-    let one = spawn_run(live.world_mut(), agent, &[], "one", false, None);
-    let two = spawn_run(live.world_mut(), agent, &[], "two", false, None);
+    let one = live.world_mut().spawn_run(agent, &[], "one", false, None);
+    let two = live.world_mut().spawn_run(agent, &[], "two", false, None);
     stamp_run(live.world_mut(), one, &recorder).expect("the run stamps its program identity");
     stamp_run(live.world_mut(), two, &recorder).expect("the run stamps its program identity");
     ended(&mut live, one, "run one");
@@ -227,8 +227,8 @@ fn concurrent_runs_replay_the_live_tool_identities() {
     let model = bound_entity(replay.world_mut(), MODEL);
     let tool = bound_entity(replay.world_mut(), ADD);
     let agent = two_run_agent(&mut replay, model, tool);
-    let one = spawn_run(replay.world_mut(), agent, &[], "one", false, None);
-    let two = spawn_run(replay.world_mut(), agent, &[], "two", false, None);
+    let one = replay.world_mut().spawn_run(agent, &[], "one", false, None);
+    let two = replay.world_mut().spawn_run(agent, &[], "two", false, None);
     ended(&mut replay, one, "replayed one");
     ended(&mut replay, two, "replayed two");
     let e1 = ending(replay.world(), one);
@@ -321,8 +321,8 @@ fn coincident_model_answers_ignore_irrelevant_turn_archetypes() {
             .before(BusSet::Collect),
     );
     let agent = two_run_agent(&mut live, model, tool);
-    let one = spawn_run(live.world_mut(), agent, &[], "one", false, None);
-    let two = spawn_run(live.world_mut(), agent, &[], "two", false, None);
+    let one = live.world_mut().spawn_run(agent, &[], "one", false, None);
+    let two = live.world_mut().spawn_run(agent, &[], "two", false, None);
     ended(&mut live, one, "live one");
     ended(&mut live, two, "live two");
     let log = recorder.log();
@@ -341,8 +341,8 @@ fn coincident_model_answers_ignore_irrelevant_turn_archetypes() {
     let model = bound_entity(replay.world_mut(), MODEL);
     let tool = bound_entity(replay.world_mut(), ADD);
     let agent = two_run_agent(&mut replay, model, tool);
-    let one = spawn_run(replay.world_mut(), agent, &[], "one", false, None);
-    let two = spawn_run(replay.world_mut(), agent, &[], "two", false, None);
+    let one = replay.world_mut().spawn_run(agent, &[], "one", false, None);
+    let two = replay.world_mut().spawn_run(agent, &[], "two", false, None);
     ended(&mut replay, one, "replay one");
     ended(&mut replay, two, "replay two");
     assert_eq!(ending(replay.world(), one), "Settled(\"done\")");

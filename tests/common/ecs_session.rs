@@ -7,7 +7,7 @@ use bevy_ecs::prelude::*;
 use rig::message::Message;
 use rig_ecs::{
     agent::{Order, Utterance},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 
 pub(crate) struct SessionResult {
@@ -41,14 +41,10 @@ pub(crate) async fn run_session(
     streamed: bool,
     max_turns: Option<usize>,
 ) -> Result<SessionResult> {
-    let run = spawn_run(
-        ecs.app.world_mut(),
-        ecs.agent,
-        &[],
-        prompt,
-        streamed,
-        max_turns,
-    );
+    let run = ecs
+        .app
+        .world_mut()
+        .spawn_run(ecs.agent, &[], prompt, streamed, max_turns);
     let output = ecs
         .wait_for_outcome(run)
         .await

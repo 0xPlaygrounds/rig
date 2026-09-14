@@ -8,7 +8,7 @@ use bevy_ecs::prelude::*;
 use rig_core::{effect::HandlerKey, message::AssistantContent};
 use rig_ecs::{
     agent::{Failed, Failure, Grant, Order, Settled, ToolAccess, Turn},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 use std::{
@@ -34,7 +34,7 @@ fn empty_permission_set_denies_an_advertised_executable_tool() {
         allowed: Some(BTreeSet::new()),
         ..Default::default()
     });
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, Some(2));
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, Some(2));
     tick_until(&mut app, "denied call fails", |world| {
         world.get::<Failed>(run).is_some()
     });
@@ -86,7 +86,7 @@ fn explicit_execution_binding_can_serve_an_unadvertised_tool() {
         )])),
         allowed: None,
     });
-    let run = spawn_run(app.world_mut(), agent, &[], "add", false, Some(2));
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, Some(2));
     tick_until(&mut app, "hidden tool completes", |world| {
         world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
     });
@@ -108,7 +108,9 @@ fn permission_and_binding_changes_affect_replay_identity_and_required_row() {
     let (model, _) = Capturing::new("model", "ok");
     let model = register(&mut app, "model", model);
     let agent = spawn_agent(app.world_mut(), "test", model);
-    let run = spawn_run(app.world_mut(), agent, &[], "hello", false, Some(1));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "hello", false, Some(1));
     let initial = spec_hash(app.world_mut(), run).expect("policy hash");
     app.world_mut().entity_mut(run).insert(ToolAccess {
         allowed: Some(BTreeSet::new()),
@@ -162,7 +164,9 @@ fn unadvertised_execution_binding_cannot_impersonate_output_tool() {
             allowed: None,
         },
     ));
-    let run = spawn_run(app.world_mut(), agent, &[], "extract", false, Some(1));
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, Some(1));
     tick_until(&mut app, "collision rejected", |world| {
         world.get::<Failed>(run).is_some()
     });
@@ -185,7 +189,9 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     let (model, _) = Capturing::new("model", "unused");
     let model = register(&mut first, "model", model);
     let agent = spawn_agent(first.world_mut(), "test", model);
-    let run = spawn_run(first.world_mut(), agent, &[], "hello", true, Some(1));
+    let run = first
+        .world_mut()
+        .spawn_run(agent, &[], "hello", true, Some(1));
     let access = ToolAccess {
         executable: Some(BTreeMap::from([(
             "old".into(),

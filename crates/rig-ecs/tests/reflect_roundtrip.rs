@@ -37,7 +37,7 @@ use rig_ecs::{
         StreamRequested, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
     },
     bus::{EffectOutcome, Held, IdCounter, PendingEffect, Reserved, Streamed},
-    systems::spawn_run,
+    systems::RunCommands,
 };
 use run_support::*;
 use serde::de::DeserializeSeed;
@@ -59,6 +59,17 @@ fn populated() -> bevy_app::App {
         ],
     );
     let model = register(&mut app, MODEL, model);
+    // The served key's binding as data beside it (what a scene load leaves).
+    app.world_mut().entity_mut(model).insert(
+        rig_ecs::bus::ProviderBinding::new(
+            MODEL,
+            rig_ecs::bus::ProviderKind::Anthropic,
+            "model-x",
+            "cassette",
+        )
+        .at("http://cassette.invalid")
+        .with_extra_params(serde_json::json!({"anthropic_betas": ["b-1"]})),
+    );
     let add = register(&mut app, ADD, Adder::new(ADD));
     let agent = spawn_agent(app.world_mut(), "t", model);
     let world = app.world_mut();
@@ -68,6 +79,7 @@ fn populated() -> bevy_app::App {
         ToolChoiceSpec(Some(ToolChoice::Auto)),
         ToolContextSpec(rig_core::tool::ToolContext::new()),
         ToolPolicy { concurrency: 2 },
+        rig_ecs::agent::content::parts::ToolResultLimit::new(4096),
         rig_ecs::agent::AdditionalParams(Some(serde_json::json!({"k": 1}))),
         rig_ecs::agent::DocumentProps(std::collections::HashMap::from([(
             "a".to_owned(),
@@ -90,7 +102,7 @@ fn populated() -> bevy_app::App {
         rig_ecs::agent::Order(1),
         ChildOf(agent),
     ));
-    let run = spawn_run(world, agent, &[], "add one and two", false, None);
+    let run = world.spawn_run(agent, &[], "add one and two", false, None);
     rig_ecs::agent::checkpoint::hold_after_tool_turn(world, run, "reflection", 99)
         .expect("a future hold preserves normal settlement");
     tick_until(&mut app, "the run", |world| {
@@ -174,6 +186,7 @@ fn populated() -> bevy_app::App {
             rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
             rig_ecs::agent::AwaitingModel,
             rig_ecs::agent::ResolvingTools,
+            rig_ecs::agent::Prompt(vec![rig_core::message::UserContent::text("p")]),
             (
                 rig_ecs::agent::Assembling,
                 rig_ecs::agent::ProviderRetries(2),

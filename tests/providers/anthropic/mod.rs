@@ -10,6 +10,7 @@ mod cassette {
     mod corpus_layers;
     mod corpus_matrix_checkpoint;
     mod corpus_matrix_image;
+    mod corpus_matrix_long_loop;
     mod corpus_memory;
     mod corpus_oracle;
     mod corpus_outcome;
@@ -29,6 +30,7 @@ mod cassette {
     mod ecs_lifecycle;
     mod ecs_matrix_checkpoint;
     mod ecs_matrix_image;
+    mod ecs_matrix_long_loop;
     mod ecs_matrix_stream_delivery;
     mod ecs_memory;
     mod ecs_ordering;
