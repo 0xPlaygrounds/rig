@@ -1,6 +1,6 @@
 # Contributing to Rig
 
-For the fast edit/check loop, run `cargo xtask verify --changed`. Before publishing, run `cargo xtask verify --pr --base <intended-base-ref>` and complete independent review and committed-head CI. See [development verification](DEVELOPING.md) for modes, prerequisites, result invalidation, and recovery.
+Default to minimal relevant local checks, independent review, prompt authorized PR publication, and comprehensive GitHub CI. Broad local verification is not a prerequisite for creating or updating a PR. See [development verification](DEVELOPING.md) for check selection, review, publication, and CI completion.
 
 Thank you for considering contributing to Rig! Here are some guidelines to help you get started.
 
@@ -117,7 +117,7 @@ Rig is split up into multiple crates in a monorepo structure:
 - `crates/rig-derive`: derive macros.
 - `crates/rig-*`: first-party provider, vector-store, memory, and companion integration crates.
 - `examples/*`: workspace example packages.
-- `xtask/`: authoritative verification planning and source-tree checks. Run `cargo xtask verify --changed`; see `DEVELOPING.md` for the complete workflow. Its own tests run explicitly in CI.
+- `xtask/`: shared verification planning and source-tree checks. Local planner use is optional; inspect `cargo xtask verify --changed --dry-run` when selection might expand broadly, then choose small explicit checks or CI if it selects the full plan. See `DEVELOPING.md` for the workflow. Its own tests run explicitly in CI.
 - `test-support/service-tests`: unpublished runner for vector-store integrations, separated from provider build dependencies.
 - `tests/*.rs`: root integration test targets.
 - `tests/providers/<provider>/`: provider-specific test modules.
@@ -143,7 +143,7 @@ cargo test
 
 ### Clippy and Fmt
 
-We enforce both `clippy` and `fmt` for all pull requests.
+CI enforces both `clippy` and `fmt` for pull requests. Check formatting as applicable locally; the broad commands below are available for deliberate local debugging, not mandatory prepublication checks.
 
 ```bash
 cargo clippy --all-features --all-targets
@@ -152,9 +152,9 @@ cargo fmt -- --check
 
 ### Tests
 
-Make sure to test against the relevant test suite before making a pull request. See `tests/README.md` for the most current provider, cassette, live, and integration test commands.
+Before publication, run the smallest useful local check for changed behavior. For documentation or instructions, review the diff and links/consistency without Rust compilation or workspace tests. Comprehensive tests belong in CI by default. See `tests/README.md` for provider, cassette, live, and integration test commands and `DEVELOPING.md` for CI completion requirements.
 
-Common checks:
+Optional broader checks (not a local publication gate):
 
 ```bash
 cargo test -p rig
