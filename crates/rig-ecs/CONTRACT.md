@@ -62,7 +62,7 @@ the world, including other runs and conversation owners, and also retains the
 host's supplied pins. A missing root refuses collection without changing the
 store. Despawning one owner does not itself drop a shared payload. A host should
 collect after releasing owners/pins; otherwise the retained store remains subject
-to its allocation limit. `content_binary` and `content_parts` cover source spelling,
+to its allocation limit. `run_content_binary` and `run_content_parts` cover source spelling,
 all existing content variants, nested JSON/image results, metadata and shared
 asset lifetime.
 
@@ -283,7 +283,7 @@ remap them when saved before folding. Gate/Judge systems can query these same
 part entities and edit their typed components persistently; those writes affect
 subsequent folds, while an already captured PendingEffect remains a request
 snapshot. Effect denial uses the existing Gate outcome path and does not mutate
-content implicitly. `content_edits` covers targeting, ownership and remapping.
+content implicitly. `run_content_edits` covers targeting, ownership and remapping.
 
 
 `agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `assemble` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
@@ -438,7 +438,7 @@ asset store under the destination's limits and validates content in a separate
 world before inserting destination graph entities. Hash mismatches, missing
 handles, duplicate asset IDs/orders, invalid content parents and malformed
 part components are refused before destination mutation. Relationships are
-remapped through scene entity indices. `content_scene` tests these guarantees
+remapped through scene entity indices. `run_content_scene` tests these guarantees
 with populated destination worlds and shared payloads.
 
 `WorldScene` JSON uses the required `rig-ecs/world/2` envelope. Its binary table
@@ -455,7 +455,7 @@ as individual JSON nodes. `WorldScene::from_json` additionally checks input byte
 length before parsing; generic serde input is bounded during tree construction,
 although its deserializer may allocate an individual string before visitation.
 The binary table retains the asset-count and decoded-byte limits from section 1.
-Scenes using the previous envelope must be recreated. `content_scene` exercises
+Scenes using the previous envelope must be recreated. `run_content_scene` exercises
 effect-copy pooling, literal escaping and missing references; the wire reader's
 unit tests exercise depth, byte, node and duplicate-key rejection.
 
