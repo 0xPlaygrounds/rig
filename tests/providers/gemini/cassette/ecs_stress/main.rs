@@ -13,7 +13,7 @@ use rig::{
     tool::ToolOutput,
 };
 use rig_ecs::{
-    agent::{MessageParts, Order, Parts, Run, RunResult, Settled, ToolCallSlot, Turn, Utterance},
+    agent::{MessageParts, Order, Run, RunResult, Settled, ToolCallSlot, Turn, Utterance},
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, Streamed},
     systems::RigSet,
 };
@@ -127,11 +127,15 @@ fn calls(world: &mut World) {
 // slot and actual outcome. Merely seeing Issued is not an execution commit.
 fn committed(world: &mut World) {
     let messages: Vec<_> = world
-        .query_filtered::<(&ChildOf, &Order, &Parts), (With<Utterance>, Added<Parts>)>()
+        .query_filtered::<(Entity, &ChildOf, &Order), (With<Utterance>, Added<Utterance>)>()
         .iter(world)
-        .filter_map(|(parent, order, parts)| match &parts.0 {
-            MessageParts::User { content } => Some((parent.parent(), order.0, content.clone())),
-            _ => None,
+        .filter_map(|(entity, parent, order)| {
+            match rig_ecs::agent::content::parts::read_message(world, entity)
+                .expect("valid committed graph")
+            {
+                MessageParts::User { content } => Some((parent.parent(), order.0, content.clone())),
+                _ => None,
+            }
         })
         .collect();
     for (run, order, content) in messages {

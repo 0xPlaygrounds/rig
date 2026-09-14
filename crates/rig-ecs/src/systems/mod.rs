@@ -17,6 +17,12 @@
 //! The first steering slot is any system before `Assemble`: it edits the
 //! graph (utterances, documents, grants, settings).
 
+use crate::agent::content::{
+    binary::BinaryAssets,
+    parts::{ContentError, ContentGraph, replace_deferred, spawn_deferred, write_message},
+};
+
+use crate::agent::content::parts::{EditTarget, RequestPartEdit};
 use bevy_ecs::prelude::*;
 use rig_core::{
     completion::message::{
@@ -33,12 +39,12 @@ use crate::{
         Conversation, Cursor, DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps, DocumentText,
         Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory,
         MaxTokens, MaxTurns, MemoryAppendScheduled, MessageParts, Order, OrderCounter, Output,
-        OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs, Parts, Preamble,
-        Prompt, ProviderRetried, ProviderRetries, ProviderRetrying, Remembered, Remembering,
-        Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval,
-        RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq,
-        Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
-        ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
+        OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs, Preamble, Prompt,
+        ProviderRetried, ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers,
+        Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, RetrievalKind,
+        Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq, Settled,
+        StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec,
+        ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
         Bound, BusSet, EffectOutcome, Issued, PendingEffect, Progress, RigSchedule, Scope,
@@ -192,6 +198,7 @@ pub fn install_agent(world: &mut World) {
         "install_agent needs the bus installed first: it runs in the bus's RigSchedule"
     );
     world.init_resource::<OrderCounter>();
+    world.init_resource::<BinaryAssets>();
     world.init_resource::<RunCounter>();
     world.add_observer(effect_cancelled);
     world.add_observer(run_cancelled);
@@ -243,6 +250,32 @@ pub fn install_agent(world: &mut World) {
             .in_set(RigSet::Materialise),
         append_memory.in_set(RigSet::Settle),
     ));
+}
+
+fn fail_content(commands: &mut Commands, run: Entity, error: ContentError) {
+    commands
+        .entity(run)
+        .remove::<(
+            Assembling,
+            AwaitingModel,
+            LoadingMemory,
+            ResolvingTools,
+            Settled,
+        )>()
+        .insert(Failed(Failure::Content(error)));
+}
+
+macro_rules! content_or_fail {
+    ($result:expr, $commands:expr, $run:expr, $progress:expr) => {
+        match $result {
+            Ok(value) => value,
+            Err(error) => {
+                fail_content($commands, $run, error);
+                $progress.mark();
+                return;
+            }
+        }
+    };
 }
 
 /// Why [`despawn_run`] left a run in the world.
@@ -354,6 +387,15 @@ pub fn spawn_run(
         }
     }
     let run = run.id();
+    for parts in history.iter().cloned().chain(std::iter::once(prompt)) {
+        if let Err(error) = spawn_utterance(world, run, parts) {
+            world
+                .entity_mut(run)
+                .remove::<(Assembling, LoadingMemory)>()
+                .insert(Failed(Failure::Content(error)));
+            return run;
+        }
+    }
     if let Some((key, conversation)) = memory {
         world.spawn((
             PendingEffect::new(
@@ -367,19 +409,23 @@ pub fn spawn_run(
             ChildOf(run),
         ));
     }
-    for parts in history {
-        spawn_utterance(world, run, parts.clone());
-    }
-    spawn_utterance(world, run, prompt);
+
     run
 }
 
 /// Spawn one utterance `ChildOf` `run`, next in order.
-pub fn spawn_utterance(world: &mut World, run: Entity, parts: MessageParts) -> Entity {
+pub fn spawn_utterance(
+    world: &mut World,
+    run: Entity,
+    parts: MessageParts,
+) -> Result<Entity, ContentError> {
     let order = next_order(world);
-    world
-        .spawn((Utterance, parts.role(), Parts(parts), order, ChildOf(run)))
-        .id()
+    let entity = world.spawn((Utterance, order, ChildOf(run))).id();
+    if let Err(error) = write_message(world, entity, parts) {
+        world.despawn(entity);
+        return Err(error);
+    }
+    Ok(entity)
 }
 
 /// The next [`Order`].
@@ -640,8 +686,13 @@ pub fn attach_retrieved(
 /// the loaded messages become utterances before the prompt, each
 /// `Remembered`, and the run is `Assembling`; a failed load fails the run
 /// (CONTRACT §11).
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one system pass reads the graph and its memory effect state"
+)]
 pub fn land_memory(
     mut commands: Commands,
+    mut assets: ResMut<BinaryAssets>,
     runs: Query<Entity, (With<LoadingMemory>, Without<Failed>)>,
     children: Query<&Children>,
     loads: Query<(&PendingEffect, &EffectOutcome)>,
@@ -675,14 +726,19 @@ pub fn land_memory(
             Ok(Outcome::Memory(rig_core::effect::MemoryOutcome::Loaded { messages })) => {
                 for message in messages {
                     if let Some(parts) = MessageParts::from_message(message) {
-                        commands.spawn((
-                            Utterance,
-                            parts.role(),
-                            Parts(parts),
-                            Remembered,
-                            next_order_in(&mut orders),
-                            ChildOf(run),
-                        ));
+                        let utterance = content_or_fail!(
+                            spawn_deferred(
+                                &mut commands,
+                                &mut assets,
+                                run,
+                                parts,
+                                next_order_in(&mut orders)
+                            ),
+                            &mut commands,
+                            run,
+                            progress
+                        );
+                        commands.entity(utterance).insert(Remembered);
                     }
                 }
                 // The prompt (and any history given) comes after what was
@@ -733,13 +789,19 @@ pub fn land_memory(
 /// said — every utterance not `Remembered`, in order — when it settles
 /// (CONTRACT §11). The persisted marker distinguishes new work from scene
 /// rehydration; Bevy change-detection ticks are not durable transitions.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one system pass reads the graph and its memory effect state"
+)]
 pub fn append_memory(
     mut commands: Commands,
     settled: Query<(Entity, &RunOf, &Conversation), NeedsMemoryAppend>,
     memories: Query<&Remembers>,
     bound: Query<&Bound>,
     children: Query<&Children>,
-    utterances: Query<(&Parts, &Order, Has<Remembered>), With<Utterance>>,
+    utterances: Query<(Entity, &Order, Has<Remembered>), With<Utterance>>,
+    content: ContentGraph,
+    mut progress: ResMut<Progress>,
 ) {
     for (run, RunOf(agent), Conversation(conversation)) in &settled {
         let Some(key) = memories
@@ -750,18 +812,21 @@ pub fn append_memory(
         else {
             continue;
         };
-        let mut said: Vec<(&Order, &Parts)> = children
+        let said: Result<Vec<_>, ContentError> = children
             .get(run)
             .map(|children| {
                 children
                     .iter()
                     .filter_map(|child| utterances.get(child).ok())
                     .filter(|(_, _, remembered)| !*remembered)
-                    .map(|(parts, order, _)| (order, parts))
+                    .map(|(entity, order, _)| {
+                        content.message(entity).map(|message| (*order, message))
+                    })
                     .collect()
             })
-            .unwrap_or_default();
-        said.sort_by_key(|(order, _)| **order);
+            .unwrap_or_else(|_| Ok(Vec::new()));
+        let mut said = content_or_fail!(said, &mut commands, run, progress);
+        said.sort_by_key(|(order, _)| *order);
         commands.spawn((
             PendingEffect::new(
                 key,
@@ -770,7 +835,7 @@ pub fn append_memory(
                         conversation: rig_core::id::ConversationId::from(conversation.as_str()),
                         messages: said
                             .into_iter()
-                            .map(|(_, parts)| parts.0.to_message())
+                            .map(|(_, parts)| parts.to_message())
                             .collect(),
                     },
                 },
@@ -795,6 +860,15 @@ pub fn select(
     }
 }
 
+/// Ordered request edit links, including malformed links for explicit validation.
+pub type PartEditView = (
+    Entity,
+    &'static ChildOf,
+    Option<&'static Order>,
+    Option<&'static EditTarget>,
+    &'static RequestPartEdit,
+);
+
 /// `RigSet::Assemble`: for every fresh turn, in run order, gather the
 /// graph — the run's settings over the agent's, the utterances in order,
 /// the attachments in order, the adverts in order, the model's descriptor
@@ -812,7 +886,9 @@ pub fn assemble(
     fresh: Query<FreshView, With<Fresh>>,
     runs: Query<AssemblingView, (With<Run>, Without<Failed>)>,
     children: Query<&Children>,
-    utterances: Query<(&Parts, &Order), With<Utterance>>,
+    utterances: Query<(Entity, &Order), With<Utterance>>,
+    content: ContentGraph,
+    part_edits: Query<PartEditView>,
     retrievals: Query<(&Retrieves, &Order, &Retrieval)>,
     retrieving: Query<(), With<Retrieval>>,
     adverts: Query<(&Advert, &Order)>,
@@ -886,21 +962,63 @@ pub fn assemble(
             }
         };
 
-        let mut history: Vec<(&Order, &Parts)> = children
+        let requested: Result<_, ContentError> = (|| {
+            let mut links: Vec<_> = part_edits
+                .iter()
+                .filter(|(_, parent, _, _, _)| parent.parent() == turn)
+                .collect();
+            if links
+                .iter()
+                .any(|(_, _, order, target, _)| order.is_none() || target.is_none())
+            {
+                return Err(ContentError::Missing);
+            }
+            links.sort_by_key(|(_, _, order, _, _)| order.copied());
+            if links
+                .windows(2)
+                .any(|pair| pair.first().map(|x| x.2) == pair.get(1).map(|x| x.2))
+            {
+                return Err(ContentError::DuplicateOrder);
+            }
+            let mut edits = std::collections::BTreeMap::new();
+            let mut consumed = Vec::new();
+            for (link, _, _, target, edit) in links {
+                let target = target.ok_or(ContentError::Missing)?;
+                let utterance = content.target_utterance(target.0)?;
+                if !children
+                    .get(run)
+                    .is_ok_and(|owned| owned.contains(&utterance))
+                {
+                    return Err(ContentError::Shape);
+                }
+                // A replacement history has no stable entity identity. Reject
+                // conflicting operations instead of silently dropping an edit.
+                if patch.is_some_and(|patch| patch.history.is_some()) {
+                    return Err(ContentError::Shape);
+                }
+                edits.insert(target.0, edit.clone());
+                consumed.push(link);
+            }
+            Ok((edits, consumed))
+        })();
+        let (edits, consumed_edits) = content_or_fail!(requested, &mut commands, run, progress);
+
+        let history: Result<Vec<_>, ContentError> = children
             .get(run)
             .map(|children| {
                 children
                     .iter()
-                    .filter_map(|child| {
-                        utterances
-                            .get(child)
-                            .ok()
-                            .map(|(parts, order)| (order, parts))
+                    .filter_map(|child| utterances.get(child).ok())
+                    .map(|(entity, order)| {
+                        content
+                            .message_with(entity, &edits)
+                            .map(|message| (*order, message))
                     })
                     .collect()
             })
-            .unwrap_or_default();
-        history.sort_by_key(|(order, _)| **order);
+            .unwrap_or_else(|_| Ok(Vec::new()));
+        let mut history = content_or_fail!(history, &mut commands, run, progress);
+        history.sort_by_key(|(order, _)| *order);
 
         if is_retrieving {
             // The first pass over a retrieving turn (CONTRACT §12): one
@@ -916,7 +1034,7 @@ pub fn assemble(
             let query = policy::retrieval_query(
                 &history
                     .iter()
-                    .map(|(_, parts)| parts.0.clone())
+                    .map(|(_, parts)| parts.clone())
                     .collect::<Vec<_>>(),
             );
             let mut indexes: Vec<(&Retrieves, &Order, &Retrieval)> = children
@@ -1021,7 +1139,7 @@ pub fn assemble(
                 messages
                     .iter()
                     .cloned()
-                    .chain(history.last().map(|(_, parts)| parts.0.clone()))
+                    .chain(history.last().map(|(_, parts)| parts.clone()))
                     .collect()
             });
         let merged_params: Option<serde_json::Value> = match (
@@ -1126,7 +1244,7 @@ pub fn assemble(
             preamble,
             utterances: match &patched_history {
                 Some(patched) => patched.iter().collect(),
-                None => history.iter().map(|(_, parts)| &parts.0).collect(),
+                None => history.iter().map(|(_, parts)| parts).collect(),
             },
             documents: attached,
             tools: tools.iter().map(|bound| &bound.descriptor).collect(),
@@ -1140,6 +1258,9 @@ pub fn assemble(
             output_tool_config,
         };
         let request = policy::fold_request(&graph);
+        for link in consumed_edits {
+            commands.entity(link).despawn();
+        }
         commands.entity(turn).insert(access);
         commands.spawn((
             PendingEffect::new(
@@ -1380,6 +1501,7 @@ pub fn release_batch(
 )]
 pub fn land_batch(
     mut commands: Commands,
+    mut assets: ResMut<BinaryAssets>,
     turns: Query<(Entity, &ChildOf, &Batch, &Outputs)>,
     runs: Query<(&OutputToolName, &RunSeq), With<ResolvingTools>>,
     children: Query<&Children>,
@@ -1453,13 +1575,18 @@ pub fn land_batch(
             continue;
         }
         let results = MessageParts::User { content: parts };
-        commands.spawn((
-            Utterance,
-            results.role(),
-            Parts(results),
-            next_order_in(&mut orders),
-            ChildOf(run),
-        ));
+        content_or_fail!(
+            spawn_deferred(
+                &mut commands,
+                &mut assets,
+                run,
+                results,
+                next_order_in(&mut orders)
+            ),
+            &mut commands,
+            run,
+            progress
+        );
         let output_call = minted.0.as_deref().and_then(|name| {
             outs.content.iter().find_map(|part| match part {
                 AssistantContent::ToolCall(call) if call.function.name == name => {
@@ -1546,7 +1673,7 @@ pub fn materialise(
     tool_policies: Query<&ToolPolicy>,
     contexts: Query<&ToolContextSpec>,
     invalid_calls: Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
-    mut orders: ResMut<OrderCounter>,
+    (mut assets, mut orders): (ResMut<BinaryAssets>, ResMut<OrderCounter>),
     mut progress: ResMut<Progress>,
 ) {
     let MaterialiseReads {
@@ -1661,13 +1788,18 @@ pub fn materialise(
                             id: outs.message_id.clone(),
                             content: call.prefix.clone(),
                         };
-                        commands.spawn((
-                            Utterance,
-                            assistant.role(),
-                            Parts(assistant),
-                            next_order_in(&mut orders),
-                            ChildOf(run),
-                        ));
+                        content_or_fail!(
+                            spawn_deferred(
+                                &mut commands,
+                                &mut assets,
+                                run,
+                                assistant,
+                                next_order_in(&mut orders)
+                            ),
+                            &mut commands,
+                            run,
+                            progress
+                        );
                     }
                     commands.entity(turn).insert(Materialised);
                     commands
@@ -1700,21 +1832,31 @@ pub fn materialise(
                         id: outs.message_id.clone(),
                         content: content.clone(),
                     };
-                    commands.spawn((
-                        Utterance,
-                        assistant.role(),
-                        Parts(assistant),
-                        next_order_in(&mut orders),
-                        ChildOf(run),
-                    ));
+                    content_or_fail!(
+                        spawn_deferred(
+                            &mut commands,
+                            &mut assets,
+                            run,
+                            assistant,
+                            next_order_in(&mut orders)
+                        ),
+                        &mut commands,
+                        run,
+                        progress
+                    );
                     let results = policy::invalid_peer_results(&content, &diagnostic_id, &feedback);
-                    commands.spawn((
-                        Utterance,
-                        results.role(),
-                        Parts(results),
-                        next_order_in(&mut orders),
-                        ChildOf(run),
-                    ));
+                    content_or_fail!(
+                        spawn_deferred(
+                            &mut commands,
+                            &mut assets,
+                            run,
+                            results,
+                            next_order_in(&mut orders)
+                        ),
+                        &mut commands,
+                        run,
+                        progress
+                    );
                     commands.entity(turn).insert(Materialised);
                     let mut run_commands = commands.entity(run);
                     run_commands.remove::<AwaitingModel>().insert(Assembling);
@@ -1859,13 +2001,18 @@ pub fn materialise(
                     let user = MessageParts::User {
                         content: vec![UserContent::text(feedback)],
                     };
-                    commands.spawn((
-                        Utterance,
-                        user.role(),
-                        Parts(user),
-                        next_order_in(&mut orders),
-                        ChildOf(run),
-                    ));
+                    content_or_fail!(
+                        spawn_deferred(
+                            &mut commands,
+                            &mut assets,
+                            run,
+                            user,
+                            next_order_in(&mut orders)
+                        ),
+                        &mut commands,
+                        run,
+                        progress
+                    );
                 }
                 commands
                     .entity(run)
@@ -1945,23 +2092,33 @@ pub fn materialise(
                     id: response.message_id.clone(),
                     content: content.clone(),
                 };
-                commands.spawn((
-                    Utterance,
-                    assistant.role(),
-                    Parts(assistant),
-                    next_order_in(&mut orders),
-                    ChildOf(run),
-                ));
+                content_or_fail!(
+                    spawn_deferred(
+                        &mut commands,
+                        &mut assets,
+                        run,
+                        assistant,
+                        next_order_in(&mut orders)
+                    ),
+                    &mut commands,
+                    run,
+                    progress
+                );
                 let user = MessageParts::User {
                     content: vec![UserContent::text(feedback)],
                 };
-                commands.spawn((
-                    Utterance,
-                    user.role(),
-                    Parts(user),
-                    next_order_in(&mut orders),
-                    ChildOf(run),
-                ));
+                content_or_fail!(
+                    spawn_deferred(
+                        &mut commands,
+                        &mut assets,
+                        run,
+                        user,
+                        next_order_in(&mut orders)
+                    ),
+                    &mut commands,
+                    run,
+                    progress
+                );
             }
             commands
                 .entity(run)
@@ -1976,15 +2133,18 @@ pub fn materialise(
             id: response.message_id.clone(),
             content: content.clone(),
         };
-        let assistant_entity = commands
-            .spawn((
-                Utterance,
-                assistant.role(),
-                Parts(assistant),
-                next_order_in(&mut orders),
-                ChildOf(run),
-            ))
-            .id();
+        let assistant_entity = content_or_fail!(
+            spawn_deferred(
+                &mut commands,
+                &mut assets,
+                run,
+                assistant,
+                next_order_in(&mut orders)
+            ),
+            &mut commands,
+            run,
+            progress
+        );
 
         // Calls to granted tools: the batch, one effect per call `ChildOf`
         // the turn, in call order, held beyond the concurrency.
@@ -2079,12 +2239,20 @@ pub fn materialise(
                                 .cloned()
                                 .collect();
                             final_content.push(AssistantContent::text(output.clone()));
-                            commands.entity(assistant_entity).insert(Parts(
-                                MessageParts::Assistant {
-                                    id: response.message_id.clone(),
-                                    content: final_content,
-                                },
-                            ));
+                            content_or_fail!(
+                                replace_deferred(
+                                    &mut commands,
+                                    &mut assets,
+                                    assistant_entity,
+                                    MessageParts::Assistant {
+                                        id: response.message_id.clone(),
+                                        content: final_content
+                                    }
+                                ),
+                                &mut commands,
+                                run,
+                                progress
+                            );
                             commands
                                 .entity(run)
                                 .remove::<AwaitingModel>()
@@ -2104,13 +2272,18 @@ pub fn materialise(
                             commands
                                 .entity(turn)
                                 .insert(Reprompt(reprompt.to_message()));
-                            commands.spawn((
-                                Utterance,
-                                reprompt.role(),
-                                Parts(reprompt),
-                                next_order_in(&mut orders),
-                                ChildOf(run),
-                            ));
+                            content_or_fail!(
+                                spawn_deferred(
+                                    &mut commands,
+                                    &mut assets,
+                                    run,
+                                    reprompt,
+                                    next_order_in(&mut orders)
+                                ),
+                                &mut commands,
+                                run,
+                                progress
+                            );
                             commands
                                 .entity(run)
                                 .remove::<AwaitingModel>()
@@ -2134,13 +2307,18 @@ pub fn materialise(
                         commands
                             .entity(turn)
                             .insert(Reprompt(reprompt.to_message()));
-                        commands.spawn((
-                            Utterance,
-                            reprompt.role(),
-                            Parts(reprompt),
-                            next_order_in(&mut orders),
-                            ChildOf(run),
-                        ));
+                        content_or_fail!(
+                            spawn_deferred(
+                                &mut commands,
+                                &mut assets,
+                                run,
+                                reprompt,
+                                next_order_in(&mut orders)
+                            ),
+                            &mut commands,
+                            run,
+                            progress
+                        );
                         commands
                             .entity(run)
                             .remove::<AwaitingModel>()

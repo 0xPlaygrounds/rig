@@ -27,7 +27,7 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Context, DocumentId, DocumentText, Grant, MessageParts, Order, Parts, RunResult, Settled,
+        Context, DocumentId, DocumentText, Grant, MessageParts, Order, RunResult, Settled,
         UsesModel, Utterance,
     },
     bus::{EffectLogResource, PendingEffect, RigSchedule},
@@ -58,15 +58,15 @@ fn settle(app: &mut bevy_app::App, run: Entity, what: &str) -> String {
 struct Once(bool);
 
 fn despawn_the_assistant_utterance(
-    utterances: Query<(Entity, &Parts), With<Utterance>>,
+    utterances: Query<(Entity, &rig_ecs::agent::Role), With<Utterance>>,
     mut once: ResMut<Once>,
     mut commands: Commands,
 ) {
     if once.0 {
         return;
     }
-    for (entity, Parts(parts)) in &utterances {
-        if let MessageParts::Assistant { .. } = parts {
+    for (entity, role) in &utterances {
+        if *role == rig_ecs::agent::Role::Assistant {
             commands.entity(entity).despawn();
             once.0 = true;
         }
@@ -242,16 +242,17 @@ fn a_patch_system_rewrites_the_folded_request_and_the_record_holds_it() {
     );
 }
 
-fn shout_the_prompt(mut utterances: Query<&mut Parts, With<Utterance>>) {
-    for mut parts in &mut utterances {
-        if let MessageParts::User { content } = &mut parts.0 {
-            for part in content.iter_mut() {
-                if let UserContent::Text(text) = part
-                    && !text.text.ends_with('!')
-                {
-                    text.text.push('!');
-                }
-            }
+fn shout_the_prompt(
+    utterances: Query<&rig_ecs::agent::Role, With<Utterance>>,
+    mut parts: Query<(&ChildOf, &mut rig_ecs::agent::content::parts::TextPart)>,
+) {
+    for (parent, mut text) in &mut parts {
+        if utterances
+            .get(parent.parent())
+            .is_ok_and(|role| *role == rig_ecs::agent::Role::User)
+            && !text.0.text.ends_with('!')
+        {
+            text.0.text.push('!');
         }
     }
 }

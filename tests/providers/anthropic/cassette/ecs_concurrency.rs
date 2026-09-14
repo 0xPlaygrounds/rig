@@ -20,7 +20,7 @@ use crate::{
 use bevy_ecs::prelude::*;
 use rig::{message::UserContent, prelude::*, providers::anthropic};
 use rig_ecs::{
-    agent::{MessageParts, Order, Parts, ToolCallSlot, ToolPolicy, Utterance},
+    agent::{MessageParts, Order, ToolCallSlot, ToolPolicy, Utterance},
     bus::{EffectOutcome, Policy, RigSchedule},
     systems::{RigSet, spawn_run},
 };
@@ -28,8 +28,8 @@ use rig_ecs::{
 #[derive(Resource, Default)]
 struct Published(Vec<Vec<String>>);
 
-fn result_names(parts: &Parts, slots: &[ToolCallSlot]) -> Vec<String> {
-    let MessageParts::User { content } = &parts.0 else {
+fn result_names(parts: &MessageParts, slots: &[ToolCallSlot]) -> Vec<String> {
+    let MessageParts::User { content } = parts else {
         return vec![];
     };
     content
@@ -49,18 +49,20 @@ fn result_names(parts: &Parts, slots: &[ToolCallSlot]) -> Vec<String> {
 }
 
 type PublishedMessages<'w, 's> =
-    Query<'w, 's, (&'static Order, &'static Parts), (With<Utterance>, Added<Parts>)>;
+    Query<'w, 's, (&'static Order, Entity), (With<Utterance>, Added<Utterance>)>;
 
 fn observe_publication(
     messages: PublishedMessages,
+    content: rig_ecs::agent::content::parts::ContentGraph,
     tools: Query<(&ToolCallSlot, Option<&EffectOutcome>)>,
     mut published: ResMut<Published>,
 ) {
     let slots: Vec<_> = tools.iter().map(|(slot, _)| slot.clone()).collect();
     let mut messages: Vec<_> = messages.iter().collect();
     messages.sort_by_key(|(order, _)| order.0);
-    for (_, parts) in messages {
-        let names = result_names(parts, &slots);
+    for (_, entity) in messages {
+        let parts = content.message(entity).expect("valid published content");
+        let names = result_names(&parts, &slots);
         if !names.is_empty() {
             assert!(
                 tools.iter().all(|(_, outcome)| outcome.is_some()),
@@ -121,12 +123,18 @@ fn history(ecs: &mut EcsAgent) -> Vec<Vec<String>> {
     let mut query = ecs
         .app
         .world_mut()
-        .query_filtered::<(&Order, &Parts), With<Utterance>>();
+        .query_filtered::<(&Order, Entity), With<Utterance>>();
     let mut messages: Vec<_> = query.iter(ecs.app.world()).collect();
     messages.sort_by_key(|(order, _)| order.0);
     messages
         .into_iter()
-        .map(|(_, parts)| result_names(parts, &slots))
+        .map(|(_, entity)| {
+            result_names(
+                &rig_ecs::agent::content::parts::read_message(ecs.app.world(), entity)
+                    .expect("valid content graph"),
+                &slots,
+            )
+        })
         .filter(|names| !names.is_empty())
         .collect()
 }

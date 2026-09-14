@@ -89,6 +89,7 @@ fn observe_settled(
 /// The ending's code and detail, by the failure's variant.
 pub fn ending_of(failure: &Failure) -> Reason {
     match failure {
+        Failure::Content(error) => Reason::with_detail("invalid_content", error.to_string()),
         Failure::MaxTurns { limit } => Reason::with_detail(
             "max_turns",
             format!("the model-call budget of {limit} ran out"),

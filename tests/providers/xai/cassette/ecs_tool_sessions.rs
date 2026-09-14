@@ -211,7 +211,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
 async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
     use bevy_ecs::prelude::*;
     use rig::message::UserContent;
-    use rig_ecs::agent::{DefaultMaxTurns, MessageParts, Parts, Utterance};
+    use rig_ecs::agent::{DefaultMaxTurns, MessageParts, Utterance};
     with_xai_cassette_result(
         "agent_tool_sessions/multimodal_image_input_mixed_text_ordering",
         |client| async move {
@@ -235,22 +235,26 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
             );
             // Before scheduling, replace the fresh user utterance with its
             // actual multimodal parts. This is the native graph input surface.
-            let (parent, mut parts) = agent
+            let (entity, parent) = agent
                 .app
                 .world_mut()
-                .query_filtered::<(&ChildOf, &mut Parts), With<Utterance>>()
-                .single_mut(agent.app.world_mut())
+                .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
+                .single(agent.app.world())
                 .map_err(|error| anyhow::anyhow!("expected one fresh prompt: {error}"))?;
             anyhow::ensure!(parent.parent() == run);
-            parts.0 = MessageParts::User {
-                content: vec![
-                    UserContent::text("First, note this is an image-analysis cassette test."),
-                    image_content(),
-                    UserContent::text(
-                        "Then answer in one short sentence naming the main visible subject.",
-                    ),
-                ],
-            };
+            rig_ecs::agent::content::parts::write_message(
+                agent.app.world_mut(),
+                entity,
+                MessageParts::User {
+                    content: vec![
+                        UserContent::text("First, note this is an image-analysis cassette test."),
+                        image_content(),
+                        UserContent::text(
+                            "Then answer in one short sentence naming the main visible subject.",
+                        ),
+                    ],
+                },
+            )?;
             let output = agent
                 .wait_for_outcome(run)
                 .await

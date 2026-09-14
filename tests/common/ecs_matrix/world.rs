@@ -999,11 +999,8 @@ fn assert_despawn(app: &mut App, agent: Entity, run: Entity, before: usize) {
 #[derive(Resource, Default)]
 pub(crate) struct Published(pub Vec<Vec<String>>);
 
-fn result_names(
-    parts: &rig_ecs::agent::Parts,
-    slots: &[rig_ecs::agent::ToolCallSlot],
-) -> Vec<String> {
-    let MessageParts::User { content } = &parts.0 else {
+fn result_names(parts: &MessageParts, slots: &[rig_ecs::agent::ToolCallSlot]) -> Vec<String> {
+    let MessageParts::User { content } = parts else {
         return vec![];
     };
     content
@@ -1022,23 +1019,21 @@ fn result_names(
         .collect()
 }
 
-type PublishedMessages<'w, 's> = Query<
-    'w,
-    's,
-    (&'static Order, &'static rig_ecs::agent::Parts),
-    (With<Utterance>, Added<rig_ecs::agent::Parts>),
->;
+type PublishedMessages<'w, 's> =
+    Query<'w, 's, (&'static Order, Entity), (With<Utterance>, Added<Utterance>)>;
 
 fn observe_publication(
     messages: PublishedMessages,
+    content: rig_ecs::agent::content::parts::ContentGraph,
     tools: Query<(&rig_ecs::agent::ToolCallSlot, Option<&EffectOutcome>)>,
     mut published: ResMut<Published>,
 ) {
     let slots: Vec<_> = tools.iter().map(|(slot, _)| slot.clone()).collect();
     let mut messages: Vec<_> = messages.iter().collect();
     messages.sort_by_key(|(order, _)| order.0);
-    for (_, parts) in messages {
-        let names = result_names(parts, &slots);
+    for (_, entity) in messages {
+        let parts = content.message(entity).expect("valid published content");
+        let names = result_names(&parts, &slots);
         if !names.is_empty() {
             assert!(
                 tools.iter().all(|(_, outcome)| outcome.is_some()),

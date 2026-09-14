@@ -6,22 +6,28 @@
 //! [`WorldScene`], and an effect `ChildOf` a turn keeps that parent across
 //! the two by index ([`save_world`], [`load_world`]).
 
+mod wire;
+
 use bevy_ecs::prelude::*;
 use rig_core::effect::HandlerKey;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use super::PolicyVersion;
+use super::content::{
+    binary::{BinaryAssets, BinaryRecord},
+    parts::*,
+};
 use super::{
     AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
     Conversation, Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant,
     InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns,
     MemoryAppendScheduled, Order, OrderCounter, Output, OutputRetries, OutputToolConfig,
-    OutputToolName, Outputs, Owner, Parts, Preamble, ProviderRetried, ProviderRetries,
-    ProviderRetrying, Remembered, Remembering, Remembers, Reprompt, RequestPatch, Resolution,
-    ResolvingTools, Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route, Run,
-    RunCounter, RunOf, RunResult, RunSeq, Settled, StreamRequested, Temperature, ToolAccess,
-    ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
+    OutputToolName, Outputs, Owner, Preamble, ProviderRetried, ProviderRetries, ProviderRetrying,
+    Remembered, Remembering, Remembers, Reprompt, RequestPatch, Resolution, ResolvingTools,
+    Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route, Run, RunCounter, RunOf,
+    RunResult, RunSeq, Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot,
+    ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
 };
 use crate::bus::{Bound, Scope};
 
@@ -29,6 +35,10 @@ use crate::bus::{Bound, Scope};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SceneKind {
+    /// An ordered content part under an utterance or tool result.
+    ContentPart,
+    /// A request-only part edit link.
+    PartEdit,
     /// An agent.
     Agent,
     /// A document.
@@ -81,6 +91,8 @@ pub struct SceneEntity {
 /// The run graph as data.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct RunScene {
+    /// Shared binary payloads, once per SHA-256 content identity.
+    pub binaries: Vec<BinaryRecord>,
     /// The entities, parents before children.
     pub entities: Vec<SceneEntity>,
     /// The order counter, so loaded orders never collide with new ones.
@@ -131,8 +143,30 @@ macro_rules! give {
 /// with [`SceneExtensions`] are captured. The bus scene preserves its effect-ID
 /// allocator; other resources, arbitrary entities, system-local state, tasks
 /// and live handles remain the host's responsibility.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct WorldScene {
+    /// The graph.
+    pub graph: RunScene,
+    /// The effects, with [`crate::bus::SceneEffect::parent_ref`] indexing
+    /// `graph.entities`.
+    pub effects: crate::bus::Scene,
+    /// Which call each tool effect is ([`ToolCallSlot`]), by index into
+    /// `effects.effects`.
+    pub slots: Vec<(usize, ToolCallSlot)>,
+    /// Tool effects still waiting for the runtime's concurrency slot.
+    /// Independent named barriers are saved with the corresponding bus effect.
+    pub batch_held: Vec<usize>,
+    /// Which index each retrieval effect asks for ([`Retrieval`]), by
+    /// index into `effects.effects`: a run cut while retrieving resumes.
+    pub retrievals: Vec<(usize, Retrieval)>,
+    /// Registered extension components on graph entities, keyed by graph index
+    /// and the application's versioned component name.
+    pub extensions: BTreeMap<usize, BTreeMap<String, serde_json::Value>>,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(remote = "WorldScene")]
+struct WorldSceneData {
     /// The graph.
     pub graph: RunScene,
     /// The effects, with [`crate::bus::SceneEffect::parent_ref`] indexing
@@ -449,6 +483,15 @@ impl RunScene {
         for (entity, _) in world.query::<(Entity, &InvalidCall)>().iter(world) {
             order.push((7, entity));
         }
+        for (entity, _) in world.query::<(Entity, &ContentPart)>().iter(world) {
+            order.push((8, entity));
+        }
+        for entity in world
+            .query_filtered::<Entity, With<RequestPartEdit>>()
+            .iter(world)
+        {
+            order.push((9, entity));
+        }
         order.sort_by_key(|(rank, entity)| (*rank, entity.index()));
         let entities: Vec<Entity> = order.iter().map(|(_, entity)| *entity).collect();
         let index_of = |entity: Entity| entities.iter().position(|e| *e == entity);
@@ -471,7 +514,9 @@ impl RunScene {
                 3 => SceneKind::Run,
                 4 => SceneKind::Utterance,
                 5 => SceneKind::Turn,
-                _ => SceneKind::InvalidCall,
+                7 => SceneKind::InvalidCall,
+                8 => SceneKind::ContentPart,
+                _ => SceneKind::PartEdit,
             };
             let mut components = serde_json::Map::new();
             let mut errors: Vec<String> = Vec::new();
@@ -482,7 +527,10 @@ impl RunScene {
                 InvalidCalls => "invalid_calls", DefaultMaxTurns => "default_max_turns", ToolAccess => "tool_access",
                 DocumentId => "document_id", DocumentText => "document_text",
                 DocumentProps => "document_props", Order => "order",
-                Utterance => "utterance", Role => "role", Parts => "parts",
+                Utterance => "utterance", Role => "role", MessageId => "message_id",
+                RequestPartEdit => "request_part_edit", ContentPart => "content_part", TextPart => "text_part", ImagePart => "image_part",
+                AudioPart => "audio_part", VideoPart => "video_part", DocumentPart => "document_part",
+                ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
                 Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
@@ -572,6 +620,11 @@ impl RunScene {
             {
                 relations.push(("advert".to_owned(), target));
             }
+            if let Some(EditTarget(part)) = world.get::<EditTarget>(entity) {
+                let target = target_of(world, *part)
+                    .ok_or_else(|| extension_error("request edit target missing from scene"))?;
+                relations.push(("edit_target".to_owned(), target));
+            }
             saved.push(SceneEntity {
                 kind,
                 components,
@@ -581,6 +634,10 @@ impl RunScene {
         }
         Ok((
             Self {
+                binaries: world
+                    .get_resource::<BinaryAssets>()
+                    .map(BinaryAssets::snapshot)
+                    .unwrap_or_default(),
                 entities: saved,
                 next_order: world.get_resource::<OrderCounter>().map_or(0, |c| c.0),
                 next_run: world.get_resource::<RunCounter>().map_or(0, |c| c.0),
@@ -612,7 +669,66 @@ impl RunScene {
     /// naming the key. Returns the spawned entities by scene index.
     #[must_use = "the loaded entities are the caller's handles"]
     pub fn load(&self, world: &mut World) -> Result<Vec<Entity>, rig_core::error::ErrorReport> {
+        wire::validate_graph(self).map_err(extension_error)?;
         self.validate_structure()?;
+        let empty = BinaryAssets::default();
+        let assets = world
+            .get_resource::<BinaryAssets>()
+            .unwrap_or(&empty)
+            .merged(&self.binaries)
+            .map_err(|error| extension_error(error.to_string()))?;
+        // Validate typed data and every content reference in a separate world.
+        // Destination observers never see corrupt assets or partial content.
+        let mut validation = World::new();
+        validation.insert_resource(assets);
+        for bound in world.query::<&Bound>().iter(world) {
+            validation.spawn(bound.clone());
+        }
+        let entities = self.load_graph(&mut validation)?;
+        wire::validate_content_expansion(&mut validation).map_err(extension_error)?;
+        for entity in &entities {
+            if validation.get::<Utterance>(*entity).is_some() {
+                read_message(&validation, *entity)
+                    .map_err(|error| extension_error(error.to_string()))?;
+            }
+            if validation.get::<ContentPart>(*entity).is_some() {
+                let parent = validation
+                    .get::<ChildOf>(*entity)
+                    .ok_or_else(|| extension_error("content part has no parent"))?
+                    .parent();
+                if validation.get::<Utterance>(parent).is_none()
+                    && validation.get::<ToolResultPart>(parent).is_none()
+                {
+                    return Err(extension_error("content part has an invalid parent"));
+                }
+            }
+        }
+        for entity in &entities {
+            if validation.get::<RequestPartEdit>(*entity).is_some() {
+                let parent = validation
+                    .get::<ChildOf>(*entity)
+                    .ok_or_else(|| extension_error("request edit has no turn"))?
+                    .parent();
+                let target = validation
+                    .get::<EditTarget>(*entity)
+                    .ok_or_else(|| extension_error("request edit has no target"))?
+                    .0;
+                if validation.get::<Turn>(parent).is_none()
+                    || validation.get::<ContentPart>(target).is_none()
+                    || validation.get::<Order>(*entity).is_none()
+                {
+                    return Err(extension_error("invalid request edit relationship"));
+                }
+            }
+        }
+        let assets = validation
+            .remove_resource::<BinaryAssets>()
+            .ok_or_else(|| extension_error("validated asset store missing"))?;
+        world.insert_resource(assets);
+        self.load_graph(world)
+    }
+
+    fn load_graph(&self, world: &mut World) -> Result<Vec<Entity>, rig_core::error::ErrorReport> {
         let mut spawned: Vec<Entity> = Vec::with_capacity(self.entities.len());
         for _ in &self.entities {
             spawned.push(world.spawn_empty().id());
@@ -644,7 +760,10 @@ impl RunScene {
                 InvalidCalls => "invalid_calls", DefaultMaxTurns => "default_max_turns", ToolAccess => "tool_access",
                 DocumentId => "document_id", DocumentText => "document_text",
                 DocumentProps => "document_props", Order => "order",
-                Utterance => "utterance", Role => "role", Parts => "parts",
+                Utterance => "utterance", Role => "role", MessageId => "message_id",
+                RequestPartEdit => "request_part_edit", ContentPart => "content_part", TextPart => "text_part", ImagePart => "image_part",
+                AudioPart => "audio_part", VideoPart => "video_part", DocumentPart => "document_part",
+                ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
                 Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
@@ -721,6 +840,9 @@ impl RunScene {
                     }
                     "context" => {
                         entity.insert(Context(to));
+                    }
+                    "edit_target" => {
+                        entity.insert(EditTarget(to));
                     }
                     "attachment" => {
                         entity.insert(Attachment(to));

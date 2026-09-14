@@ -610,3 +610,68 @@ fn a_cancel_written_before_a_save_is_the_ending_after_the_load() {
     assert!(app.world().get::<Settled>(run).is_none());
     assert!(app.world().get::<RunResult>(run).is_none());
 }
+
+#[test]
+fn a_part_patch_is_not_sticky_on_a_judge_retry() {
+    use rig_ecs::agent::content::parts::{EditTarget, RequestPartEdit, TextPart};
+    let mut app = app();
+    let (model, requests) = Scripted::new(
+        MODEL,
+        vec![
+            vec![AssistantContent::text("first")],
+            vec![AssistantContent::text("second DONE")],
+        ],
+    );
+    let model = register(&mut app, MODEL, model);
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(rig_ecs::agent::MaxTurns(3));
+    add_system(&mut app, demand_done.in_set(RigSet::Judge));
+    let run = spawn_run(app.world_mut(), agent, &[], "say it", false, None);
+    let target = app
+        .world_mut()
+        .query::<(Entity, &TextPart)>()
+        .iter(app.world())
+        .find(|(_, text)| text.0.text == "say it")
+        .unwrap()
+        .0;
+    add_system(
+        &mut app,
+        (move |fresh: Query<(Entity, &ChildOf), With<Fresh>>,
+               runs: Query<&Cursor>,
+               mut commands: Commands| {
+            if runs.get(run).is_ok_and(|cursor| cursor.turn == 1) {
+                for (turn, parent) in &fresh {
+                    if parent.parent() == run {
+                        commands.spawn((
+                            RequestPartEdit::Text("only first request".into()),
+                            EditTarget(target),
+                            Order(0),
+                            ChildOf(turn),
+                        ));
+                    }
+                }
+            }
+        })
+        .after(RigSet::Advance)
+        .before(RigSet::Assemble),
+    );
+    ended(&mut app, run, "part patch retry");
+    let requests = requests.lock().unwrap();
+    assert_eq!(requests.len(), 2);
+    assert!(texts(&requests[0]).contains(&"user:only first request".to_owned()));
+    assert_eq!(
+        texts(&requests[1]),
+        vec![
+            "system:You are terse.",
+            "user:say it",
+            "assistant:first",
+            "user:End with DONE."
+        ]
+    );
+    assert_eq!(
+        app.world().get::<TextPart>(target).unwrap().0.text,
+        "say it"
+    );
+}

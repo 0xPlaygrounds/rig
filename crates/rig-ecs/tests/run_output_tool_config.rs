@@ -90,7 +90,7 @@ fn custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool() {
 #[test]
 fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
     use rig_core::message::{Reasoning, ReasoningContent};
-    use rig_ecs::agent::{MessageParts, Parts, Utterance};
+    use rig_ecs::agent::{MessageParts, Utterance};
 
     let reasoning = AssistantContent::Reasoning(Reasoning {
         id: Some("reasoning-id".into()),
@@ -120,13 +120,17 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
 
     let assistant: Vec<_> = app
         .world_mut()
-        .query_filtered::<(&Parts, &ChildOf), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(app.world())
-        .filter_map(|(parts, parent)| match &parts.0 {
-            MessageParts::Assistant { content, .. } if parent.parent() == run => {
-                Some(content.clone())
+        .filter_map(|(entity, parent)| {
+            match rig_ecs::agent::content::parts::read_message(app.world(), entity)
+                .expect("valid assistant graph")
+            {
+                MessageParts::Assistant { content, .. } if parent.parent() == run => {
+                    Some(content.clone())
+                }
+                _ => None,
             }
-            _ => None,
         })
         .collect();
     assert_eq!(
