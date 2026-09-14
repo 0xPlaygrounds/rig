@@ -4,7 +4,6 @@
 //! explicit HostAction extension. AdapterEnding describes HTTP closure
 //! (`Decoded`/`Terminal`); the run's Ended observation carries `settled`.
 
-use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
@@ -15,7 +14,7 @@ use rig::message::{AssistantContent, Message, ReasoningContent, canonical_stream
 use rig::observe::{AdapterEnding, AdapterEvent, Emitter, HostAction, ObservationLog, Stage};
 use rig::streaming::{Delta, StreamEvent};
 use rig_ecs::agent::{Order, Utterance};
-use rig_ecs::bus::{Streamed, Subjects, Witnessing};
+use rig_ecs::bus::{StreamItemsDelivered, Subjects, Witnessing};
 use serde::{Deserialize, Serialize};
 
 use super::cells::{Cell, ReasoningCase, Thinking, ThinkingWire};
@@ -63,31 +62,42 @@ impl HostAction for ReasoningDelta {
     const KIND: &'static str = "ecs-reasoning/delta";
 }
 
+#[derive(Resource, Default)]
+pub(crate) struct PendingReasoning(Vec<(Entity, Delta)>);
+
+pub(crate) fn install_delivery_observer(app: &mut bevy_app::App) {
+    app.init_resource::<PendingReasoning>().add_observer(
+        |delivered: On<StreamItemsDelivered>, mut pending: ResMut<PendingReasoning>| {
+            for item in &delivered.items {
+                if let Ok(StreamEvent::BlockDelta {
+                    delta: delta @ Delta::Reasoning { .. },
+                    ..
+                }) = item
+                {
+                    pending.0.push((delivered.effect, delta.clone()));
+                }
+            }
+        },
+    );
+}
+
+/// Preserve the existing policy-visible emission point after Collect. The
+/// synchronous callback captures only new deltas; it does not advance policy.
 pub(crate) fn witness_deltas(
-    streams: Query<(Entity, &Streamed)>,
+    entities: Query<Entity>,
     subjects: Subjects,
     witness: Res<Witnessing>,
-    mut seen: Local<HashMap<Entity, usize>>,
+    mut pending: ResMut<PendingReasoning>,
 ) {
-    for (entity, stream) in &streams {
-        let at = seen.entry(entity).or_default();
-        for event in stream.events.iter().skip(*at) {
-            if let StreamEvent::BlockDelta {
-                delta: delta @ Delta::Reasoning { .. },
-                ..
-            } = event
-            {
-                witness.emit(
-                    subjects.of(entity),
-                    Stage::Collect,
-                    Emitter::named("ecs-reasoning"),
-                    ReasoningDelta(delta.clone())
-                        .action()
-                        .expect("a delta serializes"),
-                );
-            }
+    for (entity, delta) in pending.0.drain(..) {
+        if entities.contains(entity) {
+            witness.emit(
+                subjects.of(entity),
+                Stage::Collect,
+                Emitter::named("ecs-reasoning"),
+                ReasoningDelta(delta).action().expect("a delta serializes"),
+            );
         }
-        *at = stream.events.len();
     }
 }
 

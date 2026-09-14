@@ -433,6 +433,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         }),
     };
     if cell.reasoning.is_some() {
+        super::reasoning::install_delivery_observer(&mut app);
         app.add_systems(
             RigSchedule,
             super::reasoning::witness_deltas
@@ -448,6 +449,9 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
     EffectLogResource::install(app.world_mut(), recorder.clone());
     if cell.name == "checkpoint_parallel_batch" {
         super::checkpoint_world::install_parallel(&mut app);
+    }
+    if super::stream_delivery::applicable(cell) {
+        super::stream_delivery::install(&mut app);
     }
     let world = app.world_mut();
     let runtime = tokio::runtime::Handle::current();
@@ -632,6 +636,9 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
 
     let agent = if let Some(scene) = scene {
         let loaded = load_world(scene, world).expect("the scene binds to fresh live handlers");
+        if super::stream_delivery::applicable(cell) {
+            super::stream_delivery::assert_hydration(world, cell);
+        }
         let run = loaded
             .graph
             .iter()
@@ -1620,6 +1627,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     let mut cut = None;
     let mut before = Vec::new();
     let mut saved_head = None;
+    let mut delivery_head = None;
     for (n, prompt) in prompts.into_iter().enumerate() {
         before.push(live_entities(app.world_mut()));
         let world = app.world_mut();
@@ -1730,6 +1738,9 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             if cell.name == "checkpoint_parallel_batch" {
                 super::checkpoint_world::assert_parallel_complete(app.world());
             }
+            if super::stream_delivery::applicable(cell) {
+                delivery_head = Some(super::stream_delivery::save_head(app.world(), cell));
+            }
             drop(std::mem::replace(&mut app, App::new()));
             let scene: WorldScene =
                 serde_json::from_str(&encoded_scene).expect("restore scene JSON");
@@ -1813,6 +1824,9 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
         app.world().resource::<Policy>().0.serial_per_handler,
         cell.bus.policy().serial_per_handler
     );
+    if super::stream_delivery::applicable(cell) {
+        super::stream_delivery::assert_complete(app.world(), cell, &log, delivery_head);
+    }
     // (1) the record is the producer's: the caller names the golden at its
     // call site (`crate::ecs_goldens::golden_effects("…", log)`).
     golden(&log);

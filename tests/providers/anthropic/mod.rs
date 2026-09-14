@@ -29,6 +29,7 @@ mod cassette {
     mod ecs_lifecycle;
     mod ecs_matrix_checkpoint;
     mod ecs_matrix_image;
+    mod ecs_matrix_stream_delivery;
     mod ecs_memory;
     mod ecs_ordering;
     mod ecs_outcome;

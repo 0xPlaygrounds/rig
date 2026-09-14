@@ -151,6 +151,10 @@ pub fn collect_streams(
             continue;
         };
         let mut delivered = 0;
+        let start = streamed
+            .as_ref()
+            .map_or(0, |state| state.events.len() + state.errors.len());
+        let mut items = Vec::new();
         for _ in 0..STREAM_ITEMS_PER_EFFECT {
             if budget.remaining == 0 {
                 break;
@@ -166,6 +170,7 @@ pub fn collect_streams(
                 Poll::Ready(Some(item)) => {
                     streaming.delivered += 1;
                     if let Some(streamed) = &mut streamed {
+                        items.push(item.clone());
                         if let Err(error) = &item {
                             let position = streamed.events.len() + streamed.errors.len();
                             streamed.errors.push((position, error.clone()));
@@ -238,19 +243,42 @@ pub fn collect_streams(
                 },
             };
             executions.streams.remove(&entity);
-            let mut entity_commands = commands.entity(entity);
-            if let Some(Publishing(published)) = publishing {
-                entity_commands.remove::<Publishing>();
-                if let Some(context) = published.take() {
-                    entity_commands.insert(ToolOutputs(context));
-                }
+            if !items.is_empty() {
+                commands.trigger(super::StreamItemsDelivered {
+                    effect: entity,
+                    id: *id,
+                    start,
+                    items: std::mem::take(&mut items),
+                });
             }
-            entity_commands
-                .remove::<Streaming>()
-                .insert(CollectedOutcome)
-                .insert(EffectOutcome(outcome));
+            let published = publishing.map(|Publishing(published)| published.take());
+            // Delivery observers may remove the effect or its owning graph.
+            // Preserve their cancellation instead of finalizing a missing entity.
+            commands.queue(move |world: &mut World| {
+                let Ok(mut effect) = world.get_entity_mut(entity) else {
+                    return;
+                };
+                if let Some(context) = published {
+                    effect.remove::<Publishing>();
+                    if let Some(context) = context {
+                        effect.insert(ToolOutputs(context));
+                    }
+                }
+                effect
+                    .remove::<Streaming>()
+                    .insert(CollectedOutcome)
+                    .insert(EffectOutcome(outcome));
+            });
             progress.mark();
             break;
+        }
+        if !items.is_empty() {
+            commands.trigger(super::StreamItemsDelivered {
+                effect: entity,
+                id: *id,
+                start,
+                items,
+            });
         }
         if delivered != 0
             && let Some(recording) = &recording

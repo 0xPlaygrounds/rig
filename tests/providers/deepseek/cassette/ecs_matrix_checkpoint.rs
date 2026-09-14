@@ -290,3 +290,10 @@ fn golden_deepseek_checkpoint_large_result(log: &rig::effect_log::EffectLog) {
 async fn large_result_last_byte_mismatch() {
     checkpoint::assert_large_request_rejected("deepseek", "checkpoint_matrix/large_result").await;
 }
+
+/// Negative matcher probe against the same streamed loop used by native consumers.
+#[tokio::test]
+async fn streamed_tool_result_mismatch() {
+    checkpoint::assert_stream_request_rejected("deepseek", "checkpoint_matrix/multi_turn_streamed")
+        .await;
+}

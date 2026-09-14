@@ -551,6 +551,52 @@ host's responsibility; no exactly-once external-write guarantee is added. A
 restored run stays held until explicit release. Holds do not alter provider
 requests, effect identities, usage, retry budgets or the existing run policy hash.
 
+## Live stream delivery
+
+`bus::StreamItemsDelivered { effect, id, start, items }` is a synchronous Bevy
+event for newly collected items of a streaming effect. `On<StreamItemsDelivered>`
+observers independently receive the same batch, including interleaved
+`StreamEvent` and `ErrorReport` values. `start` counts all prior events and
+errors for that effect; `id` is its issued effect identity, so retries remain
+distinct attempts. Provider block/call identity is carried unchanged in the
+items. Run/turn correlation uses existing relationships outside the bus.
+
+The collector updates accumulated `Streamed` before delivery and publishes its
+`EffectOutcome` afterward. Live notifications execute during `BusSet::Collect`,
+before agent folding, tool-turn commit, or run settlement. A terminal stream
+record is an item, not stream closure: the existing first-outcome rule and
+accepted post-terminal metadata/errors are preserved. EOF and cancellation are
+not fabricated stream items. A unary request folded from a stream does not
+expose streamed consumer delivery. Recording and recorder event retention do
+not determine live visibility.
+
+Each notification owns only its new batch; there is no second retained history
+or subscriber backlog. Observers run on the world thread and must return
+promptly. Long-running work must be handed to host-owned bounded processing.
+No observer order is promised. If one removes the graph, the payload remains
+readable to the others; entity queries must tolerate absence. An observer that
+removes a sibling effect cannot suppress the sibling's already accepted batch:
+live collection and policy-visible replay both capture every batch accepted in
+a pass, as an owned payload, before any observer runs. Collected items are
+delivered before normal outcome/terminal cleanup in the same quiescence update. Notifications do not mark progress, alter collection limits, or execute
+tools from incomplete arguments.
+
+Late or re-enabled consumers receive future notifications only. Hydrate from
+durable `Streamed`/committed history while the host is not advancing the world,
+attach or enable observers, then resume updates. Scene loading restores durable
+state and emits no live delivery notification. Existing refusal of unfinished
+streams with observed progress remains unchanged; a held tool-turn checkpoint
+resumes only after host prerequisites are restored and its owner releases it.
+Notification observers, UI state, and queued host work are not scene data.
+
+Ordinary live/cassette collection preserves item order, not identical network
+timing or batch grouping. Policy-visible replay emits the recorded delivery
+batches. Both paths update the same durable state and use the same public
+notification. `tests/bus_stream_delivery.rs` exercises independent consumers,
+errors, late hydration, bounded bursts, terminal deletion, and scene/replay
+behavior; provider matrix evidence compares actual items with the independent
+producer logs.
+
 ## Returned replies and collection cadence
 
 An initial `Serve` task prepares the reply and folds a unary stream to its first

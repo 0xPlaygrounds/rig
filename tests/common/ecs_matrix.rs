@@ -49,6 +49,8 @@ pub(crate) mod faults;
 pub(crate) mod image;
 #[path = "ecs_matrix/reasoning.rs"]
 pub(crate) mod reasoning;
+#[path = "ecs_matrix/stream_delivery.rs"]
+pub(crate) mod stream_delivery;
 #[path = "ecs_matrix/world.rs"]
 pub(crate) mod world;
 

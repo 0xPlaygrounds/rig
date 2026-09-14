@@ -2,7 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
-use bevy_ecs::prelude::*;
+use bevy_ecs::{prelude::*, world::CommandQueue};
 use bevy_tasks::futures::check_ready;
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId, Outcome},
@@ -376,6 +376,7 @@ pub fn collect_replayed(world: &mut World) {
     if !world.contains_resource::<ReplayDelivery>() {
         return;
     }
+    let mut deliveries = CommandQueue::default();
     world.resource_scope(|world, mut replay: Mut<ReplayDelivery>| {
         replay.waiting_for = None;
         let entities: Vec<_> = world
@@ -450,8 +451,10 @@ pub fn collect_replayed(world: &mut World) {
                 }) => items.len(),
                 _ => continue,
             };
-            deliver_stream(world, entity, *id, count);
-            deliver_outcome(world, entity);
+            deliver_stream(world, &mut deliveries, entity, *id, count);
+            deliveries.push(move |world: &mut World| {
+                deliver_outcome(world, entity);
+            });
             world.resource_mut::<Progress>().mark();
         }
         let Some(first) = replay.pending.front() else {
@@ -474,6 +477,8 @@ pub fn collect_replayed(world: &mut World) {
                     })
                 });
                 if blocked {
+                    // Accepted deliveries stay visible before the failure outcome.
+                    deliveries.apply(world);
                     fail(world, invalid(format!("replay batch {batch} cannot dispatch {} while another effect in the same batch occupies its serial key", step.id)));
                     return;
                 }
@@ -510,6 +515,7 @@ pub fn collect_replayed(world: &mut World) {
                     *total += count;
                     if items.len() < *total {
                         if *closed {
+                            deliveries.apply(world);
                             fail(
                                 world,
                                 invalid(format!(
@@ -528,27 +534,36 @@ pub fn collect_replayed(world: &mut World) {
             let Some(entity) = by_id.get(&step.id).copied() else {
                 continue;
             };
+            if world.get_entity(entity).is_err() {
+                continue;
+            }
             if world.get::<EffectOutcome>(entity).is_some() {
                 continue;
             }
             match step.kind {
                 DeliveryKind::Cancelled => {
                     if !replay.policy_visible {
-                        world.entity_mut(entity).remove::<Buffered>()
-                            .insert(super::collect::CollectedOutcome)
-                            .insert(EffectOutcome(Err(rig_core::serve::cancelled())));
+                        deliveries.push(move |world: &mut World| {
+                            if let Ok(mut effect) = world.get_entity_mut(entity) {
+                                effect.remove::<Buffered>()
+                                    .insert(super::collect::CollectedOutcome)
+                                    .insert(EffectOutcome(Err(rig_core::serve::cancelled())));
+                            }
+                        });
                     }
                 }
-                DeliveryKind::Stream { items } => deliver_stream(world, entity, step.id, items),
+                DeliveryKind::Stream { items } => deliver_stream(world, &mut deliveries, entity, step.id, items),
                 DeliveryKind::Outcome => {
                     if replay.folded.contains(&step.id) {
                         let count = match world.get::<Buffered>(entity) {
                             Some(Buffered::Stream { items, .. }) => items.len(),
                             _ => 0,
                         };
-                        deliver_stream(world, entity, step.id, count);
+                        deliver_stream(world, &mut deliveries, entity, step.id, count);
                     }
-                    deliver_outcome(world, entity);
+                    deliveries.push(move |world: &mut World| {
+                        deliver_outcome(world, entity);
+                    });
                 }
             }
         }
@@ -556,6 +571,10 @@ pub fn collect_replayed(world: &mut World) {
         replay.waiting_for = None;
         world.resource_mut::<Progress>().mark();
     });
+    // Live collection updates every accepted stream in the batch before its
+    // queued delivery/outcome observers run. Replay must do the same: an A
+    // observer removing B cannot erase B's already accepted notification.
+    deliveries.apply(world);
 }
 
 /// Diagnose absent requests and unreproduced cancellations after every policy
@@ -626,8 +645,17 @@ fn fail(world: &mut World, report: ErrorReport) {
     }
 }
 
-fn deliver_stream(world: &mut World, entity: Entity, id: EffectId, count: usize) {
-    let Some(mut buffered) = world.entity_mut(entity).take::<Buffered>() else {
+fn deliver_stream(
+    world: &mut World,
+    deliveries: &mut CommandQueue,
+    entity: Entity,
+    id: EffectId,
+    count: usize,
+) {
+    let Ok(mut effect) = world.get_entity_mut(entity) else {
+        return;
+    };
+    let Some(mut buffered) = effect.take::<Buffered>() else {
         return;
     };
     let Buffered::Stream {
@@ -640,8 +668,12 @@ fn deliver_stream(world: &mut World, entity: Entity, id: EffectId, count: usize)
     let recording = world.get_resource::<Recording>().cloned();
     let observed = world.get::<Observed>(entity).is_some();
     let mut progress = false;
+    let mut delivery = None;
     if let Some(mut streamed) = world.get_mut::<Streamed>(entity) {
+        let start = streamed.events.len() + streamed.errors.len();
+        let mut delivered = Vec::with_capacity(count);
         for item in items.drain(..count) {
+            delivered.push(item.clone());
             if let Err(error) = &item {
                 let position = streamed.events.len() + streamed.errors.len();
                 streamed.errors.push((position, error.clone()));
@@ -671,6 +703,14 @@ fn deliver_stream(world: &mut World, entity: Entity, id: EffectId, count: usize)
                 streamed.events.push(event);
             }
         }
+        if !delivered.is_empty() {
+            delivery = Some(super::StreamItemsDelivered {
+                effect: entity,
+                id,
+                start,
+                items: delivered,
+            });
+        }
     }
     world.entity_mut(entity).insert(buffered);
     if count != 0
@@ -685,10 +725,16 @@ fn deliver_stream(world: &mut World, entity: Entity, id: EffectId, count: usize)
     if progress {
         world.resource_mut::<Progress>().mark();
     }
+    if let Some(delivery) = delivery {
+        deliveries.push(move |world: &mut World| world.trigger(delivery));
+    }
 }
 
 fn deliver_outcome(world: &mut World, entity: Entity) {
-    let Some(buffered) = world.entity_mut(entity).take::<Buffered>() else {
+    let Ok(mut effect) = world.get_entity_mut(entity) else {
+        return;
+    };
+    let Some(buffered) = effect.take::<Buffered>() else {
         return;
     };
     let outcome = match buffered {
