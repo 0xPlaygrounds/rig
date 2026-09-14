@@ -7,16 +7,64 @@
 //! `From<Entry> for Model` impls stay in each provider module (that mapping
 //! is genuinely provider-specific); the conversation lives here once.
 
+#[cfg(any(
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo",
+))]
+use crate::model::ModelList;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo",
+))]
 use crate::{
     client::{Client, Provider},
-    http_client::{self, HttpClientExt},
-    model::{Model, ModelList, ModelListingError},
+    http_client::HttpClientExt,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
+};
+use crate::{
+    http_client,
+    model::{Model, ModelListingError},
 };
 
 /// The standard `{ "data": [...] }` list envelope shared by OpenAI-style
 /// listing endpoints.
 #[derive(Debug, serde::Deserialize)]
+#[cfg(any(
+    feature = "deepseek",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 pub(crate) struct DataEnvelope<Entry> {
     pub(crate) data: Vec<Entry>,
 }
@@ -47,6 +95,19 @@ impl From<ListModelEntry> for Model {
 /// from an OpenAI-style `{ "data": [...] }` endpoint via
 /// [`list_models`]. Providers whose listing needs pagination or a bespoke
 /// envelope (Gemini, Anthropic, Ollama, Copilot) keep hand-written listers.
+#[cfg(any(
+    feature = "deepseek",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 macro_rules! impl_model_lister {
     ($(#[$meta:meta])* $name:ident, $client:ty, $entry:ty, $label:literal, $path:literal) => {
         $(#[$meta])*
@@ -89,6 +150,19 @@ macro_rules! impl_model_lister {
         }
     };
 }
+#[cfg(any(
+    feature = "deepseek",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 pub(crate) use impl_model_lister;
 
 /// Map a transport-level send error into listing-flavored context: a
@@ -124,6 +198,20 @@ pub(crate) fn map_transport_error(
 /// reject non-2xx before handing back a response) is mapped into [`ModelListingError::api_error_with_context`] so the
 /// provider label, path, status, and body preview survive, exactly like a
 /// non-2xx status on a returned response.
+#[cfg(any(
+    feature = "deepseek",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 pub(crate) async fn get_json<T, Ext, H>(
     client: &Client<Ext, H>,
     provider_name: &str,
@@ -144,6 +232,7 @@ where
 /// provider label, path, status, and body preview in every error. Shared with
 /// listings that build their own request (copilot's auth-derived base URL
 /// cannot go through [`get_json`]).
+#[cfg(feature = "copilot")]
 pub(crate) async fn decode_json_response<T>(
     response: http::Response<http_client::LazyBody<Vec<u8>>>,
     provider_name: &str,
@@ -175,6 +264,7 @@ where
 /// hundred models and pages hold up to 1000, so a real listing finishes in one
 /// or two requests. This exists only so a cursor that changes without
 /// advancing terminates.
+#[cfg(any(feature = "anthropic", feature = "gemini"))]
 pub(crate) const MAX_LISTING_PAGES: usize = 1000;
 
 /// One page of a cursor-paginated listing.
@@ -183,6 +273,7 @@ pub(crate) const MAX_LISTING_PAGES: usize = 1000;
 /// means "no next page to ask for", whether the wire said so with a flag, an
 /// absent cursor, or an empty one.
 #[derive(Debug)]
+#[cfg(any(feature = "anthropic", feature = "gemini"))]
 pub(crate) struct ListingPage {
     pub(crate) models: Vec<Model>,
     pub(crate) next_cursor: Option<String>,
@@ -215,6 +306,7 @@ pub(crate) struct ListingPage {
 /// short list. Anthropic and Gemini each hand-rolled this loop and each
 /// shipped the same class of hang (rig#2334); one implementation is the point,
 /// and one place to add the bound neither of them had.
+#[cfg(any(feature = "anthropic", feature = "gemini"))]
 pub(crate) async fn paginate_models<Ext, H, P, Q>(
     client: &Client<Ext, H>,
     provider_name: &str,
@@ -278,6 +370,7 @@ where
 /// they are encoded rather than interpolated.
 ///
 /// Callers pass at least one pair; an empty slice would yield a dangling `?`.
+#[cfg(any(feature = "anthropic", feature = "gemini"))]
 pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
     let mut serializer = url::form_urlencoded::Serializer::new(String::new());
     for (name, value) in pairs {
@@ -291,6 +384,22 @@ pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
 /// The paginated listers need the bytes rather than a decoded value: their
 /// page parsers convert entries fallibly and want the raw body for error
 /// context.
+#[cfg(any(
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 pub(crate) async fn get_bytes<Ext, H>(
     client: &Client<Ext, H>,
     provider_name: &str,
@@ -322,6 +431,19 @@ where
 
 /// List models from an OpenAI-style `{ "data": [Entry, ...] }` endpoint,
 /// converting each entry via `Entry: Into<Model>`.
+#[cfg(any(
+    feature = "deepseek",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 pub(crate) async fn list_models<Entry, Ext, H>(
     client: &Client<Ext, H>,
     provider_name: &str,

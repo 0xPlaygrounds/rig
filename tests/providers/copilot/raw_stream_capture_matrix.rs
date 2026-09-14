@@ -43,7 +43,7 @@ use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
 use rig::providers::copilot;
-use rig::providers::openai::responses_api;
+use rig::providers::openai_compatible::responses_api;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde_json::Value;
 
@@ -147,7 +147,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
             let raw = &terminal.raw;
-            let chat: rig::providers::openai::completion::streaming::StreamingCompletionResponse =
+            let chat: rig::providers::openai_compatible::completion::streaming::StreamingCompletionResponse =
                 serde_json::from_value(raw.clone())
                     .expect("chat-route raw must read back as the OpenAI chat record");
             assert_eq!(
@@ -247,7 +247,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
             "raw.additional_params.system_fingerprint must carry the chunk fingerprint"
         ),
     }
-    let typed: rig::providers::openai::completion::streaming::StreamingCompletionResponse =
+    let typed: rig::providers::openai_compatible::completion::streaming::StreamingCompletionResponse =
         serde_json::from_value(raw.clone())
             .expect("chat-route raw must read back as the OpenAI chat record");
     let typed_params = typed

@@ -109,4 +109,5 @@ fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
 }
 
 #[cfg(test)]
+#[cfg(feature = "anthropic")]
 mod tests;

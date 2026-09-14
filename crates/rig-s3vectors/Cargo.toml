@@ -33,6 +33,7 @@ aws-config = { workspace = true, features = ["behavior-version-latest"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
+rig-core = { path = "../rig-core", features = ["openai"] }
 [[example]]
 name = "s3vectors_vector_search"
 required-features = []

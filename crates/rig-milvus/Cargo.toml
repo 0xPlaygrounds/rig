@@ -25,6 +25,7 @@ anyhow = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
 
+rig-core = { path = "../rig-core", features = ["openai"] }
 [features]
 default = ["rustls"]
 rustls = ["reqwest/rustls"]

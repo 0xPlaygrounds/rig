@@ -1,7 +1,7 @@
 use super::*;
 use crate::client::{EmbeddingsClient, RerankingClient};
 use crate::embeddings::EmbeddingModel as _;
-use crate::providers::openai::embedding::EncodingFormat;
+use crate::providers::openai_compatible::embedding::EncodingFormat;
 use crate::test_utils::RecordingHttpClient;
 
 #[test]

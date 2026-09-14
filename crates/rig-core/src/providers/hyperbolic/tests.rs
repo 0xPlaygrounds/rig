@@ -1,6 +1,6 @@
 #[test]
 fn hyperbolic_prepare_request_drops_tools_and_tool_choice() {
-    use crate::providers::openai::completion::{
+    use crate::providers::openai_compatible::completion::{
         CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
     };
 

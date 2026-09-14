@@ -138,6 +138,32 @@ where
         (self, slot)
     }
 
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "cohere",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "gemini",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     pub(crate) fn observation(&self) -> Option<crate::observe::AdapterSlot> {
         self.observation.clone()
     }

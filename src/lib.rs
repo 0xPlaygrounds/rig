@@ -15,6 +15,13 @@
 //! alongside the canonical `CompletionClient`, the same surface as before the
 //! split.
 //!
+//! # Built-in providers
+//!
+//! Enable the Cargo feature matching every provider module you use, for example
+//! `rig = { version = "0.42", features = ["openai"] }`. Defaults include no
+//! concrete providers. `providers-all` enables the complete built-in set;
+//! runtime, transport, and optional modality features remain independent.
+//!
 //! # Companion integrations
 //!
 //! Companion provider and vector-store crates are exposed as feature-gated
@@ -194,6 +201,7 @@ pub mod prelude {
     // `builder().connect()` over the bundled tungstenite backend, plus the
     // provider's own session extension trait.
     #[cfg(all(feature = "websocket", not(target_family = "wasm")))]
+    #[cfg(feature = "openai")]
     pub use rig_tungstenite::prelude::*;
 }
 

@@ -98,7 +98,7 @@ async fn streaming() {
         let response = finals
             .first()
             .expect("Copilot reasoning stream should yield a provider final response");
-        let response: rig::providers::openai::responses_api::streaming::StreamingCompletionResponse =
+        let response: rig::providers::openai_compatible::responses_api::streaming::StreamingCompletionResponse =
             serde_json::from_value(response.raw.clone())
                 .expect("Copilot reasoning stream should use the Responses route");
         assert_eq!(response.reasoning_context.as_deref(), Some("current_turn"));

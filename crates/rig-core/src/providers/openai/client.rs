@@ -13,7 +13,6 @@ use crate::{
     http_client::{self, HttpClientExt},
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
-use serde::Deserialize;
 use std::fmt::Debug;
 
 // ================================================================
@@ -321,36 +320,8 @@ where
     }
 }
 
-/// Error envelope returned by OpenAI-compatible providers alongside 2xx
-/// statuses. Providers spell the message field differently (`message`,
-/// `error`, nested objects), so anything that isn't a valid success payload
-/// is treated as an error envelope and the raw body is preserved for the
-/// caller; `message` is only used for logging.
-#[derive(Debug)]
-pub struct ApiErrorResponse {
-    pub(crate) message: String,
-}
-
-// Manual impl (not a field-level `alias = "error"`): the alias makes serde
-// treat `message` and `error` as one field, so a body carrying both keys
-// fails as a duplicate field instead of classifying as this envelope.
-impl<'de> Deserialize<'de> for ApiErrorResponse {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        Ok(Self {
-            message: crate::providers::internal::envelope::error_message(deserializer)?,
-        })
-    }
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub(crate) enum ApiResponse<T> {
-    Ok(T),
-    Err(ApiErrorResponse),
-}
+/// Error envelope used by OpenAI-compatible endpoints.
+pub use crate::providers::internal::envelope::ApiErrorResponse;
 
 #[cfg(test)]
 mod tests;

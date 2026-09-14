@@ -2,13 +2,13 @@
 // OpenAI Completion API
 // ================================================================
 
-use super::client::ApiResponse;
 use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{CompletionError, CompletionRequest as CoreCompletionRequest};
 use crate::http_client::HttpClientExt;
 use crate::json_utils::string_or_vec;
 use crate::message::{AudioMediaType, DocumentSourceKind, ImageDetail, MimeType};
 use crate::providers::internal::completion_send::send_completion;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 use crate::telemetry::{
     CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator,
 };
@@ -1632,7 +1632,7 @@ pub struct CompletionModelOptions {
 
 /// Contract for provider types that speak the OpenAI Chat Completions wire
 /// format through [`GenericCompletionModel`]. Mirrors
-/// [`AnthropicCompatibleProvider`](crate::providers::anthropic::completion::AnthropicCompatibleProvider)
+/// `AnthropicCompatibleProvider`
 /// on the Anthropic-compatible side.
 ///
 /// Request construction runs the hooks in a fixed order:
@@ -1870,6 +1870,7 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     }
 }
 
+#[cfg(feature = "openai")]
 impl OpenAICompatibleProvider for super::OpenAICompletions {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
@@ -1892,6 +1893,7 @@ impl OpenAICompatibleProvider for super::OpenAICompletions {
 /// today's behavior — the legacy field, and the provider's own explicit
 /// `Unsupported parameter` error — rather than silently sending a field some
 /// other backend does not know.
+#[cfg(feature = "openai")]
 pub(crate) fn is_openai_reasoning_model(model: &str) -> bool {
     /// `gpt-5` … `gpt-9`, in any spelling the family uses (`gpt-5`,
     /// `gpt-5.1`, `gpt-5-nano`, `gpt-5-2025-08-07`).
@@ -1966,6 +1968,7 @@ pub struct GenericCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> 
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "openai")]
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
     GenericCompletionModel<super::OpenAICompletions, H>;
 
@@ -2025,6 +2028,14 @@ pub struct CompletionRequest {
 /// concatenation of its text parts. When `only_if_all_text` is set, arrays
 /// containing non-text parts are left untouched (for APIs with their own
 /// multimodal handling); otherwise non-text parts are dropped.
+#[cfg(any(
+    all(test, feature = "openai"),
+    feature = "deepseek",
+    feature = "hyperbolic",
+    feature = "mira",
+    feature = "mistral",
+    feature = "perplexity"
+))]
 pub(crate) fn flatten_text_content_parts(
     content: &mut serde_json::Value,
     separator: &str,
@@ -2078,6 +2089,12 @@ pub(crate) fn joined_text_parts(parts: &[serde_json::Value]) -> String {
 /// user/user as well as assistant/assistant adjacency, and alternation-strict
 /// APIs (Perplexity) reject both; providers without that constraint keep
 /// their turns separate.
+#[cfg(any(
+    all(test, feature = "openai"),
+    feature = "hyperbolic",
+    feature = "mira",
+    feature = "perplexity"
+))]
 pub(crate) fn sanitize_plain_text_history(
     messages: &mut Vec<serde_json::Value>,
     flatten: Option<(&str, bool)>,
@@ -2519,7 +2536,7 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
         if let Some(observation) = observation {
-            crate::providers::openai::observation::attach_chat(
+            crate::providers::openai_compatible::observation::attach_chat(
                 observation,
                 &mut req,
                 "/chat/completions",
@@ -2625,7 +2642,9 @@ where
 }
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 mod tests;
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 mod image_tool_result_gate_tests;

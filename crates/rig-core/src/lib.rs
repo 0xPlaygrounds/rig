@@ -22,6 +22,15 @@
 //! - Simple but powerful common abstractions over LLM providers (e.g. OpenAI, Cohere) and vector stores (e.g. MongoDB, in-memory)
 //! - Integrate LLMs in your app with minimal boilerplate
 //!
+//! # Provider features
+//!
+//! Built-in providers are opt-in Cargo features: enable `openai`, `anthropic`,
+//! `gemini`, or the other provider module names your code imports. Defaults
+//! enable no concrete providers; `providers-all` explicitly enables them all.
+//! Shared OpenAI- and Anthropic-compatible protocols do not require their
+//! concrete clients. `rig-reqwest` supplies a generic HTTP transport and needs
+//! no provider feature forwarding.
+//!
 //! # Simple example
 //! ```ignore
 //! use rig_core::{

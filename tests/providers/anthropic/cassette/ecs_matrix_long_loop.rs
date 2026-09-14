@@ -49,7 +49,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
 
 /// This wire has no recorded setup failure to rewrite: the scripted provider
 /// fault answers the Anthropic Messages error envelope the adapter's own
-/// tests pin (`crates/rig-core/src/providers/anthropic/completion/tests.rs`,
+/// tests pin (`crates/rig-core/src/providers/anthropic_compatible/completion/tests.rs`,
 /// `overloaded_error`), under a retryable 503.
 const OVERLOADED_BODY: &str =
     r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#;

@@ -32,8 +32,38 @@ mod provider_layout;
 mod reasoning_stream_stats;
 mod rig_ecs_bus_module;
 mod stream_ids;
+#[cfg(all(
+    feature = "anthropic",
+    feature = "openai",
+    feature = "gemini",
+    feature = "cohere",
+    feature = "ollama",
+    feature = "xai",
+    feature = "copilot",
+    feature = "chatgpt",
+))]
 mod streaming_conformance;
+#[cfg(all(
+    feature = "anthropic",
+    feature = "openai",
+    feature = "gemini",
+    feature = "cohere",
+    feature = "ollama",
+    feature = "xai",
+    feature = "copilot",
+    feature = "chatgpt",
+))]
 mod streaming_conformance_registry;
+#[cfg(all(
+    feature = "anthropic",
+    feature = "openai",
+    feature = "gemini",
+    feature = "cohere",
+    feature = "ollama",
+    feature = "xai",
+    feature = "copilot",
+    feature = "chatgpt",
+))]
 mod streaming_conformance_suites;
 #[cfg(feature = "derive")]
 mod tool_macro;

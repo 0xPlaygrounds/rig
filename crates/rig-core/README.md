@@ -25,8 +25,25 @@ More information about this crate can be found in the [crate documentation](http
 
 ## Installation
 ```bash
-cargo add rig-core
+cargo add rig-core --features openai
 ```
+
+Each built-in provider is behind a same-named Cargo feature. Defaults enable
+no concrete provider; `providers-all` explicitly enables the complete built-in
+set. Compatible providers compile shared protocol code without requiring the
+concrete OpenAI or Anthropic provider.
+
+With the bundled transport, enable providers on `rig-core`; `rig-reqwest` needs
+no provider features:
+
+```toml
+rig-core = { version = "0.42", features = ["openai"] }
+rig-reqwest = "0.42"
+```
+
+Import `rig_reqwest::prelude::*` for `Client::new`, `Client::from_env`, and the
+default transport builder. Provider-generic contracts remain available with no
+provider features.
 
 ## WASM target support
 
@@ -37,6 +54,7 @@ Node.js 19 or later do. WASI targets are not supported.
 
 ## Simple example
 ```rust
+use rig_reqwest::prelude::*;
 use rig_core::{
     client::CompletionClient,
     completion::{AssistantContent, CompletionModel},
@@ -64,10 +82,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples in the repository-level `examples/` directory. Many provider-specific examples now also live as ignored live integration tests under the repository-level `tests/providers` directory, organized by provider. When running those provider-backed tests, prefer provider-specific targets such as `cargo test -p rig --test openai -- --ignored --test-threads=1` to avoid rate-limiting. More detailed walkthroughs are regularly published on our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
+You can find more examples in the repository-level `examples/` directory. Many provider-specific examples now also live as ignored live integration tests under the repository-level `tests/providers` directory, organized by provider. When running those provider-backed tests, prefer provider-specific targets such as `cargo test -p rig --features openai --test openai -- --ignored --test-threads=1` to avoid rate-limiting. More detailed walkthroughs are regularly published on our Dev.to blog and added to Rig's official documentation at `docs.rig.rs`.
 
 ## Integrations
-Rig supports the following LLM providers out of the box:
+Rig supports the following LLM providers behind same-named opt-in features:
 
 - Anthropic
 - Azure OpenAI
@@ -97,7 +115,7 @@ Rig supports the following LLM providers out of the box:
 Vector stores are available as separate companion-crates and as feature-gated modules on the root `rig` facade:
 
 ```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.42", features = ["lancedb", "fastembed"] }
 ```
 
 - MongoDB: [`rig-mongodb`](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-mongodb)

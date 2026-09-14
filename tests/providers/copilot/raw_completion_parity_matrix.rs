@@ -44,8 +44,8 @@ use rig::completion::{
 };
 use rig::prelude::*;
 use rig::providers::copilot::{self, CopilotCompletionResponse};
-use rig::providers::openai;
-use rig::providers::openai::responses_api;
+use rig::providers::openai_compatible as openai;
+use rig::providers::openai_compatible::responses_api;
 use serde::Deserialize;
 use serde_json::Value;
 

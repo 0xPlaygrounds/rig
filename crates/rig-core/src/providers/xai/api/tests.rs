@@ -4,7 +4,7 @@ use crate::message::{
     AssistantContent, Message as RigMessage, Reasoning, ReasoningContent, ToolChoice,
     ToolResultContent, UserContent,
 };
-use crate::providers::openai::responses_api::ReasoningSummary;
+use crate::providers::openai_compatible::responses_api::ReasoningSummary;
 use crate::test_utils::MockCompletionModel;
 
 /// Synthetic request history covers correlation without requiring a live provider.
@@ -172,7 +172,7 @@ fn xai_strict_mode_normalizes_function_tools_from_every_source() {
         ]
     }));
     let default_tools = [
-        crate::providers::openai::responses_api::ResponsesToolDefinition::function(
+        crate::providers::openai_compatible::responses_api::ResponsesToolDefinition::function(
             "default_tool",
             "A model-level default tool",
             serde_json::json!({

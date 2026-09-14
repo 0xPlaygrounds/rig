@@ -125,12 +125,10 @@ where
     ) -> Result<(Ext::Response, Option<String>), ImageGenerationError> {
         let builder = Ext::image_generation_request_builder(&self.client, &self.model)?;
         let body = Ext::image_generation_request_body(&self.model, request)?;
-        send_image_generation::<_, crate::providers::openai::client::ApiResponse<Ext::Response>>(
-            &self.client,
-            builder,
-            body,
-            Ext::REQUEST_ID_HEADER,
-        )
+        send_image_generation::<
+            _,
+            crate::providers::internal::envelope::OpenAiApiResponse<Ext::Response>,
+        >(&self.client, builder, body, Ext::REQUEST_ID_HEADER)
         .await
     }
 }

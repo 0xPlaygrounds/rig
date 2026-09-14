@@ -28,8 +28,41 @@ use crate::wasm_compat::WasmCompatSend;
 /// delta, preserved exactly).
 #[derive(Clone, Copy)]
 pub(crate) enum OpenLog {
+    #[cfg(any(
+        test,
+        feature = "anthropic",
+        feature = "minimax",
+        feature = "moonshot",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     Silent,
+    #[cfg(any(
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "cohere",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     Trace,
+    #[cfg(feature = "gemini")]
     Debug,
 }
 
@@ -42,12 +75,45 @@ pub(crate) enum FrameDisposition {
     /// An in-band terminal provider error (the wire's error envelope,
     /// detected pre-classification exactly as an HTTP failure would be):
     /// yield the error and end the transport.
+    #[cfg(any(
+        test,
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     Fail(CompletionError),
 }
 
 /// Skip-blank triage shared by wires with no `[DONE]` sentinel and no
 /// in-band error envelope: heartbeats carry no payload and are not wire
 /// frames; everything else passes through untrimmed.
+#[cfg(any(
+    test,
+    feature = "anthropic",
+    feature = "minimax",
+    feature = "moonshot",
+    feature = "xiaomimimo",
+    feature = "zai",
+    feature = "gemini"
+))]
 pub(crate) fn skip_blank_frames(data: String) -> FrameDisposition {
     if data.trim().is_empty() {
         FrameDisposition::Skip
@@ -59,6 +125,7 @@ pub(crate) fn skip_blank_frames(data: String) -> FrameDisposition {
 /// Triage shared by wires whose heartbeats and `[DONE]` sentinel are both
 /// dropped at the transport: trim the payload, skip blanks and `[DONE]`,
 /// yield everything else trimmed.
+#[cfg(feature = "cohere")]
 pub(crate) fn skip_blank_and_done(data: &str) -> FrameDisposition {
     let data = data.trim();
     if data.is_empty() || data == "[DONE]" {
@@ -101,8 +168,11 @@ where
         while let Some(event_result) = event_source.next().await {
             match event_result {
                 Ok(Event::Open) => match options.open_log {
+                    #[cfg(any(test, feature = "anthropic", feature = "minimax", feature = "moonshot", feature = "xiaomimimo", feature = "zai"))]
                     OpenLog::Silent => {}
+                    #[cfg(any(feature = "azure", feature = "chatgpt", feature = "cohere", feature = "copilot", feature = "deepseek", feature = "doubleword", feature = "groq", feature = "huggingface", feature = "hyperbolic", feature = "llamacpp", feature = "minimax", feature = "mira", feature = "mistral", feature = "moonshot", feature = "openai", feature = "openrouter", feature = "perplexity", feature = "together", feature = "venice", feature = "xai", feature = "xiaomimimo", feature = "zai"))]
                     OpenLog::Trace => tracing::trace!("SSE connection opened"),
+                    #[cfg(feature = "gemini")]
                     OpenLog::Debug => tracing::debug!("SSE connection opened"),
                 },
                 Ok(Event::Message(message)) => {
@@ -112,6 +182,7 @@ where
                     match triage(message.data) {
                     FrameDisposition::Skip => {}
                     FrameDisposition::Frame(data) => yield Ok(WireFrame::Text(data)),
+                    #[cfg(any(test, feature = "azure", feature = "chatgpt", feature = "copilot", feature = "deepseek", feature = "doubleword", feature = "groq", feature = "huggingface", feature = "hyperbolic", feature = "llamacpp", feature = "minimax", feature = "mira", feature = "mistral", feature = "moonshot", feature = "openai", feature = "openrouter", feature = "perplexity", feature = "together", feature = "venice", feature = "xai", feature = "xiaomimimo", feature = "zai"))]
                     FrameDisposition::Fail(error) => {
                         yield Err(error);
                         break;
@@ -144,6 +215,31 @@ where
 /// connection that delivered it. With no slot (provider reports no request-id
 /// header), the stream passes through untouched and the terminal's id stays
 /// `None`.
+#[cfg(any(
+    test,
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) fn stamp_terminal_request_id(
     stream: crate::streaming::StreamingResult,
     slot: Option<crate::http_client::sse::RequestIdSlot>,

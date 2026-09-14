@@ -147,7 +147,7 @@ pub enum ContentDelta {
     /// `content_block_delta` frame (which would classify it `Corrupt` and
     /// surface an `Err` item per frame). It decodes to a no-op, warned at the
     /// interpret site — the same shape as
-    /// [`ContentPartChunkPart::Unknown`](crate::providers::openai::responses_api::streaming::ContentPartChunkPart).
+    /// `ContentPartChunkPart::Unknown` on the OpenAI-compatible Responses wire.
     Unknown(serde_json::Value),
 }
 
@@ -859,4 +859,5 @@ where
 }
 
 #[cfg(test)]
+#[cfg(feature = "anthropic")]
 mod tests;

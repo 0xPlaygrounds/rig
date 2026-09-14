@@ -90,6 +90,60 @@ tracing-opentelemetry = { workspace = true }
 
 
 [features]
+providers-all = [
+    "anthropic",
+    "azure",
+    "chatgpt",
+    "cohere",
+    "copilot",
+    "deepseek",
+    "doubleword",
+    "gemini",
+    "groq",
+    "huggingface",
+    "hyperbolic",
+    "llamacpp",
+    "minimax",
+    "mira",
+    "mistral",
+    "moonshot",
+    "ollama",
+    "openai",
+    "openrouter",
+    "perplexity",
+    "together",
+    "venice",
+    "voyageai",
+    "xai",
+    "xiaomimimo",
+    "zai",
+]
+anthropic = []
+azure = []
+chatgpt = []
+cohere = []
+copilot = []
+deepseek = []
+doubleword = []
+gemini = []
+groq = []
+huggingface = []
+hyperbolic = []
+llamacpp = []
+minimax = []
+mira = []
+mistral = []
+moonshot = []
+ollama = []
+openai = []
+openrouter = []
+perplexity = []
+together = []
+venice = []
+voyageai = []
+xai = []
+xiaomimimo = []
+zai = []
 default = ["derive"]
 audio = []
 image = []
@@ -102,3 +156,15 @@ epub = ["dep:epub", "dep:quick-xml"]
 # built from `http`/`bytes`/`futures`/`url`, which rig-core already has — but
 # stays gated so the surface is opt-in, matching `audio`/`image`.
 websocket = []
+
+[[test]]
+name = "gemini_cached_content_listing_warnings"
+required-features = ["gemini"]
+
+[[test]]
+name = "model_listing_warnings"
+required-features = ["anthropic"]
+
+[[test]]
+name = "openai_responses_websocket"
+required-features = ["openai", "websocket"]

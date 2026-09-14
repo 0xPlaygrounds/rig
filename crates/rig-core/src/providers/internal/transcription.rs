@@ -1,25 +1,280 @@
 //! Shared request plumbing for OpenAI-style `/audio/transcriptions` endpoints.
 //!
-//! OpenAI, Groq and Azure OpenAI all accept the same multipart body — the
+//! OpenAI, Groq, Venice and Azure OpenAI all accept the same multipart body — the
 //! audio as a `file` part plus optional `language`, `prompt` and `temperature`
 //! fields and a flattened `additional_params` object — and answer with the
 //! same `{ text }` payload and OpenAI-style error envelope. The per-provider
 //! differences are limited to request routing and whether the model is sent as
 //! a form field.
 
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice"
+))]
+use crate::completion::Usage;
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice"
+))]
 use bytes::Bytes;
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice",
+))]
 use serde::de::DeserializeOwned;
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice"
+))]
+use serde::{Deserialize, Serialize};
 
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice",
+))]
 use super::envelope::ProviderEnvelope;
+#[cfg(any(
+    feature = "gemini",
+    feature = "huggingface",
+    feature = "mistral",
+    feature = "openrouter"
+))]
 use crate::client::Client;
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice",
+    feature = "mistral"
+))]
+use crate::http_client::MultipartForm;
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "mistral",
+    feature = "openai",
+    feature = "venice"
+))]
 use crate::http_client::multipart::Part;
-use crate::http_client::{self, HttpClientExt, MultipartForm};
-use crate::transcription::{
-    self, NormalizeTranscriptionResponse, TranscriptionError, TranscriptionRequest,
-};
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice"
+))]
+use crate::http_client::{self, HttpClientExt};
+use crate::transcription::TranscriptionError;
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice",
+    feature = "mistral"
+))]
+use crate::transcription::TranscriptionRequest;
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice",
+    feature = "huggingface"
+))]
+use crate::transcription::{self, NormalizeTranscriptionResponse};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice"
+))]
+pub struct TranscriptionResponse {
+    pub text: String,
+    /// What the transcription cost, as the endpoint reported it.
+    ///
+    /// Token-billed shapes normalize onto
+    /// [`transcription::TranscriptionResponse::usage`]; the duration-billed
+    /// `seconds` figure has no normalized slot and is read from here (via the
+    /// raw route). Optional because a compatible provider on this wire may
+    /// not report one.
+    #[serde(default)]
+    pub usage: Option<TranscriptionUsage>,
+}
+
+/// The accounting an OpenAI-style transcription endpoint reports.
+///
+/// Two shapes are live and they bill differently: `whisper-1` bills by audio
+/// duration (`{"type":"duration","seconds":6}`), while the
+/// `gpt-4o-transcribe` family bills by token
+/// (`{"type":"tokens","input_tokens":54,…}`).
+///
+/// Each modeled variant pins the wire's own `type`, so selection cannot turn
+/// on which optional keys a payload happens to carry: a future shape that
+/// reported `seconds` *and* token counts would otherwise decode as a duration
+/// and silently drop every token count. Anything whose `type` is unmodeled
+/// falls to the verbatim catch-all rather than failing the whole
+/// transcription — the same invariant the Responses `Output` enum keeps for
+/// unmodeled output items.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(untagged)]
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice"
+))]
+pub enum TranscriptionUsage {
+    /// Duration-billed models.
+    Duration {
+        /// Always `"duration"`; pins this variant to its wire tag.
+        r#type: DurationTag,
+        /// Length of the audio, in seconds.
+        seconds: f64,
+    },
+    /// Token-billed models.
+    Tokens {
+        /// Always `"tokens"`; pins this variant to its wire tag.
+        r#type: TokensTag,
+        /// Tokens consumed by the audio and any prompt.
+        input_tokens: u64,
+        /// How the input tokens split between audio and text, when the
+        /// provider breaks it down. The two are billed at different rates, so
+        /// `input_tokens` alone does not determine what a turn cost.
+        #[serde(default)]
+        input_token_details: Option<TranscriptionInputTokenDetails>,
+        /// Tokens in the transcript.
+        output_tokens: u64,
+        /// `input_tokens + output_tokens`, as the provider reported it.
+        total_tokens: u64,
+    },
+    /// A shape this version does not model, preserved as sent.
+    Other(serde_json::Value),
+}
+
+/// The wire tag of [`TranscriptionUsage::Duration`].
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice"
+))]
+pub enum DurationTag {
+    /// `"duration"`.
+    Duration,
+}
+
+/// The wire tag of [`TranscriptionUsage::Tokens`].
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice"
+))]
+pub enum TokensTag {
+    /// `"tokens"`.
+    Tokens,
+}
+
+/// How a token-billed transcription's input tokens split by modality.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice"
+))]
+pub struct TranscriptionInputTokenDetails {
+    /// Input tokens attributable to the audio.
+    #[serde(default)]
+    pub audio_tokens: u64,
+    /// Input tokens attributable to text (a prompt, for instance).
+    #[serde(default)]
+    pub text_tokens: u64,
+}
+
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "venice"
+))]
+impl NormalizeTranscriptionResponse for TranscriptionResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
+        let usage = match &self.usage {
+            Some(TranscriptionUsage::Tokens {
+                input_tokens,
+                output_tokens,
+                total_tokens,
+                ..
+            }) => Usage {
+                input_tokens: *input_tokens,
+                output_tokens: *output_tokens,
+                total_tokens: *total_tokens,
+                ..Usage::new()
+            },
+            // Duration billing reports no token counts; the zero sentinel is
+            // the documented "not reported" value, and the seconds stay
+            // reachable on the raw payload.
+            Some(TranscriptionUsage::Duration { .. })
+            | Some(TranscriptionUsage::Other(_))
+            | None => Usage::new(),
+        };
+        Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
+    }
+}
 
 /// Provider-specific request routing for the shared OpenAI-style model.
 #[doc(hidden)]
+#[cfg(any(
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice"
+))]
 pub trait OpenAiTranscriptionClient: HttpClientExt + Clone {
     /// Whether the model is a multipart form field. Azure addresses the model
     /// as a deployment in the request URL instead.
@@ -37,16 +292,28 @@ pub trait OpenAiTranscriptionClient: HttpClientExt + Clone {
     fn transcription_request(&self, model: &str) -> http_client::Result<http_client::Builder>;
 }
 
-/// The common model shell for OpenAI, Groq, and Azure OpenAI transcription.
+/// The common model shell for OpenAI, Groq, Venice, and Azure OpenAI transcription.
 /// Their response and multipart wire formats are identical; the client trait
 /// above retains the only variation, request routing.
 #[derive(Clone)]
+#[cfg(any(
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice"
+))]
 pub struct OpenAiTranscriptionModel<C> {
     client: C,
     /// Name of the transcription model or, for Azure OpenAI, deployment.
     pub model: String,
 }
 
+#[cfg(any(
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice"
+))]
 impl<C> OpenAiTranscriptionModel<C> {
     /// Create a transcription model backed by `client`.
     pub fn new(client: C, model: impl Into<String>) -> Self {
@@ -57,6 +324,12 @@ impl<C> OpenAiTranscriptionModel<C> {
     }
 }
 
+#[cfg(any(
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice"
+))]
 impl<C> OpenAiTranscriptionModel<C>
 where
     C: OpenAiTranscriptionClient + 'static,
@@ -68,7 +341,7 @@ where
     pub async fn raw_transcription(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<crate::providers::openai::TranscriptionResponse, TranscriptionError> {
+    ) -> Result<TranscriptionResponse, TranscriptionError> {
         self.raw_transcription_with_request_id(request)
             .await
             .map(|(response, _)| response)
@@ -79,13 +352,7 @@ where
     pub async fn raw_transcription_with_request_id(
         &self,
         request: TranscriptionRequest,
-    ) -> Result<
-        (
-            crate::providers::openai::TranscriptionResponse,
-            Option<String>,
-        ),
-        TranscriptionError,
-    > {
+    ) -> Result<(TranscriptionResponse, Option<String>), TranscriptionError> {
         let form = transcription_form(
             request,
             TranscriptionFields {
@@ -95,9 +362,7 @@ where
 
         send_transcription::<
             _,
-            crate::providers::openai::client::ApiResponse<
-                crate::providers::openai::TranscriptionResponse,
-            >,
+            crate::providers::internal::envelope::OpenAiApiResponse<TranscriptionResponse>,
         >(
             &self.client,
             self.client.transcription_request(&self.model)?,
@@ -108,6 +373,12 @@ where
     }
 }
 
+#[cfg(any(
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice"
+))]
 impl<C> transcription::TranscriptionModel for OpenAiTranscriptionModel<C>
 where
     C: OpenAiTranscriptionClient + 'static,
@@ -139,6 +410,12 @@ where
 /// provider-specific, so the storage and constructor live here once; each
 /// provider keeps its own [`TranscriptionModel`](transcription::TranscriptionModel)
 /// impl on its alias.
+#[cfg(any(
+    feature = "gemini",
+    feature = "huggingface",
+    feature = "mistral",
+    feature = "openrouter"
+))]
 #[derive(Clone)]
 pub struct GenericTranscriptionModel<Ext, H = crate::http_client::BoxedHttpClient> {
     pub(crate) client: Client<Ext, H>,
@@ -146,6 +423,12 @@ pub struct GenericTranscriptionModel<Ext, H = crate::http_client::BoxedHttpClien
     pub model: String,
 }
 
+#[cfg(any(
+    feature = "gemini",
+    feature = "huggingface",
+    feature = "mistral",
+    feature = "openrouter"
+))]
 impl<Ext, H> GenericTranscriptionModel<Ext, H> {
     pub fn new(client: Client<Ext, H>, model: impl Into<String>) -> Self {
         Self {
@@ -157,6 +440,14 @@ impl<Ext, H> GenericTranscriptionModel<Ext, H> {
 
 /// The per-provider parts of an OpenAI-style transcription request.
 #[derive(Debug, Clone, Copy)]
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "mistral",
+    feature = "openai",
+    feature = "venice"
+))]
 pub(crate) struct TranscriptionFields<'a> {
     /// Model to send as the `model` form field, or `None` when the provider
     /// addresses the model through the URL instead — Azure targets a
@@ -168,6 +459,14 @@ pub(crate) struct TranscriptionFields<'a> {
 ///
 /// Field order matches the order these providers previously built by hand, so
 /// recorded requests stay byte-comparable.
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "mistral",
+    feature = "openai",
+    feature = "venice"
+))]
 pub(crate) fn transcription_form(
     request: TranscriptionRequest,
     fields: TranscriptionFields<'_>,
@@ -224,6 +523,13 @@ pub(crate) fn transcription_form(
 /// provider's own response envelope so error-body classification is unchanged.
 /// Provider error bodies are preserved raw via
 /// [`TranscriptionError::from_http_response`].
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "groq",
+    feature = "openai",
+    feature = "venice",
+))]
 pub(crate) async fn send_transcription<C, A>(
     client: &C,
     builder: http_client::Builder,
@@ -283,6 +589,12 @@ where
 /// classification; the decoded payload is returned with the transport request
 /// id read from `request_id_header`. Non-2xx statuses preserve the raw body
 /// via [`TranscriptionError::from_http_response`].
+#[cfg(any(
+    test,
+    feature = "gemini",
+    feature = "huggingface",
+    feature = "openrouter"
+))]
 pub(crate) async fn send_json_transcription<C, R>(
     client: &C,
     builder: http_client::Builder,

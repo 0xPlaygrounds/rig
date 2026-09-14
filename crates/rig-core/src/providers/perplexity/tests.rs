@@ -1,5 +1,5 @@
 use super::*;
-use crate::providers::openai::completion::{
+use crate::providers::openai_compatible::completion::{
     CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
 };
 use crate::test_utils::MockCompletionModel;

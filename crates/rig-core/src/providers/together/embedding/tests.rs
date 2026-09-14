@@ -1,7 +1,7 @@
 use super::BGE_BASE_EN_V1_5;
 use crate::client::EmbeddingsClient;
 use crate::embeddings::{EmbeddingError, EmbeddingModel as _};
-use crate::providers::{openai::embedding::EncodingFormat, together};
+use crate::providers::{openai_compatible::embedding::EncodingFormat, together};
 use crate::test_utils::RecordingHttpClient;
 
 const RESPONSE_BODY: &str = r#"{

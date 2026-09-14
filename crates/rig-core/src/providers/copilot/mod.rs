@@ -33,8 +33,10 @@ use crate::http_client::{self, HttpClientExt};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::providers::internal::completion_send::send_completion;
 use crate::providers::internal::envelope::DirectPayload;
-use crate::providers::openai;
-use crate::providers::openai::responses_api::{self, CompletionRequest as ResponsesRequest};
+use crate::providers::openai_compatible as openai;
+use crate::providers::openai_compatible::responses_api::{
+    self, CompletionRequest as ResponsesRequest,
+};
 use crate::streaming::StreamingCompletionResponse;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -817,7 +819,7 @@ where
                 let usage = response
                     .usage
                     .as_ref()
-                    .map(super::openai::completion::Usage::to_normalized)
+                    .map(super::openai_compatible::completion::Usage::to_normalized)
                     .unwrap_or_default();
                 span.record_token_usage(&usage);
             },
@@ -1072,7 +1074,7 @@ impl embeddings::NormalizeEmbeddingResponse for CopilotEmbeddingResponse {
         let usage = self
             .usage
             .as_ref()
-            .map(super::openai::completion::Usage::to_normalized)
+            .map(super::openai_compatible::completion::Usage::to_normalized)
             .unwrap_or_default();
 
         let embeddings = self

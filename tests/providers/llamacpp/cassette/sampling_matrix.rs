@@ -439,7 +439,7 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
 /// llama.cpp's parsing, so it is checked without a server.
 #[test]
 fn additional_params_wins_over_the_typed_field_it_collides_with() {
-    use rig::providers::openai::completion::OpenAICompatibleProvider as _;
+    use rig::providers::openai_compatible::completion::OpenAICompatibleProvider as _;
 
     let request = rig::completion::CompletionRequest {
         model: None,

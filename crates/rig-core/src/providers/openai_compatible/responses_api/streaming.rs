@@ -3,14 +3,14 @@
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
-use crate::providers::internal::adapter::{
-    AdapterOutput, WireAdapter, WireFrame, run_wire_buffered,
-};
+#[cfg(any(all(test, feature = "openai"), feature = "chatgpt"))]
+use crate::providers::internal::adapter::run_wire_buffered;
+use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
 use crate::providers::internal::sse_transport::{
     FrameDisposition, OpenLog, SseTransportOptions, open_wire_stream, stamp_terminal_request_id,
 };
 use crate::providers::internal::wire::{self, WireEvent};
-use crate::providers::openai::responses_api::{
+use crate::providers::openai_compatible::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
 use crate::streaming::{
@@ -292,6 +292,7 @@ impl ResponsesStreamOptions {
 /// Blank lines, non-`data:` fields (SSE comments, `event:`), and the `[DONE]`
 /// sentinel are skipped, so both buffered readers below see exactly the frame
 /// payloads a live transport would deliver.
+#[cfg(any(all(test, feature = "openai"), feature = "chatgpt"))]
 fn sse_data_frames(body: &str) -> impl Iterator<Item = &str> {
     body.lines()
         .map(|line| {
@@ -302,6 +303,7 @@ fn sse_data_frames(body: &str) -> impl Iterator<Item = &str> {
         .filter(|data| !data.is_empty() && *data != "[DONE]")
 }
 
+#[cfg(any(all(test, feature = "openai"), feature = "chatgpt"))]
 pub(crate) fn parse_sse_completion_body(
     body: &str,
     provider_name: &str,
@@ -875,6 +877,7 @@ fn repair_envelope_less_frame(data: &str) -> Option<String> {
     serde_json::to_string(&value).ok()
 }
 
+#[cfg(any(all(test, feature = "openai"), feature = "chatgpt"))]
 pub(crate) fn stream_events_from_sse_body(
     provider: &str,
     body: &str,
@@ -903,6 +906,7 @@ pub(crate) fn stream_events_from_sse_body(
     run_wire_buffered(frames, ResponsesAdapter::buffered(provider, initial_usage))
 }
 
+#[cfg(feature = "chatgpt")]
 pub(crate) async fn completion_response_from_sse_body(
     provider: &str,
     body: &str,
@@ -1037,6 +1041,11 @@ fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
 /// Open a Responses SSE stream for `provider`, as the grammar events
 /// [`completion::CompletionModel::stream`] wraps in a
 /// [`streaming::StreamingCompletionResponse`].
+#[cfg(any(
+    all(test, feature = "openai"),
+    feature = "chatgpt",
+    feature = "copilot"
+))]
 pub(crate) fn responses_stream_from_event_source<HttpClient, RequestBody>(
     provider: &str,
     event_source: GenericEventSource<HttpClient, RequestBody>,
@@ -1128,6 +1137,7 @@ impl ResponsesAdapter {
         }
     }
 
+    #[cfg(any(all(test, feature = "openai"), feature = "chatgpt"))]
     fn buffered(provider: &str, initial_usage: ResponsesUsage) -> Self {
         Self {
             accumulator: RawChoiceAccumulator::new(provider, initial_usage),
@@ -1494,7 +1504,7 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
         if let Some(observation) = observation {
-            crate::providers::openai::observation::attach_responses(
+            crate::providers::openai_compatible::observation::attach_responses(
                 observation,
                 &mut req,
                 "/responses",
@@ -1537,4 +1547,5 @@ where
 }
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 mod tests;

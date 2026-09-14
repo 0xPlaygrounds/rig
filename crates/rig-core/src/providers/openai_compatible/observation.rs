@@ -21,6 +21,12 @@ pub(crate) fn attach_chat<B>(
 }
 
 /// Attach `context` to a Responses request, with the Responses projector.
+#[cfg(any(
+    feature = "openai",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "xai"
+))]
 pub(crate) fn attach_responses<B>(
     context: AdapterContext,
     request: &mut http::Request<B>,
@@ -143,6 +149,12 @@ fn chat_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
 // the object under `response` (`response.created`, `.completed`, `.failed`,
 // `.incomplete`) or, for `error`, carries the envelope's fields itself.
 #[derive(Deserialize)]
+#[cfg(any(
+    feature = "openai",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "xai"
+))]
 struct ResponsesUsage {
     #[serde(default, deserialize_with = "count")]
     input_tokens: Option<u64>,
@@ -157,11 +169,23 @@ struct ResponsesUsage {
 }
 
 #[derive(Deserialize)]
+#[cfg(any(
+    feature = "openai",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "xai"
+))]
 struct IncompleteDetails {
     reason: Option<String>,
 }
 
 #[derive(Deserialize)]
+#[cfg(any(
+    feature = "openai",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "xai"
+))]
 struct ResponseObject {
     id: Option<String>,
     model: Option<String>,
@@ -172,6 +196,12 @@ struct ResponseObject {
 }
 
 #[derive(Deserialize)]
+#[cfg(any(
+    feature = "openai",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "xai"
+))]
 struct ResponsesPayload {
     #[serde(rename = "type")]
     kind: Option<String>,
@@ -187,6 +217,12 @@ struct ResponsesPayload {
     message: Option<String>,
 }
 
+#[cfg(any(
+    feature = "openai",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "xai"
+))]
 fn responses_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
     let Ok(payload) = serde_json::from_slice::<ResponsesPayload>(bytes) else {
         return;
@@ -244,4 +280,5 @@ fn responses_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
 }
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 mod tests;

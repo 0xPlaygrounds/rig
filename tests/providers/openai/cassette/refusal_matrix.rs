@@ -67,7 +67,7 @@
 //! (a delta carrying *both* keys, an empty refusal, a refusal beside tool
 //! calls, the Responses-shaped refusal *part* arriving on the chat wire) —
 //! live beside the fix in
-//! `crates/rig-core/src/providers/openai/completion/{mod,streaming}.rs`:
+//! `crates/rig-core/src/providers/openai_compatible/completion/{mod,streaming}.rs`:
 //! `refusal_*` / `delta_text_*`.
 
 use rig::client::completion::CompletionClient;

@@ -1,6 +1,9 @@
+#[cfg(feature = "openai")]
 use crate::message::AssistantContent;
+#[cfg(feature = "openai")]
 use crate::streaming::{self, BlockClose, BlockKind, Delta, StreamEvent};
 use bytes::Bytes;
+#[cfg(feature = "openai")]
 use futures::StreamExt;
 
 pub(crate) fn sse_bytes_from_data_lines<T>(events: impl IntoIterator<Item = T>) -> Bytes
@@ -15,6 +18,7 @@ where
     )
 }
 
+#[cfg(any(feature = "openai", feature = "copilot"))]
 pub(crate) fn sse_bytes_from_json_events(events: &[serde_json::Value]) -> Bytes {
     Bytes::from(
         events
@@ -29,6 +33,7 @@ pub(crate) fn sse_bytes_from_json_events(events: &[serde_json::Value]) -> Bytes 
     )
 }
 
+#[cfg(feature = "openai")]
 pub(crate) async fn assert_zero_arg_tool_call_is_emitted(
     mut stream: streaming::StreamingCompletionResponse,
     expected_id: &str,

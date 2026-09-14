@@ -11,7 +11,7 @@ use crate::message::AssistantContent;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
 };
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use crate::streaming::{BlockClose, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
 use crate::test_utils::{RecordingHttpClient, SequencedStreamingHttpClient};
@@ -853,7 +853,7 @@ async fn responses_stream_preserves_reasoning_metadata_on_final_response() {
         if let crate::streaming::StreamEvent::Final(record) =
             item.expect("completed stream should not error")
         {
-            let response: crate::providers::openai::responses_api::streaming::StreamingCompletionResponse =
+            let response: crate::providers::openai_compatible::responses_api::streaming::StreamingCompletionResponse =
                 serde_json::from_value(record.raw).expect("raw terminal is the Responses record");
             assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
             assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());

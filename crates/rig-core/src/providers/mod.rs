@@ -1,4 +1,9 @@
-//! Provider integrations included in `rig-core`.
+//! Provider integrations available through opt-in Cargo features.
+//!
+//! Enable the feature matching each provider module you import, or explicitly
+//! select `providers-all`. No concrete provider is enabled by default.
+//! Compatible providers share protocol modules without enabling the OpenAI or
+//! Anthropic client.
 //!
 //! - Anthropic
 //! - Azure OpenAI
@@ -36,9 +41,9 @@
 //! When adding or changing a provider, verify that the integration includes:
 //!
 //! - for OpenAI-chat-compatible APIs: completions driven by
-//!   [`GenericCompletionModel`](crate::providers::openai::completion::GenericCompletionModel)
+//!   `openai_compatible::completion::GenericCompletionModel`
 //!   via an
-//!   [`OpenAICompatibleProvider`](crate::providers::openai::completion::OpenAICompatibleProvider)
+//!   `openai_compatible::completion::OpenAICompatibleProvider`
 //!   impl on the provider type (never a hand-rolled completion model,
 //!   request struct, or message conversion — dialect differences go in the
 //!   trait's hooks);
@@ -85,7 +90,7 @@
 //! use rig_core::{
 //!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
-//!     providers::openai,
+//!     providers::openai_compatible as openai,
 //! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
@@ -110,30 +115,116 @@
 //! # Ok(())
 //! # }
 //! ```
+#[cfg(feature = "anthropic")]
+#[cfg_attr(docsrs, doc(cfg(feature = "anthropic")))]
 pub mod anthropic;
+#[cfg(feature = "azure")]
+#[cfg_attr(docsrs, doc(cfg(feature = "azure")))]
 pub mod azure;
+#[cfg(feature = "chatgpt")]
+#[cfg_attr(docsrs, doc(cfg(feature = "chatgpt")))]
 pub mod chatgpt;
+#[cfg(feature = "cohere")]
+#[cfg_attr(docsrs, doc(cfg(feature = "cohere")))]
 pub mod cohere;
+#[cfg(feature = "copilot")]
+#[cfg_attr(docsrs, doc(cfg(feature = "copilot")))]
 pub mod copilot;
+#[cfg(feature = "deepseek")]
+#[cfg_attr(docsrs, doc(cfg(feature = "deepseek")))]
 pub mod deepseek;
+#[cfg(feature = "doubleword")]
+#[cfg_attr(docsrs, doc(cfg(feature = "doubleword")))]
 pub mod doubleword;
+#[cfg(feature = "gemini")]
+#[cfg_attr(docsrs, doc(cfg(feature = "gemini")))]
 pub mod gemini;
+#[cfg(feature = "groq")]
+#[cfg_attr(docsrs, doc(cfg(feature = "groq")))]
 pub mod groq;
+#[cfg(feature = "huggingface")]
+#[cfg_attr(docsrs, doc(cfg(feature = "huggingface")))]
 pub mod huggingface;
+#[cfg(feature = "hyperbolic")]
+#[cfg_attr(docsrs, doc(cfg(feature = "hyperbolic")))]
 pub mod hyperbolic;
 pub mod internal;
+#[cfg(feature = "llamacpp")]
+#[cfg_attr(docsrs, doc(cfg(feature = "llamacpp")))]
 pub mod llamacpp;
+#[cfg(feature = "minimax")]
+#[cfg_attr(docsrs, doc(cfg(feature = "minimax")))]
 pub mod minimax;
+#[cfg(feature = "mira")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mira")))]
 pub mod mira;
+#[cfg(feature = "mistral")]
+#[cfg_attr(docsrs, doc(cfg(feature = "mistral")))]
 pub mod mistral;
+#[cfg(feature = "moonshot")]
+#[cfg_attr(docsrs, doc(cfg(feature = "moonshot")))]
 pub mod moonshot;
+#[cfg(feature = "ollama")]
+#[cfg_attr(docsrs, doc(cfg(feature = "ollama")))]
 pub mod ollama;
+#[cfg(feature = "openai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "openai")))]
 pub mod openai;
+#[cfg(feature = "openrouter")]
+#[cfg_attr(docsrs, doc(cfg(feature = "openrouter")))]
 pub mod openrouter;
+#[cfg(feature = "perplexity")]
+#[cfg_attr(docsrs, doc(cfg(feature = "perplexity")))]
 pub mod perplexity;
+#[cfg(feature = "together")]
+#[cfg_attr(docsrs, doc(cfg(feature = "together")))]
 pub mod together;
+#[cfg(feature = "venice")]
+#[cfg_attr(docsrs, doc(cfg(feature = "venice")))]
 pub mod venice;
+#[cfg(feature = "voyageai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "voyageai")))]
 pub mod voyageai;
+#[cfg(feature = "xai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "xai")))]
 pub mod xai;
+#[cfg(feature = "xiaomimimo")]
+#[cfg_attr(docsrs, doc(cfg(feature = "xiaomimimo")))]
 pub mod xiaomimimo;
+#[cfg(feature = "zai")]
+#[cfg_attr(docsrs, doc(cfg(feature = "zai")))]
 pub mod zai;
+
+#[cfg(any(
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+pub mod openai_compatible;
+
+#[cfg(any(
+    feature = "anthropic",
+    feature = "minimax",
+    feature = "moonshot",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
+pub mod anthropic_compatible;

@@ -21,6 +21,7 @@ rig-agent.workspace = true
 serde_json = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt", "rt-multi-thread"] }
 
+rig-core = { path = "../rig-core", features = ["openai"] }
 [[example]]
 name = "agent_with_memory_policies"
 required-features = []

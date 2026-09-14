@@ -29,7 +29,7 @@
 
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::prelude::*;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
+use rig::providers::openai_compatible::completion::streaming::StreamingCompletionResponse;
 use rig::providers::venice::completion::VeniceParameters;
 use rig::providers::{openai, venice};
 use rig::streaming::StreamFinal;

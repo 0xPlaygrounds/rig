@@ -14,7 +14,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use super::openai;
+use super::openai_compatible as openai;
 use crate::client::{
     self, BearerAuth, HasCompletion, HasModelListing, HasTranscription, ModelTransport, Provider,
     ProviderClientResult,
@@ -189,7 +189,7 @@ pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
 pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
 
 #[cfg(test)]
-use crate::providers::openai::client::ApiResponse;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 
 fn apply_native_tools_to_additional_params(
     extra: &mut Map<String, Value>,

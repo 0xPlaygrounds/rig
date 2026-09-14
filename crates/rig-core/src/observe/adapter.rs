@@ -303,6 +303,33 @@ impl AdapterContext {
     }
 
     /// Attach observation context to a transport request without touching its payload.
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "cohere",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "gemini",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "ollama",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     pub(crate) fn attach<B>(&self, request: &mut http::Request<B>, route: &'static str) {
         request.extensions_mut().insert((self.clone(), route));
     }
@@ -402,6 +429,31 @@ pub(crate) struct AdapterAttempt {
 }
 
 impl AdapterAttempt {
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "gemini",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     pub(crate) fn text(&self, text: &str) -> String {
         scrub::text(text, &self.secrets)
     }
@@ -422,6 +474,31 @@ impl AdapterAttempt {
         }
     }
 
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "gemini",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     pub(crate) fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>) {
         if response_id.is_some() {
             self.pending_response_id = response_id;
@@ -440,6 +517,33 @@ impl AdapterAttempt {
         }
     }
 
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "cohere",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "gemini",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "ollama",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     pub(crate) fn response(&mut self, status: http::StatusCode) {
         self.response_with_headers(status, None);
     }
@@ -627,5 +731,5 @@ impl AdapterSlot {
 }
 
 mod scrub;
-#[cfg(test)]
+#[cfg(all(test, feature = "gemini"))]
 mod tests;

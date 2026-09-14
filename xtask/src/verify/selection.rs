@@ -399,6 +399,23 @@ pub(super) fn plan(
             Lanes::ALL,
         ));
     }
+    if paths.iter().any(|p| {
+        p.starts_with("crates/rig-core/")
+            || p.starts_with("crates/rig-reqwest/")
+            || p.starts_with("crates/rig-tungstenite/")
+    }) {
+        for check in all
+            .iter()
+            .filter(|c| c.id.starts_with("provider-features-") || c.id.starts_with("examples-"))
+        {
+            add(
+                &mut out,
+                all,
+                &check.id,
+                "provider/transport changes must preserve sparse features and independent examples",
+            )?;
+        }
+    }
     if paths.iter().any(|p| p != "DEVELOPING.md") {
         add(&mut out, all, "fmt", "changed files must remain formatted")?;
     }

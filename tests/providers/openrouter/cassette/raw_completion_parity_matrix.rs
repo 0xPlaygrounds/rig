@@ -32,7 +32,7 @@ use rig::completion::{
     CompletionModel, CompletionRequest, FinishReason, NormalizeCompletionResponse,
 };
 use rig::prelude::*;
-use rig::providers::openai::completion::OpenAICompatibleProvider;
+use rig::providers::openai_compatible::completion::OpenAICompatibleProvider;
 use rig::providers::openrouter;
 use serde_json::Value;
 

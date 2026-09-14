@@ -338,8 +338,44 @@ pub enum ModelListingError {
     },
 }
 
+#[cfg(any(
+    test,
+    feature = "anthropic",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 const RESPONSE_BODY_PREVIEW_LIMIT: usize = 2048;
 
+#[cfg(any(
+    test,
+    feature = "anthropic",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 fn format_response_body_preview(body: &[u8]) -> String {
     let preview_len = body.len().min(RESPONSE_BODY_PREVIEW_LIMIT);
     let preview_bytes = body.get(..preview_len).unwrap_or(body);
@@ -355,6 +391,24 @@ fn format_response_body_preview(body: &[u8]) -> String {
     preview
 }
 
+#[cfg(any(
+    test,
+    feature = "anthropic",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 fn format_response_context(
     provider: &str,
     path: &str,
@@ -391,6 +445,24 @@ impl ModelListingError {
         }
     }
 
+    #[cfg(any(
+        test,
+        feature = "anthropic",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "gemini",
+        feature = "groq",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "ollama",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "venice",
+        feature = "xiaomimimo"
+    ))]
     pub(crate) fn api_error_with_context(
         provider: &str,
         path: &str,
@@ -402,6 +474,24 @@ impl ModelListingError {
         Self::api_error(status_code, message)
     }
 
+    #[cfg(any(
+        test,
+        feature = "anthropic",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "gemini",
+        feature = "groq",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "ollama",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "venice",
+        feature = "xiaomimimo"
+    ))]
     pub(crate) fn parse_error_with_context(
         provider: &str,
         path: &str,
@@ -413,6 +503,7 @@ impl ModelListingError {
         Self::parse_error(message)
     }
 
+    #[cfg(feature = "gemini")]
     pub(crate) fn parse_error_with_details(
         provider: &str,
         path: &str,

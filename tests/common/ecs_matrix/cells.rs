@@ -76,6 +76,7 @@ pub(crate) enum ThinkingWire {
     Gemini,
     DeepSeek,
     Doubleword,
+    #[cfg(feature = "venice")]
     Venice,
 }
 
@@ -124,6 +125,7 @@ fn doubleword_thinking(on: bool) -> serde_json::Value {
     }
 }
 
+#[cfg(feature = "venice")]
 fn venice_thinking(on: bool) -> serde_json::Value {
     use rig::providers::venice::VeniceParameters;
     if on {
@@ -154,7 +156,9 @@ impl ThinkingWire {
             (Self::DeepSeek, false) => || deepseek_thinking(false),
             (Self::Doubleword, true) => || doubleword_thinking(true),
             (Self::Doubleword, false) => || doubleword_thinking(false),
+            #[cfg(feature = "venice")]
             (Self::Venice, true) => || venice_thinking(true),
+            #[cfg(feature = "venice")]
             (Self::Venice, false) => || venice_thinking(false),
         }
     }

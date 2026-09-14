@@ -63,11 +63,11 @@ impl HasEmbeddings for Doubleword {
     }
 }
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for Doubleword {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for Doubleword {
     const PROVIDER_NAME: &'static str = "doubleword";
 
-    type StreamingUsage = crate::providers::openai::Usage;
-    type Response = crate::providers::openai::CompletionResponse;
+    type StreamingUsage = crate::providers::openai_compatible::Usage;
+    type Response = crate::providers::openai_compatible::CompletionResponse;
 }
 
 #[cfg(test)]

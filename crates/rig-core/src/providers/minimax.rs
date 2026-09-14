@@ -65,7 +65,7 @@ impl_dual_dialect_provider!(
 
 impl client::HasCompletion for MiniMax {
     type Model<H>
-        = super::openai::completion::GenericCompletionModel<MiniMax, H>
+        = super::openai_compatible::completion::GenericCompletionModel<MiniMax, H>
     where
         H: client::ModelTransport;
 
@@ -73,7 +73,7 @@ impl client::HasCompletion for MiniMax {
         client: &Client<H>,
         model: String,
     ) -> Self::Model<H> {
-        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+        super::openai_compatible::completion::GenericCompletionModel::new(client.clone(), model)
     }
 }
 
@@ -101,12 +101,12 @@ crate::providers::internal::model_listing::impl_model_lister!(
     "/models"
 );
 
-impl super::openai::completion::OpenAICompatibleProvider for MiniMax {
+impl super::openai_compatible::completion::OpenAICompatibleProvider for MiniMax {
     const PROVIDER_NAME: &'static str = "minimax";
 
-    type StreamingUsage = super::openai::Usage;
+    type StreamingUsage = super::openai_compatible::Usage;
 
-    type Response = super::openai::CompletionResponse;
+    type Response = super::openai_compatible::CompletionResponse;
 }
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(

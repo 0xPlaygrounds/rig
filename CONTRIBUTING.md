@@ -51,7 +51,7 @@ integration consistent with Rig's generic client architecture and contributor
 expectations:
 
 - New OpenAI-chat-compatible providers MUST drive completions through
-  `openai::completion::GenericCompletionModel<Ext>` by implementing
+  `openai_compatible::completion::GenericCompletionModel<P>` by implementing
   `OpenAICompatibleProvider` on the provider extension (see `minimax`, `zai`,
   `groq`, or `deepseek` for the template). Wire-dialect differences belong in
   the trait's hooks (`completion_path`, `prepare_request`,
@@ -202,3 +202,13 @@ cargo test -p rig --all-features --test gemini \
   streaming_tools_smoke \
   -- --nocapture --test-threads=1
 ```
+
+### Provider feature isolation
+
+A new built-in provider must add a same-named opt-in feature to `rig-core` and
+`rig`, join their `providers-all` aggregates, and update the provider inventory
+and CI matrix in `xtask/src/verify/checks.rs` and `.github/workflows/ci.yaml`.
+Declare provider features in each example and test consumer. Shared protocol
+code must not enable a concrete provider client. Run
+`cargo xtask verify --check provider-features-<provider>` and the relevant
+independent example shards; all-feature builds cannot prove isolation.

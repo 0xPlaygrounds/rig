@@ -58,7 +58,8 @@ pub trait AnthropicCompatibleProvider: Provider {
     fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
 }
 
-impl AnthropicCompatibleProvider for super::client::Anthropic {
+#[cfg(feature = "anthropic")]
+impl AnthropicCompatibleProvider for crate::providers::anthropic::client::Anthropic {
     const PROVIDER_NAME: &'static str = "anthropic";
 
     fn default_max_tokens(model: &str) -> Option<u64> {
@@ -174,7 +175,7 @@ pub struct OutputTokensDetails {
 ///
 /// Distinguishes 1-hour cache writes (~2x base input token price) from
 /// 5-minute writes (~1.25x), which is what makes a mixed-TTL configuration
-/// (see [`CompletionModel::with_static_prefix_cache_ttl`]) observable.
+/// (see [`GenericCompletionModel::with_static_prefix_cache_ttl`]) observable.
 /// Unknown buckets a provider may add later are ignored on deserialization.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct CacheCreation {
@@ -768,7 +769,7 @@ fn extract_anthropic_doc_params(
 ///
 /// ```no_run
 /// use rig_core::completion::message::{self, AssistantContent};
-/// use rig_core::providers::anthropic::completion::anthropic_citations;
+/// use rig_core::providers::anthropic_compatible::completion::anthropic_citations;
 ///
 /// fn print_citations(content: &AssistantContent) {
 ///     if let AssistantContent::Text(text) = content
@@ -1565,8 +1566,9 @@ pub struct GenericCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> 
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "anthropic")]
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    GenericCompletionModel<super::client::Anthropic, H>;
+    GenericCompletionModel<crate::providers::anthropic::client::Anthropic, H>;
 
 impl<Ext, H> GenericCompletionModel<Ext, H> {
     /// The provider client this model sends through.
@@ -1682,7 +1684,7 @@ where
     /// Existing `cache_control` markers in provider-specific tool definitions are preserved
     /// and count toward Anthropic's request limit of 4 cache breakpoints.
     ///
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
+    /// [`with_automatic_caching`]: GenericCompletionModel::with_automatic_caching
     pub fn with_prompt_caching(mut self) -> Self {
         self.prompt_caching = true;
         self
@@ -1720,8 +1722,8 @@ where
     /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
     /// | `claude-haiku-4-5` | 4 096 |
     ///
-    /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
-    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
+    /// [`with_prompt_caching`]: GenericCompletionModel::with_prompt_caching
+    /// [`with_automatic_caching_1h`]: GenericCompletionModel::with_automatic_caching_1h
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self
@@ -1737,7 +1739,7 @@ where
     ///     .with_automatic_caching_1h();
     /// ```
     ///
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
+    /// [`with_automatic_caching`]: GenericCompletionModel::with_automatic_caching
     pub fn with_automatic_caching_1h(mut self) -> Self {
         self.automatic_caching = true;
         self.automatic_caching_ttl = Some(CacheTtl::OneHour);
@@ -1775,16 +1777,17 @@ where
     /// lengths tabulated on [`with_automatic_caching`] apply to each marker;
     /// below the minimum, Anthropic silently skips caching.
     ///
-    /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
-    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
+    /// [`with_prompt_caching`]: GenericCompletionModel::with_prompt_caching
+    /// [`with_automatic_caching`]: GenericCompletionModel::with_automatic_caching
+    /// [`with_automatic_caching_1h`]: GenericCompletionModel::with_automatic_caching_1h
     pub fn with_static_prefix_cache_ttl(mut self, ttl: CacheTtl) -> Self {
         self.static_prefix_cache_ttl = Some(ttl);
         self
     }
 }
 
-impl<H> GenericCompletionModel<super::client::Anthropic, H>
+#[cfg(feature = "anthropic")]
+impl<H> GenericCompletionModel<crate::providers::anthropic::client::Anthropic, H>
 where
     H: HttpClientExt,
 {
@@ -1902,6 +1905,7 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 /// Strict tools support optional parameters, so declared `required` lists are
 /// preserved. Unsupported validation keywords are moved into descriptions as
 /// model guidance instead of reaching the constrained-decoding compiler.
+#[cfg(feature = "anthropic")]
 fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
@@ -1925,6 +1929,7 @@ fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
 /// Anthropic rejects `allOf` at the top level of a tool input even when every
 /// branch describes an object. Merge those object branches into the root while
 /// preserving per-property collisions as nested `allOf` constraints.
+#[cfg(feature = "anthropic")]
 fn flatten_root_all_of(schema: &mut serde_json::Value) {
     use serde_json::{Map, Value};
 
@@ -1948,6 +1953,7 @@ fn flatten_root_all_of(schema: &mut serde_json::Value) {
 /// `type` beside `$ref`. Resolve local root references before transformation so
 /// both requirements can be met while retaining definitions needed by nested
 /// references.
+#[cfg(feature = "anthropic")]
 fn inline_local_root_reference(schema: &mut serde_json::Value) {
     use serde_json::Value;
 
@@ -1989,6 +1995,7 @@ fn inline_local_root_reference(schema: &mut serde_json::Value) {
     }
 }
 
+#[cfg(feature = "anthropic")]
 fn merge_document_definitions(
     root_definitions: serde_json::Value,
     local_definitions: Option<serde_json::Value>,
@@ -2010,6 +2017,7 @@ fn merge_document_definitions(
 /// Merge keywords adjacent to a root `$ref` into its resolved object. JSON
 /// Schema applies those siblings conjunctively; simply replacing the root with
 /// the referenced object would silently discard valid constraints.
+#[cfg(feature = "anthropic")]
 fn merge_root_reference_siblings(
     referenced: &mut serde_json::Map<String, serde_json::Value>,
     siblings: serde_json::Map<String, serde_json::Value>,
@@ -2058,6 +2066,7 @@ fn merge_root_reference_siblings(
     }
 }
 
+#[cfg(feature = "anthropic")]
 fn merge_root_all_of(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2100,6 +2109,7 @@ fn merge_root_all_of(
     }
 }
 
+#[cfg(feature = "anthropic")]
 fn merge_schema_properties(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2138,6 +2148,7 @@ fn merge_schema_properties(
     }
 }
 
+#[cfg(feature = "anthropic")]
 fn merge_required_properties(
     schema: &mut serde_json::Map<String, serde_json::Value>,
     sibling: serde_json::Value,
@@ -2161,6 +2172,7 @@ fn merge_required_properties(
     }
 }
 
+#[cfg(feature = "anthropic")]
 fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value {
     use serde_json::{Map, Value};
 
@@ -2317,6 +2329,7 @@ fn transform_strict_tool_schema(schema: serde_json::Value) -> serde_json::Value 
     Value::Object(strict)
 }
 
+#[cfg(feature = "anthropic")]
 fn schema_has_type(schema_type: Option<&serde_json::Value>, expected: &str) -> bool {
     match schema_type {
         Some(serde_json::Value::String(schema_type)) => schema_type == expected,
@@ -2934,11 +2947,12 @@ impl AnthropicCompletionRequest {
     }
 }
 
+#[cfg(feature = "anthropic")]
 impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
-        Self::try_from_params::<super::client::Anthropic>(params, false)
+        Self::try_from_params::<crate::providers::anthropic::client::Anthropic>(params, false)
     }
 }
 
@@ -3127,4 +3141,5 @@ impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T
 }
 
 #[cfg(test)]
+#[cfg(feature = "anthropic")]
 mod tests;

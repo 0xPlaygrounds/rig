@@ -281,3 +281,35 @@ jobs:
         env:
           CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER: wasm-bindgen-test-runner
         run: cargo xtask verify --check wasm-rig-ecs-run_wasm
+
+  provider-features:
+    name: stable / ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [provider-features-none, provider-features-all, provider-features-anthropic, provider-features-azure, provider-features-chatgpt, provider-features-cohere, provider-features-copilot, provider-features-deepseek, provider-features-doubleword, provider-features-gemini, provider-features-groq, provider-features-huggingface, provider-features-hyperbolic, provider-features-llamacpp, provider-features-minimax, provider-features-mira, provider-features-mistral, provider-features-moonshot, provider-features-ollama, provider-features-openai, provider-features-openrouter, provider-features-perplexity, provider-features-together, provider-features-venice, provider-features-voyageai, provider-features-xai, provider-features-xiaomimimo, provider-features-zai]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo xtask verify --check ${{ matrix.check }}
+
+  independent-examples:
+    name: stable / ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [examples-0, examples-1, examples-2, examples-3]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          protoc: 'true'
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
+      - run: cargo xtask verify --check ${{ matrix.check }}

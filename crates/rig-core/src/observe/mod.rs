@@ -49,6 +49,31 @@ pub use adapter::{
     AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, diagnostic_url_secrets,
     scrub_diagnostic,
 };
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) use adapter::{AdapterAttempt, PayloadObserver};
 
 #[cfg(test)]

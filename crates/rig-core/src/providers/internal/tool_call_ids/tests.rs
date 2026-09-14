@@ -35,6 +35,14 @@ fn explicit(id: &str) -> ToolCallId {
     ToolCallId::new(id).unwrap()
 }
 
+#[cfg(any(
+    feature = "openai",
+    feature = "anthropic",
+    feature = "openrouter",
+    feature = "gemini",
+    feature = "cohere",
+    feature = "xai"
+))]
 pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
     let id = ToolCallId::minted(0);
     let real = id.wire_hint().into_owned();
@@ -61,6 +69,14 @@ pub(crate) fn adapter_request() -> crate::completion::CompletionRequest {
     }
 }
 
+#[cfg(any(
+    feature = "openai",
+    feature = "anthropic",
+    feature = "openrouter",
+    feature = "gemini",
+    feature = "cohere",
+    feature = "xai"
+))]
 pub(crate) fn assert_adapter_pairs(wire: serde_json::Value) {
     fn visit(value: &serde_json::Value, calls: &mut Vec<String>, results: &mut Vec<String>) {
         match value {
@@ -124,6 +140,14 @@ pub(crate) fn assert_adapter_pairs(wire: serde_json::Value) {
     assert_eq!(calls.iter().collect::<HashSet<_>>().len(), 3, "{wire}");
 }
 
+#[cfg(any(
+    feature = "openai",
+    feature = "anthropic",
+    feature = "openrouter",
+    feature = "gemini",
+    feature = "cohere",
+    feature = "xai"
+))]
 pub(crate) fn adapter_requests() -> Vec<crate::completion::CompletionRequest> {
     let full = adapter_request();
     let mut call_only = full.clone();

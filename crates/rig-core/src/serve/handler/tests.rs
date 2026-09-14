@@ -444,6 +444,7 @@ impl Observe for ProviderObserver {
 }
 
 #[tokio::test]
+#[cfg(feature = "gemini")]
 async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins() {
     use crate::{
         client::CompletionClient,

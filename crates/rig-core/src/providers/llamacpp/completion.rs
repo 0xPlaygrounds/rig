@@ -5,7 +5,7 @@
 //! dialect is declared by the `OpenAICompatibleProvider` impl on
 //! [`Llamacpp`](super::client::Llamacpp) in `client.rs`.
 
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use serde::{Deserialize, Serialize};
 
 // ================================================================
@@ -80,7 +80,7 @@ pub struct Timings {
 /// `StreamingCompletionChunk` does carry a `#[serde(flatten)]` catch-all for
 /// exactly this reason. Preserving it here removes that asymmetry for
 /// llama.cpp and follows the precedent
-/// [`deepseek`](crate::providers::deepseek) and [`mira`](crate::providers::mira)
+/// `deepseek` and `mira`
 /// set: a provider that adds fields to the wire declares its own response type
 /// rather than pretending the OpenAI one describes it.
 ///

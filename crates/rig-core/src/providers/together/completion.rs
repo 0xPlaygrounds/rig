@@ -3,7 +3,7 @@
 //! From [Together AI Reference](https://docs.together.ai/docs/chat-overview)
 // ================================================================
 
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 use super::client::Together;
 

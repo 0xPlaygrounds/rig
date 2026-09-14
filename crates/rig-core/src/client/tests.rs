@@ -1,6 +1,7 @@
 use super::*;
 use crate::completion::{CompletionError, CompletionModel, CompletionRequest, CompletionResponse};
 use crate::markers::Missing;
+#[cfg(feature = "anthropic")]
 use crate::providers::anthropic;
 use crate::streaming::StreamingCompletionResponse;
 use crate::test_utils::RecordingHttpClient;
@@ -8,6 +9,7 @@ use crate::test_utils::RecordingHttpClient;
 /// Type-level test that `Client::builder()` methods do not require annotation to determine
 /// backig HTTP client
 #[test]
+#[cfg(feature = "anthropic")]
 fn ensures_client_builder_no_annotation() {
     let http_client = RecordingHttpClient::new("");
     let _ = anthropic::Client::builder()
@@ -121,6 +123,7 @@ fn missing_api_key_is_a_build_error() {
 }
 
 #[test]
+#[cfg(feature = "ollama")]
 fn nothing_keyed_provider_builds_without_a_key() {
     let client = crate::providers::ollama::Client::builder()
         .http_client(RecordingHttpClient::new(""))

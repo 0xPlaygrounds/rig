@@ -538,6 +538,7 @@ fn rig_tools_are_non_strict_by_default() {
     );
 }
 
+#[cfg(feature = "minimax")]
 #[test]
 fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     let mut additional_params = serde_json::Value::Null;

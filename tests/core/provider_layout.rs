@@ -264,7 +264,12 @@ const PROVIDER_WIRES: &[(&str, WireCoverage)] = &[
 ];
 
 /// Module names under `providers/` that are not providers.
-const NON_PROVIDER_MODULES: &[&str] = &["mod", "internal"];
+const NON_PROVIDER_MODULES: &[&str] = &[
+    "mod",
+    "internal",
+    "openai_compatible",
+    "anthropic_compatible",
+];
 
 /// Every provider module name under `crates/rig-core/src/providers/`, plus
 /// every `crates/rig-*` package directory — discovered from the tree, never

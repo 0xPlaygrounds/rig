@@ -34,7 +34,7 @@ use crate::client::{
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::transcription::OpenAiTranscriptionClient;
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 // ================================================================
 // Main Azure OpenAI Client
 // ================================================================
@@ -402,7 +402,7 @@ pub const GPT_35_TURBO_16K: &str = "gpt-3.5-turbo-16k";
 
 /// Azure OpenAI completion model, driven by the shared OpenAI Chat Completions
 /// path. The deployment-scoped URL (including `api-version`) is produced by
-/// [`completion_path`](crate::providers::openai::completion::OpenAICompatibleProvider::completion_path)
+/// [`completion_path`](crate::providers::openai_compatible::completion::OpenAICompatibleProvider::completion_path)
 /// on [`Azure`], pinned to the deployment this model handle was created
 /// with (a per-request `model` override changes only the request body, as
 /// before the migration).
@@ -467,7 +467,7 @@ mod image_generation {
     use crate::providers::internal::image_generation::{
         GenericImageGenerationModel, JsonImageGenerationProvider,
     };
-    use crate::providers::openai::ImageGenerationResponse;
+    use crate::providers::openai_compatible::ImageGenerationResponse;
     use serde_json::json;
 
     /// Azure OpenAI image generation model; `model` identifies the deployment.

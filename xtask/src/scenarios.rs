@@ -153,7 +153,7 @@ fn validate(
         {
             if row.get("ecs").is_some_and(|v| !v.is_null()) {
                 return Err(invalid(format!(
-                    "original scenario is not compiled: {id}; regenerate the full rig listing with --features bedrock"
+                    "original scenario is not compiled: {id}; regenerate the full rig listing with --features bedrock,providers-all"
                 )));
             }
             unlisted_unmapped += 1;

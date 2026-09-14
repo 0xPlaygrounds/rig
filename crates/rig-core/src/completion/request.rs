@@ -129,6 +129,32 @@ impl CompletionError {
     /// Maps an SSE transport error like every other transport error: the
     /// provider's reply becomes [`Self::ProviderResponse`], a response-less
     /// failure stays [`Self::HttpError`] with its own retryability.
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "cohere",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "gemini",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     pub(crate) fn from_stream_transport(error: http_client::Error) -> Self {
         Self::from_transport_error(error)
     }
@@ -1008,6 +1034,33 @@ impl CompletionRequest {
         crate::message::non_empty(messages).map(|content| Message::User { content })
     }
 
+    #[cfg(any(
+        test,
+        feature = "anthropic",
+        feature = "azure",
+        feature = "chatgpt",
+        feature = "copilot",
+        feature = "deepseek",
+        feature = "doubleword",
+        feature = "gemini",
+        feature = "groq",
+        feature = "huggingface",
+        feature = "hyperbolic",
+        feature = "llamacpp",
+        feature = "minimax",
+        feature = "mira",
+        feature = "mistral",
+        feature = "moonshot",
+        feature = "ollama",
+        feature = "openai",
+        feature = "openrouter",
+        feature = "perplexity",
+        feature = "together",
+        feature = "venice",
+        feature = "xai",
+        feature = "xiaomimimo",
+        feature = "zai"
+    ))]
     pub(crate) fn chat_history_with_documents(&self) -> Vec<Message> {
         let mut chat_history = self.chat_history.clone();
         if let Some(documents) = self.normalized_documents() {

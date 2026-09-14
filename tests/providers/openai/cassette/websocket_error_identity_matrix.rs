@@ -42,7 +42,7 @@
 //!   every non-`Http` variant except `Tls`, whose inner error cannot be
 //!   constructed portably in a test.
 //! - `websocket_provider_error_*` in
-//!   `crates/rig-core/src/providers/openai/responses_api/websocket.rs` covers
+//!   `crates/rig-core/src/providers/openai_compatible/responses_api/websocket.rs` covers
 //!   the provider half — body present/absent, request id present/absent/empty,
 //!   the rejection's headers present/absent, and nine status classes including
 //!   2xx and 3xx.

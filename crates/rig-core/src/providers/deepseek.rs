@@ -19,7 +19,7 @@ use crate::client::{
     ProviderClientResult,
 };
 use crate::http_client::{self, HttpClientExt};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use crate::telemetry::ProviderResponseExt;
 use crate::{
     completion::{self, CompletionError},

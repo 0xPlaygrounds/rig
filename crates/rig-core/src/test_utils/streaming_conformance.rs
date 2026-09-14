@@ -1779,9 +1779,32 @@ fn assert_reasoning_tool_reasoning(
 /// Per-provider wire fixtures for the shared scenario set.
 pub mod fixtures {
     use super::*;
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "chatgpt",
+        feature = "cohere",
+        feature = "gemini",
+        feature = "ollama",
+        feature = "openai"
+    ))]
     use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "cohere",
+        feature = "gemini",
+        feature = "ollama",
+        feature = "openai"
+    ))]
     use crate::test_utils::SequencedStreamingHttpClient;
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "chatgpt",
+        feature = "cohere",
+        feature = "gemini",
+        feature = "ollama",
+        feature = "openai"
+    ))]
     use serde_json::json;
 
     /// Drain a full normalized stream into everything the consumer observed.
@@ -1853,6 +1876,13 @@ pub mod fixtures {
     /// Lower fixture frames onto the byte transport a `SequencedStreamingHttpClient`
     /// replays. Only byte frames are valid here — an event frame in a
     /// byte-driver fixture is a fixture authoring error.
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "cohere",
+        feature = "gemini",
+        feature = "ollama",
+        feature = "openai"
+    ))]
     fn byte_chunks(chunks: WireChunks) -> Result<Vec<http_client::Result<Bytes>>, CompletionError> {
         chunks
             .into_iter()
@@ -1866,20 +1896,35 @@ pub mod fixtures {
             .collect()
     }
 
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "chatgpt",
+        feature = "cohere",
+        feature = "gemini",
+        feature = "openai"
+    ))]
     fn sse(frame: &serde_json::Value) -> WireInput {
         WireInput::Bytes(Bytes::from(format!("data: {frame}\n\n")))
     }
 
+    #[cfg(any(
+        feature = "anthropic",
+        feature = "cohere",
+        feature = "gemini",
+        feature = "openai"
+    ))]
     fn sse_raw(data: &str) -> WireInput {
         WireInput::Bytes(Bytes::from(format!("data: {data}\n\n")))
     }
 
+    #[cfg(feature = "ollama")]
     fn ndjson(frame: &serde_json::Value) -> WireInput {
         WireInput::Bytes(Bytes::from(format!("{frame}\n")))
     }
 
     /// The frame's SSE text, for buffered-body pipelines that re-parse a
     /// whole body string.
+    #[cfg(any(feature = "openai", feature = "chatgpt"))]
     fn frame_text(frame: &WireInput) -> String {
         frame
             .as_bytes()
@@ -1888,6 +1933,7 @@ pub mod fixtures {
     }
 
     /// OpenAI chat-completions wire (the shared OpenAI-compatible SSE path).
+    #[cfg(feature = "openai")]
     pub mod openai_chat {
         use super::*;
 
@@ -1995,10 +2041,12 @@ pub mod fixtures {
     }
 
     /// OpenAI Responses API wire.
+    #[cfg(any(feature = "openai", feature = "chatgpt"))]
     pub mod openai_responses {
         use super::*;
 
         /// The driver alone, for the reasoning-specific scenarios.
+        #[cfg(feature = "openai")]
         pub fn driver() -> WireDriver {
             WireDriver::new("openai", |chunks| {
                 Box::pin(async move {
@@ -2178,6 +2226,7 @@ pub mod fixtures {
         }
 
         /// The Responses-API fixture.
+        #[cfg(feature = "openai")]
         pub fn fixture() -> ProviderWireFixture {
             ProviderWireFixture {
                 driver: driver(),
@@ -2254,6 +2303,7 @@ pub mod fixtures {
         /// with the scripted SSE body — so the scenario exercises
         /// `normalized_completion` itself rather than a mirrored copy of its
         /// fallback logic (#2258 review, F8 drift risk).
+        #[cfg(feature = "chatgpt")]
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
@@ -2395,6 +2445,7 @@ pub mod fixtures {
     }
 
     /// Gemini REST (`streamGenerateContent`) SSE wire.
+    #[cfg(feature = "gemini")]
     pub mod gemini_rest {
         use super::*;
 
@@ -2533,6 +2584,7 @@ pub mod fixtures {
     }
 
     /// Gemini Interactions SSE wire (`event_type`-tagged events).
+    #[cfg(feature = "gemini")]
     pub mod interactions {
         use super::*;
 
@@ -2662,6 +2714,7 @@ pub mod fixtures {
     }
 
     /// Anthropic Messages SSE wire (`type`-tagged events, index-as-id blocks).
+    #[cfg(feature = "anthropic")]
     pub mod anthropic {
         use super::*;
 
@@ -2784,6 +2837,7 @@ pub mod fixtures {
     }
 
     /// Cohere v2 chat SSE wire.
+    #[cfg(feature = "cohere")]
     pub mod cohere {
         use super::*;
 
@@ -2901,6 +2955,7 @@ pub mod fixtures {
     }
 
     /// Ollama `/api/chat` NDJSON wire.
+    #[cfg(feature = "ollama")]
     pub mod ollama {
         use super::*;
 

@@ -355,3 +355,12 @@ that original answer (including one awaiting a layer verdict) without claiming
 that the consumer received it. Policy replay must reproduce the cancellation;
 exchange replay returns cancellation and leaves undelivered terminal items hidden.
 Ordinary cancellation without an observed answer retains its existing encoding.
+
+### Provider bindings
+
+Binding data can describe every supported provider even when its client is
+not compiled. Enable the `anthropic`, `deepseek`, `gemini`, or `openai` feature
+on `rig-ecs` to materialize that provider's bindings. No provider is enabled
+by default. Materializing a disabled provider returns
+`MaterializeError::ProviderDisabled` before resolving credentials or creating
+a transport; existing serialized bindings remain readable.

@@ -71,7 +71,7 @@ pub(crate) enum CacheAccounting {
     ///
     /// Anthropic: `anthropic_usage_totals` computes
     /// `total = input + cached + cache_creation + output`
-    /// (`crates/rig-core/src/providers/anthropic/completion.rs`, and the doc
+    /// (`crates/rig-core/src/providers/anthropic_compatible/completion.rs`, and the doc
     /// comment above it says so explicitly).
     Alongside,
     /// `cached_input_tokens` is a *subset* of `input_tokens`, so the prompt
@@ -79,7 +79,7 @@ pub(crate) enum CacheAccounting {
     ///
     /// * OpenAI chat completions: `prompt_tokens_details.cached_tokens` is a
     ///   breakdown of `prompt_tokens`
-    ///   (`crates/rig-core/src/providers/openai/completion/mod.rs`, normalized
+    ///   (`crates/rig-core/src/providers/openai_compatible/completion/mod.rs`, normalized
     ///   through `providers::internal::completion_usage`).
     /// * OpenAI Responses: `input_tokens_details.cached_tokens` inside
     ///   `input_tokens` (`.../openai/responses_api/mod.rs`).
@@ -446,7 +446,7 @@ where
 /// accumulator has to carry them forward to the final response. Cache usage
 /// being dropped or overwritten specifically on the streaming path is a real bug
 /// class — see the carry-forward logic in
-/// `crates/rig-core/src/providers/anthropic/streaming.rs` — and only a streamed
+/// `crates/rig-core/src/providers/anthropic_compatible/streaming.rs` — and only a streamed
 /// probe can see it.
 pub(crate) async fn run_cache_probe_streaming<M>(model: &M, probe: &CacheProbe) -> CacheObservation
 where

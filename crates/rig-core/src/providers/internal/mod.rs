@@ -9,26 +9,204 @@
 //! crate-private.
 
 pub mod adapter;
+#[cfg(any(
+    feature = "minimax",
+    feature = "moonshot",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) mod anthropic_compatible;
 #[cfg(feature = "audio")]
+#[cfg(any(
+    feature = "azure",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xai"
+))]
 pub(crate) mod audio_generation;
+#[cfg(any(feature = "chatgpt", feature = "copilot"))]
 pub(crate) mod auth;
 pub mod chunk_lifecycle;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "cohere",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) mod completion_send;
 #[cfg(not(target_family = "wasm"))]
+#[cfg(any(feature = "chatgpt", feature = "copilot"))]
 pub(crate) mod device_auth;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "cohere",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "voyageai",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) mod envelope;
 #[cfg(feature = "image")]
+#[cfg(any(
+    feature = "azure",
+    feature = "hyperbolic",
+    feature = "openai",
+    feature = "venice",
+    feature = "xai"
+))]
 pub(crate) mod image_generation;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "groq",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice",
+    feature = "xiaomimimo"
+))]
 pub(crate) mod model_listing;
+#[cfg(any(
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) mod openai_chat_completions_compatible;
+#[cfg(feature = "llamacpp")]
 pub(crate) mod rerank;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) mod schema;
 #[cfg(any(test, debug_assertions))]
 pub(crate) mod sequence_law;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "cohere",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) mod sse_transport;
 pub mod tool_call_bridge;
 pub mod tool_call_ids;
+#[cfg(any(
+    feature = "azure",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "mistral",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice"
+))]
 pub(crate) mod transcription;
 pub mod wire;
 
@@ -146,6 +324,30 @@ pub fn trace_json(target: LogTarget, label: &str, value: &impl serde::Serialize)
     }
 }
 
+#[cfg(any(
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) fn completion_usage(
     input_tokens: u64,
     output_tokens: u64,
@@ -166,12 +368,48 @@ pub(crate) fn completion_usage(
 #[cfg(test)]
 mod tests;
 
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "openai",
+        feature = "openrouter",
+        feature = "anthropic",
+        feature = "cohere",
+        feature = "gemini"
+    )
+))]
 mod tool_call_id_tests;
 
 /// Reads the provider's transport request id off a response's headers, when
 /// the provider names such a header and the response carries a non-empty
 /// value. `None` is the documented "not reported" outcome.
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "cohere",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) fn request_id_from_headers(
     headers: &http::HeaderMap,
     request_id_header: Option<&str>,
