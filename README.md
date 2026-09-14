@@ -115,9 +115,21 @@ Use the root `rig` facade when you want feature-gated access to companion crates
 or use `rig-core` directly when you only need the core provider abstractions.
 
 ```bash
-cargo add rig
-# or: cargo add rig-core
+cargo add rig --features openai
+# or: cargo add rig-core --features openai
 ```
+
+Built-in providers are opt-in Cargo features named after their modules. Enable
+only those your application uses:
+
+```toml
+rig = { version = "0.42", features = ["gemini"] }
+```
+
+Default builds include the runtime and HTTP transport conveniences but no
+concrete provider. `providers-all` explicitly enables every built-in provider;
+it does not enable optional companion integrations. Provider selection is
+independent of `agent`, `reqwest`, `audio`, `image`, and `websocket`.
 
 ### Simple example
 ```rust
@@ -153,7 +165,7 @@ You can find more examples in each crate's `examples` directory (for example, [`
 The root `rig` facade exposes companion crates behind one feature per integration:
 
 ```toml
-rig = { version = "0.36.0", features = ["lancedb", "fastembed"] }
+rig = { version = "0.42", features = ["lancedb", "fastembed"] }
 ```
 
 | Integration | Crate | Feature | Module path |

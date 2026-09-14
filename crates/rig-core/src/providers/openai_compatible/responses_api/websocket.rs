@@ -16,7 +16,7 @@ use crate::completion::{self, CompletionError};
 use crate::http_client::{self, HttpClientExt, NoBody};
 use crate::providers::internal::adapter::{AdapterOutput, TriagedFrame, triage_frame};
 use crate::providers::openai::Client as OpenAIClient;
-use crate::providers::openai::responses_api::streaming::{
+use crate::providers::openai_compatible::responses_api::streaming::{
     ItemChunk, RawChoiceAccumulator, ResponseChunk, ResponseChunkKind, ResponsesStreamOptions,
     StreamingCompletionChunk, classify_responses_frame, completion_response_from_stream_events,
 };
@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::time::Duration;
 
-use crate::providers::openai::responses_api::{
+use crate::providers::openai_compatible::responses_api::{
     CompletionResponse, ResponseStatus, ResponsesCompletionModel, ResponsesUsage,
 };
 
@@ -39,10 +39,10 @@ const WEBSOCKET_PATH: &str = "responses";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The transport request-id header this endpoint reports, shared with the
-/// HTTP twins through [`ResponsesProviderExt::REQUEST_ID_HEADER`](crate::providers::openai::responses_api::ResponsesProviderExt::REQUEST_ID_HEADER) — the
+/// HTTP twins through [`ResponsesProviderExt::REQUEST_ID_HEADER`](crate::providers::openai_compatible::responses_api::ResponsesProviderExt::REQUEST_ID_HEADER) — the
 /// websocket upgrade is answered by the same service and reports the same id.
 const REQUEST_ID_HEADER: Option<&'static str> =
-    <crate::providers::openai::OpenAIResponses as crate::providers::openai::responses_api::ResponsesProviderExt>::REQUEST_ID_HEADER;
+    <crate::providers::openai_compatible::OpenAIResponses as crate::providers::openai_compatible::responses_api::ResponsesProviderExt>::REQUEST_ID_HEADER;
 
 /// Options for a `response.create` message sent over OpenAI WebSocket mode.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -69,7 +69,7 @@ struct ResponsesWebSocketClientEvent {
     #[serde(rename = "type")]
     kind: ResponsesWebSocketClientEventKind,
     #[serde(flatten)]
-    request: crate::providers::openai::responses_api::CompletionRequest,
+    request: crate::providers::openai_compatible::responses_api::CompletionRequest,
     #[serde(skip_serializing_if = "Option::is_none")]
     generate: Option<bool>,
 }
@@ -532,7 +532,10 @@ where
     fn prepare_request(
         &self,
         completion_request: crate::completion::CompletionRequest,
-    ) -> Result<crate::providers::openai::responses_api::CompletionRequest, CompletionError> {
+    ) -> Result<
+        crate::providers::openai_compatible::responses_api::CompletionRequest,
+        CompletionError,
+    > {
         let mut request = self.model.create_completion_request(completion_request)?;
 
         // WebSocket mode is always event-driven, so these HTTP/SSE-specific flags
@@ -1007,5 +1010,6 @@ const _: fn() = || {
 };
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 #[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
 mod tests;

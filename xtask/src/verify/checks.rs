@@ -39,6 +39,35 @@ fn check(id: &str, steps: Vec<Step>) -> Check {
         reason: String::new(),
     }
 }
+pub(super) const BUILTIN_PROVIDERS: &[&str] = &[
+    "anthropic",
+    "azure",
+    "chatgpt",
+    "cohere",
+    "copilot",
+    "deepseek",
+    "doubleword",
+    "gemini",
+    "groq",
+    "huggingface",
+    "hyperbolic",
+    "llamacpp",
+    "minimax",
+    "mira",
+    "mistral",
+    "moonshot",
+    "ollama",
+    "openai",
+    "openrouter",
+    "perplexity",
+    "together",
+    "venice",
+    "voyageai",
+    "xai",
+    "xiaomimimo",
+    "zai",
+];
+
 pub(super) fn all() -> Vec<Check> {
     let mut checks = vec![
         check("fmt", vec![cargo(&["fmt", "--all", "--", "--check"])]),
@@ -113,7 +142,7 @@ pub(super) fn all() -> Vec<Check> {
                 "run",
                 "--locked",
                 "--features",
-                "bedrock",
+                "bedrock,providers-all",
                 "--retries",
                 "2",
                 "-E",
@@ -138,7 +167,7 @@ pub(super) fn all() -> Vec<Check> {
                     "-p",
                     "rig",
                     "--features",
-                    "bedrock",
+                    "bedrock,providers-all",
                     // The same retries as `test`: a divergence or a stale
                     // golden is deterministic and fails every attempt, while
                     // a handful of cells carry wall-clock deadlines (a 30 s
@@ -173,7 +202,7 @@ pub(super) fn all() -> Vec<Check> {
                     "list",
                     "--locked",
                     "--features",
-                    "bedrock",
+                    "bedrock,providers-all",
                     "--message-format",
                     "json",
                 ],
@@ -327,6 +356,136 @@ pub(super) fn all() -> Vec<Check> {
             ],
         ),
     ];
+    for mode in std::iter::once("none")
+        .chain(std::iter::once("all"))
+        .chain(BUILTIN_PROVIDERS.iter().copied())
+    {
+        let features = match mode {
+            "none" => "audio,image".to_owned(),
+            "all" => "providers-all,audio,image".to_owned(),
+            provider => format!("{provider},audio,image"),
+        };
+        let mut steps = vec![
+            cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "rig-core",
+                "--no-default-features",
+                "--all-targets",
+                "--features",
+                &features,
+            ]),
+            cargo(&[
+                "doc",
+                "--locked",
+                "-p",
+                "rig-core",
+                "--no-default-features",
+                "--no-deps",
+                "--features",
+                &features,
+            ])
+            .env("RUSTDOCFLAGS", "-D warnings"),
+            cargo(&[
+                "test",
+                "--locked",
+                "-p",
+                "rig-core",
+                "--no-default-features",
+                "--doc",
+                "--features",
+                &features,
+            ]),
+            cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "rig",
+                "--tests",
+                "--features",
+                &features,
+            ]),
+            Step::new("@provider-features", &[mode]),
+        ];
+        if mode == "none" {
+            steps.extend([
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-tungstenite",
+                    "--no-default-features",
+                    "--all-targets",
+                ]),
+                cargo(&[
+                    "doc",
+                    "--locked",
+                    "-p",
+                    "rig-tungstenite",
+                    "--no-default-features",
+                    "--no-deps",
+                ])
+                .env("RUSTDOCFLAGS", "-D warnings"),
+                cargo(&[
+                    "doc",
+                    "--locked",
+                    "-p",
+                    "rig-reqwest",
+                    "--no-default-features",
+                    "--no-deps",
+                ])
+                .env("RUSTDOCFLAGS", "-D warnings"),
+                cargo(&[
+                    "test",
+                    "--locked",
+                    "-p",
+                    "rig-reqwest",
+                    "--no-default-features",
+                    "--doc",
+                ]),
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig",
+                    "--tests",
+                    "--features",
+                    "gemini,minimax",
+                ]),
+            ]);
+        }
+        if mode == "openai" {
+            steps.extend([
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-tungstenite",
+                    "--all-targets",
+                    "--features",
+                    "openai",
+                ]),
+                cargo(&[
+                    "doc",
+                    "--locked",
+                    "-p",
+                    "rig-tungstenite",
+                    "--no-deps",
+                    "--features",
+                    "openai",
+                ])
+                .env("RUSTDOCFLAGS", "-D warnings"),
+            ]);
+        }
+        checks.push(check(&format!("provider-features-{mode}"), steps));
+    }
+    for shard in 0..4 {
+        checks.push(check(
+            &format!("examples-{shard}"),
+            vec![Step::new("@examples", &[&shard.to_string()])],
+        ));
+    }
     for package in [
         "rig-core",
         "rig-effect-log",
@@ -361,6 +520,18 @@ pub(super) fn all() -> Vec<Check> {
                 package,
                 "--no-default-features",
                 "--lib",
+                "--target",
+                "wasm32-unknown-unknown",
+            ]));
+        }
+        if package == "rig" {
+            steps.push(cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "rig",
+                "--features",
+                "providers-all,websocket",
                 "--target",
                 "wasm32-unknown-unknown",
             ]));

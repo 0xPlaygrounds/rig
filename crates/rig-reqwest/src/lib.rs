@@ -18,7 +18,7 @@
 //!
 //! - [`ReqwestClient`], a newtype over [`reqwest::Client`] implementing
 //!   [`HttpClientExt`] (and, behind the `reqwest-middleware` feature,
-//!   [`ReqwestMiddlewareClient`] over `reqwest_middleware::ClientWithMiddleware`).
+//!   `ReqwestMiddlewareClient` over `reqwest_middleware::ClientWithMiddleware`).
 //! - The construction conveniences the `rig` facade re-exports:
 //!   [`client::DefaultTransportClient`] / [`client::DefaultTransportBuilder`],
 //!   which build the erased default over a `ReqwestClient` so

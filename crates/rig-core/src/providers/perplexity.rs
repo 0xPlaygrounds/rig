@@ -15,7 +15,7 @@ use crate::client::BearerAuth;
 use crate::client::{self, HasCompletion, ModelTransport, Provider, ProviderClientResult};
 use crate::completion::CompletionError;
 use crate::http_client::{self, HttpClientExt};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 // ================================================================
 // Main Perplexity Client

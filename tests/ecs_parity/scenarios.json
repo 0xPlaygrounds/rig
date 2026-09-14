@@ -3,9 +3,10 @@
   "configurations": {
     "root-bedrock": {
       "features": [
-        "bedrock"
+        "bedrock",
+        "providers-all"
       ],
-      "listing_command": "cargo nextest list --locked -p rig --features bedrock --message-format json",
+      "listing_command": "cargo nextest list --locked -p rig --features bedrock,providers-all --message-format json",
       "package": "rig"
     }
   },

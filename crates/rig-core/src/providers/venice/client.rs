@@ -129,10 +129,10 @@ impl HasAudioGeneration for Venice {
     }
 }
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for Venice {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for Venice {
     const PROVIDER_NAME: &'static str = "venice";
 
-    type StreamingUsage = crate::providers::openai::Usage;
+    type StreamingUsage = crate::providers::openai_compatible::Usage;
 
     // Venice echoes its resolved `venice_parameters` block (including web
     // search citations) and a per-request `cost` alongside the OpenAI-shaped

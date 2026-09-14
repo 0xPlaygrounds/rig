@@ -91,7 +91,7 @@ impl HasModelListing for Mistral {
     }
 }
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for Mistral {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for Mistral {
     const PROVIDER_NAME: &'static str = "mistral";
 
     /// Mistral labels its transport request id `mistral-correlation-id`, and

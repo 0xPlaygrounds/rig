@@ -26,7 +26,7 @@ use crate::client;
 use crate::providers::internal::anthropic_compatible::{
     AnthropicBaseUrl, impl_dual_dialect_provider,
 };
-use crate::{completion::CompletionError, providers::openai};
+use crate::{completion::CompletionError, providers::openai_compatible as openai};
 
 // ================================================================
 // Main Moonshot Client

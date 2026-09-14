@@ -2035,7 +2035,7 @@ async fn id_less_encrypted_detail_does_not_replace_open_reasoning_text() {
 /// a null wire id rather than an empty string.
 #[test]
 fn id_less_encrypted_reasoning_replays_with_a_null_wire_id() {
-    use crate::providers::openai::completion::OpenAICompatibleProvider as _;
+    use crate::providers::openai_compatible::completion::OpenAICompatibleProvider as _;
 
     let detail = json!({
         "type": "reasoning.encrypted",

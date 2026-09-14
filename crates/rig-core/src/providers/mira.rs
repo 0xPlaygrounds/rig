@@ -73,13 +73,13 @@ crate::providers::internal::model_listing::impl_model_lister!(
     "/v1/models"
 );
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for Mira {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for Mira {
     const PROVIDER_NAME: &'static str = "mira";
 
     // Mira's gateway rejects tool parameters.
     const SUPPORTS_TOOLS: bool = false;
 
-    type StreamingUsage = crate::providers::openai::Usage;
+    type StreamingUsage = crate::providers::openai_compatible::Usage;
 
     // Mira's gateway does not accept OpenAI structured-output parameters.
     const SUPPORTS_RESPONSE_FORMAT: bool = false;
@@ -96,7 +96,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Mira {
 
     fn prepare_request(
         &self,
-        request: &mut crate::providers::openai::completion::CompletionRequest,
+        request: &mut crate::providers::openai_compatible::completion::CompletionRequest,
     ) -> Result<(), CompletionError> {
         // Mira's gateway rejects pass-through parameters (tools are dropped
         // via `SUPPORTS_TOOLS = false` during conversion).
@@ -119,7 +119,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Mira {
             .get_mut("messages")
             .and_then(serde_json::Value::as_array_mut)
         {
-            crate::providers::openai::completion::sanitize_plain_text_history(
+            crate::providers::openai_compatible::completion::sanitize_plain_text_history(
                 messages,
                 Some(("\n", false)),
                 true,
@@ -168,7 +168,7 @@ pub struct ChatChoice {
 
 /// Mira completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    crate::providers::openai::completion::GenericCompletionModel<Mira, H>;
+    crate::providers::openai_compatible::completion::GenericCompletionModel<Mira, H>;
 
 impl crate::telemetry::ProviderResponseExt for CompletionResponse {
     type Usage = Usage;

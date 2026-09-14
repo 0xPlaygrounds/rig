@@ -64,7 +64,7 @@ impl_dual_dialect_provider!(
 
 impl client::HasCompletion for ZAi {
     type Model<H>
-        = super::openai::completion::GenericCompletionModel<ZAi, H>
+        = super::openai_compatible::completion::GenericCompletionModel<ZAi, H>
     where
         H: client::ModelTransport;
 
@@ -72,16 +72,16 @@ impl client::HasCompletion for ZAi {
         client: &Client<H>,
         model: String,
     ) -> Self::Model<H> {
-        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+        super::openai_compatible::completion::GenericCompletionModel::new(client.clone(), model)
     }
 }
 
-impl super::openai::completion::OpenAICompatibleProvider for ZAi {
+impl super::openai_compatible::completion::OpenAICompatibleProvider for ZAi {
     const PROVIDER_NAME: &'static str = "zai";
 
-    type StreamingUsage = super::openai::Usage;
+    type StreamingUsage = super::openai_compatible::Usage;
 
-    type Response = super::openai::CompletionResponse;
+    type Response = super::openai_compatible::CompletionResponse;
 }
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(

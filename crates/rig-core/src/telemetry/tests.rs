@@ -182,6 +182,7 @@ fn instrument_modality_records_usage_and_identity() {
 /// `InMemoryVectorIndex` records the same telemetry with no store-side
 /// instrumentation.
 #[test]
+#[cfg(feature = "openai")]
 fn embedding_seam_and_vector_search_record_on_the_span() {
     use crate::client::EmbeddingsClient;
     use crate::embeddings::{Embedding, EmbeddingModel as _};

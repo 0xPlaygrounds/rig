@@ -12,7 +12,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
 use rig::prelude::*;
-use rig::providers::openai::responses_api::Output;
+use rig::providers::openai_compatible::responses_api::Output;
 use rig::providers::xai;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -408,7 +408,7 @@ fn assert_raw_response_metadata(raw: &xai::CompletionResponse) {
     assert_nonempty_response(&raw.model);
     assert_eq!(
         raw.status,
-        rig::providers::openai::responses_api::ResponseStatus::Completed
+        rig::providers::openai_compatible::responses_api::ResponseStatus::Completed
     );
     assert!(
         raw.usage.is_some(),

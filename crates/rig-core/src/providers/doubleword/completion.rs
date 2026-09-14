@@ -5,7 +5,7 @@
 //! dialect is declared by the `OpenAICompatibleProvider` impl on
 //! [`Doubleword`](super::client::Doubleword) in `client.rs`.
 
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 // ================================================================
 // Doubleword Completion Models

@@ -243,6 +243,7 @@ pub(crate) fn normalize_openai_response<C>(
 /// content string plus a tool-call list (DeepSeek, Mistral). `text_is_empty`
 /// is provider policy — DeepSeek trims before testing, Mistral does not — so
 /// the caller evaluates its own predicate.
+#[cfg(any(feature = "deepseek", feature = "mistral"))]
 pub(crate) fn text_then_tool_calls<'a>(
     text: &str,
     text_is_empty: bool,
@@ -270,7 +271,7 @@ pub(crate) enum CompatibleFinishReason {
 
 impl CompatibleFinishReason {
     /// Normalize a wire `finish_reason` field.
-    #[cfg(test)]
+    #[cfg(all(test, feature = "openai"))]
     pub(crate) fn from_wire(reason: Option<&str>) -> Self {
         match reason.filter(|reason| !reason.is_empty()) {
             Some(reason) => Self::Reported(map_openai_finish_reason(reason)),

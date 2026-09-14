@@ -386,8 +386,8 @@ fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
 const WALK_FLOOR_FILES: &[&str] = &[
     "rig-core/src/providers/internal/adapter.rs",
     "rig-core/src/providers/internal/wire.rs",
-    "rig-core/src/providers/anthropic/streaming.rs",
-    "rig-core/src/providers/openai/responses_api/streaming.rs",
+    "rig-core/src/providers/anthropic_compatible/streaming.rs",
+    "rig-core/src/providers/openai_compatible/responses_api/streaming.rs",
     "rig-bedrock/src/streaming.rs",
     "rig-gemini-grpc/src/streaming.rs",
 ];
@@ -979,9 +979,9 @@ fn provider_streaming_modules_never_raw_parse_the_wire() {
     // exists for — an in-scope set that collapses to nothing (a renamed
     // basename pattern, broken content scoping) is a vacuous pass.
     for suffix in [
-        "rig-core/src/providers/anthropic/streaming.rs",
+        "rig-core/src/providers/anthropic_compatible/streaming.rs",
         "rig-core/src/providers/ollama.rs",
-        "rig-core/src/providers/openai/responses_api/streaming.rs",
+        "rig-core/src/providers/openai_compatible/responses_api/streaming.rs",
         "rig-bedrock/src/streaming.rs",
     ] {
         assert!(
@@ -1060,7 +1060,9 @@ fn serde_policy_scanner_catches_raw_parses() {
         "fn classify(frame: WireFrame) -> WireEvent { todo!() }",
     ));
     assert!(is_serde_wall_target(
-        std::path::Path::new("crates/rig-core/src/providers/openai/responses_api/websocket.rs"),
+        std::path::Path::new(
+            "crates/rig-core/src/providers/openai_compatible/responses_api/websocket.rs"
+        ),
         "",
     ));
 }

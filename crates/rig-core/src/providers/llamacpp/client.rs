@@ -4,7 +4,7 @@ use crate::client::{
 };
 use crate::http_client::{self, HttpClientExt};
 use crate::providers::internal::model_listing::{ListModelEntry, impl_model_lister};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 
 // ================================================================
 // Main llama.cpp Client

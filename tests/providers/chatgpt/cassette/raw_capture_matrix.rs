@@ -7,7 +7,7 @@
 //! value
 //! [`ResponsesCompletionModel::raw_completion`](rig::providers::chatgpt::ResponsesCompletionModel::raw_completion)
 //! would have returned — the Responses API's
-//! [`CompletionResponse`](rig::providers::openai::responses_api::CompletionResponse),
+//! [`CompletionResponse`](rig::providers::openai_compatible::responses_api::CompletionResponse),
 //! reassembled from the terminal `response.completed` event of the SSE body
 //! ChatGPT answers even a non-streaming request with — serialized with
 //! `serde_json::to_value` before normalization. Nothing about it is sent to
@@ -43,7 +43,7 @@ use rig::completion::NormalizeCompletionResponse as _;
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::providers::openai::responses_api;
+use rig::providers::openai_compatible::responses_api;
 use serde::Deserialize;
 use serde_json::Value;
 

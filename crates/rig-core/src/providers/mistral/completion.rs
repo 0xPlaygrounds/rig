@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 
 use super::client::{Mistral, Usage};
-use crate::providers::openai;
+use crate::providers::openai_compatible as openai;
 use crate::{
     completion::{self, CompletionError},
     json_utils,

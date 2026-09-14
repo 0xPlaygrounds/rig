@@ -30,6 +30,7 @@ testcontainers = { workspace = true }
 tracing-subscriber = { workspace = true }
 httpmock = { workspace = true }
 
+rig-core = { path = "../rig-core", features = ["openai"] }
 [[example]]
 name = "vector_search_simple"
 required-features = ["rig-core/derive"]

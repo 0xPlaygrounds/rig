@@ -12,6 +12,10 @@ publish = false
 workspace = true
 
 [features]
+anthropic = ["rig-core/anthropic"]
+deepseek = ["rig-core/deepseek"]
+gemini = ["rig-core/gemini"]
+openai = ["rig-core/openai"]
 default = ["replay"]
 # `Replay` and the `EffectLog` resource: record a world's effects into a
 # log and replay a log through a world.
@@ -55,7 +59,8 @@ bevy_platform = { workspace = true, features = ["web"] }
 bevy_app = { workspace = true, optional = true, features = ["web"] }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
+rig-ecs = { path = ".", features = ["anthropic", "deepseek", "gemini", "openai"] }
+rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils", "anthropic", "deepseek", "gemini", "openai"] }
 # Tests and examples drive the bus from an `App`'s `Update`; the library
 # does not.
 bevy_app = { workspace = true }

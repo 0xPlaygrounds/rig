@@ -48,8 +48,8 @@ async fn json_driver_non_success_response_preserves_headers() {
 async fn multipart_driver_non_success_response_preserves_headers() {
     let error = send_transcription::<
         _,
-        crate::providers::openai::client::ApiResponse<
-            crate::providers::openai::TranscriptionResponse,
+        crate::providers::internal::envelope::OpenAiApiResponse<
+            crate::providers::internal::transcription::TranscriptionResponse,
         >,
     >(
         &rate_limited(),

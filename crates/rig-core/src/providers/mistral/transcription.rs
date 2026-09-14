@@ -149,7 +149,7 @@ where
         let status = parts.status;
         let provider_request_id = request_id_from_headers(
             &parts.headers,
-            <super::client::Mistral as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+            <super::client::Mistral as crate::providers::openai_compatible::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
         );
         let response_bytes = body.await?;
 

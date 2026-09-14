@@ -58,7 +58,7 @@ impl_dual_dialect_provider!(
 
 impl client::HasCompletion for XiaomiMimo {
     type Model<H>
-        = super::openai::completion::GenericCompletionModel<XiaomiMimo, H>
+        = super::openai_compatible::completion::GenericCompletionModel<XiaomiMimo, H>
     where
         H: client::ModelTransport;
 
@@ -66,7 +66,7 @@ impl client::HasCompletion for XiaomiMimo {
         client: &Client<H>,
         model: String,
     ) -> Self::Model<H> {
-        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+        super::openai_compatible::completion::GenericCompletionModel::new(client.clone(), model)
     }
 }
 
@@ -81,12 +81,12 @@ impl client::HasModelListing for XiaomiMimo {
     }
 }
 
-impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimo {
+impl super::openai_compatible::completion::OpenAICompatibleProvider for XiaomiMimo {
     const PROVIDER_NAME: &'static str = "xiaomimimo";
 
-    type StreamingUsage = super::openai::Usage;
+    type StreamingUsage = super::openai_compatible::Usage;
 
-    type Response = super::openai::CompletionResponse;
+    type Response = super::openai_compatible::CompletionResponse;
 }
 
 const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(

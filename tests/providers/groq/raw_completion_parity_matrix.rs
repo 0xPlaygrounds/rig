@@ -31,7 +31,7 @@ use rig::completion::{
 };
 use rig::prelude::*;
 use rig::providers::groq;
-use rig::providers::openai::completion::OpenAICompatibleProvider;
+use rig::providers::openai_compatible::completion::OpenAICompatibleProvider;
 use serde_json::Value;
 
 use super::RAW_CAPTURE_MODEL;

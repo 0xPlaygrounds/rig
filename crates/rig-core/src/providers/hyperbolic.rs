@@ -94,7 +94,7 @@ impl HasAudioGeneration for Hyperbolic {
     }
 }
 
-impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbolic {
+impl crate::providers::openai_compatible::completion::OpenAICompatibleProvider for Hyperbolic {
     const PROVIDER_NAME: &'static str = "hyperbolic";
 
     // Hyperbolic's structured-output support is unverified; keep the
@@ -105,9 +105,9 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
     // dropped with a warning during request conversion.
     const SUPPORTS_TOOLS: bool = false;
 
-    type StreamingUsage = crate::providers::openai::Usage;
+    type StreamingUsage = crate::providers::openai_compatible::Usage;
 
-    type Response = crate::providers::openai::CompletionResponse;
+    type Response = crate::providers::openai_compatible::CompletionResponse;
 
     fn finalize_request_body(
         &self,
@@ -119,7 +119,7 @@ impl crate::providers::openai::completion::OpenAICompatibleProvider for Hyperbol
             .get_mut("messages")
             .and_then(serde_json::Value::as_array_mut)
         {
-            crate::providers::openai::completion::sanitize_plain_text_history(
+            crate::providers::openai_compatible::completion::sanitize_plain_text_history(
                 messages, None, false, false,
             );
         }
@@ -138,7 +138,7 @@ pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Hyperb
 pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Hyperbolic, H>;
 
 #[cfg(feature = "audio")]
-use crate::providers::openai::client::ApiResponse;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 
 // ================================================================
 // Hyperbolic Completion API
@@ -171,10 +171,10 @@ pub const DEEPSEEK_R1: &str = "deepseek-ai/DeepSeek-R1";
 
 /// Hyperbolic completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    crate::providers::openai::completion::GenericCompletionModel<Hyperbolic, H>;
+    crate::providers::openai_compatible::completion::GenericCompletionModel<Hyperbolic, H>;
 
 /// Raw completion payload, shared with the OpenAI Chat Completions path.
-pub type CompletionResponse = crate::providers::openai::CompletionResponse;
+pub type CompletionResponse = crate::providers::openai_compatible::CompletionResponse;
 
 // =======================================
 // Hyperbolic Image Generation API

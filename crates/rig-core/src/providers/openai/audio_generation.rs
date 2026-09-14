@@ -1,7 +1,7 @@
 use crate::providers::internal::audio_generation::{
     GenericAudioGenerationModel, RawAudioGenerationProvider,
 };
-use crate::providers::openai::{OpenAICompletions, OpenAIResponses};
+use crate::providers::openai_compatible::{OpenAICompletions, OpenAIResponses};
 
 pub const TTS_1: &str = "tts-1";
 pub const TTS_1_HD: &str = "tts-1-hd";
@@ -26,5 +26,5 @@ impl RawAudioGenerationProvider for OpenAICompletions {
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "openai"))]
 mod tests;

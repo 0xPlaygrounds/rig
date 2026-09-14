@@ -1,6 +1,7 @@
 use super::*;
 use crate::client::transcription::TranscriptionClient;
 use crate::test_utils::RecordingHttpClient;
+use crate::transcription::TranscriptionError;
 use crate::transcription::TranscriptionModel as _;
 
 #[tokio::test]

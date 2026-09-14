@@ -54,7 +54,7 @@ use rig::completion::{
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::providers::openai::responses_api;
+use rig::providers::openai_compatible::responses_api;
 use serde::Deserialize;
 use serde_json::{Value, json};
 

@@ -11,7 +11,7 @@ use crate::providers::internal::openai_chat_completions_compatible::{
     CompatibleTerminal, CompatibleToolCallChunk,
 };
 use crate::providers::internal::wire;
-use crate::providers::openai::completion::{
+use crate::providers::openai_compatible::completion::{
     CompletionModelOptions, GenericCompletionModel, OpenAICompatibleProvider, Usage,
 };
 use crate::streaming::{self, StreamFinal};
@@ -61,7 +61,7 @@ where
     Ok(value.and_then(|value| match value {
         serde_json::Value::String(text) => Some(text),
         serde_json::Value::Array(parts) => {
-            let text = crate::providers::openai::completion::joined_text_parts(&parts);
+            let text = crate::providers::openai_compatible::completion::joined_text_parts(&parts);
             (!text.is_empty()).then_some(text)
         }
         _ => None,
@@ -128,7 +128,7 @@ impl FinishReason {
 /// [`CompatibleFinishReason::Absent`]; anything outside the normalized
 /// vocabulary is preserved verbatim in
 /// [`crate::completion::FinishReason::Other`].
-#[cfg(test)]
+#[cfg(all(test, feature = "openai"))]
 pub(crate) fn map_finish_reason(reason: Option<&FinishReason>) -> CompatibleFinishReason {
     CompatibleFinishReason::from_wire(reason.map(FinishReason::as_wire))
 }
@@ -333,8 +333,10 @@ where
         let path = self.client.provider().completion_path(&self.model);
         let resolved_model = request.model.clone();
         let modern_output_cap = self.sends_modern_output_cap(&request.model);
-        let mut request_as_json =
-            crate::providers::openai::completion::request_body(&request, modern_output_cap)?;
+        let mut request_as_json = crate::providers::openai_compatible::completion::request_body(
+            &request,
+            modern_output_cap,
+        )?;
 
         // `merge` is shallow, so include_usage is inserted into any
         // caller-supplied stream_options rather than merged over it: the
@@ -374,7 +376,7 @@ where
             .body(req_body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
         if let Some(observation) = observation {
-            crate::providers::openai::observation::attach_chat(
+            crate::providers::openai_compatible::observation::attach_chat(
                 observation,
                 &mut req,
                 "/chat/completions",
@@ -416,7 +418,7 @@ where
 }
 
 #[derive(Clone, Copy, Default)]
-struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletions, U = Usage> {
+struct OpenAICompatibleProfile<Ext, U = Usage> {
     provider: Ext,
     emits_complete_single_chunk_tool_calls: bool,
     usage: std::marker::PhantomData<U>,
@@ -440,52 +442,8 @@ where
         &self,
         data: &str,
     ) -> wire::WireEvent<CompatibleChunk<Self::Usage, Self::Detail>> {
-        // Classification only — the unknown/corrupt policy (warn-skip vs.
-        // in-band `Err` item) lives in the shared driver, not here.
-        wire::classify_chat_completions_frame::<StreamingCompletionChunk<U>>(data).map(|data| {
-            // `n > 1` streams as interleaved chunks distinguished only by
-            // `choices[].index`. Taking each *chunk's* first choice would
-            // concatenate every candidate into one garbled answer, while the
-            // blocking path answers the same request from candidate 0 alone;
-            // selecting by index keeps the two transports agreeing.
-            let primary = data
-                .choices
-                .iter()
-                .position(|choice| choice.index.is_none_or(|index| index == 0))
-                .and_then(|position| data.choices.get(position))
-                .map(std::slice::from_ref)
-                .unwrap_or_default();
-
-            openai_chat_completions_compatible::normalize_first_choice_chunk(
-                data.id,
-                data.model,
-                data.usage,
-                crate::message::AdditionalParams::new(data.additional_params),
-                primary,
-                |choice| CompatibleChoiceData {
-                    // The shared mapping also folds `function_call` — the
-                    // deprecated pre-tools finish reason some compatible
-                    // providers still emit — onto `ToolCalls`.
-                    finish_reason: match self.provider.map_streaming_finish_reason(
-                        choice.finish_reason.as_ref().map(FinishReason::as_wire),
-                        choice.native_finish_reason.as_deref(),
-                    ) {
-                        Some(reason) => CompatibleFinishReason::Reported(reason),
-                        None => CompatibleFinishReason::Absent,
-                    },
-                    text: delta_text(&choice.delta),
-                    reasoning: choice
-                        .delta
-                        .reasoning_content
-                        .clone()
-                        .or_else(|| choice.delta.reasoning.clone()),
-                    tool_calls: openai_chat_completions_compatible::tool_call_chunks(
-                        &choice.delta.tool_calls,
-                    ),
-                    details: choice.delta.reasoning_details.clone(),
-                    logprobs: choice.logprobs.clone(),
-                },
-            )
+        classify_chat_chunk(data, |reason, native| {
+            self.provider.map_streaming_finish_reason(reason, native)
         })
     }
 
@@ -494,11 +452,7 @@ where
         provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
     ) -> Result<StreamFinal, CompletionError> {
-        let native = StreamingCompletionResponse::from_terminal(terminal);
-        // The provider's own terminal record rides along serialized — the
-        // same capture every unary `completion` performs before `normalize`.
-        let raw = serde_json::to_value(&native)?;
-        Ok(native.into_stream_final(provider).with_raw(raw))
+        final_chat_record(provider, terminal)
     }
 
     fn detail_reasoning(
@@ -532,6 +486,118 @@ where
     }
 }
 
+// The public raw-wire helper needs only protocol semantics, not a concrete
+// provider client. Provider-specific hooks still run through the profile above.
+#[derive(Clone, Copy, Default)]
+struct DefaultChatProfile;
+
+impl CompatibleStreamProfile for DefaultChatProfile {
+    type Usage = Usage;
+    type Detail = serde_json::Value;
+
+    fn classify_chunk(&self, data: &str) -> wire::WireEvent<CompatibleChunk<Usage, Self::Detail>> {
+        classify_chat_chunk(data, |reason, _| {
+            reason
+                .filter(|reason| !reason.is_empty())
+                .map(openai_chat_completions_compatible::map_openai_finish_reason)
+        })
+    }
+
+    fn final_record(
+        &self,
+        provider: &str,
+        terminal: CompatibleTerminal<Usage>,
+    ) -> Result<StreamFinal, CompletionError> {
+        final_chat_record(provider, terminal)
+    }
+
+    fn uses_distinct_tool_call_eviction(&self) -> bool {
+        true
+    }
+}
+
+fn classify_chat_chunk<U>(
+    data: &str,
+    map_finish_reason: impl Fn(Option<&str>, Option<&str>) -> Option<crate::completion::FinishReason>,
+) -> wire::WireEvent<CompatibleChunk<U, serde_json::Value>>
+where
+    U: Clone
+        + Default
+        + Into<crate::completion::Usage>
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + crate::wasm_compat::WasmCompatSend
+        + 'static,
+{
+    // Classification only — the unknown/corrupt policy (warn-skip vs.
+    // in-band `Err` item) lives in the shared driver, not here.
+    wire::classify_chat_completions_frame::<StreamingCompletionChunk<U>>(data).map(|data| {
+        // `n > 1` streams as interleaved chunks distinguished only by
+        // `choices[].index`. Taking each *chunk's* first choice would
+        // concatenate every candidate into one garbled answer, while the
+        // blocking path answers the same request from candidate 0 alone;
+        // selecting by index keeps the two transports agreeing.
+        let primary = data
+            .choices
+            .iter()
+            .position(|choice| choice.index.is_none_or(|index| index == 0))
+            .and_then(|position| data.choices.get(position))
+            .map(std::slice::from_ref)
+            .unwrap_or_default();
+
+        openai_chat_completions_compatible::normalize_first_choice_chunk(
+            data.id,
+            data.model,
+            data.usage,
+            crate::message::AdditionalParams::new(data.additional_params),
+            primary,
+            |choice| CompatibleChoiceData {
+                // The shared mapping also folds `function_call` — the
+                // deprecated pre-tools finish reason some compatible
+                // providers still emit — onto `ToolCalls`.
+                finish_reason: match map_finish_reason(
+                    choice.finish_reason.as_ref().map(FinishReason::as_wire),
+                    choice.native_finish_reason.as_deref(),
+                ) {
+                    Some(reason) => CompatibleFinishReason::Reported(reason),
+                    None => CompatibleFinishReason::Absent,
+                },
+                text: delta_text(&choice.delta),
+                reasoning: choice
+                    .delta
+                    .reasoning_content
+                    .clone()
+                    .or_else(|| choice.delta.reasoning.clone()),
+                tool_calls: openai_chat_completions_compatible::tool_call_chunks(
+                    &choice.delta.tool_calls,
+                ),
+                details: choice.delta.reasoning_details.clone(),
+                logprobs: choice.logprobs.clone(),
+            },
+        )
+    })
+}
+
+fn final_chat_record<U>(
+    provider: &str,
+    terminal: CompatibleTerminal<U>,
+) -> Result<StreamFinal, CompletionError>
+where
+    U: Clone
+        + Default
+        + Into<crate::completion::Usage>
+        + serde::Serialize
+        + serde::de::DeserializeOwned
+        + crate::wasm_compat::WasmCompatSend
+        + 'static,
+{
+    let native = StreamingCompletionResponse::from_terminal(terminal);
+    // The provider's own terminal record rides along serialized — the
+    // same capture every unary `completion` performs before `normalize`.
+    let raw = serde_json::to_value(&native)?;
+    Ok(native.into_stream_final(provider).with_raw(raw))
+}
+
 /// Send an OpenAI chat-completions streaming request under the OpenAI
 /// profile, attributed to `provider`.
 pub(crate) async fn send_compatible_raw_streaming_request<T>(
@@ -545,9 +611,9 @@ where
     openai_chat_completions_compatible::send_compatible_raw_streaming_request(
         http_client,
         req,
-        <crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+        Some("x-request-id"),
         provider,
-        OpenAICompatibleProfile::<crate::providers::openai::OpenAICompletions, Usage>::default(),
+        DefaultChatProfile,
     )
     .await
 }
@@ -575,4 +641,5 @@ where
 }
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 mod tests;

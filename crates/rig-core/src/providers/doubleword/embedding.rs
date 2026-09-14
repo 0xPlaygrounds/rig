@@ -7,7 +7,7 @@ use core::ops::RangeInclusive;
 
 use crate::{
     embeddings::EmbeddingError,
-    providers::openai::embedding::{
+    providers::openai_compatible::embedding::{
         EmbeddingDimensions, GenericEmbeddingModel, OpenAIEmbeddingsCompatible,
     },
 };

@@ -1,7 +1,7 @@
 use super::*;
 use crate::completion::FinishReason;
 use crate::completion::NormalizeCompletionResponse;
-use crate::providers::openai::completion::OpenAICompatibleProvider;
+use crate::providers::openai_compatible::completion::OpenAICompatibleProvider;
 
 /// Normalize a Mira wire response the way the shared completion path does,
 /// threading Mira's own descriptor name through the conversion.

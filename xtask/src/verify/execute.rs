@@ -40,6 +40,20 @@ pub(super) fn command(root: &Path, step: &Step, target: &Path) -> Command {
 }
 fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
     match step.program.as_str() {
+        "@provider-features" => provider_features::run(
+            root,
+            target,
+            step.args
+                .first()
+                .ok_or_else(|| invalid("missing provider probe"))?,
+        ),
+        "@examples" => examples::run(
+            root,
+            step.args
+                .first()
+                .and_then(|s| s.parse().ok())
+                .ok_or_else(|| invalid("missing example shard"))?,
+        ),
         "@layout" => crate::test_layout::check(root).map_err(invalid),
         "@scenarios" => crate::scenarios::run(root, Vec::new()).map_err(|e| invalid(e.to_string())),
         "@registrations" => {

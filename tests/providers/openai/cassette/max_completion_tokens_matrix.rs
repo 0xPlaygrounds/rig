@@ -53,7 +53,7 @@
 //!
 //! Unit cells (the field-spelling rule itself is definitory — no live turn can
 //! observe a body rig did not send) live beside the fix in
-//! `crates/rig-core/src/providers/openai/completion/mod.rs`:
+//! `crates/rig-core/src/providers/openai_compatible/completion/mod.rs`:
 //! `request_body_*` and `modern_output_cap_*`. They cover the legacy spelling,
 //! the modern one, absent caps, caller-supplied spellings on both keys, that no
 //! other request field moves, and the base-URL gate itself — including that an

@@ -247,6 +247,31 @@ pub(crate) fn json(body: Option<&str>) -> Result<Option<serde_json::Value>, serd
         .transpose()
 }
 
+#[cfg(any(
+    feature = "anthropic",
+    feature = "azure",
+    feature = "chatgpt",
+    feature = "copilot",
+    feature = "deepseek",
+    feature = "doubleword",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "hyperbolic",
+    feature = "llamacpp",
+    feature = "minimax",
+    feature = "mira",
+    feature = "mistral",
+    feature = "moonshot",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "perplexity",
+    feature = "together",
+    feature = "venice",
+    feature = "xai",
+    feature = "xiaomimimo",
+    feature = "zai"
+))]
 pub(crate) fn completion_error_from_body(
     body: impl Into<String>,
 ) -> crate::completion::CompletionError {

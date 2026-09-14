@@ -26,6 +26,7 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 httpmock = { workspace = true }
 
+rig-core = { path = "../rig-core", features = ["openai"] }
 [features]
 default = []
 rig-rustls = ["rig-reqwest/rustls"]

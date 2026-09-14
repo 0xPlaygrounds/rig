@@ -786,7 +786,16 @@ where
     }
 }
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+#[cfg(all(
+    target_arch = "wasm32",
+    target_os = "unknown",
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "mistral",
+    feature = "ollama",
+    feature = "openai",
+    feature = "openrouter"
+))]
 mod wasm_model_listing_compile_checks {
     use super::{ModelListingClient, Nothing};
     use crate::{

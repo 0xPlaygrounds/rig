@@ -1,6 +1,6 @@
 use super::*;
 use crate::completion::NormalizeCompletionResponse as _;
-use crate::providers::openai::completion::OpenAICompatibleProvider;
+use crate::providers::openai_compatible::completion::OpenAICompatibleProvider;
 
 #[test]
 fn deserializes_response_with_array_and_null_content() {

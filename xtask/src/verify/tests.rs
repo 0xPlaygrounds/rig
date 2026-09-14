@@ -224,7 +224,7 @@ fn registration_discovery_reuses_default_test_graph_without_filtering() {
         }
         assert!(
             args.windows(2)
-                .any(|args| args == ["--features", "bedrock"])
+                .any(|args| args == ["--features", "bedrock,providers-all"])
         );
         if id == "scenario-registrations" {
             for flag in ["-E", "--filter-expr", "--test", "--lib"] {
@@ -595,7 +595,7 @@ fn full_lane_covers_every_integration_suite() {
     // The service suites are the only runtime coverage the storage crates
     // have; a suite whose crate is not a full-lane trigger merges its crate
     // with none. bedrock's suite is feature-gated inside the facade, which
-    // the PR gate's `--features bedrock` sweep already runs.
+    // the PR gate's `--features bedrock,providers-all` sweep already runs.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let mut suites = BTreeSet::new();
     for entry in std::fs::read_dir(root.join("tests/integrations")).unwrap() {
@@ -682,16 +682,44 @@ fn tool_versions_require_the_exact_pinned_version() {
 /// scan of the `run:` values (the workflows are plain YAML lists).
 fn workflow_check_ids(workflow: &str) -> BTreeSet<String> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
-    std::fs::read_to_string(root.join(workflow))
-        .unwrap()
-        .lines()
-        .filter_map(|line| {
-            line.trim()
+    let source = std::fs::read_to_string(root.join(workflow)).unwrap();
+    let mut ids = BTreeSet::new();
+    // Matrix check lists belong to their own job (two-space YAML job keys).
+    let mut job = String::new();
+    let mut jobs = Vec::new();
+    for line in source.lines() {
+        if line.starts_with("  ") && !line.starts_with("   ") && line.ends_with(':') {
+            jobs.push(std::mem::take(&mut job));
+        }
+        job.push_str(line);
+        job.push('\n');
+    }
+    jobs.push(job);
+    for job in jobs {
+        for line in job.lines() {
+            let Some(id) = line
+                .trim()
                 .trim_start_matches("- ")
                 .strip_prefix("run: cargo xtask verify --check ")
-        })
-        .map(|id| id.trim().to_string())
-        .collect()
+            else {
+                continue;
+            };
+            if id == "${{ matrix.check }}" {
+                let matrix = job
+                    .lines()
+                    .find_map(|line| {
+                        line.trim()
+                            .strip_prefix("check: [")
+                            .and_then(|line| line.strip_suffix(']'))
+                    })
+                    .expect("literal check matrix in this job");
+                ids.extend(matrix.split(',').map(|id| id.trim().to_owned()));
+            } else {
+                ids.insert(id.trim().to_string());
+            }
+        }
+    }
+    ids
 }
 #[test]
 fn every_check_is_run_by_a_workflow_step() {

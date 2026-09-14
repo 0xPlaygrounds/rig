@@ -16,8 +16,8 @@
 //! one, and the conveniences that let a caller who is happy with it never say so:
 //!
 //! - [`TungsteniteClient`], a [`WebSocketClientExt`] over `tokio-tungstenite`.
-//! - [`DefaultWebSocketClient`] / [`DefaultWebSocketBuilder`], the
-//!   default-backend traits — `client.responses_websocket("gpt-5.4")` with no
+//! - With feature `openai`, `DefaultWebSocketClient` / `DefaultWebSocketBuilder`,
+//!   the default-backend traits — `client.responses_websocket("gpt-5.4")` with no
 //!   backend named — mirroring `rig-reqwest`'s `DefaultTransportClient`.
 //!
 //! # Running without a tokio runtime
@@ -46,9 +46,11 @@ mod connection;
 #[cfg(not(target_family = "wasm"))]
 mod runtime;
 #[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "openai")]
 mod session;
 
 #[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "openai")]
 pub use session::{DefaultWebSocketBuilder, DefaultWebSocketClient};
 
 #[cfg(not(target_family = "wasm"))]
@@ -64,6 +66,7 @@ use tokio_tungstenite::tungstenite::{self, client::IntoClientRequest};
 
 /// Bring the default-backend traits into scope.
 #[cfg(not(target_family = "wasm"))]
+#[cfg(feature = "openai")]
 pub mod prelude {
     pub use crate::session::{DefaultWebSocketBuilder, DefaultWebSocketClient};
     pub use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketExt;

@@ -1,5 +1,7 @@
 use super::client::OpenRouter;
-use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
+use crate::providers::openai_compatible::embedding::{
+    GenericEmbeddingModel, OpenAIEmbeddingsCompatible,
+};
 
 impl OpenAIEmbeddingsCompatible for OpenRouter {
     const PROVIDER_NAME: &'static str = "openrouter";

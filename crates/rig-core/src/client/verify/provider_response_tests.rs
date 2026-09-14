@@ -65,6 +65,7 @@ fn verify_error_provider_response_helpers_with_unrelated_variant() {
 }
 
 #[tokio::test]
+#[cfg(feature = "openai")]
 async fn verify_preserves_status_and_body_on_provider_error_response() {
     use crate::client::VerifyClient;
     use crate::providers::openai::Client;
@@ -101,6 +102,7 @@ async fn verify_preserves_status_and_body_on_provider_error_response() {
 /// preserve the failed response's headers, so a rejected verification can
 /// still be retried on the server's schedule.
 #[tokio::test]
+#[cfg(feature = "openai")]
 async fn verify_preserves_response_headers_on_every_failing_branch() {
     use crate::client::VerifyClient;
     use crate::providers::openai::Client;

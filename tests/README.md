@@ -425,7 +425,7 @@ Check maintained files and a fresh compiled listing:
 
 ```sh
 cargo xtask check-ecs-scenarios
-cargo nextest list --locked -p rig --features bedrock --message-format json > target/ecs-tests.json
+cargo nextest list --locked -p rig --features bedrock,providers-all --message-format json > target/ecs-tests.json
 cargo xtask check-ecs-scenarios target/ecs-tests.json
 cargo test --locked -p xtask
 ```
@@ -441,7 +441,7 @@ establish which tests pass.
 Run a native family using its catalog binary and test module, for example:
 
 ```sh
-cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
+cargo test --locked -p rig --features anthropic --test anthropic ecs_outcome -- --nocapture
 ```
 
 ### Stream-fault cells

@@ -1,7 +1,7 @@
 use crate::client::CompletionClient;
 use crate::completion::{CompletionError, CompletionModel};
 use crate::message;
-use crate::providers::openai::completion::{
+use crate::providers::openai_compatible::completion::{
     CompletionRequest as OpenAICompletionRequest, OpenAIRequestParams,
 };
 use crate::test_utils::RecordingHttpClient;

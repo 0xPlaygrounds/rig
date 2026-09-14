@@ -4,7 +4,9 @@
 // ================================================================
 
 use super::client::Together;
-use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
+use crate::providers::openai_compatible::embedding::{
+    GenericEmbeddingModel, OpenAIEmbeddingsCompatible,
+};
 
 // ================================================================
 // Together AI Embedding API

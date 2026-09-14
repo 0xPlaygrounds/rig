@@ -35,7 +35,7 @@ use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::ReasoningContent;
 use rig::prelude::*;
 use rig::providers::deepseek;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
+use rig::providers::openai_compatible::completion::streaming::StreamingCompletionResponse;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};

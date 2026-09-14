@@ -36,7 +36,7 @@ use std::ops::Add;
 use std::str::FromStr;
 
 pub mod streaming;
-#[cfg(feature = "websocket")]
+#[cfg(all(feature = "websocket", feature = "openai"))]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod websocket;
 
@@ -1538,6 +1538,7 @@ pub struct GenericResponsesCompletionModel<Ext, H = crate::http_client::BoxedHtt
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "openai")]
 pub type ResponsesCompletionModel<H = crate::http_client::BoxedHttpClient> =
     GenericResponsesCompletionModel<super::OpenAIResponses, H>;
 
@@ -1663,12 +1664,15 @@ where
     }
 }
 
+#[cfg(feature = "openai")]
 impl<T> GenericResponsesCompletionModel<super::OpenAIResponses, T>
 where
     T: HttpClientExt + Clone + 'static,
 {
     /// Use the Completions API instead of Responses.
-    pub fn completions_api(self) -> crate::providers::openai::completion::CompletionModel<T> {
+    pub fn completions_api(
+        self,
+    ) -> crate::providers::openai_compatible::completion::CompletionModel<T> {
         super::completion::CompletionModel::new(self.client.completions_api(), &self.model)
     }
 }
@@ -1999,7 +2003,7 @@ pub struct StructuredOutputsInput {
 ///
 /// # Example
 /// ```
-/// use rig_core::providers::openai::responses_api::{
+/// use rig_core::providers::openai_compatible::responses_api::{
 ///     Reasoning, ReasoningContext, ReasoningEffort, ReasoningMode,
 /// };
 ///
@@ -2591,7 +2595,7 @@ where
             .body(body)
             .map_err(|e| CompletionError::HttpError(e.into()))?;
         if let Some(observation) = observation {
-            crate::providers::openai::observation::attach_responses(
+            crate::providers::openai_compatible::observation::attach_responses(
                 observation,
                 &mut req,
                 "/responses",
@@ -2612,7 +2616,7 @@ where
         let (mut response, provider_request_id) = if Ext::USES_2XX_ERROR_ENVELOPE {
             send_completion::<
                 _,
-                crate::providers::openai::client::ApiResponse<CompletionResponse>,
+                crate::providers::internal::envelope::OpenAiApiResponse<CompletionResponse>,
                 _,
             >(
                 &self.client,
@@ -3079,4 +3083,5 @@ impl FromStr for UserContent {
 }
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 mod tests;

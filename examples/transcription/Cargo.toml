@@ -8,6 +8,6 @@ publish = false
 workspace = true
 
 [dependencies]
-rig.workspace = true
+rig = { workspace = true, features = ["azure", "gemini", "groq", "huggingface", "mistral", "openai"] }
 anyhow = { workspace = true }
 tokio = { workspace = true, features = ["full"] }

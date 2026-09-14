@@ -6,7 +6,7 @@
 //! Capture is always on. The terminal record of every stream the seam yields
 //! carries `raw`: the value
 //! the Responses API stream adapter produces as its native terminal — the Responses API's
-//! [`StreamingCompletionResponse`](rig::providers::openai::responses_api::streaming::StreamingCompletionResponse):
+//! [`StreamingCompletionResponse`](rig::providers::openai_compatible::responses_api::streaming::StreamingCompletionResponse):
 //! the terminal `response.completed` event's usage, status, ids and model —
 //! serialized with `serde_json::to_value`. It is the terminal record only, and
 //! nothing about it is sent to ChatGPT. `raw == Value::Null` means only that a
@@ -35,7 +35,7 @@ use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::providers::openai::responses_api;
+use rig::providers::openai_compatible::responses_api;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;

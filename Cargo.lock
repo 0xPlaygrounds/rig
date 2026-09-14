@@ -10602,6 +10602,7 @@ dependencies = [
  "futures",
  "log",
  "rig-core",
+ "rig-ecs",
  "rig-effect-log",
  "serde",
  "serde_json",

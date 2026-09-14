@@ -143,8 +143,8 @@ macro_rules! impl_dual_dialect_provider {
             const NAME: &'static str = $name;
             const BASE_URL: &'static str = $anthropic_base_url;
             const VERIFY_PATH: &'static str = "/v1/models";
-            type ApiKey = $crate::providers::anthropic::client::AnthropicKey;
-            type Config = $crate::providers::anthropic::client::AnthropicConfig;
+            type ApiKey = $crate::providers::anthropic_compatible::client::AnthropicKey;
+            type Config = $crate::providers::anthropic_compatible::client::AnthropicConfig;
             type EnvInput = String;
 
             fn build(_: Self::Config, _: &Self::ApiKey) -> $crate::http_client::Result<Self> {
@@ -155,7 +155,7 @@ macro_rules! impl_dual_dialect_provider {
                 &self,
                 builder: $crate::client::ClientBuilder<Self, H>,
             ) -> $crate::http_client::Result<$crate::client::ClientBuilder<Self, H>> {
-                $crate::providers::anthropic::client::finish_anthropic_builder(builder)
+                $crate::providers::anthropic_compatible::client::finish_anthropic_builder(builder)
             }
 
             fn from_env<H: $crate::http_client::HttpClientExt>(
@@ -182,7 +182,7 @@ macro_rules! impl_dual_dialect_provider {
 
         impl $crate::client::HasCompletion for $anthropic_provider {
             type Model<H>
-                = $crate::providers::anthropic::completion::GenericCompletionModel<
+                = $crate::providers::anthropic_compatible::completion::GenericCompletionModel<
                 $anthropic_provider,
                 H,
             >
@@ -193,14 +193,14 @@ macro_rules! impl_dual_dialect_provider {
                 client: &AnthropicClient<H>,
                 model: String,
             ) -> Self::Model<H> {
-                $crate::providers::anthropic::completion::GenericCompletionModel::new(
+                $crate::providers::anthropic_compatible::completion::GenericCompletionModel::new(
                     client.clone(),
                     model,
                 )
             }
         }
 
-        impl $crate::providers::anthropic::completion::AnthropicCompatibleProvider
+        impl $crate::providers::anthropic_compatible::completion::AnthropicCompatibleProvider
             for $anthropic_provider
         {
             const PROVIDER_NAME: &'static str = $anthropic_name;

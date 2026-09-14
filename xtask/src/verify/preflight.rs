@@ -21,6 +21,13 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
                         probes.insert(("cargo", vec![tool, "--version"]));
                     }
                 }
+                ("@provider-features" | "@examples", _) => {
+                    probes.insert(("cargo", vec!["--version"]));
+                    probes.insert(("rustc", vec!["--version"]));
+                    if step.program == "@examples" {
+                        probes.insert(("protoc", vec!["--version"]));
+                    }
+                }
                 ("@registrations", _) => {
                     probes.insert(("cargo", vec!["nextest", "--version"]));
                 }

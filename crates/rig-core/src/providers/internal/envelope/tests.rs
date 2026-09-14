@@ -1,4 +1,4 @@
-use crate::providers::openai::client::ApiResponse;
+use super::OpenAiApiResponse as ApiResponse;
 
 #[derive(Debug, serde::Deserialize)]
 struct Success {

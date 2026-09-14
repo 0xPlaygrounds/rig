@@ -1,9 +1,10 @@
-use super::{client::ApiResponse, completion::Usage};
+use super::completion::Usage;
 use crate::embeddings;
 use crate::embeddings::EmbeddingError;
-#[cfg(test)]
+#[cfg(all(test, feature = "openai"))]
 use crate::http_client;
 use crate::http_client::HttpClientExt;
+use crate::providers::internal::envelope::OpenAiApiResponse as ApiResponse;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 
@@ -165,11 +166,13 @@ pub trait OpenAIEmbeddingsCompatible: crate::client::Provider {
     }
 }
 
+#[cfg(feature = "openai")]
 impl OpenAIEmbeddingsCompatible for super::OpenAIResponses {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
 }
 
+#[cfg(feature = "openai")]
 impl OpenAIEmbeddingsCompatible for super::OpenAICompletions {
     const PROVIDER_NAME: &'static str = "openai";
     const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
@@ -219,6 +222,7 @@ pub struct GenericEmbeddingModel<Ext, H = crate::http_client::BoxedHttpClient> {
 ///
 /// This preserves the historical public generic shape where the first generic
 /// parameter is the HTTP client type.
+#[cfg(feature = "openai")]
 pub type EmbeddingModel<H = crate::http_client::BoxedHttpClient> =
     GenericEmbeddingModel<super::OpenAIResponses, H>;
 
@@ -520,4 +524,5 @@ where
 }
 
 #[cfg(test)]
+#[cfg(feature = "openai")]
 mod tests;

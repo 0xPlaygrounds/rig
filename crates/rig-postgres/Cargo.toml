@@ -40,3 +40,4 @@ testcontainers = { workspace = true }
 httpmock = { workspace = true }
 
 dotenvy = { workspace = true }
+rig-core = { path = "../rig-core", features = ["openai"] }

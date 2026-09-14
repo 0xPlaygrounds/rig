@@ -1,7 +1,7 @@
 use super::{ANTHROPIC_BASE_URLS, Moonshot};
 use crate::completion::CompletionRequest;
 use crate::message::{AssistantContent, Message, Reasoning, ToolCall, ToolChoice, ToolFunction};
-use crate::providers::openai::completion::{
+use crate::providers::openai_compatible::completion::{
     CompletionRequest as OpenAICompletionRequest, OpenAICompatibleProvider, OpenAIRequestParams,
 };
 

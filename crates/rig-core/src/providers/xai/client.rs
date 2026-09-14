@@ -6,7 +6,7 @@ use crate::client::{
     self, BearerAuth, HasCompletion, ModelTransport, Provider, ProviderClientResult,
 };
 use crate::http_client::{self, HttpClientExt};
-use crate::providers::openai::responses_api::{
+use crate::providers::openai_compatible::responses_api::{
     ResponsesProviderExt, ResponsesToolDefinition, SystemInstructionsPlacement,
 };
 

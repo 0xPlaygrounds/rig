@@ -1,6 +1,6 @@
 use crate::client::EmbeddingsClient;
 use crate::embeddings::{EmbeddingError, EmbeddingModel as _};
-use crate::providers::{openai::embedding::EncodingFormat, openrouter};
+use crate::providers::{openai_compatible::embedding::EncodingFormat, openrouter};
 use crate::test_utils::RecordingHttpClient;
 
 const RESPONSE_BODY: &str = r#"{

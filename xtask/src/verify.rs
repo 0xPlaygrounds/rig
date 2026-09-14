@@ -2,8 +2,10 @@
 //! per job and that the local planner selects from by what changed. Every
 //! selected check executes; nothing is reused or certified across runs.
 mod checks;
+mod examples;
 mod execute;
 mod preflight;
+mod provider_features;
 mod selection;
 #[cfg(test)]
 mod tests;

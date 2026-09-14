@@ -18,13 +18,29 @@
 //! lives only inside the built client.
 
 use bevy_ecs::prelude::*;
+#[cfg(feature = "anthropic")]
+use rig_core::providers::anthropic;
+#[cfg(feature = "deepseek")]
+use rig_core::providers::deepseek;
+#[cfg(feature = "gemini")]
+use rig_core::providers::gemini;
+#[cfg(feature = "openai")]
+use rig_core::providers::openai;
+#[cfg(any(
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "openai"
+))]
 use rig_core::{
     client::{CompletionClient, Provider},
+    markers::Missing,
+    serve::adapters::CompletionAdapter,
+};
+use rig_core::{
     effect::{HandlerDescriptor, HandlerKey},
     http_client::BoxedHttpClient,
-    markers::Missing,
-    providers::{anthropic, deepseek, gemini, openai},
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::ErasedHandler,
 };
 use serde::{Deserialize, Serialize};
 
@@ -48,6 +64,16 @@ pub enum ProviderKind {
 }
 
 impl ProviderKind {
+    /// Whether this build can materialize this provider's bindings.
+    pub fn is_enabled(self) -> bool {
+        match self {
+            Self::Anthropic => cfg!(feature = "anthropic"),
+            Self::OpenAiChat | Self::OpenAiResponses => cfg!(feature = "openai"),
+            Self::Gemini => cfg!(feature = "gemini"),
+            Self::DeepSeek => cfg!(feature = "deepseek"),
+        }
+    }
+
     /// The kind's serde spelling.
     pub fn as_str(self) -> &'static str {
         match self {
@@ -209,6 +235,14 @@ impl ProviderBinding {
 /// for a given world and resolver; none carries a secret.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum MaterializeError {
+    /// The binding's provider was not enabled in this build of `rig-ecs`.
+    #[error("`{key}`: provider {kind} is disabled; enable its rig-ecs provider feature")]
+    ProviderDisabled {
+        /// The binding's key.
+        key: HandlerKey,
+        /// The disabled provider kind.
+        kind: ProviderKind,
+    },
     /// The world has no [`Materializer`].
     #[error("the world has no `Materializer`: install one before materializing bindings")]
     NoMaterializer,
@@ -349,6 +383,9 @@ impl Materializer {
     /// serves it. What [`materialize_bindings`] registers; a host can also
     /// build one to register itself.
     pub fn build(&self, binding: &ProviderBinding) -> Result<ErasedHandler, MaterializeError> {
+        if !binding.kind.is_enabled() {
+            return Err(disabled_provider(binding));
+        }
         validate_extra_params(binding)?;
         let secret = self.resolve(&binding.credential).map_err(|detail| {
             MaterializeError::MissingCredential {
@@ -412,6 +449,12 @@ fn validate_extra_params(binding: &ProviderBinding) -> Result<(), MaterializeErr
     extra_object(binding, allowed_extra_params(binding.kind)).map(|_| ())
 }
 
+#[cfg(any(
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "openai"
+))]
 fn client_error(binding: &ProviderBinding, error: impl std::fmt::Display) -> MaterializeError {
     MaterializeError::Client {
         key: binding.key.clone(),
@@ -420,6 +463,12 @@ fn client_error(binding: &ProviderBinding, error: impl std::fmt::Display) -> Mat
     }
 }
 
+#[cfg(any(
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "openai"
+))]
 fn builder<P>(
     binding: &ProviderBinding,
     secret: &Secret,
@@ -438,6 +487,12 @@ where
     builder
 }
 
+#[cfg(any(
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "openai"
+))]
 fn build_adapter(
     binding: &ProviderBinding,
     secret: &Secret,
@@ -446,6 +501,7 @@ fn build_adapter(
     let label = binding.label.as_str();
     let model = binding.model.as_str();
     Ok(match binding.kind {
+        #[cfg(feature = "anthropic")]
         ProviderKind::Anthropic => {
             let params = extra_object(binding, allowed_extra_params(binding.kind))?;
             let mut builder = builder::<anthropic::client::Anthropic>(binding, secret, transport);
@@ -479,6 +535,7 @@ fn build_adapter(
                 client.completion_model(model),
             ))
         }
+        #[cfg(feature = "openai")]
         ProviderKind::OpenAiChat => {
             extra_object(binding, allowed_extra_params(binding.kind))?;
             let client = builder::<openai::client::OpenAICompletions>(binding, secret, transport)
@@ -489,6 +546,7 @@ fn build_adapter(
                 client.completion_model(model),
             ))
         }
+        #[cfg(feature = "openai")]
         ProviderKind::OpenAiResponses => {
             let params = extra_object(binding, allowed_extra_params(binding.kind))?;
             let mut client = builder::<openai::client::OpenAIResponses>(binding, secret, transport)
@@ -514,6 +572,7 @@ fn build_adapter(
                 client.completion_model(model),
             ))
         }
+        #[cfg(feature = "gemini")]
         ProviderKind::Gemini => {
             extra_object(binding, allowed_extra_params(binding.kind))?;
             let client = builder::<gemini::client::Gemini>(binding, secret, transport)
@@ -524,6 +583,7 @@ fn build_adapter(
                 client.completion_model(model),
             ))
         }
+        #[cfg(feature = "deepseek")]
         ProviderKind::DeepSeek => {
             extra_object(binding, allowed_extra_params(binding.kind))?;
             let client = builder::<deepseek::DeepSeek>(binding, secret, transport)
@@ -534,6 +594,16 @@ fn build_adapter(
                 client.completion_model(model),
             ))
         }
+        #[cfg(not(feature = "anthropic"))]
+        ProviderKind::Anthropic => return Err(disabled_provider(binding)),
+        #[cfg(not(feature = "openai"))]
+        ProviderKind::OpenAiChat => return Err(disabled_provider(binding)),
+        #[cfg(not(feature = "openai"))]
+        ProviderKind::OpenAiResponses => return Err(disabled_provider(binding)),
+        #[cfg(not(feature = "gemini"))]
+        ProviderKind::Gemini => return Err(disabled_provider(binding)),
+        #[cfg(not(feature = "deepseek"))]
+        ProviderKind::DeepSeek => return Err(disabled_provider(binding)),
     })
 }
 
@@ -567,6 +637,7 @@ struct Pending {
 /// | two binding entities with one key | `DuplicateKey` |
 /// | a binding beside a `Bound` of another key | `KeyMismatch` |
 /// | no `Materializer` | `NoMaterializer` |
+/// | an unserved binding whose provider feature is disabled | `ProviderDisabled`, no credential lookup or transport construction |
 /// | a reference the resolver refuses, a kind's params it does not take, a builder that refuses | that error, nothing registered |
 pub fn materialize_bindings(world: &mut World) -> Result<MaterializeReport, MaterializeError> {
     if !world.contains_resource::<Materializer>() {
@@ -732,3 +803,24 @@ pub fn materialize(world: &mut World) {
 /// Why the last [`materialize`] pass refused.
 #[derive(Resource, Debug, Clone, PartialEq, Eq)]
 pub struct MaterializeFailed(pub MaterializeError);
+
+fn disabled_provider(binding: &ProviderBinding) -> MaterializeError {
+    MaterializeError::ProviderDisabled {
+        key: binding.key.clone(),
+        kind: binding.kind,
+    }
+}
+
+#[cfg(not(any(
+    feature = "anthropic",
+    feature = "deepseek",
+    feature = "gemini",
+    feature = "openai"
+)))]
+fn build_adapter(
+    binding: &ProviderBinding,
+    _secret: &Secret,
+    _transport: BoxedHttpClient,
+) -> Result<ErasedHandler, MaterializeError> {
+    Err(disabled_provider(binding))
+}

@@ -497,7 +497,7 @@ async fn streaming_http_non_success_preserves_status_and_body() {
 
 #[tokio::test]
 async fn streaming_in_band_error_envelope_preserves_full_payload() {
-    use crate::providers::openai::send_compatible_streaming_request;
+    use crate::providers::openai_compatible::send_compatible_streaming_request;
     use crate::test_utils::MockStreamingClient;
 
     let body = r#"{"error":{"message":"upstream unavailable","type":"server_error"}}"#;
@@ -556,7 +556,7 @@ async fn streaming_in_band_error_envelope_preserves_full_payload() {
 
 #[tokio::test]
 async fn streaming_mid_stream_http_non_success_preserves_status_and_body() {
-    use crate::providers::openai::send_compatible_streaming_request;
+    use crate::providers::openai_compatible::send_compatible_streaming_request;
     use crate::test_utils::SequencedStreamingHttpClient;
 
     let body = r#"{"error":{"message":"upstream unavailable"}}"#;
@@ -646,7 +646,7 @@ async fn streaming_http_non_success_json_parse_error_is_visible() {
 async fn streaming_non_http_transport_error_stays_a_transport_error() {
     use crate::test_utils::SequencedStreamingHttpClient;
 
-    use crate::providers::openai::send_compatible_streaming_request;
+    use crate::providers::openai_compatible::send_compatible_streaming_request;
 
     let chunks = vec![Err(http_client::Error::InvalidContentType(
         http::HeaderValue::from_static("application/json"),
@@ -842,7 +842,7 @@ async fn tool_calls_finish_reason_keeps_a_deliberate_zero_argument_call() {
 
 #[tokio::test]
 async fn transport_error_still_flushes_fully_delivered_tool_calls() {
-    use crate::providers::openai::send_compatible_streaming_request;
+    use crate::providers::openai_compatible::send_compatible_streaming_request;
     use crate::test_utils::SequencedStreamingHttpClient;
 
     // A fully-delivered tool call followed by a transport error: the tool

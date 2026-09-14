@@ -24,6 +24,7 @@ anyhow = { workspace = true }
 testcontainers = { workspace = true }
 httpmock = { workspace = true }
 
+rig-core = { path = "../rig-core", features = ["openai"] }
 [[example]]
 name = "qdrant_vector_search"
 required-features = ["rig-core/derive"]

@@ -309,7 +309,7 @@ rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optiona
 [dev-dependencies]
 # The repository census checks Bedrock binary fixtures even in default suites.
 rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", features = ["bedrock"] }
-rig-ecs = { path = "crates/rig-ecs" }
+rig-ecs = { path = "crates/rig-ecs", features = ["anthropic", "deepseek", "gemini", "openai"] }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
 # The ECS contract matrix (`tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as rig-verify's world interpreter does.
@@ -376,6 +376,60 @@ tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
 url = { workspace = true }
 [features]
+providers-all = [
+    "anthropic",
+    "azure",
+    "chatgpt",
+    "cohere",
+    "copilot",
+    "deepseek",
+    "doubleword",
+    "gemini",
+    "groq",
+    "huggingface",
+    "hyperbolic",
+    "llamacpp",
+    "minimax",
+    "mira",
+    "mistral",
+    "moonshot",
+    "ollama",
+    "openai",
+    "openrouter",
+    "perplexity",
+    "together",
+    "venice",
+    "voyageai",
+    "xai",
+    "xiaomimimo",
+    "zai",
+]
+anthropic = ["rig-core/anthropic"]
+azure = ["rig-core/azure"]
+chatgpt = ["rig-core/chatgpt"]
+cohere = ["rig-core/cohere"]
+copilot = ["rig-core/copilot"]
+deepseek = ["rig-core/deepseek"]
+doubleword = ["rig-core/doubleword"]
+gemini = ["rig-core/gemini"]
+groq = ["rig-core/groq"]
+huggingface = ["rig-core/huggingface"]
+hyperbolic = ["rig-core/hyperbolic"]
+llamacpp = ["rig-core/llamacpp"]
+minimax = ["rig-core/minimax"]
+mira = ["rig-core/mira"]
+mistral = ["rig-core/mistral"]
+moonshot = ["rig-core/moonshot"]
+ollama = ["rig-core/ollama"]
+openai = ["rig-core/openai", "rig-tungstenite?/openai"]
+openrouter = ["rig-core/openrouter"]
+perplexity = ["rig-core/perplexity"]
+together = ["rig-core/together"]
+venice = ["rig-core/venice"]
+voyageai = ["rig-core/voyageai"]
+xai = ["rig-core/xai"]
+xiaomimimo = ["rig-core/xiaomimimo"]
+zai = ["rig-core/zai"]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]
 agent = ["dep:rig-agent"]
 test-utils = ["rig-core/test-utils", "rig-agent?/test-utils"]
@@ -457,3 +511,111 @@ native-tls = [
 reqwest-middleware = ["reqwest", "rig-reqwest/reqwest-middleware"]
 reqwest-middleware-rustls = ["reqwest", "rig-reqwest/reqwest-middleware-rustls"]
 reqwest-middleware-native-tls = ["reqwest", "rig-reqwest/reqwest-middleware-native-tls"]
+
+[[test]]
+name = "anthropic"
+required-features = ["anthropic"]
+
+[[test]]
+name = "azure"
+required-features = ["azure"]
+
+[[test]]
+name = "chatgpt"
+required-features = ["chatgpt"]
+
+[[test]]
+name = "cohere"
+required-features = ["cohere"]
+
+[[test]]
+name = "copilot"
+required-features = ["copilot"]
+
+[[test]]
+name = "deepseek"
+required-features = ["deepseek"]
+
+[[test]]
+name = "doubleword"
+required-features = ["doubleword"]
+
+[[test]]
+name = "gemini"
+required-features = ["gemini"]
+
+[[test]]
+name = "groq"
+required-features = ["groq"]
+
+[[test]]
+name = "huggingface"
+required-features = ["huggingface"]
+
+[[test]]
+name = "hyperbolic"
+required-features = ["hyperbolic"]
+
+[[test]]
+name = "llamacpp"
+required-features = ["llamacpp"]
+
+[[test]]
+name = "minimax"
+required-features = ["minimax"]
+
+[[test]]
+name = "mira"
+required-features = ["mira"]
+
+[[test]]
+name = "mistral"
+required-features = ["mistral"]
+
+[[test]]
+name = "moonshot"
+required-features = ["moonshot"]
+
+[[test]]
+name = "ollama"
+required-features = ["ollama"]
+
+[[test]]
+name = "openai"
+required-features = ["openai"]
+
+[[test]]
+name = "openrouter"
+required-features = ["openrouter"]
+
+[[test]]
+name = "perplexity"
+required-features = ["perplexity"]
+
+[[test]]
+name = "together"
+required-features = ["together"]
+
+[[test]]
+name = "venice"
+required-features = ["venice"]
+
+[[test]]
+name = "voyageai"
+required-features = ["voyageai"]
+
+[[test]]
+name = "xai"
+required-features = ["xai"]
+
+[[test]]
+name = "xiaomimimo"
+required-features = ["xiaomimimo"]
+
+[[test]]
+name = "zai"
+required-features = ["zai"]
+
+[[test]]
+name = "mistralrs"
+required-features = ["openai"]

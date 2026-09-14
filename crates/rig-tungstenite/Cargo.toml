@@ -43,6 +43,19 @@ tokio = { workspace = true, features = ["full"] }
 tokio-tungstenite = { workspace = true, features = ["handshake"] }
 
 [features]
+openai = ["rig-core/openai"]
 default = ["rustls"]
 rustls = ["tokio-tungstenite/rustls-tls-webpki-roots"]
 native-tls = ["tokio-tungstenite/native-tls"]
+
+[[test]]
+name = "streaming_conformance_websocket"
+required-features = ["openai"]
+
+[[test]]
+name = "handshake_rejection"
+required-features = ["openai"]
+
+[[test]]
+name = "off_runtime"
+required-features = ["openai"]

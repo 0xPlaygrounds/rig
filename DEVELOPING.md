@@ -106,3 +106,26 @@ frozen tree. After a later fix, rerun the affected checks and the review.
 Publish only after that; then watch committed-head CI and review threads.
 Keep progress notes outside the repository. Generated release documents stay
 untouched (see AGENTS.md).
+
+## Provider and example isolation
+
+`provider-features-none`, `provider-features-all`, and one
+`provider-features-<name>` check per built-in provider cover sparse core and facade test
+targets, core documentation, and doctests. Independent downstream crates check the
+facade and core with defaults on and off, inspect compiler dep-info for concrete
+provider sources, require unresolved-import diagnostics for every disabled
+provider, and type-check public raw transcription return types. The provider-free lane also checks transport/modality-only builds and
+a partial multi-provider build. These checks cannot borrow features from
+workspace examples or dev dependencies. Independent ECS consumers also verify
+that disabled bindings fail before credential resolution, transport creation,
+or serving-wrapper invocation. The provider-free and OpenAI rows also check
+the direct transport crates with sparse features and documentation.
+
+`examples-0` through `examples-3` discover and link every standalone and
+crate-local example independently, including excluded standalone workspaces.
+An excluded workspace without a lockfile resolves its private lock before the
+locked build; its dependencies remain outside the root workspace lock.
+The normal cassette and scenario-registration sweeps explicitly use
+`bedrock,providers-all`. The default check uses the facade's default feature
+set; the independent consumers prove provider isolation without test-only
+feature unification.
