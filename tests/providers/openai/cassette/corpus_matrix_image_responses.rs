@@ -21,114 +21,22 @@ fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + 
     }
 }
 
-#[tokio::test]
-async fn inline_text_unary() {
-    with_openai_cassette(
-        "image_matrix_responses/inline_text_unary",
-        |client| async move {
-            run_agent(&wire(&client), &cells::IMAGE_INLINE_TEXT_UNARY, |log| {
-                crate::goldens::golden_effects("openai_responses_image_inline_text_unary", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn inline_text_streamed() {
-    with_openai_cassette(
-        "image_matrix_responses/inline_text_streamed",
-        |client| async move {
-            run_agent(&wire(&client), &cells::IMAGE_INLINE_TEXT_STREAMED, |log| {
-                crate::goldens::golden_effects("openai_responses_image_inline_text_streamed", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn inline_mixed_order() {
-    with_openai_cassette(
-        "image_matrix_responses/inline_mixed_order",
-        |client| async move {
-            run_agent(&wire(&client), &cells::IMAGE_INLINE_MIXED_ORDER, |log| {
-                crate::goldens::golden_effects("openai_responses_image_inline_mixed_order", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn inline_tool_unary() {
-    with_openai_cassette(
-        "image_matrix_responses/inline_tool_unary",
-        |client| async move {
-            run_agent(&wire(&client), &cells::IMAGE_INLINE_TOOL_UNARY, |log| {
-                crate::goldens::golden_effects("openai_responses_image_inline_tool_unary", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn inline_tool_streamed() {
-    with_openai_cassette(
-        "image_matrix_responses/inline_tool_streamed",
-        |client| async move {
-            run_agent(&wire(&client), &cells::IMAGE_INLINE_TOOL_STREAMED, |log| {
-                crate::goldens::golden_effects("openai_responses_image_inline_tool_streamed", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn inline_followup() {
-    with_openai_cassette(
-        "image_matrix_responses/inline_followup",
-        |client| async move {
-            run_agent(&wire(&client), &cells::IMAGE_INLINE_FOLLOWUP, |log| {
-                crate::goldens::golden_effects("openai_responses_image_inline_followup", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn url_text_unary() {
-    with_openai_cassette(
-        "image_matrix_responses/url_text_unary",
-        |client| async move {
-            run_agent(&wire(&client), &cells::IMAGE_URL_TEXT_UNARY, |log| {
-                crate::goldens::golden_effects("openai_responses_image_url_text_unary", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn url_tool_unary() {
-    with_openai_cassette(
-        "image_matrix_responses/url_tool_unary",
-        |client| async move {
-            run_agent(&wire(&client), &cells::IMAGE_URL_TOOL_UNARY, |log| {
-                crate::goldens::golden_effects("openai_responses_image_url_tool_unary", log)
-            })
-            .await;
-        },
-    )
-    .await;
+crate::matrix::golden_matrix! {
+    wrapper: with_openai_cassette, wire: wire, run: run_agent, oracle: crate::goldens::golden_effects;
+    #[tokio::test]
+    inline_text_unary: ("image_matrix_responses/inline_text_unary", cells::IMAGE_INLINE_TEXT_UNARY, "openai_responses_image_inline_text_unary");
+    #[tokio::test]
+    inline_text_streamed: ("image_matrix_responses/inline_text_streamed", cells::IMAGE_INLINE_TEXT_STREAMED, "openai_responses_image_inline_text_streamed");
+    #[tokio::test]
+    inline_mixed_order: ("image_matrix_responses/inline_mixed_order", cells::IMAGE_INLINE_MIXED_ORDER, "openai_responses_image_inline_mixed_order");
+    #[tokio::test]
+    inline_tool_unary: ("image_matrix_responses/inline_tool_unary", cells::IMAGE_INLINE_TOOL_UNARY, "openai_responses_image_inline_tool_unary");
+    #[tokio::test]
+    inline_tool_streamed: ("image_matrix_responses/inline_tool_streamed", cells::IMAGE_INLINE_TOOL_STREAMED, "openai_responses_image_inline_tool_streamed");
+    #[tokio::test]
+    inline_followup: ("image_matrix_responses/inline_followup", cells::IMAGE_INLINE_FOLLOWUP, "openai_responses_image_inline_followup");
+    #[tokio::test]
+    url_text_unary: ("image_matrix_responses/url_text_unary", cells::IMAGE_URL_TEXT_UNARY, "openai_responses_image_url_text_unary");
+    #[tokio::test]
+    url_tool_unary: ("image_matrix_responses/url_tool_unary", cells::IMAGE_URL_TOOL_UNARY, "openai_responses_image_url_tool_unary");
 }

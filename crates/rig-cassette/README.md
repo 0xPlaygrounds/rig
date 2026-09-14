@@ -41,7 +41,7 @@ decoding and scrubbing; its Smithy dependencies are absent otherwise.
 
 The engine retains secret and generated-identifier scrubbing, strict request
 matching, and safety validation. Repository-specific source scans and fixture
-censuses remain with each caller. Rig's adapter in `tests/common/cassettes.rs`
+censuses remain with each caller. Rig's adapter in `test-support/rig-test-support/src/cassettes.rs`
 supplies its own root; a downstream can supply `fixtures/cassettes` instead.
 `Retry-After` response headers retain canonical seconds or HTTP dates for
 replay diagnostics; malformed values are discarded instead of persisting

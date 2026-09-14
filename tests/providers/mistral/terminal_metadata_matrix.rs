@@ -356,482 +356,54 @@ fn cell(transport: Transport, model: ModelVariant, limit: Limit, shape: Shape) -
 // Blocking controls: 2 models × 2 output budgets × 3 response shapes. The
 // matching streaming half traverses the shared compatible stream adapter.
 
-#[tokio::test]
-async fn blocking_mistral_small_roomy_plain_one() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_mistral_small_roomy_plain_one";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Limit::Roomy,
-        Shape::PlainOne,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_mistral_small_roomy_plain_one",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_roomy_plain_two() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_mistral_small_roomy_plain_two";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Limit::Roomy,
-        Shape::PlainTwo,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_mistral_small_roomy_plain_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_roomy_tool() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_mistral_small_roomy_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Limit::Roomy,
-        Shape::Tool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_mistral_small_roomy_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_tiny_plain_one() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_mistral_small_tiny_plain_one";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Limit::Tiny,
-        Shape::PlainOne,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_mistral_small_tiny_plain_one",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_tiny_plain_two() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_mistral_small_tiny_plain_two";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Limit::Tiny,
-        Shape::PlainTwo,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_mistral_small_tiny_plain_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_tiny_tool() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_mistral_small_tiny_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Limit::Tiny,
-        Shape::Tool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_mistral_small_tiny_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_roomy_plain_one() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_one";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Limit::Roomy,
-        Shape::PlainOne,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_one",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_roomy_plain_two() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_two";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Limit::Roomy,
-        Shape::PlainTwo,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_roomy_tool() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_ministral_3b_roomy_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Limit::Roomy,
-        Shape::Tool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_ministral_3b_roomy_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_tiny_plain_one() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_ministral_3b_tiny_plain_one";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Limit::Tiny,
-        Shape::PlainOne,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_ministral_3b_tiny_plain_one",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_tiny_plain_two() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_ministral_3b_tiny_plain_two";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Limit::Tiny,
-        Shape::PlainTwo,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_ministral_3b_tiny_plain_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_tiny_tool() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/blocking_ministral_3b_tiny_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Limit::Tiny,
-        Shape::Tool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/blocking_ministral_3b_tiny_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_roomy_plain_one() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_mistral_small_roomy_plain_one";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Limit::Roomy,
-        Shape::PlainOne,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_mistral_small_roomy_plain_one",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_roomy_plain_two() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_mistral_small_roomy_plain_two";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Limit::Roomy,
-        Shape::PlainTwo,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_mistral_small_roomy_plain_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_roomy_tool() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_mistral_small_roomy_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Limit::Roomy,
-        Shape::Tool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_mistral_small_roomy_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_tiny_plain_one() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_mistral_small_tiny_plain_one";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Limit::Tiny,
-        Shape::PlainOne,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_mistral_small_tiny_plain_one",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_tiny_plain_two() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_mistral_small_tiny_plain_two";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Limit::Tiny,
-        Shape::PlainTwo,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_mistral_small_tiny_plain_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_tiny_tool() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_mistral_small_tiny_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Limit::Tiny,
-        Shape::Tool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_mistral_small_tiny_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_roomy_plain_one() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_ministral_3b_roomy_plain_one";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Limit::Roomy,
-        Shape::PlainOne,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_ministral_3b_roomy_plain_one",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_roomy_plain_two() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_ministral_3b_roomy_plain_two";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Limit::Roomy,
-        Shape::PlainTwo,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_ministral_3b_roomy_plain_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_roomy_tool() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_ministral_3b_roomy_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Limit::Roomy,
-        Shape::Tool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_ministral_3b_roomy_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_tiny_plain_one() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_one";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Limit::Tiny,
-        Shape::PlainOne,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_one",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_tiny_plain_two() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_two";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Limit::Tiny,
-        Shape::PlainTwo,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_tiny_tool() -> Result<()> {
-    const SCENARIO: &str = "terminal_metadata_matrix/streaming_ministral_3b_tiny_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Limit::Tiny,
-        Shape::Tool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_terminal_metadata_cassette_result(
-        "terminal_metadata_matrix/streaming_ministral_3b_tiny_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
+crate::matrix::case_matrix! {
+    wrapper: with_mistral_terminal_metadata_cassette_result, family: terminal_metadata_matrix_case;
+    # [tokio :: test]
+    blocking_mistral_small_roomy_plain_one: ("terminal_metadata_matrix/blocking_mistral_small_roomy_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: PlainOne ,));
+    # [tokio :: test]
+    blocking_mistral_small_roomy_plain_two: ("terminal_metadata_matrix/blocking_mistral_small_roomy_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: PlainTwo ,));
+    # [tokio :: test]
+    blocking_mistral_small_roomy_tool: ("terminal_metadata_matrix/blocking_mistral_small_roomy_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: Tool ,));
+    # [tokio :: test]
+    blocking_mistral_small_tiny_plain_one: ("terminal_metadata_matrix/blocking_mistral_small_tiny_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: PlainOne ,));
+    # [tokio :: test]
+    blocking_mistral_small_tiny_plain_two: ("terminal_metadata_matrix/blocking_mistral_small_tiny_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: PlainTwo ,));
+    # [tokio :: test]
+    blocking_mistral_small_tiny_tool: ("terminal_metadata_matrix/blocking_mistral_small_tiny_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: Tool ,));
+    # [tokio :: test]
+    blocking_ministral_3b_roomy_plain_one: ("terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainOne ,));
+    # [tokio :: test]
+    blocking_ministral_3b_roomy_plain_two: ("terminal_metadata_matrix/blocking_ministral_3b_roomy_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainTwo ,));
+    # [tokio :: test]
+    blocking_ministral_3b_roomy_tool: ("terminal_metadata_matrix/blocking_ministral_3b_roomy_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: Tool ,));
+    # [tokio :: test]
+    blocking_ministral_3b_tiny_plain_one: ("terminal_metadata_matrix/blocking_ministral_3b_tiny_plain_one", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: PlainOne ,));
+    # [tokio :: test]
+    blocking_ministral_3b_tiny_plain_two: ("terminal_metadata_matrix/blocking_ministral_3b_tiny_plain_two", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: PlainTwo ,));
+    # [tokio :: test]
+    blocking_ministral_3b_tiny_tool: ("terminal_metadata_matrix/blocking_ministral_3b_tiny_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: Tool ,));
+    # [tokio :: test]
+    streaming_mistral_small_roomy_plain_one: ("terminal_metadata_matrix/streaming_mistral_small_roomy_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: PlainOne ,));
+    # [tokio :: test]
+    streaming_mistral_small_roomy_plain_two: ("terminal_metadata_matrix/streaming_mistral_small_roomy_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: PlainTwo ,));
+    # [tokio :: test]
+    streaming_mistral_small_roomy_tool: ("terminal_metadata_matrix/streaming_mistral_small_roomy_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Roomy , Shape :: Tool ,));
+    # [tokio :: test]
+    streaming_mistral_small_tiny_plain_one: ("terminal_metadata_matrix/streaming_mistral_small_tiny_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: PlainOne ,));
+    # [tokio :: test]
+    streaming_mistral_small_tiny_plain_two: ("terminal_metadata_matrix/streaming_mistral_small_tiny_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: PlainTwo ,));
+    # [tokio :: test]
+    streaming_mistral_small_tiny_tool: ("terminal_metadata_matrix/streaming_mistral_small_tiny_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Limit :: Tiny , Shape :: Tool ,));
+    # [tokio :: test]
+    streaming_ministral_3b_roomy_plain_one: ("terminal_metadata_matrix/streaming_ministral_3b_roomy_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainOne ,));
+    # [tokio :: test]
+    streaming_ministral_3b_roomy_plain_two: ("terminal_metadata_matrix/streaming_ministral_3b_roomy_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: PlainTwo ,));
+    # [tokio :: test]
+    streaming_ministral_3b_roomy_tool: ("terminal_metadata_matrix/streaming_ministral_3b_roomy_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Roomy , Shape :: Tool ,));
+    # [tokio :: test]
+    streaming_ministral_3b_tiny_plain_one: ("terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_one", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: PlainOne ,));
+    # [tokio :: test]
+    streaming_ministral_3b_tiny_plain_two: ("terminal_metadata_matrix/streaming_ministral_3b_tiny_plain_two", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: PlainTwo ,));
+    # [tokio :: test]
+    streaming_ministral_3b_tiny_tool: ("terminal_metadata_matrix/streaming_ministral_3b_tiny_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Limit :: Tiny , Shape :: Tool ,));
 }

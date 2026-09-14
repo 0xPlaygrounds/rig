@@ -10407,6 +10407,7 @@ dependencies = [
  "rig-scylladb",
  "rig-sqlite",
  "rig-surrealdb",
+ "rig-test-support",
  "rig-tungstenite",
  "rig-vectorize",
  "rig-vertexai",
@@ -10925,6 +10926,36 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "rig-test-support"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "async-stream",
+ "base64 0.22.1",
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_tasks",
+ "bytes",
+ "futures",
+ "http 1.4.2",
+ "reqwest 0.13.4",
+ "rig-agent",
+ "rig-cassette",
+ "rig-core",
+ "rig-ecs",
+ "rig-effect-log",
+ "rig-reqwest",
+ "schemars 1.2.1",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "syn 2.0.117",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]

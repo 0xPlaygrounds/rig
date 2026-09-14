@@ -6,41 +6,35 @@
     clippy::unreachable
 )]
 
-#[allow(dead_code)]
-#[path = "common/ecs_agent.rs"]
-mod ecs_agent;
+use rig_test_support::ecs_agent;
 #[path = "common/ecs_extractor.rs"]
 mod ecs_extractor;
 
-#[path = "common/support.rs"]
-mod support;
+use rig_test_support::support;
 
-#[path = "common/cache_conformance.rs"]
-mod cache_conformance;
-#[path = "common/cache_prefix.rs"]
-mod cache_prefix;
+use rig_test_support::cache_conformance;
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;
-#[path = "common/cassettes.rs"]
-mod cassettes;
+use rig_test_support::cassettes;
 
 #[path = "providers/doubleword/mod.rs"]
 mod doubleword;
 
-#[allow(dead_code)]
-#[path = "common/goldens.rs"]
-mod goldens;
+use rig_test_support::goldens;
 
-#[allow(dead_code)]
-#[path = "common/ecs_goldens.rs"]
-mod ecs_goldens;
+use rig_test_support::ecs_goldens;
 
 #[allow(dead_code)]
 #[path = "common/ecs_termination.rs"]
 mod ecs_termination;
 
-#[path = "common/stream_faults.rs"]
-mod stream_faults;
+use rig_test_support::stream_faults;
 
+#[allow(
+    dead_code,
+    reason = "each provider exercises its own subset of matrix cells"
+)]
 #[path = "common/ecs_matrix.rs"]
 mod ecs_matrix;
+
+use rig_test_support::matrix;

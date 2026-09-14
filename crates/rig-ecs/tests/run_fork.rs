@@ -13,7 +13,7 @@
     clippy::indexing_slicing
 )]
 
-mod run_support;
+use crate::run_support;
 
 use bevy_ecs::prelude::*;
 use rig_core::message::AssistantContent;

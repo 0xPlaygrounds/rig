@@ -22,7 +22,7 @@
     clippy::type_complexity
 )]
 
-mod run_support;
+use crate::run_support;
 
 use std::sync::{Arc, Mutex};
 

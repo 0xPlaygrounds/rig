@@ -5,7 +5,7 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-mod run_support;
+use crate::run_support;
 use bevy_ecs::prelude::*;
 use rig_ecs::{
     agent::{InvalidCalls, MaxTurns, PolicyVersion, Preamble, ToolPolicy, Unhandled},

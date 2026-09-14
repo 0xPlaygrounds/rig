@@ -12,8 +12,6 @@
 //! mid-flight today); the resumption goes through `Agent::resume(run)`
 //! — the bus-driven engine — so the property crosses the two interpreters.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
 use std::{
     sync::{Arc, Mutex},
     time::Duration,

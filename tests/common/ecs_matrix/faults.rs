@@ -6,8 +6,15 @@
 //! transport the fault needs: a cassette for a recorded fault, the
 //! sequenced transport over labelled frames for a scripted one.
 
-use rig::effect::EffectFamily::{self, Completion, Memory as Mem, Tool};
-use rig::error::ErrorKind;
+use rig_core::effect::EffectFamily;
+
+use rig_core::effect::EffectFamily::Completion;
+
+use rig_core::effect::EffectFamily::Memory as Mem;
+
+use rig_core::effect::EffectFamily::Tool;
+
+use rig_core::error::ErrorKind;
 
 use super::cells::{
     BASIC_PREAMBLE, BASIC_PROMPT, CELL, Cell, ENDINGS_TOOL_OUTCOME_CANCELLED, Memory, READY_PROMPT,
@@ -411,9 +418,9 @@ pub(crate) const ALL: &[&Cell] = &[
 #[derive(Clone)]
 pub(crate) struct FailingOrchard;
 
-impl rig::tool::Tool for FailingOrchard {
+impl rig_core::tool::Tool for FailingOrchard {
     const NAME: &'static str = "lookup_orchard_label";
-    type Error = rig::tool::ToolExecutionError;
+    type Error = rig_core::tool::ToolExecutionError;
     type Args = crate::support::EmptyArgs;
     type Output = String;
 
@@ -431,9 +438,9 @@ impl rig::tool::Tool for FailingOrchard {
 
     async fn call(
         &self,
-        _context: &mut rig::tool::ToolContext,
+        _context: &mut rig_core::tool::ToolContext,
         _args: Self::Args,
     ) -> Result<Self::Output, Self::Error> {
-        Err(rig::tool::ToolExecutionError::other(BROKEN_ORCHARD))
+        Err(rig_core::tool::ToolExecutionError::other(BROKEN_ORCHARD))
     }
 }

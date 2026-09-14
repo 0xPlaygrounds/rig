@@ -176,7 +176,7 @@ Three checks over cassettes that already exist, costing no provider traffic:
 
 - `recorded_conversations_do_not_move_their_cache_prefix` — for consecutive same-endpoint requests
   in one cassette, turn N-1's canonical blocks must be a prefix of turn N's. The rule lives in
-  `tests/common/cache_prefix.rs` and is shared with the per-scenario harness so the two cannot
+  `test-support/rig-test-support/src/cache_prefix.rs` and is shared with the per-scenario harness so the two cannot
   drift. It compares cached *content*: `cache_control` markers are stripped first, because
   Anthropic's documented incremental-caching pattern moves the breakpoint forward every turn and
   that is correct behavior, not a prefix move.
@@ -191,7 +191,7 @@ Three checks over cassettes that already exist, costing no provider traffic:
 - `every_cassette_provider_has_a_cache_suite` — a provider with cassettes and no cache scenario
   fails unless it is in `NO_CACHE_SUITE` with a reason.
 
-### Layer 1 — the shared harness (`tests/common/cache_conformance.rs`)
+### Layer 1 — the shared harness (`test-support/rig-test-support/src/cache_conformance.rs`)
 
 One deterministic three-turn probe — warm, byte-identical repeat, then append and repeat —
 asserted against a per-provider `CacheSupport` descriptor, so adding a provider is a descriptor
@@ -406,42 +406,41 @@ Check each integration module for required environment variables. For example, V
 `VECTORIZE_INDEX_NAME`, and Bedrock tests require AWS credentials plus access to the configured
 Bedrock models.
 
+## Shared test implementation
+
+`test-support/rig-test-support` compiles neutral tools, cassette paths, cache and
+stream assertions, golden comparison, and the ECS harness once. Provider binaries
+import these modules; their cassette-safety tests remain registered in each binary.
+Generic ECS matrix drivers remain under `tests/common/ecs_matrix`: a cell edit
+then rebuilds its provider binaries without invalidating unrelated providers.
+Their long-loop regression tests stay with those modules. Other shared helper
+regressions run in the support crate; its ECS regressions also retain the
+standalone root-parity dependency configuration.
+
+Matrix declarations keep literal scenario names and explicit per-cell parameters.
+`golden_matrix!` runs a common agent/world cell, `resume_matrix!` preserves each
+checkpoint cut and its named oracle, and `case_matrix!` selects a family body.
+A `case_matrix!` declaration without a wrapper contains only scripted rows;
+it registers tests without claiming cassette scenarios.
+Their parsers reject malformed rows and exclude ignored rows from the recording
+inventory. Keep a compiled listing when changing declarations: source discovery
+alone does not establish that a configuration registers or executes a test.
+
 ## Agent/ECS regression scenarios
 
 Native ECS tests execute real provider adapters against the same cassettes as
 rig-agent tests. Original and native golden comparisons retain their complete
-assertions. The [scenario catalog](ecs_parity/scenarios.json) records current
-test correspondences, classifications and configuration, with a deduplicated
-source/helper/fixture inventory. The [comparison guide](ecs_parity/README.md)
-describes shared boundaries and family-specific limitations. It is not a passing
-result or proof of an exhaustive functional superset.
+assertions. The [comparison guide](ecs_parity/README.md) describes shared
+boundaries and family-specific limitations. Behavioral obligations live in the
+tests and their helpers; current test runs and CI establish which tests pass.
+A compiled listing is not proof of execution or an exhaustive functional superset.
+Shared-provider tests do not count as native agent migrations.
 
-The catalog includes unmapped and unclassified cases. Further migration and
-broader capability comparisons remain follow-up work. Shared-provider tests do
-not count as native agent migrations, and live or capability-gated cases must
-not be reported as exercised merely because the test runner lists them.
-
-Check maintained files and a fresh compiled listing:
+List registrations or run a native family, for example:
 
 ```sh
-cargo xtask check-ecs-scenarios
-cargo nextest list --locked -p rig --features bedrock --message-format json > target/ecs-tests.json
-cargo xtask check-ecs-scenarios target/ecs-tests.json
-cargo test --locked -p xtask
-```
-
-The checker rejects duplicate mappings, missing source/helper/fixture files,
-missing compiled mapped original/native tests, and filtered listings. Unmapped
-source-only or feature-gated scenarios outside the listing are counted explicitly.
-Ignored registrations are not execution results. The checker does not
-certify execution or behavioral equivalence. Maintain behavioral obligations
-alongside the corresponding tests; current test runs and CI
-establish which tests pass.
-
-Run a native family using its catalog binary and test module, for example:
-
-```sh
-cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
+cargo nextest list --locked -p rig --features bedrock
+RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
 ```
 
 ### Stream-fault cells
@@ -451,7 +450,7 @@ cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
 the real adapter into a stream that ends badly: the committed error
 recordings for a setup failure, the committed text stream dropped by its
 consumer, and scripted faults served by `rig::test_utils`'s sequenced
-transport — a recording cut before its terminal (`tests/common/stream_faults.rs`),
+transport — a recording cut before its terminal (`test-support/rig-test-support/src/stream_faults.rs`),
 a Gemini refusal, an in-band error after content. Every scripted frame is a
 labelled constant with its provenance beside the cell; no cassette is
 hand-edited and no new fixture is committed. A scripted cell pins what the

@@ -1,4 +1,5 @@
 [package]
+autotests = false
 name = "rig-ecs"
 version.workspace = true
 edition = { workspace = true }
@@ -83,3 +84,21 @@ required-features = ["assets"]
 [[example]]
 name = "prompt_from_assets"
 required-features = ["assets"]
+
+[[test]]
+name = "bus"
+path = "tests/bus/main.rs"
+
+[[test]]
+name = "run"
+path = "tests/run/main.rs"
+
+[[test]]
+name = "bus_wasm"
+
+[[test]]
+name = "run_wasm"
+
+[[bench]]
+name = "run_assembly_cost"
+harness = false

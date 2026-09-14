@@ -1,6 +1,6 @@
 //! No committed fixture holds a key. The cassette recorder scrubs
 //! sensitive headers, Gemini's `key` query parameter and key-bearing body
-//! fields before writing (`tests/common/cassettes.rs`); this guard is the
+//! fields before writing (`test-support/rig-test-support/src/cassettes.rs`); this guard is the
 //! check on the tree itself — every cassette and every effect-log golden —
 //! that the scrubbing held, so a recording session can never commit what
 //! the recorder was supposed to remove.

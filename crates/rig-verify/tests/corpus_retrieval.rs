@@ -62,9 +62,7 @@
 //!   retrieval-family handler under the same keys, as `memory_handler` does
 //!   for memory.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::Program;
 

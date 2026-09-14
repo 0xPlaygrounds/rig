@@ -1,7 +1,7 @@
 //! Serial execution of the selected checks with live output. A failed step
 //! stops the run; nothing records success anywhere.
 use super::*;
-use std::{fs, process::Stdio, time::Instant};
+use std::{fs, time::Instant};
 
 pub(super) fn tracked_inputs(root: &Path) -> Result<Vec<String>> {
     Ok(output(root, "git", &["ls-files", "-z"])?
@@ -40,26 +40,16 @@ pub(super) fn command(root: &Path, step: &Step, target: &Path) -> Command {
 }
 fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
     match step.program.as_str() {
-        "@layout" => crate::test_layout::check(root).map_err(invalid),
-        "@scenarios" => crate::scenarios::run(root, Vec::new()).map_err(|e| invalid(e.to_string())),
-        "@registrations" => {
-            let cargo = Step {
-                program: "cargo".into(),
-                args: step.args.clone(),
-                env: step.env.clone(),
-            };
-            let result = command(root, &cargo, target)
-                .stderr(Stdio::inherit())
-                .output()?;
-            if !result.status.success() {
-                return Err(invalid("registration discovery failed"));
-            }
-            let file = target.join("verify/registrations.json");
-            fs::create_dir_all(file.parent().unwrap_or(target))?;
-            fs::write(&file, result.stdout)?;
-            crate::scenarios::run(root, vec![file.to_string_lossy().into_owned()])
-                .map_err(|e| invalid(e.to_string()))
+        "@bevy-sources" => {
+            let metadata = output(
+                root,
+                "cargo",
+                &["metadata", "--locked", "--format-version", "1"],
+            )?;
+            crate::bevy::check(&serde_json::from_str(&metadata)?)
+                .map_err(|error| invalid(error.to_string()))
         }
+        "@layout" => crate::test_layout::check(root).map_err(invalid),
         "@fixture-paths" => {
             // `cargo test` runs from the crate root and nextest from the
             // workspace root, so a CWD-relative fixture path passes under one

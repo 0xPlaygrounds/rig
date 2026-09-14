@@ -7,9 +7,22 @@
 #![allow(dead_code, reason = "the image matrix runs on four of the six wires")]
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig::effect::{EffectKind, Outcome};
-use rig::effect_log::EffectLog;
-use rig::message::{AssistantContent, DocumentSourceKind, ImageMediaType, Message, UserContent};
+
+use rig_core::effect::EffectKind;
+
+use rig_core::effect::Outcome;
+
+use rig_effect_log::EffectLog;
+
+use rig_core::message::AssistantContent;
+
+use rig_core::message::DocumentSourceKind;
+
+use rig_core::message::ImageMediaType;
+
+use rig_core::message::Message;
+
+use rig_core::message::UserContent;
 
 use super::cells::Cell;
 
@@ -61,8 +74,8 @@ pub(crate) enum ImageSource {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct ImageCell {
-    pub case: ImageCase,
-    pub source: ImageSource,
+    pub(crate) case: ImageCase,
+    pub(crate) source: ImageSource,
 }
 
 impl ImageCell {
@@ -125,7 +138,7 @@ pub(crate) fn prompt_message(image: ImageCell, prompt: &str) -> Message {
 }
 
 /// Every image part of `message`, decoded to what it carries.
-fn images(message: &Message) -> Vec<&rig::message::Image> {
+fn images(message: &Message) -> Vec<&rig_core::message::Image> {
     match message {
         Message::User { content } => content
             .iter()
@@ -147,7 +160,7 @@ fn images(message: &Message) -> Vec<&rig::message::Image> {
 
 /// The image is the fixture: its decoded bytes (or its URL), its media
 /// type, no options.
-fn assert_image(image: &rig::message::Image, source: ImageSource, what: &str) {
+fn assert_image(image: &rig_core::message::Image, source: ImageSource, what: &str) {
     match (&image.data, source) {
         (DocumentSourceKind::Base64(data), ImageSource::Inline) => {
             let bytes = BASE64_STANDARD.decode(data).expect("the image is base64");
@@ -216,7 +229,7 @@ fn assert_messages(cell: &Cell, image: ImageCell, messages: &[Message], what: &s
     }
 }
 
-fn completion_requests(log: &EffectLog) -> Vec<&rig::completion::CompletionRequest> {
+fn completion_requests(log: &EffectLog) -> Vec<&rig_agent::completion::CompletionRequest> {
     log.records
         .iter()
         .filter_map(|record| match &record.kind {

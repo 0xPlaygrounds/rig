@@ -293,482 +293,54 @@ fn cell(transport: Transport, thinking: Thinking, termination: Termination, top:
 // Blocking controls: 2 thinking modes × 2 termination classes × 3 top-N
 // configurations. The matching streaming half below traverses the fixed path.
 
-#[tokio::test]
-async fn blocking_disabled_stop_top_absent() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_stop_top_absent";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Disabled,
-        Termination::Stop,
-        Top::Absent,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_disabled_stop_top_absent",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_disabled_stop_top_zero() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_stop_top_zero";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Disabled,
-        Termination::Stop,
-        Top::Zero,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_disabled_stop_top_zero",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_disabled_stop_top_two() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_stop_top_two";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Disabled,
-        Termination::Stop,
-        Top::Two,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_disabled_stop_top_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_disabled_length_top_absent() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_length_top_absent";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Disabled,
-        Termination::Length,
-        Top::Absent,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_disabled_length_top_absent",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_disabled_length_top_zero() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_length_top_zero";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Disabled,
-        Termination::Length,
-        Top::Zero,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_disabled_length_top_zero",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_disabled_length_top_two() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_disabled_length_top_two";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Disabled,
-        Termination::Length,
-        Top::Two,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_disabled_length_top_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_low_stop_top_absent() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_stop_top_absent";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Low,
-        Termination::Stop,
-        Top::Absent,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_low_stop_top_absent",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_low_stop_top_zero() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_stop_top_zero";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Low,
-        Termination::Stop,
-        Top::Zero,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_low_stop_top_zero",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_low_stop_top_two() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_stop_top_two";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Low,
-        Termination::Stop,
-        Top::Two,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_low_stop_top_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_low_length_top_absent() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_length_top_absent";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Low,
-        Termination::Length,
-        Top::Absent,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_low_length_top_absent",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_low_length_top_zero() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_length_top_zero";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Low,
-        Termination::Length,
-        Top::Zero,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_low_length_top_zero",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_low_length_top_two() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/blocking_low_length_top_two";
-    let cell = cell(
-        Transport::Blocking,
-        Thinking::Low,
-        Termination::Length,
-        Top::Two,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/blocking_low_length_top_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_disabled_stop_top_absent() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_stop_top_absent";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Disabled,
-        Termination::Stop,
-        Top::Absent,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_disabled_stop_top_absent",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_disabled_stop_top_zero() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_stop_top_zero";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Disabled,
-        Termination::Stop,
-        Top::Zero,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_disabled_stop_top_zero",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_disabled_stop_top_two() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_stop_top_two";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Disabled,
-        Termination::Stop,
-        Top::Two,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_disabled_stop_top_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_disabled_length_top_absent() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_length_top_absent";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Disabled,
-        Termination::Length,
-        Top::Absent,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_disabled_length_top_absent",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_disabled_length_top_zero() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_length_top_zero";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Disabled,
-        Termination::Length,
-        Top::Zero,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_disabled_length_top_zero",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_disabled_length_top_two() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_disabled_length_top_two";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Disabled,
-        Termination::Length,
-        Top::Two,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_disabled_length_top_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_low_stop_top_absent() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_stop_top_absent";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Low,
-        Termination::Stop,
-        Top::Absent,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_low_stop_top_absent",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_low_stop_top_zero() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_stop_top_zero";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Low,
-        Termination::Stop,
-        Top::Zero,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_low_stop_top_zero",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_low_stop_top_two() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_stop_top_two";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Low,
-        Termination::Stop,
-        Top::Two,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_low_stop_top_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_low_length_top_absent() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_length_top_absent";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Low,
-        Termination::Length,
-        Top::Absent,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_low_length_top_absent",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_low_length_top_zero() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_length_top_zero";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Low,
-        Termination::Length,
-        Top::Zero,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_low_length_top_zero",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_low_length_top_two() -> Result<()> {
-    const SCENARIO: &str = "streaming_logprobs_matrix/streaming_low_length_top_two";
-    let cell = cell(
-        Transport::Streaming,
-        Thinking::Low,
-        Termination::Length,
-        Top::Two,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_deepseek_stream_logprobs_cassette_result(
-        "streaming_logprobs_matrix/streaming_low_length_top_two",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
+crate::matrix::case_matrix! {
+    wrapper: with_deepseek_stream_logprobs_cassette_result, family: streaming_logprobs_matrix_case;
+    # [tokio :: test]
+    blocking_disabled_stop_top_absent: ("streaming_logprobs_matrix/blocking_disabled_stop_top_absent", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Stop , Top :: Absent ,));
+    # [tokio :: test]
+    blocking_disabled_stop_top_zero: ("streaming_logprobs_matrix/blocking_disabled_stop_top_zero", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Stop , Top :: Zero ,));
+    # [tokio :: test]
+    blocking_disabled_stop_top_two: ("streaming_logprobs_matrix/blocking_disabled_stop_top_two", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Stop , Top :: Two ,));
+    # [tokio :: test]
+    blocking_disabled_length_top_absent: ("streaming_logprobs_matrix/blocking_disabled_length_top_absent", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Length , Top :: Absent ,));
+    # [tokio :: test]
+    blocking_disabled_length_top_zero: ("streaming_logprobs_matrix/blocking_disabled_length_top_zero", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Length , Top :: Zero ,));
+    # [tokio :: test]
+    blocking_disabled_length_top_two: ("streaming_logprobs_matrix/blocking_disabled_length_top_two", configured, cell (Transport :: Blocking , Thinking :: Disabled , Termination :: Length , Top :: Two ,));
+    # [tokio :: test]
+    blocking_low_stop_top_absent: ("streaming_logprobs_matrix/blocking_low_stop_top_absent", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Stop , Top :: Absent ,));
+    # [tokio :: test]
+    blocking_low_stop_top_zero: ("streaming_logprobs_matrix/blocking_low_stop_top_zero", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Stop , Top :: Zero ,));
+    # [tokio :: test]
+    blocking_low_stop_top_two: ("streaming_logprobs_matrix/blocking_low_stop_top_two", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Stop , Top :: Two ,));
+    # [tokio :: test]
+    blocking_low_length_top_absent: ("streaming_logprobs_matrix/blocking_low_length_top_absent", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Length , Top :: Absent ,));
+    # [tokio :: test]
+    blocking_low_length_top_zero: ("streaming_logprobs_matrix/blocking_low_length_top_zero", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Length , Top :: Zero ,));
+    # [tokio :: test]
+    blocking_low_length_top_two: ("streaming_logprobs_matrix/blocking_low_length_top_two", configured, cell (Transport :: Blocking , Thinking :: Low , Termination :: Length , Top :: Two ,));
+    # [tokio :: test]
+    streaming_disabled_stop_top_absent: ("streaming_logprobs_matrix/streaming_disabled_stop_top_absent", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Stop , Top :: Absent ,));
+    # [tokio :: test]
+    streaming_disabled_stop_top_zero: ("streaming_logprobs_matrix/streaming_disabled_stop_top_zero", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Stop , Top :: Zero ,));
+    # [tokio :: test]
+    streaming_disabled_stop_top_two: ("streaming_logprobs_matrix/streaming_disabled_stop_top_two", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Stop , Top :: Two ,));
+    # [tokio :: test]
+    streaming_disabled_length_top_absent: ("streaming_logprobs_matrix/streaming_disabled_length_top_absent", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Length , Top :: Absent ,));
+    # [tokio :: test]
+    streaming_disabled_length_top_zero: ("streaming_logprobs_matrix/streaming_disabled_length_top_zero", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Length , Top :: Zero ,));
+    # [tokio :: test]
+    streaming_disabled_length_top_two: ("streaming_logprobs_matrix/streaming_disabled_length_top_two", configured, cell (Transport :: Streaming , Thinking :: Disabled , Termination :: Length , Top :: Two ,));
+    # [tokio :: test]
+    streaming_low_stop_top_absent: ("streaming_logprobs_matrix/streaming_low_stop_top_absent", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Stop , Top :: Absent ,));
+    # [tokio :: test]
+    streaming_low_stop_top_zero: ("streaming_logprobs_matrix/streaming_low_stop_top_zero", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Stop , Top :: Zero ,));
+    # [tokio :: test]
+    streaming_low_stop_top_two: ("streaming_logprobs_matrix/streaming_low_stop_top_two", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Stop , Top :: Two ,));
+    # [tokio :: test]
+    streaming_low_length_top_absent: ("streaming_logprobs_matrix/streaming_low_length_top_absent", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Length , Top :: Absent ,));
+    # [tokio :: test]
+    streaming_low_length_top_zero: ("streaming_logprobs_matrix/streaming_low_length_top_zero", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Length , Top :: Zero ,));
+    # [tokio :: test]
+    streaming_low_length_top_two: ("streaming_logprobs_matrix/streaming_low_length_top_two", configured, cell (Transport :: Streaming , Thinking :: Low , Termination :: Length , Top :: Two ,));
 }

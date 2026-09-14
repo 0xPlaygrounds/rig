@@ -301,15 +301,6 @@ pub(super) fn plan(
                 lanes,
             ));
         }
-        if path.starts_with("tests/ecs_parity/") {
-            add(
-                &mut out,
-                all,
-                "tooling",
-                "scenario catalog or semantic contract changed",
-            )?;
-            continue;
-        }
         if path.starts_with("examples/candle_wasm_chat/www/") {
             add(
                 &mut out,

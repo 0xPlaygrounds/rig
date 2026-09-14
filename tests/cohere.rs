@@ -6,22 +6,13 @@
     clippy::unreachable
 )]
 
-#[allow(dead_code)]
-#[path = "common/ecs_agent.rs"]
-mod ecs_agent;
+use rig_test_support::ecs_agent;
 
-#[path = "common/cache_conformance.rs"]
-mod cache_conformance;
-#[path = "common/cache_prefix.rs"]
-mod cache_prefix;
+use rig_test_support::cache_conformance;
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;
-#[path = "common/cassettes.rs"]
-mod cassettes;
-#[path = "common/reasoning.rs"]
-mod reasoning;
-#[path = "common/support.rs"]
-mod support;
+use rig_test_support::cassettes;
+use rig_test_support::support;
 
 #[path = "providers/cohere/mod.rs"]
 mod cohere;

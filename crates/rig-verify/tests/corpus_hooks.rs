@@ -54,9 +54,7 @@
 //! Every Anthropic cell is recorded on the wire (`CLAUDE_SONNET_4_6`,
 //! temperature 0) into `tests/cassettes/anthropic/corpus_hooks/`.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Hook, Program, REPLACED_ANSWER};
 

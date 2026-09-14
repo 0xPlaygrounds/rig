@@ -206,38 +206,6 @@ fn telemetry_retry_policy_is_not_overridden() {
 }
 
 #[test]
-fn registration_discovery_reuses_default_test_graph_without_filtering() {
-    let all = checks::all();
-    for id in ["default-tests", "scenario-registrations"] {
-        let args = &all.iter().find(|c| c.id == id).unwrap().steps[0].args;
-        for flag in [
-            "-p",
-            "--package",
-            "--workspace",
-            "--all-features",
-            "--no-default-features",
-        ] {
-            assert!(
-                !args.iter().any(|arg| arg == flag),
-                "{id}: different graph via {flag}"
-            );
-        }
-        assert!(
-            args.windows(2)
-                .any(|args| args == ["--features", "bedrock"])
-        );
-        if id == "scenario-registrations" {
-            for flag in ["-E", "--filter-expr", "--test", "--lib"] {
-                assert!(
-                    !args.iter().any(|arg| arg == flag),
-                    "filtered listing via {flag}"
-                );
-            }
-        }
-    }
-}
-
-#[test]
 fn frozen_release_edits_include_untracked_and_working_changes() {
     assert!(
         selection::plan(
@@ -369,8 +337,8 @@ fn full_covers_workspace_and_example_targets() {
         assert!(!c.steps[0].args.contains(&flag.into()), "{flag}");
     }
     assert!(!all.iter().any(|c| c.id == "workspace-check"));
-    // Bench targets are the one target class outside cargo test's default
-    // selection; none exists, so nothing needs the removed workspace check.
+    // Bench targets are outside cargo test's default selection. Each needs
+    // an explicit locked compilation owner that does not execute it.
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap();
     let metadata: Value = serde_json::from_str(
         &output(
@@ -384,17 +352,38 @@ fn full_covers_workspace_and_example_targets() {
     let packages = metadata["packages"].as_array().unwrap();
     assert!(packages.len() > 20, "workspace members not found");
     for package in packages {
-        let manifest = Path::new(package["manifest_path"].as_str().unwrap());
-        let benches = package["targets"]
+        for bench in package["targets"]
             .as_array()
             .unwrap()
             .iter()
-            .any(|t| t["kind"].as_array().unwrap().iter().any(|k| k == "bench"));
-        assert!(
-            !benches && !manifest.with_file_name("benches").is_dir(),
-            "{} declares a bench target; full-tests does not compile benches, so a locked-version owner is needed (see checks.rs)",
-            manifest.display()
-        );
+            .filter(|target| {
+                target["kind"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|kind| kind == "bench")
+            })
+        {
+            let package_name = package["name"].as_str().unwrap();
+            let bench_name = bench["name"].as_str().unwrap();
+            let owned = all.iter().flat_map(|check| &check.steps).any(|step| {
+                step.program == "cargo"
+                    && step.args.first().is_some_and(|arg| arg == "check")
+                    && step.args.iter().any(|arg| arg == "--locked")
+                    && step
+                        .args
+                        .windows(2)
+                        .any(|pair| pair == ["-p", package_name])
+                    && step
+                        .args
+                        .windows(2)
+                        .any(|pair| pair == ["--bench", bench_name])
+            });
+            assert!(
+                owned,
+                "{package_name} bench {bench_name} has no locked compilation owner"
+            );
+        }
     }
 }
 
@@ -754,10 +743,7 @@ fn workflows_carry_no_toolchain_copy() {
 
 #[test]
 fn a_golden_change_selects_the_parity_lane() {
-    let p = ids(
-        "--changed",
-        &["crates/rig-verify/fixtures/ecs_parity/x.effects.json"],
-    );
+    let p = ids("--changed", &["crates/rig-verify/fixtures/x.effects.json"]);
     assert!(p.contains("ecs-parity"), "{p:?}");
     assert!(p.contains("default-tests"), "{p:?}");
 }
@@ -771,4 +757,100 @@ fn a_runtime_crate_change_selects_the_parity_lane() {
     assert!(p.contains("ecs-parity"), "{p:?}");
     let p = ids("--changed", &["crates/rig-sqlite/src/lib.rs"]);
     assert!(!p.contains("ecs-parity"), "{p:?}");
+}
+
+#[test]
+fn default_check_compiles_extracted_regressions_without_extra_features() {
+    let all = checks::all();
+    let check = all
+        .iter()
+        .find(|check| check.id == "default-check")
+        .unwrap();
+    let args = &check.steps[0].args;
+    for package in ["rig", "rig-test-support"] {
+        assert!(args.windows(2).any(|pair| pair == ["-p", package]));
+    }
+    assert!(args.iter().any(|arg| arg == "--tests"));
+    for flag in ["--features", "--all-features", "--no-default-features"] {
+        assert!(!args.iter().any(|arg| arg == flag), "{flag}");
+    }
+}
+
+#[test]
+fn parity_and_verification_have_explicit_execution_owners() {
+    let all = checks::all();
+    let args = |id: &str| &all.iter().find(|check| check.id == id).unwrap().steps[0].args;
+    let default = args("default-tests");
+    assert!(default.iter().any(|arg| arg == "not binary(macro_hygiene) and not package(rig-verify) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))"));
+    for id in ["default-tests", "ecs-parity"] {
+        assert!(
+            args(id)
+                .windows(2)
+                .any(|pair| pair == ["--features", "bedrock"])
+        );
+        assert!(args(id).windows(2).any(|pair| pair == ["--retries", "2"]));
+    }
+    assert!(
+        args("ecs-parity")
+            .windows(2)
+            .any(|pair| pair == ["-p", "rig-test-support"])
+    );
+    assert!(
+        args("bus-verification")
+            .iter()
+            .any(|arg| arg == "not binary(world_replay)")
+    );
+    let world = &all
+        .iter()
+        .find(|check| check.id == "ecs-parity")
+        .unwrap()
+        .steps[1]
+        .args;
+    assert!(world.iter().any(|arg| arg == "binary(world_replay)"));
+    assert!(world.windows(2).any(|pair| pair == ["--retries", "0"]));
+    for (owner, filter) in [
+        (
+            "ecs-parity",
+            "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-verify) and binary(world_replay))",
+        ),
+        (
+            "bus-verification",
+            "package(rig-verify) and not binary(world_replay)",
+        ),
+    ] {
+        let steps = &all.iter().find(|check| check.id == owner).unwrap().steps;
+        let unified = steps
+            .iter()
+            .find(|step| step.args.iter().any(|arg| arg == filter))
+            .expect("default-member configuration has an execution owner");
+        assert!(
+            !unified
+                .args
+                .iter()
+                .any(|arg| arg == "-p" || arg == "--package")
+        );
+        assert!(
+            unified
+                .args
+                .windows(2)
+                .any(|pair| pair == ["--features", "bedrock"])
+        );
+        assert!(
+            unified
+                .args
+                .windows(2)
+                .any(|pair| pair == ["--retries", "2"])
+        );
+    }
+}
+
+#[test]
+fn native_identity_edits_select_all_parity_consumers() {
+    let plan = ids(
+        "--changed",
+        &["test-support/rig-test-support/src/ecs_goldens/identities.json"],
+    );
+    for check in ["default-tests", "ecs-parity", "bus-verification"] {
+        assert!(plan.contains(check), "{plan:?}");
+    }
 }

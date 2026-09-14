@@ -8,28 +8,11 @@ use super::{
     BEDROCK_COMPLETION_MODEL, client,
     support::{
         Adder, AlphaSignal, ORDERED_TOOL_STREAM_PREAMBLE, ORDERED_TOOL_STREAM_PROMPT,
-        STREAMING_PREAMBLE, STREAMING_PROMPT, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT,
-        Subtract, assert_mentions_expected_number, assert_nonempty_response,
-        assert_raw_stream_tool_call_precedes_text, collect_raw_stream_observation,
-        collect_stream_final_response,
+        STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract,
+        assert_mentions_expected_number, assert_raw_stream_tool_call_precedes_text,
+        collect_raw_stream_observation, collect_stream_final_response,
     },
 };
-
-#[tokio::test]
-#[ignore = "requires AWS credentials and Bedrock model access"]
-async fn streaming_smoke() {
-    let agent = client()
-        .agent(BEDROCK_COMPLETION_MODEL)
-        .preamble(STREAMING_PREAMBLE)
-        .build();
-
-    let mut stream = agent.prompt(STREAMING_PROMPT).stream();
-    let response = collect_stream_final_response(&mut stream)
-        .await
-        .expect("streaming prompt should succeed");
-
-    assert_nonempty_response(&response);
-}
 
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]

@@ -76,15 +76,13 @@
 //!   one-line arithmetic prompt; the thinking cells enable thinking with a
 //!   budget so the record holds a reasoning block.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Choice, Ending, Program};
 use rig_core::message::Message;
 
-/// The root suite's constants, verbatim (`tests/common/support.rs`,
-/// `tests/common/goldens.rs`, the producer module).
+/// The root suite's constants, verbatim (`test-support/rig-test-support/src/support.rs`,
+/// `test-support/rig-test-support/src/goldens.rs`, the producer module).
 const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 const BASIC_PROMPT: &str = "In one or two sentences, explain what Rust programming language is and why memory safety matters.";
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";

@@ -68,9 +68,7 @@
 //! - The parent chain survives a checkpoint by construction: the tail's
 //!   records keep their `parent` ids, which name records of the head.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{
     Hook, LayerAt, LayerKind, LayerSpec, NESTING, NestedChild, Nesting, Output, Program, ROUTE,

@@ -63,9 +63,8 @@ tool is a failed run.
 
 ## Hosted CI
 
-- `ci.yaml`, the PR gate: guards (fmt, source guards, layout, scenario
-  catalog, xtask's tests), release-document freeze, the default-feature type
-  check, the default/bedrock sweep with the scenario registration check, the
+- `ci.yaml`, the PR gate: guards (fmt, source guards, layout, xtask's tests), release-document freeze, the default-feature type
+  check, the default/bedrock sweep, the
   cross-crate guards (core-all, bus verification, macro hygiene, out-of-facade
   conformance), rig-derive, loom, doctests, docs, clippy, the wasm checks with
   the two native-only diagnostics, and the wasm test suites. Apart from the
@@ -83,6 +82,21 @@ tool is a failed run.
   restore their base branch's entries. rust-cache runs at job level
   everywhere so a failed or cancelled job saves nothing, and warms are never
   cancelled mid-build.
+
+The default sweep excludes root ECS/corpus parity tests and rig-verify.
+`ecs-parity` owns those root tests, the golden pairing guard, and rig-verify's
+separate `world_replay` target. `bus-verification` owns the remaining rig-verify
+tests and compiles the explicitly invoked `run_assembly_cost` benchmark.
+Default-member and standalone package graphs remain separate executions:
+JSON ordering/float parsing and allocator features differ between them. Both
+root parity configurations belong to `ecs-parity`, including the extracted ECS
+helper regressions in `rig-test-support`; both rig-verify configurations
+are split between that lane (`world_replay`) and `bus-verification` (other tests).
+Default-member executions and standalone root parity retain two retries;
+standalone rig-verify retains zero. The all-feature, wasm, and loom checks also
+retain their distinct configuration coverage even when test names overlap.
+The standalone default-feature type check selects both the facade and
+`rig-test-support`, so extracted helper regression bodies still compile there.
 
 Tokens are read-only except release-plz. No job receives provider secrets:
 cassettes replay with a dummy key and live tests are `#[ignore]`.

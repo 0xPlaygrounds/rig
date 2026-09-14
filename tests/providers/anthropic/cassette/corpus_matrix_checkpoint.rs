@@ -18,49 +18,14 @@ fn wire(
     }
 }
 
-#[tokio::test]
-async fn multi_turn_unary() {
-    with_anthropic_cassette("checkpoint_matrix/multi_turn_unary", |client| async move {
-        checkpoint::run_agent(&wire(&client), &checkpoint::MULTI_TURN_UNARY, |log| {
-            crate::goldens::golden_effects("anthropic_checkpoint_multi_turn_unary", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_streamed() {
-    with_anthropic_cassette(
-        "checkpoint_matrix/multi_turn_streamed",
-        |client| async move {
-            checkpoint::run_agent(&wire(&client), &checkpoint::MULTI_TURN_STREAMED, |log| {
-                crate::goldens::golden_effects("anthropic_checkpoint_multi_turn_streamed", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn parallel_batch() {
-    with_anthropic_cassette("checkpoint_matrix/parallel_batch", |client| async move {
-        checkpoint::run_agent(&wire(&client), &checkpoint::PARALLEL_BATCH, |log| {
-            crate::goldens::golden_effects("anthropic_checkpoint_parallel_batch", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn large_result() {
-    with_anthropic_cassette("checkpoint_matrix/large_result", |client| async move {
-        checkpoint::run_agent(&wire(&client), &checkpoint::LARGE_RESULT, |log| {
-            crate::goldens::golden_effects("anthropic_checkpoint_large_result", log)
-        })
-        .await;
-    })
-    .await;
+crate::matrix::golden_matrix! {
+    wrapper: with_anthropic_cassette, wire: wire, run: checkpoint::run_agent, oracle: crate::goldens::golden_effects;
+    #[tokio::test]
+    multi_turn_unary: ("checkpoint_matrix/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, "anthropic_checkpoint_multi_turn_unary");
+    #[tokio::test]
+    multi_turn_streamed: ("checkpoint_matrix/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, "anthropic_checkpoint_multi_turn_streamed");
+    #[tokio::test]
+    parallel_batch: ("checkpoint_matrix/parallel_batch", checkpoint::PARALLEL_BATCH, "anthropic_checkpoint_parallel_batch");
+    #[tokio::test]
+    large_result: ("checkpoint_matrix/large_result", checkpoint::LARGE_RESULT, "anthropic_checkpoint_large_result");
 }

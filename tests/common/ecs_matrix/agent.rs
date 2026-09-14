@@ -3,14 +3,32 @@
 //! compared to (`crate::goldens::golden_effects`).
 
 use futures::StreamExt;
-use rig::agent::{
-    AgentBuilder, MultiTurnStreamItem, NoToolConfig, StreamingError, WithBuilderTools,
-    WithToolServerHandle,
-};
-use rig::completion::{CompletionModel, PromptError};
-use rig::effect::HandlerKey;
-use rig::error::{ErrorKind, ErrorReport};
-use rig::serve::{ErasedHandler, adapters::CompletionAdapter};
+
+use rig_agent::agent::AgentBuilder;
+
+use rig_agent::agent::MultiTurnStreamItem;
+
+use rig_agent::agent::NoToolConfig;
+
+use rig_agent::agent::StreamingError;
+
+use rig_agent::agent::WithBuilderTools;
+
+use rig_agent::agent::WithToolServerHandle;
+
+use rig_agent::completion::CompletionModel;
+
+use rig_agent::completion::PromptError;
+
+use rig_core::effect::HandlerKey;
+
+use rig_core::error::ErrorKind;
+
+use rig_core::error::ErrorReport;
+
+use rig_core::serve::ErasedHandler;
+
+use rig_core::serve::adapters::CompletionAdapter;
 
 use super::cells::{Bus, Cell, Memory, ToolKind};
 use super::corpus::{self, Ending, LayerAt, Lookup, Nesting, Program};
@@ -22,12 +40,12 @@ use crate::goldens::{
 use crate::support::{AlphaSignal, BetaSignal};
 
 /// Each record's kind in a line, for a failed shape assertion.
-pub(crate) fn record_summary(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(crate) fn record_summary(log: &rig_effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .map(|record| match &record.kind {
-            rig::effect::EffectKind::ToolCall { name, args } => format!("tool {name}({args})"),
-            rig::effect::EffectKind::Completion { request, .. } => {
+            rig_core::effect::EffectKind::ToolCall { name, args } => format!("tool {name}({args})"),
+            rig_core::effect::EffectKind::Completion { request, .. } => {
                 format!("completion({} messages)", request.chat_history.len())
             }
             other => format!("{:?}", other.family()),
@@ -66,8 +84,8 @@ fn classify_stream(error: StreamingError) -> RunFailure {
 /// What a streamed run ended in: the final answer, or how it failed (the
 /// first error item; a fault ends the stream).
 async fn final_output(
-    stream: &mut rig::agent::StreamingResult,
-) -> Result<rig::agent::PromptResponse, RunFailure> {
+    stream: &mut rig_agent::agent::StreamingResult,
+) -> Result<rig_agent::agent::PromptResponse, RunFailure> {
     let mut output = None;
     while let Some(item) = stream.next().await {
         match item {
@@ -146,20 +164,20 @@ fn configure<S>(
 
 /// The builder's tool typestates share `build`.
 trait Buildable {
-    fn build_agent(self) -> rig::agent::Agent;
+    fn build_agent(self) -> rig_agent::agent::Agent;
 }
 impl Buildable for AgentBuilder<NoToolConfig> {
-    fn build_agent(self) -> rig::agent::Agent {
+    fn build_agent(self) -> rig_agent::agent::Agent {
         self.build()
     }
 }
 impl Buildable for AgentBuilder<WithBuilderTools> {
-    fn build_agent(self) -> rig::agent::Agent {
+    fn build_agent(self) -> rig_agent::agent::Agent {
         self.build()
     }
 }
 impl Buildable for AgentBuilder<WithToolServerHandle> {
-    fn build_agent(self) -> rig::agent::Agent {
+    fn build_agent(self) -> rig_agent::agent::Agent {
         self.build()
     }
 }
@@ -171,7 +189,7 @@ fn finish<S, M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
     program: &Program,
-) -> rig::agent::Agent
+) -> rig_agent::agent::Agent
 where
     AgentBuilder<S>: Buildable,
 {
@@ -179,14 +197,14 @@ where
     builder = match cell.memory {
         Memory::None => builder,
         Memory::InMemory if memory_layered => builder.memory_handler(corpus::layered(
-            ErasedHandler::new(rig::serve::adapters::MemoryAdapter::new(
-                rig::memory::InMemoryConversationMemory::new(),
+            ErasedHandler::new(rig_core::serve::adapters::MemoryAdapter::new(
+                rig_core::memory::InMemoryConversationMemory::new(),
             )),
             program,
             LayerAt::Memory,
             &None,
         )),
-        Memory::InMemory => builder.memory(rig::memory::InMemoryConversationMemory::new()),
+        Memory::InMemory => builder.memory(rig_core::memory::InMemoryConversationMemory::new()),
         Memory::FailingAppend => builder.memory(FailingMemory::append_fails()),
         Memory::FailingLoad => builder.memory(FailingMemory::load_fails()),
     };
@@ -237,7 +255,7 @@ fn grant<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
     program: &Program,
-) -> rig::agent::Agent {
+) -> rig_agent::agent::Agent {
     let layered_tool = program.layers.iter().any(|spec| spec.at == LayerAt::Tool);
     if layered_tool {
         assert_eq!(cell.tools, [ToolKind::Adder], "the layer cells grant add");
@@ -248,10 +266,10 @@ fn grant<M: CompletionModel + Clone + 'static>(
         [] => finish(builder, wire, cell, program),
         [ToolKind::Lookup] => {
             let nesting: Nesting = program.nesting.expect("the nesting program");
-            let server = rig::agent::tool::server::ToolServer::new()
+            let server = rig_agent::tool::server::ToolServer::new()
                 .owner(OWNER)
                 .registered_tool(
-                    rig::tool::RegisteredTool::from_handler(Lookup {
+                    rig_agent::tool::RegisteredTool::from_handler(Lookup {
                         nesting,
                         model_key: HandlerKey::from(format!("{OWNER}/model:default")),
                     })
@@ -289,16 +307,16 @@ fn grant<M: CompletionModel + Clone + 'static>(
 
 /// Run the program's prompts on `agent`, ending as the program says.
 async fn run_prompts(
-    agent: &rig::agent::Agent,
+    agent: &rig_agent::agent::Agent,
     cell: &Cell,
     program: &Program,
-) -> Vec<rig::agent::PromptResponse> {
+) -> Vec<rig_agent::agent::PromptResponse> {
     let first = match cell.image {
         Some(image) => super::image::prompt_message(image, program.prompt),
-        None => rig::message::Message::user(program.prompt),
+        None => rig_core::message::Message::user(program.prompt),
     };
-    let prompts: Vec<rig::message::Message> = std::iter::once(first)
-        .chain(program.second_prompt.map(rig::message::Message::user))
+    let prompts: Vec<rig_core::message::Message> = std::iter::once(first)
+        .chain(program.second_prompt.map(rig_core::message::Message::user))
         .collect();
     let last = prompts.len() - 1;
     let mut outputs = Vec::new();
@@ -368,8 +386,8 @@ async fn run_prompts(
 pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
-    golden: impl FnOnce(&rig::effect_log::EffectLog),
-) -> rig::effect_log::EffectLog {
+    golden: impl FnOnce(&rig_effect_log::EffectLog),
+) -> rig_effect_log::EffectLog {
     let program = wire.program(cell);
     let policy = cell.bus.policy();
     let settlement: Option<super::reasoning::SettlementCapture> =
@@ -390,7 +408,7 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
         // A host's bus: the host registers the model under the agent's key
         // and its note taker, drives the bus and records; the agent stamps
         // the log, whose header names no bus policy.
-        let (dispatcher, registrar, mut driver) = rig::bus::Bus::channel_with(policy);
+        let (dispatcher, registrar, mut driver) = rig_agent::bus::Bus::channel_with(policy);
         let model_key = HandlerKey::from(format!("{OWNER}/model:default"));
         driver
             .register_erased(
@@ -407,9 +425,9 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
                 .expect("a fresh key");
         }
         let recorder = if cell.events {
-            rig::effect_log::EffectLogRecorder::keeping_stream_events()
+            rig_effect_log::EffectLogRecorder::keeping_stream_events()
         } else {
-            rig::effect_log::EffectLogRecorder::new()
+            rig_effect_log::EffectLogRecorder::new()
         };
         driver.record_to(recorder.clone());
         let driver = tokio::spawn(driver);
@@ -441,7 +459,7 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
             super::reasoning::assert_history(cell, &log, &settled.messages);
             let error = settled.error.expect("the capped run failed");
             assert!(
-                error.contains(&rig::completion::FinishReason::Length.no_answer_message()),
+                error.contains(&rig_agent::completion::FinishReason::Length.no_answer_message()),
                 "{error}"
             );
         }

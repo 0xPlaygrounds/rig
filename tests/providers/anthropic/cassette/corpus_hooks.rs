@@ -5,7 +5,7 @@
 //! denied call), or in the request (an overridden preamble). Producers of
 //! the goldens `crates/rig-verify/tests/corpus_hooks.rs` replays by both
 //! interpreters; the enumeration lives there. The hooks themselves are in
-//! `tests/common/goldens.rs`.
+//! `test-support/rig-test-support/src/goldens.rs`.
 //!
 //! Every cell is recorded once against the real Anthropic wire
 //! (`CLAUDE_SONNET_4_6`, temperature 0) under

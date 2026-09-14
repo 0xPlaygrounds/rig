@@ -557,7 +557,7 @@ impl Program {
 // ---------------------------------------------------------------------------
 // The hooks, by name.
 
-/// The producer's hook, verbatim (`tests/common/goldens.rs`): the header
+/// The producer's hook, verbatim (`test-support/rig-test-support/src/goldens.rs`): the header
 /// names it by type name, so the replay's hook is the same type.
 struct RetryUnknownTool;
 
@@ -1503,7 +1503,7 @@ pub fn layer_names(program: &Program, owner: &str) -> Vec<String> {
 // ---------------------------------------------------------------------------
 // Matrix Q: the nesting tool and the host's relay and never-answering
 // handlers. Program, not record: the producer's copies live in
-// `tests/common/goldens.rs`; both interpreters register these.
+// `test-support/rig-test-support/src/goldens.rs`; both interpreters register these.
 
 pub const NESTING_TOOL_KEY: &str = "golden/tool:lookup#0";
 pub const RELAY_KEY: &str = "host/relay";
@@ -2194,14 +2194,16 @@ pub async fn within<T>(future: impl Future<Output = T>) -> T {
 
 /// Where the goldens live.
 pub fn fixtures_dir() -> std::path::PathBuf {
-    std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures")
+    // This corpus is compiled by both the facade and verification packages.
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .map(|root| root.join("crates/rig-verify/fixtures"))
+        .find(|fixtures| fixtures.is_dir())
+        .expect("the package belongs to the Rig workspace")
 }
 
 pub fn golden(fixture: &str) -> EffectLog {
-    let path = format!(
-        "{}/fixtures/{fixture}.effects.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
+    let path = fixtures_dir().join(format!("{fixture}.effects.json"));
     let text = std::fs::read_to_string(&path).expect("the golden fixture is committed");
     serde_json::from_str(&text).expect("the golden fixture loads")
 }

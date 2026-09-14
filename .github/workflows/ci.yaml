@@ -96,13 +96,9 @@ jobs:
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check default-tests
-      - if: ${{ !cancelled() }}
-        run: cargo xtask verify --check scenario-registrations
 
-  # The ECS parity goldens as a named, required lane: the agent/ECS matrix
-  # cells and the golden guards (a subset of `test`, so a red here names the
-  # cause: the runtimes disagree or a golden is stale). See
-  # tests/ecs_parity/README.md on the policy hash.
+  # The required parity lane owns the root agent/ECS matrices and world
+  # golden replay; default-tests and bus-verification exclude these tests.
   ecs-parity:
     name: stable / ecs parity
     runs-on: ubuntu-latest

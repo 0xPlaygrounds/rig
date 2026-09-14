@@ -58,8 +58,10 @@ pub(crate) mod stream_delivery;
 #[path = "ecs_matrix/world.rs"]
 pub(crate) mod world;
 
-use rig::completion::CompletionModel;
-use rig::http_client::BoxedHttpClient;
+use rig_agent::completion::CompletionModel;
+
+use rig_core::http_client::BoxedHttpClient;
+
 use rig_ecs::bus::{ProviderBinding, ProviderKind};
 
 use cells::Cell;
@@ -72,19 +74,19 @@ pub(crate) const OWNER: &str = "golden";
 /// A wire: the models a cell is served by, and what the wire cannot take.
 pub(crate) struct Wire<M> {
     /// How this wire renders the matrix's thinking control.
-    pub thinking: cells::ThinkingWire,
+    pub(crate) thinking: cells::ThinkingWire,
     /// The default model, under `golden/model:default`.
-    pub model: M,
+    pub(crate) model: M,
     /// The route (`golden/model:fast` or `golden/model:late`), where a cell
     /// selects one.
-    pub route: Option<M>,
+    pub(crate) route: Option<M>,
     /// What the cell's `temperature: Some(0.0)` becomes on this wire: a
     /// model that takes only its default temperature (the gpt-5 family)
     /// gets `None`, so the request carries no temperature at all.
-    pub temperature: Option<f64>,
+    pub(crate) temperature: Option<f64>,
     /// Request parameters every cell of this wire carries when the cell
     /// names none (a thinking model asked not to think).
-    pub additional_params: Option<fn() -> serde_json::Value>,
+    pub(crate) additional_params: Option<fn() -> serde_json::Value>,
 }
 
 impl<M: CompletionModel + Clone + 'static> Wire<M> {
@@ -146,7 +148,8 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 transport: transport.clone(),
             })
         };
-        if let Some(model) = model.downcast_ref::<rig::providers::anthropic::CompletionModel>() {
+        if let Some(model) = model.downcast_ref::<rig_core::providers::anthropic::CompletionModel>()
+        {
             let client = model.client();
             return describe(
                 ProviderKind::Anthropic,
@@ -156,7 +159,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 client.http_client(),
             );
         }
-        if let Some(model) = model.downcast_ref::<rig::providers::openai::CompletionModel>() {
+        if let Some(model) = model.downcast_ref::<rig_core::providers::openai::CompletionModel>() {
             let client = model.client();
             return describe(
                 ProviderKind::OpenAiChat,
@@ -167,7 +170,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
             );
         }
         if let Some(model) =
-            model.downcast_ref::<rig::providers::openai::ResponsesCompletionModel>()
+            model.downcast_ref::<rig_core::providers::openai::ResponsesCompletionModel>()
         {
             let client = model.client();
             return describe(
@@ -178,7 +181,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 client.http_client(),
             );
         }
-        if let Some(model) = model.downcast_ref::<rig::providers::gemini::CompletionModel>() {
+        if let Some(model) = model.downcast_ref::<rig_core::providers::gemini::CompletionModel>() {
             let client = model.client();
             return describe(
                 ProviderKind::Gemini,
@@ -188,7 +191,8 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 client.http_client(),
             );
         }
-        if let Some(model) = model.downcast_ref::<rig::providers::deepseek::CompletionModel>() {
+        if let Some(model) = model.downcast_ref::<rig_core::providers::deepseek::CompletionModel>()
+        {
             let client = model.client();
             return describe(
                 ProviderKind::DeepSeek,
@@ -210,16 +214,16 @@ pub(crate) const CASSETTE_CREDENTIAL: &str = "cassette";
 /// `Materializer` needs to rebuild the head client from it.
 pub(crate) struct WireBinding {
     /// The binding, under `golden/model:default`.
-    pub binding: ProviderBinding,
+    pub(crate) binding: ProviderBinding,
     /// The head client's key: what `cassette` resolves to.
-    pub api_key: String,
+    pub(crate) api_key: String,
     /// The head client's transport: what the factory hands every client.
-    pub transport: BoxedHttpClient,
+    pub(crate) transport: BoxedHttpClient,
 }
 
 /// A header the client sends on every request, with `prefix` stripped.
 fn header(
-    headers: &rig::http_client::HeaderMap,
+    headers: &rig_core::http_client::HeaderMap,
     name: &str,
     prefix: Option<&str>,
 ) -> Option<String> {

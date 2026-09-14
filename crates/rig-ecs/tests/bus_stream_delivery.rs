@@ -6,8 +6,8 @@
     clippy::panic
 )]
 
-mod bus_support;
-mod run_support;
+use crate::bus_support;
+use crate::run_support;
 
 use bevy_ecs::prelude::*;
 use rig_core::{

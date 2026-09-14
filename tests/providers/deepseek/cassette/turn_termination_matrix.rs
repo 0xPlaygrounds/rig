@@ -85,167 +85,29 @@ pub(super) const TOOL_PREAMBLE: &str = "Use the provided tool to answer arithmet
 // Length — the provider cut the turn short at the cap we set.
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn blocking_truncated_turn_reports_length_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_deepseek_cassette(
-            "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
-            |client| async move {
-                {
-                    client
-                        .agent(MODEL)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(TINY_CAP)
-                        .add_hook(probe)
-                        .build()
-                        .prompt(TRUNCATING_PROMPT)
-                        .run()
-                        .await
-                        .expect("a partially truncated turn still carries an answer");
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::Length),
-            "the wire `length` must reach the hook as FinishReason::Length"
-        );
-        assert_eq!(
-            observed.first_max_tokens(),
-            Some(TINY_CAP),
-            "the hook must report the cap this attempt actually ran under"
-        );
-        assert!(
-            observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a truncated turn must satisfy the portable retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "length");
-        assert_recorded_request_cap(SCENARIO, TINY_CAP);
-    }
-}
-
-#[tokio::test]
-async fn streaming_truncated_turn_reports_length_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_deepseek_cassette(
-            "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
-            |client| async move {
-                {
-                    let agent = client
-                        .agent(MODEL)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(TINY_CAP)
-                        .build();
-
-                    let mut stream = agent.prompt(TRUNCATING_PROMPT).add_hook(probe).stream();
-                    let _ = collect_stream_final_response(&mut stream).await;
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::Length),
-            "the streaming surface must report the same reason as the blocking one"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(TINY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "length");
-        assert_recorded_request_cap(SCENARIO, TINY_CAP);
-    }
+crate::matrix::case_matrix! {
+    wrapper: with_deepseek_cassette, family: turn_termination_matrix_case;
+    # [tokio :: test]
+    blocking_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap", blocking_truncated_turn_reports_length_and_cap_15);
+    # [tokio :: test]
+    streaming_truncated_turn_reports_length_and_cap: ("turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap", streaming_truncated_turn_reports_length_and_cap_16);
+    # [tokio :: test]
+    blocking_completed_turn_reports_stop_and_cap: ("turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap", blocking_completed_turn_reports_stop_and_cap_17);
+    # [tokio :: test]
+    streaming_completed_turn_reports_stop_and_cap: ("turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap", streaming_completed_turn_reports_stop_and_cap_18);
+    # [tokio :: test]
+    blocking_tool_turn_reports_tool_calls: ("turn_termination_matrix/blocking_tool_turn_reports_tool_calls", blocking_tool_turn_reports_tool_calls_19);
+    # [tokio :: test]
+    streaming_tool_turn_reports_tool_calls: ("turn_termination_matrix/streaming_tool_turn_reports_tool_calls", streaming_tool_turn_reports_tool_calls_20);
+    # [tokio :: test]
+    blocking_escalating_retry_reports_each_attempts_own_cap: ("turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap", blocking_escalating_retry_reports_each_attempts_own_cap_21);
+    # [tokio :: test]
+    streaming_escalating_retry_reports_each_attempts_own_cap: ("turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap", streaming_escalating_retry_reports_each_attempts_own_cap_22);
 }
 
 // ---------------------------------------------------------------------------
 // Stop — the control. A completed turn must not read as truncated.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn blocking_completed_turn_reports_stop_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_deepseek_cassette(
-            "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
-            |client| async move {
-                {
-                    client
-                        .agent(MODEL)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .add_hook(probe)
-                        .build()
-                        .prompt(SHORT_PROMPT)
-                        .run()
-                        .await
-                        .expect("a short answer under a roomy cap");
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(observed.first_reason(), Some(FinishReason::Stop));
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert!(
-            !observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a completed turn must not satisfy the retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "stop");
-    }
-}
-
-#[tokio::test]
-async fn streaming_completed_turn_reports_stop_and_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_deepseek_cassette(
-            "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
-            |client| async move {
-                {
-                    let agent = client
-                        .agent(MODEL)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .build();
-
-                    let mut stream = agent.prompt(SHORT_PROMPT).add_hook(probe).stream();
-                    let _ = collect_stream_final_response(&mut stream).await;
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(observed.first_reason(), Some(FinishReason::Stop));
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "stop");
-    }
-}
 
 // ---------------------------------------------------------------------------
 // ToolCalls — the reason a portable hook must never mistake for retryable.
@@ -253,200 +115,10 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
 // rather than through `reconcile_with_output`.
 // ---------------------------------------------------------------------------
 
-#[tokio::test]
-async fn blocking_tool_turn_reports_tool_calls() {
-    {
-        const SCENARIO: &str = "turn_termination_matrix/blocking_tool_turn_reports_tool_calls";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_deepseek_cassette(
-            "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
-            |client| async move {
-                {
-                    client
-                        .agent(MODEL)
-                        .preamble(TOOL_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .tool(Adder)
-                        .add_hook(probe)
-                        .build()
-                        .prompt(TOOL_PROMPT)
-                        .max_turns(3)
-                        .run()
-                        .await
-                        .expect("the tool turn should complete the run");
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::ToolCalls),
-            "the turn that issued the tool call must read as ToolCalls"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert!(
-            !observed
-                .first_reason()
-                .is_some_and(|reason| reason.truncated_output()),
-            "a tool turn must not satisfy the retry predicate"
-        );
-        assert_recorded_wire_reason(SCENARIO, "tool_calls");
-    }
-}
-
-#[tokio::test]
-async fn streaming_tool_turn_reports_tool_calls() {
-    {
-        const SCENARIO: &str = "turn_termination_matrix/streaming_tool_turn_reports_tool_calls";
-        let probe = TurnTerminationProbe::default();
-        let observed = probe.clone();
-
-        with_deepseek_cassette(
-            "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
-            |client| async move {
-                {
-                    let agent = client
-                        .agent(MODEL)
-                        .preamble(TOOL_PREAMBLE)
-                        .temperature(0.0)
-                        .max_tokens(ROOMY_CAP)
-                        .tool(Adder)
-                        .build();
-
-                    let mut stream = agent
-                        .prompt(TOOL_PROMPT)
-                        .add_hook(probe)
-                        .max_turns(3)
-                        .stream();
-                    let _ = collect_stream_final_response(&mut stream).await;
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.first_reason(),
-            Some(FinishReason::ToolCalls),
-            "streaming must resolve the tool turn exactly as blocking does"
-        );
-        assert_eq!(observed.first_max_tokens(), Some(ROOMY_CAP));
-        assert_recorded_wire_reason(SCENARIO, "tool_calls");
-    }
-}
-
 // ---------------------------------------------------------------------------
 // The acceptance criterion: escalate the cap on truncation, against the real
 // provider, and report each attempt's own cap.
 // ---------------------------------------------------------------------------
-
-#[tokio::test]
-async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap";
-        let probe = TurnTerminationProbe::default();
-        let escalate = EscalateCapOnTruncation::new(TINY_CAP, ROOMY_CAP);
-        let observed = probe.clone();
-        let escalations = escalate.clone();
-
-        with_deepseek_cassette(
-            "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
-            |client| async move {
-                {
-                    client
-                        .agent(MODEL)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        // The agent baseline. Neither attempt should report it: the
-                        // hook's patch replaces it on every prepared request.
-                        .max_tokens(64)
-                        // Observers first: a hook returning a non-continue action
-                        // short-circuits every hook registered behind it.
-                        .add_hook(probe)
-                        .add_hook(escalate)
-                        .build()
-                        .prompt(RETRY_PROMPT)
-                        .max_turns(2)
-                        .run()
-                        .await
-                        .expect("the retried attempt should answer");
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.observations(),
-            vec![
-                (Some(FinishReason::Length), Some(TINY_CAP)),
-                (Some(FinishReason::Stop), Some(ROOMY_CAP)),
-            ],
-            "each attempt must report its own post-patch cap, never the agent's baseline of 64"
-        );
-        assert_eq!(escalations.escalations(), vec![ROOMY_CAP]);
-        assert_eq!(escalations.retries(), 1);
-
-        // ...and the recorded traffic corroborates it: two calls, the caps the
-        // hook chose, and the two reasons in order.
-        assert_eq!(recorded_request_caps(SCENARIO), vec![TINY_CAP, ROOMY_CAP]);
-        assert_eq!(
-            recorded_wire_reasons(SCENARIO),
-            vec!["length".to_owned(), "stop".to_owned()]
-        );
-    }
-}
-
-#[tokio::test]
-async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
-    {
-        const SCENARIO: &str =
-            "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap";
-        let probe = TurnTerminationProbe::default();
-        let escalate = EscalateCapOnTruncation::new(TINY_CAP, ROOMY_CAP);
-        let observed = probe.clone();
-        let escalations = escalate.clone();
-
-        with_deepseek_cassette(
-            "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap",
-            |client| async move {
-                {
-                    let agent = client
-                        .agent(MODEL)
-                        .preamble(CONCISE_PREAMBLE)
-                        .temperature(0.0)
-                        // The agent baseline. Neither attempt should report it: the
-                        // hook's patch replaces it on every prepared request.
-                        .max_tokens(64)
-                        .build();
-
-                    let mut stream = agent
-                        .prompt(RETRY_PROMPT)
-                        .add_hook(probe)
-                        .add_hook(escalate)
-                        .max_turns(2)
-                        .stream();
-                    let _ = collect_stream_final_response(&mut stream).await;
-                }
-            },
-        )
-        .await;
-
-        assert_eq!(
-            observed.observations(),
-            vec![
-                (Some(FinishReason::Length), Some(TINY_CAP)),
-                (Some(FinishReason::Stop), Some(ROOMY_CAP)),
-            ],
-            "the streaming surface must escalate and report identically to blocking"
-        );
-        assert_eq!(escalations.escalations(), vec![ROOMY_CAP]);
-        assert_eq!(recorded_request_caps(SCENARIO), vec![TINY_CAP, ROOMY_CAP]);
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Fixture-premise checks: the recorded bytes must still say what the cell

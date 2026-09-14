@@ -70,9 +70,7 @@
 //!   refusal as `PromptResponse::memory_append`). A failed `Load` fails
 //!   the run at the memory record, before any completion.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{CONVERSATION, Ending, Hook, Program};
 use rig_core::effect::{EffectKind, MemoryOp, MemoryOutcome, Outcome};

@@ -7,9 +7,13 @@ use std::collections::BTreeMap;
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
-use rig::effect_log::EffectLog;
-use rig::error::ErrorReport;
-use rig::streaming::StreamEvent;
+
+use rig_effect_log::EffectLog;
+
+use rig_core::error::ErrorReport;
+
+use rig_core::streaming::StreamEvent;
+
 use rig_ecs::bus::{EffectOutcome, Issued, StreamItemsDelivered, Streamed};
 use serde::Serialize;
 

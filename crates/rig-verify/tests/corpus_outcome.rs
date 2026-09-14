@@ -55,9 +55,7 @@
 //!   result's model-visible output as the engine does (`ToolResult::
 //!   output`), failed or not.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Ending, Program};
 use rig_agent::AgentBuilder;

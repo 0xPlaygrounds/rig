@@ -6,10 +6,7 @@
     clippy::unreachable
 )]
 
-#[path = "common/reasoning.rs"]
-mod reasoning;
-#[path = "common/support.rs"]
-mod support;
+use rig_test_support::support;
 
 #[path = "providers/voyageai/mod.rs"]
 mod voyageai;

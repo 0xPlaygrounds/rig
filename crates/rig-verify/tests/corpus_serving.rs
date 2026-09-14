@@ -70,9 +70,7 @@
 //!   accepted by a host-bus program. `the_policy_check_is_one_sided` pins
 //!   that contract.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Hook, Program, ROUTE};
 use rig_agent::AgentBuilder;

@@ -61,134 +61,32 @@ fn fault_reply() -> MockHttpResponse {
     )
 }
 
-#[tokio::test]
-async fn long_unary() {
-    with_anthropic_cassette("long_loop_matrix/long_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: None,
-            ..long_loop::LONG_UNARY
-        };
-        long_loop_world::run_world(&wire(&client), &cell, golden_anthropic_long_loop_long_unary)
-            .await;
-    })
-    .await;
+crate::matrix::resume_matrix! {
+    wrapper: with_anthropic_cassette, wire: wire, run: long_loop_world::run_world;
+    #[tokio::test]
+    long_unary: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, None, golden_anthropic_long_loop_long_unary);
+    #[tokio::test]
+    long_unary_cut_1: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(1), golden_anthropic_long_loop_long_unary);
+    #[tokio::test]
+    long_unary_cut_2: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(2), golden_anthropic_long_loop_long_unary);
+    #[tokio::test]
+    long_unary_cut_3: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(3), golden_anthropic_long_loop_long_unary);
+    #[tokio::test]
+    long_unary_cut_final: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, Some(usize::MAX), golden_anthropic_long_loop_long_unary);
 }
 
-#[tokio::test]
-async fn long_unary_cut_1() {
-    with_anthropic_cassette("long_loop_matrix/long_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(1),
-            ..long_loop::LONG_UNARY
-        };
-        long_loop_world::run_world(&wire(&client), &cell, golden_anthropic_long_loop_long_unary)
-            .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn long_unary_cut_2() {
-    with_anthropic_cassette("long_loop_matrix/long_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(2),
-            ..long_loop::LONG_UNARY
-        };
-        long_loop_world::run_world(&wire(&client), &cell, golden_anthropic_long_loop_long_unary)
-            .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn long_unary_cut_3() {
-    with_anthropic_cassette("long_loop_matrix/long_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(3),
-            ..long_loop::LONG_UNARY
-        };
-        long_loop_world::run_world(&wire(&client), &cell, golden_anthropic_long_loop_long_unary)
-            .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn long_unary_cut_final() {
-    with_anthropic_cassette("long_loop_matrix/long_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(usize::MAX),
-            ..long_loop::LONG_UNARY
-        };
-        long_loop_world::run_world(&wire(&client), &cell, golden_anthropic_long_loop_long_unary)
-            .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn long_streamed() {
-    with_anthropic_cassette("long_loop_matrix/long_streamed", |client| async move {
-        long_loop_world::run_world(
-            &wire(&client),
-            &long_loop::LONG_STREAMED,
-            golden_anthropic_long_loop_long_streamed,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn parallel_calls() {
-    with_anthropic_cassette("long_loop_matrix/parallel_calls", |client| async move {
-        long_loop_world::run_world(
-            &wire(&client),
-            &long_loop::PARALLEL_CALLS,
-            golden_anthropic_long_loop_parallel_calls,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn big_result() {
-    with_anthropic_cassette("long_loop_matrix/big_result", |client| async move {
-        long_loop_world::run_world(
-            &wire(&client),
-            &long_loop::BIG_RESULT,
-            golden_anthropic_long_loop_big_result,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn tool_error_midway() {
-    with_anthropic_cassette("long_loop_matrix/tool_error_midway", |client| async move {
-        long_loop_world::run_world(
-            &wire(&client),
-            &long_loop::TOOL_ERROR_MIDWAY,
-            golden_anthropic_long_loop_tool_error_midway,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn max_turns_midway() {
-    with_anthropic_cassette("long_loop_matrix/max_turns_midway", |client| async move {
-        long_loop_world::run_world(
-            &wire(&client),
-            &long_loop::MAX_TURNS_MIDWAY,
-            golden_anthropic_long_loop_max_turns_midway,
-        )
-        .await;
-    })
-    .await;
+crate::matrix::resume_matrix! {
+    wrapper: with_anthropic_cassette, wire: wire, run: long_loop_world::run_world;
+    #[tokio::test]
+    long_streamed: ("long_loop_matrix/long_streamed", long_loop::LONG_STREAMED, long_loop::LONG_STREAMED.resume_after, golden_anthropic_long_loop_long_streamed);
+    #[tokio::test]
+    parallel_calls: ("long_loop_matrix/parallel_calls", long_loop::PARALLEL_CALLS, long_loop::PARALLEL_CALLS.resume_after, golden_anthropic_long_loop_parallel_calls);
+    #[tokio::test]
+    big_result: ("long_loop_matrix/big_result", long_loop::BIG_RESULT, long_loop::BIG_RESULT.resume_after, golden_anthropic_long_loop_big_result);
+    #[tokio::test]
+    tool_error_midway: ("long_loop_matrix/tool_error_midway", long_loop::TOOL_ERROR_MIDWAY, long_loop::TOOL_ERROR_MIDWAY.resume_after, golden_anthropic_long_loop_tool_error_midway);
+    #[tokio::test]
+    max_turns_midway: ("long_loop_matrix/max_turns_midway", long_loop::MAX_TURNS_MIDWAY, long_loop::MAX_TURNS_MIDWAY.resume_after, golden_anthropic_long_loop_max_turns_midway);
 }
 
 #[tokio::test]
@@ -207,36 +105,20 @@ async fn output_cap_midway() {
     .await;
 }
 
-/// Row 4, scripted (`long_loop`'s module doc): the row-1 unary recording
-/// with turn `FAULT_TURN`'s arguments rewritten to the wrong type; both
-/// interpreters answer `invalid_args`, run nothing, and go on.
-#[tokio::test]
-async fn invalid_args_midway() {
-    let replies = long_loop::scripted_replies(THINKING, &long_loop::INVALID_ARGS_MIDWAY, None);
-    long_loop::run_scripted(&long_loop::INVALID_ARGS_MIDWAY, || {
-        scripted_unary(replies.clone())
-    })
-    .await;
-}
-
-/// Row 4, scripted and world-only (`long_loop`'s module doc): a retryable
-/// 503 before turn `FAULT_TURN`'s completion, re-issued under the default
-/// budget (CONTRACT §5) with the same history; rig-agent has no budget, so
-/// there is no producer and no golden — `long_loop::assert_log` is the
-/// oracle.
-#[tokio::test]
-async fn provider_fault_midway() {
-    let replies = long_loop::scripted_replies(
-        THINKING,
-        &long_loop::PROVIDER_FAULT_MIDWAY,
-        Some(fault_reply()),
-    );
-    long_loop_world::run_world(
-        &scripted_unary(replies),
-        &long_loop::PROVIDER_FAULT_MIDWAY,
-        |_| {},
-    )
-    .await;
+crate::matrix::case_matrix! {
+    family: wire_matrix_case;
+    /// Row 4, scripted (`long_loop`'s module doc): the row-1 unary recording
+    /// with turn `FAULT_TURN`'s arguments rewritten to the wrong type; both
+    /// interpreters answer `invalid_args`, run nothing, and go on.
+    #[tokio::test]
+    invalid_args_midway: invalid_args_midway_13;
+    /// Row 4, scripted and world-only (`long_loop`'s module doc): a retryable
+    /// 503 before turn `FAULT_TURN`'s completion, re-issued under the default
+    /// budget (CONTRACT §5) with the same history; rig-agent has no budget, so
+    /// there is no producer and no golden — `long_loop::assert_log` is the
+    /// oracle.
+    #[tokio::test]
+    provider_fault_midway: provider_fault_midway_14;
 }
 
 fn golden_anthropic_long_loop_long_unary(log: &rig::effect_log::EffectLog) {

@@ -411,487 +411,54 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 // Explicit cells keep the cassette source scanner able to prove a one-to-one
 // mapping between tests and fixtures.
 
-#[tokio::test]
-async fn blocking_mistral_small_raw_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_mistral_small_raw_text";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Surface::Raw,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_mistral_small_raw_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_raw_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_mistral_small_raw_single_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Surface::Raw,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_mistral_small_raw_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_raw_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_mistral_small_raw_parallel_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Surface::Raw,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_mistral_small_raw_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_normalized_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_mistral_small_normalized_text";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Surface::Normalized,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_mistral_small_normalized_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_normalized_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_mistral_small_normalized_single_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Surface::Normalized,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_mistral_small_normalized_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_mistral_small_normalized_parallel_tool() -> Result<()> {
-    const SCENARIO: &str =
-        "history_roundtrip_matrix/blocking_mistral_small_normalized_parallel_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::MistralSmall,
-        Surface::Normalized,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_mistral_small_normalized_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_raw_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_ministral_3b_raw_text";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Surface::Raw,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_ministral_3b_raw_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_raw_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_ministral_3b_raw_single_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Surface::Raw,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_ministral_3b_raw_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_raw_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_ministral_3b_raw_parallel_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Surface::Raw,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_ministral_3b_raw_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_normalized_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_ministral_3b_normalized_text";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Surface::Normalized,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_ministral_3b_normalized_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_normalized_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_ministral_3b_normalized_single_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Surface::Normalized,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_ministral_3b_normalized_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_ministral_3b_normalized_parallel_tool() -> Result<()> {
-    const SCENARIO: &str =
-        "history_roundtrip_matrix/blocking_ministral_3b_normalized_parallel_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Ministral3b,
-        Surface::Normalized,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_ministral_3b_normalized_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_raw_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_mistral_small_raw_text";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Surface::Raw,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_mistral_small_raw_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_raw_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_mistral_small_raw_single_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Surface::Raw,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_mistral_small_raw_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_raw_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_mistral_small_raw_parallel_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Surface::Raw,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_mistral_small_raw_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_normalized_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_mistral_small_normalized_text";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Surface::Normalized,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_mistral_small_normalized_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_normalized_single_tool() -> Result<()> {
-    const SCENARIO: &str =
-        "history_roundtrip_matrix/streaming_mistral_small_normalized_single_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Surface::Normalized,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_mistral_small_normalized_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_mistral_small_normalized_parallel_tool() -> Result<()> {
-    const SCENARIO: &str =
-        "history_roundtrip_matrix/streaming_mistral_small_normalized_parallel_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::MistralSmall,
-        Surface::Normalized,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_mistral_small_normalized_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_raw_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_ministral_3b_raw_text";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Surface::Raw,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_ministral_3b_raw_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_raw_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_ministral_3b_raw_single_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Surface::Raw,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_ministral_3b_raw_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_raw_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_ministral_3b_raw_parallel_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Surface::Raw,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_ministral_3b_raw_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_normalized_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_ministral_3b_normalized_text";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Surface::Normalized,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_ministral_3b_normalized_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_normalized_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_ministral_3b_normalized_single_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Surface::Normalized,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_ministral_3b_normalized_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_ministral_3b_normalized_parallel_tool() -> Result<()> {
-    const SCENARIO: &str =
-        "history_roundtrip_matrix/streaming_ministral_3b_normalized_parallel_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Ministral3b,
-        Surface::Normalized,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_mistral_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_ministral_3b_normalized_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
+crate::matrix::case_matrix! {
+    wrapper: with_mistral_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
+    # [tokio :: test]
+    blocking_mistral_small_raw_text: ("history_roundtrip_matrix/blocking_mistral_small_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: Text ,));
+    # [tokio :: test]
+    blocking_mistral_small_raw_single_tool: ("history_roundtrip_matrix/blocking_mistral_small_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: SingleTool ,));
+    # [tokio :: test]
+    blocking_mistral_small_raw_parallel_tool: ("history_roundtrip_matrix/blocking_mistral_small_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    blocking_mistral_small_normalized_text: ("history_roundtrip_matrix/blocking_mistral_small_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: Text ,));
+    # [tokio :: test]
+    blocking_mistral_small_normalized_single_tool: ("history_roundtrip_matrix/blocking_mistral_small_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: SingleTool ,));
+    # [tokio :: test]
+    blocking_mistral_small_normalized_parallel_tool: ("history_roundtrip_matrix/blocking_mistral_small_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    blocking_ministral_3b_raw_text: ("history_roundtrip_matrix/blocking_ministral_3b_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: Text ,));
+    # [tokio :: test]
+    blocking_ministral_3b_raw_single_tool: ("history_roundtrip_matrix/blocking_ministral_3b_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: SingleTool ,));
+    # [tokio :: test]
+    blocking_ministral_3b_raw_parallel_tool: ("history_roundtrip_matrix/blocking_ministral_3b_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    blocking_ministral_3b_normalized_text: ("history_roundtrip_matrix/blocking_ministral_3b_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: Text ,));
+    # [tokio :: test]
+    blocking_ministral_3b_normalized_single_tool: ("history_roundtrip_matrix/blocking_ministral_3b_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: SingleTool ,));
+    # [tokio :: test]
+    blocking_ministral_3b_normalized_parallel_tool: ("history_roundtrip_matrix/blocking_ministral_3b_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    streaming_mistral_small_raw_text: ("history_roundtrip_matrix/streaming_mistral_small_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: Text ,));
+    # [tokio :: test]
+    streaming_mistral_small_raw_single_tool: ("history_roundtrip_matrix/streaming_mistral_small_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: SingleTool ,));
+    # [tokio :: test]
+    streaming_mistral_small_raw_parallel_tool: ("history_roundtrip_matrix/streaming_mistral_small_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Raw , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    streaming_mistral_small_normalized_text: ("history_roundtrip_matrix/streaming_mistral_small_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: Text ,));
+    # [tokio :: test]
+    streaming_mistral_small_normalized_single_tool: ("history_roundtrip_matrix/streaming_mistral_small_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: SingleTool ,));
+    # [tokio :: test]
+    streaming_mistral_small_normalized_parallel_tool: ("history_roundtrip_matrix/streaming_mistral_small_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: MistralSmall , Surface :: Normalized , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    streaming_ministral_3b_raw_text: ("history_roundtrip_matrix/streaming_ministral_3b_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: Text ,));
+    # [tokio :: test]
+    streaming_ministral_3b_raw_single_tool: ("history_roundtrip_matrix/streaming_ministral_3b_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: SingleTool ,));
+    # [tokio :: test]
+    streaming_ministral_3b_raw_parallel_tool: ("history_roundtrip_matrix/streaming_ministral_3b_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Raw , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    streaming_ministral_3b_normalized_text: ("history_roundtrip_matrix/streaming_ministral_3b_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: Text ,));
+    # [tokio :: test]
+    streaming_ministral_3b_normalized_single_tool: ("history_roundtrip_matrix/streaming_ministral_3b_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: SingleTool ,));
+    # [tokio :: test]
+    streaming_ministral_3b_normalized_parallel_tool: ("history_roundtrip_matrix/streaming_ministral_3b_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Ministral3b , Surface :: Normalized , Shape :: ParallelTool ,));
 }

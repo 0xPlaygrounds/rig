@@ -4,7 +4,15 @@
 //! tests/corpus_*.rs`), verbatim, so the same cell means the same thing on
 //! every wire and in every interpreter.
 
-use rig::effect::EffectFamily::{self, Completion, Custom, Memory as Mem, Tool};
+use rig_core::effect::EffectFamily;
+
+use rig_core::effect::EffectFamily::Completion;
+
+use rig_core::effect::EffectFamily::Custom;
+
+use rig_core::effect::EffectFamily::Memory as Mem;
+
+use rig_core::effect::EffectFamily::Tool;
 
 use super::corpus::{
     CANCEL_ADD_DISPATCH, CANCEL_ADD_OUTCOME, CANCEL_ANSWER, CONVERSATION, Choice, Ending, Hook,
@@ -125,7 +133,8 @@ fn doubleword_thinking(on: bool) -> serde_json::Value {
 }
 
 fn venice_thinking(on: bool) -> serde_json::Value {
-    use rig::providers::venice::VeniceParameters;
+    use rig_core::providers::venice::VeniceParameters;
+
     if on {
         VeniceParameters::default().strip_thinking_response(false)
     } else {
@@ -160,7 +169,7 @@ impl ThinkingWire {
     }
 }
 
-pub(crate) fn bypass_history() -> Vec<rig::message::Message> {
+pub(crate) fn bypass_history() -> Vec<rig_core::message::Message> {
     super::corpus::bypass_history()
 }
 
@@ -224,15 +233,15 @@ pub(crate) enum Bus {
 }
 
 impl Bus {
-    pub(crate) fn policy(self) -> rig::serve::ServingPolicy {
-        let default = rig::serve::ServingPolicy::default();
+    pub(crate) fn policy(self) -> rig_core::serve::ServingPolicy {
+        let default = rig_core::serve::ServingPolicy::default();
         match self {
             Self::Own | Self::Host => default,
-            Self::Serial | Self::HostSerial => rig::serve::ServingPolicy {
+            Self::Serial | Self::HostSerial => rig_core::serve::ServingPolicy {
                 serial_per_handler: true,
                 ..default
             },
-            Self::CapacityOne => rig::serve::ServingPolicy {
+            Self::CapacityOne => rig_core::serve::ServingPolicy {
                 command_capacity: 1,
                 stream_capacity: 1,
                 serial_per_handler: false,
@@ -250,40 +259,40 @@ impl Bus {
 #[derive(Clone, Copy)]
 pub(crate) struct Cell {
     /// `<family>_<cell>`: the golden is `<wire>_<name>`.
-    pub name: &'static str,
-    pub program: Program,
-    pub thinking: Thinking,
+    pub(crate) name: &'static str,
+    pub(crate) program: Program,
+    pub(crate) thinking: Thinking,
     /// Render Off explicitly for the reasoning-off row. Ordinary existing
     /// cells keep their original additional parameters byte-for-byte.
-    pub explicit_thinking_off: bool,
-    pub reasoning: Option<ReasoningCase>,
+    pub(crate) explicit_thinking_off: bool,
+    pub(crate) reasoning: Option<ReasoningCase>,
     /// The image the first prompt carries, and how (`super::image`).
-    pub image: Option<super::image::ImageCell>,
-    pub tools: &'static [ToolKind],
-    pub memory: Memory,
-    pub bus: Bus,
+    pub(crate) image: Option<super::image::ImageCell>,
+    pub(crate) tools: &'static [ToolKind],
+    pub(crate) memory: Memory,
+    pub(crate) bus: Bus,
     /// The host serves `host/note`.
-    pub notes: bool,
+    pub(crate) notes: bool,
     /// The recorder keeps stream events (`record_effects_with_events`).
-    pub events: bool,
+    pub(crate) events: bool,
     /// The record's families, in order.
-    pub families: &'static [EffectFamily],
+    pub(crate) families: &'static [EffectFamily],
     /// Save a scene after this many tool turns' results and resume in a
     /// fresh world over the log's tail (CONTRACT §13).
-    pub resume_after: Option<usize>,
+    pub(crate) resume_after: Option<usize>,
     /// The cut is resumed in a fresh world over fresh live adapters and
     /// the same cassette (the head world sends the head, only the restored
     /// world can send the tail) rather than over replayers of the log's
     /// tail; `resume_after` names the cut.
-    pub live_resume: bool,
+    pub(crate) live_resume: bool,
     /// The fault the cell drives, if it is a failure-row cell
     /// (`super::faults`).
-    pub fault: Option<super::faults::Fault>,
+    pub(crate) fault: Option<super::faults::Fault>,
     /// The scene the cell saves beside its cut (`super::faults::Scene`).
-    pub scene: super::faults::Scene,
+    pub(crate) scene: super::faults::Scene,
     /// The agent's provider-retry budget (CONTRACT §5); `None` is the
     /// library's default.
-    pub provider_retries: Option<usize>,
+    pub(crate) provider_retries: Option<usize>,
 }
 
 pub(crate) const CELL: Cell = Cell {
@@ -400,7 +409,7 @@ pub(crate) const REASONING_CAPPED: Cell = Cell {
     program: Program {
         max_tokens: Some(16),
         hooks: &[Hook::RecordSettled],
-        ending: Ending::Failed(rig::error::ErrorKind::Response),
+        ending: Ending::Failed(rig_core::error::ErrorKind::Response),
         ..REASONING_TEXT_UNARY.program
     },
     provider_retries: Some(0),

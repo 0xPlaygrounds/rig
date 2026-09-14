@@ -281,7 +281,7 @@ fn mixed_user_content_preserves_message_order() {
         content: vec![
             UserContent::text("before"),
             UserContent::tool_result(
-                "",
+                "call-not-the-tool-name",
                 "lookup",
                 vec![ToolResultContent::json(json!({ "ok": true }))],
             ),

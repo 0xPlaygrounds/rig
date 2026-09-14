@@ -2,7 +2,7 @@
 //! Synthetic models make denied and unadvertised calls deliberately; provider
 //! recordings cannot guarantee these adversarial choices on every recapture.
 #![allow(clippy::expect_used, clippy::indexing_slicing)]
-mod run_support;
+use crate::run_support;
 
 use bevy_ecs::prelude::*;
 use rig_core::{effect::HandlerKey, message::AssistantContent};

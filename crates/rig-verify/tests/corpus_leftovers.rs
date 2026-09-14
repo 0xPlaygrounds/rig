@@ -37,9 +37,7 @@
 //! custom key with no table entry is an in-memory row here
 //! (`a_key_nothing_describes_is_refused_by_name`), not a golden.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Ending, Hook, LayerAt, LayerKind, LayerSpec, Program};
 use rig_core::effect::{EffectKind, HandlerKey};

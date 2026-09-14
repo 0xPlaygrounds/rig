@@ -11,7 +11,7 @@
     clippy::indexing_slicing
 )]
 
-mod run_support;
+use crate::run_support;
 
 use bevy_app::{App, Update};
 use bevy_ecs::{prelude::*, schedule::LogLevel};

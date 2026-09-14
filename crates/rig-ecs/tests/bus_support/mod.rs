@@ -2,6 +2,13 @@
 //! and a wall-clock tick guard. Nothing agent-shaped.
 
 #![allow(dead_code, reason = "each suite uses the part of the support it needs")]
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "test support fails immediately when a fixture invariant is violated"
+)]
 
 use std::{
     sync::{
@@ -23,7 +30,7 @@ use rig_core::{
     serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
-use rig_ecs::bus::{Bus, Handlers, run_to_quiescence};
+use rig_ecs::bus::{Bus, run_to_quiescence};
 
 /// A hang is a failure, never a wait.
 pub const GUARD: Duration = Duration::from_secs(10);
@@ -253,12 +260,7 @@ pub fn serial_app() -> App {
     })
 }
 
-/// Register `handler` under `key` from outside a system.
-pub fn register(app: &mut App, key: &str, handler: impl Serve + 'static) -> Entity {
-    Handlers::with(app.world_mut(), |handlers| handlers.register(key, handler))
-        .expect("the world has a bus")
-        .expect("a fresh key")
-}
+pub use crate::run_support::register;
 
 /// Tick the app until `done` holds, or fail after [`GUARD`]. Returns the
 /// ticks taken.
