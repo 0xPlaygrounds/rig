@@ -15,7 +15,10 @@ use rig_core::{
     transcript::{tool_result_message, tool_result_output},
 };
 
-use crate::agent::{Failure, MessageParts, OutputKind, OutputToolConfig};
+use crate::agent::{
+    Failure, MessageParts, OutputKind, OutputToolConfig,
+    content::parts::{ToolResultLimit, ToolResultStatus},
+};
 
 /// The strings the goldens pin, written once. Each has a test in
 /// `policy::tests` that compares it to the golden that pins it, cited by
@@ -312,36 +315,117 @@ pub fn tool_definition(descriptor: &HandlerDescriptor) -> Option<ToolDefinition>
 /// outcome's model-visible output for a result, a skipped result for a
 /// denial, a failed result carrying the report's message for any other
 /// report — or the failure the run ends in (a cancel; a report the bus
-/// could not serve).
+/// could not serve). Beside the part, its status as graph data: the part
+/// is the same whatever the status.
 pub fn tool_result_part(
     id: ToolCallId,
     provider: Option<ProviderCallId>,
     name: String,
     outcome: &Result<Outcome, ErrorReport>,
-) -> Result<UserContent, Failure> {
+) -> Result<(UserContent, ToolResultStatus), Failure> {
     if let Some(failure) = tool_failure(outcome) {
         return Err(failure);
     }
-    let result = match outcome {
-        Ok(Outcome::ToolResult { result }) => result.clone(),
-        Ok(other) => ToolResult::failed(ToolExecutionError::other(format!(
-            "the tool handler answered with a {} outcome",
-            other.family()
-        ))),
-        Err(report) if report.kind == ErrorKind::Denied => {
-            ToolResult::skipped(report.message.clone())
-        }
-        Err(report) => ToolResult::failed(
-            ToolExecutionError::other(report.message.clone())
-                .with_model_feedback(report.message.clone()),
+    let (result, status) = match outcome {
+        Ok(Outcome::ToolResult { result }) => (
+            result.clone(),
+            if result.is_success() {
+                ToolResultStatus::Ok
+            } else if result.is_refused() {
+                ToolResultStatus::Refused
+            } else if result.is_skipped() {
+                ToolResultStatus::Skipped
+            } else {
+                ToolResultStatus::Error
+            },
+        ),
+        Ok(other) => (
+            ToolResult::failed(ToolExecutionError::other(format!(
+                "the tool handler answered with a {} outcome",
+                other.family()
+            ))),
+            ToolResultStatus::WrongFamily,
+        ),
+        Err(report) if report.kind == ErrorKind::Denied => (
+            ToolResult::skipped(report.message.clone()),
+            ToolResultStatus::Denied,
+        ),
+        Err(report) => (
+            ToolResult::failed(
+                ToolExecutionError::other(report.message.clone())
+                    .with_model_feedback(report.message.clone()),
+            ),
+            ToolResultStatus::Error,
         ),
     };
-    Ok(tool_result_output(
-        id,
-        provider,
-        name,
-        result.output().clone(),
+    Ok((
+        tool_result_output(id, provider, name, result.output().clone()),
+        status,
     ))
+}
+
+/// The request-time cut of one tool-result text under `limit` (CONTRACT
+/// §8.1): `None` when the text fits; else its head and tail — together at
+/// most `limit.max_bytes` bytes, each cut back to a UTF-8 character
+/// boundary — around the marker naming the omitted byte count.
+pub fn limit_tool_result_text(text: &str, limit: &ToolResultLimit) -> Option<String> {
+    if text.len() <= limit.max_bytes {
+        return None;
+    }
+    let mut head = limit.max_bytes / 2;
+    while !text.is_char_boundary(head) {
+        head -= 1;
+    }
+    let mut tail = text.len() - (limit.max_bytes - limit.max_bytes / 2);
+    while !text.is_char_boundary(tail) {
+        tail += 1;
+    }
+    let omitted = tail - head;
+    let marker = limit.marker.replace("{omitted}", &omitted.to_string());
+    // Both boundaries were just proven; an empty side is what a missed one
+    // would give, never a panic.
+    let head = text.get(..head).unwrap_or_default();
+    let tail = text.get(tail..).unwrap_or_default();
+    let mut cut = String::with_capacity(head.len() + marker.len() + tail.len());
+    cut.push_str(head);
+    cut.push_str(&marker);
+    cut.push_str(tail);
+    Some(cut)
+}
+
+/// Whether `limit_tool_results` would cut anything of `parts`: a text item
+/// of a tool-result part longer than the limit.
+#[must_use]
+pub fn tool_results_exceed(parts: &MessageParts, limit: &ToolResultLimit) -> bool {
+    let MessageParts::User { content } = parts else {
+        return false;
+    };
+    content.iter().any(|part| match part {
+        UserContent::ToolResult(result) => result.content.iter().any(|item| {
+            matches!(item, rig_core::message::ToolResultContent::Text(text) if text.text.len() > limit.max_bytes)
+        }),
+        _ => false,
+    })
+}
+
+/// `limit_tool_result_text` over every text item of every tool-result part
+/// of a message; JSON and image items and every other part are untouched.
+pub fn limit_tool_results(parts: &mut MessageParts, limit: &ToolResultLimit) {
+    let MessageParts::User { content } = parts else {
+        return;
+    };
+    for part in content {
+        let UserContent::ToolResult(result) = part else {
+            continue;
+        };
+        for item in &mut result.content {
+            if let rig_core::message::ToolResultContent::Text(text) = item
+                && let Some(cut) = limit_tool_result_text(&text.text, limit)
+            {
+                text.text = cut;
+            }
+        }
+    }
 }
 
 /// The failure a tool call's outcome ends the run in, if any: a cancel,

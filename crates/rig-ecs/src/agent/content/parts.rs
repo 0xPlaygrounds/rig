@@ -147,6 +147,63 @@ pub struct ToolResultPart {
     pub name: String,
 }
 
+/// How a tool call ended, beside its `ToolResultPart` (CONTRACT §8.1):
+/// graph data the batch lands, never rendered into the transport DTO — the
+/// result's content items are the same whatever the status. Absent on a
+/// result written from a DTO (`write_message`, a memory load, prior history).
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[serde(rename_all = "snake_case")]
+pub enum ToolResultStatus {
+    /// The tool ran and answered.
+    Ok,
+    /// The tool failed (`status: error`), or the bus reported an error
+    /// the run goes on from (any report but a denial, a cancel, or one
+    /// the run fails on).
+    Error,
+    /// The tool declined the call (`status: refused`).
+    Refused,
+    /// Nothing ran: the runtime skipped the call (a `skipped` result), or
+    /// the result is synthetic — invalid-call feedback, the invalid-peer
+    Skipped,
+    /// A `Denied` outcome (a layer's `deny`, a `Gate` system's denial).
+    Denied,
+    /// The handler answered with an outcome of another family.
+    WrongFamily,
+}
+
+/// The default marker of [`ToolResultLimit`]: `{omitted}` is the omitted
+/// byte count.
+pub const TOOL_RESULT_LIMIT_MARKER: &str = "\n[… {omitted} bytes omitted …]\n";
+
+/// A request-time size policy on a run (else its agent) for the text items
+/// of tool-result parts (CONTRACT §8.1): a text longer than `max_bytes` is
+/// sent as its head and tail — at most `max_bytes` bytes together, cut on
+/// UTF-8 character boundaries — around `marker`, with `{omitted}` replaced
+/// by the omitted byte count. JSON and image items are never cut. Applied
+/// by `assemble` after the turn's `RequestPartEdit`s, to the outgoing
+/// request only: history, the graph and a scene keep the full text. Absent
+/// is verbatim. Request shaping like `RequestPatch`: not replay identity.
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct ToolResultLimit {
+    /// The most bytes of one text item the request carries besides the marker.
+    pub max_bytes: usize,
+    /// The marker between the head and the tail; `{omitted}` is the omitted byte count.
+    pub marker: String,
+}
+
+impl ToolResultLimit {
+    /// A limit with the default marker.
+    #[must_use]
+    pub fn new(max_bytes: usize) -> Self {
+        Self {
+            max_bytes,
+            marker: TOOL_RESULT_LIMIT_MARKER.to_owned(),
+        }
+    }
+}
+
 /// Why a graph cannot be converted to a transport message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 pub enum ContentError {
@@ -667,14 +724,47 @@ pub(crate) fn spawn_deferred(
     message: MessageParts,
     order: Order,
 ) -> Result<Entity, ContentError> {
+    spawn_deferred_with(commands, assets, parent, message, order, Vec::new())
+}
+
+/// `spawn_deferred`, stamping `statuses` on the utterance's tool-result
+/// parts in sibling order (the batch's results, CONTRACT §8.1).
+pub(crate) fn spawn_deferred_with(
+    commands: &mut Commands,
+    assets: &mut BinaryAssets,
+    parent: Entity,
+    message: MessageParts,
+    order: Order,
+    statuses: Vec<ToolResultStatus>,
+) -> Result<Entity, ContentError> {
     let (role, id, parts) = prepare(assets, message)?;
     let mut utterance = commands.spawn((Utterance, role, order, ChildOf(parent)));
     if let Some(id) = id {
         utterance.insert(id);
     }
     let entity = utterance.id();
-    commands.queue(move |world: &mut World| spawn_parts(world, entity, parts));
+    commands.queue(move |world: &mut World| {
+        spawn_parts(world, entity, parts);
+        stamp_statuses(world, entity, &statuses);
+    });
     Ok(entity)
+}
+
+fn stamp_statuses(world: &mut World, utterance: Entity, statuses: &[ToolResultStatus]) {
+    if statuses.is_empty() {
+        return;
+    }
+    let mut results: Vec<(Order, Entity)> = world
+        .get::<Children>(utterance)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .filter(|child| world.get::<ToolResultPart>(*child).is_some())
+        .filter_map(|child| world.get::<Order>(child).map(|order| (*order, child)))
+        .collect();
+    results.sort_by_key(|(order, _)| *order);
+    for ((_, entity), status) in results.into_iter().zip(statuses) {
+        world.entity_mut(entity).insert(*status);
+    }
 }
 
 pub(crate) fn replace_deferred(

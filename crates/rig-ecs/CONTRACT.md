@@ -66,6 +66,28 @@ to its allocation limit. `run_content_binary` and `run_content_parts` cover sour
 all existing content variants, nested JSON/image results, metadata and shared
 asset lifetime.
 
+Cached utterance views: `assemble` keeps the DTO it renders for an utterance
+on that utterance as `content::cache::CachedMessage` — the verbatim
+`MessageParts` `read_message` gives, before any request edit or limit — and
+reads it on later turns instead of walking the part subtree again. A view is
+dropped by Bevy change detection, relative to `assemble`'s own last run:
+a change, addition or removal of any component of the utterance (`Role`,
+`MessageId`, `Children`) or of any entity in its part subtree at any depth
+(the typed parts, `Order`, `ChildOf`, a tool result's `Children`), a
+`write_message`, a reparenting into or out of it, and an asset collection
+(`collect_binary_assets` / `BinaryAssets::retain`, keyed by the store's
+generation). Removals reach the cache through `RemovedComponents`, which
+Bevy double-buffers: a part component removed from a live entity while
+the schedule is skipped for two or more app updates is not seen by the
+cache (a change, read by its tick, is seen whenever the schedule next
+runs). A view made by another `ENCODER_VERSION` is a miss. The turn's
+`RequestPartEdit`s and the `ToolResultLimit` are applied over the view, as
+over a fresh render, and an utterance an edit targets is rendered with the
+edit, uncached. The request is unchanged: every folded `chat_history` equals
+a fresh uncached render (`message_cache.rs`). Views are runtime state, never
+scene or memory data (§13); `AssemblyStats` counts renders, hits, evictions
+and assemblies for measurement.
+
 ## 2. The verbatim strings
 
 | string | value | pinned by |
@@ -183,6 +205,8 @@ A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool
 | the output tool's call in a turn beside a granted tool's call | unpinned: no golden; the batch runs and the output tool's call is read when it lands | (none) |
 | a replaced result | history holds the replacement, the record the handler's answer (a `Judge` rewrite of the child's `EffectOutcome`) | `anthropic_hooks_replace_tool_result` `/records/1/outcome` (`42`) vs `/records/2/…/chat_history/3` (`99`) |
 | a patched call | the record holds the patched arguments, history the model's | `anthropic_hooks_patch_tool_args` `/records/1/kind/args` (`{"x":40,"y":2}`) vs `/records/2/…/chat_history/2` (`{17, 25}`) |
+| the status, as data | beside each `ToolResultPart` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
+| the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `assemble` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
 
 ### 8.2 Invalid calls beside the batch
 
@@ -343,6 +367,11 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 | `replay::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
 
+`ToolResultLimit` (§8.1) is request shaping, like `RequestPatch`: it is
+not an input of `spec_json`, so a limit set, changed or removed between
+runs does not change the policy hash, and a recorded run replays under any
+limit — the request the log holds is the cut one, as it was sent.
+
 Replayers retain recorded model identity/capabilities and include every
 `programs[*].required` row. They clear executable layer metadata until the
 application reapplies its middleware: a program recorded under a layer is
@@ -490,6 +519,9 @@ saved. Effect-entity application components, resources, system-local and
 external state are host-owned. Insertion observers/change detection can fire
 on load; install application observers afterward or guard restoration.
 
+Cached utterance views (§1) are not saved: a loaded utterance holds no
+`CachedMessage`, the first assembly after a load renders every utterance of
+`a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views`).
 
 The live-handler regressions in `tests/memory_resume.rs` cover memory finalization before
 scheduling, while queued, after an external write but before its outcome,

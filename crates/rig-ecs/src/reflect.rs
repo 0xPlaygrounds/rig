@@ -136,6 +136,8 @@ pub fn install_reflect(world: &mut World) {
             agent::content::parts::ToolResultPart,
             agent::content::parts::ReasoningPart,
             agent::content::parts::JsonPart,
+            agent::content::parts::ToolResultStatus,
+            agent::content::parts::ToolResultLimit,
             agent::content::reflect::TextPartReflect,
             agent::content::reflect::ToolCallPartReflect,
             agent::content::reflect::ReasoningPartReflect,

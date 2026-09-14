@@ -22,7 +22,11 @@ use crate::agent::checkpoint::{
 };
 use crate::agent::content::{
     binary::BinaryAssets,
-    parts::{ContentError, ContentGraph, replace_deferred, spawn_deferred, write_message},
+    cache::{AssemblyStats, Cached, CachedMessage},
+    parts::{
+        ContentError, ContentGraph, ToolResultLimit, ToolResultStatus, replace_deferred,
+        spawn_deferred, spawn_deferred_with, write_message,
+    },
 };
 
 use crate::agent::content::parts::{EditTarget, RequestPartEdit};
@@ -126,6 +130,8 @@ pub struct Settings<'w, 's> {
     pub output_tools: Query<'w, 's, &'static OutputToolConfig>,
     /// Execution bindings and permissions, separate from advertisements.
     pub tool_access: Query<'w, 's, &'static ToolAccess>,
+    /// The request-time size policy for tool-result text.
+    pub tool_result_limits: Query<'w, 's, &'static ToolResultLimit>,
 }
 /// What `assemble` reads of a fresh turn: its run, its patch, whether it
 /// is retrieving.
@@ -205,6 +211,7 @@ pub fn install_agent(world: &mut World) {
     world.init_resource::<OrderCounter>();
     world.init_resource::<BinaryAssets>();
     world.init_resource::<RunCounter>();
+    world.init_resource::<AssemblyStats>();
     world.add_observer(effect_cancelled);
     world.add_observer(run_cancelled);
     world.add_observer(batch_marker_follows_the_hold);
@@ -890,6 +897,10 @@ pub type PartEditView = (
 /// — resolve the output mode, mint the output tool's name once per run,
 /// fold, and spawn the effect `ChildOf` the turn. The run is then
 /// `AwaitingModel`.
+/// An utterance is read from its `CachedMessage` when it holds one and
+/// nothing of it changed since this system last ran (CONTRACT §1); else
+/// it is rendered and the render cached for the next turn. An utterance a
+/// `RequestPartEdit` targets is rendered with the edit, uncached.
 /// A missing selected model or non-completion binding instead terminates the
 /// run with a provider `HandlerUnavailable` report; it never silently waits.
 #[allow(
@@ -911,8 +922,23 @@ pub fn assemble(
     documents: Query<(&DocumentId, &DocumentText, Option<&DocumentProps>)>,
     bound: Query<&Bound>,
     settings: Settings,
+    cached: Cached,
     mut progress: ResMut<Progress>,
 ) {
+    let Cached {
+        mut cache,
+        mut stats,
+    } = cached;
+    // Every run, fresh turn or none: the changes since the last run are
+    // read once, and the views they stale are dropped.
+    let stale = cache.stale();
+    for utterance in &stale {
+        if cache.holds(*utterance) {
+            commands.entity(*utterance).remove::<CachedMessage>();
+            stats.evictions += 1;
+        }
+    }
+    let assets_generation = cache.assets_generation();
     let Settings {
         preambles,
         temperatures,
@@ -922,6 +948,7 @@ pub fn assemble(
         outputs,
         output_tools,
         tool_access,
+        tool_result_limits,
     } = settings;
     let mut turns: Vec<(Entity, Entity, RunSeq, Option<&RequestPatch>, bool)> = fresh
         .iter()
@@ -997,9 +1024,11 @@ pub fn assemble(
             }
             let mut edits = std::collections::BTreeMap::new();
             let mut consumed = Vec::new();
+            let mut edited = std::collections::HashSet::new();
             for (link, _, _, target, edit) in links {
                 let target = target.ok_or(ContentError::Missing)?;
                 let utterance = content.target_utterance(target.0)?;
+                edited.insert(utterance);
                 if !children
                     .get(run)
                     .is_ok_and(|owned| owned.contains(&utterance))
@@ -1014,24 +1043,44 @@ pub fn assemble(
                 edits.insert(target.0, edit.clone());
                 consumed.push(link);
             }
-            Ok((edits, consumed))
+            Ok((edits, consumed, edited))
         })();
-        let (edits, consumed_edits) = content_or_fail!(requested, &mut commands, run, progress);
+        let (edits, consumed_edits, edited) =
+            content_or_fail!(requested, &mut commands, run, progress);
 
-        let history: Result<Vec<_>, ContentError> = children
-            .get(run)
-            .map(|children| {
-                children
-                    .iter()
-                    .filter_map(|child| utterances.get(child).ok())
-                    .map(|(entity, order)| {
-                        content
-                            .message_with(entity, &edits)
-                            .map(|message| (*order, message))
-                    })
-                    .collect()
-            })
-            .unwrap_or_else(|_| Ok(Vec::new()));
+        let history: Result<Vec<(Order, std::borrow::Cow<'_, MessageParts>)>, ContentError> =
+            children
+                .get(run)
+                .map(|children| {
+                    children
+                        .iter()
+                        .filter_map(|child| utterances.get(child).ok())
+                        .map(|(entity, order)| {
+                            let parts = if edited.contains(&entity) {
+                                // The turn's edit: rendered with it, kept
+                                // out of the cache (the view is verbatim).
+                                stats.renders += 1;
+                                content
+                                    .message_with(entity, &edits)
+                                    .map(std::borrow::Cow::Owned)
+                            } else if let Some(view) = cache.view(entity, &stale) {
+                                stats.hits += 1;
+                                Ok(std::borrow::Cow::Borrowed(view))
+                            } else {
+                                stats.renders += 1;
+                                content.message(entity).map(|parts| {
+                                    commands.entity(entity).insert(CachedMessage::new(
+                                        parts.clone(),
+                                        assets_generation,
+                                    ));
+                                    std::borrow::Cow::Owned(parts)
+                                })
+                            };
+                            parts.map(|parts| (*order, parts))
+                        })
+                        .collect()
+                })
+                .unwrap_or_else(|_| Ok(Vec::new()));
         let mut history = content_or_fail!(history, &mut commands, run, progress);
         history.sort_by_key(|(order, _)| *order);
 
@@ -1049,7 +1098,7 @@ pub fn assemble(
             let query = policy::retrieval_query(
                 &history
                     .iter()
-                    .map(|(_, parts)| parts.clone())
+                    .map(|(_, parts)| parts.as_ref().clone())
                     .collect::<Vec<_>>(),
             );
             let mut indexes: Vec<(&Retrieves, &Order, &Retrieval)> = children
@@ -1093,6 +1142,17 @@ pub fn assemble(
                 progress.mark();
             }
             continue;
+        }
+
+        // The size policy (CONTRACT §8.1): the request's tool-result text,
+        // after the part edits `message_with` applied and before the fold;
+        // the graph keeps the full text.
+        if let Some(limit) = setting(run, agent, &tool_result_limits) {
+            for (_, parts) in &mut history {
+                if policy::tool_results_exceed(parts, limit) {
+                    policy::limit_tool_results(parts.to_mut(), limit);
+                }
+            }
         }
 
         // The turn's patch (CONTRACT §9.3), folded in as `prepare_request`
@@ -1154,7 +1214,7 @@ pub fn assemble(
                 messages
                     .iter()
                     .cloned()
-                    .chain(history.last().map(|(_, parts)| parts.clone()))
+                    .chain(history.last().map(|(_, parts)| parts.as_ref().clone()))
                     .collect()
             });
         let merged_params: Option<serde_json::Value> = match (
@@ -1259,7 +1319,7 @@ pub fn assemble(
             preamble,
             utterances: match &patched_history {
                 Some(patched) => patched.iter().collect(),
-                None => history.iter().map(|(_, parts)| parts).collect(),
+                None => history.iter().map(|(_, parts)| parts.as_ref()).collect(),
             },
             documents: attached,
             tools: tools.iter().map(|bound| &bound.descriptor).collect(),
@@ -1273,6 +1333,7 @@ pub fn assemble(
             output_tool_config,
         };
         let request = policy::fold_request(&graph);
+        stats.assemblies += 1;
         for link in consumed_edits {
             commands.entity(link).despawn();
         }
@@ -1562,6 +1623,7 @@ pub fn land_batch(
             continue;
         }
         let mut parts = Vec::with_capacity(calls.len());
+        let mut statuses = Vec::with_capacity(calls.len());
         let mut failed = None;
         for (_, slot, _, outcome, _) in &calls {
             let Some(EffectOutcome(outcome)) = outcome else {
@@ -1573,7 +1635,10 @@ pub fn land_batch(
                 slot.name.clone(),
                 outcome,
             ) {
-                Ok(part) => parts.push(part),
+                Ok((part, status)) => {
+                    parts.push(part);
+                    statuses.push(status);
+                }
                 Err(failure) => {
                     failed = Some(failure);
                     break;
@@ -1591,12 +1656,13 @@ pub fn land_batch(
         }
         let results = MessageParts::User { content: parts };
         let results_entity = content_or_fail!(
-            spawn_deferred(
+            spawn_deferred_with(
                 &mut commands,
                 &mut assets,
                 run,
                 results,
-                next_order_in(&mut orders)
+                next_order_in(&mut orders),
+                statuses
             ),
             &mut commands,
             run,
@@ -1876,13 +1942,20 @@ pub fn materialise(
                         progress
                     );
                     let results = policy::invalid_peer_results(&content, &diagnostic_id, &feedback);
+                    let skipped = match &results {
+                        MessageParts::User { content } => {
+                            vec![ToolResultStatus::Skipped; content.len()]
+                        }
+                        MessageParts::Assistant { .. } => Vec::new(),
+                    };
                     content_or_fail!(
-                        spawn_deferred(
+                        spawn_deferred_with(
                             &mut commands,
                             &mut assets,
                             run,
                             results,
-                            next_order_in(&mut orders)
+                            next_order_in(&mut orders),
+                            skipped
                         ),
                         &mut commands,
                         run,
@@ -2306,12 +2379,13 @@ pub fn materialise(
                                 .entity(turn)
                                 .insert(Reprompt(reprompt.to_message()));
                             content_or_fail!(
-                                spawn_deferred(
+                                spawn_deferred_with(
                                     &mut commands,
                                     &mut assets,
                                     run,
                                     reprompt,
-                                    next_order_in(&mut orders)
+                                    next_order_in(&mut orders),
+                                    vec![ToolResultStatus::Skipped]
                                 ),
                                 &mut commands,
                                 run,

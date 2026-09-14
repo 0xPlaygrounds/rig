@@ -532,6 +532,7 @@ impl RunScene {
                 RequestPartEdit => "request_part_edit", ContentPart => "content_part", TextPart => "text_part", ImagePart => "image_part",
                 AudioPart => "audio_part", VideoPart => "video_part", DocumentPart => "document_part",
                 ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
+                ToolResultStatus => "tool_result_status", ToolResultLimit => "tool_result_limit",
                 Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
@@ -720,6 +721,13 @@ impl RunScene {
                     return Err(extension_error("content part has an invalid parent"));
                 }
             }
+            if validation.get::<ToolResultStatus>(*entity).is_some()
+                && validation.get::<ToolResultPart>(*entity).is_none()
+            {
+                return Err(extension_error(
+                    "tool result status is not on a tool result part",
+                ));
+            }
         }
         for entity in &entities {
             if validation.get::<RequestPartEdit>(*entity).is_some() {
@@ -833,6 +841,7 @@ impl RunScene {
                 RequestPartEdit => "request_part_edit", ContentPart => "content_part", TextPart => "text_part", ImagePart => "image_part",
                 AudioPart => "audio_part", VideoPart => "video_part", DocumentPart => "document_part",
                 ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
+                ToolResultStatus => "tool_result_status", ToolResultLimit => "tool_result_limit",
                 Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",

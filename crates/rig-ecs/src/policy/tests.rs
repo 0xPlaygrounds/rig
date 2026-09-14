@@ -349,3 +349,76 @@ fn valid_name_then_invalid_final_retains_completed_call() {
     assert_eq!(partial, content);
     assert_eq!(retained_id, id);
 }
+
+#[test]
+fn the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries() {
+    use crate::agent::content::parts::ToolResultLimit;
+    let limit = |max_bytes| ToolResultLimit {
+        max_bytes,
+        marker: "<{omitted}>".to_owned(),
+    };
+    assert_eq!(limit_tool_result_text("abcdef", &limit(6)), None);
+    assert_eq!(
+        limit_tool_result_text("abcdefg", &limit(6)).as_deref(),
+        Some("abc<1>efg")
+    );
+    assert_eq!(
+        limit_tool_result_text("abcdefg", &limit(5)).as_deref(),
+        Some("ab<2>efg"),
+        "an odd limit gives the tail the extra byte"
+    );
+    assert_eq!(
+        limit_tool_result_text("abcdefg", &limit(0)).as_deref(),
+        Some("<7>")
+    );
+    // "é" is two bytes: 3 floors the head to one character, the tail of
+    // 4 bytes is two characters.
+    assert_eq!(
+        limit_tool_result_text("éééééé", &limit(7)).as_deref(),
+        Some("é<6>éé")
+    );
+    // A tail start inside a character rounds forward.
+    assert_eq!(
+        limit_tool_result_text("aéééé", &limit(3)).as_deref(),
+        Some("a<6>é")
+    );
+    let cut = limit_tool_result_text("日本語のテキスト", &limit(5)).unwrap();
+    assert_eq!(cut, "<21>ト");
+}
+
+#[test]
+fn the_tool_result_cut_takes_a_zero_budget_and_a_marker_wider_than_the_budget() {
+    use crate::agent::content::parts::ToolResultLimit;
+    let limit = |max_bytes, marker: &str| ToolResultLimit {
+        max_bytes,
+        marker: marker.to_owned(),
+    };
+    // Nothing kept: the marker alone, the whole text counted.
+    assert_eq!(
+        limit_tool_result_text("abcdefg", &limit(0, "<{omitted}>")).as_deref(),
+        Some("<7>")
+    );
+    assert_eq!(
+        limit_tool_result_text("é", &limit(0, "…")).as_deref(),
+        Some("…")
+    );
+    // A budget smaller than the marker: the marker is not budgeted, so the
+    // cut is wider than the limit, and the kept bytes are still at most it.
+    let marker = "[... {omitted} bytes omitted ...]";
+    assert_eq!(
+        limit_tool_result_text("abcdefg", &limit(1, marker)).as_deref(),
+        Some("[... 6 bytes omitted ...]g")
+    );
+    assert_eq!(
+        limit_tool_result_text("abcdefg", &limit(2, marker)).as_deref(),
+        Some("a[... 5 bytes omitted ...]g")
+    );
+    // A one-byte budget over multibyte text keeps nothing at the head and
+    // rounds the tail forward to a whole character.
+    assert_eq!(
+        limit_tool_result_text("éé", &limit(1, marker)).as_deref(),
+        Some("[... 4 bytes omitted ...]")
+    );
+    // A zero-length text under a zero budget is within the limit.
+    assert_eq!(limit_tool_result_text("", &limit(0, marker)), None);
+}
