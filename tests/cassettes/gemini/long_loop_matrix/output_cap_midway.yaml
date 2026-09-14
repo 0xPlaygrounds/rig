@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"The crate''s test suite fails. Make it pass. Protocol: (1) call list_files; (2) call read_file on README.md; (3) call read_file on tests/basic.rs; (4) call read_file on src/lib.rs; (5) call run_tests to see the failing assertion; (6) call write_file on the one file the failing assertion points at, with that file''s complete corrected contents, changing only the returned value; (7) call run_tests again. Repeat steps 6 and 7 until run_tests reports PASS, then answer with the single word done.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":32,"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a careful software engineer working in a small Rust repository through tools. Follow the requested tool protocol exactly: one tool call per model turn unless the protocol says otherwise. Never invent a tool result and never repeat a tool result''s text. Your final answer must be exactly the single word done, given only after run_tests reports PASS.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"List every file in the repository, one path per line.","name":"list_files","parameters":{"properties":{},"type":"object"}},{"description":"Read one repository file and return its complete text. Errors when the path does not exist.","name":"read_file","parameters":{"properties":{"path":{"description":"The file''s path relative to the repository root, e.g. src/lib.rs.","type":"string"}},"required":["path"],"type":"object"}},{"description":"Replace one repository file''s complete text (or create it). Always send the whole file.","name":"write_file","parameters":{"properties":{"content":{"description":"The complete new text of the file.","type":"string"},"path":{"description":"The file''s path relative to the repository root.","type":"string"}},"required":["path","content"],"type":"object"}},{"description":"Run the crate''s test suite and return the runner''s report. The first line is run_tests: PASS or run_tests: FAIL. The runner stops at the first failing test and reports only that assertion; later tests run only once it passes.","name":"run_tests","parameters":{"properties":{},"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"finishMessage":"Malformed function call: tool","finishReason":"MALFORMED_FUNCTION_CALL","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"promptTokenCount":465,"promptTokensDetails":[{"modality":"TEXT","tokenCount":465}],"serviceTier":"standard","totalTokenCount":465}}'
