@@ -1568,6 +1568,13 @@ pub struct GenericCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> 
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
     GenericCompletionModel<super::client::Anthropic, H>;
 
+impl<Ext, H> GenericCompletionModel<Ext, H> {
+    /// The provider client this model sends through.
+    pub fn client(&self) -> &crate::client::Client<Ext, H> {
+        &self.client
+    }
+}
+
 impl<Ext, H> GenericCompletionModel<Ext, H>
 where
     H: HttpClientExt,

@@ -68,6 +68,11 @@ pub struct CompletionModel<T = crate::http_client::BoxedHttpClient> {
 }
 
 impl<T> CompletionModel<T> {
+    /// The provider client this model sends through.
+    pub fn client(&self) -> &Client<T> {
+        &self.client
+    }
+
     pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
         Self {
             client,

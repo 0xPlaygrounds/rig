@@ -32,7 +32,7 @@ use rig::completion::{
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, Outcome};
 use rig::error::ErrorKind;
 use rig::serve::{
-    ErasedHandler,
+    ErasedHandler, Serve,
     adapters::{CompletionAdapter, MemoryAdapter, ToolAdapter},
 };
 use rig::streaming::{Delta, StreamEvent, StreamEvents, StreamingCompletionResponse};
@@ -47,8 +47,9 @@ use rig_ecs::{
         scene::{WorldScene, load_world, save_world},
     },
     bus::{
-        BusSet, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight, Intake,
-        PendingEffect, Policy, Progress, RigSchedule, Streamed, run_to_quiescence,
+        BusSet, CredentialRef, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight,
+        Intake, Materializer, PendingEffect, Policy, Progress, RigSchedule, Secret, Streamed,
+        materialize_bindings, run_to_quiescence,
     },
     replay::{stamp_legacy_builder_header, stamp_run},
     systems::{Fresh, RigSet, RunBusy, despawn_run, install_agent, spawn_run},
@@ -59,6 +60,7 @@ use tokio::sync::Semaphore;
 use super::cells::{Cell, Memory, ToolKind};
 use super::corpus::{self, CANCEL_ADD_OUTCOME, Ending, Hook, LayerAt, Program, Unhandled};
 use super::faults::{BROKEN_ORCHARD, FailingOrchard, Fault, Scene};
+use super::{CASSETTE_CREDENTIAL, WireBinding};
 use super::{OWNER, Wire};
 use crate::ecs_agent::RuntimeHandler;
 use crate::goldens::{
@@ -508,25 +510,87 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             runtime: runtime.clone(),
         })
     };
-    let model = match gate {
-        Some(tool) => ErasedHandler::new(RuntimeHandler {
-            inner: Arc::new(CompletionAdapter::new(
-                "default",
-                FirstDelta {
-                    inner: wire.model.clone(),
-                    tool,
-                    release: gates.stream.clone(),
-                },
-            )),
-            runtime: runtime.clone(),
-        }),
-        None => model_handler(wire.model.clone(), "default"),
+    // The default model as data (CONTRACT §12, §13): a head world whose
+    // wire the harness can describe, and whose stream is not gated, binds
+    // `golden/model:default` through a `ProviderBinding` the harness
+    // `Materializer` builds the client for — the head client rebuilt from
+    // the binding — so the scene it saves carries the binding and a world
+    // opened over that scene materializes the model from scene data
+    // instead of a hand-registered adapter. A gated model (`FirstDelta`)
+    // and a wire the harness cannot describe stay hand-registered, and a
+    // scene without the binding is served as it was.
+    let default_key = HandlerKey::from(format!("{OWNER}/model:default"));
+    let data_bound: Option<WireBinding> = match (gate, scene) {
+        (None, None) => wire.binding(),
+        (_, Some(scene))
+            if scene
+                .bindings
+                .iter()
+                .any(|saved| saved.binding.key == default_key) =>
+        {
+            Some(wire.binding().expect("the scene's binding is this wire's"))
+        }
+        _ => None,
     };
-    let model = Handlers::with(world, |handlers| {
-        handlers.register_erased(format!("{OWNER}/model:default"), model)
-    })
-    .expect("bus installed")
-    .expect("fresh model key");
+    let model: Option<Entity> = match &data_bound {
+        Some(data) => {
+            install_materializer(world, data, &runtime);
+            if scene.is_some() {
+                // Spawned by the load, materialized after it.
+                None
+            } else {
+                world.spawn(data.binding.clone());
+                let report =
+                    materialize_bindings(world).expect("the head materializes its binding");
+                assert_eq!(report.materialized, vec![default_key.clone()]);
+                let entity = world
+                    .query_filtered::<Entity, With<rig_ecs::bus::ProviderBinding>>()
+                    .single(world)
+                    .expect("the binding's entity is the handler's");
+                // The binding captures the model id, base URL, credential
+                // and transport; the materialized handler must describe
+                // itself exactly as the hand-registered adapter over the
+                // wire's own model would, so a wire with model-level
+                // settings the binding does not carry cannot diverge
+                // silently.
+                let by_hand = CompletionAdapter::new("default", wire.model.clone()).descriptor();
+                let bound = world
+                    .get::<rig_ecs::bus::Bound>(entity)
+                    .expect("the materialized binding is bound");
+                assert_eq!(bound.key, default_key);
+                assert_eq!(bound.descriptor.key, default_key);
+                assert_eq!(
+                    (&bound.descriptor.family, &bound.descriptor.layers),
+                    (&by_hand.family, &by_hand.layers),
+                    "the materialized descriptor is the hand-registered adapter's"
+                );
+                Some(entity)
+            }
+        }
+        None => {
+            let model = match gate {
+                Some(tool) => ErasedHandler::new(RuntimeHandler {
+                    inner: Arc::new(CompletionAdapter::new(
+                        "default",
+                        FirstDelta {
+                            inner: wire.model.clone(),
+                            tool,
+                            release: gates.stream.clone(),
+                        },
+                    )),
+                    runtime: runtime.clone(),
+                }),
+                None => model_handler(wire.model.clone(), "default"),
+            };
+            Some(
+                Handlers::with(world, |handlers| {
+                    handlers.register_erased(default_key.clone(), model)
+                })
+                .expect("bus installed")
+                .expect("fresh model key"),
+            )
+        }
+    };
     if !cell.bus.declared() {
         memory = register_memory(world);
     }
@@ -673,6 +737,18 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
 
     let agent = if let Some(scene) = scene {
         let loaded = load_world(scene, world).expect("the scene binds to fresh live handlers");
+        if data_bound.is_some() {
+            // The scene's binding, bound and unserved by the load, served now
+            // on the host's word: the client built from scene data.
+            let report =
+                materialize_bindings(world).expect("the restored world materializes its binding");
+            assert_eq!(
+                report.materialized,
+                vec![default_key.clone()],
+                "{}: the restored model is materialized from scene data",
+                cell.name
+            );
+        }
         if super::stream_delivery::applicable(cell) {
             super::stream_delivery::assert_hydration(world, cell);
         }
@@ -711,7 +787,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
                         Unhandled::Ignore => WorldUnhandled::Ignore,
                     },
                 },
-                UsesModel(model),
+                UsesModel(model.expect("a head world's model is bound")),
             ))
             .id();
         if let Some(retries) = cell.provider_retries {
@@ -767,6 +843,34 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         ),
     );
     (app, agent, recorder, gates)
+}
+
+/// The harness `Materializer`: `cassette` resolves to the head client's
+/// key, every client sends through the head client's transport, and each
+/// built adapter is served under the test runtime as a hand-registered
+/// one is. Any other reference is refused.
+fn install_materializer(world: &mut World, data: &WireBinding, runtime: &tokio::runtime::Handle) {
+    let api_key = data.api_key.clone();
+    let transport = data.transport.clone();
+    let runtime = runtime.clone();
+    world.insert_resource(
+        Materializer::new(
+            move |credential: &CredentialRef| {
+                if credential.as_str() == CASSETTE_CREDENTIAL {
+                    Ok(Secret::new(api_key.clone()))
+                } else {
+                    Err(format!("the harness resolves only `{CASSETTE_CREDENTIAL}`"))
+                }
+            },
+            move || transport.clone(),
+        )
+        .serving(move |handler| {
+            ErasedHandler::new(RuntimeHandler {
+                inner: Arc::new(handler),
+                runtime: runtime.clone(),
+            })
+        }),
+    );
 }
 
 /// The run ended as the program says (the corpus's `assert_ending`, over

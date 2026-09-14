@@ -74,6 +74,16 @@ pub type InteractionsClient<H = crate::http_client::BoxedHttpClient> =
 
 impl ApiKey for GeminiApiKey {}
 
+impl Gemini {
+    /// The API key this provider appends to every request URI, for a host
+    /// that rebuilds an equivalent client (a binding materializer) from a
+    /// client it holds. The key is a credential: hand it to a client
+    /// builder, not to a log.
+    pub fn api_key(&self) -> &str {
+        &self.api_key
+    }
+}
+
 impl Provider for Gemini {
     const NAME: &'static str = "gcp.gemini";
     const BASE_URL: &'static str = GEMINI_API_BASE_URL;

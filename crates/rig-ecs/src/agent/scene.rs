@@ -30,7 +30,7 @@ use super::{
     RunResult, RunSeq, Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot,
     ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
 };
-use crate::bus::{Bound, Scope};
+use crate::bus::{Bound, ProviderBinding, Scope};
 
 /// What a scene entity is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -163,6 +163,24 @@ pub struct WorldScene {
     /// Registered extension components on graph entities, keyed by graph index
     /// and the application's versioned component name.
     pub extensions: BTreeMap<usize, BTreeMap<String, serde_json::Value>>,
+    /// The provider bindings ([`ProviderBinding`]) the world's handler
+    /// entities carry, by key, each with the descriptor it was bound with
+    /// (none for a binding nothing had materialized). Data only: loading
+    /// spawns them as they were and materializes nothing.
+    pub bindings: Vec<SceneBinding>,
+}
+
+/// A [`ProviderBinding`] as a scene saves it: the binding and, when it was
+/// materialized, the descriptor its `Bound` held — what a load restores so
+/// the scene's links resolve to the key and the policy hash is the saving
+/// world's, before any client exists.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SceneBinding {
+    /// The binding.
+    pub binding: ProviderBinding,
+    /// The bound descriptor, if the binding was materialized when saved.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub descriptor: Option<rig_core::effect::HandlerDescriptor>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -189,6 +207,9 @@ struct WorldSceneData {
     /// and the application's versioned component name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub extensions: BTreeMap<usize, BTreeMap<String, serde_json::Value>>,
+    /// The provider bindings, by key.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bindings: Vec<SceneBinding>,
 }
 
 /// Explicit persistence registration for application components on entities
@@ -317,6 +338,15 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
                 .map(|_| index)
         })
         .collect();
+    let mut bindings: Vec<SceneBinding> = world
+        .query::<(&ProviderBinding, Option<&Bound>)>()
+        .iter(world)
+        .map(|(binding, bound)| SceneBinding {
+            binding: binding.clone(),
+            descriptor: bound.map(|bound| bound.descriptor.clone()),
+        })
+        .collect();
+    bindings.sort_by(|a, b| a.binding.key.cmp(&b.binding.key));
     Ok(WorldScene {
         batch_held,
         graph,
@@ -324,7 +354,118 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
         slots,
         retrievals,
         extensions,
+        bindings,
     })
+}
+
+/// What [`load_bindings`] put into the world: what a refused graph load
+/// takes back out.
+struct LoadedBindings {
+    /// Entities the load spawned.
+    spawned: Vec<Entity>,
+    /// Bound entities the load attached a binding to, with the binding
+    /// they carried before.
+    attached: Vec<(Entity, Option<ProviderBinding>)>,
+}
+
+impl LoadedBindings {
+    /// Put the world back as it was before the load.
+    fn undo(self, world: &mut World) {
+        for entity in self.spawned {
+            world.entity_mut(entity).despawn();
+        }
+        for (entity, before) in self.attached {
+            let mut bound = world.entity_mut(entity);
+            match before {
+                Some(binding) => {
+                    bound.insert(binding);
+                }
+                None => {
+                    bound.remove::<ProviderBinding>();
+                }
+            }
+        }
+    }
+}
+
+/// Validate `scene.bindings` against `world` and spawn them: each as a
+/// `ProviderBinding` entity carrying its saved `Bound` (so the graph's
+/// links to the key resolve), or — the existing handler wins — attached to
+/// fetched here. Refused before any spawn: a duplicate key in the scene, a
+/// saved descriptor whose key is not the binding's, an existing handler of
+/// another family under the key.
+fn load_bindings(
+    scene: &WorldScene,
+    world: &mut World,
+) -> Result<LoadedBindings, rig_core::error::ErrorReport> {
+    let existing: Vec<(Entity, Bound)> = world
+        .query::<(Entity, &Bound)>()
+        .iter(world)
+        .map(|(entity, bound)| (entity, bound.clone()))
+        .collect();
+    let mut placed: Vec<(Entity, ProviderBinding, Option<Bound>)> = Vec::new();
+    for (index, saved) in scene.bindings.iter().enumerate() {
+        let key = &saved.binding.key;
+        if scene
+            .bindings
+            .iter()
+            .take(index)
+            .any(|other| &other.binding.key == key)
+        {
+            return Err(extension_error(format!("the scene binds `{key}` twice")));
+        }
+        if let Some(descriptor) = &saved.descriptor
+            && &descriptor.key != key
+        {
+            return Err(extension_error(format!(
+                "the binding for `{key}` was saved with the descriptor of `{}`",
+                descriptor.key
+            )));
+        }
+        match existing.iter().find(|(_, bound)| &bound.key == key) {
+            Some((entity, bound)) => {
+                if let Some(descriptor) = &saved.descriptor
+                    && bound.family() != descriptor.family.family()
+                {
+                    return Err(rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::HandlerUnavailable,
+                        format!(
+                            "the scene binds `{key}` as {} but the world has it bound as {}",
+                            descriptor.family.family(),
+                            bound.family()
+                        ),
+                    ));
+                }
+                placed.push((*entity, saved.binding.clone(), None));
+            }
+            None => {
+                let bound = saved.descriptor.clone().map(|descriptor| Bound {
+                    key: key.clone(),
+                    descriptor,
+                });
+                placed.push((Entity::PLACEHOLDER, saved.binding.clone(), bound));
+            }
+        }
+    }
+    let mut loaded = LoadedBindings {
+        spawned: Vec::new(),
+        attached: Vec::new(),
+    };
+    for (entity, binding, bound) in placed {
+        if entity == Entity::PLACEHOLDER {
+            let mut spawned = world.spawn(binding);
+            if let Some(bound) = bound {
+                spawned.insert(bound);
+            }
+            loaded.spawned.push(spawned.id());
+        } else {
+            let mut bound = world.entity_mut(entity);
+            let before = bound.get::<ProviderBinding>().cloned();
+            bound.insert(binding);
+            loaded.attached.push((entity, before));
+        }
+    }
+    Ok(loaded)
 }
 
 /// Load `scene` into `world`: the graph first, then the effects, each
@@ -333,9 +474,11 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
 /// Parent ancestry and scene indices are validated before spawning anything.
 /// Registered extensions are validated before spawning and inserted after the
 /// graph and effects have loaded. Install application observers after loading:
-/// insertion observers can otherwise see a partially restored entity. Loading
-/// is not transactional if a graph error, extension insertion/deserialization
-/// or application observer fails.
+/// insertion observers can otherwise see a partially restored entity. The
+/// bindings are spawned before the graph (its links to their keys resolve
+/// against their `Bound`s) and taken back out when the graph load is
+/// refused; loading is not transactional if an effects load, extension
+/// insertion/deserialization or application observer fails.
 pub fn load_world(
     scene: &WorldScene,
     world: &mut World,
@@ -409,7 +552,16 @@ pub fn load_world(
                 .map_err(|error| extension_error(format!("extension {name}: {error}")))?;
         }
     }
-    let graph = scene.graph.load(world)?;
+    // Bindings first, and before the graph: its links to a binding's key
+    // resolve to the spawned `Bound` as to any bound key. Data only.
+    let bindings = load_bindings(scene, world)?;
+    let graph = match scene.graph.load(world) {
+        Ok(graph) => graph,
+        Err(error) => {
+            bindings.undo(world);
+            return Err(error);
+        }
+    };
     let effects = scene
         .effects
         .load_with(world, |index| graph.get(index).copied())?;

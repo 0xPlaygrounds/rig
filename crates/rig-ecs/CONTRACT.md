@@ -458,6 +458,60 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route bound after the agent exists (`late_route`) | `UsesModel` inserted on the run by a system (§9.2); not in the row | `anthropic_shaping_late_route` |
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
+### 12.1 A model bound as data
+
+A `bus::ProviderBinding` component is the data half of a provider-served
+key: `kind` (`anthropic`, `openai_chat`, `openai_responses`, `gemini`,
+`deepseek`), `model`, `label` (the `ModelRef` the descriptor advertises;
+the model id unless set), `base_url` (`None` is the provider's default), a
+`credential` *reference* (a name the host's resolver knows — never a
+secret) and per-kind `extra_params` (`anthropic_version` /
+`anthropic_betas`; `system_instructions_as_messages` for
+`openai_responses`; none elsewhere, unknown keys refused). It holds
+nothing executable. The executable half is built on the host's word:
+`materialize_bindings(world)` (or the `materialize` system, which leaves a
+refusal in `MaterializeFailed`) reads the host-installed `Materializer`
+resource — a credential resolver and a transport factory, both host
+closures; rig-ecs reads no environment variable and picks no transport —
+builds the rig-core client for every binding nothing serves yet and
+registers a `CompletionAdapter` under the binding's key through
+`Handlers::register_erased`, on the binding's own entity, so the bound
+`HandlerDescriptor` is the one a hand-registered adapter produces and the
+policy hash (§10) is unchanged by how the key came to be served. A binding
+changes no `HandlerDescriptor`: every golden is unchanged. Secrets never
+enter the world: the resolver returns a `Secret` whose `Debug` is redacted,
+the secret lives only inside the built client, and the binding's `Debug`,
+JSON and every `MaterializeError` name the reference alone.
+
+Precedence and refusals, all or nothing per call — every credential
+resolved, every client built and every registration checked before the
+first registration: a key is registered only when it is free or bound on
+the binding's own entity with the descriptor about to be registered, so
+`Handlers::bind` (which refuses only a key bound to another family) cannot
+refuse one, and every error leaves the handlers as they were. Should a
+registration nonetheless be refused, what the call registered before it is
+unserved again and every `Bound` the call inserted is taken out or put back
+as saved (`Register`):
+
+| the world holds | `materialize_bindings` |
+|---|---|
+| a binding on an entity nothing serves, no `Bound` | built, `Bound` inserted, served: `materialized` |
+| a binding beside a `Bound` nothing serves (a scene load) | built; the built descriptor must equal the saved one, else `DescriptorDrift`; served: `materialized` |
+| a binding beside a `Bound` something serves (a hand-registered handler, an earlier materialization, a replayer) | left alone: `kept` — the existing handler wins, no credential resolved, no transport built |
+| a binding whose key another entity's `Bound` holds — served there (a hand registration made before the binding's own `Bound` was spawned, a replayer) or not, and whether or not the binding carries a `Bound` of its own | left alone: `kept` — the existing handler wins, the binding's own `Bound` untouched |
+| two binding entities with one key | `DuplicateKey` |
+| a binding beside a `Bound` of another key | `KeyMismatch` |
+| no `Materializer` | `NoMaterializer` |
+| a reference the resolver refuses | `MissingCredential { key, credential, detail }` |
+| `extra_params` the kind does not take, or a builder that refuses | `ExtraParams`, `Client` |
+
+A kind the reader does not know is refused by serde before anything is
+spawned. Pinned by `bus_binding.rs`; the harness (`tests/common/ecs_matrix/world.rs`)
+binds `golden/model:default` this way on every ungated cassette wire, with
+a resolver that maps the reference `cassette` to the cassette's key and a
+factory that hands out the cassette transport, and every cell's request is
+the byte-identical one a hand-registered adapter sent.
+
 ## 13. Resume is a scene load; two runs
 
 The graph scene includes typed content children and a `binaries` table in
@@ -519,9 +573,33 @@ saved. Effect-entity application components, resources, system-local and
 external state are host-owned. Insertion observers/change detection can fire
 on load; install application observers afterward or guard restoration.
 
+Provider bindings (§12.1) are scene data: `WorldScene.bindings` holds every
+`ProviderBinding` the world carries, by key, each with the descriptor its
+`Bound` held when saved (none for one never materialized). Loading is
+data only — no credential is resolved, no transport built, no client made:
+each binding is spawned as it was, bound under its saved descriptor so the
+graph's links to the key resolve, and left unserved (a dispatch to it is
+`HandlerUnavailable`) until the host calls `materialize_bindings`, which
+must then build the saved descriptor exactly. A key the loading world
+already serves keeps its handler — the binding rides on that entity and a
+later materialization reports it `kept` — so a world over the log's
+replayers loads the same scene unchanged. Refused before any spawn: a key
+bound twice in the scene, a descriptor saved under another key, a served
+key of another family. Pinned by `bus_binding.rs`
+(`a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word`,
+`a_scene_load_validates_its_bindings`) and by every world-resume cell
+whose restored world materializes `golden/model:default` from the scene.
+
+opens on the loaded world's first pass; a run saved mid-run loads with its
+loaded or not. Pinned by `tests/run_commands.rs`
+resumed world cell.
+
 Cached utterance views (§1) are not saved: a loaded utterance holds no
 `CachedMessage`, the first assembly after a load renders every utterance of
+the run from the graph and caches it, and the request it folds is the one
+the saving world would have folded (`message_cache.rs`
 `a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views`).
+
 
 The live-handler regressions in `tests/memory_resume.rs` cover memory finalization before
 scheduling, while queued, after an external write but before its outcome,

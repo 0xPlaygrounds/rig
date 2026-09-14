@@ -97,6 +97,7 @@
 //! [`WorldOutcome`], whatever the family. Streaming answers from a system are not
 //! offered (a system answers unary effects).
 
+pub mod binding;
 pub mod collect;
 #[cfg(feature = "replay")]
 pub mod delivery;
@@ -115,6 +116,10 @@ pub mod witness;
 #[cfg(feature = "replay")]
 pub mod replay;
 
+pub use binding::{
+    CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport, Materializer,
+    ProviderBinding, ProviderKind, Secret, materialize, materialize_bindings,
+};
 pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{

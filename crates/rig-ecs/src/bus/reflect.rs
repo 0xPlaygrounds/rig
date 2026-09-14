@@ -45,6 +45,14 @@ pub struct EffectIdReflect {}
 #[reflect(Debug, PartialEq, Serialize, Deserialize)]
 pub struct HandlerDescriptorReflect {}
 
+/// A [`ProviderBinding`](super::ProviderBinding)'s `extra_params`
+/// (`Option<serde_json::Value>`), reflected.
+#[reflect_remote(Option<serde_json::Value>)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[reflect(opaque)]
+#[reflect(Debug, Default, PartialEq, Serialize, Deserialize)]
+pub enum ExtraParamsReflect {}
+
 /// [`ToolContext`], reflected.
 #[reflect_remote(ToolContext)]
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
