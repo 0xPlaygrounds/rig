@@ -9,7 +9,7 @@
 //!
 //! Two callers apply the same rule to different inputs, and they must not drift:
 //!
-//! * [`tests/cassette_cache_prefix.rs`] sweeps every committed cassette, so the
+//! * `tests/cassette_cache_prefix.rs` sweeps every committed cassette, so the
 //!   rule applies retroactively to the whole corpus at zero provider cost.
 //! * [`crate::cache_conformance`] applies it to the three turns one cache probe
 //!   just recorded, so a violation is reported by the scenario that caused it

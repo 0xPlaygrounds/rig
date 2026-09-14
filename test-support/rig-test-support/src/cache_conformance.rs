@@ -173,7 +173,7 @@ const CACHE_PADDING_SENTENCE: &str = "\
 This cache fixture paragraph is stable provider test padding about request routing, \
 tool schemas, system instructions, and deterministic replay behavior.";
 
-/// Repeat [`CACHE_PADDING_SENTENCE`] `repetitions` times.
+/// Repeat `CACHE_PADDING_SENTENCE` `repetitions` times.
 ///
 /// The sentence is ~140 characters, so roughly 26 tokens; 180 repetitions is the
 /// ~4,700 prompt tokens the Anthropic suite already uses and clears every
@@ -1281,7 +1281,7 @@ const MAX_CACHE_BREAKPOINTS: usize = 4;
 ///
 /// * `explicit_breakpoints: true` — every turn must carry at least one marker
 ///   (a turn with none is caching silently switched off) and no more than
-///   [`MAX_CACHE_BREAKPOINTS`].
+///   `MAX_CACHE_BREAKPOINTS`.
 /// * `explicit_breakpoints: false` — no turn may carry a marker. Rig sending
 ///   `cache_control` to a provider whose API does not define it either errors
 ///   the request or, worse, is accepted and ignored while looking like caching

@@ -2,6 +2,13 @@
 //! and a wall-clock tick guard. Nothing agent-shaped.
 
 #![allow(dead_code, reason = "each suite uses the part of the support it needs")]
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "test support fails immediately when a fixture invariant is violated"
+)]
 
 use std::{
     sync::{
@@ -253,8 +260,7 @@ pub fn serial_app() -> App {
     })
 }
 
-mod registration;
-pub use registration::register;
+pub use crate::run_support::register;
 
 /// Tick the app until `done` holds, or fail after [`GUARD`]. Returns the
 /// ticks taken.

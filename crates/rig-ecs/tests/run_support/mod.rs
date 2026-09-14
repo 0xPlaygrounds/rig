@@ -2,6 +2,13 @@
 //! that is never called, an app with both plugins, and the tick guard.
 
 #![allow(dead_code, reason = "each suite uses the part of the support it needs")]
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    reason = "test support fails immediately when a fixture invariant is violated"
+)]
 
 use rig_core::serve::Dispatch;
 use std::{
