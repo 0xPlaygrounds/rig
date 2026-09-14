@@ -1,0 +1,24 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"Follow the user''s tool-call instruction exactly. Do not answer in prose.","role":"system"},{"content":"Call record_payload exactly once with label café 東京, values [3, 5, 8], and meta.active true.","role":"user"}],"model":"mistral-small-latest","parallel_tool_calls":false,"stream":true,"tool_choice":"any","tools":[{"function":{"description":"Matrix tool record_payload","name":"record_payload","parameters":{"properties":{"label":{"type":"string"},"meta":{"properties":{"active":{"type":"boolean"}},"required":["active"],"type":"object"},"values":{"items":{"type":"integer"},"type":"array"}},"required":["label","values","meta"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"label\": \"café 東京\", \"values\": [3, 5, 8], \"meta\": {\"active\": true}}","name":"record_payload"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456","usage":{"completion_tokens":35,"prompt_tokens":171,"prompt_tokens_details":{"cached_tokens":144},"service_tier":"standard","total_tokens":206}}
+
+    data: [DONE]
+

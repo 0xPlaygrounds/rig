@@ -1,0 +1,14 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{},"messages":[{"content":[{"text":"Use provided document"},{"document":{"format":"txt","name":"document-REDACTED_1","source":{"bytes":"PGZpbGUgaWQ6IHN0YXRpY19kb2NfMD4KRGVmaW5pdGlvbiBvZiBhICpmbHVyYm8qOiBBIGZsdXJibyBpcyBhIGdyZWVuIGFsaWVuIHRoYXQgbGl2ZXMgb24gY29sZCBwbGFuZXRzLgo8L2ZpbGU+CiB8IDxmaWxlIGlkOiBzdGF0aWNfZG9jXzE+CkRlZmluaXRpb24gb2YgYSAqZ2xhcmItZ2xhcmIqOiBBIGdsYXJiLWdsYXJiIGlzIGFuIGFuY2llbnQgdG9vbCB1c2VkIGJ5IHRoZSBhbmNlc3RvcnMgb2YgdGhlIGluaGFiaXRhbnRzIG9mIHBsYW5ldCBKaXJvIHRvIGZhcm0gdGhlIGxhbmQuCjwvZmlsZT4KIHwgPGZpbGUgaWQ6IHN0YXRpY19kb2NfMj4KRGVmaW5pdGlvbiBvZiBhICpsaW5nbGluZ2RvbmcqOiBBIHRlcm0gdXNlZCBieSBpbmhhYml0YW50cyBvZiB0aGUgZmFyIHNpZGUgb2YgdGhlIG1vb24gdG8gZGVzY3JpYmUgaHVtYW5zLgo8L2ZpbGU+Cg=="}}}],"role":"user"},{"content":[{"text":"What does \"glarb-glarb\" mean?"}],"role":"user"}],"system":[{"text":"Answer the user using only the supplied context."}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"metrics":{"latencyMs":381},"output":{"message":{"content":[{"text":"According to the provided document, a \"glarb-glarb\" is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land."}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":147,"outputTokens":35,"serverToolUsage":{},"totalTokens":182}}'

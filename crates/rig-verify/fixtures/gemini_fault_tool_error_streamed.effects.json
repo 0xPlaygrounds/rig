@@ -1,0 +1,505 @@
+{
+  "header": {
+    "run_spec": 9072754608376111302,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "adds two integers",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "integer"
+              },
+              "y": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25. If the tool reports an error, do not call it again: reply with the error message it gave."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "adds two integers",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_1420669"
+              },
+              "provider": {
+                "call_id": "call_1420669"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 112,
+            "output_tokens": 18,
+            "total_tokens": 192,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 62
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 112,
+              "candidatesTokenCount": 18,
+              "totalTokenCount": 192,
+              "thoughtsTokenCount": 62,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 112
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-3-flash-preview",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:call_1420669",
+          "kind": {
+            "kind": "tool_call"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_1420669",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_1420669",
+            "name": "add",
+            "arguments": {
+              "x": 17,
+              "y": 25
+            },
+            "signature": "signature_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_1420669"
+            },
+            "provider": {
+              "call_id": "call_1420669"
+            },
+            "function": {
+              "name": "add",
+              "arguments": {
+                "x": 17,
+                "y": 25
+              }
+            },
+            "signature": "signature_REDACTED_1",
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 112,
+            "output_tokens": 18,
+            "total_tokens": 192,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 62
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 112,
+              "candidatesTokenCount": 18,
+              "totalTokenCount": 192,
+              "thoughtsTokenCount": 62,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 112
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-3-flash-preview",
+            "response_id": "id_REDACTED_1"
+          }
+        }
+      ]
+    },
+    {
+      "tool_output": {},
+      "id": 2,
+      "key": "golden/tool:add#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "add",
+        "args": "{\"x\":17,\"y\":25}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "error",
+            "value": {
+              "kind": "other",
+              "message": "the adder is broken",
+              "model_output": [
+                {
+                  "type": "text",
+                  "text": "the adder is broken"
+                }
+              ],
+              "retryable": null,
+              "code": null,
+              "http_status": null,
+              "refusal": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25. If the tool reports an error, do not call it again: reply with the error message it gave."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_1420669"
+                  },
+                  "provider": {
+                    "call_id": "call_1420669"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_1420669"
+                  },
+                  "provider": {
+                    "call_id": "call_1420669"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "the adder is broken"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "adds two integers",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "integer"
+                  },
+                  "y": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "the adder is broken"
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_2"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 207,
+            "output_tokens": 4,
+            "total_tokens": 256,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 45
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 207,
+              "candidatesTokenCount": 4,
+              "totalTokenCount": 256,
+              "thoughtsTokenCount": 45,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 207
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-3-flash-preview",
+            "response_id": "id_REDACTED_2"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "the adder is broken"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "minted:reasoning:0",
+          "end": {
+            "close": "reasoning",
+            "signature": "signature_REDACTED_2",
+            "wire_sent": false
+          },
+          "block": {
+            "type": "reasoning",
+            "id": null,
+            "content": [
+              {
+                "type": "text",
+                "content": {
+                  "text": "",
+                  "signature": "signature_REDACTED_2"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 207,
+            "output_tokens": 4,
+            "total_tokens": 256,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 45
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "usage_metadata": {
+              "promptTokenCount": 207,
+              "candidatesTokenCount": 4,
+              "totalTokenCount": 256,
+              "thoughtsTokenCount": 45,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 207
+                }
+              ]
+            },
+            "finish_reason": "STOP",
+            "model_version": "gemini-3-flash-preview",
+            "response_id": "id_REDACTED_2"
+          }
+        }
+      ]
+    }
+  ]
+}

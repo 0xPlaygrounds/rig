@@ -1,0 +1,127 @@
+use super::client::Client;
+use crate::http_client::HttpClientExt;
+use crate::image_generation;
+use crate::image_generation::{
+    ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
+};
+use crate::wasm_compat::WasmCompatSend;
+use serde_json::json;
+
+#[allow(non_upper_case_globals)]
+pub mod image_generation_models {
+    pub const Flux1: &str = "black-forest-labs/FLUX.1-dev";
+    pub const Kolors: &str = "Kwai-Kolors/Kolors";
+    pub const StableDiffusion3: &str = "stabilityai/stable-diffusion-3-medium-diffusers";
+}
+pub use image_generation_models::*;
+
+/// Hugging Face's image endpoint answers with the image bytes directly — no
+/// JSON envelope — so the provider's native response *is* the bytes.
+#[derive(Debug, Clone)]
+pub struct ImageGenerationResponse {
+    pub data: Vec<u8>,
+}
+
+impl NormalizeImageGenerationResponse for ImageGenerationResponse {
+    fn normalize(
+        self,
+        provider: &str,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        Ok(image_generation::ImageGenerationResponse::new(
+            self.data, provider,
+        ))
+    }
+}
+
+#[derive(Clone)]
+pub struct ImageGenerationModel<T = crate::http_client::BoxedHttpClient> {
+    client: Client<T>,
+    pub model: String,
+}
+
+impl<T> ImageGenerationModel<T> {
+    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+        ImageGenerationModel {
+            client,
+            model: model.into(),
+        }
+    }
+}
+
+impl<T> ImageGenerationModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
+{
+    /// Perform the generation and return the provider's native response (the
+    /// image bytes) instead of the normalized
+    /// [`image_generation::ImageGenerationResponse`]. Same request, transport,
+    /// and error path as
+    /// [`image_generation::ImageGenerationModel::image_generation`].
+    pub async fn raw_image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> Result<ImageGenerationResponse, ImageGenerationError> {
+        let request = json!({
+            "inputs": request.prompt,
+            "parameters": {
+                "width": request.width,
+                "height": request.height
+            }
+        });
+
+        let route = self
+            .client
+            .subprovider()
+            .image_generation_endpoint(&self.model)?;
+
+        let body = serde_json::to_vec(&request)?;
+
+        let req = self
+            .client
+            .post(&route)?
+            .header("Content-Type", "application/json")
+            .body(body)
+            .map_err(|e| ImageGenerationError::HttpError(e.into()))?;
+
+        let response = self.client.send(req).await?;
+        let (parts, body) = response.into_parts();
+        let data: Vec<u8> = body.await?;
+
+        if !parts.status.is_success() {
+            return Err(ImageGenerationError::from_http_response(
+                parts.status,
+                String::from_utf8_lossy(&data),
+            )
+            .with_response_headers(Some(Box::new(parts.headers))));
+        }
+
+        Ok(ImageGenerationResponse { data })
+    }
+}
+
+impl<T> image_generation::ImageGenerationModel for ImageGenerationModel<T>
+where
+    T: HttpClientExt + Clone + WasmCompatSend + 'static,
+{
+    async fn image_generation(
+        &self,
+        request: ImageGenerationRequest,
+    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
+        crate::telemetry::instrument_modality(
+            "huggingface",
+            &self.model,
+            crate::telemetry::ModalityOperation::ImageGeneration,
+            async {
+                // The native response is bytes, not JSON: `raw` stays `Null` and the
+                // typed route is `raw_image_generation`.
+                self.raw_image_generation(request)
+                    .await?
+                    .normalize("huggingface")
+            },
+        )
+        .await
+    }
+}
+
+#[cfg(test)]
+mod tests;

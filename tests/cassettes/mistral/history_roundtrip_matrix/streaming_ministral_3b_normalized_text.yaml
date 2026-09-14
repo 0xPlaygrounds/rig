@@ -1,0 +1,34 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":24,"messages":[{"content":"Unicode context: café 東京. The marker is exactly: lantern-42.","role":"user"},{"content":"lantern-42","prefix":false,"role":"assistant"},{"content":"Reply with exactly the marker from the prior conversation.","role":"user"}],"model":"ministral-3b-latest","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"lan"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"abcdefg"}
+
+    data: {"choices":[{"delta":{"content":"tern"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456"}
+
+    data: {"choices":[{"delta":{"content":"-"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"abcd"}
+
+    data: {"choices":[{"delta":{"content":"4"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123"}
+
+    data: {"choices":[{"delta":{"content":"2"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuv","usage":{"completion_tokens":6,"prompt_tokens":37,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":43}}
+
+    data: [DONE]
+

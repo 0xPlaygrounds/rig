@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Write two sentences about a lighthouse keeper.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":24,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly in plain text.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The lighthouse keeper lived\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":4,\"promptTokenCount\":22,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":22}],\"serviceTier\":\"standard\",\"totalTokenCount\":26}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" a solitary life, tending the lamp and ensuring its light pierced through the darkest storms.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":21,\"promptTokenCount\":22,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":22}],\"serviceTier\":\"standard\",\"totalTokenCount\":43}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" His days were\"}],\"role\":\"model\"},\"finishReason\":\"MAX_TOKENS\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":24,\"promptTokenCount\":22,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":22}],\"serviceTier\":\"standard\",\"totalTokenCount\":46}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Write two sentences about a lighthouse keeper.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":512,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly in plain text.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The lighthouse keeper lived\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":4,\"promptTokenCount\":22,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":22}],\"serviceTier\":\"standard\",\"totalTokenCount\":26}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" a solitary life, tending the lamp and ensuring its light pierced through the darkest storms.\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":21,\"promptTokenCount\":22,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":22}],\"serviceTier\":\"standard\",\"totalTokenCount\":43}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" His days were filled with the rhythmic chores of maintenance, and his nights with the watchful gaze over the vast, unpredictable sea.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":46,\"promptTokenCount\":22,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":22}],\"serviceTier\":\"standard\",\"totalTokenCount\":68}}\r\n\r\n"

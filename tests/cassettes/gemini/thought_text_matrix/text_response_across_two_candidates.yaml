@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Name one primary colour. Answer with the single word.","thought":false}],"role":"user"}],"generationConfig":{"candidateCount":2,"maxOutputTokens":400,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**My Thought Process: Choosing a Primary Color**\n\nOkay, the user wants a single word answer, specifically a primary color. That''s straightforward enough. Let me see... Primary colors, right? Red, yellow, blue. Any of those will technically do the job. Hmm, I think I''ll go with... Blue. It''s concise and fulfills the prompt perfectly.\n","thought":true},{"text":"Red"},{"text":"**My Immediate Response to the User''s Query**\n\nOkay, so the user wants *one* primary color. Simple enough. The constraints are clear: single-word answer. Got it. Now, what are the primaries? Red, Yellow, Blue. Excellent. Any of those will work. No preference is indicated, so I''ll just pick one. Done.\n","thought":true},{"text":"Red"}],"role":"model"},"finishReason":"STOP","index":0},{"content":{"parts":[{"text":"**My Immediate Response to the User''s Query**\n\nOkay, so the user wants *one* primary color. Simple enough. The constraints are clear: single-word answer. Got it. Now, what are the primaries? Red, Yellow, Blue. Excellent. Any of those will work. No preference is indicated, so I''ll just pick one. Done.\n","thought":true},{"text":"Red"}],"role":"model"},"finishReason":"STOP","index":1}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"promptTokenCount":12,"promptTokensDetails":[{"modality":"TEXT","tokenCount":12}],"serviceTier":"standard","thoughtsTokenCount":84,"totalTokenCount":96}}'

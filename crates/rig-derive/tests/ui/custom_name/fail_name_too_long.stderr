@@ -1,0 +1,5 @@
+error: `name` must be between 1 and 64 characters long
+ --> tests/ui/custom_name/fail_name_too_long.rs:5:19
+  |
+5 | #[rig_tool(name = "a2345678a2345678a2345678a2345678a2345678a2345678a2345678a2345678x")]
+  |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

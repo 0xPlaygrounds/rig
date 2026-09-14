@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","role":"system"},{"content":"Calculate 2 - 5.","role":"user"}],"model":"deepseek-v4-flash","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user wants to calculate 2 - 5. I''ll use the subtract function.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":78,"completion_tokens_details":{"reasoning_tokens":18},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":417,"prompt_tokens":417,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":495}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"content":"","reasoning_content":"The user wants to calculate 2 - 5. I''ll use the subtract function.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_1","index":0,"type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"deepseek-v4-flash","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"The result of **2 - 5** is **-3**.","reasoning_content":"The result is -3.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":21,"completion_tokens_details":{"reasoning_tokens":6},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":124,"prompt_tokens":508,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":529}}'

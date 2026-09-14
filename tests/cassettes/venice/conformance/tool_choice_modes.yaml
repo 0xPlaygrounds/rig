@@ -1,0 +1,50 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Answer with only the number 4. Do not call a function.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","temperature":0.0,"tool_choice":"none","tools":[{"function":{"description":"Return the supplied integer using alpha.","name":"alpha","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"},{"function":{"description":"Return the supplied integer using beta.","name":"beta","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"4","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[]}}],"cost":{"diem":0,"usd":0.00015068750000000002},"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":2,"prompt_tokens":1602,"total_tokens":1604},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":96,"messages":[{"content":"Call alpha with value 7.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","temperature":0.0,"tool_choice":"required","tools":[{"function":{"description":"Return the supplied integer using alpha.","name":"alpha","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"},{"function":{"description":"Return the supplied integer using beta.","name":"beta","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"value\": 7}","name":"alpha"},"id":"call_REDACTED_1","type":"function"}]}}],"cost":{"diem":0,"usd":0.0001628125},"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":10,"prompt_tokens":1710,"total_tokens":1720},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":96,"messages":[{"content":"Call beta with value 9.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","temperature":0.0,"tool_choice":{"function":{"name":"beta"},"type":"function"},"tools":[{"function":{"description":"Return the supplied integer using alpha.","name":"alpha","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"},{"function":{"description":"Return the supplied integer using beta.","name":"beta","parameters":{"properties":{"value":{"type":"integer"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"value\": 9}","name":"beta"},"id":"call_REDACTED_2","type":"function"}]}}],"cost":{"diem":0,"usd":0.0001628125},"created":0,"id":"chatcmpl-REDACTED_3","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":10,"prompt_tokens":1710,"total_tokens":1720},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'

@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one short paragraph, explain what a solar eclipse is.","thought":false}],"role":"user"}],"generationConfig":null,"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly in plain text.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"A solar eclipse occurs when the Moon passes directly between the Sun and Earth, casting a shadow on Earth and blocking all or part of the Sun's light\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":31,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":82,\"totalTokenCount\":139}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\". This alignment causes the Moon to temporarily obscure the Sun from view, turning day into a brief twilight or darkness for those in the path of the Moon's shadow.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":65,\"promptTokenCount\":26,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":26}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":82,\"totalTokenCount\":173}}\r\n\r\n"

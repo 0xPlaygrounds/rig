@@ -1,0 +1,33 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","type":"text"}],"role":"system"},{"content":"Alice is a 25 year old developer.","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"age":{"format":"uint8","maximum":255,"minimum":0,"type":["integer","null"]},"name":{"type":["string","null"]},"profession":{"type":["string","null"]}},"title":"Person","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"name\":\"Alice\",\"age\":25,\"profession\":\"developer\"}","name":"submit"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":21,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.0000372,"cost_details":{"upstream_inference_completions_cost":0.0000126,"upstream_inference_cost":0.0000372,"upstream_inference_prompt_cost":0.0000246},"is_byok":false,"prompt_tokens":164,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":185}}'
+---
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                ","type":"text"}],"role":"system"},{"content":"456 Oak Avenue, Cambridge, MA 02139","role":"user"}],"model":"openai/gpt-4o-mini","tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"city":{"type":["string","null"]},"state":{"type":["string","null"]},"street":{"type":["string","null"]},"zip_code":{"type":["string","null"]}},"title":"Address","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"street\":\"456 Oak Avenue\",\"city\":\"Cambridge\",\"state\":\"MA\",\"zip_code\":\"02139\"}","name":"submit"},"id":"call_REDACTED_2","index":0,"type":"function"}]},"native_finish_reason":"tool_calls"}],"created":0,"id":"chatcmpl-REDACTED_2","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_2","usage":{"completion_tokens":30,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00004155,"cost_details":{"upstream_inference_completions_cost":0.000018,"upstream_inference_cost":0.00004155,"upstream_inference_prompt_cost":0.00002355},"is_byok":false,"prompt_tokens":157,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":187}}'

@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"/no_think Reply with exactly the word: cedar.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"cedar","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":18,"predicted_ms":35.648,"predicted_n":7,"predicted_per_second":168.31238779174146,"predicted_per_token_ms":5.941333333333334,"prompt_ms":18.69,"prompt_n":1,"prompt_per_second":53.50454788657036,"prompt_per_token_ms":18.69},"usage":{"completion_tokens":7,"prompt_tokens":19,"prompt_tokens_details":{"cached_tokens":18},"total_tokens":26}}'

@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Use the add tool, then report the total.","role":"system"},{"content":"","prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":3}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"5","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"Add 2 and 3, then report the total.","role":"user"}],"model":"mistral-small-latest","response_format":{"json_schema":{"name":"SumReport","schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"total":{"format":"int64","type":"integer"}},"required":["total"],"title":"SumReport","type":"object"},"strict":true},"type":"json_schema"},"temperature":0.0,"tool_choice":"auto","tools":[{"function":{"description":"Add two integers.","name":"add","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"{\"total\": 5} {\"type\": \"function\", \"function\": {\"name\": \"add\", \"parameters\": {\"properties\": {\"x\": {\"type\": \"integer\"}, \"y\": {\"type\": \"integer\"}}, \"required\": [\"x\", \"y\"], \"type\": \"object\"}}}\nTool call","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":64,"prompt_tokens":114,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":178}}'

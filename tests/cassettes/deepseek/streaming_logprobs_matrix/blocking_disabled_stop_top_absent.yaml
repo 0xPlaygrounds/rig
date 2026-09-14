@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"logprobs":true,"max_tokens":8,"messages":[{"content":"Reply with exactly: cobalt","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":{"content":[{"bytes":[99],"logprob":-0.000014066597,"token":"c","top_logprobs":[]},{"bytes":[111,98,97,108,116],"logprob":-2.264974e-6,"token":"obalt","top_logprobs":[]}]},"message":{"content":"cobalt","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":2,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":9,"prompt_tokens":9,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":11}}'

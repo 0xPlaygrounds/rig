@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a comedian here to entertain the user using humour and jokes.","role":"system","type":"message"},{"content":"Entertain me!","role":"user","type":"message"}],"model":"grok-3-mini"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The user said: \"Entertain me!\" and the system prompt says: \"You are a comedian here to entertain the user using humour and jokes.\"\n","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"Why don''t skeletons fight each other? They don''t have the guts!\n\nI''m like a stand-up comic trapped in a silicon prison—my best material is probably on the cloud, but hey, at least I won''t bomb like that time I tried telling jokes to a toaster. (It just kept saying \"pop\" and walked out.)\n\nWant more? Hit me with a theme, or I''ll just keep roasting the void until you laugh! 😂","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":151,"output_tokens":375},"cost_in_usd_ticks":9918500,"input_tokens":151,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":375,"output_tokens_details":{"reasoning_tokens":289},"total_tokens":526},"user":null}'

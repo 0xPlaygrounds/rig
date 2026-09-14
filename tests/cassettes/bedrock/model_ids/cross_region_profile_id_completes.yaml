@@ -1,0 +1,14 @@
+when:
+  path: /model/us.deepseek.r1-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{"maxTokens":512},"messages":[{"content":[{"text":"Reply with the single word: ready."}],"role":"user"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"metrics":{"latencyMs":972},"output":{"message":{"content":[{"text":"\n\nready"},{"reasoningContent":{"reasoningText":{"text":"Okay, the user just asked me to reply with the single word \"ready\". Let me make sure I understand the instruction correctly. They want nothing else in the response except that one word. Alright, so I should just respond with \"ready\" without any additional text or punctuation. Let me double-check if there''s any hidden context or trick here. The user might be testing if I can follow simple instructions precisely. Since they emphasized \"single word\", I need to ensure there''s no period or any other characters. Just \"ready\" in lowercase as they wrote it. Yep, that''s straightforward. No need for any extra analysis or commentary. Time to send the response.\n"}}}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":13,"outputTokens":142,"serverToolUsage":{},"totalTokens":155}}'

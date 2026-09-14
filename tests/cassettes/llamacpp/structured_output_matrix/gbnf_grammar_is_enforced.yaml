@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"grammar":"root ::= \"yes\" | \"no\"","max_tokens":16,"messages":[{"content":"/no_think Answer with one word: is the sky blue?","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"yes","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":20,"predicted_ms":15.272,"predicted_n":2,"predicted_per_second":65.47930853850183,"predicted_per_token_ms":15.272,"prompt_ms":37.264,"prompt_n":1,"prompt_per_second":26.83555173894375,"prompt_per_token_ms":37.264},"usage":{"completion_tokens":2,"prompt_tokens":21,"prompt_tokens_details":{"cached_tokens":20},"total_tokens":23}}'

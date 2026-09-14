@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"logprobs":true,"max_tokens":8,"messages":[{"content":"Reply with exactly: cobalt","role":"user"}],"model":"mistral-small-latest","top_logprobs":2}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"code":"3051","message":"Logprobs are not enabled for this model","object":"error","param":null,"raw_status_code":400,"type":"invalid_request_invalid_args"}'

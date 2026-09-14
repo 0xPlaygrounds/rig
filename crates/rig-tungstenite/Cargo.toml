@@ -1,0 +1,48 @@
+[package]
+name = "rig-tungstenite"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "The bundled tungstenite websocket backend for Rig, plus the default-backend conveniences for provider websocket sessions."
+repository = "https://github.com/0xPlaygrounds/rig"
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
+  "websocket",
+] }
+futures = { workspace = true }
+thiserror = { workspace = true }
+
+# tungstenite is a native-only backend: it needs a tokio reactor, and browser
+# wasm reaches websockets through `web_sys` instead. `rig_core::ws_client` is
+# the seam where such a backend would plug in.
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
+tokio-tungstenite = { workspace = true, features = ["connect", "handshake"] }
+
+[dev-dependencies]
+rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
+  "websocket",
+  "test-utils",
+] }
+anyhow = { workspace = true }
+# Test-only: the crate's own surface speaks `rig_core::ws_client` types, so
+# neither reaches a downstream build.
+bytes = { workspace = true }
+http = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tokio-tungstenite = { workspace = true, features = ["handshake"] }
+
+[features]
+default = ["rustls"]
+rustls = ["tokio-tungstenite/rustls-tls-webpki-roots"]
+native-tls = ["tokio-tungstenite/native-tls"]

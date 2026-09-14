@@ -1,0 +1,487 @@
+{
+  "header": {
+    "run_spec": 16853303954472180534,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": false
+          }
+        }
+      },
+      {
+        "key": "golden/tool:lookup#0",
+        "family": {
+          "family": "tool",
+          "name": "lookup",
+          "description": "Look a question up",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "description": "The question to look up"
+              },
+              "leaf": {
+                "type": "boolean",
+                "description": "Answer directly, without looking further"
+              }
+            },
+            "required": [
+              "q"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion",
+      "golden/tool:lookup#0": "tool"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:lookup#0": "tool"
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a research assistant. Use the lookup tool to answer."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "lookup",
+              "description": "Look a question up",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "q": {
+                    "type": "string",
+                    "description": "The question to look up"
+                  },
+                  "leaf": {
+                    "type": "boolean",
+                    "description": "Answer directly, without looking further"
+                  }
+                },
+                "required": [
+                  "q"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_2902977"
+              },
+              "provider": {
+                "call_id": "call_2902977"
+              },
+              "function": {
+                "name": "lookup",
+                "arguments": {
+                  "q": "What is the capital of France?"
+                }
+              },
+              "signature": "signature_REDACTED_1",
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 109,
+            "output_tokens": 20,
+            "total_tokens": 197,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 68
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "responseId": "id_REDACTED_1",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thoughtSignature": "signature_REDACTED_1",
+                      "functionCall": {
+                        "name": "lookup",
+                        "args": {
+                          "q": "What is the capital of France?"
+                        },
+                        "id": "call_2902977"
+                      }
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": "Model generated function call(s)."
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 109,
+              "candidatesTokenCount": 20,
+              "totalTokenCount": 197,
+              "thoughtsTokenCount": 68,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 109
+                }
+              ]
+            },
+            "modelVersion": "gemini-3-flash-preview"
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 2,
+      "key": "golden/tool:lookup#0",
+      "kind": {
+        "effect": "tool_call",
+        "name": "lookup",
+        "args": "{\"q\":\"What is the capital of France?\"}"
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "tool_result",
+          "result": {
+            "status": "success",
+            "value": [
+              {
+                "type": "text",
+                "text": "Paris"
+              }
+            ]
+          }
+        }
+      }
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "Answer in one word."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "What is the capital of France?"
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Paris"
+            },
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "",
+                    "signature": "signature_REDACTED_2"
+                  }
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 14,
+            "output_tokens": 1,
+            "total_tokens": 48,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 33
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "responseId": "id_REDACTED_2",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "thoughtSignature": "signature_REDACTED_2",
+                      "text": "Paris"
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 14,
+              "candidatesTokenCount": 1,
+              "totalTokenCount": 48,
+              "thoughtsTokenCount": 33,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 14
+                }
+              ]
+            },
+            "modelVersion": "gemini-3-flash-preview"
+          }
+        }
+      },
+      "parent": 2
+    },
+    {
+      "tool_output": null,
+      "id": 4,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a research assistant. Use the lookup tool to answer."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_2902977"
+                  },
+                  "provider": {
+                    "call_id": "call_2902977"
+                  },
+                  "function": {
+                    "name": "lookup",
+                    "arguments": {
+                      "q": "What is the capital of France?"
+                    }
+                  },
+                  "signature": "signature_REDACTED_1",
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_2902977"
+                  },
+                  "provider": {
+                    "call_id": "call_2902977"
+                  },
+                  "name": "lookup",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Paris"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "lookup",
+              "description": "Look a question up",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "q": {
+                    "type": "string",
+                    "description": "The question to look up"
+                  },
+                  "leaf": {
+                    "type": "boolean",
+                    "description": "Answer directly, without looking further"
+                  }
+                },
+                "required": [
+                  "q"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Paris"
+            }
+          ],
+          "usage": {
+            "input_tokens": 209,
+            "output_tokens": 1,
+            "total_tokens": 210,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "id_REDACTED_3",
+          "finish_reason": "stop",
+          "provider": "gcp.gemini",
+          "model": "gemini-3-flash-preview",
+          "raw": {
+            "responseId": "id_REDACTED_3",
+            "candidates": [
+              {
+                "content": {
+                  "parts": [
+                    {
+                      "text": "Paris"
+                    }
+                  ],
+                  "role": "model"
+                },
+                "finishReason": "STOP",
+                "safetyRatings": null,
+                "citationMetadata": null,
+                "tokenCount": null,
+                "avgLogprobs": null,
+                "logprobsResult": null,
+                "index": 0,
+                "finishMessage": null
+              }
+            ],
+            "promptFeedback": null,
+            "usageMetadata": {
+              "promptTokenCount": 209,
+              "candidatesTokenCount": 1,
+              "totalTokenCount": 210,
+              "promptTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 209
+                }
+              ]
+            },
+            "modelVersion": "gemini-3-flash-preview"
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-nonexistent-rig-test:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Say hi.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: '{"error":{"code":404,"message":"models/gemini-nonexistent-rig-test is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.","status":"NOT_FOUND"}}'

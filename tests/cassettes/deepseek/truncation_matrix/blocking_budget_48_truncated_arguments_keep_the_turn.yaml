@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":48,"messages":[{"content":"You must call the file_report tool. The summary argument must be a verbatim, complete restatement of the user''s entire request, word for word, at least 120 words long.","role":"system"},{"content":"Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the retry storm saturated the queue, and the on-call engineer had to drain three regions by hand while the dashboards lagged behind by nine minutes.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"disabled"},"tools":[{"function":{"description":"File an incident report.","name":"file_report","parameters":{"properties":{"summary":{"description":"A long verbatim summary of the incident.","type":"string"}},"required":["summary"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"summary\": \"Log this incident: the nightly build broke because the cache warmer raced the artifact uploader, then the ret","name":"file_report"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":48,"prompt_cache_hit_tokens":256,"prompt_cache_miss_tokens":116,"prompt_tokens":372,"prompt_tokens_details":{"cached_tokens":256},"total_tokens":420}}'

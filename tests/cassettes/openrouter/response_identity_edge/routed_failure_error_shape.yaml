@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Never routed","role":"user"}],"model":"openai/gpt-nonexistent-routed-model"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":400,"message":"openai/gpt-nonexistent-routed-model is not a valid model ID"},"user_id":"user_REDACTED"}'

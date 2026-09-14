@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"Say hi.","type":"text"}],"role":"user"}],"model":"claude-nonexistent-rig-test","stream":true}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"model: claude-nonexistent-rig-test","type":"not_found_error"},"request_id":"req_REDACTED_1","type":"error"}'

@@ -1,0 +1,5 @@
+error: a field cannot have more than one `#[embed(embed_with = "...")]` attribute
+ --> tests/ui/embed_attrs/fail_duplicate_embed_with.rs:8:5
+  |
+8 |     #[embed(embed_with = "second_embed")]
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

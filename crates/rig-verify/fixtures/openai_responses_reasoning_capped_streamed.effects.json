@@ -1,0 +1,214 @@
+{
+  "header": {
+    "run_spec": 15910933439985602989,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [
+      "RecordSettled"
+    ],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 16,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning": {
+              "effort": "low",
+              "summary": "auto"
+            },
+            "include": [
+              "reasoning.encrypted_content"
+            ]
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_2"
+                }
+              ]
+            }
+          ],
+          "usage": {
+            "input_tokens": 37,
+            "output_tokens": 0,
+            "total_tokens": 37,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "length",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "input_tokens": 37,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 0,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 37
+            },
+            "reasoning_metadata": {
+              "context": "current_turn",
+              "effort": "low",
+              "mode": "standard",
+              "summary": "detailed"
+            },
+            "reasoning_context": "current_turn",
+            "status": "incomplete",
+            "incomplete_details": {
+              "reason": "max_output_tokens"
+            },
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:rs_REDACTED_1",
+          "kind": {
+            "kind": "reasoning",
+            "provider_id": "rs_REDACTED_1"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:rs_REDACTED_1",
+          "end": {
+            "close": "reasoning",
+            "reasoning": {
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_2"
+                }
+              ]
+            },
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": "rs_REDACTED_1",
+            "content": [
+              {
+                "type": "encrypted",
+                "content": "encrypted_content_REDACTED_2"
+              }
+            ]
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 37,
+            "output_tokens": 0,
+            "total_tokens": 37,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "length",
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "input_tokens": 37,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 0,
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              },
+              "total_tokens": 37
+            },
+            "reasoning_metadata": {
+              "context": "current_turn",
+              "effort": "low",
+              "mode": "standard",
+              "summary": "detailed"
+            },
+            "reasoning_context": "current_turn",
+            "status": "incomplete",
+            "incomplete_details": {
+              "reason": "max_output_tokens"
+            },
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07"
+          }
+        }
+      ]
+    }
+  ]
+}

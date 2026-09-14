@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are concise and should rely on the provided chat history.","type":"text"}],"role":"system"},{"content":"My favorite color is teal. Please remember it.","role":"user"},{"content":[{"text":"Noted: your favorite color is teal.","type":"text"}],"role":"assistant"},{"content":"For this release, use the canary lane.","role":"user"},{"content":[{"text":"Understood: the release lane is canary.","type":"text"}],"role":"assistant"},{"content":"Look up the harbor label with the tool.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","type":"function"}]},{"content":"crimson-harbor","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":[{"text":"The harbor label is crimson-harbor.","type":"text"}],"role":"assistant"},{"content":"Answer in one short sentence: what is my favorite color, which label came from the tool, and which release lane did I choose? Do not call any tools.","role":"user"}],"model":"openai/gpt-4o","tool_choice":"none","tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"Your favorite color is teal, the tool provided the label crimson-harbor, and you chose the canary release lane.","reasoning":null,"refusal":null,"role":"assistant"},"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":25,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00074,"cost_details":{"upstream_inference_completions_cost":0.00025,"upstream_inference_cost":0.00074,"upstream_inference_prompt_cost":0.00049},"is_byok":false,"prompt_tokens":196,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":221}}'

@@ -1,0 +1,4 @@
+[alias]
+# `cargo xtask <task>` — workspace maintenance tasks that are not part of the
+# build. See `crates/../xtask/src/main.rs` for the task list.
+xtask = "run --package xtask --quiet --"

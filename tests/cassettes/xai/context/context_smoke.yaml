@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"Use only the provided context snippets. One snippet explicitly defines glarb-glarb. If that definition says it is an ancient tool, reply with exactly: ancient tool. Otherwise reply with exactly: not found.","role":"system","type":"message"},{"content":[{"text":"<file id: static_doc_0>\nDefinition of flurbo: A flurbo is a green alien that lives on cold planets.\n</file>\n","type":"input_text"},{"text":"<file id: static_doc_1>\nDefinition of glarb-glarb: A glarb-glarb is an ancient tool used by the ancestors of the inhabitants of planet Jiro to farm the land.\n</file>\n","type":"input_text"},{"text":"<file id: static_doc_2>\nDefinition of linglingdong: A term used by inhabitants of the far side of the moon to describe humans.\n</file>\n","type":"input_text"}],"role":"user","type":"message"},{"content":"What is glarb-glarb according to the provided context? Answer with exactly `ancient tool` or `not found`.","role":"user","type":"message"}],"model":"grok-4-0709"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The task is: \"Use only the provided context snippets. One snippet explicitly defines glarb-glarb. If that definition says it is an ancient tool, reply with exactly: ancient tool. Otherwise reply with ...","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"ancient tool","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":304,"output_tokens":272},"cost_in_usd_ticks":9256000,"input_tokens":304,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":272,"output_tokens_details":{"reasoning_tokens":270},"total_tokens":576},"user":null}'

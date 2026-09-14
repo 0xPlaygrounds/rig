@@ -1,0 +1,344 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5-20251001","stream":true,"system":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","input_schema":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"name":"checkpoint_step"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_1
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":667,"output_tokens":3,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"I'll start","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" by calling checkpoint_step with token","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"=","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"start.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{},"name":"checkpoint_step","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"token","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"\": \"sta","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"rt\"}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":667,"output_tokens":67}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll start by calling checkpoint_step with token=start.","type":"text"},{"id":"toolu_REDACTED_1","input":{"token":"start"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5-20251001","stream":true,"system":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","input_schema":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"name":"checkpoint_step"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_2
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_REDACTED_2","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":763,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Now","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" I'll call checkpoint_step with the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" next_token \"","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"cobalt-17\".","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{},"name":"checkpoint_step","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"token","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"\": \"cob","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"alt-17\"}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":763,"output_tokens":75}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll start by calling checkpoint_step with token=start.","type":"text"},{"id":"toolu_REDACTED_1","input":{"token":"start"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"text":"Now I''ll call checkpoint_step with the next_token \"cobalt-17\".","type":"text"},{"id":"toolu_REDACTED_2","input":{"token":"cobalt-17"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5-20251001","stream":true,"system":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","input_schema":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"name":"checkpoint_step"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_3
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_REDACTED_3","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":867,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Now","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" I'll call","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" checkpoint_step with the next_token","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" \"orchard-29\".","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_3","input":{},"name":"checkpoint_step","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"token","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"\": \"orc","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"hard-29","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"\"}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":867,"output_tokens":75}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll start by calling checkpoint_step with token=start.","type":"text"},{"id":"toolu_REDACTED_1","input":{"token":"start"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"text":"Now I''ll call checkpoint_step with the next_token \"cobalt-17\".","type":"text"},{"id":"toolu_REDACTED_2","input":{"token":"cobalt-17"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Now I''ll call checkpoint_step with the next_token \"orchard-29\".","type":"text"},{"id":"toolu_REDACTED_3","input":{"token":"orchard-29"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":3,\"next_token\":\"harbor-43\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5-20251001","stream":true,"system":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","input_schema":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"name":"checkpoint_step"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_4
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_REDACTED_4","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":970,"output_tokens":8,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"Now I'll call checkpoint_step with","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the next_token \"harbor-43","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\".","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: content_block_start
+    data: {"content_block":{"caller":{"type":"direct"},"id":"toolu_REDACTED_4","input":{},"name":"checkpoint_step","type":"tool_use"},"index":1,"type":"content_block_start"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"{\"token","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"\": \"har","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"partial_json":"bor-43\"}","type":"input_json_delta"},"index":1,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":1,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"tool_use","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":970,"output_tokens":73}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"Call checkpoint_step with token=start. Read its next_token and call checkpoint_step with that token, one call per model turn. Continue until its result says done=true. Then answer checkpoint-complete. Do not guess tokens or batch dependent calls.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll start by calling checkpoint_step with token=start.","type":"text"},{"id":"toolu_REDACTED_1","input":{"token":"start"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":1,\"next_token\":\"cobalt-17\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"},{"content":[{"text":"Now I''ll call checkpoint_step with the next_token \"cobalt-17\".","type":"text"},{"id":"toolu_REDACTED_2","input":{"token":"cobalt-17"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":2,\"next_token\":\"orchard-29\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"}],"role":"user"},{"content":[{"text":"Now I''ll call checkpoint_step with the next_token \"orchard-29\".","type":"text"},{"id":"toolu_REDACTED_3","input":{"token":"orchard-29"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":3,\"next_token\":\"harbor-43\",\"done\":false}","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"},{"content":[{"text":"Now I''ll call checkpoint_step with the next_token \"harbor-43\".","type":"text"},{"id":"toolu_REDACTED_4","input":{"token":"harbor-43"},"name":"checkpoint_step","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"{\"step\":4,\"next_token\":null,\"done\":true}","type":"text"}],"tool_use_id":"toolu_REDACTED_4","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5-20251001","stream":true,"system":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Advance one dependent checkpoint step. Start with token=start; subsequent tokens come only from the previous result.","input_schema":{"additionalProperties":false,"properties":{"token":{"type":"string"}},"required":["token"],"type":"object"},"name":"checkpoint_step"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: request-id
+    value: req_REDACTED_5
+  body: |+
+    event: message_start
+    data: {"message":{"container":null,"content":[],"id":"msg_REDACTED_5","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":null,"stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":1069,"output_tokens":1,"service_tier":"standard"}},"type":"message_start"}
+
+    event: content_block_start
+    data: {"content_block":{"text":"","type":"text"},"index":0,"type":"content_block_start"}
+
+    event: ping
+    data: {"type":"ping"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"The","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" result","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" shows done","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"=true, so","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" the","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" checkpoint","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" sequence","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":" is complete.","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"\n\ncheckpoint","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_delta
+    data: {"delta":{"text":"-complete","type":"text_delta"},"index":0,"type":"content_block_delta"}
+
+    event: content_block_stop
+    data: {"index":0,"type":"content_block_stop"}
+
+    event: message_delta
+    data: {"delta":{"container":null,"stop_details":null,"stop_reason":"end_turn","stop_sequence":null},"type":"message_delta","usage":{"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"input_tokens":1069,"output_tokens":21}}
+
+    event: message_stop
+    data: {"type":"message_stop"}
+

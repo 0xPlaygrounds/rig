@@ -1,0 +1,33 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Think briefly, then answer in one sentence why usage accounting matters.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"Qwen/Qwen3-4B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"completed_at":0,"created_at":0,"id":"resp_REDACTED_1","max_output_tokens":256,"model":"Qwen/Qwen3-4B","object":"response","output":[{"content":[{"text":"\n\nUsage accounting matters because it ensures fair resource allocation, tracks cost efficiency, and helps optimize spending based on actual consumption.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"output_text":"\n\nUsage accounting matters because it ensures fair resource allocation, tracks cost efficiency, and helps optimize spending based on actual consumption.","reasoning":"\nOkay, the user wants a brief answer why usage accounting matters. Let me break it down. Usage accounting tracks resource consumption, right? So why is that important? Well, it helps in managing costs, ensuring fair resource distribution, and optimizing efficiency. Maybe they need to know the main points without going into detail. The user probably wants a clear, concise answer. Let me make sure to include the key benefits: cost management, fairness, efficiency. But keep it to one sentence. Let me check if that''s all. Yeah, that should cover it.\n","status":"completed","usage":{"input_tokens":39,"output_tokens":140,"total_tokens":179}}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are concise. Include a few details so streaming is visible.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Think briefly, then answer in one sentence why usage accounting matters.","type":"input_text"}],"role":"user","type":"message"},{"content":[{"text":"\n\nUsage accounting matters because it ensures fair resource allocation, tracks cost efficiency, and helps optimize spending based on actual consumption.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},{"content":[{"text":"/no_think Reply with exactly: OK","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":256,"model":"Qwen/Qwen3-4B"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"completed_at":0,"created_at":0,"id":"resp_REDACTED_2","max_output_tokens":256,"model":"Qwen/Qwen3-4B","object":"response","output":[{"content":[{"text":"\n\nOK","type":"output_text"}],"id":"msg_REDACTED_2","role":"assistant","status":"completed","type":"message"}],"output_text":"\n\nOK","reasoning":"\n\n","status":"completed","usage":{"input_tokens":80,"output_tokens":6,"total_tokens":86}}'

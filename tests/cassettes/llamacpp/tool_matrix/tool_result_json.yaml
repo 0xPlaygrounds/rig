@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Answer using only the JSON tool result you were given. Report the codeword verbatim.","type":"text"}],"role":"system"},{"content":"What is the codeword?","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup"},"id":"call_REDACTED_1","type":"function"}]},{"content":"{\"codeword\":\"heliotrope\",\"confidence\":0.99}","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"heliotrope","reasoning_content":"Okay, the user asked for the codeword. I need to check the JSON tool result provided. The response from the tool is {\"codeword\":\"heliotrope\",\"confidence\":0.99}. So the codeword is \"heliotrope\". The confidence is high at 0.99, which means it''s very likely correct. I should just report the codeword verbatim as instructed. No need for extra explanations, just the codeword.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":82,"predicted_ms":2316.28,"predicted_n":109,"predicted_per_second":46.62648729859947,"predicted_per_token_ms":21.44703703703704,"prompt_ms":18.561,"prompt_n":1,"prompt_per_second":53.87640752114649,"prompt_per_token_ms":18.561},"usage":{"completion_tokens":109,"prompt_tokens":83,"prompt_tokens_details":{"cached_tokens":82},"total_tokens":192}}'

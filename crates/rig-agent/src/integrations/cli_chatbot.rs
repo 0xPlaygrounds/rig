@@ -1,0 +1,275 @@
+use rig_core::{
+    markers::{Missing, Provided},
+    message::Message,
+};
+
+use crate::{
+    agent::{Agent, MultiTurnStreamItem},
+    completion::{CompletionError, PromptError, Usage},
+    streaming::{Delta, StreamEvent},
+};
+use rig_core::wasm_compat::WasmCompatSend;
+
+/// One chat turn against caller-owned history, as the CLI chatbot drives it.
+///
+/// [`Agent`] implements it through [`Agent::chat`]; implement it on your own
+/// type to put something other than an agent behind
+/// [`ChatBotBuilder::chat`].
+pub trait Chat {
+    /// Execute one turn and append only committed messages to `history`.
+    fn chat(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+        history: &mut Vec<Message>,
+    ) -> impl Future<Output = Result<String, PromptError>> + WasmCompatSend;
+}
+
+impl Chat for Agent {
+    async fn chat(
+        &self,
+        prompt: impl Into<Message> + WasmCompatSend,
+        history: &mut Vec<Message>,
+    ) -> Result<String, PromptError> {
+        Agent::chat(self, prompt, history)
+            .await
+            .map(|response| response.output)
+    }
+}
+use futures::StreamExt;
+use std::io::{self, Write};
+
+/// A chatbot over any [`Chat`] implementation.
+pub struct ChatImpl<T>(T)
+where
+    T: Chat;
+
+/// A chatbot over an [`Agent`], streaming each answer as it is produced.
+pub struct AgentImpl {
+    agent: Agent,
+    max_turns: usize,
+    show_usage: bool,
+    usage: Usage,
+}
+
+/// Builds a [`ChatBot`]: give it an agent or a [`Chat`], then `build`.
+pub struct ChatBotBuilder<T = Missing>(T);
+
+/// A terminal chat loop over an agent or a [`Chat`]; see [`ChatBot::run`].
+pub struct ChatBot<T>(T);
+
+/// Trait to abstract message behavior away from cli_chat/`run` loop
+#[allow(private_interfaces)]
+trait CliChat {
+    async fn request(
+        &mut self,
+        prompt: &str,
+        history: &mut Vec<Message>,
+    ) -> Result<String, PromptError>;
+
+    fn show_usage(&self) -> bool {
+        false
+    }
+
+    fn usage(&self) -> Option<Usage> {
+        None
+    }
+}
+
+impl<T> CliChat for ChatImpl<T>
+where
+    T: Chat,
+{
+    async fn request(
+        &mut self,
+        prompt: &str,
+        history: &mut Vec<Message>,
+    ) -> Result<String, PromptError> {
+        let res = self.0.chat(prompt, history).await?;
+        println!("{res}");
+
+        Ok(res)
+    }
+}
+
+impl CliChat for AgentImpl {
+    async fn request(
+        &mut self,
+        prompt: &str,
+        history: &mut Vec<Message>,
+    ) -> Result<String, PromptError> {
+        let mut response_stream = self
+            .agent
+            .prompt(prompt)
+            .history(history.clone())
+            .max_turns(self.max_turns)
+            .stream();
+
+        let mut acc = String::new();
+        let mut messages = None;
+
+        let result = loop {
+            let Some(chunk) = response_stream.next().await else {
+                println!();
+                break Ok(acc);
+            };
+
+            match chunk {
+                Ok(MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                    delta: Delta::Text { text },
+                    ..
+                })) => {
+                    print!("{text}");
+                    acc.push_str(&text);
+                }
+                Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
+                    self.usage = final_response.usage();
+                    messages = final_response
+                        .messages()
+                        .map(<[rig_core::completion::Message]>::to_vec);
+                }
+                Err(e) => {
+                    // The stream's error is the run's error: the provider's
+                    // report, a cancel, a memory failure — not its `Display`.
+                    break Err(crate::agent::streaming_error_into_prompt(e));
+                }
+                _ => continue,
+            }
+        };
+
+        if let Ok(response) = &result {
+            if let Some(messages) = messages {
+                history.extend(messages);
+            } else {
+                history.push(Message::user(prompt));
+                history.push(Message::assistant(response.as_str()));
+            }
+        }
+
+        result
+    }
+
+    fn show_usage(&self) -> bool {
+        self.show_usage
+    }
+
+    fn usage(&self) -> Option<Usage> {
+        Some(self.usage)
+    }
+}
+
+impl Default for ChatBotBuilder<Missing> {
+    fn default() -> Self {
+        Self(Missing)
+    }
+}
+
+impl ChatBotBuilder<Missing> {
+    /// A builder with nothing chosen yet.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Chat with `agent`.
+    pub fn agent(self, agent: Agent) -> ChatBotBuilder<Provided<AgentImpl>> {
+        ChatBotBuilder(Provided(AgentImpl {
+            agent,
+            max_turns: 1,
+            show_usage: false,
+            usage: Usage::default(),
+        }))
+    }
+
+    /// Chat with any [`Chat`] implementation.
+    pub fn chat<T: Chat>(self, chatbot: T) -> ChatBotBuilder<Provided<ChatImpl<T>>> {
+        ChatBotBuilder(Provided(ChatImpl(chatbot)))
+    }
+}
+
+impl<T> ChatBotBuilder<Provided<ChatImpl<T>>>
+where
+    T: Chat,
+{
+    /// The chatbot.
+    pub fn build(self) -> ChatBot<ChatImpl<T>> {
+        ChatBot(self.0.0)
+    }
+}
+
+impl ChatBotBuilder<Provided<AgentImpl>> {
+    /// Set the total model-call budget for each prompt, including the initial
+    /// call and every retry or continuation. Zero emits no model calls.
+    pub fn max_turns(self, max_turns: usize) -> Self {
+        ChatBotBuilder(Provided(AgentImpl {
+            max_turns,
+            ..self.0.0
+        }))
+    }
+
+    /// Print the token usage after every answer.
+    pub fn show_usage(self) -> Self {
+        ChatBotBuilder(Provided(AgentImpl {
+            show_usage: true,
+            ..self.0.0
+        }))
+    }
+
+    /// The chatbot.
+    pub fn build(self) -> ChatBot<AgentImpl> {
+        ChatBot(self.0.0)
+    }
+}
+
+#[allow(private_bounds)]
+impl<T> ChatBot<T>
+where
+    T: CliChat,
+{
+    /// Read prompts from stdin and print answers until EOF or `exit`.
+    pub async fn run(mut self) -> Result<(), PromptError> {
+        let stdin = io::stdin();
+        let mut stdout = io::stdout();
+        let mut history = vec![];
+
+        loop {
+            print!("> ");
+            stdout.flush().map_err(|e| {
+                PromptError::CompletionError(CompletionError::ResponseError(format!(
+                    "failed to flush stdout: {e}"
+                )))
+            })?;
+
+            let mut input = String::new();
+            match stdin.read_line(&mut input) {
+                Ok(_) => {
+                    let input = input.trim();
+                    if input == "exit" {
+                        break;
+                    }
+
+                    tracing::info!("Prompt:\n{input}\n");
+
+                    println!();
+                    println!("========================== Response ============================");
+
+                    self.0.request(input, &mut history).await?;
+
+                    println!("================================================================");
+                    println!();
+
+                    if self.0.show_usage()
+                        && let Some(Usage {
+                            input_tokens,
+                            output_tokens,
+                            ..
+                        }) = self.0.usage()
+                    {
+                        println!("Input {input_tokens} tokens\nOutput {output_tokens} tokens");
+                    }
+                }
+                Err(e) => println!("Error reading request: {e}"),
+            }
+        }
+
+        Ok(())
+    }
+}

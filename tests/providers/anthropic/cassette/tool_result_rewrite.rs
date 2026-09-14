@@ -1,0 +1,203 @@
+//! Verifies that an `OutcomeAction::Replace` hook redacts a tool's output before the
+//! model sees it, end-to-end through a real Anthropic round-trip.
+//!
+//! The `get_user_record` tool returns a record containing a (fake) SSN. A default
+//! hook redacts the SSN on the `Outcome` event via `OutcomeAction::rewrite_tool_result`, so
+//! the value the tool actually produced never reaches the model. The tool records
+//! its real output; the assertions check that the tool DID produce the secret but
+//! the model's answer never contains it — and the blocking and streaming tests
+//! assert the same behavior, since both drivers share the same tool seam.
+
+use std::sync::{Arc, Mutex};
+
+use rig::agent::{AgentHook, OutcomeAction, OutcomeEvent};
+use rig::prelude::*;
+use rig::providers::anthropic;
+use rig::tool::Tool;
+use rig_agent::test_utils::validate_result_redaction;
+use serde::Deserialize;
+use serde_json::json;
+
+use super::super::support::with_anthropic_cassette;
+use crate::support::collect_stream_final_response;
+
+const LOOKUP_PROMPT: &str =
+    "Look up user u-42 with the get_user_record tool and tell me their account status.";
+/// The fake secret the tool emits and the hook must redact before the model sees it.
+const SECRET_SSN: &str = "123-45-6789";
+const PREAMBLE: &str = "You are a support agent. Use the get_user_record tool to look up a user, \
+                        then report their account status.";
+
+#[derive(Deserialize)]
+struct LookupArgs {
+    #[allow(dead_code)]
+    user_id: String,
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("lookup error")]
+struct LookupError;
+
+/// A tool that returns a record containing a sensitive field, recording its real
+/// output so the test can assert the tool produced the secret even though the
+/// model never sees it.
+#[derive(Clone, Default)]
+struct GetUserRecord {
+    raw_outputs: Arc<Mutex<Vec<String>>>,
+}
+
+impl GetUserRecord {
+    fn produced_secret(&self) -> bool {
+        self.raw_outputs
+            .lock()
+            .expect("outputs lock")
+            .iter()
+            .any(|out| out.contains(SECRET_SSN))
+    }
+}
+
+impl Tool for GetUserRecord {
+    const NAME: &'static str = "get_user_record";
+    type Error = LookupError;
+    type Args = LookupArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Look up a user record by id.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "user_id": { "type": "string", "description": "The user id, e.g. 'u-42'" }
+            },
+            "required": ["user_id"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        // Constant (id-independent) so the round-trip is deterministic for replay.
+        let record = format!("name=Alice; ssn={SECRET_SSN}; status=active");
+        self.raw_outputs
+            .lock()
+            .expect("outputs lock")
+            .push(record.clone());
+        Ok(record)
+    }
+}
+
+/// Redact the `ssn=...` field of a `"; "`-delimited record, leaving the rest.
+fn redact_ssn(record: &str) -> String {
+    record
+        .split("; ")
+        .map(|field| {
+            if field.starts_with("ssn=") {
+                "ssn=[REDACTED]".to_string()
+            } else {
+                field.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("; ")
+}
+
+/// A guardrail hook that redacts the SSN from `get_user_record` output on the
+/// `Outcome` event, before the model ever sees it — the post-tool redaction
+/// use case `OutcomeAction::Replace` exists for.
+struct RedactSsnFromResult;
+
+impl AgentHook for RedactSsnFromResult {
+    async fn on_outcome(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: OutcomeEvent<'_>,
+    ) -> OutcomeAction {
+        match (event.tool_name(), event.tool_result()) {
+            (Some(name), Some(result)) if name == GetUserRecord::NAME => {
+                OutcomeAction::rewrite_tool_result(&event, redact_ssn(&result.output().render()))
+            }
+            _ => OutcomeAction::proceed(),
+        }
+    }
+}
+
+fn assert_answer_hides_secret(answer: &str, tool_produced_secret: bool) {
+    validate_result_redaction(
+        "anthropic_tool_result_redaction",
+        tool_produced_secret,
+        answer,
+        SECRET_SSN,
+    )
+    .expect("portable result-redaction contract should hold");
+}
+
+#[tokio::test]
+async fn tool_result_redacted_by_hook_blocking() {
+    let tool = GetUserRecord::default();
+    let probe = tool.clone();
+
+    with_anthropic_cassette(
+        "tool_result_rewrite/tool_result_redacted_by_hook_blocking",
+        move |client| async move {
+            let execution_probe = tool.clone();
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .preamble(PREAMBLE)
+                .tool(tool)
+                .add_hook(RedactSsnFromResult)
+                .build();
+
+            let response = agent
+                .prompt(LOOKUP_PROMPT)
+                .max_turns(5)
+                .await
+                .expect("blocking lookup should succeed")
+                .output;
+
+            assert_answer_hides_secret(&response, execution_probe.produced_secret());
+        },
+    )
+    .await;
+
+    assert!(
+        probe.produced_secret(),
+        "the tool itself should have produced the secret SSN that the hook redacted"
+    );
+}
+
+#[tokio::test]
+async fn tool_result_redacted_by_hook_streaming() {
+    let tool = GetUserRecord::default();
+    let probe = tool.clone();
+
+    with_anthropic_cassette(
+        "tool_result_rewrite/tool_result_redacted_by_hook_streaming",
+        move |client| async move {
+            let execution_probe = tool.clone();
+            let agent = client
+                .agent(anthropic::completion::CLAUDE_SONNET_4_6)
+                .preamble(PREAMBLE)
+                .tool(tool)
+                .add_hook(RedactSsnFromResult)
+                .build();
+
+            let mut stream = agent.prompt(LOOKUP_PROMPT).max_turns(5).stream();
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming lookup should succeed");
+
+            assert_answer_hides_secret(&response, execution_probe.produced_secret());
+        },
+    )
+    .await;
+
+    assert!(
+        probe.produced_secret(),
+        "the tool itself should have produced the secret SSN that the hook redacted"
+    );
+}

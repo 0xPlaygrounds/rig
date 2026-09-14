@@ -1,0 +1,6 @@
+tests/cassettes/doubleword/**/*.yaml whitespace=-blank-at-eof
+# Cassette recordings preserve wire bytes verbatim; SSE bodies end with a
+# blank line that YAML block scalars represent at EOF. Exempt them from the
+# blank-at-eof whitespace check so `git diff --check` stays meaningful
+# elsewhere without corrupting recordings.
+tests/cassettes/** whitespace=-blank-at-eof

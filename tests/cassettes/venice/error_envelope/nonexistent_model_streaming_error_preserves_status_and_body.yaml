@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"Say hi.","role":"user"}],"model":"venice-nonexistent-rig-test","stream":true,"stream_options":{"include_usage":true}}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":"Specified model not found: venice-nonexistent-rig-test. Did you mean: venice-uncensored-1-2, venice-uncensored-role-play?"}'

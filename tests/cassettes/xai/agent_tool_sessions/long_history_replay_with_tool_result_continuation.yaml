@@ -1,0 +1,16 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are concise and should rely on the provided chat history.","role":"system","type":"message"},{"content":"My favorite color is teal. Please remember it.","role":"user","type":"message"},{"content":"Noted: your favorite color is teal.","role":"assistant","type":"message"},{"content":"For this release, use the canary lane.","role":"user","type":"message"},{"content":"Understood: the release lane is canary.","role":"assistant","type":"message"},{"content":"Look up the harbor label with the tool.","role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","name":"lookup_harbor_label","type":"function_call"},{"call_id":"call_REDACTED_1","output":"crimson-harbor","type":"function_call_output"},{"content":"The harbor label is crimson-harbor.","role":"assistant","type":"message"},{"content":"Answer in one short sentence: what is my favorite color, which label came from the tool, and which release lane did I choose? Do not call any tools.","role":"user","type":"message"}],"model":"grok-4.3","tool_choice":"none","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The user asks: \"Answer in one short sentence: what is my favorite color, which label came from the tool, and which release lane did I choose? Do not call any tools.\"\n","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"Your favorite color is teal, the tool gave crimson-harbor, and you chose the canary lane.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"none","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":359,"output_tokens":210},"cost_in_usd_ticks":8393500,"input_tokens":359,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":210,"output_tokens_details":{"reasoning_tokens":189},"total_tokens":569},"user":null}'

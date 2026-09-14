@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"How many minutes are in two days? Answer with the number.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Calculating Time Conversion**\\n\\nOkay, I've started by clearly defining the goal: determining the total minutes in two days. Now, I'm breaking this down into smaller, manageable steps. First, I'll convert days to hours, and then hours to minutes. I'm currently recalling the necessary conversion factors, such as the number of hours in a day.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":14,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":14}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":68,\"totalTokenCount\":82}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Determining The Conversion**\\n\\nNow, I'm confirming that the core is the calculation, which is the product of 48 hours and 60 minutes. I've performed the multiplication, using two methods to double-check my work. Both yielded 2880, therefore, I believe the problem is solved!\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":14,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":14}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":310,\"totalTokenCount\":324}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"2\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":14,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":14}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":310,\"totalTokenCount\":324}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"880\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":14,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":14}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":310,\"totalTokenCount\":326}}\r\n\r\n"

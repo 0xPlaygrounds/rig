@@ -1,0 +1,14 @@
+when:
+  path: /model/amazon.nova-lite-v1%3A0/converse
+  method: POST
+  query_param: []
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"inferenceConfig":{"maxTokens":32,"temperature":0.0},"messages":[{"content":[{"text":"Use provided document"},{"document":{"format":"txt","name":"document-REDACTED_1","source":{"bytes":"PGZpbGUgaWQ6IG9yZGVyaW5nLW5vdGU+ClRoZSBvcmRlcmluZyB0b2tlbiBpcyB2aW9sZXQtbmVlZGxlLgo8L2ZpbGU+Cg=="}}}],"role":"user"},{"content":[{"text":"Acknowledged."}],"role":"assistant"},{"content":[{"text":"According to the document, what is the ordering token?"}],"role":"user"}],"system":[{"text":"Answer with the exact token from the document only."}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"metrics":{"latencyMs":334},"output":{"message":{"content":[{"text":"The ordering token, as per the provided document, is \"violet-needle\"."}],"role":"assistant"}},"stopReason":"end_turn","usage":{"inputTokens":51,"outputTokens":17,"serverToolUsage":{},"totalTokens":68}}'

@@ -1,0 +1,104 @@
+[package]
+name = "rig-core"
+version.workspace = true
+edition = { workspace = true }
+license = "MIT"
+readme = "README.md"
+description = "An opinionated library for building LLM powered applications."
+repository = "https://github.com/0xPlaygrounds/rig"
+exclude = [
+    "tests/macro_hygiene.rs",
+    "tests/fixtures/telemetry_macro_consumer",
+]
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+[lints]
+workspace = true
+
+[lib]
+name = "rig_core"
+path = "src/lib.rs"
+doctest = true
+
+[dependencies]
+as-any = { workspace = true }
+async-stream = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+epub = { workspace = true, optional = true }
+futures = { workspace = true }
+glob = { workspace = true }
+indexmap = { workspace = true }
+lopdf = { workspace = true, optional = true }
+mime_guess = { workspace = true }
+ordered-float = { workspace = true }
+quick-xml = { workspace = true, optional = true }
+rig-derive = { version = "0.42.0", path = "../rig-derive", optional = true }
+schemars = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+url = { workspace = true }
+http = { workspace = true }
+tracing-futures = { workspace = true, features = ["futures-03"] }
+fastrand = { workspace = true }
+eventsource-stream = { workspace = true }
+pin-project-lite = { workspace = true }
+futures-timer = { workspace = true }
+mime = { workspace = true }
+# futures-timer's default backend uses a background timer thread, which cannot
+# drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
+# the target is browser wasm — regardless of feature flags — so
+# `wasm_compat::timeout` and the SSE retry backoff actually fire instead of
+# hanging. Scoped to `target_os = "unknown"` (browser) rather than the whole
+# `wasm` family because the gloo-timers/setTimeout backend needs a JS host and
+# would be wrong-by-construction on WASI.
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+futures-timer = { workspace = true, features = ["wasm-bindgen"] }
+# `lopdf` pulls `getrandom` through its PDF encryption support. Browser WASM
+# cannot select a randomness backend from the target triple alone, so opt in to
+# lopdf's Web Crypto backend only for Rig's supported browser target.
+lopdf = { workspace = true, optional = true, features = ["wasm_js"] }
+
+[dev-dependencies]
+anyhow = { workspace = true }
+# Self-dependency: feature unification compiles the lib with `test-utils`
+# for every rig-core test target (unit, integration, doctest), so the
+# sequence laws panic in ALL of rig's own suites while staying log-only in
+# downstream builds.
+rig-core = { path = ".", features = ["test-utils", "websocket"] }
+# streaming identity/merge law property tests
+proptest = "1"
+assert_fs = { workspace = true }
+futures = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+tokio-test = { workspace = true }
+redis = { workspace = true, features = ["tokio-comp", "aio", "vector-sets"] }
+serde_path_to_error = { workspace = true }
+base64 = { workspace = true }
+# required for otel
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
+opentelemetry-otlp = { workspace = true }
+tracing-opentelemetry = { workspace = true }
+
+
+[features]
+default = ["derive"]
+audio = []
+image = []
+derive = ["dep:rig-derive"]
+test-utils = []
+pdf = ["dep:lopdf"]
+epub = ["dep:epub", "dep:quick-xml"]
+# The transport-agnostic websocket contract (`ws_client`) and the provider
+# websocket sessions written against it. Adds no dependency — the contract is
+# built from `http`/`bytes`/`futures`/`url`, which rig-core already has — but
+# stays gated so the surface is opt-in, matching `audio`/`image`.
+websocket = []

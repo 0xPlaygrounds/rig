@@ -1,0 +1,41 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash-lite:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 2 and 3, then state the result.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"functionCall\":{\"args\":{\"x\":2,\"y\":3},\"name\":\"add\"}}],\"role\":\"model\"},\"finishMessage\":\"Model generated function call(s).\",\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":115,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":115}],\"serviceTier\":\"standard\",\"totalTokenCount\":133}}\r\n\r\n"
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash-lite:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the add tool to add 2 and 3, then state the result.","thought":false}],"role":"user"},{"parts":[{"functionCall":{"args":{"x":2,"y":3},"name":"add"},"thought":false}],"role":"model"},{"parts":[{"functionResponse":{"name":"add","response":{"result":5}},"thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a calculator assistant. You MUST use the provided tools for every arithmetic operation instead of computing results yourself. Once you have all the tool results you need, reply with the final numeric answer in plain text.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":146,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":146}],\"serviceTier\":\"standard\",\"totalTokenCount\":147}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" result is 5.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"id_REDACTED_2\",\"usageMetadata\":{\"candidatesTokenCount\":6,\"promptTokenCount\":146,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":146}],\"serviceTier\":\"standard\",\"totalTokenCount\":152}}\r\n\r\n"

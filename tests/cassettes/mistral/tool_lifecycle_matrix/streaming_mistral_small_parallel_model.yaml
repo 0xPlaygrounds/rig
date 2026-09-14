@@ -1,0 +1,24 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"Follow the user''s tool-call instruction exactly. Do not answer in prose.","role":"system"},{"content":"Call alpha with value red and beta with value blue in the same turn, in that order.","role":"user"}],"model":"mistral-small-latest","parallel_tool_calls":true,"stream":true,"tool_choice":"any","tools":[{"function":{"description":"Matrix tool alpha","name":"alpha","parameters":{"properties":{"value":{"type":"string"}},"required":["value"],"type":"object"}},"type":"function"},{"function":{"description":"Matrix tool beta","name":"beta","parameters":{"properties":{"value":{"type":"string"}},"required":["value"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"value\": \"red\"}","name":"alpha"},"id":"call_REDACTED_1","index":0,"type":"function"},{"function":{"arguments":"{\"value\": \"blue\"}","name":"beta"},"id":"call_REDACTED_2","index":1,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"a","usage":{"completion_tokens":19,"prompt_tokens":160,"prompt_tokens_details":{"cached_tokens":128},"service_tier":"standard","total_tokens":179}}
+
+    data: [DONE]
+

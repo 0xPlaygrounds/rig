@@ -1,0 +1,22 @@
+# Test priorities need nextest 0.9.91; older versions warn and ignore the
+# `priority` keys below, so they still run every test, just in default order.
+[nextest-version]
+recommended = "0.9.91"
+
+# The two tests that shell out to a nested Cargo build are the slowest in the
+# tree by an order of magnitude (the facade feature-forwarding guard runs
+# four `cargo check`s over the facade's dependency graph). In lexicographic
+# order they start late and finish minutes after every other test, so the
+# whole all-features run waits on them alone. Start them first.
+[[profile.default.overrides]]
+filter = 'test(portable_tool_facade_is_feature_additive) + binary(macro_hygiene)'
+priority = 100
+
+# Preserve CI retries for ordinary tests while running drift tripwires once.
+# Do not pass --retries to the guards run: it overrides per-test settings.
+[profile.guards]
+retries = 2
+
+[[profile.guards.overrides]]
+filter = 'test(telemetry::) + test(span_safety_net::)'
+retries = 0

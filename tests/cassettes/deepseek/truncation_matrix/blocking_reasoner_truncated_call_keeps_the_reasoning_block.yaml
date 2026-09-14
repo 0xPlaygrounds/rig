@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":112,"messages":[{"content":"Call the file_report tool exactly once. Set its summary argument to the user''s text, copied out verbatim and in full. Do not summarise, do not shorten, do not think about it.","role":"system"},{"content":"Copy this into file_report: the nightly build broke because the cache warmer raced the artifact uploader; the retry storm then saturated the queue; the on-call engineer drained three regions by hand; the dashboards lagged nine minutes behind; the checksum verifier timed out twice; the release channel notification never fired; the rollback took forty minutes; the incident channel filled with duplicate alerts; the paging policy escalated to the wrong rotation; and the postmortem template was missing three required sections.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"File an incident report.","name":"file_report","parameters":{"properties":{"summary":{"description":"A long verbatim summary of the incident.","type":"string"}},"required":["summary"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user wants me to copy the exact text into file_report verbatim. Let me do that.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"summary\": \"the nightly build broke because the cache warmer raced the artifact uploader; the retry storm then saturated the queue; the on-call engineer drained three regions by hand; the dashboards lagged nine minutes behind; the checksum verifier timed out twice; the release channel notification never fired; the rollback took forty","name":"file_report"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":112,"completion_tokens_details":{"reasoning_tokens":20},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":121,"prompt_tokens":505,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":617}}'

@@ -1,0 +1,675 @@
+//! ChatGPT subscription OAuth provider.
+//!
+//! This provider targets the ChatGPT subscription backend exposed at
+//! `https://chatgpt.com/backend-api/codex`.
+//!
+//! # Example
+//! ```ignore
+//! use rig_core::client::{CompletionClient};
+//! use rig_core::providers::chatgpt;
+//!
+//! # fn example() -> Result<(), Box<dyn std::error::Error>> {
+//! let client = chatgpt::Client::from_env()?;
+//! let model = client.completion_model(chatgpt::GPT_5_3_CODEX);
+//! # let _ = model;
+//! # Ok(())
+//! # }
+//! ```
+
+mod auth;
+
+use crate::client::{self, ApiKey, HasCompletion, ModelTransport, Provider, ProviderClientResult};
+use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
+use crate::http_client::{self, HttpClientExt};
+use crate::providers::openai::responses_api::{
+    self, CompletionRequest as ResponsesRequest, Include,
+};
+use crate::streaming::StreamingCompletionResponse;
+use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use std::fmt::Debug;
+use std::path::{Path, PathBuf};
+
+const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
+const DEFAULT_ORIGINATOR: &str = "rig";
+const DEFAULT_INSTRUCTIONS: &str = "You are ChatGPT, a helpful AI assistant.";
+
+/// `gpt-5.4`
+pub const GPT_5_4: &str = "gpt-5.4";
+/// `gpt-5.4-pro`
+pub const GPT_5_4_PRO: &str = "gpt-5.4-pro";
+/// `gpt-5.3-codex`
+pub const GPT_5_3_CODEX: &str = "gpt-5.3-codex";
+/// `gpt-5.3-codex-spark`
+pub const GPT_5_3_CODEX_SPARK: &str = "gpt-5.3-codex-spark";
+/// `gpt-5.3-instant`
+pub const GPT_5_3_INSTANT: &str = "gpt-5.3-instant";
+/// `gpt-5.3-chat-latest`
+pub const GPT_5_3_CHAT_LATEST: &str = "gpt-5.3-chat-latest";
+
+#[derive(Clone)]
+pub enum ChatGPTAuth {
+    AccessToken {
+        access_token: String,
+        account_id: Option<String>,
+    },
+    OAuth,
+}
+
+impl ApiKey for ChatGPTAuth {}
+
+impl<S> From<S> for ChatGPTAuth
+where
+    S: Into<String>,
+{
+    fn from(value: S) -> Self {
+        Self::AccessToken {
+            access_token: value.into(),
+            account_id: None,
+        }
+    }
+}
+
+impl Debug for ChatGPTAuth {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::AccessToken { .. } => f.write_str("AccessToken(<redacted>)"),
+            Self::OAuth => f.write_str("OAuth"),
+        }
+    }
+}
+
+/// Builder settings for [`ChatGPT`]: auth cache location, device-code
+/// policy, and the request identity headers.
+#[derive(Debug, Clone)]
+pub struct ChatGPTConfig {
+    auth_file: Option<PathBuf>,
+    default_instructions: Option<String>,
+    device_code_handler: auth::DeviceCodeHandler,
+    allow_device_flow: bool,
+    originator: String,
+    user_agent: Option<String>,
+}
+
+/// The ChatGPT backend provider. Authentication is a runtime token exchange
+/// driven by the `auth::Authenticator` built from the key the client was
+/// given; identity headers are added per request in [`Provider::prepare`].
+#[derive(Clone)]
+pub struct ChatGPT {
+    auth: auth::Authenticator,
+    default_instructions: Option<String>,
+    originator: String,
+    user_agent: String,
+}
+
+impl Debug for ChatGPT {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ChatGPT")
+            .field("auth", &self.auth)
+            .field("default_instructions", &self.default_instructions)
+            .field("originator", &self.originator)
+            .field("user_agent", &self.user_agent)
+            .finish()
+    }
+}
+
+pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<ChatGPT, H>;
+pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<ChatGPT, H>;
+
+impl Default for ChatGPTConfig {
+    fn default() -> Self {
+        Self {
+            auth_file: default_auth_file(),
+            default_instructions: Some(
+                std::env::var("CHATGPT_DEFAULT_INSTRUCTIONS")
+                    .ok()
+                    .filter(|value| !value.trim().is_empty())
+                    .unwrap_or_else(|| DEFAULT_INSTRUCTIONS.to_string()),
+            ),
+            device_code_handler: auth::DeviceCodeHandler::default(),
+            allow_device_flow: true,
+            originator: std::env::var("CHATGPT_ORIGINATOR")
+                .ok()
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| DEFAULT_ORIGINATOR.to_string()),
+            user_agent: std::env::var("CHATGPT_USER_AGENT")
+                .ok()
+                .filter(|value| !value.is_empty()),
+        }
+    }
+}
+
+impl Provider for ChatGPT {
+    const NAME: &'static str = PROVIDER_NAME;
+    const BASE_URL: &'static str = CHATGPT_API_BASE_URL;
+    const VERIFY_PATH: &'static str = "";
+    type ApiKey = ChatGPTAuth;
+    type Config = ChatGPTConfig;
+    type EnvInput = ChatGPTAuth;
+
+    fn build(config: ChatGPTConfig, api_key: &ChatGPTAuth) -> http_client::Result<Self> {
+        let auth = match api_key {
+            ChatGPTAuth::AccessToken {
+                access_token,
+                account_id,
+            } => auth::AuthSource::AccessToken {
+                access_token: access_token.clone(),
+                account_id: account_id.clone(),
+            },
+            ChatGPTAuth::OAuth => auth::AuthSource::OAuth,
+        };
+
+        Ok(ChatGPT {
+            auth: auth::Authenticator::new(
+                auth,
+                config.auth_file,
+                config.device_code_handler,
+                config.allow_device_flow,
+            ),
+            default_instructions: config.default_instructions,
+            originator: config.originator,
+            user_agent: config.user_agent.unwrap_or_else(default_user_agent),
+        })
+    }
+
+    fn prepare(&self, req: http_client::Builder) -> http_client::Result<http_client::Builder> {
+        Ok(req
+            .header("originator", &self.originator)
+            .header("user-agent", &self.user_agent)
+            .header(http::header::ACCEPT, "text/event-stream"))
+    }
+
+    fn build_uri(&self, base_url: &str, path: &str) -> String {
+        format!(
+            "{}/{}",
+            base_url.trim_end_matches('/'),
+            path.trim_start_matches('/')
+        )
+    }
+
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
+        let mut builder = Client::builder();
+
+        if let Some(base_url) = crate::client::optional_env_var("CHATGPT_API_BASE")?
+            .or(crate::client::optional_env_var("OPENAI_CHATGPT_API_BASE")?)
+        {
+            builder = builder.base_url(base_url);
+        }
+
+        if let Some(access_token) = crate::client::optional_env_var("CHATGPT_ACCESS_TOKEN")? {
+            let account_id = crate::client::optional_env_var("CHATGPT_ACCOUNT_ID")?;
+            builder
+                .api_key(ChatGPTAuth::AccessToken {
+                    access_token,
+                    account_id,
+                })
+                .http_client(http)
+                .build()
+        } else {
+            builder.oauth().http_client(http).build()
+        }
+    }
+
+    fn from_val<H: HttpClientExt>(input: ChatGPTAuth, http: H) -> ProviderClientResult<Client<H>> {
+        Client::new_with(input, http)
+    }
+}
+
+impl HasCompletion for ChatGPT {
+    type Model<H>
+        = ResponsesCompletionModel<H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
+        ResponsesCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl responses_api::ResponsesProviderExt for ChatGPT {
+    // The ChatGPT backend rejects the `system` role in `input`, so every
+    // system message — including mid-conversation ones — is lifted into the
+    // top-level `instructions` field.
+    fn system_instructions_placement(&self) -> responses_api::SystemInstructionsPlacement {
+        responses_api::SystemInstructionsPlacement::AllInstructions
+    }
+}
+
+impl<H> ClientBuilder<H> {
+    pub fn oauth(self) -> Self {
+        self.api_key(ChatGPTAuth::OAuth)
+    }
+}
+
+impl<H> ClientBuilder<H> {
+    pub fn on_device_code<F>(self, handler: F) -> Self
+    where
+        F: Fn(auth::DeviceCodePrompt) + WasmCompatSend + WasmCompatSync + 'static,
+    {
+        self.map_config(|mut ext| {
+            ext.device_code_handler = auth::DeviceCodeHandler::new(handler);
+            ext
+        })
+    }
+
+    /// Control whether OAuth may fall back to an interactive device-code login
+    /// when the cached token is missing or cannot be refreshed.
+    ///
+    /// Default is `true` for CLI-style interactive use. Long-running services
+    /// should set this to `false` so a stale refresh token returns an actionable
+    /// auth error instead of printing a device code and waiting unattended.
+    pub fn allow_device_flow(self, allow: bool) -> Self {
+        self.map_config(|mut ext| {
+            ext.allow_device_flow = allow;
+            ext
+        })
+    }
+
+    pub fn token_dir(self, path: impl AsRef<Path>) -> Self {
+        let auth_file = path.as_ref().join("auth.json");
+        self.map_config(|mut ext| {
+            ext.auth_file = Some(auth_file);
+            ext
+        })
+    }
+
+    pub fn auth_file(self, path: impl AsRef<Path>) -> Self {
+        let auth_file = path.as_ref().to_path_buf();
+        self.map_config(|mut ext| {
+            ext.auth_file = Some(auth_file);
+            ext
+        })
+    }
+
+    pub fn default_instructions(self, instructions: impl Into<String>) -> Self {
+        let instructions = instructions.into();
+        self.map_config(|mut ext| {
+            ext.default_instructions = Some(instructions);
+            ext
+        })
+    }
+
+    pub fn originator(self, originator: impl Into<String>) -> Self {
+        let originator = originator.into();
+        self.map_config(|mut ext| {
+            ext.originator = originator;
+            ext
+        })
+    }
+
+    pub fn user_agent(self, user_agent: impl Into<String>) -> Self {
+        let user_agent = user_agent.into();
+        self.map_config(|mut ext| {
+            ext.user_agent = Some(user_agent);
+            ext
+        })
+    }
+}
+
+#[derive(Clone)]
+pub struct ResponsesCompletionModel<H = crate::http_client::BoxedHttpClient> {
+    client: Client<H>,
+    pub model: String,
+    pub tools: Vec<responses_api::ResponsesToolDefinition>,
+    pub strict_tools: bool,
+}
+
+impl<H> ResponsesCompletionModel<H>
+where
+    Client<H>: HttpClientExt + Clone + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    pub fn new(client: Client<H>, model: impl Into<String>) -> Self {
+        Self {
+            client,
+            model: model.into(),
+            tools: Vec::new(),
+            strict_tools: false,
+        }
+    }
+
+    /// Enable strict mode for function tool schemas.
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
+    }
+
+    pub fn with_tool(mut self, tool: impl Into<responses_api::ResponsesToolDefinition>) -> Self {
+        self.tools.push(tool.into());
+        self
+    }
+
+    pub fn with_tools<I, Tool>(mut self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = Tool>,
+        Tool: Into<responses_api::ResponsesToolDefinition>,
+    {
+        self.tools.extend(tools.into_iter().map(Into::into));
+        self
+    }
+
+    fn openai_model(&self) -> responses_api::GenericResponsesCompletionModel<ChatGPT, H> {
+        let mut model = responses_api::GenericResponsesCompletionModel::new(
+            self.client.clone(),
+            self.model.clone(),
+        );
+        model.tools.clone_from(&self.tools);
+        model.strict_tools = self.strict_tools;
+        model
+    }
+
+    fn create_request(
+        &self,
+        request: completion::CompletionRequest,
+    ) -> Result<ResponsesRequest, CompletionError> {
+        let mut request = self.openai_model().create_completion_request(request)?;
+
+        if let Some(default_instructions) = &self.client.provider().default_instructions {
+            request.instructions = Some(merge_instructions(
+                default_instructions,
+                request.instructions.as_deref(),
+            ));
+        }
+
+        request.temperature = None;
+        request.max_output_tokens = None;
+        request.stream = Some(true);
+
+        let include = request
+            .additional_parameters
+            .include
+            .get_or_insert_with(Vec::new);
+        if !include
+            .iter()
+            .any(|item| matches!(item, Include::ReasoningEncryptedContent))
+        {
+            include.push(Include::ReasoningEncryptedContent);
+        }
+
+        request.additional_parameters.background = None;
+        request.additional_parameters.metadata.clear();
+        request.additional_parameters.parallel_tool_calls = None;
+        request.additional_parameters.service_tier = None;
+        request.additional_parameters.store = Some(false);
+        request.additional_parameters.text = None;
+        request.additional_parameters.top_p = None;
+        request.additional_parameters.user = None;
+
+        Ok(request)
+    }
+
+    fn add_auth_headers(
+        &self,
+        req: http_client::Builder,
+        context: &auth::AuthContext,
+    ) -> http_client::Builder {
+        let req = req
+            .header(
+                http::header::AUTHORIZATION,
+                format!("Bearer {}", context.access_token),
+            )
+            .header("session_id", crate::id::generate());
+
+        if let Some(account_id) = &context.account_id {
+            req.header("ChatGPT-Account-Id", account_id)
+        } else {
+            req
+        }
+    }
+
+    /// Execute a ChatGPT completion and return the Responses API's own wire
+    /// response.
+    ///
+    /// This is the escape hatch for fields rig does not normalize, and it
+    /// issues the same single request the normalized path does.
+    ///
+    /// One caveat is specific to this provider: `/responses` answers with an
+    /// SSE body even for a non-streaming request, so the value returned here is
+    /// reassembled from the terminal `response.completed` event. That event
+    /// sometimes carries an empty `output`, in which case the assistant content
+    /// exists only in the preceding events and
+    /// [`completion::CompletionModel::completion`] rebuilds it from them. When
+    /// you need the provider's events in full fidelity rather than just its
+    /// terminal record, use [`ResponsesCompletionModel::stream`].
+    pub async fn raw_completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<responses_api::CompletionResponse, CompletionError> {
+        let record_telemetry_content = completion_request.record_telemetry_content;
+        let request = self.create_request(completion_request)?;
+        let span = self.completion_span(&request, record_telemetry_content);
+
+        tracing_futures::Instrument::instrument(
+            async move { Ok(self.send_completion(request).await?.0) },
+            span,
+        )
+        .await
+    }
+
+    /// Build the `chat` span for a non-streaming ChatGPT completion.
+    ///
+    /// The instructions recorded here are the ones actually sent: the request's
+    /// merged `instructions`, not the caller's preamble, which
+    /// `SystemInstructionsPlacement::AllInstructions` folds together with the
+    /// client's `default_instructions`.
+    fn completion_span(
+        &self,
+        request: &ResponsesRequest,
+        record_telemetry_content: bool,
+    ) -> tracing::Span {
+        CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
+            .system_instructions(request.instructions.as_deref(), record_telemetry_content)
+            .build()
+    }
+
+    /// Issue the request and return the reassembled wire response together with
+    /// the SSE body it came from.
+    ///
+    /// Both the raw and the normalized path go through here, so there is one
+    /// transport, one status check, and one parse — and the normalized path can
+    /// still reach the event stream for its empty-`output` fallback without
+    /// issuing a second request.
+    async fn send_completion(
+        &self,
+        request: ResponsesRequest,
+    ) -> Result<(responses_api::CompletionResponse, String), CompletionError> {
+        let body = serde_json::to_vec(&request)?;
+        let auth = self
+            .client
+            .provider()
+            .auth
+            .auth_context(self.client.http_client())
+            .await
+            .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
+
+        let req = self
+            .add_auth_headers(self.client.post("/responses")?, &auth)
+            .body(body)
+            .map_err(|err| CompletionError::HttpError(err.into()))?;
+
+        let response = self.client.send::<_, Vec<u8>>(req).await?;
+        let (parts, body) = response.into_parts();
+        let status = parts.status;
+        let text = String::from(String::from_utf8_lossy(&body.await?));
+        if !status.is_success() {
+            return Err(CompletionError::from_http_response(status, text)
+                .with_response_headers(Some(Box::new(parts.headers))));
+        }
+
+        // The `/responses` endpoint answers with an SSE body even for a
+        // non-streaming request, so the wire response is reassembled from the
+        // event stream rather than parsed as one JSON document.
+        let raw_response = responses_api::streaming::parse_sse_completion_body(&text, "ChatGPT")?;
+
+        let span = tracing::Span::current();
+        span.record_response_metadata(&raw_response);
+
+        Ok((raw_response, text))
+    }
+
+    /// Normalize a ChatGPT completion, falling back to the SSE event stream
+    /// when the reassembled response carries no output items.
+    ///
+    /// The captured `raw` is `raw_response` — what
+    /// [`ResponsesCompletionModel::raw_completion`] returns — on both
+    /// branches, so the empty-output fallback carries it too.
+    async fn normalized_completion(
+        &self,
+        request: ResponsesRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let (raw_response, text) = self.send_completion(request).await?;
+        let captured = serde_json::to_value(&raw_response)?;
+
+        let response = match raw_response.clone().normalize(PROVIDER_NAME) {
+            Ok(response) => response,
+            // An empty `output` means the terminal event never carried the
+            // assembled items; rebuild the response from the raw event stream.
+            Err(CompletionError::ResponseError(_)) if raw_response.output.is_empty() => {
+                responses_api::streaming::completion_response_from_sse_body(
+                    PROVIDER_NAME,
+                    &text,
+                    raw_response,
+                )
+                .await?
+            }
+            Err(error) => return Err(error),
+        };
+        Ok(response.with_raw(captured))
+    }
+}
+
+impl<H> Client<H>
+where
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    pub async fn authorize(&self) -> Result<(), auth::AuthError> {
+        self.provider()
+            .auth
+            .auth_context(self.http_client())
+            .await
+            .map(|_| ())
+    }
+}
+
+impl<H> completion::CompletionModel for ResponsesCompletionModel<H>
+where
+    Client<H>: HttpClientExt + Clone + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    async fn completion(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<completion::CompletionResponse, CompletionError> {
+        let record_telemetry_content = completion_request.record_telemetry_content;
+        let request = self.create_request(completion_request)?;
+        let span = self.completion_span(&request, record_telemetry_content);
+
+        tracing_futures::Instrument::instrument(
+            async move {
+                let response = self.normalized_completion(request).await?;
+                let span = tracing::Span::current();
+                span.record_token_usage(&response.usage);
+                Ok(response)
+            },
+            span,
+        )
+        .await
+    }
+
+    async fn stream(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        Self::stream(self, completion_request).await
+    }
+}
+
+impl<H> ResponsesCompletionModel<H>
+where
+    Client<H>: HttpClientExt + Clone + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    /// Open a ChatGPT stream. The terminal record's Responses-API form rides
+    /// on [`crate::streaming::StreamFinal::raw`].
+    pub async fn stream(
+        &self,
+        completion_request: completion::CompletionRequest,
+    ) -> Result<StreamingCompletionResponse, CompletionError> {
+        let record_telemetry_content = completion_request.record_telemetry_content;
+        let request = self.create_request(completion_request)?;
+
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "ChatGPT Responses streaming completion request",
+            &request,
+        );
+
+        let body = serde_json::to_vec(&request)?;
+        let auth = self
+            .client
+            .provider()
+            .auth
+            .auth_context(self.client.http_client())
+            .await
+            .map_err(|err| CompletionError::ProviderError(err.to_string()))?;
+
+        let req = self
+            .add_auth_headers(self.client.post("/responses")?, &auth)
+            .body(body)
+            .map_err(|err| CompletionError::HttpError(err.into()))?;
+
+        let span = CompletionSpanBuilder::new(
+            PROVIDER_NAME,
+            &request.model,
+            CompletionOperation::ChatStreaming,
+        )
+        .system_instructions(request.instructions.as_deref(), record_telemetry_content)
+        .build();
+
+        let client = self.client.clone();
+        let event_source = crate::http_client::sse::GenericEventSource::new(client, req)
+            .allow_missing_content_type();
+
+        Ok(StreamingCompletionResponse::stream(
+            PROVIDER_NAME,
+            responses_api::streaming::responses_stream_from_event_source(
+                PROVIDER_NAME,
+                event_source,
+                span,
+            ),
+        ))
+    }
+}
+
+/// Stable descriptor name reported on normalized ChatGPT responses.
+pub const PROVIDER_NAME: &str = "chatgpt";
+
+fn default_user_agent() -> String {
+    format!(
+        "rig/{} ({} {}; {})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+        DEFAULT_ORIGINATOR
+    )
+}
+
+fn default_auth_file() -> Option<PathBuf> {
+    config_dir().map(|dir| dir.join("chatgpt").join("auth.json"))
+}
+
+use crate::providers::internal::auth::config_dir;
+
+fn merge_instructions(default_instructions: &str, existing_instructions: Option<&str>) -> String {
+    match existing_instructions
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        Some(existing) if existing.contains(default_instructions) => existing.to_string(),
+        Some(existing) => format!("{default_instructions}\n\n{existing}"),
+        None => default_instructions.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests;

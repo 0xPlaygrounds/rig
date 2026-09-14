@@ -1,0 +1,63 @@
+use std::{
+    error::Error,
+    fmt::{Display, Formatter},
+};
+
+use rig_agent::tool::{Tool, ToolContext};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+
+#[derive(Deserialize)]
+pub struct OperationArgs {
+    x: i32,
+    y: i32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MathError {}
+
+impl Display for MathError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("Math error")
+    }
+}
+
+impl Error for MathError {}
+
+#[derive(Deserialize, Serialize)]
+pub struct Adder;
+impl Tool for Adder {
+    const NAME: &'static str = "add";
+    type Error = MathError;
+    type Args = OperationArgs;
+    type Output = i32;
+
+    fn description(&self) -> String {
+        "Add x and y together".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                },
+                "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                }
+            }
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        let result = args.x + args.y;
+        Ok(result)
+    }
+}

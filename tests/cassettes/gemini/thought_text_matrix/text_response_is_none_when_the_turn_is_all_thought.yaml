@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Prove rigorously, with full detail, that there are infinitely many primes.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":64,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"Okay, here''s my take on those initial thoughts, framed as my own:\n\n**My Initial Approach to Proving the Infinitude of Primes**\n\nAlright, let''s break this down. The core objective is crystal clear: I need to demonstrate that prime numbers are infinite in quantity. That''s the ultimate goal. Now, with a goal in mind, it''s time to map out the strategy, to select a strategy most suited to the problem.\n\nDirect proofs *can* be effective, but often fall short when dealing with infinities.\n","thought":true}],"role":"model"},"finishReason":"MAX_TOKENS","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"promptTokenCount":15,"promptTokensDetails":[{"modality":"TEXT","tokenCount":15}],"serviceTier":"standard","thoughtsTokenCount":60,"totalTokenCount":75}}'

@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Write 300 words about lighthouses.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":32,"temperature":0.0,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Standing\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":12,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":12}],\"serviceTier\":\"standard\",\"totalTokenCount\":13}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" sentinel against the relentless might of the sea, lighthouses are more than just towering\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":12,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":12}],\"serviceTier\":\"standard\",\"totalTokenCount\":31}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" structures; they are beacons of hope, symbols of resilience, and silent\"}],\"role\":\"model\"},\"finishReason\":\"MAX_TOKENS\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":33,\"promptTokenCount\":12,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":12}],\"serviceTier\":\"standard\",\"totalTokenCount\":45}}\r\n\r\n"

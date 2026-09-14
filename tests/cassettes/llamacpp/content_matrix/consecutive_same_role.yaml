@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"First word: heliotrope.","role":"user"},{"content":"Second word: quicksilver.","role":"user"},{"content":"/no_think What was the second word I said?","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The second word you said was **\"quicksilver.\"**","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":42,"predicted_ms":100.347,"predicted_n":18,"predicted_per_second":169.41213987463502,"predicted_per_token_ms":5.902764705882353,"prompt_ms":6.797,"prompt_n":1,"prompt_per_second":147.12373105781964,"prompt_per_token_ms":6.797},"usage":{"completion_tokens":18,"prompt_tokens":43,"prompt_tokens_details":{"cached_tokens":42},"total_tokens":61}}'

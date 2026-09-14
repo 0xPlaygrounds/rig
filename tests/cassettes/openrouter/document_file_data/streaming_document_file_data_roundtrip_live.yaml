@@ -1,0 +1,30 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Answer using only the attached PDF. Keep answers short and return exact visible tokens.","type":"text"}],"role":"system"},{"content":[{"file":{"file_data":"data:application/pdf;base64,JVBERi0xLjQKMSAwIG9iago8PCAvVHlwZSAvQ2F0YWxvZyAvUGFnZXMgMiAwIFIgPj4KZW5kb2JqCjIgMCBvYmoKPDwgL1R5cGUgL1BhZ2VzIC9LaWRzIFs0IDAgUiA2IDAgUiA4IDAgUl0gL0NvdW50IDMgPj4KZW5kb2JqCjMgMCBvYmoKPDwgL1R5cGUgL0ZvbnQgL1N1YnR5cGUgL1R5cGUxIC9CYXNlRm9udCAvSGVsdmV0aWNhID4+CmVuZG9iago0IDAgb2JqCjw8IC9UeXBlIC9QYWdlIC9QYXJlbnQgMiAwIFIgL01lZGlhQm94IFswIDAgNjEyIDc5Ml0gL1Jlc291cmNlcyA8PCAvRm9udCA8PCAvRjEgMyAwIFIgPj4gPj4gL0NvbnRlbnRzIDUgMCBSID4+CmVuZG9iago1IDAgb2JqCjw8IC9MZW5ndGggNjYgPj4Kc3RyZWFtCkJUCi9GMSAxOCBUZgo3MiA3MjAgVGQKKHJpZy1maWxlLWlkLXBhZ2Utb25lLXZlcmlmaWVyLTNhOTEpIFRqCkVUCmVuZHN0cmVhbQplbmRvYmoKNiAwIG9iago8PCAvVHlwZSAvUGFnZSAvUGFyZW50IDIgMCBSIC9NZWRpYUJveCBbMCAwIDYxMiA3OTJdIC9SZXNvdXJjZXMgPDwgL0ZvbnQgPDwgL0YxIDMgMCBSID4+ID4+IC9Db250ZW50cyA3IDAgUiA+PgplbmRvYmoKNyAwIG9iago8PCAvTGVuZ3RoIDY2ID4+CnN0cmVhbQpCVAovRjEgMTggVGYKNzIgNzIwIFRkCihyaWctZmlsZS1pZC1wYWdlLXR3by12ZXJpZmllci04YzI3KSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCjggMCBvYmoKPDwgL1R5cGUgL1BhZ2UgL1BhcmVudCAyIDAgUiAvTWVkaWFCb3ggWzAgMCA2MTIgNzkyXSAvUmVzb3VyY2VzIDw8IC9Gb250IDw8IC9GMSAzIDAgUiA+PiA+PiAvQ29udGVudHMgOSAwIFIgPj4KZW5kb2JqCjkgMCBvYmoKPDwgL0xlbmd0aCA2OCA+PgpzdHJlYW0KQlQKL0YxIDE4IFRmCjcyIDcyMCBUZAoocmlnLWZpbGUtaWQtcGFnZS10aHJlZS12ZXJpZmllci1mNTRlKSBUagpFVAplbmRzdHJlYW0KZW5kb2JqCnhyZWYKMCAxMAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMDkgMDAwMDAgbiAKMDAwMDAwMDA1OCAwMDAwMCBuIAowMDAwMDAwMTI3IDAwMDAwIG4gCjAwMDAwMDAxOTcgMDAwMDAgbiAKMDAwMDAwMDMyMyAwMDAwMCBuIAowMDAwMDAwNDM4IDAwMDAwIG4gCjAwMDAwMDA1NjQgMDAwMDAgbiAKMDAwMDAwMDY3OSAwMDAwMCBuIAowMDAwMDAwODA1IDAwMDAwIG4gCnRyYWlsZXIKPDwgL1NpemUgMTAgL1Jvb3QgMSAwIFIgPj4Kc3RhcnR4cmVmCjkyMgolJUVPRgo=","filename":"document.pdf"},"type":"file"},{"text":"What verifier token is printed on page 2? Reply with only the exact token.","type":"text"}],"role":"user"}],"model":"google/gemini-2.5-flash","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    : OPENROUTER PROCESSING
+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"8","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"google/gemini-2.5-flash","object":"chat.completion.chunk","provider":"Google"}
+
+    data: {"choices":[{"delta":{"content":"c27","role":"assistant"},"finish_reason":null,"index":0,"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"google/gemini-2.5-flash","object":"chat.completion.chunk","provider":"Google"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"STOP"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"google/gemini-2.5-flash","object":"chat.completion.chunk","provider":"Google"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"STOP"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"google/gemini-2.5-flash","object":"chat.completion.chunk","provider":"Google","service_tier":"default","usage":{"completion_tokens":4,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.0002524,"cost_details":{"upstream_inference_completions_cost":0.00001,"upstream_inference_cost":0.0002524,"upstream_inference_prompt_cost":0.0002424},"is_byok":false,"prompt_tokens":808,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":812}}
+
+    data: [DONE]
+

@@ -1,0 +1,128 @@
+{
+  "header": {
+    "run_spec": 13467625088895359032,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [
+      "ReplaceAnswer"
+    ],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning_effort": "none"
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "Rust is a systems programming language designed to provide high performance and reliability by guaranteeing memory safety without needing a garbage collector. Memory safety matters because it prevents critical vulnerabilities like buffer overflows and use-after-free errors, which are common causes of software crashes and security breaches in languages like C and C++."
+            }
+          ],
+          "usage": {
+            "input_tokens": 44,
+            "output_tokens": 61,
+            "total_tokens": 105,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "id": "resp_REDACTED_1",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "system_fingerprint": null,
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Rust is a systems programming language designed to provide high performance and reliability by guaranteeing memory safety without needing a garbage collector. Memory safety matters because it prevents critical vulnerabilities like buffer overflows and use-after-free errors, which are common causes of software crashes and security breaches in languages like C and C++."
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 44,
+              "completion_tokens": 61,
+              "total_tokens": 105,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

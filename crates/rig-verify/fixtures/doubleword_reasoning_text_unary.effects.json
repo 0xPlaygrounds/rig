@@ -1,0 +1,149 @@
+{
+  "header": {
+    "run_spec": 8630632220564808386,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": 0.0,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning_effort": "low"
+          },
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": null,
+              "content": [
+                {
+                  "type": "text",
+                  "content": {
+                    "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Rust programming language and memory safety.\n    *   Constraint: One or two sentences.\n    *   Goal: Explain what Rust is and why memory safety matters.\n    *   Style: Concise, direct.\n\n2.  **Drafting - Attempt 1:**\n    Rust is a systems programming language that focuses on performance and safety. Memory safety matters because it prevents bugs like buffer overflows and use-after-free errors that can lead to crashes or security vulnerabilities.\n\n3.  **Refining - Attempt 1 (Checking constraints):**\n    *   Sentence 1: \"Rust is a systems programming language that focuses on performance and safety.\" (Good)\n    *   Sentence 2: \"Memory safety matters because it prevents bugs like buffer overflows and use-after-free errors that can lead to crashes or security vulnerabilities.\" (Good)\n    *   Total: Two sentences.\n    *   Content: Covers what Rust is and why memory safety matters.\n\n4.  **Drafting - Attempt 2 (Combining for flow):**\n    Rust is a high-performance systems programming language designed to guarantee memory safety without garbage collection. This safety is crucial because it eliminates common vulnerabilities like buffer overflows and dangling pointers, preventing crashes and security exploits.\n\n5.  **Selecting the Best Version:**\n    Attempt 2 is slightly more precise about *how* Rust achieves safety (without garbage collection) and *why* it matters (vulnerabilities/exploits). Let's tighten it up.\n\n6.  **Final Polish:**\n    Rust is a high-performance systems programming language that guarantees memory safety without needing a garbage collector. This matters because it prevents common vulnerabilities like buffer overflows and use-after-free errors, which are leading causes of software crashes and security breaches.\n\n    *Count:* Two sentences.\n    *Clarity:* High.\n    *Accuracy:* High.\n\n7.  **Final Check against \"One or two sentences\":**\n    Yes, it fits.\n\n8.  **Output Generation.** (Wait, I need to make sure I don't add extra commentary).\n\n    *Revised Draft:*\n    Rust is a high-performance systems programming language designed to guarantee memory safety without garbage collection. This matters because it prevents common vulnerabilities like buffer overflows and dangling pointers, which are leading causes of software crashes and security breaches.\n\n    *Even more concise:*\n    Rust is a systems programming language that ensures high performance and memory safety without garbage collection. Memory safety is critical because it prevents common vulnerabilities like buffer overflows and use-after-free errors that often lead to crashes and security exploits.\n\n    Let's go with the second one.cw\n"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "\n\nRust is a systems programming language that ensures high performance and memory safety without requiring garbage collection. Memory safety is critical because it prevents common vulnerabilities like buffer overflows and use-after-free errors that often lead to crashes and security exploits."
+            }
+          ],
+          "usage": {
+            "input_tokens": 42,
+            "output_tokens": 620,
+            "total_tokens": 662,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 571
+          },
+          "message_id": null,
+          "response_id": "resp_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "doubleword",
+          "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+          "raw": {
+            "id": "resp_REDACTED_1",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "system_fingerprint": null,
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "\n\nRust is a systems programming language that ensures high performance and memory safety without requiring garbage collection. Memory safety is critical because it prevents common vulnerabilities like buffer overflows and use-after-free errors that often lead to crashes and security exploits."
+                    }
+                  ],
+                  "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Rust programming language and memory safety.\n    *   Constraint: One or two sentences.\n    *   Goal: Explain what Rust is and why memory safety matters.\n    *   Style: Concise, direct.\n\n2.  **Drafting - Attempt 1:**\n    Rust is a systems programming language that focuses on performance and safety. Memory safety matters because it prevents bugs like buffer overflows and use-after-free errors that can lead to crashes or security vulnerabilities.\n\n3.  **Refining - Attempt 1 (Checking constraints):**\n    *   Sentence 1: \"Rust is a systems programming language that focuses on performance and safety.\" (Good)\n    *   Sentence 2: \"Memory safety matters because it prevents bugs like buffer overflows and use-after-free errors that can lead to crashes or security vulnerabilities.\" (Good)\n    *   Total: Two sentences.\n    *   Content: Covers what Rust is and why memory safety matters.\n\n4.  **Drafting - Attempt 2 (Combining for flow):**\n    Rust is a high-performance systems programming language designed to guarantee memory safety without garbage collection. This safety is crucial because it eliminates common vulnerabilities like buffer overflows and dangling pointers, preventing crashes and security exploits.\n\n5.  **Selecting the Best Version:**\n    Attempt 2 is slightly more precise about *how* Rust achieves safety (without garbage collection) and *why* it matters (vulnerabilities/exploits). Let's tighten it up.\n\n6.  **Final Polish:**\n    Rust is a high-performance systems programming language that guarantees memory safety without needing a garbage collector. This matters because it prevents common vulnerabilities like buffer overflows and use-after-free errors, which are leading causes of software crashes and security breaches.\n\n    *Count:* Two sentences.\n    *Clarity:* High.\n    *Accuracy:* High.\n\n7.  **Final Check against \"One or two sentences\":**\n    Yes, it fits.\n\n8.  **Output Generation.** (Wait, I need to make sure I don't add extra commentary).\n\n    *Revised Draft:*\n    Rust is a high-performance systems programming language designed to guarantee memory safety without garbage collection. This matters because it prevents common vulnerabilities like buffer overflows and dangling pointers, which are leading causes of software crashes and security breaches.\n\n    *Even more concise:*\n    Rust is a systems programming language that ensures high performance and memory safety without garbage collection. Memory safety is critical because it prevents common vulnerabilities like buffer overflows and use-after-free errors that often lead to crashes and security exploits.\n\n    Let's go with the second one.cw\n",
+                  "reasoning_details": [
+                    {
+                      "type": "reasoning.text",
+                      "id": null,
+                      "format": "unknown",
+                      "index": 0,
+                      "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Rust programming language and memory safety.\n    *   Constraint: One or two sentences.\n    *   Goal: Explain what Rust is and why memory safety matters.\n    *   Style: Concise, direct.\n\n2.  **Drafting - Attempt 1:**\n    Rust is a systems programming language that focuses on performance and safety. Memory safety matters because it prevents bugs like buffer overflows and use-after-free errors that can lead to crashes or security vulnerabilities.\n\n3.  **Refining - Attempt 1 (Checking constraints):**\n    *   Sentence 1: \"Rust is a systems programming language that focuses on performance and safety.\" (Good)\n    *   Sentence 2: \"Memory safety matters because it prevents bugs like buffer overflows and use-after-free errors that can lead to crashes or security vulnerabilities.\" (Good)\n    *   Total: Two sentences.\n    *   Content: Covers what Rust is and why memory safety matters.\n\n4.  **Drafting - Attempt 2 (Combining for flow):**\n    Rust is a high-performance systems programming language designed to guarantee memory safety without garbage collection. This safety is crucial because it eliminates common vulnerabilities like buffer overflows and dangling pointers, preventing crashes and security exploits.\n\n5.  **Selecting the Best Version:**\n    Attempt 2 is slightly more precise about *how* Rust achieves safety (without garbage collection) and *why* it matters (vulnerabilities/exploits). Let's tighten it up.\n\n6.  **Final Polish:**\n    Rust is a high-performance systems programming language that guarantees memory safety without needing a garbage collector. This matters because it prevents common vulnerabilities like buffer overflows and use-after-free errors, which are leading causes of software crashes and security breaches.\n\n    *Count:* Two sentences.\n    *Clarity:* High.\n    *Accuracy:* High.\n\n7.  **Final Check against \"One or two sentences\":**\n    Yes, it fits.\n\n8.  **Output Generation.** (Wait, I need to make sure I don't add extra commentary).\n\n    *Revised Draft:*\n    Rust is a high-performance systems programming language designed to guarantee memory safety without garbage collection. This matters because it prevents common vulnerabilities like buffer overflows and dangling pointers, which are leading causes of software crashes and security breaches.\n\n    *Even more concise:*\n    Rust is a systems programming language that ensures high performance and memory safety without garbage collection. Memory safety is critical because it prevents common vulnerabilities like buffer overflows and use-after-free errors that often lead to crashes and security exploits.\n\n    Let's go with the second one.cw\n",
+                      "signature": null
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 42,
+              "completion_tokens": 620,
+              "total_tokens": 662,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 571
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

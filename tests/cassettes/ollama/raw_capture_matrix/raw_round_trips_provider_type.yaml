@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"qwen3:4b","options":{"num_predict":64},"stream":false,"think":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":64,"eval_duration":712504163,"load_duration":69222750,"message":{"content":"Hmm, the user wants me to reply with exactly the single word \"pong\". That''s straightforward. \n\nI recall that in some contexts like chat protocols, \"pong\" is a response to a \"ping\" message, but here they just want the word itself. \n\nThe user seems to be testing if I follow precise","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":18,"prompt_eval_duration":17446208,"total_duration":874353708}'

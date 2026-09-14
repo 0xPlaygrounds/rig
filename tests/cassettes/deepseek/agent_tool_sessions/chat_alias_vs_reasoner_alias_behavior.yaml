@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly: chat-mode-ok","role":"user"}],"model":"deepseek-chat"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"chat-mode-ok","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":4,"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":12,"prompt_tokens":12,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":16}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly: reasoner-mode-ok","role":"user"}],"model":"deepseek-reasoner"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"reasoner-mode-ok","reasoning_content":"We need to reply with exactly \"reasoner-mode-ok\". The instruction says: \"Reply with exactly: reasoner-mode-ok\". So I''ll output that.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":40,"completion_tokens_details":{"reasoning_tokens":34},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":13,"prompt_tokens":13,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":53}}'

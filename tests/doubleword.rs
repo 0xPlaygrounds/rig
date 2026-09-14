@@ -1,0 +1,46 @@
+#![allow(
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic,
+    clippy::unwrap_used,
+    clippy::unreachable
+)]
+
+#[allow(dead_code)]
+#[path = "common/ecs_agent.rs"]
+mod ecs_agent;
+#[path = "common/ecs_extractor.rs"]
+mod ecs_extractor;
+
+#[path = "common/support.rs"]
+mod support;
+
+#[path = "common/cache_conformance.rs"]
+mod cache_conformance;
+#[path = "common/cache_prefix.rs"]
+mod cache_prefix;
+#[path = "common/cassette_safety.rs"]
+mod cassette_safety;
+#[path = "common/cassettes.rs"]
+mod cassettes;
+
+#[path = "providers/doubleword/mod.rs"]
+mod doubleword;
+
+#[allow(dead_code)]
+#[path = "common/goldens.rs"]
+mod goldens;
+
+#[allow(dead_code)]
+#[path = "common/ecs_goldens.rs"]
+mod ecs_goldens;
+
+#[allow(dead_code)]
+#[path = "common/ecs_termination.rs"]
+mod ecs_termination;
+
+#[path = "common/stream_faults.rs"]
+mod stream_faults;
+
+#[path = "common/ecs_matrix.rs"]
+mod ecs_matrix;

@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one short paragraph, explain what a solar eclipse is.","thought":false}],"role":"user"}],"generationConfig":{"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"low"}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly in plain text.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**My Concise Eclipse Explanation**\n\nOkay, here''s the gist. We''re talking solar eclipse, the simplest way to describe it is: the Moon gets between the Earth and the Sun, blocking some or all of the sunlight. This alignment throws the Moon''s shadow onto the Earth, which is what causes the darkening effect in the sky – we get a partial, annular, or total eclipse based on the observer''s location and the Moon''s orbital distance at that time. Concise, plain text, and under a paragraph. Done.\n\n\n","thought":true},{"text":"A solar eclipse occurs when the Moon passes directly between the Earth and the Sun, temporarily blocking the Sun''s light from reaching our planet. During this alignment, the Moon casts a shadow onto the Earth''s surface, causing the sky to darken during the day. Depending on the specific positions of these celestial bodies, an eclipse can be total, where the Sun is completely obscured, or partial, where only a portion of the Sun is covered.","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":89,"promptTokenCount":26,"promptTokensDetails":[{"modality":"TEXT","tokenCount":26}],"serviceTier":"standard","thoughtsTokenCount":194,"totalTokenCount":309}}'

@@ -1,0 +1,18 @@
+when:
+  path: /v1/embeddings
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":["Rust values memory safety and predictable performance.","Streaming responses arrive incrementally instead of all at once.","Embeddings turn text into numeric vectors for similarity search."],"model":"no-such-embedding-model"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"code":"1500","message":"Invalid model: no-such-embedding-model","object":"error","param":null,"raw_status_code":400,"type":"invalid_model"}'

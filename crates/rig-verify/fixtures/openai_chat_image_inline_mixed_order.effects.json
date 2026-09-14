@@ -1,0 +1,150 @@
+{
+  "header": {
+    "run_spec": 207107301318669254,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Marker one: the same image follows twice."
+                },
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Marker two: here it is again."
+                },
+                {
+                  "type": "image",
+                  "data": {
+                    "type": "base64",
+                    "value": "iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"
+                  },
+                  "media_type": "png"
+                },
+                {
+                  "type": "text",
+                  "text": "Marker three: describe the dominant non-background color of the image in one short sentence."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 2048,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "The dominant non-background color is bright red."
+            }
+          ],
+          "usage": {
+            "input_tokens": 61,
+            "output_tokens": 82,
+            "total_tokens": 143,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 64
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "id": "chatcmpl-REDACTED_1",
+            "object": "chat.completion",
+            "created": 0,
+            "model": "gpt-5-mini-2025-08-07",
+            "system_fingerprint": null,
+            "service_tier": "default",
+            "choices": [
+              {
+                "index": 0,
+                "message": {
+                  "role": "assistant",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "The dominant non-background color is bright red."
+                    }
+                  ]
+                },
+                "logprobs": null,
+                "finish_reason": "stop"
+              }
+            ],
+            "usage": {
+              "prompt_tokens": 61,
+              "completion_tokens": 82,
+              "total_tokens": 143,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
+              "completion_tokens_details": {
+                "reasoning_tokens": 64
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

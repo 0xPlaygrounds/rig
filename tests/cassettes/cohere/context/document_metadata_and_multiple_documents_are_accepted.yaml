@@ -1,0 +1,16 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[{"data":{"region":"north-bay","source":"harbor-registry","text":"Beacon code amber-73 is assigned to Dock Seven."},"id":"harbor-record-1"},{"data":{"source":"harbor-registry","text":"Beacon code violet-19 is assigned to Dock Three."},"id":"harbor-record-2"}],"max_tokens":32,"messages":[{"content":[{"text":"Which dock is assigned beacon code amber-73?","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"COMPLETE","id":"9148e74d-9afc-46d6-a049-3fbd9bdb5ef9","message":{"citations":[{"end":10,"sources":[{"document":{"id":"harbor-record-1","region":"north-bay","source":"harbor-registry","text":"Beacon code amber-73 is assigned to Dock Seven."},"id":"harbor-record-1","type":"document"}],"start":0,"text":"Dock Seven","type":"TEXT_CONTENT"}],"content":[{"text":"Dock Seven is assigned beacon code amber-73.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":57,"output_tokens":11},"cached_tokens":112,"tokens":{"input_tokens":1713,"output_tokens":25}}}'

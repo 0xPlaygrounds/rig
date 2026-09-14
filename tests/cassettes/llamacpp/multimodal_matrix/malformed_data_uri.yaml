@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":32,"messages":[{"content":[{"text":"What colour is this?","type":"text"},{"image_url":{"detail":"auto","url":"data:image/png;base64,!!!!not-base64!!!!"},"type":"image_url"}],"role":"user"}],"model":"Qwen3-VL-2B-Instruct-Q8_0"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":400,"message":"Failed to load image or audio file","type":"invalid_request_error"}}'

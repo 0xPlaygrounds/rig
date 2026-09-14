@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record value as the exact JSON string legacy-root-string.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Call the supplied tool exactly once and follow the requested argument shape.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Record the exact structured arguments requested by the user.","input_schema":{"additionalProperties":false,"definitions":{"Root":{"additionalProperties":false,"definitions":{"Shared":{"type":"integer"}},"properties":{"value":{"$ref":"#/definitions/Shared"}},"required":["value"],"type":"object"},"Shared":{"type":"string"}},"properties":{"value":{"$ref":"#/definitions/Shared"}},"required":["value"],"type":"object"},"name":"record_definitions_collision","strict":true}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"value":"legacy-root-string"},"name":"record_definitions_collision","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":763,"output_tokens":44,"service_tier":"standard"}}'

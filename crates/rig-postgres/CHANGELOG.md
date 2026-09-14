@@ -1,0 +1,330 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.41.0...rig-postgres-v0.42.0) - 2026-08-16
+
+### Other
+
+- reconcile the changelogs and the migration guide with what actually merged ([#2353](https://github.com/0xPlaygrounds/rig/pull/2353)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2353
+- workspace-wide LOC consolidation pass 8 (net −1,353 production lines) ([#2320](https://github.com/0xPlaygrounds/rig/pull/2320)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2320
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Fixed
+
+- *(vector-store)* every parameterised `PgSearchFilter` constructor emits the `$` placeholder token. `gte`, `lte` and `member` emitted `?` instead, and `search_query`'s renumbering pass never touched it — that pass walks the rendered `WHERE` clause and numbers each `$` from `$3` onward (`$1`/`$2` are the query vector and the sample count) — so a filter built with any of the three reached Postgres with a literal `?` in the SQL (`id is in (?,?)`) while its values were still bound positionally, and the server rejected the statement as malformed rather than returning wrong rows. All of `PgSearchFilter`'s constructors now render through the shared `vector_store::request::SqlCondition`, so the placeholder token is chosen in one place, and `every_parameterised_operator_uses_dollar_placeholders` asserts the whole rendered clause instead of the two operators it used to cover
+
+### Changed
+
+- *(vector-store)* [**breaking**] `PgSearchFilter` is a newtype over `rig_core::vector_store::request::SqlCondition<serde_json::Value>` rather than its own `{ condition, values }` struct. The fields were private and the constructors are unchanged, but the derived `Serialize`/`Deserialize` follow the inner type: a serialized filter now names its bind list `params` where it named it `values`
+
+- *(vector-store)* [**breaking**] `InsertDocuments::insert_documents` takes `Vec<(Doc, Vec<Embedding>)>` instead of `Vec<(Doc, OneOrMany<Embedding>)>`, following rig-core's removal of the non-empty container — a source-only signature change; serialized embeddings are unchanged
+
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.39.0...rig-postgres-v0.40.0) - 2026-07-10
+
+### Fixed
+
+- *(postgres)* update sqlx and pgvector ([#1992](https://github.com/0xPlaygrounds/rig/pull/1992)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
+## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.2.7...rig-postgres-v0.38.1) - 2026-06-02
+
+### Other
+
+- unify workspace crate versions ([#1853](https://github.com/0xPlaygrounds/rig/pull/1853)) (by @gold-silver-copper) - #1853
+
+### Contributors
+
+* @gold-silver-copper
+## [0.2.7](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.2.6...rig-postgres-v0.2.7) - 2026-06-02
+
+### Other
+
+- update Cargo.toml dependencies
+## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.2.5...rig-postgres-v0.2.6) - 2026-05-13
+
+### Other
+
+- fix "a ancient" grammar in glarb-glarb sample text ([#1755](https://github.com/0xPlaygrounds/rig/pull/1755)) (by @abhicris) - #1755
+- AGENTS.MD, CONTRIBUTING.MD, and docs ([#1714](https://github.com/0xPlaygrounds/rig/pull/1714)) (by @gold-silver-copper) - #1714
+- improve project organization and create rig crate ([#1699](https://github.com/0xPlaygrounds/rig/pull/1699)) (by @gold-silver-copper) - #1699
+
+### Contributors
+
+* @abhicris
+* @gold-silver-copper
+## [0.2.5](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.2.4...rig-postgres-v0.2.5) - 2026-04-28
+
+### Other
+
+- Add clippy no panic lints ([#1663](https://github.com/0xPlaygrounds/rig/pull/1663)) (by @gold-silver-copper) - #1663
+- standardize required fields handling across builders ([#1611](https://github.com/0xPlaygrounds/rig/pull/1611)) (by @isSerge) - #1611
+
+### Contributors
+
+* @gold-silver-copper
+* @isSerge
+## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.2.3...rig-postgres-v0.2.4) - 2026-04-12
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.2.2...rig-postgres-v0.2.3) - 2026-03-29
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.2](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.2.1...rig-postgres-v0.2.2) - 2026-03-17
+
+### Other
+
+- updated the following local packages: rig-core
+
+
+## [0.2.1](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.2.0...rig-postgres-v0.2.1) - 2026-03-05
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.32](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.31...rig-postgres-v0.1.32) - 2026-02-17
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.31](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.30...rig-postgres-v0.1.31) - 2026-02-03
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.30](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.29...rig-postgres-v0.1.30) - 2026-01-20
+
+### Added
+
+- improve vector store documentation and filter ergonomics (breaking) ([#1258](https://github.com/0xPlaygrounds/rig/pull/1258))
+
+### Other
+
+- *(1111)* fix JSON value binding in rig-postgres ([#1233](https://github.com/0xPlaygrounds/rig/pull/1233))
+
+## [0.1.29](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.28...rig-postgres-v0.1.29) - 2026-01-06
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.28](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.27...rig-postgres-v0.1.28) - 2025-12-15
+
+### Other
+
+- *(rig-1090)* crate re-org ([#1145](https://github.com/0xPlaygrounds/rig/pull/1145))
+
+## [0.1.27](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.26...rig-postgres-v0.1.27) - 2025-12-04
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.26](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.25...rig-postgres-v0.1.26) - 2025-12-01
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+
+## [0.1.25](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.24...rig-postgres-v0.1.25) - 2025-11-10
+
+### Added
+
+- *(rig-1014)* add backend specific vector search filters ([#1032](https://github.com/0xPlaygrounds/rig/pull/1032))
+
+## [0.1.24](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.23...rig-postgres-v0.1.24) - 2025-10-28
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.23](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.22...rig-postgres-v0.1.23) - 2025-10-27
+
+### Added
+
+- *(rig-976)* support filters for `VectorSearchRequest` ([#952](https://github.com/0xPlaygrounds/rig/pull/952))
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+
+### Fixed
+
+- *(rig-1006)* text-embedding-ada-002 doesn't support custom dimensions ([#967](https://github.com/0xPlaygrounds/rig/pull/967))
+
+### Other
+
+- Dependent packages no longer force unnecessary features on rig-core ([#964](https://github.com/0xPlaygrounds/rig/pull/964))
+
+## [0.1.22](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.21...rig-postgres-v0.1.22) - 2025-10-14
+
+### Added
+
+- *(rig-951)* generic HTTP client ([#875](https://github.com/0xPlaygrounds/rig/pull/875))
+
+### Fixed
+
+- trying to fix test regressions part 2 ([#913](https://github.com/0xPlaygrounds/rig/pull/913))
+
+## [0.1.21](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.20...rig-postgres-v0.1.21) - 2025-09-29
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.20](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.19...rig-postgres-v0.1.20) - 2025-09-15
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.19](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.18...rig-postgres-v0.1.19) - 2025-09-02
+
+### Other
+
+- *(rig-907)* use where clause for trait bounds ([#749](https://github.com/0xPlaygrounds/rig/pull/749))
+
+## [0.1.18](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.17...rig-postgres-v0.1.18) - 2025-08-20
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.17](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.16...rig-postgres-v0.1.17) - 2025-08-19
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.16](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.15...rig-postgres-v0.1.16) - 2025-08-19
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.15](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.14...rig-postgres-v0.1.15) - 2025-08-05
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.14](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.13...rig-postgres-v0.1.14) - 2025-08-05
+
+### Added
+
+- *(rig-845)* cosine similarity for vector search ([#664](https://github.com/0xPlaygrounds/rig/pull/664))
+
+## [0.1.13](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.12...rig-postgres-v0.1.13) - 2025-07-30
+
+### Added
+
+- *(rig-819)* vector store index request struct ([#623](https://github.com/0xPlaygrounds/rig/pull/623))
+
+### Other
+
+- Refactor clients with builder pattern ([#615](https://github.com/0xPlaygrounds/rig/pull/615))
+
+## [0.1.12](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.11...rig-postgres-v0.1.12) - 2025-07-16
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.11](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.10...rig-postgres-v0.1.11) - 2025-07-14
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.10](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.9...rig-postgres-v0.1.10) - 2025-07-07
+
+### Added
+
+- support inserting documents as a trait ([#563](https://github.com/0xPlaygrounds/rig/pull/563))
+
+### Other
+
+- Migrate all crates to Rust 2024 ([#539](https://github.com/0xPlaygrounds/rig/pull/539))
+- Declare shared dependencies in workspace ([#538](https://github.com/0xPlaygrounds/rig/pull/538))
+- Make clippy happy on all targets ([#542](https://github.com/0xPlaygrounds/rig/pull/542))
+
+## [0.1.9](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.8...rig-postgres-v0.1.9) - 2025-06-09
+
+### Other
+
+- Introduce Client Traits and Testing ([#440](https://github.com/0xPlaygrounds/rig/pull/440))
+
+## [0.1.8](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.7...rig-postgres-v0.1.8) - 2025-04-29
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.7](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.6...rig-postgres-v0.1.7) - 2025-04-12
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.5...rig-postgres-v0.1.6) - 2025-03-31
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.5](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.4...rig-postgres-v0.1.5) - 2025-03-17
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.4](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.3...rig-postgres-v0.1.4) - 2025-03-03
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.2...rig-postgres-v0.1.3) - 2025-02-17
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.1...rig-postgres-v0.1.2) - 2025-02-10
+
+### Other
+
+- fix spelling errors in `Makefile` and `message.rs` (#284)
+
+## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-postgres-v0.1.0...rig-postgres-v0.1.1) - 2025-01-27
+
+### Other
+
+- release (#203)
+
+## [0.1.0](https://github.com/0xPlaygrounds/rig/releases/tag/rig-postgres-v0.1.0) - 2025-01-27
+
+### Added
+
+- *(rig-postgres)* postgres vector store integration (#231)

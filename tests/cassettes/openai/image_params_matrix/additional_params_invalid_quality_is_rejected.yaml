@@ -1,0 +1,18 @@
+when:
+  path: /v1/images/generations
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gpt-image-1-mini","prompt":"a plain red circle on a white background","quality":"rig-invalid","size":"1024x1024"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"invalid_value","message":"Invalid value: ''rig-invalid''. Supported values are: ''low'', ''medium'', ''high'', and ''auto''.","param":"quality","type":"invalid_request_error"}}'

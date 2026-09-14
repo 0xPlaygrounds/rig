@@ -1,0 +1,188 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.41.0...rig-vertexai-v0.42.0) - 2026-08-16
+
+### Other
+
+- workspace-wide LOC consolidation pass 8 (net −1,353 production lines) ([#2320](https://github.com/0xPlaygrounds/rig/pull/2320)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2320
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+- post-Vec-migration precision and the pre-Vec serde accommodations go ([#2276](https://github.com/0xPlaygrounds/rig/pull/2276)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2276
+- [**breaking**] `OneOrMany<T>` becomes `Vec<T>` — the fake is deleted, the enforcement moves ([#2273](https://github.com/0xPlaygrounds/rig/pull/2273)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2273
+- Tool identity holds at every boundary: legacy lift, honest constructors, and the drains the siblings already had (2262 round-7 follow-up) ([#2267](https://github.com/0xPlaygrounds/rig/pull/2267)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2267
+- Stream parts become entities: lifecycle grammar, opaque keys, and tool names as data (the 84a43e9e C→B→A program) ([#2262](https://github.com/0xPlaygrounds/rig/pull/2262)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2262
+- Normalize completion responses at the provider boundary and erase the model type at agent construction ([#2257](https://github.com/0xPlaygrounds/rig/pull/2257)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2257
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Changed
+
+- *(completion)* [**behavior**] an empty converted response choice is rejected as `CompletionError::ResponseError` with rig-core's shared empty-response wording (via `message::require_non_empty_response`) — previously `ProviderError("No text or tool call content found in response")`
+
+- *(completion)* message and tool-result content conversions follow rig-core's message-content change from `OneOrMany<T>` to `Vec<T>`; wire payloads are unchanged
+
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.40.0...rig-vertexai-v0.41.0) - 2026-07-28
+
+### Added
+
+- [**breaking**] split rig-core and rig-agent behind the rig facade ([#2197](https://github.com/0xPlaygrounds/rig/pull/2197)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2197
+- *(telemetry)* make sensitive span content opt-in ([#2151](https://github.com/0xPlaygrounds/rig/pull/2151)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- Simplify tool execution and hook APIs ([#2132](https://github.com/0xPlaygrounds/rig/pull/2132)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2132
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.39.0...rig-vertexai-v0.40.0) - 2026-07-10
+
+### Added
+
+- *(rig-core)* [**breaking**] broaden provider error-response inspection workspace-wide ([#1944](https://github.com/0xPlaygrounds/rig/pull/1944)) (by @gold-silver-copper)
+
+### Fixed
+
+- *(vertexai)* map generation config and preserve image history ([#2086](https://github.com/0xPlaygrounds/rig/pull/2086)) (by @gold-silver-copper)
+- *(vertexai)* preserve signed thought text parts ([#2052](https://github.com/0xPlaygrounds/rig/pull/2052)) (by @gold-silver-copper)
+
+### Other
+
+- Flatten Tool metadata API ([#2029](https://github.com/0xPlaygrounds/rig/pull/2029)) (by @gold-silver-copper) - #2029
+
+### Contributors
+
+* @gold-silver-copper
+## [0.39.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.38.2...rig-vertexai-v0.39.0) - 2026-06-19
+
+### Added
+
+- *(agent)* [**breaking**] sans-IO AgentRun state machine; both agent loops become thin drivers ([#1899](https://github.com/0xPlaygrounds/rig/pull/1899)) (by @gold-silver-copper)
+
+### Contributors
+
+* @gold-silver-copper
+## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.7...rig-vertexai-v0.38.1) - 2026-06-02
+
+### Other
+
+- unify workspace crate versions ([#1853](https://github.com/0xPlaygrounds/rig/pull/1853)) (by @gold-silver-copper) - #1853
+
+### Contributors
+
+* @gold-silver-copper
+## [0.3.7](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.6...rig-vertexai-v0.3.7) - 2026-06-02
+
+### Added
+
+- *(gemini)* expose streaming response metadata ([#1790](https://github.com/0xPlaygrounds/rig/pull/1790)) (by @mateobelanger)
+- *(anthropic)* support document citations ([#1778](https://github.com/0xPlaygrounds/rig/pull/1778)) (by @temrjan)
+
+### Contributors
+
+* @mateobelanger
+* @temrjan
+## [0.3.6](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.5...rig-vertexai-v0.3.6) - 2026-05-13
+
+### Fixed
+
+- *(gemini)* Token usage correctness for posthog llm analytics ([#1761](https://github.com/0xPlaygrounds/rig/pull/1761)) (by @mateobelanger)
+
+### Other
+
+- AGENTS.MD, CONTRIBUTING.MD, and docs ([#1714](https://github.com/0xPlaygrounds/rig/pull/1714)) (by @gold-silver-copper) - #1714
+- improve project organization and create rig crate ([#1699](https://github.com/0xPlaygrounds/rig/pull/1699)) (by @gold-silver-copper) - #1699
+
+### Contributors
+
+* @mateobelanger
+* @gold-silver-copper
+## [0.3.5](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.4...rig-vertexai-v0.3.5) - 2026-04-28
+
+### Other
+
+- Add clippy no panic lints ([#1663](https://github.com/0xPlaygrounds/rig/pull/1663)) (by @gold-silver-copper) - #1663
+
+### Contributors
+
+* @gold-silver-copper
+## [0.3.4](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.3...rig-vertexai-v0.3.4) - 2026-04-12
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.3.3](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.2...rig-vertexai-v0.3.3) - 2026-03-29
+
+### Other
+
+- OTel GenAI semconv fix +  anthropic automatic prompt caching  ([#1572](https://github.com/0xPlaygrounds/rig/pull/1572))
+
+## [0.3.2](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.1...rig-vertexai-v0.3.2) - 2026-03-17
+
+### Other
+
+- Change preamble to system message internally ([#1527](https://github.com/0xPlaygrounds/rig/pull/1527))
+
+
+## [0.3.1](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.3.0...rig-vertexai-v0.3.1) - 2026-03-05
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.6](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.5...rig-vertexai-v0.2.6) - 2026-02-17
+
+### Added
+
+- cross-provider reasoning trace roundtrip ([#1396](https://github.com/0xPlaygrounds/rig/pull/1396))
+- *(rig-1189)* structured outputs ([#1382](https://github.com/0xPlaygrounds/rig/pull/1382))
+- *(rig-core)* add optional model override to CompletionRequest ([#1374](https://github.com/0xPlaygrounds/rig/pull/1374))
+
+## [0.2.5](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.4...rig-vertexai-v0.2.5) - 2026-02-03
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.4](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.3...rig-vertexai-v0.2.4) - 2026-01-20
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.3](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.2...rig-vertexai-v0.2.3) - 2026-01-06
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.2](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.1...rig-vertexai-v0.2.2) - 2025-12-15
+
+### Other
+
+- ToolCall Signature and additional parameters ([#1154](https://github.com/0xPlaygrounds/rig/pull/1154))
+- *(rig-1090)* crate re-org ([#1145](https://github.com/0xPlaygrounds/rig/pull/1145))
+
+## [0.2.1](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.2.0...rig-vertexai-v0.2.1) - 2025-12-04
+
+### Other
+
+- updated the following local packages: rig-core
+
+## [0.2.0](https://github.com/0xPlaygrounds/rig/compare/rig-vertexai-v0.1.0...rig-vertexai-v0.2.0) - 2025-12-01
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))

@@ -1,0 +1,30 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Return only this JSON object and do not call tools: {\"total\":42}","role":"user"}],"model":"mistral-small-latest","response_format":{"type":"json_object"},"stream":true,"tool_choice":"auto","tools":[{"function":{"description":"Add two integers","name":"add","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"{\""},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcde"}
+
+    data: {"choices":[{"delta":{"content":"total\": 4"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnop"}
+
+    data: {"choices":[{"delta":{"content":"2}"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstu"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{\"x\": 20, \"y\": 22}","name":"add"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz0123456789","usage":{"completion_tokens":25,"prompt_tokens":88,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":113}}
+
+    data: [DONE]
+

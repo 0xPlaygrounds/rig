@@ -1,0 +1,16 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":32,"messages":[{"content":[{"text":"Remember the code word cobalt-orchid for my next question.","type":"text"}],"role":"user"},{"citations":[],"content":[{"text":"Understood. I will remember the code word cobalt-orchid.","type":"text"}],"role":"assistant","tool_calls":[],"tool_plan":null},{"content":[{"text":"What code word did I ask you to remember?","type":"text"}],"role":"user"}],"model":"command-a-03-2025"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"COMPLETE","id":"7901ad1a-930c-4097-a0aa-841c10671104","message":{"content":[{"text":"The code word you asked me to remember is **cobalt-orchid**.","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":37,"output_tokens":16},"cached_tokens":448,"tokens":{"input_tokens":540,"output_tokens":20}}}'

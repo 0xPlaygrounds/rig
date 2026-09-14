@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"You must call the code execution tool twice as two separate executions. Execution 1: run only print(6 * 7). Then, after seeing that number, Execution 2: run only print(6 * 7 + 100). Never combine them. Finally reply with exactly: résultats ✅ <first> et <second>.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"executableCode\":{\"code\":\"print(6 * 7)\\n\",\"language\":\"PYTHON\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":7,\"promptTokenCount\":70,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":70}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":83,\"totalTokenCount\":160}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"codeExecutionResult\":{\"outcome\":\"OUTCOME_OK\",\"output\":\"42\\n\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":7,\"promptTokenCount\":70,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":70}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":83,\"totalTokenCount\":160}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"executableCode\":{\"code\":\"print(6 * 7 + 100)\\n\",\"language\":\"PYTHON\"}}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":70,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":70}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":128,\"toolUsePromptTokenCount\":164,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":164}],\"totalTokenCount\":381}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"codeExecutionResult\":{\"outcome\":\"OUTCOME_OK\",\"output\":\"142\\n\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":19,\"promptTokenCount\":70,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":70}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":128,\"toolUsePromptTokenCount\":164,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":164}],\"totalTokenCount\":381}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"résultats ✅ 42 et 142.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":31,\"promptTokenCount\":70,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":70}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":175,\"toolUsePromptTokenCount\":390,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":390}],\"totalTokenCount\":666}}\r\n\r\n"

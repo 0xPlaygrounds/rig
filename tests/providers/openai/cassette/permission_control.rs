@@ -1,0 +1,270 @@
+use anyhow::Result;
+use rig::agent::{
+    AgentHook, DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent, stream_to_stdout,
+};
+use rig::prelude::*;
+use rig::providers;
+use rig::tool::Tool;
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use super::super::support::with_openai_cassette_result;
+use crate::support::assert_nonempty_response;
+
+const TEST_CONTENT: &str = "hello world\n";
+
+struct FileCleanup {
+    path: PathBuf,
+}
+
+impl FileCleanup {
+    fn new(test_name: &str) -> Result<Self> {
+        let path = std::env::temp_dir().join(format!(
+            "rig-openai-permission-{test_name}-{}.txt",
+            std::process::id()
+        ));
+        std::fs::write(&path, TEST_CONTENT)?;
+        Ok(Self { path })
+    }
+
+    fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for FileCleanup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+#[derive(Deserialize)]
+struct ReadFileArgs {}
+
+#[derive(Debug, thiserror::Error)]
+#[error("File operation error")]
+struct FileError;
+
+#[derive(Deserialize, Serialize)]
+struct ReadFileHead {
+    path: PathBuf,
+}
+
+impl Tool for ReadFileHead {
+    const NAME: &'static str = "read_file_head";
+    type Error = FileError;
+    type Args = ReadFileArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Read the first line of test.txt using the head command".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        let output = std::process::Command::new("head")
+            .arg("-1")
+            .arg(&self.path)
+            .output()
+            .map_err(|_| FileError)?;
+        if !output.status.success() {
+            return Err(FileError);
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+struct ReadFileTail {
+    path: PathBuf,
+}
+
+impl Tool for ReadFileTail {
+    const NAME: &'static str = "read_file_tail";
+    type Error = FileError;
+    type Args = ReadFileArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Read the last line of test.txt using the tail command".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {},
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        _args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        let output = std::process::Command::new("tail")
+            .arg("-1")
+            .arg(&self.path)
+            .output()
+            .map_err(|_| FileError)?;
+        if !output.status.success() {
+            return Err(FileError);
+        }
+
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    }
+}
+
+#[derive(Clone)]
+struct PermissionHook {
+    call_count: Arc<AtomicUsize>,
+    last_result: Arc<Mutex<Option<String>>>,
+}
+
+impl AgentHook for PermissionHook {
+    async fn on_dispatch(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: DispatchEvent<'_>,
+    ) -> DispatchAction {
+        let Some(tool_name) = event.tool_name() else {
+            return DispatchAction::proceed();
+        };
+        let count = self.call_count.fetch_add(1, Ordering::SeqCst);
+        if count == 0 {
+            DispatchAction::skip(format!(
+                "Tool '{tool_name}' is currently unavailable. Please use 'read_file_tail' instead to read the file."
+            ))
+        } else {
+            DispatchAction::proceed()
+        }
+    }
+
+    async fn on_outcome(
+        &self,
+        _ctx: &rig::agent::HookContext,
+        event: OutcomeEvent<'_>,
+    ) -> OutcomeAction {
+        let Some(result) = event.tool_result() else {
+            return OutcomeAction::proceed();
+        };
+        let normalized = result.output().render();
+        *self.last_result.lock().expect("lock last_result") = Some(normalized);
+        OutcomeAction::proceed()
+    }
+}
+
+#[tokio::test]
+async fn permission_control_prompt_example() -> Result<()> {
+    with_openai_cassette_result(
+        "permission_control/permission_control_prompt_example",
+        |client| async move {
+            let cleanup = FileCleanup::new("blocking")?;
+
+            let agent = client
+                .agent(providers::openai::GPT_4O_MINI)
+                .preamble(
+                    "You are a helpful assistant that can read files using different methods.",
+                )
+                .tool(ReadFileHead {
+                    path: cleanup.path().to_path_buf(),
+                })
+                .tool(ReadFileTail {
+                    path: cleanup.path().to_path_buf(),
+                })
+                .build();
+
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let last_result = Arc::new(Mutex::new(None));
+            let hook = PermissionHook {
+                call_count: call_count.clone(),
+                last_result: last_result.clone(),
+            };
+
+            let _response = agent
+                .prompt(
+                    "Use the available tools to read test.txt now. \
+                 Do not ask any follow-up questions; just read the file and report its content.",
+                )
+                .max_turns(5)
+                .add_hook(hook)
+                .await?;
+
+            let last = last_result.lock().expect("lock last_result").clone();
+            anyhow::ensure!(last.as_deref() == Some("hello world"));
+            anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
+            Ok(())
+        },
+    )
+    .await
+}
+
+#[tokio::test]
+async fn permission_control_streaming_example() -> Result<()> {
+    with_openai_cassette_result(
+        "permission_control/permission_control_streaming_example",
+        |client| async move {
+            let cleanup = FileCleanup::new("streaming")?;
+
+            let agent = client
+                .agent(providers::openai::GPT_4O_MINI)
+                .preamble(
+                    "You are a helpful assistant that can read files using different methods.",
+                )
+                .tool(ReadFileHead {
+                    path: cleanup.path().to_path_buf(),
+                })
+                .tool(ReadFileTail {
+                    path: cleanup.path().to_path_buf(),
+                })
+                .build();
+
+            let call_count = Arc::new(AtomicUsize::new(0));
+            let last_result = Arc::new(Mutex::new(None));
+            let hook = PermissionHook {
+                call_count: call_count.clone(),
+                last_result: last_result.clone(),
+            };
+
+            let mut stream = agent
+                .prompt(
+                    "Use the available tools to read test.txt now. \
+                 Do not ask any follow-up questions; just read the file and report its content.",
+                )
+                .max_turns(5)
+                .add_hook(hook)
+                .stream();
+
+            let final_response = stream_to_stdout(&mut stream).await?;
+            let last = last_result.lock().expect("lock last_result").clone();
+            assert_nonempty_response(final_response.output());
+            anyhow::ensure!(
+                final_response
+                    .output()
+                    .to_ascii_lowercase()
+                    .contains("hello world"),
+                "expected the streamed final response to mention the file content, got {:?}",
+                final_response.output()
+            );
+            anyhow::ensure!(last.as_deref() == Some("hello world"));
+            anyhow::ensure!(call_count.load(Ordering::SeqCst) == 2);
+
+            Ok(())
+        },
+    )
+    .await
+}

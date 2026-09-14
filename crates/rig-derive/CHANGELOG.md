@@ -1,0 +1,210 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.41.0...rig-derive-v0.42.0) - 2026-08-16
+
+### Other
+
+- workspace-wide LOC consolidation pass 6 (net −3,424 lines) ([#2308](https://github.com/0xPlaygrounds/rig/pull/2308)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2308
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+## [0.41.0](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.40.0...rig-derive-v0.41.0) - 2026-07-28
+
+### Added
+
+- [**breaking**] split rig-core and rig-agent behind the rig facade ([#2197](https://github.com/0xPlaygrounds/rig/pull/2197)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2197
+
+### Other
+
+- *(derive)* [**breaking**] single resolution authority, coherent required semantics, dependency hygiene ([#2207](https://github.com/0xPlaygrounds/rig/pull/2207)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(client)* [**breaking**] single canonical CompletionClient + AgentClientExt ([#2205](https://github.com/0xPlaygrounds/rig/pull/2205)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- Simplify tool execution and hook APIs ([#2132](https://github.com/0xPlaygrounds/rig/pull/2132)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2132
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+
+### Changed
+
+- *(rig-derive)* [**breaking**] `#[rig_tool]` required-ness is derived from the
+  parameter types so the advertised schema and the deserializer always agree:
+  without `required(...)`, `Option<T>` parameters are optional (previously
+  advertised as required); with `required(...)`, omitted parameters get
+  `#[serde(default)]` (their types must be `Option<T>` or `Default`). Names in
+  `params(...)`/`required(...)` must match actual parameters, and malformed or
+  duplicate attribute entries are compile errors instead of silently ignored.
+  Listing an `Option<T>` parameter in `required(...)` is a compile error
+  (schemars and serde would both silently ignore the directive), and a
+  wildcard context binding (`#[rig(context)] _: &mut ToolContext`) is now
+  rejected — name it `_context` instead.
+- *(rig-derive)* Crate-name resolution and context classification share one
+  authority: fully qualified `&mut ToolContext` paths are recognized under
+  renamed `rig`/`rig-agent` dependencies without `#[rig(context)]`, and a
+  contextual tool without a reachable runtime crate gets a targeted
+  diagnostic. Generated code resolves `serde`/`serde_json`/`schemars` through
+  `rig-core`'s re-exports (no direct downstream dependency needed), the
+  `Embed` derive emits fully qualified impls (no `Embed` import needed at the
+  call site), and `parameters()` builds its schema once via `LazyLock` with no
+  generated `expect`. A field carrying both `#[embed]` and
+  `#[embed(embed_with = "...")]` is now a compile error instead of being
+  embedded twice, and a field carrying more than one
+  `#[embed(embed_with = "...")]` attribute is a compile error instead of the
+  first silently winning.
+
+- *(rig-derive)* [**breaking**] generated `#[rig_tool]` implementations preserve the function's `Result<T, E>` error as `Tool::Error` until erased dispatch normalizes it. Context-free functions implement the portable `Tool::call` API; functions with one `&mut ToolContext` parameter implement the contextual classic API. The context parameter may appear in any position; fully qualified `rig::agent::tool::ToolContext` / `rig_agent::tool::ToolContext` paths are recognized directly, while imported names and aliases use `#[rig(context)]`. The macro forwards runtime context and excludes that parameter from the generated arguments and JSON Schema without confusing unrelated application types also named `ToolContext`.
+
+## [0.40.0](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.39.0...rig-derive-v0.40.0) - 2026-07-10
+
+### Other
+
+- Remove unused derive and core APIs ([#2087](https://github.com/0xPlaygrounds/rig/pull/2087)) (by @gold-silver-copper) - #2087
+- Flatten Tool metadata API ([#2029](https://github.com/0xPlaygrounds/rig/pull/2029)) (by @gold-silver-copper) - #2029
+
+### Contributors
+
+* @gold-silver-copper
+
+### Changed
+
+- *(rig-derive)* [**breaking**] generated `#[rig_tool]` implementations now target the flattened `Tool` API by emitting `description()` and `parameters()` instead of `definition(prompt)`.
+
+### Removed
+
+- *(rig-derive)* [**breaking**] remove the unused public `ProviderClient` derive macro and its `deluxe` dependency; `Embed` and `rig_tool` are unchanged.
+
+## [0.38.2](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.38.1...rig-derive-v0.38.2) - 2026-06-09
+
+### Other
+
+- update Cargo.toml dependencies
+## [0.38.1](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.15...rig-derive-v0.38.1) - 2026-06-02
+
+### Other
+
+- unify workspace crate versions ([#1853](https://github.com/0xPlaygrounds/rig/pull/1853)) (by @gold-silver-copper) - #1853
+
+### Contributors
+
+* @gold-silver-copper
+## [0.1.15](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.14...rig-derive-v0.1.15) - 2026-06-02
+
+### Added
+
+- *(rig-derive)* replace hand-rolled schema with schemars in #[rig_tool] ([#1576](https://github.com/0xPlaygrounds/rig/pull/1576)) (by @tomasz-feliksik)
+
+### Contributors
+
+* @tomasz-feliksik
+## [0.1.14](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.13...rig-derive-v0.1.14) - 2026-05-13
+
+### Other
+
+- improve project organization and create rig crate ([#1699](https://github.com/0xPlaygrounds/rig/pull/1699)) (by @gold-silver-copper) - #1699
+
+### Contributors
+
+* @gold-silver-copper
+## [0.1.13](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.12...rig-derive-v0.1.13) - 2026-04-28
+
+### Added
+
+- *(rig-derive)* support custom tool names ([#1619](https://github.com/0xPlaygrounds/rig/pull/1619)) ([#1620](https://github.com/0xPlaygrounds/rig/pull/1620)) (by @qaqland)
+
+### Other
+
+- Add clippy no panic lints ([#1663](https://github.com/0xPlaygrounds/rig/pull/1663)) (by @gold-silver-copper) - #1663
+
+### Contributors
+
+* @gold-silver-copper
+* @qaqland
+
+## [0.1.12](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.11...rig-derive-v0.1.12) - 2026-03-29
+
+### Fixed
+
+- *(rig-derive)* propagate function visibility to generated tool structs ([#1570](https://github.com/0xPlaygrounds/rig/pull/1570))
+
+
+## [0.1.11](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.10...rig-derive-v0.1.11) - 2026-03-05
+
+### Other
+
+- update Cargo.toml dependencies
+
+## [0.1.10](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.9...rig-derive-v0.1.10) - 2025-12-15
+
+### Other
+
+- *(rig-1090)* crate re-org ([#1145](https://github.com/0xPlaygrounds/rig/pull/1145))
+
+## [0.1.9](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.8...rig-derive-v0.1.9) - 2025-12-01
+
+### Added
+
+- *(rig-985)* Consolidate provider clients ([#1050](https://github.com/0xPlaygrounds/rig/pull/1050))
+
+### Fixed
+
+- *(rig-1050)* Inconsistent model/agent initialisation methods ([#1069](https://github.com/0xPlaygrounds/rig/pull/1069))
+
+## [0.1.8](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.7...rig-derive-v0.1.8) - 2025-11-10
+
+### Fixed
+
+- *(rig-1027)* allow any error type to be used for rig tool macro ([#1017](https://github.com/0xPlaygrounds/rig/pull/1017))
+
+## [0.1.7](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.6...rig-derive-v0.1.7) - 2025-10-27
+
+### Added
+
+- *(rig-996)* generic streaming ([#955](https://github.com/0xPlaygrounds/rig/pull/955))
+
+## [0.1.6](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.5...rig-derive-v0.1.6) - 2025-09-02
+
+### Other
+
+- *(rig-913)* add feature gated items to docs ([#764](https://github.com/0xPlaygrounds/rig/pull/764))
+
+## [0.1.5](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.4...rig-derive-v0.1.5) - 2025-08-19
+
+### Other
+
+- *(rig-862)* remove sync bound from fn call() in tool trait ([#678](https://github.com/0xPlaygrounds/rig/pull/678))
+
+## [0.1.4](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.3...rig-derive-v0.1.4) - 2025-07-07
+
+### Added
+
+- *(rig-780)* integrate openAI responses API ([#508](https://github.com/0xPlaygrounds/rig/pull/508))
+
+### Other
+
+- Migrate all crates to Rust 2024 ([#539](https://github.com/0xPlaygrounds/rig/pull/539))
+- Declare shared dependencies in workspace ([#538](https://github.com/0xPlaygrounds/rig/pull/538))
+- Make clippy happy on all targets ([#542](https://github.com/0xPlaygrounds/rig/pull/542))
+
+## [0.1.3](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.2...rig-derive-v0.1.3) - 2025-06-09
+
+### Other
+
+- Introduce Client Traits and Testing ([#440](https://github.com/0xPlaygrounds/rig/pull/440))
+
+## [0.1.2](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.1...rig-derive-v0.1.2) - 2025-04-29
+
+### Fixed
+
+- rig tool macro struct not public ([#409](https://github.com/0xPlaygrounds/rig/pull/409))
+
+## [0.1.1](https://github.com/0xPlaygrounds/rig/compare/rig-derive-v0.1.0...rig-derive-v0.1.1) - 2025-04-12
+
+### Added
+
+- Add `rig_tool` macro ([#353](https://github.com/0xPlaygrounds/rig/pull/353))

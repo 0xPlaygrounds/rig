@@ -1,0 +1,33 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"ping","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tool_choice":"required","tools":[{"function":{"description":"Ping.","name":"ping","parameters":{"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/octet-stream
+  body: '{"error":{"code":"invalid_request_error","message":"Thinking mode does not support this tool_choice","param":null,"type":"invalid_request_error"}}'
+---
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":16,"messages":[{"content":"ping","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tool_choice":{"function":{"name":"ping"},"type":"function"},"tools":[{"function":{"description":"Ping.","name":"ping","parameters":{"properties":{},"type":"object"}},"type":"function"}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/octet-stream
+  body: '{"error":{"code":"invalid_request_error","message":"Thinking mode does not support this tool_choice","param":null,"type":"invalid_request_error"}}'

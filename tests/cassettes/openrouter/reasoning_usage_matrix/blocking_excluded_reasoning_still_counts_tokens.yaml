@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":2000,"messages":[{"content":"A farmer has 17 sheep; all but 9 run away. He then buys 3 times as many as remain, sells 5, and splits the rest evenly among 4 pens. How many sheep per pen? Answer with the number only.","role":"user"}],"model":"openai/o4-mini","provider":{"allow_fallbacks":false,"order":["OpenAI"]},"reasoning":{"effort":"medium","exclude":true}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"7.75","reasoning_details":[{"data":"encrypted_reasoning_REDACTED_1","format":"openai-responses-v1","id":"rs_REDACTED_1","index":0,"type":"reasoning.encrypted"}],"refusal":null,"role":"assistant"},"native_finish_reason":"completed"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/o4-mini","object":"chat.completion","provider":"OpenAI","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":1588,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":1536},"cost":0.0070499,"cost_details":{"upstream_inference_completions_cost":0.0069872,"upstream_inference_cost":0.0070499,"upstream_inference_prompt_cost":0.0000627},"is_byok":false,"prompt_tokens":57,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":1645}}'

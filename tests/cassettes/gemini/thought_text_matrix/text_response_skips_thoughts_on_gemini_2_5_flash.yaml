@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Work out how many minutes are in three and a half days, then answer with only the number.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**Calculating Total Minutes in Three and a Half Days**\n\nOkay, so the user wants to know the total minutes in \"three and a half days.\" Piece of cake. Let me think this through systematically. I need to break this down into manageable steps. First, I’ll determine the number of hours in a day, which is a standard 24. Then, I need to know how many minutes are in an hour, which is 60.\n\nNow, let''s calculate the minutes in a single day: 24 hours multiplied by 60 minutes per hour equals 1440 minutes in a day. Got it.\n\nNext, I''ll calculate the total minutes for three full days. That''s simply 3 days multiplied by the 1440 minutes per day, which equals 4320 minutes.\n\nThen I need to account for the half-day. Half a day is 0.5 multiplied by the minutes in a full day, or 0.5 times 1440 minutes, which is 720 minutes.\n\nFinally, I need to sum these components: the 4320 minutes from the three full days and the 720 minutes from the half day. The total comes to 5040 minutes.\n","thought":true},{"text":"5040"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":5,"promptTokenCount":21,"promptTokensDetails":[{"modality":"TEXT","tokenCount":21}],"serviceTier":"standard","thoughtsTokenCount":310,"totalTokenCount":336}}'

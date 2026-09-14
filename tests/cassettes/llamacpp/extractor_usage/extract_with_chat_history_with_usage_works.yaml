@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.\n                \n\n=============== ADDITIONAL INSTRUCTIONS ===============\nExtract every field explicitly stated in the input text.\nDo not omit keys when the value is present in the text.\nReturn the exact stated values through the submit tool.","type":"text"}],"role":"system"},{"content":"I''m looking at a property that might be interesting.","role":"user"},{"content":"The address is 123 Main St in Springfield, IL 62701.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","temperature":0.0,"tool_choice":"required","tools":[{"function":{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"city":{"type":"string"},"state":{"type":"string"},"street":{"type":"string"},"zip_code":{"type":"string"}},"required":["street","city","state","zip_code"],"title":"Address","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, let''s see. The user mentioned the address is 123 Main St in Springfield, IL 62701. I need to extract the street, city, state, and zip code from this.\n\nFirst, the street is clearly \"123 Main St\". The city is \"Springfield\". The state is \"IL\" because it''s abbreviated. The zip code is \"62701\". \n\nI should check if all the required fields are present. The submit function needs street, city, state, and zip_code. All are here. No missing fields. So I can call the submit function with these values.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"street\": \"123 Main St\", \"city\": \"Springfield\", \"state\": \"IL\", \"zip_code\": \"62701\"}","name":"submit"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":325,"predicted_ms":1542.456,"predicted_n":184,"predicted_per_second":118.64195802019637,"predicted_per_token_ms":8.428721311475408,"prompt_ms":44.715,"prompt_n":41,"prompt_per_second":916.9182600916919,"prompt_per_token_ms":1.0906097560975612},"usage":{"completion_tokens":184,"prompt_tokens":366,"prompt_tokens_details":{"cached_tokens":325},"total_tokens":550}}'

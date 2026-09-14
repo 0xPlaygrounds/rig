@@ -1,0 +1,5 @@
+error: unsupported top-level #[rig_tool] argument `nam`
+ --> tests/ui/custom_name/fail_unknown_top_level_argument.rs:5:12
+  |
+5 | #[rig_tool(nam = "search-docs")]
+  |            ^^^

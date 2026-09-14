@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Record a linked node with value = first and next = null.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"any"},"tools":[{"description":"Exercise a schema the strict compiler rejects.","input_schema":{"$defs":{"Node":{"additionalProperties":false,"properties":{"next":{"anyOf":[{"$ref":"#/$defs/Node"},{"type":"null"}]},"value":{"type":"string"}},"required":["value","next"],"type":"object"}},"additionalProperties":false,"properties":{"next":{"anyOf":[{"$ref":"#/$defs/Node"},{"type":"null"}]},"value":{"type":"string"}},"required":["value","next"],"type":"object"},"name":"record_linked_node","strict":true}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"tools.0.custom: Invalid schema: Circular reference detected in schema definitions: Node -> Node. Self-referencing or mutually-referencing definitions are not supported.","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'

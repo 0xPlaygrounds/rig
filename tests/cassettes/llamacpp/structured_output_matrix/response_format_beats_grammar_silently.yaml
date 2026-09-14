@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"grammar":"root ::= \"yes\" | \"no\"","max_tokens":256,"messages":[{"content":"/no_think Give a fact about Paris, France.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","response_format":{"json_schema":{"name":"CityFact","schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"city":{"type":"string"},"country":{"type":"string"},"population_millions":{"format":"double","type":"number"}},"required":["city","country","population_millions"],"title":"CityFact","type":"object"},"strict":true},"type":"json_schema"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"{\"city\": \"Paris\", \"country\": \"France\", \"population_millions\": 2.14}","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":18,"predicted_ms":820.659,"predicted_n":38,"predicted_per_second":45.085717697606434,"predicted_per_token_ms":22.179972972972973,"prompt_ms":17.243,"prompt_n":1,"prompt_per_second":57.994548512439835,"prompt_per_token_ms":17.243},"usage":{"completion_tokens":38,"prompt_tokens":19,"prompt_tokens_details":{"cached_tokens":18},"total_tokens":57}}'

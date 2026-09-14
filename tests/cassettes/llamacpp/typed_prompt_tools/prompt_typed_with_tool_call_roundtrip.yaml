@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. The only valid tool name is `weather`; never invent or call any other tool. After receiving the weather tool result, do not call any more tools. Then respond with ONLY minified JSON matching exactly this schema: {\"city\": string, \"weather\": string}. The `city` field is required and must contain the requested city exactly. The `weather` field is required and must contain the tool result verbatim. For the prompt asking about London, a valid final answer looks like: {\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}. DO NOT wrap the JSON in markdown or add explanatory text.","type":"text"}],"role":"system"},{"content":"Hello, whats the weather in London?","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tools":[{"function":{"description":"Get the current weather for a city","name":"weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"<tool_call>\n{\"name\": \"weather\", \"arguments\": {\"city\": \"London\"}}\n</tool_call>\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\": \"London\"}","name":"weather"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":308,"predicted_ms":329.025,"predicted_n":42,"predicted_per_second":124.61059190031155,"predicted_per_token_ms":8.024999999999999,"prompt_ms":9.165,"prompt_n":1,"prompt_per_second":109.11074740861976,"prompt_per_token_ms":9.165},"usage":{"completion_tokens":42,"prompt_tokens":309,"prompt_tokens_details":{"cached_tokens":308},"total_tokens":351}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a helpful assistant. When asked about weather, call the `weather` tool exactly once with the requested city. The only valid tool name is `weather`; never invent or call any other tool. After receiving the weather tool result, do not call any more tools. Then respond with ONLY minified JSON matching exactly this schema: {\"city\": string, \"weather\": string}. The `city` field is required and must contain the requested city exactly. The `weather` field is required and must contain the tool result verbatim. For the prompt asking about London, a valid final answer looks like: {\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}. DO NOT wrap the JSON in markdown or add explanatory text.","type":"text"}],"role":"system"},{"content":"Hello, whats the weather in London?","role":"user"},{"reasoning_content":"<tool_call>\n{\"name\": \"weather\", \"arguments\": {\"city\": \"London\"}}\n</tool_call>\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"London\"}","name":"weather"},"id":"call_REDACTED_1","type":"function"}]},{"content":"The weather in London is all fire and brimstone","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen3-1.7B-Q4_K_M","response_format":{"json_schema":{"name":"WeatherResponse","schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"city":{"type":"string"},"weather":{"type":"string"}},"required":["city","weather"],"title":"WeatherResponse","type":"object"},"strict":true},"type":"json_schema"},"tools":[{"function":{"description":"Get the current weather for a city","name":"weather","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"{\"city\":\"London\",\"weather\":\"The weather in London is all fire and brimstone\"}","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":350,"predicted_ms":186.328,"predicted_n":24,"predicted_per_second":123.43823794598772,"predicted_per_token_ms":8.101217391304347,"prompt_ms":42.652,"prompt_n":25,"prompt_per_second":586.1389852761887,"prompt_per_token_ms":1.70608},"usage":{"completion_tokens":24,"prompt_tokens":375,"prompt_tokens_details":{"cached_tokens":350},"total_tokens":399}}'

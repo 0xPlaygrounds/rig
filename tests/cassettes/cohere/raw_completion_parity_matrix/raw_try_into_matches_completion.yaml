@@ -1,0 +1,33 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":16,"messages":[{"content":[{"text":"Reply with exactly this one word and nothing else: parity","type":"text"}],"role":"user"}],"model":"command-a-03-2025","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"COMPLETE","id":"8bb4dfb3-3fba-4715-a2f7-a6dd2879b37f","message":{"content":[{"text":"parity","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":11,"output_tokens":1},"cached_tokens":464,"tokens":{"input_tokens":506,"output_tokens":4}}}'
+---
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":16,"messages":[{"content":[{"text":"Reply with exactly this one word and nothing else: parity","type":"text"}],"role":"user"}],"model":"command-a-03-2025","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"COMPLETE","id":"920e3184-abd9-4eee-86b1-e235b99d60bc","message":{"content":[{"text":"parity","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":11,"output_tokens":1},"cached_tokens":464,"tokens":{"input_tokens":506,"output_tokens":4}}}'

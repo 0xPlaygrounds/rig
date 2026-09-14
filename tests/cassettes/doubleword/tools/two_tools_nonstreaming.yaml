@@ -1,0 +1,50 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the add and multiply tools for arithmetic; never compute by hand.","type":"text"}],"role":"system"},{"content":"Compute (4 + 6) * 2. First call the add tool, then call the multiply tool on the result. Tell me the final number.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"},{"function":{"description":"Multiply two integers a and b.","name":"multiply","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user wants me to compute (4 + 6) * 2. They''ve specifically instructed me to:\n1. First call the add tool with 4 and 6\n2. Then call the multiply tool on the result with 2\n3. Tell them the final number\n\nLet me start with the add tool first.","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to compute (4 + 6) * 2. They''ve specifically instructed me to:\n1. First call the add tool with 4 and 6\n2. Then call the multiply tool on the result with 2\n3. Tell them the final number\n\nLet me start with the add tool first.","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\": 4, \"b\": 6}","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":108,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":69},"prompt_tokens":491,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":599}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the add and multiply tools for arithmetic; never compute by hand.","type":"text"}],"role":"system"},{"content":"Compute (4 + 6) * 2. First call the add tool, then call the multiply tool on the result. Tell me the final number.","role":"user"},{"reasoning_content":"The user wants me to compute (4 + 6) * 2. They''ve specifically instructed me to:\n1. First call the add tool with 4 and 6\n2. Then call the multiply tool on the result with 2\n3. Tell them the final number\n\nLet me start with the add tool first.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\":4,\"b\":6}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"10","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"},{"function":{"description":"Multiply two integers a and b.","name":"multiply","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"Good, the add tool returned 10. Now I need to multiply this result by 2.","reasoning_details":[{"format":"unknown","index":0,"text":"Good, the add tool returned 10. Now I need to multiply this result by 2.","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\": 10, \"b\": 2}","name":"multiply"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":62,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":21},"prompt_tokens":615,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":677}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the add and multiply tools for arithmetic; never compute by hand.","type":"text"}],"role":"system"},{"content":"Compute (4 + 6) * 2. First call the add tool, then call the multiply tool on the result. Tell me the final number.","role":"user"},{"reasoning_content":"The user wants me to compute (4 + 6) * 2. They''ve specifically instructed me to:\n1. First call the add tool with 4 and 6\n2. Then call the multiply tool on the result with 2\n3. Tell them the final number\n\nLet me start with the add tool first.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\":4,\"b\":6}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"10","role":"tool","tool_call_id":"call_REDACTED_1"},{"reasoning_content":"Good, the add tool returned 10. Now I need to multiply this result by 2.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\":10,\"b\":2}","name":"multiply"},"id":"call_REDACTED_2","type":"function"}]},{"content":"20","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"},{"function":{"description":"Multiply two integers a and b.","name":"multiply","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The final number is 20.","reasoning":"Perfect! The multiply tool returned 20. So (4 + 6) * 2 = 20.","reasoning_details":[{"format":"unknown","index":0,"text":"Perfect! The multiply tool returned 20. So (4 + 6) * 2 = 20.","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_3","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":38,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":25},"prompt_tokens":693,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":731}}'

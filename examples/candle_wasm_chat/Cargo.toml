@@ -1,0 +1,36 @@
+[package]
+name = "candle_wasm_chat"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints]
+workspace = true
+
+[dependencies]
+# `agent` is required, not optional garnish: this example imports
+# `rig::agent::{Agent, AgentBuilder}` and `rig::completion::Chat`, all of which
+# live in `rig-agent` behind that feature. It was missing and the example did
+# not build standalone; a workspace `--all-features` build unified `agent` onto
+# the shared `rig` and hid it. The wasm CI lane now builds this package on its
+# own so its declared features are actually exercised.
+#
+# No wasm feature is needed anywhere: the relaxed async bounds follow from
+# targeting `wasm32-unknown-unknown`.
+rig = { path = "../..", default-features = false, features = ["agent", "candle"] }
+wasm-bindgen = { workspace = true }
+# Required despite never appearing in this crate's source: `#[wasm_bindgen]` on
+# an `async fn` expands to code referencing `wasm_bindgen_futures`. Grepping for
+# the crate name finds nothing, so it reads as dead — it is not.
+wasm-bindgen-futures = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+
+[build-dependencies]
+sha2 = { workspace = true }

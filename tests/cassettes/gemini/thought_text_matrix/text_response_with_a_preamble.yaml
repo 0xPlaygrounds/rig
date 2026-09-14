@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Work out how many minutes are in three and a half days, then answer with only the number.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a terse calculator. Answer with digits only.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**Calculating Total Minutes in 3.5 Days**\n\nOkay, so the prompt is asking for the total number of minutes in 3.5 days. Straightforward enough, I can break this down:\n\nFirst, I need to convert the days into hours. That''s a simple multiplication: 3.5 days times 24 hours per day. I can do this in steps: 3 days times 24 hours equals 72 hours, and then 0.5 days times 24 hours equals 12 hours. Adding them together, that gives me a total of 84 hours.\n\nNext, to get the total minutes, I convert hours to minutes. This involves multiplying the result from the previous calculation (84 hours) by 60 minutes per hour. So, 84 times 60. To make this easier I break the calculation down again. I multiply 84 by 6 and then multiply by 10. For 84 * 6: 80 * 6 is 480 and 4 * 6 is 24. Adding those together gets me 504. Finally, 504 * 10 is 5040. So the final answer is 5040.\n","thought":true},{"text":"5040"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":5,"promptTokenCount":33,"promptTokensDetails":[{"modality":"TEXT","tokenCount":33}],"serviceTier":"standard","thoughtsTokenCount":235,"totalTokenCount":273}}'

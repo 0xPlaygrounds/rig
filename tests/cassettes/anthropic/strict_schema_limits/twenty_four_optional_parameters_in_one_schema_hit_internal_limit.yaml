@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":64,"messages":[{"content":[{"text":"Call optional_boundary with an empty object; omit every optional field.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","tool_choice":{"type":"any"},"tools":[{"description":"Exercise the strict optional-parameter boundary.","input_schema":{"additionalProperties":false,"properties":{"optional_00":{"type":"string"},"optional_01":{"type":"string"},"optional_02":{"type":"string"},"optional_03":{"type":"string"},"optional_04":{"type":"string"},"optional_05":{"type":"string"},"optional_06":{"type":"string"},"optional_07":{"type":"string"},"optional_08":{"type":"string"},"optional_09":{"type":"string"},"optional_10":{"type":"string"},"optional_11":{"type":"string"},"optional_12":{"type":"string"},"optional_13":{"type":"string"},"optional_14":{"type":"string"},"optional_15":{"type":"string"},"optional_16":{"type":"string"},"optional_17":{"type":"string"},"optional_18":{"type":"string"},"optional_19":{"type":"string"},"optional_20":{"type":"string"},"optional_21":{"type":"string"},"optional_22":{"type":"string"},"optional_23":{"type":"string"}},"type":"object"},"name":"optional_boundary","strict":true}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"Schema is too complex for compilation. Try reducing the number of tools or simplifying tool schemas.","type":"invalid_request_error"},"request_id":"req_REDACTED_1","type":"error"}'

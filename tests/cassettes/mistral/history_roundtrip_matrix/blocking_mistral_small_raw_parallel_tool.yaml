@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":24,"messages":[{"content":"","prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"slot\":1}","name":"alpha"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{\"slot\":2}","name":"beta"},"id":"call_REDACTED_2","type":"function"}]},{"content":"red","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"blue","role":"tool","tool_call_id":"call_REDACTED_2"},{"content":"Reply with exactly the alpha and beta tool results joined by one hyphen, in call order.","role":"user"}],"model":"mistral-small-latest"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"red-blue","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":3,"prompt_tokens":59,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":62}}'

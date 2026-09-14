@@ -1,0 +1,20 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":512,"messages":[{"content":[{"citations":{"enabled":true},"source":{"type":"url","url":"https://bitcoin.org/bitcoin.pdf"},"title":"Bitcoin Whitepaper","type":"document"},{"text":"Using citations, state in one sentence what problem this paper says it solves.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_1
+  body: '{"content":[{"citations":[{"cited_text":"In\r\nthis paper, we propose a solution to the double-spending problem using a peer-to-peer distributed\r\ntimestamp server to generate computational proof of the chronological order of transactions. ","document_index":0,"document_title":"Bitcoin Whitepaper","end_page_number":2,"start_page_number":1,"type":"page_location"}],"text":"The paper proposes a solution to the double-spending problem using a peer-to-peer distributed timestamp server to generate computational proof of the chronological order of transactions.","type":"text"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":22590,"output_tokens":53,"service_tier":"standard"}}'

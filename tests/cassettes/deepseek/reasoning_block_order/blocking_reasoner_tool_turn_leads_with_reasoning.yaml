@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":640,"messages":[{"content":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","role":"system"},{"content":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"},"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user is asking about the weather in Tokyo, Japan. I need to call the get_weather tool. There''s only one city to check, so I''ll make one call.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\": \"Tokyo\"}","name":"get_weather"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":82,"completion_tokens_details":{"reasoning_tokens":37},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":76,"prompt_tokens":460,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":542}}'

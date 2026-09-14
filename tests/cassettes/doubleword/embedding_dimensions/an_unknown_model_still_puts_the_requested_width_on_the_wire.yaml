@@ -1,0 +1,16 @@
+when:
+  path: /v1/embeddings
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"dimensions":8192,"input":["width probe"],"model":"Qwen/Qwen4-Embedding-Unreleased"}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"code":"model_not_found","message":"The model `Qwen/Qwen4-Embedding-Unreleased` does not exist or you do not have access to it.","param":null,"type":"invalid_request_error"}}'

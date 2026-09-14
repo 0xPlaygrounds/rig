@@ -1,0 +1,16 @@
+when:
+  path: /api/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly the single word: pong","role":"user"}],"model":"qwen3:4b","options":{"num_predict":64},"stream":false,"think":false}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"created_at":"1970-01-01T00:00:00Z","done":true,"done_reason":"length","eval_count":64,"eval_duration":1042406831,"load_duration":4621555375,"message":{"content":"Hmm, the user just asked me to reply with exactly the single word \"pong\". \n\nOkay, this seems like a very specific request. They want me to output only the word \"pong\" without any additional text or punctuation. \n\nI recall that \"pong\" is a common term in computing and gaming contexts - it","role":"assistant"},"model":"qwen3:4b","prompt_eval_count":18,"prompt_eval_duration":3446877583,"total_duration":9219392292}'

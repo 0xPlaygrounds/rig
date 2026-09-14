@@ -1,0 +1,16 @@
+when:
+  path: /v1/images/generations
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"aspect_ratio":"4:3","model":"grok-imagine-image-pro","prompt":"A lighthouse on a rocky cliff at sunrise, painted in a clean illustrative style.","resolution":"2k","response_format":"b64_json"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"data":[{"b64_json":"aGVsbG8=","mime_type":"image/png"}],"usage":{"cost_in_usd_ticks":700000000}}'

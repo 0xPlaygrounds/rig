@@ -1,0 +1,18 @@
+when:
+  path: /v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=51f36dedf9981abd-5c9b347d49b324bd-c6f4b4d84350d05f-a790e9439e3943da
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"duration":5.489999771118164,"language":"english","segments":[{"avg_logprob":-0.3874194622039795,"compression_ratio":0.9863013625144958,"end":4.800000190734863,"id":0,"no_speech_prob":0.0003172428405378014,"seek":0,"start":0.0,"temperature":0.0,"text":" The sun was setting slowly, casting long shadows across the empty field.","tokens":[50364,440,3295,390,3287,5692,11,17301,938,14740,2108,264,6707,2519,13,50604]}],"task":"transcribe","text":"The sun was setting slowly, casting long shadows across the empty field.","usage":{"seconds":6,"type":"duration"}}'

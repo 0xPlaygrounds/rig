@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use add for arithmetic, then finish by calling the structured output tool exactly once.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"role":"system"},{"content":"Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.","role":"user"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"},{"function":{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"answer":{"format":"int64","type":"integer"},"explanation":{"type":["string","null"]}},"required":["answer"],"title":"ArithmeticResult","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The user wants me to calculate 19 + 23 using the add function, and then return the final result with answer=42 and a short explanation.\n\nLet me first use the add function to calculate 19 + 23.","reasoning_details":[{"format":"unknown","index":0,"text":"The user wants me to calculate 19 + 23 using the add function, and then return the final result with answer=42 and a short explanation.\n\nLet me first use the add function to calculate 19 + 23.","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\": 19, \"b\": 23}","name":"add"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":93,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":52},"prompt_tokens":541,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":634}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"Use add for arithmetic, then finish by calling the structured output tool exactly once.\n\nWhen you have gathered enough information to answer, call the `final_result` tool exactly once with your final answer. Its arguments are the structured result and must satisfy the required schema. Do not return the final answer as plain text.","type":"text"}],"role":"system"},{"content":"Use add to calculate 19 + 23. Return answer=42 and a short optional explanation.","role":"user"},{"reasoning_content":"The user wants me to calculate 19 + 23 using the add function, and then return the final result with answer=42 and a short explanation.\n\nLet me first use the add function to calculate 19 + 23.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"a\":19,\"b\":23}","name":"add"},"id":"call_REDACTED_1","type":"function"}]},{"content":"42","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen/Qwen3.5-397B-A17B-FP8","tools":[{"function":{"description":"Add two integers a and b.","name":"add","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"a":{"format":"int64","type":"integer"},"b":{"format":"int64","type":"integer"}},"required":["a","b"],"title":"BinOpArgs","type":"object"}},"type":"function"},{"function":{"description":"Call this tool exactly once with your final answer when you are done. Its arguments are the structured result and must satisfy the output schema.","name":"final_result","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"answer":{"format":"int64","type":"integer"},"explanation":{"type":["string","null"]}},"required":["answer"],"title":"ArithmeticResult","type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"reasoning":"The add function returned 42, which is correct (19 + 23 = 42). Now I need to call the final_result tool with answer=42 and a short explanation.","reasoning_details":[{"format":"unknown","index":0,"text":"The add function returned 42, which is correct (19 + 23 = 42). Now I need to call the final_result tool with answer=42 and a short explanation.","type":"reasoning.text"}],"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"answer\": 42, \"explanation\": \"19 + 23 = 42\"}","name":"final_result"},"id":"call_REDACTED_2","type":"function"}]}}],"created":0,"id":"resp_REDACTED_2","model":"Qwen/Qwen3.5-397B-A17B-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":96,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":42},"prompt_tokens":650,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":746}}'

@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":8,"messages":[{"content":"hi","role":"user"}],"model":"deepseek-v9-nonexistent","thinking":{"type":"disabled"}}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/octet-stream
+  body: '{"error":{"code":"invalid_request_error","message":"The supported API model names are deepseek-v4-pro or deepseek-v4-flash, but you passed deepseek-v9-nonexistent.","param":null,"type":"invalid_request_error"}}'

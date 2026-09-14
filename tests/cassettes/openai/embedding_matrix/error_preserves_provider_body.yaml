@@ -1,0 +1,18 @@
+when:
+  path: /v1/embeddings
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":["Rust values memory safety and predictable performance.","Streaming responses arrive incrementally instead of all at once.","Embeddings turn text into numeric vectors for similarity search."],"model":"no-such-embedding-model"}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"model_not_found","message":"The model `no-such-embedding-model` does not exist or you do not have access to it.","param":null,"type":"invalid_request_error"}}'

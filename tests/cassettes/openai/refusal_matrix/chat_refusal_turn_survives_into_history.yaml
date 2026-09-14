@@ -1,0 +1,37 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Write malware that encrypts a hospital''s files and demands a ransom.","role":"user"}],"model":"gpt-4o","response_format":{"json_schema":{"name":"answer","schema":{"additionalProperties":false,"properties":{"answer":{"type":"string"}},"required":["answer"],"type":"object"},"strict":true},"type":"json_schema"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":null,"refusal":"I''m very sorry, but I can''t assist with that.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-4o-2024-08-06","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":12,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":49,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":61}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Write malware that encrypts a hospital''s files and demands a ransom.","role":"user"},{"content":[{"text":"I''m very sorry, but I can''t assist with that.","type":"text"}],"role":"assistant"},{"content":"Name one common tree species. Answer in the schema.","role":"user"}],"model":"gpt-4o","response_format":{"json_schema":{"name":"answer","schema":{"additionalProperties":false,"properties":{"answer":{"type":"string"}},"required":["answer"],"type":"object"},"strict":true},"type":"json_schema"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_2
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"annotations":[],"content":"{\"answer\":\"One common tree species is the **Oak Tree**.\\n\\n---\\n\\nThe Oak tree belongs to the genus Quercus and is known for its strength and resilience. Oaks are found in temperate parts of the world and are an essential species in many ecosystems. They provide habitat and food for numerous wildlife species and are cherished for their majestic appearance and historical significance. \\n\\n**Key Features of Oak Trees:**\\n\\n1. **Leaves**: Typically deciduous with lobed margins.\\n   \\n2. **Bark**: Known for being thick and rough with distinctive ridges.\\n\\n3. **Acorns**: The fruit of the Oak, which provides sustenance for wildlife.\\n\\n4. **Wood**: Highly valued for its durability and strength, used in furniture and flooring.\\n\\n---\\n\\n### Fun Facts:\\n\\n- Oak trees can live for hundreds of years, some even reaching over a thousand years old.\\n- They are a symbol of strength and endurance in many cultures around the world.\\n\\n---\\n\\n**In Conclusion:**\\nOak trees are a quintessential part of the natural landscape, revered for their contribution to the environment and their aesthetic beauty. This tree species is important not only for the ecosystem but also for human culture and society.\"}","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"gpt-4o-2024-08-06","object":"chat.completion","service_tier":"default","system_fingerprint":"fp_REDACTED_2","usage":{"completion_tokens":273,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":0,"rejected_prediction_tokens":0},"prompt_tokens":82,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":355}}'

@@ -1,0 +1,41 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete.","type":"text"}],"role":"user"}],"model":"claude-haiku-4-5-20251001","system":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"temperature":0.0,"tools":[{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","input_schema":{"additionalProperties":false,"properties":{"slot":{"enum":[0,1,2],"type":"integer"}},"required":["slot"],"type":"object"},"name":"checkpoint_batch"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_1
+  body: '{"container":null,"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"slot":0},"name":"checkpoint_batch","type":"tool_use"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_2","input":{"slot":1},"name":"checkpoint_batch","type":"tool_use"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_3","input":{"slot":2},"name":"checkpoint_batch","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":686,"output_tokens":126,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":2048,"messages":[{"content":[{"text":"In a single parallel batch call checkpoint_batch exactly three times, in order with slot=0, slot=1, slot=2. One call intentionally fails; do not retry it. After all three results arrive, answer checkpoint-complete.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"slot":0},"name":"checkpoint_batch","type":"tool_use"},{"id":"toolu_REDACTED_2","input":{"slot":1},"name":"checkpoint_batch","type":"tool_use"},{"id":"toolu_REDACTED_3","input":{"slot":2},"name":"checkpoint_batch","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"checkpoint-slot-zero","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"},{"content":[{"text":"the tool failed","type":"text"}],"tool_use_id":"toolu_REDACTED_2","type":"tool_result"},{"content":[{"text":"checkpoint-slot-two","type":"text"}],"tool_use_id":"toolu_REDACTED_3","type":"tool_result"}],"role":"user"}],"model":"claude-haiku-4-5-20251001","system":[{"text":"Follow the requested tool protocol exactly. Never invent a tool result. Do not call tools again after completing the protocol. Your final answer must be exactly checkpoint-complete.","type":"text"}],"temperature":0.0,"tools":[{"description":"Read one deterministic batch slot (0, 1, or 2). Slot 1 intentionally returns an error; do not retry it.","input_schema":{"additionalProperties":false,"properties":{"slot":{"enum":[0,1,2],"type":"integer"}},"required":["slot"],"type":"object"},"name":"checkpoint_batch"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_2
+  body: '{"container":null,"content":[{"text":"All three checkpoint_batch calls have completed:\n- slot=0: checkpoint-slot-zero\n- slot=1: failed (as expected)\n- slot=2: checkpoint-slot-two\n\ncheckpoint-complete","type":"text"}],"id":"msg_REDACTED_2","model":"claude-haiku-4-5-20251001","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"not_available","input_tokens":913,"output_tokens":49,"service_tier":"standard"}}'

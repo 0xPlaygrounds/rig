@@ -1,0 +1,238 @@
+//! Migrated from `examples/anthropic_plaintext_document.rs`.
+use rig::completion::CompletionModel;
+use rig::completion::NormalizeCompletionResponse;
+use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
+use rig::prelude::*;
+use rig::providers::anthropic::completion::Citation;
+use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
+use rig::telemetry::ProviderResponseExt;
+
+use serde_json::json;
+
+use crate::support::{
+    assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
+};
+
+/// Descriptor name the Anthropic client normalizes responses under; needed
+/// when a test converts a `raw_completion` response itself.
+const ANTHROPIC_PROVIDER: &str = "anthropic";
+
+fn rust_document() -> String {
+    r#"
+The Rust Programming Language
+
+Rust is a systems programming language focused on three goals: safety, speed,
+and concurrency. It accomplishes these goals without a garbage collector.
+
+Key Features:
+- Zero-cost abstractions
+- Move semantics
+- Guaranteed memory safety
+- Threads without data races
+"#
+    .trim()
+    .to_string()
+}
+
+fn cited_rust_document() -> Document {
+    Document {
+        data: DocumentSourceKind::String(rust_document()),
+        media_type: Some(DocumentMediaType::TXT),
+        additional_params: rig::message::AdditionalParams::try_from_value(json!({
+            "title": "Rust Goals",
+            "citations": { "enabled": true }
+        }))
+        .expect("object params"),
+    }
+}
+
+fn citation_prompt() -> Message {
+    Message::User {
+        content: vec![
+            UserContent::Document(cited_rust_document()),
+            UserContent::text(
+                "Using citations, answer in one sentence: what three goals does Rust focus on?",
+            ),
+        ],
+    }
+}
+
+fn assistant_text(choice: &[rig::message::AssistantContent]) -> String {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            rig::message::AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+fn collect_anthropic_citations(choice: &[rig::message::AssistantContent]) -> Vec<Citation> {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            rig::message::AssistantContent::Text(text) => Some(text),
+            _ => None,
+        })
+        .flat_map(|text| {
+            anthropic_completion::anthropic_citations(text)
+                .expect("citations should decode from Anthropic text metadata")
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn plaintext_document_prompt() {
+    super::super::support::with_anthropic_cassette(
+        "plaintext_document/plaintext_document_prompt",
+        |client| async move {
+            let agent = client
+                .agent(CLAUDE_SONNET_4_6)
+                .preamble("You are a helpful assistant that analyzes documents.")
+                .temperature(0.5)
+                .build();
+
+            let document = Document {
+                data: DocumentSourceKind::String(rust_document()),
+                media_type: Some(DocumentMediaType::TXT),
+                additional_params: None,
+            };
+            let response = agent
+                .prompt(document)
+                .await
+                .expect("document prompt should succeed")
+                .output;
+
+            assert_nonempty_response(&response);
+            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn plaintext_document_with_instruction() {
+    super::super::support::with_anthropic_cassette(
+        "plaintext_document/plaintext_document_with_instruction",
+        |client| async move {
+            let agent = client
+                .agent(CLAUDE_SONNET_4_6)
+                .preamble("You are a helpful assistant that analyzes documents.")
+                .temperature(0.5)
+                .build();
+
+            let response = agent
+                .prompt(Message::User {
+                    content: vec![
+                        UserContent::document(rust_document(), Some(DocumentMediaType::TXT)),
+                        UserContent::text(
+                            "List the three main goals of Rust mentioned in this document.",
+                        ),
+                    ],
+                })
+                .await
+                .expect("instruction prompt should succeed")
+                .output;
+
+            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn streaming_document_citations_accepts_null_citation_start() {
+    super::super::support::with_anthropic_cassette(
+        "plaintext_document/streaming_document_citations_accepts_null_citation_start",
+        |client| async move {
+            let agent = client
+                .agent(CLAUDE_SONNET_4_6)
+                .preamble("Answer using the supplied document and citation metadata.")
+                .temperature(0.0)
+                .build();
+
+            let mut stream = agent.prompt(citation_prompt()).stream();
+            let response = collect_stream_final_response(&mut stream)
+                .await
+                .expect("streaming document citations should accept null citations on text start");
+
+            assert_contains_any_case_insensitive(&response, &["safety", "speed", "concurrency"]);
+        },
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn document_citations_followup_preserves_assistant_citation_history() {
+    super::super::support::with_anthropic_cassette(
+        "plaintext_document/document_citations_followup_preserves_history",
+        |client| async move {
+            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let prompt = citation_prompt();
+
+            let first_request = model
+                .completion_request(prompt.clone())
+                .preamble(
+                    "Answer using the supplied document and preserve citation metadata."
+                        .to_string(),
+                )
+                .max_tokens(256)
+                .temperature(0.0)
+                .build();
+            // Raw-vs-normalized parity on a single recorded interaction: take
+            // Anthropic's own response once, then normalize that same value.
+            let first_turn_raw = model
+                .raw_completion(first_request)
+                .await
+                .expect("first document citation turn should succeed");
+            let first_turn_raw_text = first_turn_raw.text_response();
+            let first_turn: rig::completion::CompletionResponse = first_turn_raw
+                .normalize(ANTHROPIC_PROVIDER)
+                .expect("first document citation turn should normalize");
+
+            let first_turn_text = assistant_text(&first_turn.choice);
+            assert_nonempty_response(&first_turn_text);
+            assert_contains_any_case_insensitive(
+                &first_turn_text,
+                &["safety", "speed", "concurrency"],
+            );
+            assert_eq!(
+                first_turn_raw_text.as_deref(),
+                Some(first_turn_text.as_str())
+            );
+
+            let citations = collect_anthropic_citations(&first_turn.choice);
+            assert!(!citations.is_empty(), "expected citations: {first_turn:?}");
+            assert!(citations.iter().any(|citation| match citation {
+                Citation::CharLocation(citation) => {
+                    citation.document_index == 0
+                        && citation.document_title.as_deref() == Some("Rust Goals")
+                        && ["safety", "speed", "concurrency"]
+                            .iter()
+                            .any(|needle| citation.cited_text.to_lowercase().contains(needle))
+                }
+                _ => false,
+            }));
+
+            let followup = model
+                .completion_request("Reply exactly: citations follow-up ok")
+                .preamble(
+                    "Answer using the supplied document and preserve citation metadata."
+                        .to_string(),
+                )
+                .max_tokens(64)
+                .temperature(0.0)
+                .message(prompt)
+                .message(Message::Assistant {
+                    id: first_turn.message_id.clone(),
+                    content: first_turn.choice.clone(),
+                })
+                .send()
+                .await
+                .expect("follow-up citation history turn should succeed");
+
+            assert_contains_any_case_insensitive(&assistant_text(&followup.choice), &["ok"]);
+        },
+    )
+    .await;
+}

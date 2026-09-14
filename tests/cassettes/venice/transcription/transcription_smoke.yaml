@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/audio/transcriptions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: multipart/form-data; boundary=b7ddfc2b89a4d3d2-37c86c9675461481-bb887cc71f2c7765-44bd17938226bff8
+  body: null
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"duration":5.495999813079834,"text":"The sun was setting slowly, casting long shadows across the empty field."}'

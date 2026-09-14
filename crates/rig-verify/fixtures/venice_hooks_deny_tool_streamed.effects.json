@@ -1,0 +1,464 @@
+{
+  "header": {
+    "run_spec": 9072754608376111302,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      },
+      {
+        "key": "golden/tool:add#0",
+        "family": {
+          "family": "tool",
+          "name": "add",
+          "description": "Add x and y together",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "x": {
+                "type": "number",
+                "description": "The first number to add"
+              },
+              "y": {
+                "type": "number",
+                "description": "The second number to add"
+              }
+            },
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [
+      "DenyAdd"
+    ],
+    "required": {
+      "golden/model:default": "completion",
+      "golden/tool:add#0": "tool"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "toolcall",
+              "id": {
+                "origin": "explicit",
+                "id": "call_REDACTED_1"
+              },
+              "provider": {
+                "call_id": "call_REDACTED_1"
+              },
+              "function": {
+                "name": "add",
+                "arguments": {
+                  "x": 17,
+                  "y": 25
+                }
+              },
+              "signature": null,
+              "additional_params": null
+            }
+          ],
+          "usage": {
+            "input_tokens": 1093,
+            "output_tokens": 18,
+            "total_tokens": 1111,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "finish_reason": "tool_calls",
+          "provider": "venice",
+          "model": "mistral-small-3-2-24b-instruct",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1093,
+              "completion_tokens": 18,
+              "total_tokens": 1111
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "mistral-small-3-2-24b-instruct",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "cost": {
+                "diem": 0,
+                "usd": 0.00010696875
+              }
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_name",
+            "name": "add"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:call_REDACTED_1",
+          "delta": {
+            "delta": "tool_arguments",
+            "arguments": "{\"x\": 17, \"y\": 25}"
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:call_REDACTED_1",
+          "end": {
+            "close": "tool_call",
+            "tool_id": "call_REDACTED_1",
+            "on_unparseable": "error"
+          },
+          "block": {
+            "type": "toolcall",
+            "id": {
+              "origin": "explicit",
+              "id": "call_REDACTED_1"
+            },
+            "provider": {
+              "call_id": "call_REDACTED_1"
+            },
+            "function": {
+              "name": "add",
+              "arguments": {
+                "x": 17,
+                "y": 25
+              }
+            },
+            "signature": null,
+            "additional_params": null
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 1093,
+            "output_tokens": 18,
+            "total_tokens": 1111,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "tool_calls",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_1",
+          "provider": "venice",
+          "model": "mistral-small-3-2-24b-instruct",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1093,
+              "completion_tokens": 18,
+              "total_tokens": 1111
+            },
+            "finish_reason": "tool_calls",
+            "response_id": "chatcmpl-REDACTED_1",
+            "model": "mistral-small-3-2-24b-instruct",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "cost": {
+                "diem": 0,
+                "usd": 0.00010696875
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "tool_output": null,
+      "id": 3,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Use the add tool to add 17 and 25, then reply with just the number."
+                }
+              ]
+            },
+            {
+              "role": "assistant",
+              "id": null,
+              "content": [
+                {
+                  "type": "toolcall",
+                  "id": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "function": {
+                    "name": "add",
+                    "arguments": {
+                      "x": 17,
+                      "y": 25
+                    }
+                  },
+                  "signature": null,
+                  "additional_params": null
+                }
+              ]
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "toolresult",
+                  "call": {
+                    "origin": "explicit",
+                    "id": "call_REDACTED_1"
+                  },
+                  "provider": {
+                    "call_id": "call_REDACTED_1"
+                  },
+                  "name": "add",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "add is disabled for this run"
+                    }
+                  ]
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [
+            {
+              "name": "add",
+              "description": "Add x and y together",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "description": "The first number to add"
+                  },
+                  "y": {
+                    "type": "number",
+                    "description": "The second number to add"
+                  }
+                },
+                "required": [
+                  "x",
+                  "y"
+                ]
+              }
+            }
+          ],
+          "temperature": 0.0,
+          "max_tokens": null,
+          "tool_choice": null,
+          "additional_params": null,
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "text",
+              "text": "42"
+            }
+          ],
+          "usage": {
+            "input_tokens": 1137,
+            "output_tokens": 3,
+            "total_tokens": 1140,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "finish_reason": "stop",
+          "provider": "venice",
+          "model": "mistral-small-3-2-24b-instruct",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1137,
+              "completion_tokens": 3,
+              "total_tokens": 1140
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "mistral-small-3-2-24b-instruct",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "cost": {
+                "diem": 0,
+                "usd": 0.00010734375
+              }
+            }
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "4"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "2"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 1137,
+            "output_tokens": 3,
+            "total_tokens": 1140,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 0
+          },
+          "finish_reason": "stop",
+          "message_id": null,
+          "response_id": "chatcmpl-REDACTED_2",
+          "provider": "venice",
+          "model": "mistral-small-3-2-24b-instruct",
+          "raw": {
+            "usage": {
+              "prompt_tokens": 1137,
+              "completion_tokens": 3,
+              "total_tokens": 1140
+            },
+            "finish_reason": "stop",
+            "response_id": "chatcmpl-REDACTED_2",
+            "model": "mistral-small-3-2-24b-instruct",
+            "additional_params": {
+              "created": 0,
+              "object": "chat.completion.chunk",
+              "service_tier": "default",
+              "cost": {
+                "diem": 0,
+                "usd": 0.00010734375
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,169 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"messages":[{"content":"You are a calculator. Use the provided tools before answering arithmetic questions.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: message-start
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"23a23f14-bab1-46b9-a4c9-239714c2f279","type":"message-start"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":"I"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" will"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" use"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" the"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" subtract"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" tool"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" to"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" calculate"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" 2"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" -"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":" 5"}},"type":"tool-plan-delta"}
+
+    event: tool-plan-delta
+    data: {"delta":{"message":{"tool_plan":"."}},"type":"tool-plan-delta"}
+
+    event: tool-call-start
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"","name":"subtract"},"id":"call_REDACTED_1","type":"function"}}},"index":0,"type":"tool-call-start"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"{\""}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"x"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"\":"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" "}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"2"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":","}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" \""}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"y"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"\":"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":" "}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"5"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-delta
+    data: {"delta":{"message":{"tool_calls":{"function":{"arguments":"}"}}}},"index":0,"type":"tool-call-delta"}
+
+    event: tool-call-end
+    data: {"index":0,"type":"tool-call-end"}
+
+    event: message-end
+    data: {"delta":{"finish_reason":"TOOL_CALL","usage":{"billed_units":{"input_tokens":125,"output_tokens":24},"cached_tokens":992,"tokens":{"input_tokens":1600,"output_tokens":56}}},"type":"message-end"}
+
+    data: [DONE]
+
+---
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"messages":[{"content":"You are a calculator. Use the provided tools before answering arithmetic questions.","role":"system"},{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"citations":[],"content":[],"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}],"tool_plan":null},{"content":[{"text":"-3","type":"text"}],"role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"command-a-03-2025","stream":true,"tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"integer"},"y":{"description":"The second number to add","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: message-start
+    data: {"delta":{"message":{"citations":[],"content":[],"role":"assistant","tool_calls":[],"tool_plan":""}},"id":"6332ed07-3a2d-4690-a72e-7153c77e0bcc","type":"message-start"}
+
+    event: content-start
+    data: {"delta":{"message":{"content":{"text":"","type":"text"}}},"index":0,"type":"content-start"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"The"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" result"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" of"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" 2"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" -"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" 5"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" is"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":" -"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"3"}}},"index":0,"type":"content-delta"}
+
+    event: content-delta
+    data: {"delta":{"message":{"content":{"text":"."}}},"index":0,"type":"content-delta"}
+
+    event: citation-start
+    data: {"delta":{"message":{"citations":{"end":26,"sources":[{"id":"subtract_dwr1jv3jnhzq:0","tool_output":{"content":"-3"},"type":"tool"}],"start":23,"text":"-3.","type":"TEXT_CONTENT"}}},"index":0,"type":"citation-start"}
+
+    event: citation-end
+    data: {"index":0,"type":"citation-end"}
+
+    event: content-end
+    data: {"index":0,"type":"content-end"}
+
+    event: message-end
+    data: {"delta":{"finish_reason":"COMPLETE","usage":{"billed_units":{"input_tokens":129,"output_tokens":12},"cached_tokens":1568,"tokens":{"input_tokens":1689,"output_tokens":24}}},"type":"message-end"}
+
+    data: [DONE]
+

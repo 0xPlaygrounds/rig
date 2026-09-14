@@ -1,0 +1,67 @@
+# The one place the CI Rust environment is defined: the toolchain from
+# rust-toolchain.toml, the cargo settings every job must share so rust-cache
+# keys match, and the optional tools. Caching is not in here on purpose: a
+# post step nested inside a composite action ignores its `post-if` and saves
+# even after a failed or cancelled job, which once published a partial cache
+# entry that later complete builds treated as up to date. Each job invokes
+# rust-cache itself, right after this action.
+name: Rust setup
+description: Toolchain from rust-toolchain.toml, shared cargo env, optional nextest/protoc
+
+inputs:
+  components:
+    description: Comma-separated toolchain components (e.g. clippy, rustfmt)
+    default: ""
+  target:
+    description: Additional compilation target (e.g. wasm32-unknown-unknown)
+    default: ""
+  nextest:
+    description: Install cargo-nextest
+    default: "false"
+  protoc:
+    description: Install the system protoc (required whenever the lance chain builds)
+    default: "false"
+runs:
+  using: composite
+  steps:
+    # Exported before the toolchain step so every job's rust-cache key hashes
+    # the same values. Line-table debuginfo is all a CI backtrace needs;
+    # incremental compilation buys nothing on a fresh runner.
+    - name: Resolve toolchain and export shared cargo env
+      shell: bash
+      run: |
+        channel=$(grep -E '^\s*channel\s*=' rust-toolchain.toml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+        if [ -z "$channel" ]; then
+          echo "::error::could not read [toolchain] channel from rust-toolchain.toml"
+          exit 1
+        fi
+        {
+          echo "RIG_CI_TOOLCHAIN=$channel"
+          echo "CARGO_PROFILE_DEV_DEBUG=line-tables-only"
+          echo "CARGO_PROFILE_TEST_DEBUG=line-tables-only"
+          echo "CARGO_INCREMENTAL=0"
+        } >> "$GITHUB_ENV"
+
+    # The channel is passed explicitly rather than discovered from the file
+    # so CI installs only the components a job asks for, not the file's
+    # local-development extras (rust-analyzer, rust-src).
+    - name: Install Rust toolchain
+      uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+      with:
+        toolchain: ${{ env.RIG_CI_TOOLCHAIN }}
+        components: ${{ inputs.components }}
+        target: ${{ inputs.target }}
+        cache: "false"
+
+    - name: Install nextest
+      if: inputs.nextest == 'true'
+      uses: taiki-e/install-action@v2
+      with:
+        tool: nextest
+
+    # apt, not a prebuilt binary: the lance build scripts need a system
+    # protoc with its well-known-type includes.
+    - name: Install protoc
+      if: inputs.protoc == 'true'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y protobuf-compiler

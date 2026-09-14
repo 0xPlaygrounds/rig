@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to run exactly `print(''θερμοκρασία 🌡️ 25°C'')` and then repeat its output verbatim in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"executableCode":{"code":"print(''θερμοκρασία 🌡️ 25°C'')\n","language":"PYTHON"}},{"codeExecutionResult":{"outcome":"OUTCOME_OK","output":"θερμοκρασία 🌡️ 25°C\n"}},{"text":"θερμοκρασία 🌡️ 25°C"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":29,"promptTokenCount":37,"promptTokensDetails":[{"modality":"TEXT","tokenCount":37}],"serviceTier":"standard","thoughtsTokenCount":35,"toolUsePromptTokenCount":103,"toolUsePromptTokensDetails":[{"modality":"TEXT","tokenCount":103}],"totalTokenCount":204}}'

@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":1024,"messages":[{"content":[{"text":"Record batch_id = 123e4567-e89b-12d3-a456-426614174000, due_date = 2026-09-21, and exactly two items: sku = red with quantity = 2, then sku = blue with quantity = 3. Omit every optional note.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Call the supplied tool exactly once and follow the requested argument shape.","type":"text"}],"tool_choice":{"type":"any"},"tools":[{"description":"Record the exact structured arguments requested by the user.","input_schema":{"additionalProperties":false,"properties":{"batch_id":{"format":"uuid","type":"string"},"due_date":{"format":"date","type":"string"},"items":{"description":"{maxItems: 3, minItems: 2}","items":{"additionalProperties":false,"properties":{"note":{"type":"string"},"quantity":{"type":"integer"},"sku":{"type":"string"}},"required":["sku","quantity"],"type":"object"},"type":"array"}},"required":["batch_id","due_date","items"],"type":"object"},"name":"record_batch","strict":true}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"batch_id":"123e4567-e89b-12d3-a456-426614174000","due_date":"2026-09-21","items":[{"quantity":2,"sku":"red"},{"quantity":3,"sku":"blue"}]},"name":"record_batch","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-sonnet-4-6","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":869,"output_tokens":127,"service_tier":"standard"}}'

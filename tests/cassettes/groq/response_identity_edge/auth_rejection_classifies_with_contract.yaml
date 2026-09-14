@@ -1,0 +1,18 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Never authenticated","role":"user"}],"model":"llama-3.3-70b-versatile"}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"invalid_api_key","message":"Invalid API Key","type":"invalid_request_error"}}'

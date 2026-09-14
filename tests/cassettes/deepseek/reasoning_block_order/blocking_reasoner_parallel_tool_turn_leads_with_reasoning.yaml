@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":640,"messages":[{"content":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","role":"system"},{"content":"What is the weather AND the air quality in Tokyo? Call both tools in one turn before answering.","role":"user"}],"model":"deepseek-v4-flash","parallel_tool_calls":true,"thinking":{"type":"enabled"},"tools":[{"function":{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}},"type":"function"},{"function":{"description":"Get the current air quality index for a city.","name":"get_air_quality","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":"","reasoning_content":"The user wants weather and air quality for Tokyo. I need to call both tools in the same turn since they''re independent.","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\": \"Tokyo\"}","name":"get_weather"},"id":"call_REDACTED_1","index":0,"type":"function"},{"function":{"arguments":"{\"city\": \"Tokyo\"}","name":"get_air_quality"},"id":"call_REDACTED_2","index":1,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":103,"completion_tokens_details":{"reasoning_tokens":25},"prompt_cache_hit_tokens":384,"prompt_cache_miss_tokens":108,"prompt_tokens":492,"prompt_tokens_details":{"cached_tokens":384},"total_tokens":595}}'

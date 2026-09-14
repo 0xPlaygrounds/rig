@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":640,"messages":[{"content":"Is 91 prime? Answer in one short sentence.","role":"user"}],"model":"deepseek-v4-flash","thinking":{"type":"enabled"}}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"No, 91 is not prime because it equals 7 × 13.","reasoning_content":"We need answer one short sentence. 91 is not prime because divisible by 7 and 13.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":38,"completion_tokens_details":{"reasoning_tokens":21},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":94,"prompt_tokens":94,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":132}}'

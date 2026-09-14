@@ -1,0 +1,16 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":128,"messages":[{"content":[{"text":"Use the subtract tool to calculate 11 - 6.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","strict_tools":true,"tool_choice":"REQUIRED","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"integer"},"y":{"description":"The number to subtract","type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"TOOL_CALL","id":"d5a93922-5f74-461d-88eb-384ea05cbe34","message":{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":11,\"y\":6}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}],"tool_plan":"I will use one or more of the available tools to find the answer"},"usage":{"billed_units":{"input_tokens":69,"output_tokens":25},"cached_tokens":992,"tokens":{"input_tokens":1494,"output_tokens":39}}}'

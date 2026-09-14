@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Call record_colour with the dominant colour of the attached image.","role":"system"},{"content":[{"text":"Record this image''s colour.","type":"text"},{"image_url":{"detail":"auto","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsAtx/ZMZxgi+hcEKLNO+FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywKqxUDxqh7TUQAAAABJRU5ErkJggg=="},"type":"image_url"}],"role":"user"}],"model":"mistral-small-latest","temperature":0.0,"tools":[{"function":{"description":"Record the dominant colour of an image the user attached.","name":"record_colour","parameters":{"properties":{"colour":{"type":"string"}},"required":["colour"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"colour\": \"red\"}","name":"record_colour"},"id":"call_REDACTED_1","index":0,"type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":13,"prompt_tokens":115,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":128}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Call record_colour with the dominant colour of the attached image.","role":"system"},{"content":[{"text":"Record this image''s colour.","type":"text"},{"image_url":{"detail":"auto","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAT0lEQVR42u3PQQkAAAgEsAtx/ZMZxgi+hcEKLNO+FgEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQGBywKqxUDxqh7TUQAAAABJRU5ErkJggg=="},"type":"image_url"}],"role":"user"},{"content":"","prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"colour\":\"red\"}","name":"record_colour"},"id":"call_REDACTED_1","type":"function"}]},{"content":"recorded red","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"mistral-small-latest","temperature":0.0,"tools":[{"function":{"description":"Record the dominant colour of an image the user attached.","name":"record_colour","parameters":{"properties":{"colour":{"type":"string"}},"required":["colour"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The dominant colour of the attached image has been recorded as **red**.","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion","usage":{"completion_tokens":15,"prompt_tokens":133,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":148}}'

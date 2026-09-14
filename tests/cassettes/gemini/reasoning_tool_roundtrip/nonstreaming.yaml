@@ -1,0 +1,37 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":4096}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**Analyzing the Weather Query for Tokyo**\n\nOkay, so the user wants the weather for Tokyo. They''re trying to decide between an umbrella and sunscreen – a pretty standard travel planning question. My immediate course of action is clear: I need to fetch the weather data for Tokyo. The tool is there for a reason, right? So, I''ll use the `get_weather` tool, feeding it the city name, \"Tokyo.\" After I''ve got that data in hand, I can analyze the temperature, cloud cover, and precipitation forecasts. Then, based on the information, I can formulate a recommendation: Umbrella? Sunscreen? Maybe both? The goal is to give the user a simple, practical answer to their question. That’s the end goal, and this tool is the starting point.\n","thought":true},{"functionCall":{"args":{"city":"Tokyo"},"name":"get_weather"},"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishMessage":"Model generated function call(s).","finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":15,"promptTokenCount":144,"promptTokensDetails":[{"modality":"TEXT","tokenCount":144}],"serviceTier":"standard","thoughtsTokenCount":91,"totalTokenCount":250}}'
+---
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"I''m planning a trip. What is the current weather in Tokyo, Japan? Based on the weather conditions, should I pack an umbrella or sunscreen? Use the get_weather tool to check before answering.","thought":false}],"role":"user"},{"parts":[{"text":"**Analyzing the Weather Query for Tokyo**\n\nOkay, so the user wants the weather for Tokyo. They''re trying to decide between an umbrella and sunscreen – a pretty standard travel planning question. My immediate course of action is clear: I need to fetch the weather data for Tokyo. The tool is there for a reason, right? So, I''ll use the `get_weather` tool, feeding it the city name, \"Tokyo.\" After I''ve got that data in hand, I can analyze the temperature, cloud cover, and precipitation forecasts. Then, based on the information, I can formulate a recommendation: Umbrella? Sunscreen? Maybe both? The goal is to give the user a simple, practical answer to their question. That’s the end goal, and this tool is the starting point.\n","thought":true},{"functionCall":{"args":{"city":"Tokyo"},"name":"get_weather"},"thought":false,"thoughtSignature":"signature_REDACTED_1"}],"role":"model"},{"parts":[{"functionResponse":{"name":"get_weather","response":{"result":"Weather in Tokyo: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW"}},"thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":4096,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":4096}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a weather assistant. You have access to a get_weather tool. You must call the get_weather tool for any weather question and never guess weather data. After receiving the tool result, provide a concise summary of the weather.","thought":false}],"role":"model"},"toolConfig":null,"tools":[{"codeExecution":null,"functionDeclarations":[{"description":"Get the current weather for a city. Must be called for weather questions.","name":"get_weather","parameters":{"properties":{"city":{"description":"City name to get weather for","type":"string"}},"required":["city"],"type":"object"}}]}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"The current weather in Tokyo is 72°F (22°C), sunny with light clouds, and a humidity of 45%. The wind is 8 mph from the Northwest. Based on these conditions, you should pack sunscreen. An umbrella is not needed."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_2","usageMetadata":{"candidatesTokenCount":56,"promptTokenCount":367,"promptTokensDetails":[{"modality":"TEXT","tokenCount":367}],"serviceTier":"standard","totalTokenCount":423}}'

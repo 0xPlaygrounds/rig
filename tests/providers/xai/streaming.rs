@@ -1,0 +1,27 @@
+//! xAI streaming smoke test.
+
+use rig::prelude::*;
+use rig::providers::xai;
+
+use super::support::with_xai_cassette;
+use crate::support::{
+    STREAMING_PREAMBLE, STREAMING_PROMPT, assert_nonempty_response, collect_stream_final_response,
+};
+
+#[tokio::test]
+async fn streaming_smoke() {
+    with_xai_cassette("streaming/streaming_smoke", |client| async move {
+        let agent = client
+            .agent(xai::completion::GROK_3_MINI)
+            .preamble(STREAMING_PREAMBLE)
+            .build();
+
+        let mut stream = agent.prompt(STREAMING_PROMPT).stream();
+        let response = collect_stream_final_response(&mut stream)
+            .await
+            .expect("streaming prompt should succeed");
+
+        assert_nonempty_response(&response);
+    })
+    .await;
+}

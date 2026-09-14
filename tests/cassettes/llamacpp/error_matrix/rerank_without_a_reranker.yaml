@@ -1,0 +1,16 @@
+when:
+  path: /v1/rerank
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":["hi","it is a bear"],"model":"bge-reranker-v2-m3-Q4_K_M","query":"what is a panda?"}'
+then:
+  status: 501
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"error":{"code":501,"message":"This server does not support reranking. Start it with `--reranking`","type":"not_supported_error"}}'

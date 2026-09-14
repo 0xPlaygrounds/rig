@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.\n\nRespond with ONLY a single JSON object that conforms to this JSON Schema. Do not include any prose, explanation, or markdown code fences.\n{\"properties\":{\"category\":{\"type\":\"string\"},\"summary\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"title\",\"category\",\"summary\"],\"type\":\"object\"}","type":"text"}],"role":"system"},{"content":"Return a concise event object for a local Rust meetup in Seattle.","role":"user"}],"model":"mistral-small-3-2-24b-instruct","temperature":0.0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"```json\n{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A gathering of Rust programming language enthusiasts in Seattle, featuring talks, workshops, and networking.\"\n}\n```","name":null,"reasoning_content":null,"role":"assistant","tool_calls":[]}}],"cost":{"diem":0,"usd":0.0001109375},"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-3-2-24b-instruct","object":"chat.completion","service_tier":"default","usage":{"completion_tokens":50,"prompt_tokens":1050,"total_tokens":1100},"venice_parameters":{"disable_thinking":false,"enable_e2ee":true,"enable_web_citations":false,"enable_web_scraping":false,"enable_web_search":"off","enable_x_search":false,"include_search_results_in_stream":false,"include_venice_system_prompt":true,"return_search_results_as_documents":false,"strip_thinking_response":false,"web_search_citations":[]}}'

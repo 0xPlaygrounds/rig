@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Use the open_vault tool when asked to open the vault. If it fails, tell the user it failed and why.","type":"text"}],"role":"system"},{"content":"/no_think Please open the vault.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tools":[{"function":{"description":"Open the vault.","name":"open_vault","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"open_vault"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":166,"predicted_ms":634.967,"predicted_n":21,"predicted_per_second":31.49769988046623,"predicted_per_token_ms":31.74835,"prompt_ms":26.22,"prompt_n":1,"prompt_per_second":38.13882532418002,"prompt_per_token_ms":26.22},"usage":{"completion_tokens":21,"prompt_tokens":167,"prompt_tokens_details":{"cached_tokens":166},"total_tokens":188}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Use the open_vault tool when asked to open the vault. If it fails, tell the user it failed and why.","type":"text"}],"role":"system"},{"content":"/no_think Please open the vault.","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"open_vault"},"id":"call_REDACTED_1","type":"function"}]},{"content":"the tool failed","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen3-1.7B-Q4_K_M","tools":[{"function":{"description":"Open the vault.","name":"open_vault","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Failed to open the vault. The reason for the failure is not specified. Please check the vault''s status or try again later.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":167,"predicted_ms":860.709,"predicted_n":31,"predicted_per_second":34.85498583144826,"predicted_per_token_ms":28.690299999999997,"prompt_ms":262.804,"prompt_n":33,"prompt_per_second":125.56886500966502,"prompt_per_token_ms":7.963757575757575},"usage":{"completion_tokens":31,"prompt_tokens":200,"prompt_tokens_details":{"cached_tokens":167},"total_tokens":231}}'

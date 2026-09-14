@@ -1,0 +1,37 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"}],"model":"claude-opus-4-7","system":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"name":"subtract"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"I''ll calculate 2 - 5 for you.","type":"text"},{"caller":{"type":"direct"},"id":"toolu_REDACTED_1","input":{"x":2,"y":5},"name":"subtract","type":"tool_use"}],"id":"msg_REDACTED_1","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":"tool_use","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":950,"output_tokens":101,"service_tier":"standard"}}'
+---
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Calculate 2 - 5.","type":"text"}],"role":"user"},{"content":[{"text":"I''ll calculate 2 - 5 for you.","type":"text"},{"id":"toolu_REDACTED_1","input":{"x":2,"y":5},"name":"subtract","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"-3","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-opus-4-7","system":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"},{"description":"Subtract y from x (i.e.: x - y)","input_schema":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"},"name":"subtract"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"content":[{"text":"2 - 5 = **-3**","type":"text"}],"id":"msg_REDACTED_2","model":"claude-opus-4-7","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"inference_geo":"global","input_tokens":1065,"output_tokens":15,"service_tier":"standard"}}'

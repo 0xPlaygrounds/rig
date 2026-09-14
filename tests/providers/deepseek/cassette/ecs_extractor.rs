@@ -1,0 +1,34 @@
+//! Native extraction preserving the original provider assertions.
+use super::support::with_deepseek_cassette;
+use crate::ecs_extractor::EcsExtractor;
+use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
+use rig::prelude::*;
+use rig::providers::deepseek;
+#[tokio::test]
+async fn extractor_smoke() {
+    with_deepseek_cassette("extractor/extractor_smoke", |client| async move {
+        let mut extractor = EcsExtractor::<SmokePerson>::new(
+            client.completion_model(deepseek::DEEPSEEK_V4_FLASH),
+            None,
+            None,
+        );
+        let person = extractor
+            .extract(EXTRACTOR_TEXT, &[])
+            .await
+            .expect("extractor request should succeed")
+            .output;
+        let first_name = person
+            .first_name
+            .as_deref()
+            .expect("first_name should be present");
+        let last_name = person
+            .last_name
+            .as_deref()
+            .expect("last_name should be present");
+        let job = person.job.as_deref().expect("job should be present");
+        assert_nonempty_response(first_name);
+        assert_nonempty_response(last_name);
+        assert_nonempty_response(job);
+    })
+    .await;
+}

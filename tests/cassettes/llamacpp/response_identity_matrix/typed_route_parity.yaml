@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"/no_think Reply with exactly the word: cedar.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"cedar","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":18,"predicted_ms":35.081,"predicted_n":7,"predicted_per_second":171.03275277215585,"predicted_per_token_ms":5.8468333333333335,"prompt_ms":5.641,"prompt_n":1,"prompt_per_second":177.27353306151392,"prompt_per_token_ms":5.641},"usage":{"completion_tokens":7,"prompt_tokens":19,"prompt_tokens_details":{"cached_tokens":18},"total_tokens":26}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":256,"messages":[{"content":"/no_think Reply with exactly the word: cedar.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"cedar","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":18,"predicted_ms":35.58,"predicted_n":7,"predicted_per_second":168.63406408094437,"predicted_per_token_ms":5.93,"prompt_ms":5.778,"prompt_n":1,"prompt_per_second":173.07026652821045,"prompt_per_token_ms":5.778},"usage":{"completion_tokens":7,"prompt_tokens":19,"prompt_tokens_details":{"cached_tokens":18},"total_tokens":26}}'

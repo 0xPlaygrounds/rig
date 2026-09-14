@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Use the population tool to answer. Report the number it returns verbatim.","type":"text"}],"role":"system"},{"content":"/no_think What is the population of New York City?","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tools":[{"function":{"description":"Look up the population of a city.","name":"population","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\": \"New York City\"}","name":"population"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":173,"predicted_ms":425.621,"predicted_n":25,"predicted_per_second":56.38819513134925,"predicted_per_token_ms":17.73420833333333,"prompt_ms":30.096,"prompt_n":1,"prompt_per_second":33.22700691121744,"prompt_per_token_ms":30.096},"usage":{"completion_tokens":25,"prompt_tokens":174,"prompt_tokens_details":{"cached_tokens":173},"total_tokens":199}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":[{"text":"Use the population tool to answer. Report the number it returns verbatim.","type":"text"}],"role":"system"},{"content":"/no_think What is the population of New York City?","role":"user"},{"role":"assistant","tool_calls":[{"function":{"arguments":"{\"city\":\"New York City\"}","name":"population"},"id":"call_REDACTED_1","type":"function"}]},{"content":"New York City has 8,336,817 residents","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen3-1.7B-Q4_K_M","tools":[{"function":{"description":"Look up the population of a city.","name":"population","parameters":{"properties":{"city":{"type":"string"}},"required":["city"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The population of New York City is 8,336,817.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":174,"predicted_ms":398.563,"predicted_n":23,"predicted_per_second":55.198299892363316,"predicted_per_token_ms":18.1165,"prompt_ms":129.816,"prompt_n":49,"prompt_per_second":377.45732421273186,"prompt_per_token_ms":2.6493061224489796},"usage":{"completion_tokens":23,"prompt_tokens":223,"prompt_tokens_details":{"cached_tokens":174},"total_tokens":246}}'

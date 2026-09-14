@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly: identity probe","role":"user"}],"model":"deepseek-v4-flash"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"identity probe","reasoning_content":"We need to reply with exactly \"identity probe\". The user said \"Reply with exactly: identity probe\". So final must be just that string. Ensure no extra.","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":36,"completion_tokens_details":{"reasoning_tokens":33},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":89,"prompt_tokens":89,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":125}}'

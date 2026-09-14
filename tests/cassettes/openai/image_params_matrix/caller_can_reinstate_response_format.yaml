@@ -1,0 +1,18 @@
+when:
+  path: /v1/images/generations
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gpt-image-1-mini","prompt":"a plain red circle on a white background","response_format":"b64_json","size":"1024x1024"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"unknown_parameter","message":"Unknown parameter: ''response_format''.","param":"response_format","type":"invalid_request_error"}}'

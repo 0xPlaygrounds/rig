@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Return a concise event object for a local Rust meetup in Seattle.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.\n\nRespond with ONLY a single JSON object that conforms to this JSON Schema. Do not include any prose, explanation, or markdown code fences.\n{\"properties\":{\"category\":{\"type\":\"string\"},\"summary\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"}},\"required\":[\"title\",\"category\",\"summary\"],\"type\":\"object\"}","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"{\\\"category\\\":\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":90,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":90}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":247,\"totalTokenCount\":340}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" \\\"Technology\\\", \\\"summary\\\": \\\"A gathering for Rust developers in Seattle to discuss systems programming, share projects, and network.\\\", \\\"title\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":30,\"promptTokenCount\":90,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":90}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":247,\"totalTokenCount\":367}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\\\": \\\"Seattle Rust Meetup\\\"}\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":37,\"promptTokenCount\":90,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":90}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":247,\"totalTokenCount\":374}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":37,\"promptTokenCount\":90,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":90}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":247,\"totalTokenCount\":374}}\r\n\r\n"

@@ -1,0 +1,18 @@
+when:
+  path: /v1/images/generations
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gpt-image-1-mini","prompt":"","size":"1024x1024"}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"empty_string","message":"Invalid ''prompt'': empty string. Expected a string with minimum length 1, but got an empty string instead.","param":"prompt","type":"invalid_request_error"}}'

@@ -1,0 +1,18 @@
+when:
+  path: /v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":16,"messages":[{"content":[{"text":"Never authenticated","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a terse assistant.","type":"text"}]}'
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"error":{"message":"API key is invalid.","type":"authentication_error"},"request_id":null,"type":"error"}'

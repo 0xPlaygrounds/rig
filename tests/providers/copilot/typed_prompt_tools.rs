@@ -1,0 +1,98 @@
+//! Live Copilot coverage for combining `prompt_typed()` with tool calling.
+
+use anyhow::Result;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+use rig::prelude::*;
+use rig::tool::Tool;
+
+use crate::copilot::{live_responses_model, with_copilot_cassette_result};
+use crate::support::assert_weather_tool_roundtrip_response;
+
+#[derive(Debug, Deserialize, JsonSchema, Serialize)]
+struct WeatherResponse {
+    city: String,
+    weather: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct WeatherArgs {
+    city: String,
+}
+
+#[derive(Clone)]
+struct WeatherTool {
+    call_count: Arc<AtomicUsize>,
+}
+
+impl WeatherTool {
+    fn new(call_count: Arc<AtomicUsize>) -> Self {
+        Self { call_count }
+    }
+}
+
+impl Tool for WeatherTool {
+    const NAME: &'static str = "weather";
+    type Error = std::io::Error;
+    type Args = WeatherArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Get the current weather for a city.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "properties": {
+                "city": { "type": "string" }
+            },
+            "required": ["city"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
+        Ok(format!(
+            "The weather in {} is all fire and brimstone",
+            args.city
+        ))
+    }
+}
+
+#[tokio::test]
+async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
+    with_copilot_cassette_result("typed_prompt_tools/prompt_typed_with_tool_call_roundtrip", |client| async move {
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let agent = client
+            .agent(live_responses_model())
+            .preamble(
+                "You are a helpful assistant. When asked about weather, use the weather tool to get the current conditions. \
+                 After calling the tool, return a JSON response with the city name and the weather description. \
+                 DO NOT modify the description from the tool result.",
+            )
+            .tool(WeatherTool::new(call_count.clone()))
+            .default_max_turns(2)
+            .build();
+
+        let response: WeatherResponse = agent
+            .prompt_typed("Hello, what's the weather in London?")
+            .await?
+            .output;
+
+        anyhow::ensure!(
+            call_count.load(Ordering::SeqCst) >= 1,
+            "expected the weather tool to be executed at least once"
+        );
+        assert_weather_tool_roundtrip_response(&response.city, &response.weather, "London");
+
+        Ok(())
+    }).await
+}

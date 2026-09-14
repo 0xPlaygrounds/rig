@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"logprobs":true,"max_tokens":1,"messages":[{"content":"Work out 17 + 25 carefully, then answer with only the number.","role":"user"}],"model":"deepseek-v4-flash","reasoning_effort":"low"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"logprobs":{"reasoning_content":[{"bytes":[87,101],"logprob":-9.417489e-6,"token":"We","top_logprobs":[]}]},"message":{"content":"","reasoning_content":"We","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":1,"completion_tokens_details":{"reasoning_tokens":1},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":20,"prompt_tokens":20,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":21}}'

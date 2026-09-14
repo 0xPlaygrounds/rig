@@ -1,0 +1,28 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"logprobs":true,"max_tokens":8,"messages":[{"content":"Reply with exactly: cobalt","role":"user"}],"model":"openai/gpt-4o-mini","provider":{"allow_fallbacks":false,"order":["OpenAI"]},"stream":true,"top_logprobs":2}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    : OPENROUTER PROCESSING
+
+    data: {"choices":[{"delta":{"content":"c","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[99],"logprob":-0.000010206720617134124,"token":"c","top_logprobs":[{"bytes":[99],"logprob":-0.000010206720617134124,"token":"c"},{"bytes":[67],"logprob":-11.50001049041748,"token":"C"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"obalt","role":"assistant"},"finish_reason":null,"index":0,"logprobs":{"content":[{"bytes":[111,98,97,108,116],"logprob":0,"token":"obalt","top_logprobs":[{"bytes":[111,98,97,108,116],"logprob":0,"token":"obalt"},{"bytes":[111,98,97,108],"logprob":-18,"token":"obal"}]}],"refusal":null},"native_finish_reason":null}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","system_fingerprint":"fp_REDACTED_1"}
+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":"stop","index":0,"native_finish_reason":"stop"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion.chunk","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":2,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":3e-6,"cost_details":{"upstream_inference_completions_cost":1.2e-6,"upstream_inference_cost":3e-6,"upstream_inference_prompt_cost":1.8e-6},"is_byok":false,"prompt_tokens":12,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":14}}
+
+    data: [DONE]
+

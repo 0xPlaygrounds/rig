@@ -1,0 +1,205 @@
+{
+  "header": {
+    "run_spec": 9907391144940774474,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Return a concise event object for a local Rust meetup in Seattle."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": null,
+          "tool_choice": "none",
+          "additional_params": null,
+          "output_schema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "category": {
+                "type": "string"
+              },
+              "summary": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "category",
+              "summary"
+            ]
+          }
+        },
+        "stream": false
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_1"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology / Rust\",\"summary\":\"Date: Tue, Sep 15, 2026 • Time: 6:30–8:30 PM • Venue: Pioneer Square Community Space, 100 Yesler Way, Seattle, WA • Agenda: 2×10‑15m lightning talks, hands‑on mini‑workshop on async Rust, open Q&A, networking • Cost: Free • Audience: Beginners to advanced Rustaceans • RSVP: meetup.com/Seattle-Rust • Contact: organizer@seattle-rust.org\"}"
+            }
+          ],
+          "usage": {
+            "input_tokens": 68,
+            "output_tokens": 655,
+            "total_tokens": 723,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 512
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "id": "resp_REDACTED_1",
+            "object": "response",
+            "created_at": 0,
+            "status": "completed",
+            "error": null,
+            "incomplete_details": null,
+            "instructions": "You are a concise assistant. Answer directly.",
+            "max_output_tokens": null,
+            "model": "gpt-5-mini-2025-08-07",
+            "reasoning": {
+              "context": "current_turn",
+              "effort": "medium",
+              "mode": "standard",
+              "summary": null
+            },
+            "usage": {
+              "input_tokens": 68,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 655,
+              "output_tokens_details": {
+                "reasoning_tokens": 512
+              },
+              "total_tokens": 723
+            },
+            "output": [
+              {
+                "type": "reasoning",
+                "id": "rs_REDACTED_1",
+                "summary": [],
+                "encrypted_content": "encrypted_content_REDACTED_1",
+                "status": null
+              },
+              {
+                "id": "msg_REDACTED_1",
+                "role": "assistant",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "{\"title\":\"Seattle Rust Meetup\",\"category\":\"Technology / Rust\",\"summary\":\"Date: Tue, Sep 15, 2026 • Time: 6:30–8:30 PM • Venue: Pioneer Square Community Space, 100 Yesler Way, Seattle, WA • Agenda: 2×10‑15m lightning talks, hands‑on mini‑workshop on async Rust, open Q&A, networking • Cost: Free • Audience: Beginners to advanced Rustaceans • RSVP: meetup.com/Seattle-Rust • Contact: organizer@seattle-rust.org\"}",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "type": "message"
+              }
+            ],
+            "tools": [],
+            "background": false,
+            "text": {
+              "format": {
+                "type": "json_schema",
+                "name": "response_schema",
+                "schema": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "summary": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "category",
+                    "summary"
+                  ],
+                  "type": "object"
+                },
+                "strict": true
+              }
+            },
+            "top_p": 1.0,
+            "truncation": "disabled",
+            "prompt_cache_retention": "in_memory",
+            "parallel_tool_calls": true,
+            "service_tier": "default",
+            "store": true
+          }
+        }
+      }
+    }
+  ]
+}

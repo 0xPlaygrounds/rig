@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":"Calculate 2 - 5 using the tool.","role":"user"}],"model":"Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":570,"predicted_ms":880.032,"predicted_n":18,"predicted_per_second":19.31747936438675,"predicted_per_token_ms":51.76658823529412,"prompt_ms":571.276,"prompt_n":94,"prompt_per_second":164.54393323017248,"prompt_per_token_ms":6.0774042553191485},"usage":{"completion_tokens":18,"prompt_tokens":664,"prompt_tokens_details":{"cached_tokens":570},"total_tokens":682}}'

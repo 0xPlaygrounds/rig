@@ -1,0 +1,18 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly: identity probe","role":"user"}],"model":"llama-3.3-70b-versatile"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"identity probe","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"llama-3.3-70b-versatile","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.016334219,"completion_tokens":3,"prompt_time":0.001184671,"prompt_tokens":41,"queue_time":0.178216706,"total_time":0.01751889,"total_tokens":44},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":879685251}}'

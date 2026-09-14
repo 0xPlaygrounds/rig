@@ -1,0 +1,985 @@
+//! Shared helpers for provider-backed reasoning-enabled integration tests.
+//!
+//! These tests verify that providers can handle reasoning-enabled requests,
+//! preserve multi-turn history, and complete tool roundtrips. Visible reasoning
+//! is recorded for diagnostics when a provider emits it, but is not required.
+#![allow(dead_code)]
+
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
+
+use futures::StreamExt;
+use rig::agent::{
+    AgentBuilder, AgentHook, HookContext, MultiTurnStreamItem, ObservationAction, ReasoningDelta,
+    StepEventKind, StreamingError,
+};
+use rig::completion::{self, CompletionModel};
+use rig::message::{
+    AssistantContent, Message, Reasoning, ReasoningContent, ToolResultContent, UserContent,
+};
+use rig::streaming::{BlockClose, BlockKind, Delta, StreamEvent, StreamedUserContent};
+use rig::tool::Tool;
+use serde::Deserialize;
+use serde_json::json;
+
+pub(crate) const ROUNDTRIP_PREAMBLE: &str = "You are a helpful math tutor. Be concise.";
+
+const REASONING_DELTA_HOOK_PROMPT: &str = "\
+How many positive integers n < 400 are divisible by 6 but not by 9? \
+Think through the counting carefully, then answer with only the integer.";
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ReasoningDeltaSnapshot {
+    id: String,
+    provider_id: Option<String>,
+    delta: String,
+    aggregated: Option<String>,
+    turn: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum ReasoningDeltaTimelineItem {
+    Hook(ReasoningDeltaSnapshot),
+    Stream(ReasoningDeltaSnapshot),
+}
+
+#[derive(Clone, Default)]
+struct ReasoningDeltaHookRecorder {
+    timeline: Arc<Mutex<Vec<ReasoningDeltaTimelineItem>>>,
+}
+
+impl ReasoningDeltaHookRecorder {
+    fn record_stream_delta(&self, id: String, provider_id: Option<String>, delta: String) {
+        self.timeline
+            .lock()
+            .expect("reasoning delta timeline lock")
+            .push(ReasoningDeltaTimelineItem::Stream(ReasoningDeltaSnapshot {
+                id,
+                provider_id,
+                delta,
+                aggregated: None,
+                turn: 1,
+            }));
+    }
+
+    fn snapshot(&self) -> Vec<ReasoningDeltaTimelineItem> {
+        self.timeline
+            .lock()
+            .expect("reasoning delta timeline lock")
+            .clone()
+    }
+}
+
+impl AgentHook for ReasoningDeltaHookRecorder {
+    async fn on_reasoning_delta(
+        &self,
+        ctx: &HookContext,
+        event: ReasoningDelta<'_>,
+    ) -> ObservationAction {
+        assert!(
+            ctx.is_streaming(),
+            "ReasoningDelta must only be dispatched on the streaming surface"
+        );
+        self.timeline
+            .lock()
+            .expect("reasoning delta timeline lock")
+            .push(ReasoningDeltaTimelineItem::Hook(ReasoningDeltaSnapshot {
+                id: event.id.to_string(),
+                provider_id: event.provider_id.map(str::to_owned),
+                delta: event.delta.to_owned(),
+                aggregated: Some(event.aggregated.to_owned()),
+                turn: ctx.turn(),
+            }));
+        ObservationAction::continue_run()
+    }
+
+    fn observes(&self, kind: StepEventKind) -> bool {
+        kind == StepEventKind::ReasoningDelta
+    }
+}
+
+/// Drive one real provider stream through the managed agent surface and pin
+/// the `ReasoningDelta` hook contract against the emitted normalized deltas.
+pub(crate) async fn run_reasoning_delta_hook_streaming<M>(
+    model: M,
+    additional_params: serde_json::Value,
+    provider: &str,
+) where
+    M: CompletionModel + 'static,
+{
+    let hook = ReasoningDeltaHookRecorder::default();
+    let probe = hook.clone();
+    let agent = AgentBuilder::new(model)
+        .preamble("Reason carefully before giving a concise final answer.")
+        .max_tokens(4096)
+        .additional_params(additional_params)
+        .build();
+    let mut stream = agent
+        .prompt(REASONING_DELTA_HOOK_PROMPT)
+        .add_hook(hook)
+        .stream();
+    let mut final_text = None;
+    // The provider reasoning id is announced once at the block's start; the
+    // deltas carry only the block id.
+    let mut block_provider_ids = HashMap::<String, String>::new();
+
+    while let Some(item) = stream.next().await {
+        match item.unwrap_or_else(|error| panic!("[{provider}] agent stream failed: {error}")) {
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockStart {
+                id,
+                kind:
+                    BlockKind::Reasoning {
+                        provider_id: Some(provider_id),
+                    },
+            }) => {
+                block_provider_ids.insert(id.to_string(), provider_id);
+            }
+            MultiTurnStreamItem::StreamAssistantItem(StreamEvent::BlockDelta {
+                id,
+                delta: Delta::Reasoning { text: reasoning },
+            }) => {
+                let id = id.to_string();
+                let provider_id = block_provider_ids.get(&id).cloned();
+                probe.record_stream_delta(id, provider_id, reasoning);
+            }
+            MultiTurnStreamItem::FinalResponse(response) => {
+                final_text = Some(response.output().to_owned());
+            }
+            _ => {}
+        }
+    }
+
+    let final_text = final_text.unwrap_or_else(|| panic!("[{provider}] missing final response"));
+    assert!(
+        final_text.contains("44"),
+        "[{provider}] final response should contain the expected answer 44, got {final_text:?}"
+    );
+
+    let timeline = probe.snapshot();
+    assert!(
+        timeline.len() >= 4,
+        "[{provider}] expected multiple hook/emitted reasoning-delta pairs, got {timeline:#?}"
+    );
+    assert_eq!(
+        timeline.len() % 2,
+        0,
+        "[{provider}] every hooked reasoning delta must be emitted"
+    );
+
+    let mut aggregates = HashMap::<String, String>::new();
+    let mut provider_ids = HashMap::<String, String>::new();
+    for pair in timeline.chunks_exact(2) {
+        let (ReasoningDeltaTimelineItem::Hook(hooked), ReasoningDeltaTimelineItem::Stream(emitted)) =
+            (&pair[0], &pair[1])
+        else {
+            panic!(
+                "[{provider}] reasoning hooks must run immediately before outward emission: {pair:#?}"
+            );
+        };
+
+        assert_eq!(hooked.turn, 1, "[{provider}] unexpected hook turn");
+        assert_eq!(hooked.id, emitted.id, "[{provider}] correlator drift");
+        assert_eq!(
+            hooked.provider_id, emitted.provider_id,
+            "[{provider}] provider reasoning id drift"
+        );
+        assert_eq!(hooked.delta, emitted.delta, "[{provider}] delta drift");
+
+        let expected_aggregate = aggregates.entry(hooked.id.clone()).or_default();
+        expected_aggregate.push_str(&hooked.delta);
+        assert_eq!(
+            hooked.aggregated.as_deref(),
+            Some(expected_aggregate.as_str()),
+            "[{provider}] aggregate must contain exactly this part's deltas through the current fragment"
+        );
+
+        if let Some(provider_id) = &hooked.provider_id {
+            let prior = provider_ids
+                .entry(hooked.id.clone())
+                .or_insert_with(|| provider_id.clone());
+            assert_eq!(
+                prior, provider_id,
+                "[{provider}] one Rig correlator mapped to multiple provider reasoning ids"
+            );
+        }
+    }
+}
+
+const ROUNDTRIP_TURN1_TEXT: &str = "\
+A train leaves Station A at 60 km/h. Another train leaves Station B \
+(300 km away) 30 minutes later at 90 km/h heading toward Station A. \
+At what time do they meet, and how far from Station A? Show your work.";
+
+const ROUNDTRIP_TURN2_TEXT: &str = "\
+Now suppose both trains slow down by 10 km/h after traveling half \
+the original distance. When do they meet now?";
+
+pub(crate) struct ReasoningRoundtripAgent<M: CompletionModel> {
+    pub(crate) model: M,
+    pub(crate) preamble: String,
+    pub(crate) additional_params: Option<serde_json::Value>,
+    /// Opt-in capability flag. Most providers stream reasoning as unsigned
+    /// deltas (or emit none at all), so the shared roundtrip only records
+    /// reasoning for diagnostics. A provider whose wire is known to carry a
+    /// replay-required signature opts in here, and the streaming roundtrip
+    /// then asserts that a complete `Reasoning` block with a signature
+    /// reached the caller and was round-tripped into turn 2.
+    pub(crate) expects_signed_reasoning_block: bool,
+}
+
+impl<M> ReasoningRoundtripAgent<M>
+where
+    M: CompletionModel,
+{
+    pub(crate) fn new(model: M, additional_params: Option<serde_json::Value>) -> Self {
+        Self {
+            model,
+            preamble: ROUNDTRIP_PREAMBLE.to_owned(),
+            additional_params,
+            expects_signed_reasoning_block: false,
+        }
+    }
+
+    /// See [`ReasoningRoundtripAgent::expects_signed_reasoning_block`].
+    pub(crate) fn expecting_signed_reasoning_block(mut self) -> Self {
+        self.expects_signed_reasoning_block = true;
+        self
+    }
+}
+
+pub(crate) async fn run_reasoning_roundtrip_streaming<M>(agent: ReasoningRoundtripAgent<M>)
+where
+    M: CompletionModel,
+{
+    run_reasoning_roundtrip_streaming_with_final(agent, |_| {}).await;
+}
+
+pub(crate) async fn run_reasoning_roundtrip_streaming_with_final<M, F>(
+    agent: ReasoningRoundtripAgent<M>,
+    mut inspect_final: F,
+) where
+    M: CompletionModel,
+    F: FnMut(&rig::streaming::StreamFinal),
+{
+    let turn1_prompt = Message::User {
+        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
+    };
+
+    let request = completion::CompletionRequest {
+        chat_history: vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt.clone(),
+        ],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: agent.additional_params.clone(),
+        model: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let mut stream = agent.model.stream(request).await.expect("Turn 1 stream");
+
+    let mut assistant_content = Vec::new();
+    let mut saw_reasoning_block = false;
+    let mut reasoning_delta_text = String::new();
+    let mut streamed_text = String::new();
+
+    while let Some(chunk) = stream.next().await {
+        match chunk {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => {
+                streamed_text.push_str(&text);
+            }
+            Ok(StreamEvent::BlockEnd {
+                end: BlockClose::Reasoning { .. },
+                block: Some(AssistantContent::Reasoning(reasoning)),
+                ..
+            }) => {
+                saw_reasoning_block = true;
+                assistant_content.push(AssistantContent::Reasoning(reasoning));
+            }
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Reasoning { text },
+                ..
+            }) => {
+                reasoning_delta_text.push_str(&text);
+            }
+            Ok(StreamEvent::Final(response)) => inspect_final(&response),
+            Ok(_) => {}
+            Err(error) => panic!("Turn 1 stream error: {error}"),
+        }
+    }
+
+    if agent.expects_signed_reasoning_block {
+        assert!(
+            saw_reasoning_block,
+            "Provider opted into signed reasoning but streamed no complete Reasoning block \
+             (reasoning deltas seen: {} chars). A signature-only block must not be dropped.",
+            reasoning_delta_text.len()
+        );
+
+        let signed = assistant_content.iter().any(|content| match content {
+            AssistantContent::Reasoning(reasoning) => reasoning
+                .content
+                .iter()
+                .any(|block| matches!(block, ReasoningContent::Text { signature, .. } if signature.is_some())),
+            _ => false,
+        });
+        assert!(
+            signed,
+            "Provider opted into signed reasoning but no streamed Reasoning block carried a \
+             signature: {assistant_content:#?}"
+        );
+    }
+
+    // Providers like Gemini 2.5 emit thinking as deltas without signatures,
+    // so turn the deltas into a single reasoning block before round-tripping.
+    if !saw_reasoning_block && !reasoning_delta_text.is_empty() {
+        assistant_content.push(AssistantContent::Reasoning(Reasoning::new(
+            &reasoning_delta_text,
+        )));
+    }
+
+    assert!(!streamed_text.is_empty(), "Turn 1 produced no text output.");
+
+    assistant_content.push(AssistantContent::text(&streamed_text));
+
+    let turn1_assistant = Message::Assistant {
+        id: stream.message_id.clone(),
+        content: assistant_content,
+    };
+
+    let turn2_prompt = Message::User {
+        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
+    };
+
+    let request2 = completion::CompletionRequest {
+        chat_history: vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: agent.additional_params.clone(),
+        model: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let mut stream2 = agent.model.stream(request2).await.expect("Turn 2 stream");
+    let mut turn2_text = String::new();
+
+    while let Some(chunk) = stream2.next().await {
+        match chunk {
+            Ok(StreamEvent::BlockDelta {
+                delta: Delta::Text { text },
+                ..
+            }) => {
+                turn2_text.push_str(&text);
+            }
+            Ok(_) => {}
+            Err(error) => panic!("Turn 2 stream error: {error}"),
+        }
+    }
+
+    assert!(
+        !turn2_text.is_empty(),
+        "Turn 2 produced no text output. \
+         Provider may have rejected the request with reasoning in chat history."
+    );
+
+    let trimmed = turn2_text.trim();
+    assert!(
+        trimmed.len() >= 20,
+        "Turn 2 text suspiciously short ({} chars: {:?}). \
+         Provider may not have processed the multi-turn context.",
+        trimmed.len(),
+        &trimmed[..trimmed.len().min(100)]
+    );
+}
+
+pub(crate) async fn run_reasoning_roundtrip_nonstreaming<M>(agent: ReasoningRoundtripAgent<M>)
+where
+    M: CompletionModel,
+{
+    let turn1_prompt = Message::User {
+        content: vec![UserContent::text(ROUNDTRIP_TURN1_TEXT)],
+    };
+
+    let request = completion::CompletionRequest {
+        chat_history: vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt.clone(),
+        ],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: agent.additional_params.clone(),
+        model: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let response = agent
+        .model
+        .completion(request)
+        .await
+        .expect("Turn 1 completion");
+
+    let mut text_parts = String::new();
+
+    for content in response.choice.iter() {
+        match content {
+            AssistantContent::Reasoning(_) => {}
+            AssistantContent::Text(text) => {
+                text_parts.push_str(&text.text);
+            }
+            _ => {}
+        }
+    }
+
+    assert!(
+        !text_parts.is_empty(),
+        "Turn 1 non-streaming response has no text output."
+    );
+
+    let turn1_assistant = Message::Assistant {
+        id: response.message_id,
+        content: response.choice,
+    };
+
+    let turn2_prompt = Message::User {
+        content: vec![UserContent::text(ROUNDTRIP_TURN2_TEXT)],
+    };
+
+    let request2 = completion::CompletionRequest {
+        chat_history: vec![
+            Message::system(agent.preamble.clone()),
+            turn1_prompt,
+            turn1_assistant,
+            turn2_prompt,
+        ],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: agent.additional_params.clone(),
+        model: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    };
+
+    let response2 = agent
+        .model
+        .completion(request2)
+        .await
+        .expect("Turn 2 completion - provider may have rejected reasoning in chat history");
+
+    let turn2_text: String = response2
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect();
+
+    assert!(
+        !turn2_text.is_empty(),
+        "Turn 2 non-streaming response has no text. \
+         Provider may have rejected the request with reasoning in chat history."
+    );
+
+    let trimmed = turn2_text.trim();
+    assert!(
+        trimmed.len() >= 20,
+        "Turn 2 text suspiciously short ({} chars: {:?}). \
+         Provider may not have processed the multi-turn context.",
+        trimmed.len(),
+        &trimmed[..trimmed.len().min(100)]
+    );
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error("Weather service unavailable")]
+pub(crate) struct WeatherError;
+
+#[derive(Deserialize)]
+pub(crate) struct WeatherArgs {
+    pub(crate) city: String,
+}
+
+pub(crate) struct WeatherTool {
+    call_count: Arc<AtomicUsize>,
+}
+
+impl WeatherTool {
+    pub(crate) fn new(call_count: Arc<AtomicUsize>) -> Self {
+        Self { call_count }
+    }
+}
+
+impl Tool for WeatherTool {
+    const NAME: &'static str = "get_weather";
+    type Error = WeatherError;
+    type Args = WeatherArgs;
+    type Output = String;
+
+    fn description(&self) -> String {
+        "Get the current weather for a city. Must be called for weather questions.".to_string()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({
+            "type": "object",
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "City name to get weather for"
+                }
+            },
+            "required": ["city"]
+        })
+    }
+
+    async fn call(
+        &self,
+        _context: &mut rig::tool::ToolContext,
+        args: Self::Args,
+    ) -> Result<Self::Output, Self::Error> {
+        self.call_count.fetch_add(1, Ordering::SeqCst);
+        Ok(format!(
+            "Weather in {}: 72F (22C), sunny with light clouds, humidity 45%, wind 8 mph NW",
+            args.city
+        ))
+    }
+}
+
+pub(crate) const TOOL_SYSTEM_PROMPT: &str = "\
+You are a weather assistant. You have access to a get_weather tool. \
+You must call the get_weather tool for any weather question and never guess weather data. \
+After receiving the tool result, provide a concise summary of the weather.";
+
+pub(crate) const TOOL_USER_PROMPT: &str = "\
+I'm planning a trip. What is the current weather in Tokyo, Japan? \
+Based on the weather conditions, should I pack an umbrella or sunscreen? \
+Use the get_weather tool to check before answering.";
+
+pub(crate) struct StreamStats {
+    pub(crate) reasoning_block_count: usize,
+    pub(crate) reasoning_delta_count: usize,
+    pub(crate) reasoning_content_types: Vec<&'static str>,
+    pub(crate) reasoning_has_signature: bool,
+    pub(crate) reasoning_has_encrypted: bool,
+    pub(crate) tool_calls_in_stream: Vec<String>,
+    pub(crate) tool_results_in_stream: usize,
+    pub(crate) text_chunks: usize,
+    pub(crate) final_turn_text: String,
+    pub(crate) final_response_text: Option<String>,
+    pub(crate) got_final_response: bool,
+    pub(crate) errors: Vec<String>,
+    pub(crate) events: Vec<&'static str>,
+}
+
+impl StreamStats {
+    fn new() -> Self {
+        Self {
+            reasoning_block_count: 0,
+            reasoning_delta_count: 0,
+            reasoning_content_types: vec![],
+            reasoning_has_signature: false,
+            reasoning_has_encrypted: false,
+            tool_calls_in_stream: vec![],
+            tool_results_in_stream: 0,
+            text_chunks: 0,
+            final_turn_text: String::new(),
+            final_response_text: None,
+            got_final_response: false,
+            errors: vec![],
+            events: vec![],
+        }
+    }
+
+    pub(crate) fn total_reasoning(&self) -> usize {
+        self.reasoning_block_count + self.reasoning_delta_count
+    }
+
+    pub(crate) fn reasoning_before_first_tool_call(&self) -> bool {
+        let first_reasoning = self
+            .events
+            .iter()
+            .position(|event| event.starts_with("reasoning"));
+        let first_tool_call = self.events.iter().position(|event| *event == "tool_call");
+
+        match (first_reasoning, first_tool_call) {
+            (Some(reasoning), Some(tool_call)) => reasoning < tool_call,
+            (Some(_), None) => true,
+            _ => false,
+        }
+    }
+}
+
+fn record_reasoning(stats: &mut StreamStats, reasoning: &Reasoning, provider: &str) {
+    stats.reasoning_block_count += 1;
+    stats.events.push("reasoning_block");
+
+    for content in &reasoning.content {
+        let type_name = match content {
+            ReasoningContent::Text { signature, .. } => {
+                if signature.is_some() {
+                    stats.reasoning_has_signature = true;
+                }
+                "Text"
+            }
+            ReasoningContent::Encrypted(_) => {
+                stats.reasoning_has_encrypted = true;
+                "Encrypted"
+            }
+            ReasoningContent::Summary(_) => "Summary",
+            ReasoningContent::Redacted { .. } => "Redacted",
+        };
+        stats.reasoning_content_types.push(type_name);
+    }
+
+    eprintln!(
+        "[{provider}] Reasoning block: id={:?}, types={:?}",
+        reasoning.id, stats.reasoning_content_types
+    );
+}
+
+pub(crate) async fn collect_stream_stats(
+    stream: impl futures::Stream<Item = Result<MultiTurnStreamItem, StreamingError>>,
+    provider: &str,
+) -> StreamStats {
+    let mut stats = StreamStats::new();
+
+    futures::pin_mut!(stream);
+
+    while let Some(item) = stream.next().await {
+        match item {
+            Ok(MultiTurnStreamItem::ToolCall { ref tool_call, .. }) => {
+                stats
+                    .tool_calls_in_stream
+                    .push(tool_call.function.name.clone());
+                stats.events.push("tool_call");
+            }
+            Ok(MultiTurnStreamItem::StreamAssistantItem(content)) => match content {
+                StreamEvent::BlockEnd {
+                    end: BlockClose::Reasoning { .. },
+                    block: Some(AssistantContent::Reasoning(ref reasoning)),
+                    ..
+                } => {
+                    record_reasoning(&mut stats, reasoning, provider);
+                }
+                StreamEvent::BlockDelta {
+                    delta: Delta::Reasoning { .. },
+                    ..
+                } => {
+                    stats.reasoning_delta_count += 1;
+                    if stats.events.last() != Some(&"reasoning_delta") {
+                        stats.events.push("reasoning_delta");
+                    }
+                }
+                StreamEvent::BlockDelta {
+                    delta: Delta::Text { ref text },
+                    ..
+                } => {
+                    stats.text_chunks += 1;
+                    stats.final_turn_text.push_str(text);
+                    if stats.events.last() != Some(&"text") {
+                        stats.events.push("text");
+                    }
+                }
+                StreamEvent::BlockDelta {
+                    delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
+                    ..
+                } => {
+                    if stats.events.last() != Some(&"tool_call_delta") {
+                        stats.events.push("tool_call_delta");
+                    }
+                }
+                StreamEvent::Final(_) => {
+                    stats.events.push("final");
+                }
+                StreamEvent::Unknown(_) => {
+                    stats.events.push("unknown");
+                }
+                StreamEvent::BlockStart { .. }
+                | StreamEvent::BlockDelta {
+                    delta: Delta::TextMeta { .. },
+                    ..
+                }
+                | StreamEvent::BlockEnd { .. } => {}
+            },
+            Ok(MultiTurnStreamItem::StreamUserItem(ref content)) => match content {
+                StreamedUserContent::ToolResult { .. } => {
+                    stats.tool_results_in_stream += 1;
+                    stats.final_turn_text.clear();
+                    stats.events.push("tool_result");
+                }
+            },
+            Ok(MultiTurnStreamItem::FinalResponse(response)) => {
+                stats.final_response_text = Some(response.output().to_owned());
+                stats.got_final_response = true;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                stats.errors.push(error.to_string());
+            }
+        }
+    }
+
+    stats
+}
+
+pub(crate) fn assert_universal(
+    stats: &StreamStats,
+    tool_invocations: &AtomicUsize,
+    provider: &str,
+) {
+    assert!(
+        stats.errors.is_empty(),
+        "[{provider}] Stream had errors: {:?}",
+        stats.errors
+    );
+
+    let invocations = tool_invocations.load(Ordering::SeqCst);
+    assert!(
+        invocations >= 1,
+        "[{provider}] Tool was never invoked (count=0). Stream tool calls: {:?}",
+        stats.tool_calls_in_stream
+    );
+
+    assert!(
+        !stats.tool_calls_in_stream.is_empty(),
+        "[{provider}] No tool-call events in stream."
+    );
+
+    assert!(
+        stats
+            .tool_calls_in_stream
+            .iter()
+            .any(|name| name == "get_weather"),
+        "[{provider}] No get_weather tool call. Saw: {:?}",
+        stats.tool_calls_in_stream
+    );
+
+    assert!(
+        stats.tool_results_in_stream >= 1,
+        "[{provider}] No tool-result events in stream. Tool invoked {invocations} times."
+    );
+
+    assert!(
+        !stats.final_turn_text.trim().is_empty(),
+        "[{provider}] Final text is empty."
+    );
+
+    let trimmed = stats.final_turn_text.trim();
+    assert!(
+        trimmed.len() >= 30,
+        "[{provider}] Final text suspiciously short ({} chars): {:?}",
+        trimmed.len(),
+        &trimmed[..trimmed.len().min(100)]
+    );
+
+    let text_lower = stats.final_turn_text.to_ascii_lowercase();
+    let references_tool_output = text_lower.contains("72")
+        || text_lower.contains("22")
+        || text_lower.contains("sunny")
+        || text_lower.contains("tokyo")
+        || text_lower.contains("weather")
+        || text_lower.contains("temperature");
+    assert!(
+        references_tool_output,
+        "[{provider}] Final text does not reference tool output: {:?}",
+        &trimmed[..trimmed.len().min(200)]
+    );
+
+    assert!(
+        stats.got_final_response,
+        "[{provider}] Stream did not emit FinalResponse."
+    );
+
+    assert_eq!(
+        stats.final_response_text.as_deref(),
+        Some(stats.final_turn_text.as_str()),
+        "[{provider}] FinalResponse.output() diverged from streamed text."
+    );
+}
+
+pub(crate) fn assert_nonstreaming_universal(
+    result: &str,
+    tool_invocations: &AtomicUsize,
+    provider: &str,
+) {
+    let invocations = tool_invocations.load(Ordering::SeqCst);
+    assert!(
+        invocations >= 1,
+        "[{provider}] Tool was never invoked (count=0)."
+    );
+
+    let trimmed = result.trim();
+    assert!(
+        !trimmed.is_empty(),
+        "[{provider}] Agent returned empty response."
+    );
+
+    assert!(
+        trimmed.len() >= 30,
+        "[{provider}] Response suspiciously short ({} chars): {:?}",
+        trimmed.len(),
+        &trimmed[..trimmed.len().min(100)]
+    );
+
+    let text_lower = result.to_ascii_lowercase();
+    let references_tool_output = text_lower.contains("72")
+        || text_lower.contains("22")
+        || text_lower.contains("sunny")
+        || text_lower.contains("tokyo")
+        || text_lower.contains("weather")
+        || text_lower.contains("temperature");
+    assert!(
+        references_tool_output,
+        "[{provider}] Response does not reference tool output: {:?}",
+        &trimmed[..trimmed.len().min(200)]
+    );
+}
+
+pub(crate) fn assert_chat_history_preserves_reasoning_tool_roundtrip(
+    chat_history: &[Message],
+    result: &str,
+    provider: &str,
+) {
+    assert!(
+        chat_history.len() >= 4,
+        "[{provider}] Chat history should contain at least user prompt, assistant tool call, tool result, and final assistant response. Got: {chat_history:#?}"
+    );
+
+    let result = result.trim();
+    let mut prompt_index = None;
+    let mut reasoning_index = None;
+    let mut tool_call_index = None;
+    let mut tool_result_index = None;
+    let mut final_response_index = None;
+    let mut tool_result_text = String::new();
+
+    for (index, message) in chat_history.iter().enumerate() {
+        match message {
+            Message::User { content } => {
+                for item in content.iter() {
+                    match item {
+                        UserContent::Text(text)
+                            if text.text.contains("Tokyo")
+                                || text.text.contains("get_weather")
+                                || text.text.contains("weather") =>
+                        {
+                            prompt_index.get_or_insert(index);
+                        }
+                        UserContent::ToolResult(tool_result) => {
+                            tool_result_index.get_or_insert(index);
+                            for content in tool_result.content.iter() {
+                                match content {
+                                    ToolResultContent::Text(text) => {
+                                        tool_result_text.push_str(&text.text);
+                                    }
+                                    ToolResultContent::Json { value } => {
+                                        tool_result_text.push_str(&value.to_string());
+                                    }
+                                    ToolResultContent::Image(_) => {}
+                                }
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            Message::Assistant { content, .. } => {
+                let mut assistant_text = String::new();
+
+                for item in content.iter() {
+                    match item {
+                        AssistantContent::Reasoning(_) => {
+                            reasoning_index.get_or_insert(index);
+                        }
+                        AssistantContent::ToolCall(tool_call)
+                            if tool_call.function.name == WeatherTool::NAME =>
+                        {
+                            tool_call_index.get_or_insert(index);
+                        }
+                        AssistantContent::Text(text) => {
+                            assistant_text.push_str(&text.text);
+                        }
+                        _ => {}
+                    }
+                }
+
+                let assistant_text = assistant_text.trim();
+                if !assistant_text.is_empty()
+                    && (assistant_text == result
+                        || assistant_text.contains(result)
+                        || result.contains(assistant_text))
+                {
+                    final_response_index.get_or_insert(index);
+                }
+            }
+            Message::System { .. } => {}
+        }
+    }
+
+    let prompt_index = prompt_index.unwrap_or_else(|| {
+        panic!("[{provider}] Chat history is missing the original user prompt: {chat_history:#?}")
+    });
+    reasoning_index.unwrap_or_else(|| {
+        panic!(
+            "[{provider}] Chat history is missing assistant reasoning content: {chat_history:#?}"
+        )
+    });
+    let tool_call_index = tool_call_index.unwrap_or_else(|| {
+        panic!("[{provider}] Chat history is missing the get_weather tool call: {chat_history:#?}")
+    });
+    let tool_result_index = tool_result_index.unwrap_or_else(|| {
+        panic!(
+            "[{provider}] Chat history is missing the get_weather tool result: {chat_history:#?}"
+        )
+    });
+    let final_response_index = final_response_index.unwrap_or_else(|| {
+        panic!(
+            "[{provider}] Chat history is missing the returned final assistant response {result:?}: {chat_history:#?}"
+        )
+    });
+
+    assert!(
+        prompt_index < tool_call_index,
+        "[{provider}] Tool call should appear after the user prompt: {chat_history:#?}"
+    );
+    assert!(
+        tool_call_index < tool_result_index,
+        "[{provider}] Tool result should appear after the assistant tool call: {chat_history:#?}"
+    );
+    assert!(
+        tool_result_index < final_response_index,
+        "[{provider}] Final assistant response should appear after the tool result: {chat_history:#?}"
+    );
+
+    let tool_result_lower = tool_result_text.to_ascii_lowercase();
+    assert!(
+        tool_result_lower.contains("tokyo")
+            && (tool_result_lower.contains("72") || tool_result_lower.contains("sunny")),
+        "[{provider}] Tool result content was not preserved in chat history: {tool_result_text:?}"
+    );
+}

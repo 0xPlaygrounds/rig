@@ -1,0 +1,18 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"Never streamed","type":"input_text"}],"role":"user","type":"message"}],"model":"gpt-nonexistent-model-for-error-edge","stream":true}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"model_not_found","message":"The requested model ''gpt-nonexistent-model-for-error-edge'' does not exist.","param":"model","type":"invalid_request_error"}}'

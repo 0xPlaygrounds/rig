@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":128,"messages":[{"content":"Compute 17 * 23. Give the number only after thinking.","role":"user"}],"model":"openai/gpt-oss-20b"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"391","reasoning_content":"The user: \"Compute 17 * 23. Give the number only after thinking.\" They want the product. I should think but no need to show calculation. Just output the number. 17*23 = 391. Let''s double-check: 20*17 = 340, plus 3*17 = 51 => 340+51=391. Yes. So answer: 391.","role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"openai/gpt-oss-20b","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":93,"completion_tokens_details":{"accepted_prediction_tokens":null,"audio_tokens":null,"reasoning_tokens":86,"rejected_prediction_tokens":null},"prompt_tokens":81,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":174}}'

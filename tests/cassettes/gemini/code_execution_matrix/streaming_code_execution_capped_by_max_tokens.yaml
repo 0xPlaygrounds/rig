@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to compute 999 times 999. State the number in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":1500,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"executableCode\":{\"code\":\"print(999 * 999)\\n\",\"language\":\"PYTHON\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":11,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"totalTokenCount\":73}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"codeExecutionResult\":{\"outcome\":\"OUTCOME_OK\",\"output\":\"998001\\n\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":11,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"totalTokenCount\":73}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The product\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":13,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"toolUsePromptTokenCount\":81,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":81}],\"totalTokenCount\":156}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" of 999 times 999 is 998,\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":29,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"toolUsePromptTokenCount\":81,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":81}],\"totalTokenCount\":172}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"001.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":33,\"promptTokenCount\":25,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":25}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":37,\"toolUsePromptTokenCount\":81,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":81}],\"totalTokenCount\":176}}\r\n\r\n"

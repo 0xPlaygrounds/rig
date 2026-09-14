@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash-lite:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Reply with exactly: agent raw probe","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"agent raw probe\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash-lite\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":3,\"promptTokenCount\":8,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":8}],\"serviceTier\":\"standard\",\"totalTokenCount\":11}}\r\n\r\n"

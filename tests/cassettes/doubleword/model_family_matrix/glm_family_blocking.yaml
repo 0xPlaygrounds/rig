@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":96,"messages":[{"content":"Reply with the single word: family-ok","role":"user"}],"model":"zai-org/GLM-5.2-FP8"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"reasoning_content":"1.  **Analyze the Request:**\n    *   Input: \"Reply with the single word: family-ok\"\n    *   Constraint: Reply with *exactly* the single word \"family-ok\".\n\n2.  **Formulate the Output:**\n    *   Output string: \"family-ok\"\n\n3.  **Verify Constraints:**\n    *   Is it a single word? Yes (treating hyphenated as a single word based on the prompt''s","reasoning_details":[{"format":"unknown","index":0,"text":"1.  **Analyze the Request:**\n    *   Input: \"Reply with the single word: family-ok\"\n    *   Constraint: Reply with *exactly* the single word \"family-ok\".\n\n2.  **Formulate the Output:**\n    *   Output string: \"family-ok\"\n\n3.  **Verify Constraints:**\n    *   Is it a single word? Yes (treating hyphenated as a single word based on the prompt''s","type":"reasoning.text"}],"refusal":null,"role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"zai-org/GLM-5.2-FP8","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":96,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":88},"prompt_tokens":20,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":116}}'

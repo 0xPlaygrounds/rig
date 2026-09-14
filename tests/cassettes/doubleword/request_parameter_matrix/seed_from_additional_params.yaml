@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":32,"messages":[{"content":"Reply briefly with the word parameter-ok.","role":"user"}],"model":"Qwen/Qwen3.5-9B","seed":31415}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"reasoning_content":"Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Task: Reply briefly.\n    *   Content: The word \"parameter","role":"assistant"}}],"created":0,"id":"resp_REDACTED_1","model":"Qwen/Qwen3.5-9B","object":"chat.completion","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_24h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"completion_tokens":32,"completion_tokens_details":{"accepted_prediction_tokens":null,"audio_tokens":null,"reasoning_tokens":32,"rejected_prediction_tokens":null},"prompt_tokens":18,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":50}}'

@@ -1,0 +1,16 @@
+[package]
+name = "rig-agent-run-stepper-fixture"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+# A host that steps `AgentRun` itself, without rig-agent's futures driver:
+# rig-agent with default features off (rig-core + futures vocabulary only)
+# and rig-core. `tests/core/agent_run_stepper.rs` runs this binary and checks
+# its dependency graph; keep `rig`, tokio, reqwest and rmcp out of it.
+[dependencies]
+rig-agent = { path = "../../../crates/rig-agent", default-features = false }
+rig-core = { path = "../../../crates/rig-core", default-features = false }
+serde_json = "1.0.150"

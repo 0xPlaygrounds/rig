@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":32,"messages":[{"content":[{"text":"Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.","type":"text"}],"role":"system"},{"content":"The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.","role":"user"}],"model":"openai/gpt-4o-mini","provider":{"allow_fallbacks":false,"order":["OpenAI"]},"tool_choice":"required","tools":[{"function":{"description":"File an incident report","name":"file_report","parameters":{"properties":{"summary":{"type":"string"}},"required":["summary"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"logprobs":null,"message":{"content":null,"reasoning":null,"refusal":null,"role":"assistant","tool_calls":[{"function":{"arguments":"{\"summary\":\"The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by","name":"file_report"},"id":"call_REDACTED_1","index":0,"type":"function"}]},"native_finish_reason":"length"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-4o-mini","object":"chat.completion","provider":"OpenAI","service_tier":null,"system_fingerprint":"fp_REDACTED_1","usage":{"completion_tokens":32,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":0},"cost":0.00003435,"cost_details":{"upstream_inference_completions_cost":0.0000192,"upstream_inference_cost":0.00003435,"upstream_inference_prompt_cost":0.00001515},"is_byok":false,"prompt_tokens":101,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":133}}'

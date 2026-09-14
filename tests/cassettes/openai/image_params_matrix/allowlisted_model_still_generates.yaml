@@ -1,0 +1,18 @@
+when:
+  path: /v1/images/generations
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"model":"gpt-image-1","prompt":"a plain red circle on a white background","quality":"low","size":"1024x1024"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"background":"opaque","created":0,"data":[{"b64_json":"aGVsbG8="}],"output_format":"png","quality":"low","size":"1024x1024","usage":{"input_tokens":14,"input_tokens_details":{"image_tokens":0,"text_tokens":14},"output_tokens":272,"output_tokens_details":{"image_tokens":272,"text_tokens":0},"total_tokens":286}}'

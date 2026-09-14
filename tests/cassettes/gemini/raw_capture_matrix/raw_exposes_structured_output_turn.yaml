@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash-lite:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Return a concise event object for a local Rust meetup in Seattle.","thought":false}],"role":"user"}],"generationConfig":{"responseJsonSchema":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"title":"SmokeStructuredOutput","type":"object"},"responseMimeType":"application/json","temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"{\n  \"title\": \"Seattle Rust Meetup\",\n  \"category\": \"Technology\",\n  \"summary\": \"A regular meetup for Rust enthusiasts in the Seattle area to discuss projects, share knowledge, and network.\"\n}"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":48,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","totalTokenCount":62}}'

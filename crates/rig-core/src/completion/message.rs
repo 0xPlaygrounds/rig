@@ -1,0 +1,1990 @@
+use serde::{Deserialize, Serialize};
+use std::{convert::Infallible, str::FromStr};
+use thiserror::Error;
+
+use super::CompletionError;
+
+// ================================================================
+// Message models
+// ================================================================
+
+/// A provider-agnostic chat message.
+///
+/// Messages are role-tagged and may contain one or many content items, including
+/// text, images, audio, documents, tool calls, and tool results. Provider modules
+/// are responsible for translating these generic messages into provider-native
+/// request bodies. That conversion may be lossy when a provider does not support
+/// a particular content type.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "role", rename_all = "lowercase")]
+pub enum Message {
+    /// System message containing instruction text.
+    System { content: String },
+
+    /// User message containing one or more content types defined by `UserContent`.
+    User { content: Vec<UserContent> },
+
+    /// Assistant message containing one or more content types defined by `AssistantContent`.
+    Assistant {
+        /// Provider-assigned assistant message ID, when available.
+        id: Option<String>,
+        content: Vec<AssistantContent>,
+    },
+}
+
+/// The shared wording for a response whose converted choice is empty.
+///
+/// Every provider decode rejects that state through
+/// [`require_non_empty_response`]; sharing the literal keeps a wording
+/// change from silently forking the error text across wires. A guard
+/// rejecting a *different* state (a role mismatch, a missing message) keeps
+/// its own text instead.
+pub const EMPTY_RESPONSE_ERROR: &str = "Response contained no message or tool call (empty)";
+
+/// Reject an empty content list, with the error the call site chose.
+///
+/// Message content is a `Vec`, so "no content" is representable in the type.
+/// Most wires nevertheless reject it — a completion that carried no message and
+/// no tool call is a provider defect, and a history message with no blocks has
+/// nothing to send — and at least one call site depends on that rejection as
+/// control flow rather than as a diagnostic.
+///
+/// These guards used to be a side effect of the non-empty container's
+/// constructor, which meant every site borrowed the same context-free "cannot
+/// create with an empty vector". Stated explicitly here, each site keeps its own
+/// message, which is where the useful detail lives.
+///
+/// Two rules for anyone extending this:
+///
+/// - It is **mostly** a guard for the **response** direction. Empty assistant
+///   content is legal at the rig level — a tool-call-only turn, a truncated
+///   stream — but a provider returning nothing where its protocol promises
+///   content is malformed, and that is what most of these call sites detect.
+///   Request-direction emptiness at the rig level is rejected once, at the
+///   request boundary — but a few request-conversion sites also use this guard,
+///   because non-empty rig content can still convert to zero *wire* blocks
+///   (e.g. assistant content whose only parts have no representation on that
+///   wire), and only the provider's own conversion can see that. If your
+///   request `TryFrom` can drop parts, guard the converted list too.
+/// - The check is on the **whole list**, never on individual items. A visibly
+///   empty block can still carry data that must survive a round trip: reasoning
+///   signatures and encrypted reasoning attach to blocks whose text is empty.
+///   Emptiness is a property of the list, not of its members.
+pub fn require_non_empty<T, E>(items: Vec<T>, error: impl FnOnce() -> E) -> Result<Vec<T>, E> {
+    if items.is_empty() {
+        return Err(error());
+    }
+    Ok(items)
+}
+
+/// [`require_non_empty`] with the shared response-direction rejection — the
+/// one-line guard for a provider decode whose converted choice is empty.
+/// Pairing the guard with [`EMPTY_RESPONSE_ERROR`] here keeps the wording
+/// from forking per wire. A decode with a *legal* empty case (anthropic's
+/// documented empty `end_turn`) branches around the guard for that case and
+/// still routes every other empty through it.
+pub fn require_non_empty_response<T>(items: Vec<T>) -> Result<Vec<T>, CompletionError> {
+    require_non_empty(items, || {
+        CompletionError::ResponseError(EMPTY_RESPONSE_ERROR.to_owned())
+    })
+}
+
+/// The `Option` sibling of [`require_non_empty`]: `None` for an empty list,
+/// `Some(items)` otherwise.
+///
+/// This is the one home for the "an empty list means absent" rule, wherever a
+/// list is being placed into an `Option`-shaped slot (an optional response
+/// content, an optional message) rather than validated. The same whole-list
+/// rule applies: never decide emptiness per item.
+pub fn non_empty<T>(items: Vec<T>) -> Option<Vec<T>> {
+    if items.is_empty() { None } else { Some(items) }
+}
+
+/// Assemble assistant content in canonical replay order: reasoning blocks,
+/// then text, then trailing items (tool calls, images). Maps its inputs 1:1,
+/// so the result is empty exactly when every input is.
+///
+/// The order a **streamed** turn with reasoning or tool calls is committed
+/// to history in by rig-agent's stream assembler and rig-ecs's fold
+/// ([`canonical_streamed_choice`]): a wire that delivers a reasoning part
+/// after the text — Gemini's thought signature rides the last chunk —
+/// still commits the turn reasoning-first. A unary reply keeps the
+/// provider's order.
+pub fn ordered_assistant_content(
+    reasoning_items: impl IntoIterator<Item = Reasoning>,
+    text_items: impl IntoIterator<Item = AssistantContent>,
+    trailing_items: impl IntoIterator<Item = AssistantContent>,
+) -> Vec<AssistantContent> {
+    let mut content_items = reasoning_items
+        .into_iter()
+        .map(AssistantContent::Reasoning)
+        .collect::<Vec<_>>();
+    content_items.extend(text_items);
+    content_items.extend(trailing_items);
+    content_items
+}
+
+/// Whether a model turn delivered no answer: no real text, no tool call,
+/// no image. Reasoning is scratch work, not an answer, so a reasoning-only
+/// turn delivers none (it still belongs in history). The predicate both
+/// runtimes read before deciding that a turn the provider cut short is a
+/// lost turn (rig#2322), so they cannot disagree about which turns those
+/// are; it is deliberately not "the turn is empty", which diverges on a
+/// reasoning-only turn — the common case, since Gemini counts thinking
+/// tokens against `maxOutputTokens`, so a truncated thinking turn carries
+/// reasoning and no text.
+///
+/// The match is **exhaustive on purpose**: no `_` arm. Every content
+/// variant is classified explicitly, so adding one to [`AssistantContent`]
+/// breaks this build and forces a decision instead of inheriting a
+/// default. The first version had a `_ => false` catch-all and classified
+/// image-only turns as "no answer" — a truncated image-generation turn
+/// would have errored despite delivering an image, which matters because
+/// image tokens count against the same output budget.
+pub fn turn_delivered_no_answer(choice: &[AssistantContent]) -> bool {
+    !choice.iter().any(|content| match content {
+        // Real text is an answer; an empty block delivers nothing.
+        AssistantContent::Text(text) => !text.text.is_empty(),
+        AssistantContent::ToolCall(_) => true,
+        AssistantContent::Image(_) => true,
+        // The one exclusion: scratch work, not an answer.
+        AssistantContent::Reasoning(_) => false,
+    })
+}
+
+/// [`ordered_assistant_content`] over one delivered streamed choice: a
+/// turn with a reasoning block or a tool call is regrouped by kind —
+/// reasoning, text, the calls, then the images, each group in arrival
+/// order; a turn with neither keeps the provider's order. rig-agent's
+/// assembler (`StreamedTurnAssembler::canonical_choice_with`) applies this
+/// function to its own inputs — the calls it accepted, the text items it
+/// reports — so the two runtimes share the rule; rig-ecs's fold applies it
+/// to the delivered choice as is.
+pub fn canonical_streamed_choice(choice: Vec<AssistantContent>) -> Vec<AssistantContent> {
+    let regroup = choice.iter().any(|part| {
+        matches!(
+            part,
+            AssistantContent::Reasoning(_) | AssistantContent::ToolCall(_)
+        )
+    });
+    if !regroup {
+        return choice;
+    }
+    let mut reasoning = Vec::new();
+    let mut text = Vec::new();
+    let mut calls = Vec::new();
+    let mut images = Vec::new();
+    for part in choice {
+        match part {
+            AssistantContent::Reasoning(block) => reasoning.push(block),
+            AssistantContent::Text(_) => text.push(part),
+            AssistantContent::ToolCall(_) => calls.push(part),
+            AssistantContent::Image(_) => images.push(part),
+        }
+    }
+    ordered_assistant_content(reasoning, text, calls.into_iter().chain(images))
+}
+
+/// Describes the content of a message, which can be text, a tool result, an image, audio, or
+///  a document. Dependent on provider supporting the content type. Multimedia content is generally
+///  base64 (defined by it's format) encoded but additionally supports urls (for some providers).
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum UserContent {
+    /// Plain text user content.
+    Text(Text),
+    /// Result of a tool call returned as user-visible context to the model.
+    ToolResult(ToolResult),
+    /// Image content.
+    Image(Image),
+    /// Audio content.
+    Audio(Audio),
+    /// Video content.
+    Video(Video),
+    /// Document content.
+    Document(Document),
+}
+
+/// Describes responses from a provider which is either text or a tool call.
+///
+/// Tagged with `"type"`, exactly like [`UserContent`]. The tag is required on
+/// deserialize — there is no fallback to the tagless shape 0.41 serialized,
+/// so a bare `{"text": …}` block does not load; see MIGRATING for the
+/// tag-insertion recipe.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum AssistantContent {
+    /// Plain assistant text.
+    Text(Text),
+    /// Tool call requested by the assistant.
+    ToolCall(ToolCall),
+    /// Structured reasoning emitted by the assistant.
+    Reasoning(Reasoning),
+    /// Image content emitted by the assistant.
+    Image(Image),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", content = "content", rename_all = "snake_case")]
+/// A typed reasoning block used by providers that emit structured thinking data.
+pub enum ReasoningContent {
+    /// Plain reasoning text with an optional provider signature.
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        signature: Option<String>,
+    },
+    /// Provider-encrypted reasoning payload.
+    Encrypted(String),
+    /// Redacted reasoning payload preserved as opaque data.
+    Redacted { data: String },
+    /// Provider-generated reasoning summary text.
+    Summary(String),
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+/// Assistant reasoning payload with an optional provider-supplied identifier.
+pub struct Reasoning {
+    /// Provider reasoning identifier, when supplied by the upstream API.
+    pub id: Option<String>,
+    /// Ordered reasoning content blocks.
+    pub content: Vec<ReasoningContent>,
+}
+
+impl Reasoning {
+    /// Create a new reasoning item from a single item
+    pub fn new(input: &str) -> Self {
+        Self::new_with_signature(input, None)
+    }
+
+    /// Create a new reasoning item from a single text item and optional signature.
+    pub fn new_with_signature(input: &str, signature: Option<String>) -> Self {
+        Self {
+            id: None,
+            content: vec![ReasoningContent::Text {
+                text: input.to_string(),
+                signature,
+            }],
+        }
+    }
+
+    /// Set a provider reasoning ID.
+    pub fn with_id(mut self, id: String) -> Self {
+        self.id = Some(id);
+        self
+    }
+
+    /// Create reasoning content from multiple text blocks.
+    pub fn multi(input: Vec<String>) -> Self {
+        Self {
+            id: None,
+            content: input
+                .into_iter()
+                .map(|text| ReasoningContent::Text {
+                    text,
+                    signature: None,
+                })
+                .collect(),
+        }
+    }
+
+    /// Create a redacted reasoning block.
+    pub fn redacted(data: impl Into<String>) -> Self {
+        Self {
+            id: None,
+            content: vec![ReasoningContent::Redacted { data: data.into() }],
+        }
+    }
+
+    /// Create an encrypted reasoning block.
+    pub fn encrypted(data: impl Into<String>) -> Self {
+        Self {
+            id: None,
+            content: vec![ReasoningContent::Encrypted(data.into())],
+        }
+    }
+
+    /// Create one reasoning block containing summary items.
+    pub fn summaries(input: Vec<String>) -> Self {
+        Self {
+            id: None,
+            content: input.into_iter().map(ReasoningContent::Summary).collect(),
+        }
+    }
+
+    /// Render reasoning as displayable text by joining text-like blocks with newlines.
+    pub fn display_text(&self) -> String {
+        self.content
+            .iter()
+            .filter_map(|content| match content {
+                ReasoningContent::Text { text, .. } => Some(text.as_str()),
+                ReasoningContent::Summary(summary) => Some(summary.as_str()),
+                ReasoningContent::Redacted { data } => Some(data.as_str()),
+                ReasoningContent::Encrypted(_) => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// Return the first text reasoning block, if present.
+    pub fn first_text(&self) -> Option<&str> {
+        self.content.iter().find_map(|content| match content {
+            ReasoningContent::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+    }
+
+    /// Return the first signature from text reasoning, if present.
+    pub fn first_signature(&self) -> Option<&str> {
+        self.content.iter().find_map(|content| match content {
+            ReasoningContent::Text {
+                signature: Some(signature),
+                ..
+            } => Some(signature.as_str()),
+            _ => None,
+        })
+    }
+
+    /// Return the first encrypted reasoning payload, if present.
+    pub fn encrypted_content(&self) -> Option<&str> {
+        self.content.iter().find_map(|content| match content {
+            ReasoningContent::Encrypted(data) => Some(data.as_str()),
+            _ => None,
+        })
+    }
+}
+
+/// Tool result content containing information about a tool call and it's resulting content.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ToolResult {
+    /// Which call this result answers — rig's correlation handle, always
+    /// present. Copied from the answered [`ToolCall::id`], which is minted
+    /// at the provider boundary when the provider issued no identifier.
+    pub call: ToolCallId,
+    /// What the provider issued for the answered call, if anything — the
+    /// only identifiers that may travel back on that provider's wire.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ProviderCallId>,
+    /// Name of the tool that produced this result — the *executed* tool,
+    /// which can differ from the model's call when a hook repaired it.
+    ///
+    /// Required: several wires key the replay on it (Gemini's
+    /// `functionResponse.name`, Ollama's tool messages), and an identifier
+    /// is not a name — rig used to smuggle the name through the id, which
+    /// collided two calls to the same tool and misnamed cross-provider
+    /// replays (review 84a43e9e #5).
+    pub name: String,
+    /// One or more content items produced by the tool.
+    pub content: Vec<ToolResultContent>,
+}
+
+impl ToolResult {
+    /// A non-empty candidate for a required wire call-ID slot: the exact
+    /// provider handle when present, otherwise the local identity's wire hint.
+    ///
+    /// This single-item helper cannot reserve future provider IDs or pair
+    /// repeated turns. Full request adapters must use
+    /// [`ToolCallIds`](crate::providers::internal::tool_call_ids::ToolCallIds)
+    /// to assign collision-free synthetic references consistently to both legs.
+    ///
+    /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
+    /// [`ToolResult::provider`] directly instead: minted handles never
+    /// travel upstream there.
+    pub fn wire_call_id(&self) -> std::borrow::Cow<'_, str> {
+        self.provider.as_ref().map_or_else(
+            || self.call.wire_hint(),
+            |provider| std::borrow::Cow::Borrowed(provider.call_id.as_str()),
+        )
+    }
+}
+
+/// Describes one typed item in a tool result.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum ToolResultContent {
+    /// Literal text. Providers must not reinterpret it as structured JSON.
+    Text(Text),
+    /// An image supplied explicitly by the tool.
+    Image(Image),
+    /// Structured JSON supplied explicitly by the tool runtime.
+    Json {
+        /// The structured value.
+        value: serde_json::Value,
+    },
+}
+
+impl ToolResultContent {
+    /// Borrow literal text content.
+    pub fn as_text(&self) -> Option<&str> {
+        match self {
+            Self::Text(text) => Some(&text.text),
+            Self::Image(_) | Self::Json { .. } => None,
+        }
+    }
+
+    /// Borrow structured JSON content.
+    pub fn as_json(&self) -> Option<&serde_json::Value> {
+        match self {
+            Self::Json { value } => Some(value),
+            Self::Text(_) | Self::Image(_) => None,
+        }
+    }
+
+    /// Deserialize JSON content into a typed value.
+    ///
+    /// Structured JSON is decoded directly. Literal text is parsed only because
+    /// the caller explicitly requested JSON decoding, which supports transcripts
+    /// recorded before structured tool output was preserved canonically. This
+    /// helper never changes the content sent to a model or provider.
+    pub fn deserialize_json<T>(&self) -> Result<T, serde_json::Error>
+    where
+        T: serde::de::DeserializeOwned,
+    {
+        match self {
+            Self::Json { value } => T::deserialize(value),
+            Self::Text(text) => serde_json::from_str(&text.text),
+            Self::Image(_) => Err(<serde_json::Error as serde::de::Error>::custom(
+                "cannot decode image tool-result content as JSON",
+            )),
+        }
+    }
+}
+
+/// Error adopting the empty string as a tool-call identifier.
+///
+/// Absence is `None` on [`ToolCall::provider`] (or a minted [`ToolCallId`]),
+/// never `""` — the empty-string sentinel is unrepresentable on these types.
+#[derive(Debug, thiserror::Error)]
+#[error("a tool-call identifier cannot be the empty string; absence is `None` or a minted id")]
+pub struct EmptyToolCallId;
+
+/// Rig's correlation identity for a tool call within one assistant completion.
+///
+/// Explicit handles and generated assembly keys occupy disjoint namespaces:
+/// an explicit `tool-0` never equals a generated tool key at index zero. Provider
+/// provenance is separate and lives only on [`ToolCall::provider`]. Applications
+/// may also choose explicit handles without claiming provider provenance.
+///
+/// Generated positions restart for each completion. State spanning completions
+/// must pair this identity with the owning turn or effect, or match call/result
+/// occurrences chronologically. Results copy their answered call's identity.
+///
+/// Serialization preserves an explicit origin tag and rejects legacy bare
+/// strings. Display is diagnostic text, not a provider handle or lookup key.
+///
+/// Keep the typed value as a map key and copy it into the corresponding result.
+/// Use [`Self::explicit`] or [`Self::generated`] to inspect its origin; outbound
+/// adapters separately assign protocol handles for complete call/result histories.
+///
+/// ```
+/// use rig_core::message::ToolCallId;
+///
+/// let explicit = ToolCallId::new("tool-0").expect("nonempty handle");
+/// let generated = ToolCallId::minted(0);
+/// assert_ne!(explicit, generated);
+/// assert_eq!(explicit.explicit(), Some("tool-0"));
+/// assert!(generated.is_generated());
+/// assert_eq!(
+///     serde_json::to_value(&generated)?,
+///     serde_json::json!({"origin": "generated", "id": "minted:tool:0"}),
+/// );
+/// let restored: ToolCallId = serde_json::from_value(serde_json::to_value(&generated)?)?;
+/// assert_eq!(restored, generated);
+/// assert!(serde_json::from_value::<ToolCallId>(serde_json::json!("tool-0")).is_err());
+/// # Ok::<(), serde_json::Error>(())
+/// ```
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(try_from = "ToolCallIdWire", into = "ToolCallIdWire")]
+pub struct ToolCallId(ToolCallIdWire);
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(tag = "origin", content = "id", rename_all = "snake_case")]
+enum ToolCallIdWire {
+    Explicit(String),
+    Generated(crate::streaming::BlockId),
+}
+
+impl ToolCallId {
+    /// Adopt a nonempty explicit correlation handle. This constructor alone
+    /// does not claim that any provider issued it; see [`ToolCall::provider`].
+    pub fn new(id: impl Into<String>) -> Option<Self> {
+        let id = id.into();
+        (!id.is_empty()).then_some(Self(ToolCallIdWire::Explicit(id)))
+    }
+
+    /// Generate a deterministic tool identity at a completion-local position.
+    ///
+    /// Completion-local is the whole scope: the `index`-th id-less call of
+    /// one response is `tool-<index>`, and the next turn's is too. A run's
+    /// history correlates a result with its call within the adjacent
+    /// assistant/user pair (the transcript law), so a repeated minted id
+    /// across turns is not a collision; a host that keys history by call
+    /// id across turns must key by turn as well.
+    pub fn minted(index: u64) -> Self {
+        Self::from_block(&crate::streaming::BlockId::minted(
+            crate::streaming::MintKind::Tool,
+            index,
+        ))
+    }
+
+    /// Derive an identity from the complete typed assembly key. A wire-shaped
+    /// assembly key and a minted key with the same display text stay distinct.
+    pub fn from_block(block: &crate::streaming::BlockId) -> Self {
+        Self(ToolCallIdWire::Generated(block.clone()))
+    }
+
+    /// Adopt a nonempty explicit handle, otherwise generate at `index`.
+    pub fn new_or_minted(id: impl Into<String>, index: u64) -> Self {
+        Self::new(id).unwrap_or_else(|| Self::minted(index))
+    }
+
+    /// Derive an explicit handle from provider metadata, or retain the supplied
+    /// generated identity when no nonempty provider call identifier exists.
+    pub fn for_provider_or(provider: Option<&ProviderCallId>, minted: Self) -> Self {
+        provider
+            .and_then(|provider| Self::new(provider.call_id.clone()))
+            .unwrap_or(minted)
+    }
+
+    /// Whether this identity was generated from an assembly key.
+    pub fn is_generated(&self) -> bool {
+        matches!(self.0, ToolCallIdWire::Generated(_))
+    }
+
+    /// The explicitly chosen handle, if any. This is not proof of provider
+    /// provenance and must not be used to compare differently typed identities.
+    pub fn explicit(&self) -> Option<&str> {
+        match &self.0 {
+            ToolCallIdWire::Explicit(id) => Some(id),
+            ToolCallIdWire::Generated(_) => None,
+        }
+    }
+
+    /// The typed assembly origin of a generated identity, if any. Explicit
+    /// identities have no generated origin, even when their text resembles one.
+    pub fn generated(&self) -> Option<&crate::streaming::BlockId> {
+        match &self.0 {
+            ToolCallIdWire::Generated(block) => Some(block),
+            ToolCallIdWire::Explicit(_) => None,
+        }
+    }
+
+    /// A candidate spelling for protocols requiring string handles. It is not
+    /// unique across namespaces: request adapters must reserve actual provider
+    /// handles and allocate aliases for colliding call/result occurrences.
+    pub fn wire_hint(&self) -> std::borrow::Cow<'_, str> {
+        match &self.0 {
+            ToolCallIdWire::Explicit(id) => std::borrow::Cow::Borrowed(id),
+            ToolCallIdWire::Generated(block) => std::borrow::Cow::Owned(block.to_string()),
+        }
+    }
+}
+
+impl std::fmt::Display for ToolCallId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            ToolCallIdWire::Explicit(id) => write!(f, "explicit:{id}"),
+            ToolCallIdWire::Generated(crate::streaming::BlockId::Wire(id)) => {
+                write!(f, "generated:wire:{id}")
+            }
+            ToolCallIdWire::Generated(crate::streaming::BlockId::Minted { kind, index }) => {
+                write!(f, "generated:minted:{}:{index}", kind.as_str())
+            }
+        }
+    }
+}
+
+impl TryFrom<ToolCallIdWire> for ToolCallId {
+    type Error = EmptyToolCallId;
+
+    fn try_from(id: ToolCallIdWire) -> Result<Self, Self::Error> {
+        match id {
+            ToolCallIdWire::Explicit(id) => Self::new(id).ok_or(EmptyToolCallId),
+            generated @ ToolCallIdWire::Generated(_) => Ok(Self(generated)),
+        }
+    }
+}
+
+impl From<ToolCallId> for ToolCallIdWire {
+    fn from(id: ToolCallId) -> Self {
+        id.0
+    }
+}
+
+/// Wire shape for [`ProviderCallId`], so deserialization enforces the
+/// non-empty `call_id` invariant.
+#[derive(Deserialize)]
+struct ProviderCallIdWire {
+    call_id: String,
+    #[serde(default)]
+    item_id: Option<String>,
+}
+
+/// What the provider issued for a call — the only identifiers that may
+/// travel back on that provider's wire.
+///
+/// Dual-identifier wires need both: OpenAI Responses issues an item id
+/// (`fc_…`) *and* a `call_id` (`call_…`), and expects the right one in each
+/// position. Single-identifier wires carry their id in `call_id` and leave
+/// `item_id` empty.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "ProviderCallIdWire")]
+pub struct ProviderCallId {
+    /// The call-correlation identifier the provider expects echoed back.
+    pub call_id: String,
+    /// The output-item id issued alongside `call_id` on dual-identifier
+    /// wires (OpenAI Responses `fc_…`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub item_id: Option<String>,
+}
+
+impl ProviderCallId {
+    /// Adopt a provider-issued call identifier. `None` for the empty
+    /// string: absence is not an id.
+    pub fn new(call_id: impl Into<String>) -> Option<Self> {
+        let call_id = call_id.into();
+        if call_id.is_empty() {
+            None
+        } else {
+            Some(Self {
+                call_id,
+                item_id: None,
+            })
+        }
+    }
+
+    /// Attach the dual-wire output-item id (empty strings are dropped).
+    pub fn with_item_id(mut self, item_id: impl Into<String>) -> Self {
+        let item_id = item_id.into();
+        self.item_id = (!item_id.is_empty()).then_some(item_id);
+        self
+    }
+
+    /// Derive the provider identity from a streaming part's optional wire
+    /// handles. A dual wire carries `(call_id, item id)`; a single wire's id
+    /// arrives as the tool/part id alone and becomes the `call_id`; with
+    /// neither, the identity is absent. The empty-string filtering is
+    /// load-bearing: [`ProviderCallId::new`] returns `None` on empty, so an
+    /// empty `call_id` must fall through to the single-id arm rather than
+    /// erase a real tool id.
+    ///
+    /// Both streaming surfaces (the parts accumulator and the raw
+    /// `ToolCall` lift) derive through here so they cannot disagree.
+    /// [`ToolCall::from_dual_wire`] is deliberately different — a dual wire
+    /// that omits its `call_id` has no single-id fallback — and stays
+    /// separate.
+    pub fn from_optional_wire(call_id: Option<String>, tool_id: Option<String>) -> Option<Self> {
+        let call_id = call_id.filter(|call_id| !call_id.is_empty());
+        match (call_id, tool_id) {
+            (Some(call_id), tool_id) => Self::new(call_id).map(|provider| match tool_id {
+                Some(tool_id) => provider.with_item_id(tool_id),
+                None => provider,
+            }),
+            (None, Some(tool_id)) => Self::new(tool_id),
+            (None, None) => None,
+        }
+    }
+}
+
+impl TryFrom<ProviderCallIdWire> for ProviderCallId {
+    type Error = EmptyToolCallId;
+
+    fn try_from(wire: ProviderCallIdWire) -> Result<Self, Self::Error> {
+        let Some(provider) = Self::new(wire.call_id) else {
+            return Err(EmptyToolCallId);
+        };
+        Ok(match wire.item_id {
+            Some(item_id) => provider.with_item_id(item_id),
+            None => provider,
+        })
+    }
+}
+
+/// Describes a tool call with an id and function to call, generally produced by a provider.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ToolCall {
+    /// Rig's correlation handle. Always present; minted when the provider
+    /// issued none.
+    pub id: ToolCallId,
+    /// What the provider issued, if anything — the only identifiers that
+    /// may go back on the wire as *that provider's* handles. `None` means
+    /// the provider issued no id (id-less wires such as Gemini REST or
+    /// older Ollama daemons).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<ProviderCallId>,
+    /// Function name and JSON arguments requested by the model.
+    pub function: ToolFunction,
+    /// Optional cryptographic signature for the tool call.
+    ///
+    /// This field is used by some providers (e.g., Google) to provide a signature
+    /// that can verify the authenticity and integrity of the tool call. When present,
+    /// it allows verification that the tool call was actually generated by the model
+    /// and has not been tampered with.
+    ///
+    /// This is an optional, provider-specific feature and will be `None` for providers
+    /// that don't support tool call signatures.
+    #[serde(default)]
+    pub signature: Option<String>,
+    /// Additional provider-specific parameters to be sent to the completion model provider
+    #[serde(default)]
+    pub additional_params: Option<serde_json::Value>,
+}
+
+/// Assign deterministic completion-local handles to id-less provider calls.
+///
+/// A missing handle uses its tool-call position. Generated and explicit handles
+/// occupy separate namespaces, so a later explicit provider string never forces
+/// renumbering. Provider metadata and the existing explicit-duplicate policy are
+/// preserved. Use only at inbound provider boundaries, not on application
+/// messages with chosen local IDs or already-published streaming identities.
+pub fn normalize_missing_tool_call_ids(content: &mut [AssistantContent]) {
+    for (position, call) in content
+        .iter_mut()
+        .filter_map(|item| match item {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .enumerate()
+    {
+        if call.provider.is_none() {
+            call.id = ToolCallId::minted(position as u64);
+        }
+    }
+}
+
+impl ToolCall {
+    fn assemble(provider: Option<ProviderCallId>, index: u64, function: ToolFunction) -> Self {
+        Self {
+            id: ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(index)),
+            provider,
+            function,
+            signature: None,
+            additional_params: None,
+        }
+    }
+
+    /// A call with an explicit correlation handle and no provider-issued id.
+    pub fn new(id: ToolCallId, function: ToolFunction) -> Self {
+        Self {
+            id,
+            ..Self::assemble(None, 0, function)
+        }
+    }
+
+    /// The single-identifier provider boundary for a response's *only*
+    /// call: adopt the wire's id when it issued one, mint at index zero
+    /// when it did not (empty or absent ids mint). A converter that walks
+    /// a response's parts uses [`ToolCall::from_wire_indexed`] with the
+    /// call's position, otherwise two id-less calls in one turn mint the
+    /// same handle.
+    pub fn from_wire(wire_id: impl Into<String>, function: ToolFunction) -> Self {
+        Self::from_wire_indexed(wire_id, 0, function)
+    }
+
+    /// [`ToolCall::from_wire`] for the `index`-th call of a response whose
+    /// wire may omit ids: an empty `wire_id` yields
+    /// [`ToolCallId::minted`]`(index)` (displayed `tool-<index>`), so two
+    /// id-less calls in one response stay distinct and a re-run yields the
+    /// same ids.
+    pub fn from_wire_indexed(
+        wire_id: impl Into<String>,
+        index: u64,
+        function: ToolFunction,
+    ) -> Self {
+        Self::assemble(ProviderCallId::new(wire_id), index, function)
+    }
+
+    /// The dual-identifier provider boundary (OpenAI Responses): `item_id`
+    /// is the output-item handle (`fc_…`), `call_id` the correlator
+    /// (`call_…`). The correlator drives rig's id; empty ids mint.
+    pub fn from_dual_wire(
+        item_id: impl Into<String>,
+        call_id: impl Into<String>,
+        function: ToolFunction,
+    ) -> Self {
+        let provider =
+            ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id.into()));
+        Self::assemble(provider, 0, function)
+    }
+
+    /// Attach provider-issued identifiers.
+    pub fn with_provider(mut self, provider: ProviderCallId) -> Self {
+        self.provider = Some(provider);
+        self
+    }
+
+    /// A non-empty candidate for a required wire call-ID slot: the exact
+    /// provider handle when present, otherwise the local identity's wire hint.
+    ///
+    /// This single-item helper cannot reserve future provider IDs or pair
+    /// repeated turns. Full request adapters must use
+    /// [`ToolCallIds`](crate::providers::internal::tool_call_ids::ToolCallIds)
+    /// to assign collision-free synthetic references consistently to both legs.
+    ///
+    /// Wires whose id slot is *optional* (Gemini REST, gRPC) must read
+    /// [`ToolCall::provider`] directly instead: minted handles never travel
+    /// upstream there.
+    pub fn wire_call_id(&self) -> std::borrow::Cow<'_, str> {
+        self.provider.as_ref().map_or_else(
+            || self.id.wire_hint(),
+            |provider| std::borrow::Cow::Borrowed(provider.call_id.as_str()),
+        )
+    }
+
+    pub fn with_signature(mut self, signature: Option<String>) -> Self {
+        self.signature = signature;
+        self
+    }
+
+    pub fn with_additional_params(mut self, additional_params: Option<serde_json::Value>) -> Self {
+        self.additional_params = additional_params;
+        self
+    }
+}
+
+/// Describes a tool function to call with a name and arguments, generally produced by a provider.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct ToolFunction {
+    /// Tool/function name to invoke.
+    pub name: String,
+    /// JSON arguments for the tool/function.
+    pub arguments: serde_json::Value,
+}
+
+impl ToolFunction {
+    /// Create a tool function call payload.
+    pub fn new(name: String, arguments: serde_json::Value) -> Self {
+        Self { name, arguments }
+    }
+}
+
+// ================================================================
+// Base content models
+// ================================================================
+
+/// Provider extras on a content block: a non-empty JSON object, by
+/// construction.
+///
+/// The serialized form is the bare object (`#[serde(transparent)]`), so the
+/// wire shape of an `additional_params` field is a named key carrying an
+/// object — never flattened into the block's own key namespace. The type
+/// carries the whole params contract, so no call-site convention is needed:
+///
+/// - `Some(AdditionalParams)` always carries data. The constructors collapse
+///   an empty map to `None` and the inner map is private, so emptiness checks
+///   on a params field are a plain `is_none()`/`is_some()` — no tolerant
+///   shim, in-tree or out.
+/// - A non-object params value is unrepresentable in memory, so serialization
+///   can never emit a value deserialization rejects: what a live run writes,
+///   a restored run loads.
+/// - On decode, `null` and `{}` canonicalize to an absent field (see
+///   [`optional_additional_params`]) and any other non-object value is a loud
+///   error.
+///
+/// The block structs themselves follow the complementary tolerance doctrine:
+/// a known field with the wrong shape is a loud decode error, an *unknown*
+/// key on a block is ignored (never captured, never replayed), and an unknown
+/// content-block tag is a loud error. The params are provider-specific: a
+/// serializer replays only params it recognizes as its own wire's.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct AdditionalParams(serde_json::Map<String, serde_json::Value>);
+
+impl AdditionalParams {
+    /// The canonical constructor: `None` when the map is empty.
+    pub fn new(map: serde_json::Map<String, serde_json::Value>) -> Option<Self> {
+        if map.is_empty() {
+            None
+        } else {
+            Some(Self(map))
+        }
+    }
+
+    /// Build from `(key, value)` entries; `None` when the iterator yields
+    /// none. `Option<(K, Value)>` is such an iterator, so a conditional
+    /// single-key params reads as
+    /// `AdditionalParams::from_entries(guard.then(|| (key, value)))`.
+    pub fn from_entries<K, I>(entries: I) -> Option<Self>
+    where
+        K: Into<String>,
+        I: IntoIterator<Item = (K, serde_json::Value)>,
+    {
+        Self::new(
+            entries
+                .into_iter()
+                .map(|(key, value)| (key.into(), value))
+                .collect(),
+        )
+    }
+
+    /// The value stored under `key`, when present.
+    pub fn get(&self, key: &str) -> Option<&serde_json::Value> {
+        self.0.get(key)
+    }
+
+    /// The underlying (non-empty) object.
+    pub fn as_map(&self) -> &serde_json::Map<String, serde_json::Value> {
+        &self.0
+    }
+
+    /// The params as a bare JSON object value.
+    pub fn into_value(self) -> serde_json::Value {
+        serde_json::Value::Object(self.0)
+    }
+
+    /// Deep-merge `incoming` into `self`: arrays concatenate (streamed
+    /// citation deltas), objects merge recursively, scalars take the
+    /// incoming value.
+    pub fn merge(&mut self, incoming: Self) {
+        // One merge routine at every depth: the top level delegates to the
+        // same map merge the nested Object case uses, so the semantics
+        // cannot drift between single-level and nested params.
+        fn merge_maps(
+            existing: &mut serde_json::Map<String, serde_json::Value>,
+            incoming: serde_json::Map<String, serde_json::Value>,
+        ) {
+            for (key, incoming_value) in incoming {
+                match existing.get_mut(&key) {
+                    Some(existing_value) => merge_value(existing_value, incoming_value),
+                    None => {
+                        existing.insert(key, incoming_value);
+                    }
+                }
+            }
+        }
+        fn merge_value(existing: &mut serde_json::Value, incoming: serde_json::Value) {
+            match (existing, incoming) {
+                (
+                    serde_json::Value::Object(existing_map),
+                    serde_json::Value::Object(incoming_map),
+                ) => merge_maps(existing_map, incoming_map),
+                (
+                    serde_json::Value::Array(existing_array),
+                    serde_json::Value::Array(mut incoming_array),
+                ) => existing_array.append(&mut incoming_array),
+                (existing, incoming) => *existing = incoming,
+            }
+        }
+        merge_maps(&mut self.0, incoming.0);
+    }
+
+    /// The extras stored under a wire's own key, when present — the
+    /// replay-side gate: a serializer asks for its key and never sees
+    /// another wire's extras (capture is unconditional at ingest; replay is
+    /// gated here). A non-object value under the key yields `None` (it is
+    /// not that wire's extras); a caller that must *distinguish* malformed
+    /// from absent — a warn path — pairs this with [`Self::get`]. Never a
+    /// hard error: extras were written by a previous turn, and failing
+    /// serialization over them would turn a persistence blemish into a
+    /// broken conversation.
+    pub fn wire_extras(
+        &self,
+        wire_key: &str,
+    ) -> Option<&serde_json::Map<String, serde_json::Value>> {
+        self.0.get(wire_key).and_then(serde_json::Value::as_object)
+    }
+
+    /// Owned counterpart of [`Self::wire_extras`] for serialization paths
+    /// that already own the params (the common replay case): extracts the
+    /// wire's object without cloning. Same gate semantics.
+    pub fn into_wire_extras(
+        mut self,
+        wire_key: &str,
+    ) -> Option<serde_json::Map<String, serde_json::Value>> {
+        match self.0.remove(wire_key) {
+            Some(serde_json::Value::Object(map)) => Some(map),
+            _ => None,
+        }
+    }
+
+    /// Build from a JSON value: `Ok(None)` for `null` and the empty object
+    /// (canonical absence), `Ok(Some)` for a non-empty object, and `Err`
+    /// handing the value back otherwise — a non-object is never silently
+    /// swallowed; the caller decides loud versus lossy.
+    pub fn try_from_value(value: serde_json::Value) -> Result<Option<Self>, serde_json::Value> {
+        match value {
+            serde_json::Value::Null => Ok(None),
+            serde_json::Value::Object(map) => Ok(Self::new(map)),
+            other => Err(other),
+        }
+    }
+}
+
+impl From<AdditionalParams> for serde_json::Value {
+    fn from(params: AdditionalParams) -> Self {
+        params.into_value()
+    }
+}
+
+impl std::ops::Index<&str> for AdditionalParams {
+    type Output = serde_json::Value;
+
+    /// Panics when the key is absent — the mirror of `serde_json::Map`'s
+    /// `Index`, for test assertions and quick extraction.
+    #[allow(clippy::indexing_slicing)]
+    fn index(&self, key: &str) -> &serde_json::Value {
+        &self.0[key]
+    }
+}
+
+impl<'de> Deserialize<'de> for AdditionalParams {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        match Self::try_from_value(serde_json::Value::deserialize(deserializer)?) {
+            Ok(Some(params)) => Ok(params),
+            // `null` and `{}` canonicalize to absence, which a bare
+            // (non-`Option`) slot cannot express.
+            Ok(None) => Err(serde::de::Error::custom(
+                "`additional_params` carries no data — omit the field (an `Option` \
+                 field routed through `optional_additional_params` canonicalizes \
+                 `{}` and `null` to absent)",
+            )),
+            Err(_) => Err(serde::de::Error::custom(
+                "`additional_params` must be a non-empty JSON object",
+            )),
+        }
+    }
+}
+
+/// Migration verification: every key path present in `original` (with a
+/// non-`null` value) that is missing or unequal after a tolerant
+/// load-and-reserialize round trip.
+///
+/// The runtime load path ignores unknown keys on content blocks, so a 0.41
+/// history whose flattened provider extras were never re-nested under
+/// `additional_params` loads *silently minus those keys*. This is the opt-in
+/// detector MIGRATING's recipe runs over persisted history once, at
+/// migration time: load a message tolerantly, re-serialize it, and every
+/// dropped key surfaces here by path. An empty result means the history
+/// survives the round trip; keys the current writer *adds* (defaults such as
+/// an explicit `null`) are not differences, and neither is a value the
+/// loader canonicalizes to absence (`null`, the empty object).
+///
+/// # Example
+///
+/// MIGRATING's verification recipe, compiled here so the documented snippet
+/// and the behavior cannot drift — run it once over persisted history at
+/// migration time:
+///
+/// ```
+/// use rig_core::message;
+///
+/// # fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let original = serde_json::json!({
+///     "role": "assistant",
+///     "content": [{"type": "text", "text": "cited", "citations": ["not re-nested"]}],
+/// });
+/// let loaded: message::Message = serde_json::from_value(original.clone())?;
+/// let round_tripped = serde_json::to_value(&loaded)?;
+/// let lost = message::keys_lost_in_round_trip(&original, &round_tripped);
+/// assert_eq!(lost, vec!["content.0.citations".to_string()]);
+/// # Ok(())
+/// # }
+/// ```
+pub fn keys_lost_in_round_trip(
+    original: &serde_json::Value,
+    round_tripped: &serde_json::Value,
+) -> Vec<String> {
+    fn walk(
+        original: &serde_json::Value,
+        round_tripped: &serde_json::Value,
+        path: &mut String,
+        lost: &mut Vec<String>,
+    ) {
+        match (original, round_tripped) {
+            (serde_json::Value::Object(original_map), serde_json::Value::Object(round_map)) => {
+                for (key, original_value) in original_map {
+                    if original_value.is_null() {
+                        continue;
+                    }
+                    let checkpoint = path.len();
+                    if !path.is_empty() {
+                        path.push('.');
+                    }
+                    path.push_str(key);
+                    match round_map.get(key) {
+                        Some(round_value) => walk(original_value, round_value, path, lost),
+                        // A missing key whose original value the loader
+                        // canonicalizes to absence (the empty object —
+                        // MIGRATING's blessed `"additional_params": {}`
+                        // spelling; `null` is skipped above) is not a loss.
+                        None => {
+                            if !original_value
+                                .as_object()
+                                .is_some_and(serde_json::Map::is_empty)
+                            {
+                                lost.push(path.clone());
+                            }
+                        }
+                    }
+                    path.truncate(checkpoint);
+                }
+            }
+            (serde_json::Value::Array(original_items), serde_json::Value::Array(round_items)) => {
+                for (index, original_value) in original_items.iter().enumerate() {
+                    let checkpoint = path.len();
+                    if !path.is_empty() {
+                        path.push('.');
+                    }
+                    path.push_str(&index.to_string());
+                    match round_items.get(index) {
+                        Some(round_value) => walk(original_value, round_value, path, lost),
+                        None => lost.push(path.clone()),
+                    }
+                    path.truncate(checkpoint);
+                }
+            }
+            (original, round_tripped) => {
+                if original != round_tripped {
+                    lost.push(path.clone());
+                }
+            }
+        }
+    }
+
+    let mut lost = Vec::new();
+    walk(original, round_tripped, &mut String::new(), &mut lost);
+    lost
+}
+
+/// Serde route for `Option<AdditionalParams>` fields: an explicit `null` or
+/// `{}` decodes as `None`, exactly like an absent field — a mechanically
+/// migrated block that wrote `"additional_params": {}` classifies identically
+/// to one that omitted the key. Any other non-object value is a loud decode
+/// error: extras are a keyed namespace (every producer stores an object,
+/// every extractor `get`s a key), so a mis-migrated `[]` or bare string is
+/// malformed data, not a phantom annotation no reader can see.
+pub fn optional_additional_params<'de, D>(
+    deserializer: D,
+) -> Result<Option<AdditionalParams>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    match Option::<serde_json::Value>::deserialize(deserializer)? {
+        None => Ok(None),
+        Some(value) => AdditionalParams::try_from_value(value).map_err(|_| {
+            serde::de::Error::custom("`additional_params` must be a JSON object (or null)")
+        }),
+    }
+}
+
+/// Basic text content.
+///
+/// `additional_params` carries provider-specific fields that arrive on text
+/// content blocks (e.g. Anthropic returns citation metadata on assistant text
+/// blocks). It is a **named** field in the serialized form — never flattened
+/// into the block's own key namespace, so a stray key can neither shadow the
+/// enum tag nor be silently captured, and an absent field decodes as `None`
+/// (no empty-map artifact). An unknown key on the block itself is ignored on
+/// decode — tolerated, never captured — so histories written by a newer rig
+/// stay loadable; [`AdditionalParams`] documents the full doctrine.
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Text {
+    /// Text content.
+    pub text: String,
+    /// Provider-specific text fields.
+    #[serde(
+        default,
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub additional_params: Option<AdditionalParams>,
+}
+
+impl Text {
+    /// Construct a new text block with no provider-specific fields.
+    pub fn new(text: impl Into<String>) -> Self {
+        Self {
+            text: text.into(),
+            additional_params: None,
+        }
+    }
+
+    /// Returns the inner text string.
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+}
+
+impl std::fmt::Display for Text {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { text, .. } = self;
+        write!(f, "{text}")
+    }
+}
+
+/// Image content containing image data and metadata about it.
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Image {
+    /// Image source data.
+    pub data: DocumentSourceKind,
+    /// Image media type, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<ImageMediaType>,
+    /// Provider-specific image detail preference.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ImageDetail>,
+    /// Provider-specific image fields.
+    #[serde(
+        default,
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub additional_params: Option<AdditionalParams>,
+}
+
+/// The kind of image source (to be used).
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[serde(tag = "type", content = "value", rename_all = "camelCase")]
+pub enum DocumentSourceKind {
+    /// A file URL/URI.
+    Url(String),
+    /// A base-64 encoded string.
+    Base64(String),
+    /// A provider-side uploaded file identifier.
+    FileId(String),
+    /// Raw bytes
+    Raw(Vec<u8>),
+    /// A string (or a string literal).
+    String(String),
+    #[default]
+    /// An unknown file source (there's nothing there).
+    Unknown,
+}
+
+impl DocumentSourceKind {
+    /// Create a URL-backed source.
+    pub fn url(url: &str) -> Self {
+        Self::Url(url.to_string())
+    }
+
+    /// Create a base64-backed source.
+    pub fn base64(base64_string: &str) -> Self {
+        Self::Base64(base64_string.to_string())
+    }
+
+    /// Create a provider file ID-backed source.
+    pub fn file_id(file_id: &str) -> Self {
+        Self::FileId(file_id.to_string())
+    }
+
+    /// Create a string-backed source.
+    pub fn string(input: &str) -> Self {
+        Self::String(input.into())
+    }
+
+    /// Return the contained URL, base64 string, or file ID, if this source stores one.
+    pub fn try_into_inner(self) -> Option<String> {
+        match self {
+            Self::Url(s) | Self::Base64(s) | Self::FileId(s) => Some(s),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for DocumentSourceKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Url(string) => write!(f, "{string}"),
+            Self::Base64(string) => write!(f, "{string}"),
+            Self::FileId(string) => write!(f, "{string}"),
+            Self::String(string) => write!(f, "{string}"),
+            Self::Raw(_) => write!(f, "<binary data>"),
+            Self::Unknown => write!(f, "<unknown>"),
+        }
+    }
+}
+
+/// Audio content containing audio data and metadata about it.
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Audio {
+    /// Audio source data.
+    pub data: DocumentSourceKind,
+    /// Audio media type, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<AudioMediaType>,
+    /// Provider-specific audio fields.
+    #[serde(
+        default,
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub additional_params: Option<AdditionalParams>,
+}
+
+/// Video content containing video data and metadata about it.
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Video {
+    /// Video source data.
+    pub data: DocumentSourceKind,
+    /// Video media type, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<VideoMediaType>,
+    /// Provider-specific video fields.
+    #[serde(
+        default,
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub additional_params: Option<AdditionalParams>,
+}
+
+/// Document content containing document data and metadata about it.
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub struct Document {
+    /// Document source data.
+    pub data: DocumentSourceKind,
+    /// Document media type, if known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub media_type: Option<DocumentMediaType>,
+    /// Provider-specific document fields.
+    #[serde(
+        default,
+        deserialize_with = "optional_additional_params",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub additional_params: Option<AdditionalParams>,
+}
+
+/// Describes the format of the content, which can be base64 or string.
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ContentFormat {
+    #[default]
+    Base64,
+    String,
+    Url,
+}
+
+/// Helper enum that tracks the media type of the content.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+pub enum MediaType {
+    Image(ImageMediaType),
+    Audio(AudioMediaType),
+    Document(DocumentMediaType),
+    Video(VideoMediaType),
+}
+
+/// Describes the image media type of the content. Not every provider supports every media type.
+/// Convertible to and from MIME type strings.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageMediaType {
+    JPEG,
+    PNG,
+    GIF,
+    WEBP,
+    HEIC,
+    HEIF,
+    SVG,
+}
+
+/// Describes the document media type of the content. Not every provider supports every media type.
+/// Includes also programming languages as document types for providers who support code running.
+/// Convertible to and from MIME type strings.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum DocumentMediaType {
+    PDF,
+    TXT,
+    RTF,
+    HTML,
+    CSS,
+    MARKDOWN,
+    CSV,
+    XML,
+    Javascript,
+    Python,
+}
+
+impl DocumentMediaType {
+    pub fn is_code(&self) -> bool {
+        matches!(self, Self::Javascript | Self::Python)
+    }
+}
+
+/// Describes the audio media type of the content. Not every provider supports every media type.
+/// Convertible to and from MIME type strings.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioMediaType {
+    WAV,
+    MP3,
+    AIFF,
+    AAC,
+    OGG,
+    FLAC,
+    M4A,
+    PCM16,
+    PCM24,
+}
+
+/// Describes the video media type of the content. Not every provider supports every media type.
+/// Convertible to and from MIME type strings.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum VideoMediaType {
+    AVI,
+    MP4,
+    MPEG,
+    MOV,
+    WEBM,
+}
+
+/// Describes the detail of the image content, which can be low, high, or auto (open-ai specific).
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum ImageDetail {
+    Low,
+    High,
+    #[default]
+    Auto,
+}
+
+// ================================================================
+// Impl. for message models
+// ================================================================
+
+impl Message {
+    /// This helper method is primarily used to extract the first string prompt from a `Message`.
+    /// Since `Message` might have more than just text content, we need to find the first text.
+    pub fn rag_text(&self) -> Option<String> {
+        match self {
+            Message::User { content } => {
+                for item in content.iter() {
+                    if let UserContent::Text(Text { text, .. }) = item {
+                        return Some(text.clone());
+                    }
+                }
+                None
+            }
+            Message::System { .. } => None,
+            _ => None,
+        }
+    }
+
+    /// Helper constructor to make creating system messages easier.
+    pub fn system(text: impl Into<String>) -> Self {
+        Message::System {
+            content: text.into(),
+        }
+    }
+
+    /// Helper constructor to make creating user messages easier.
+    pub fn user(text: impl Into<String>) -> Self {
+        Message::User {
+            content: vec![UserContent::text(text)],
+        }
+    }
+
+    /// Helper constructor to make creating assistant messages easier.
+    pub fn assistant(text: impl Into<String>) -> Self {
+        Message::Assistant {
+            id: None,
+            content: vec![AssistantContent::text(text)],
+        }
+    }
+
+    /// Helper constructor to make creating tool result messages easier.
+    /// `call` is an explicit local handle and does not establish provider
+    /// provenance. To answer an existing call while preserving its typed identity
+    /// and provider metadata, use [`UserContent::tool_result_for`] inside a user
+    /// message. `name` is the executed tool's name.
+    pub fn tool_result(
+        call: impl Into<String>,
+        name: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Message::User {
+            content: vec![UserContent::tool_result(
+                call,
+                name,
+                vec![ToolResultContent::text(content)],
+            )],
+        }
+    }
+}
+
+// The media helper constructors differ only in the wrapped content variant,
+// the `DocumentSourceKind` constructor, and the accepted data type; the macro
+// stamps them out while keeping each method's public signature and rustdoc
+// intact. `Image(...)` rows additionally take the `detail` parameter.
+macro_rules! media_ctors {
+    () => {};
+    (
+        $(#[$meta:meta])* $name:ident => Image($kind:ident: $data:ty);
+        $($rest:tt)*
+    ) => {
+        $(#[$meta])*
+        pub fn $name(
+            data: impl Into<$data>,
+            media_type: Option<ImageMediaType>,
+            detail: Option<ImageDetail>,
+        ) -> Self {
+            Self::Image(Image {
+                data: DocumentSourceKind::$kind(data.into()),
+                media_type,
+                detail,
+                additional_params: None,
+            })
+        }
+        media_ctors! { $($rest)* }
+    };
+    (
+        $(#[$meta:meta])* $name:ident => $variant:ident($mt:ty, $kind:ident: $data:ty);
+        $($rest:tt)*
+    ) => {
+        $(#[$meta])*
+        pub fn $name(data: impl Into<$data>, media_type: Option<$mt>) -> Self {
+            Self::$variant($variant {
+                data: DocumentSourceKind::$kind(data.into()),
+                media_type,
+                additional_params: None,
+            })
+        }
+        media_ctors! { $($rest)* }
+    };
+}
+
+impl UserContent {
+    /// Helper constructor to make creating user text content easier.
+    pub fn text(text: impl Into<String>) -> Self {
+        UserContent::Text(text.into().into())
+    }
+
+    media_ctors! {
+        /// Helper constructor to make creating user image content easier.
+        image_base64 => Image(Base64: String);
+        /// Helper constructor to make creating user image content from raw unencoded bytes easier.
+        image_raw => Image(Raw: Vec<u8>);
+        /// Helper constructor to make creating user image content easier.
+        image_url => Image(Url: String);
+        /// Helper constructor to make creating user audio content easier.
+        audio => Audio(AudioMediaType, Base64: String);
+        /// Helper constructor to make creating user audio content from raw unencoded bytes easier.
+        audio_raw => Audio(AudioMediaType, Raw: Vec<u8>);
+        /// Helper to create an audio resource from a URL
+        audio_url => Audio(AudioMediaType, Url: String);
+        /// Helper constructor to make creating user video content easier.
+        video => Video(VideoMediaType, Base64: String);
+        /// Helper constructor to make creating user video content from raw unencoded bytes easier.
+        video_raw => Video(VideoMediaType, Raw: Vec<u8>);
+        /// Helper to create a video resource from a URL
+        video_url => Video(VideoMediaType, Url: String);
+        /// Helper to create a document from raw unencoded bytes
+        document_raw => Document(DocumentMediaType, Raw: Vec<u8>);
+        /// Helper to create a document from a URL
+        document_url => Document(DocumentMediaType, Url: String);
+    }
+
+    /// Helper constructor to make creating user document content easier.
+    /// This creates a document that assumes the data being passed in is a raw string.
+    pub fn document(data: impl Into<String>, media_type: Option<DocumentMediaType>) -> Self {
+        let data: String = data.into();
+        UserContent::Document(Document {
+            data: DocumentSourceKind::string(&data),
+            media_type,
+            additional_params: None,
+        })
+    }
+
+    /// Helper constructor to make creating user tool result content easier.
+    ///
+    /// `call` is the answered call's correlation handle — echo
+    /// [`ToolCall::id`] (an empty string mints a fresh handle). It is
+    /// recorded as the handle only, never as a provider-issued identifier:
+    /// a bare string cannot prove provider provenance, and stamping a
+    /// minted handle as one would send it upstream on wires whose id slot
+    /// is optional. When you hold provider identifiers, use
+    /// [`UserContent::tool_result_for`] (from an executed [`ToolCall`]) or
+    /// [`UserContent::tool_result_from_wire`] (from the provider's wire).
+    /// `name` is the executed tool's name (required — several wires key
+    /// the replay on it).
+    pub fn tool_result(
+        call: impl Into<String>,
+        name: impl Into<String>,
+        content: Vec<ToolResultContent>,
+    ) -> Self {
+        UserContent::ToolResult(ToolResult {
+            call: ToolCallId::new_or_minted(call, 0),
+            provider: None,
+            name: name.into(),
+            content,
+        })
+    }
+
+    /// Tool result content at the single-identifier provider boundary —
+    /// the inbound-converter form, mirroring [`ToolCall::from_wire`]:
+    /// `wire_id` came off the provider's wire, so it is recorded as the
+    /// provider-issued identifier (empty records none and mints the
+    /// handle).
+    pub fn tool_result_from_wire(
+        wire_id: impl Into<String>,
+        name: impl Into<String>,
+        content: Vec<ToolResultContent>,
+    ) -> Self {
+        let provider = ProviderCallId::new(wire_id);
+        let call = ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(0));
+        Self::tool_result_for(call, provider, name, content)
+    }
+
+    /// Tool result content answering a specific call — the form the agent
+    /// drivers use: `call`/`provider` come from the executed [`ToolCall`],
+    /// `name` is the *executed* tool's name (which can differ from the
+    /// model's call when a hook repaired it).
+    pub fn tool_result_for(
+        call: ToolCallId,
+        provider: Option<ProviderCallId>,
+        name: impl Into<String>,
+        content: Vec<ToolResultContent>,
+    ) -> Self {
+        UserContent::ToolResult(ToolResult {
+            call,
+            provider,
+            name: name.into(),
+            content,
+        })
+    }
+
+    /// Tool result content for a dual-identifier wire (OpenAI Responses):
+    /// `item_id` is the output-item handle (`fc_…`), `call_id` the
+    /// correlator (`call_…`). Empty ids record no provider id and mint.
+    pub fn tool_result_with_call_id(
+        item_id: impl Into<String>,
+        call_id: impl Into<String>,
+        name: impl Into<String>,
+        content: Vec<ToolResultContent>,
+    ) -> Self {
+        let provider = ProviderCallId::new(call_id).map(|provider| provider.with_item_id(item_id));
+        let call = ToolCallId::for_provider_or(provider.as_ref(), ToolCallId::minted(0));
+        Self::tool_result_for(call, provider, name, content)
+    }
+}
+
+impl AssistantContent {
+    /// Helper constructor to make creating assistant text content easier.
+    pub fn text(text: impl Into<String>) -> Self {
+        AssistantContent::Text(text.into().into())
+    }
+
+    media_ctors! {
+        /// Helper constructor to make creating assistant image content easier.
+        image_base64 => Image(Base64: String);
+    }
+
+    /// Helper constructor to make creating assistant tool call content easier.
+    ///
+    /// `id` is the provider-issued identifier when one exists; an empty
+    /// `id` records no provider id and mints the correlation handle.
+    pub fn tool_call(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        arguments: serde_json::Value,
+    ) -> Self {
+        AssistantContent::ToolCall(ToolCall::from_wire(
+            id,
+            ToolFunction {
+                name: name.into(),
+                arguments,
+            },
+        ))
+    }
+
+    /// Dual-identifier variant (OpenAI Responses): `id` is the output-item
+    /// handle (`fc_…`), `call_id` the correlator (`call_…`).
+    pub fn tool_call_with_call_id(
+        id: impl Into<String>,
+        call_id: String,
+        name: impl Into<String>,
+        arguments: serde_json::Value,
+    ) -> Self {
+        AssistantContent::ToolCall(ToolCall::from_dual_wire(
+            id,
+            call_id,
+            ToolFunction {
+                name: name.into(),
+                arguments,
+            },
+        ))
+    }
+
+    pub fn reasoning(reasoning: impl AsRef<str>) -> Self {
+        AssistantContent::Reasoning(Reasoning::new(reasoning.as_ref()))
+    }
+}
+
+impl ToolResultContent {
+    /// Helper constructor to make creating tool result text content easier.
+    pub fn text(text: impl Into<String>) -> Self {
+        ToolResultContent::Text(text.into().into())
+    }
+
+    /// Helper constructor for structured JSON tool-result content.
+    pub fn json(value: serde_json::Value) -> Self {
+        ToolResultContent::Json { value }
+    }
+
+    media_ctors! {
+        /// Helper constructor to make tool result images from a base64-encoded string.
+        image_base64 => Image(Base64: String);
+        /// Helper constructor to make tool result images from a base64-encoded string.
+        image_raw => Image(Raw: Vec<u8>);
+        /// Helper constructor to make tool result images from a URL.
+        image_url => Image(Url: String);
+    }
+}
+
+/// Trait for converting between MIME types and media types.
+pub trait MimeType {
+    fn from_mime_type(mime_type: &str) -> Option<Self>
+    where
+        Self: Sized;
+    fn to_mime_type(&self) -> &'static str;
+}
+
+impl MimeType for MediaType {
+    fn from_mime_type(mime_type: &str) -> Option<Self> {
+        ImageMediaType::from_mime_type(mime_type)
+            .map(MediaType::Image)
+            .or_else(|| DocumentMediaType::from_mime_type(mime_type).map(MediaType::Document))
+            .or_else(|| AudioMediaType::from_mime_type(mime_type).map(MediaType::Audio))
+            .or_else(|| VideoMediaType::from_mime_type(mime_type).map(MediaType::Video))
+    }
+
+    fn to_mime_type(&self) -> &'static str {
+        match self {
+            MediaType::Image(media_type) => media_type.to_mime_type(),
+            MediaType::Audio(media_type) => media_type.to_mime_type(),
+            MediaType::Document(media_type) => media_type.to_mime_type(),
+            MediaType::Video(media_type) => media_type.to_mime_type(),
+        }
+    }
+}
+
+// Emits both directions of a [`MimeType`] impl from a single pair list, so a
+// variant's parse and emit spellings cannot drift apart. Extra `| "alias"`
+// spellings parse to the same variant; only the first (canonical) string is
+// emitted by `to_mime_type`.
+macro_rules! impl_mime_type {
+    ($ty:ident { $($variant:ident => $canonical:literal $(| $alias:literal)*),+ $(,)? }) => {
+        impl MimeType for $ty {
+            fn from_mime_type(mime_type: &str) -> Option<Self> {
+                match mime_type {
+                    $($canonical $(| $alias)* => Some($ty::$variant),)+
+                    _ => None,
+                }
+            }
+
+            fn to_mime_type(&self) -> &'static str {
+                match self {
+                    $($ty::$variant => $canonical,)+
+                }
+            }
+        }
+    };
+}
+
+impl_mime_type!(ImageMediaType {
+    JPEG => "image/jpeg",
+    PNG => "image/png",
+    GIF => "image/gif",
+    WEBP => "image/webp",
+    HEIC => "image/heic",
+    HEIF => "image/heif",
+    SVG => "image/svg+xml",
+});
+
+impl_mime_type!(DocumentMediaType {
+    PDF => "application/pdf",
+    TXT => "text/plain",
+    RTF => "text/rtf",
+    HTML => "text/html",
+    CSS => "text/css",
+    MARKDOWN => "text/markdown" | "text/md",
+    CSV => "text/csv",
+    XML => "text/xml",
+    Javascript => "application/x-javascript" | "text/x-javascript",
+    Python => "application/x-python" | "text/x-python",
+});
+
+impl_mime_type!(AudioMediaType {
+    WAV => "audio/wav",
+    MP3 => "audio/mp3",
+    AIFF => "audio/aiff",
+    AAC => "audio/aac",
+    OGG => "audio/ogg",
+    FLAC => "audio/flac",
+    M4A => "audio/m4a",
+    PCM16 => "audio/pcm16",
+    PCM24 => "audio/pcm24",
+});
+
+impl_mime_type!(VideoMediaType {
+    AVI => "video/avi",
+    MP4 => "video/mp4",
+    MPEG => "video/mpeg",
+    MOV => "video/mov",
+    WEBM => "video/webm",
+});
+
+impl std::str::FromStr for ImageDetail {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "low" => Ok(ImageDetail::Low),
+            "high" => Ok(ImageDetail::High),
+            "auto" => Ok(ImageDetail::Auto),
+            _ => Err(()),
+        }
+    }
+}
+
+// ================================================================
+// FromStr, From<String>, and From<&str> impls
+// ================================================================
+
+/// `From` impls for [`Text`] from string-like types.
+macro_rules! text_from {
+    ($($src:ty),+ $(,)?) => {$(
+        impl From<$src> for Text {
+            fn from(text: $src) -> Self {
+                Text {
+                    text: text.into(),
+                    additional_params: None,
+                }
+            }
+        }
+    )+};
+}
+
+text_from!(String, &String, &str);
+
+/// `From<String>` impls that forward into a content type's `text` constructor.
+macro_rules! text_content_from_string {
+    ($($ty:ident),+ $(,)?) => {$(
+        impl From<String> for $ty {
+            fn from(text: String) -> Self {
+                $ty::text(text)
+            }
+        }
+    )+};
+}
+
+text_content_from_string!(ToolResultContent, AssistantContent, UserContent);
+
+/// One-line `From<T> for Message` forwards: convert the value, wrap it in the
+/// named content variant, and build a single-content message.
+macro_rules! single_content_message_from {
+    (User { $($src:ty => $variant:ident),+ $(,)? }) => {$(
+        impl From<$src> for Message {
+            fn from(value: $src) -> Self {
+                Message::User {
+                    content: vec![UserContent::$variant(value.into())],
+                }
+            }
+        }
+    )+};
+    (Assistant { $($src:ty => $variant:ident),+ $(,)? }) => {$(
+        impl From<$src> for Message {
+            fn from(value: $src) -> Self {
+                Message::Assistant {
+                    id: None,
+                    content: vec![AssistantContent::$variant(value.into())],
+                }
+            }
+        }
+    )+};
+}
+
+single_content_message_from!(User {
+    String => Text,
+    &str => Text,
+    &String => Text,
+    Text => Text,
+    Image => Image,
+    Audio => Audio,
+    Document => Document,
+    ToolResult => ToolResult,
+});
+
+single_content_message_from!(Assistant {
+    ToolCall => ToolCall,
+});
+
+impl FromStr for Text {
+    type Err = Infallible;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(s.into())
+    }
+}
+
+impl From<&Message> for Message {
+    fn from(msg: &Message) -> Self {
+        msg.clone()
+    }
+}
+
+impl From<AssistantContent> for Message {
+    fn from(content: AssistantContent) -> Self {
+        Message::Assistant {
+            id: None,
+            content: vec![content],
+        }
+    }
+}
+
+impl From<UserContent> for Message {
+    fn from(content: UserContent) -> Self {
+        Message::User {
+            content: vec![content],
+        }
+    }
+}
+
+impl From<Vec<AssistantContent>> for Message {
+    fn from(content: Vec<AssistantContent>) -> Self {
+        Message::Assistant { id: None, content }
+    }
+}
+
+impl From<Vec<UserContent>> for Message {
+    fn from(content: Vec<UserContent>) -> Self {
+        Message::User { content }
+    }
+}
+
+#[derive(Default, Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolChoice {
+    #[default]
+    Auto,
+    None,
+    Required,
+    Specific {
+        function_names: Vec<String>,
+    },
+}
+
+// ================================================================
+// Error types
+// ================================================================
+
+/// Error type to represent issues with converting messages to and from specific provider messages.
+#[derive(Debug, Error)]
+pub enum MessageError {
+    #[error("Message conversion error: {0}")]
+    ConversionError(String),
+}
+
+impl From<MessageError> for CompletionError {
+    fn from(error: MessageError) -> Self {
+        CompletionError::RequestError(error.into())
+    }
+}
+
+#[cfg(test)]
+mod tests;

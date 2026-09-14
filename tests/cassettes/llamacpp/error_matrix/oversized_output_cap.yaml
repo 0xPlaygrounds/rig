@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":100000,"messages":[{"content":"Say ok.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Sure, I''m here to help! Let me know how I can assist you. 😊","reasoning_content":"Okay, the user said \"Say ok.\" I need to respond appropriately. Let me think. First, I should acknowledge their message. They might be testing if I can respond or just want a simple reply. Since they used \"ok,\" maybe they''re in a hurry or want a quick response.\n\nI should keep it friendly and open. Maybe say something like \"Sure, I''m here to help!\" to show willingness to assist. But I need to make sure it''s not too formal. Also, check if there''s any specific context they might be referring to, but since they didn''t provide more info, keep it general.\n\nAvoid using markdown and keep the response natural. Let me put it all together.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":0,"predicted_ms":923.074,"predicted_n":167,"predicted_per_second":179.8339028073589,"predicted_per_token_ms":5.560686746987952,"prompt_ms":47.866,"prompt_n":11,"prompt_per_second":229.80821459908913,"prompt_per_token_ms":4.351454545454545},"usage":{"completion_tokens":167,"prompt_tokens":11,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":178}}'

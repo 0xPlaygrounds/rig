@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Reply with exactly: identity probe","role":"user"}],"model":"openai/gpt-5.2"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"identity probe","reasoning":null,"reasoning_details":[{"data":"encrypted_reasoning_REDACTED_1","format":"openai-responses-v1","id":"rs_REDACTED_1","index":0,"type":"reasoning.encrypted"}],"refusal":null,"role":"assistant"},"native_finish_reason":"completed"}],"created":0,"id":"chatcmpl-REDACTED_1","model":"openai/gpt-5.2","object":"chat.completion","provider":"OpenAI","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":19,"completion_tokens_details":{"audio_tokens":0,"image_tokens":0,"reasoning_tokens":11},"cost":0.000287,"cost_details":{"upstream_inference_completions_cost":0.000266,"upstream_inference_cost":0.000287,"upstream_inference_prompt_cost":0.000021},"is_byok":false,"prompt_tokens":12,"prompt_tokens_details":{"audio_tokens":0,"cache_write_tokens":0,"cached_tokens":0,"video_tokens":0},"total_tokens":31}}'

@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"You are concise. Answer with one short sentence.","type":"input_text"}],"role":"system","type":"message"},{"content":[{"text":"Say that OpenRouter via the OpenAI Responses provider works.","type":"input_text"}],"role":"user","type":"message"}],"model":"google/gemini-3-flash-preview"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{},"model":"google/gemini-3-flash-preview-20251217","object":"response","output":[{"content":[{"annotations":[],"logprobs":[],"text":"OpenRouter functions correctly via the OpenAI Responses provider.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},{"encrypted_content":"encrypted_content_REDACTED_1","format":"google-gemini-v1","id":"rs_REDACTED_1","status":"completed","summary":[],"type":"reasoning"}],"parallel_tool_calls":true,"presence_penalty":0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":null,"safety_identifier":null,"service_tier":"provisioned","status":"completed","store":false,"temperature":1,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":1,"truncation":"disabled","usage":{"cost":0.0000405,"cost_details":{"upstream_inference_cost":0.0000405,"upstream_inference_input_cost":0.0000105,"upstream_inference_output_cost":0.00003},"input_tokens":21,"input_tokens_details":{"cached_tokens":0},"is_byok":false,"output_tokens":10,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":31}}'

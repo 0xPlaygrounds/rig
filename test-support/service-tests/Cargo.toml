@@ -1,0 +1,45 @@
+[package]
+name = "rig-service-tests"
+version.workspace = true
+edition.workspace = true
+publish = false
+license = "MIT"
+description = "Internal vector-store integration suites; kept out of provider test builds"
+autotests = false
+
+[lints]
+workspace = true
+
+[[test]]
+name = "integrations"
+path = "integrations.rs"
+
+[dependencies]
+rig = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+futures = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+httpmock = { workspace = true }
+arrow-array = { workspace = true, optional = true }
+assert_fs = { workspace = true, optional = true }
+lancedb = { workspace = true, optional = true }
+mongodb = { workspace = true, optional = true }
+neo4rs = { workspace = true, optional = true }
+qdrant-client = { workspace = true, optional = true }
+rusqlite = { workspace = true, features = ["bundled"], optional = true }
+sqlite-vec = { workspace = true, optional = true }
+sqlx = { workspace = true, features = ["runtime-tokio", "postgres", "uuid", "json"], optional = true }
+testcontainers = { workspace = true, optional = true }
+tokio-rusqlite = { workspace = true, features = ["bundled"], optional = true }
+
+[features]
+default = []
+lancedb = ["rig/lancedb", "dep:lancedb", "dep:arrow-array", "dep:assert_fs"]
+mongodb = ["rig/mongodb", "dep:mongodb", "dep:testcontainers"]
+neo4j = ["rig/neo4j", "dep:neo4rs", "dep:testcontainers"]
+postgres = ["rig/postgres", "dep:sqlx", "dep:testcontainers"]
+qdrant = ["rig/qdrant", "dep:qdrant-client", "dep:testcontainers"]
+scylladb = ["rig/scylladb", "dep:testcontainers"]
+sqlite = ["rig/sqlite", "dep:rusqlite", "dep:sqlite-vec", "dep:tokio-rusqlite"]
+vectorize = ["rig/vectorize"]

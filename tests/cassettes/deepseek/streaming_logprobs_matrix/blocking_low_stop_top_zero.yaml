@@ -1,0 +1,16 @@
+when:
+  path: /chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"logprobs":true,"max_tokens":64,"messages":[{"content":"What is 17 + 25? Answer with only the number.","role":"user"}],"model":"deepseek-v4-flash","reasoning_effort":"low","top_logprobs":0}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":{"content":[{"bytes":[52,50],"logprob":-2.3841855e-7,"token":"42","top_logprobs":[]}],"reasoning_content":[{"bytes":[87,101],"logprob":-0.0360257,"token":"We","top_logprobs":[]},{"bytes":[32,110,101,101,100],"logprob":-0.0005415403,"token":" need","top_logprobs":[]},{"bytes":[32,116,111],"logprob":-1.7038461,"token":" to","top_logprobs":[]},{"bytes":[32,97,110,115,119,101,114],"logprob":-0.00819156,"token":" answer","top_logprobs":[]},{"bytes":[32,119,105,116,104],"logprob":-0.1457729,"token":" with","top_logprobs":[]},{"bytes":[32,111,110,108,121],"logprob":-3.81469e-6,"token":" only","top_logprobs":[]},{"bytes":[32,116,104,101],"logprob":-0.060714938,"token":" the","top_logprobs":[]},{"bytes":[32,110,117,109,98,101,114],"logprob":0.0,"token":" number","top_logprobs":[]},{"bytes":[46],"logprob":-0.10423576,"token":".","top_logprobs":[]},{"bytes":[32],"logprob":-0.00037889453,"token":" ","top_logprobs":[]},{"bytes":[49,55],"logprob":-1.1920928e-7,"token":"17","top_logprobs":[]},{"bytes":[43],"logprob":-0.00755761,"token":"+","top_logprobs":[]},{"bytes":[50,53],"logprob":-1.1920928e-7,"token":"25","top_logprobs":[]},{"bytes":[61],"logprob":-0.00016795179,"token":"=","top_logprobs":[]},{"bytes":[52,50],"logprob":-9.059865e-6,"token":"42","top_logprobs":[]},{"bytes":[46],"logprob":-0.000023603161,"token":".","top_logprobs":[]},{"bytes":[32,79,117,116,112,117,116],"logprob":-2.8257012,"token":" Output","top_logprobs":[]},{"bytes":[32,34],"logprob":-2.4518082,"token":" \"","top_logprobs":[]},{"bytes":[52,50],"logprob":-1.1920928e-7,"token":"42","top_logprobs":[]},{"bytes":[34,46],"logprob":-0.0056200353,"token":"\".","top_logprobs":[]}]},"message":{"content":"42","reasoning_content":"We need to answer with only the number. 17+25=42. Output \"42\".","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"deepseek-v4-flash","object":"chat.completion","system_fingerprint":"a26a7955944dc5c60445bff77fac9c8e","usage":{"completion_tokens":22,"completion_tokens_details":{"reasoning_tokens":20},"prompt_cache_hit_tokens":0,"prompt_cache_miss_tokens":18,"prompt_tokens":18,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":40}}'

@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models
+  method: GET
+  query_param:
+  - name: pageSize
+    value: '1000'
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"error":{"code":400,"details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","domain":"googleapis.com","metadata":{"service":"generativelanguage.googleapis.com"},"reason":"API_KEY_INVALID"},{"@type":"type.googleapis.com/google.rpc.LocalizedMessage","locale":"en-US","message":"API key not valid. Please pass a valid API key."}],"message":"API key not valid. Please pass a valid API key.","status":"INVALID_ARGUMENT"}}'

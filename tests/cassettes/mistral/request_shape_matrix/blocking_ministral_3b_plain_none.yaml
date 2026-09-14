@@ -1,0 +1,18 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Reply with exactly: cobalt","role":"user"}],"model":"ministral-3b-latest","tool_choice":"none","tools":[{"function":{"description":"Add two integers","name":"add","parameters":{"properties":{"x":{"type":"integer"},"y":{"type":"integer"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: mistral-correlation-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"Cobalt.","role":"assistant","tool_calls":null}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"ministral-3b-latest","object":"chat.completion","usage":{"completion_tokens":5,"prompt_tokens":8,"prompt_tokens_details":{"cached_tokens":0},"service_tier":"standard","total_tokens":13}}'

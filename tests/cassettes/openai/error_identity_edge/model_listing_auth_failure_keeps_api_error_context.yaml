@@ -1,0 +1,18 @@
+when:
+  path: /v1/models
+  method: GET
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: null
+then:
+  status: 401
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"invalid_api_key","message":"Incorrect API key provided: sk-inval**************-key. You can find your API key at https://platform.openai.com/account/api-keys.","param":null,"type":"invalid_request_error"}}'

@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":20,"messages":[{"content":"/no_think Record this note: The quarterly incident review found three unrelated regressions in the billing pipeline.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tool_choice":"required","tools":[{"function":{"description":"Record a long note.","name":"record","parameters":{"properties":{"note":{"type":"string"}},"required":["note"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"length","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"note\": \"The","name":"record"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-8B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":164,"predicted_ms":346.94,"predicted_n":20,"predicted_per_second":54.76451259583789,"predicted_per_token_ms":18.26,"prompt_ms":18.663,"prompt_n":1,"prompt_per_second":53.581953598028186,"prompt_per_token_ms":18.663},"usage":{"completion_tokens":20,"prompt_tokens":165,"prompt_tokens_details":{"cached_tokens":164},"total_tokens":185}}'

@@ -1,0 +1,53 @@
+# Populates the two dependency caches PRs restore: the default/bedrock test
+# graph (ci.yaml's `test` job key) on the development base, and the
+# all-features test graph (shared key `all-features`, restored by doctest and
+# test-all-features) on both branches. rust-cache runs at job level so a
+# failed or cancelled warm saves nothing, and a started warm is never
+# cancelled: a partial entry saved under the exact key would be treated as
+# up to date by every later warm.
+name: Development cache warm
+
+on:
+  push:
+    branches: [main, feat/effect-bus]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+concurrency:
+  group: cache-warm-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # main's own ci.yaml run saves this key, so only the development base.
+  test:
+    if: github.repository == '0xPlaygrounds/rig' && github.ref == 'refs/heads/feat/effect-bus'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          nextest: "true"
+          components: rustfmt
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+      # Compile the default/bedrock test artifacts; execute nothing.
+      - run: cargo xtask verify --check default-test-build
+
+  all-features:
+    if: github.repository == '0xPlaygrounds/rig'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/rust-setup
+        with:
+          nextest: "true"
+          protoc: "true"
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        with:
+          shared-key: all-features
+      - run: cargo xtask verify --check full-test-build

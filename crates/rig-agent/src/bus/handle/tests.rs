@@ -1,0 +1,438 @@
+use std::time::Duration;
+
+use futures::StreamExt;
+use serde_json::json;
+
+use super::*;
+use crate::bus::Bus;
+use rig_core::{
+    completion::{CompletionRequest, Message},
+    effect::{EffectFamily, HandlerKey, family},
+    embeddings::{Embedding, EmbeddingModel, EmbeddingResponse},
+    error::ErrorKind,
+    memory::InMemoryConversationMemory,
+    message::AssistantContent,
+    serve::adapters::{CompletionAdapter, EmbedAdapter, MemoryAdapter, ToolAdapter},
+    test_utils::{MockCompletionModel, MockStreamEvent, MockTurn},
+    tool::{Tool, ToolExecutionError},
+};
+
+async fn within<T>(future: impl Future<Output = T>) -> T {
+    tokio::time::timeout(Duration::from_secs(5), future)
+        .await
+        .expect("a dispatch never hangs")
+}
+
+struct Double;
+
+#[derive(serde::Deserialize)]
+struct DoubleArgs {
+    x: i64,
+}
+
+impl Tool for Double {
+    const NAME: &'static str = "double";
+    type Args = DoubleArgs;
+    type Output = i64;
+    type Error = ToolExecutionError;
+
+    fn description(&self) -> String {
+        "doubles".into()
+    }
+
+    fn parameters(&self) -> serde_json::Value {
+        json!({"type": "object"})
+    }
+
+    async fn call(&self, _context: &mut ToolContext, args: DoubleArgs) -> Result<i64, Self::Error> {
+        Ok(args.x * 2)
+    }
+}
+
+#[derive(Clone)]
+struct Tiny;
+
+impl EmbeddingModel for Tiny {
+    fn max_documents(&self) -> usize {
+        8
+    }
+
+    fn ndims(&self) -> usize {
+        2
+    }
+
+    async fn embed_texts_response(
+        &self,
+        texts: impl IntoIterator<Item = String> + Send,
+    ) -> Result<EmbeddingResponse, rig_core::embeddings::EmbeddingError> {
+        Ok(EmbeddingResponse::new(
+            texts
+                .into_iter()
+                .map(|document| Embedding {
+                    vec: vec![document.len() as f64, 1.0],
+                    document,
+                })
+                .collect(),
+            "tiny",
+        ))
+    }
+}
+
+fn request() -> CompletionRequest {
+    CompletionRequest {
+        model: None,
+        chat_history: vec![Message::user("hi")],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}
+
+fn bus() -> (
+    Dispatcher,
+    crate::bus::Registrar,
+    tokio::task::JoinHandle<()>,
+) {
+    let (dispatcher, registrar, mut driver) = Bus::channel();
+    driver
+        .register(
+            "model",
+            CompletionAdapter::new(
+                "mock",
+                MockCompletionModel::from_turns([MockTurn::text("unary"), MockTurn::text("again")]),
+            ),
+        )
+        .expect("register");
+    driver
+        .register(
+            "streamer",
+            CompletionAdapter::new(
+                "mock-stream",
+                MockCompletionModel::from_stream_turns([vec![
+                    MockStreamEvent::text("str"),
+                    MockStreamEvent::text("eamed"),
+                    MockStreamEvent::final_response_with_total_tokens(4),
+                ]]),
+            ),
+        )
+        .expect("register");
+    driver
+        .register("double", ToolAdapter::new(Double))
+        .expect("register");
+    driver
+        .register(
+            "memory",
+            MemoryAdapter::new(InMemoryConversationMemory::new()),
+        )
+        .expect("register");
+    driver
+        .register("embed", EmbedAdapter::new("tiny", Tiny))
+        .expect("register");
+    (dispatcher, registrar, tokio::spawn(driver))
+}
+
+#[tokio::test]
+async fn binding_checks_the_family_typed_at_bind_time() {
+    let (dispatcher, _registrar, _task) = bus();
+    let model: ModelHandle = dispatcher
+        .handle(&HandlerKey::from("model"))
+        .expect("model");
+    assert_eq!(model.descriptor().family.family(), EffectFamily::Completion);
+    assert_eq!(model.model_ref().as_str(), "mock");
+
+    let report = dispatcher
+        .handle::<family::Completion>(&HandlerKey::from("double"))
+        .expect_err("a tool key is not a model");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    assert!(
+        report.message.contains("tool_call family"),
+        "{}",
+        report.message
+    );
+
+    let report = dispatcher
+        .handle::<family::Tool>(&HandlerKey::from("nope"))
+        .expect_err("unknown");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+    assert!(report.message.contains("`nope`"));
+}
+
+#[tokio::test]
+async fn concurrent_model_handles_preserve_explicit_observation_contexts() {
+    use rig_core::observe::{AdapterContext, ObservationLog, Subject};
+    use std::sync::Arc;
+
+    for streamed in [false, true] {
+        let provider = if streamed {
+            MockCompletionModel::from_stream_turns((0..2).map(|_| {
+                vec![
+                    MockStreamEvent::text("same"),
+                    MockStreamEvent::final_response_with_total_tokens(1),
+                ]
+            }))
+        } else {
+            MockCompletionModel::from_turns((0..2).map(|_| MockTurn::text("same")))
+        };
+        let (dispatcher, _registrar, mut driver) = Bus::channel();
+        driver
+            .register("model", CompletionAdapter::new("mock", provider.clone()))
+            .unwrap();
+        let task = tokio::spawn(driver);
+        let handle: ModelHandle = dispatcher.handle(&HandlerKey::from("model")).unwrap();
+        let sink = Arc::new(ObservationLog::default());
+        let contexts: Vec<_> = ["operation/a", "operation/b"]
+            .into_iter()
+            .map(|operation| {
+                Some(AdapterContext::new(
+                    sink.clone(),
+                    Subject::scoped("direct"),
+                    operation,
+                ))
+            })
+            .collect();
+        if streamed {
+            let consume = |context| {
+                let mut stream = handle.stream_with_context(request(), context);
+                async move {
+                    while let Some(event) = within(stream.next()).await {
+                        event.unwrap();
+                    }
+                    assert_eq!(stream.finish().choice, vec![AssistantContent::text("same")]);
+                }
+            };
+            tokio::join!(consume(contexts[0].clone()), consume(contexts[1].clone()));
+        } else {
+            let (a, b) = tokio::join!(
+                within(handle.complete_with_context(request(), contexts[0].clone())),
+                within(handle.complete_with_context(request(), contexts[1].clone()))
+            );
+            assert_eq!(a.unwrap().choice, vec![AssistantContent::text("same")]);
+            assert_eq!(b.unwrap().choice, vec![AssistantContent::text("same")]);
+        }
+        let received = provider.contexts();
+        let mut operations: Vec<_> = received
+            .iter()
+            .map(|request| request.as_ref().unwrap().operation())
+            .collect();
+        operations.sort_unstable();
+        assert_eq!(operations, ["operation/a", "operation/b"]);
+        task.abort();
+    }
+}
+
+#[tokio::test]
+async fn model_handle_completes_and_streams() {
+    let (dispatcher, _registrar, _task) = bus();
+    let model: ModelHandle = dispatcher
+        .handle(&HandlerKey::from("model"))
+        .expect("model");
+    let response = within(model.complete(request())).await.expect("completed");
+    assert_eq!(response.choice, vec![AssistantContent::text("unary")]);
+    assert_eq!(model.capabilities(), ProviderCapabilities::default());
+
+    let streamer: ModelHandle = dispatcher
+        .handle(&HandlerKey::from("streamer"))
+        .expect("model");
+    let mut stream = streamer.stream(request());
+    let mut text = String::new();
+    while let Some(event) = within(stream.next()).await {
+        if let rig_core::streaming::StreamEvent::BlockDelta {
+            delta: rig_core::streaming::Delta::Text { text: piece },
+            ..
+        } = event.expect("event")
+        {
+            text.push_str(&piece);
+        }
+    }
+    assert_eq!(text, "streamed");
+    let finished = stream.finish();
+    assert_eq!(finished.choice, vec![AssistantContent::text("streamed")]);
+    assert_eq!(finished.usage.total_tokens, 4);
+}
+
+#[tokio::test]
+async fn handle_descriptor_follows_a_runtime_replacement() {
+    let (dispatcher, registrar, _task) = bus();
+    let model: ModelHandle = dispatcher
+        .handle(&HandlerKey::from("model"))
+        .expect("model");
+    registrar
+        .register(
+            "model",
+            CompletionAdapter::new(
+                "swapped",
+                MockCompletionModel::from_turns([MockTurn::text("swapped")]),
+            ),
+        )
+        .expect("register");
+    assert_eq!(
+        model.model_ref().as_str(),
+        "swapped",
+        "re-read, not the snapshot"
+    );
+    let response = within(model.complete(request())).await.expect("completed");
+    assert_eq!(response.choice, vec![AssistantContent::text("swapped")]);
+}
+
+#[tokio::test]
+async fn tool_memory_index_and_embed_handles_call_their_families() {
+    let (dispatcher, _registrar, _task) = bus();
+    let tool: ToolHandle = dispatcher
+        .handle(&HandlerKey::from("double"))
+        .expect("tool");
+    assert_eq!(tool.name(), "double");
+    let crate::bus::ToolAnswer { result, .. } =
+        within(tool.call("double", r#"{"x": 21}"#, ToolContext::new()))
+            .await
+            .expect("called");
+    assert_eq!(result.output().as_json(), Some(&json!(42)));
+
+    let memory: MemoryHandle = dispatcher
+        .handle(&HandlerKey::from("memory"))
+        .expect("memory");
+    let conversation = ConversationId::from("c");
+    within(memory.append(conversation.clone(), vec![Message::user("x")]))
+        .await
+        .expect("appended");
+    let loaded = within(memory.load(conversation.clone()))
+        .await
+        .expect("loaded");
+    assert_eq!(loaded.len(), 1);
+    within(memory.clear(conversation.clone()))
+        .await
+        .expect("cleared");
+    assert!(
+        within(memory.load(conversation))
+            .await
+            .expect("loaded")
+            .is_empty()
+    );
+
+    let embed: EmbedHandle = dispatcher
+        .handle(&HandlerKey::from("embed"))
+        .expect("embed");
+    assert_eq!(embed.ndims(), Some(2));
+    assert_eq!(embed.max_documents(), Some(8));
+    assert_eq!(embed.modality(), Some(EmbedModality::Text));
+    let embedding = within(embed.embed_text("abc")).await.expect("embedded");
+    assert_eq!(embedding.vec, vec![3.0, 1.0]);
+    let report = within(embed.embed_images(vec![vec![1]]))
+        .await
+        .expect_err("text handler");
+    assert_eq!(report.kind, ErrorKind::HandlerUnavailable);
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+struct Session(String);
+
+impl rig_core::tool::ContextValue for Session {
+    const KEY: &'static str = "test.session";
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Debug, PartialEq)]
+struct Stale;
+
+impl rig_core::tool::ContextValue for Stale {
+    const KEY: &'static str = "test.stale";
+}
+
+/// A tool-family handler that is not a tool adapter and publishes nothing;
+/// it records what the dispatch's own `ToolContext` scope held.
+struct Silent {
+    /// `(session seen, stale result metadata seen)` on the dispatch scope.
+    seen: std::sync::Arc<std::sync::Mutex<Option<(bool, bool)>>>,
+}
+
+impl rig_core::serve::Serve for Silent {
+    type Family = family::Tool;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: rig_core::effect::tool_key("silent"),
+            family: rig_core::effect::FamilyDescriptor::Tool {
+                name: "silent".into(),
+                description: "answers without publishing".into(),
+                parameters: json!({"type": "object"}),
+                embedding: None,
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        _kind: rig_core::effect::EffectKind,
+        dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        let scope = dispatch.scope::<ToolContext>();
+        *self.seen.lock().expect("seen") = scope.map(|context| {
+            (
+                context.get::<Session>().ok().flatten().is_some(),
+                context.result::<Stale>().ok().flatten().is_some(),
+            )
+        });
+        rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::ToolResult {
+            result: rig_core::tool::ToolResult::success(rig_core::tool::ToolOutput::text("silent")),
+        }))
+    }
+}
+
+/// The tool runs on a dispatch snapshot — the caller's inbound values, none
+/// of its stale result metadata — whether or not the handler is a tool
+/// adapter; and the answer's context is that snapshot when the handler
+/// published nothing: never an empty context, never stale metadata.
+#[tokio::test]
+async fn a_tool_answer_keeps_inbound_values_when_the_handler_publishes_nothing() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(None));
+    driver
+        .register("silent", Silent { seen: seen.clone() })
+        .expect("register");
+    let task = tokio::spawn(driver);
+
+    let tool: ToolHandle = dispatcher
+        .handle(&HandlerKey::from("silent"))
+        .expect("tool");
+    let mut context = ToolContext::new();
+    context.insert(Session("s-1".into())).expect("inbound");
+    context.insert_result(Stale).expect("stale result metadata");
+    let answer = within(tool.call("silent", "{}", context))
+        .await
+        .expect("called");
+    assert_eq!(answer.result.output().as_text(), Some("silent"));
+    assert_eq!(
+        *seen.lock().expect("seen"),
+        Some((true, false)),
+        "the handler's scope holds the inbound snapshot, not the caller's result metadata"
+    );
+    assert_eq!(
+        answer.context.get::<Session>().expect("decodes"),
+        Some(Session("s-1".into()))
+    );
+    assert_eq!(answer.context.result::<Stale>().expect("decodes"), None);
+
+    drop((tool, dispatcher));
+    within(task).await.expect("driver ends");
+}
+
+#[tokio::test]
+async fn handles_fail_closed_when_the_driver_is_gone() {
+    let (dispatcher, _registrar, mut driver) = Bus::channel();
+    driver
+        .register("double", ToolAdapter::new(Double))
+        .expect("register");
+    let tool: ToolHandle = dispatcher
+        .handle(&HandlerKey::from("double"))
+        .expect("tool");
+    drop(driver);
+    assert!(tool.is_closed());
+    let report = within(tool.call("double", "{}", ToolContext::new()))
+        .await
+        .expect_err("closed");
+    assert_eq!(report.kind, ErrorKind::BusClosed);
+}

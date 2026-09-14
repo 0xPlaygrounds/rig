@@ -1,0 +1,33 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"}],"model":"Qwen3-1.7B-Q4_K_M","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","reasoning_content":"Okay, the user wants to calculate 2 minus 5. Let me check the available tools. There''s an subtract function that takes x and y. Here, x should be 2 and y should be 5. So the function call would be subtract with x=2 and y=5. That should give the correct result.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":290,"predicted_ms":798.62,"predicted_n":97,"predicted_per_second":120.20735769201873,"predicted_per_token_ms":8.318958333333333,"prompt_ms":7.62,"prompt_n":1,"prompt_per_second":131.23359580052494,"prompt_per_token_ms":7.62},"usage":{"completion_tokens":97,"prompt_tokens":291,"prompt_tokens_details":{"cached_tokens":290},"total_tokens":388}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":[{"text":"You are a calculator. Use the provided tools before answering arithmetic questions.","type":"text"}],"role":"system"},{"content":"Calculate 2 - 5.","role":"user"},{"reasoning_content":"Okay, the user wants to calculate 2 minus 5. Let me check the available tools. There''s an subtract function that takes x and y. Here, x should be 2 and y should be 5. So the function call would be subtract with x=2 and y=5. That should give the correct result.\n","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\":2,\"y\":5}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]},{"content":"-3","role":"tool","tool_call_id":"call_REDACTED_1"}],"model":"Qwen3-1.7B-Q4_K_M","tools":[{"function":{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"},{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"content":"The result of $ 2 - 5 $ is $-3$.\n\n$$\n\\boxed{-3}\n$$","reasoning_content":"Okay, the user asked to calculate 2 minus 5. I used the subtract function with x=2 and y=5. The result was -3. Let me check if that''s correct. 2 minus 5 is indeed -3. So the answer is correct.\n","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"/REDACTED_PATH/Qwen3-1.7B-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":387,"predicted_ms":690.773,"predicted_n":86,"predicted_per_second":123.05055351034275,"predicted_per_token_ms":8.126741176470588,"prompt_ms":42.766,"prompt_n":16,"prompt_per_second":374.1289809661881,"prompt_per_token_ms":2.672875},"usage":{"completion_tokens":86,"prompt_tokens":403,"prompt_tokens_details":{"cached_tokens":387},"total_tokens":489}}'

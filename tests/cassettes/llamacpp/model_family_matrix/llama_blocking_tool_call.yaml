@@ -1,0 +1,16 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":512,"messages":[{"content":"Calculate 2 - 5 using the tool.","role":"user"}],"model":"Llama-3.2-3B-Instruct-Q4_K_M","tools":[{"function":{"description":"Subtract y from x (i.e.: x - y)","name":"subtract","parameters":{"properties":{"x":{"description":"The number to subtract from","type":"number"},"y":{"description":"The number to subtract","type":"number"}},"required":["x","y"],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"choices":[{"finish_reason":"tool_calls","index":0,"message":{"content":"","role":"assistant","tool_calls":[{"function":{"arguments":"{\"x\": 2, \"y\": 5}","name":"subtract"},"id":"call_REDACTED_1","type":"function"}]}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"/REDACTED_PATH/Llama-3.2-3B-Instruct-Q4_K_M.gguf","object":"chat.completion","system_fingerprint":"b10499-6d05498","timings":{"cache_n":104,"predicted_ms":186.627,"predicted_n":22,"predicted_per_second":112.52391133115786,"predicted_per_token_ms":8.887,"prompt_ms":120.182,"prompt_n":123,"prompt_per_second":1023.4477708808307,"prompt_per_token_ms":0.977089430894309},"usage":{"completion_tokens":22,"prompt_tokens":227,"prompt_tokens_details":{"cached_tokens":104},"total_tokens":249}}'

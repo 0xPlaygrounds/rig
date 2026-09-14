@@ -1,0 +1,18 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":[{"text":"never extracted","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are an AI assistant whose purpose is to extract structured data from the provided text.\nYou will have access to a `submit` function that defines the structure of the data to extract from the provided text.\nUse the `submit` function to submit the structured data.\nBe sure to fill out every field and ALWAYS CALL THE `submit` function, even with default values!!!.","model":"gpt-nonexistent-model-for-error-edge","tool_choice":"required","tools":[{"description":"Submit the structured data you extracted from the provided text.","name":"submit","parameters":{"$schema":"https://json-schema.org/draft/2020-12/schema","properties":{"value":{"format":"int64","type":"integer"}},"required":["value"],"title":"Probe","type":"object"},"type":"function"}]}'
+then:
+  status: 400
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"model_not_found","message":"The requested model ''gpt-nonexistent-model-for-error-edge'' does not exist.","param":"model","type":"invalid_request_error"}}'

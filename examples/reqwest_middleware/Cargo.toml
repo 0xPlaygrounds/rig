@@ -1,0 +1,15 @@
+[package]
+name = "reqwest_middleware"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rig = { workspace = true, features = ["reqwest-middleware"] }
+anyhow = { workspace = true }
+reqwest-middleware = { workspace = true, features = ["json", "multipart", "charset", "http2", "rustls"] }
+reqwest-retry = { workspace = true }
+tokio = { workspace = true, features = ["full"] }

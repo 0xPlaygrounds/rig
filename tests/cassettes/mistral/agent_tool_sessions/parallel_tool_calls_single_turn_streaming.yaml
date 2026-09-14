@@ -1,0 +1,61 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","role":"system"},{"content":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","role":"user"}],"model":"mistral-small-latest","parallel_tool_calls":true,"stream":true,"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","index":0,"type":"function"},{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"call_REDACTED_2","index":1,"type":"function"}]},"finish_reason":"tool_calls","index":0}],"created":0,"id":"chatcmpl-REDACTED_1","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234567","usage":{"completion_tokens":16,"prompt_tokens":213,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":229}}
+
+    data: [DONE]
+
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"You are a precise assistant. When tools are available, you must use them instead of guessing. Call both `lookup_harbor_label` and `lookup_orchard_label` before writing any normal text. Never call the same tool twice once you already have its result.","role":"system"},{"content":"Call `lookup_harbor_label` and `lookup_orchard_label` exactly once each before answering. After both tool results are available, stop calling tools and respond in one short sentence that includes both exact tool outputs.","role":"user"},{"content":"","prefix":false,"role":"assistant","tool_calls":[{"function":{"arguments":"{}","name":"lookup_harbor_label"},"id":"call_REDACTED_1","type":"function"},{"function":{"arguments":"{}","name":"lookup_orchard_label"},"id":"call_REDACTED_2","type":"function"}]},{"content":"crimson-harbor","role":"tool","tool_call_id":"call_REDACTED_1"},{"content":"silver-orchard","role":"tool","tool_call_id":"call_REDACTED_2"}],"model":"mistral-small-latest","parallel_tool_calls":true,"stream":true,"tools":[{"function":{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"},{"function":{"description":"Return the beta signal marker.","name":"lookup_orchard_label","parameters":{"properties":{},"required":[],"type":"object"}},"type":"function"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream; charset=utf-8
+  body: |+
+    data: {"choices":[{"delta":{"content":"","role":"assistant"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk"}
+
+    data: {"choices":[{"delta":{"content":"The"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdef"}
+
+    data: {"choices":[{"delta":{"content":" alpha signal marker"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz01234567"}
+
+    data: {"choices":[{"delta":{"content":" is **crim"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwx"}
+
+    data: {"choices":[{"delta":{"content":"son-harbor"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqrstuvwxyz012"}
+
+    data: {"choices":[{"delta":{"content":"**"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefgh"}
+
+    data: {"choices":[{"delta":{"content":" and the beta signal"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmno"}
+
+    data: {"choices":[{"delta":{"content":" marker is **sil"},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmno"}
+
+    data: {"choices":[{"delta":{"content":"ver-orchard**."},"finish_reason":null,"index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdefghijklmnopqr"}
+
+    data: {"choices":[{"delta":{"content":""},"finish_reason":"stop","index":0}],"created":0,"id":"chatcmpl-REDACTED_2","model":"mistral-small-latest","object":"chat.completion.chunk","p":"abcdef","usage":{"completion_tokens":26,"prompt_tokens":243,"prompt_tokens_details":{"cached_tokens":0},"total_tokens":269}}
+
+    data: [DONE]
+

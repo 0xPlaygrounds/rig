@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"A farmer has 17 sheep. All but 9 run away. How many sheep are left? Think it through, then answer in one short sentence.","thought":false}],"role":"user"}],"generationConfig":{"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":1024}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**Sheep Situation Analysis**\n\nOkay, let''s break this down. First, we have an initial state: 17 sheep. The critical action is that \"all but 9\" run away. Now, I need to interpret this crucial phrase, \"all but X.\"  Essentially, \"all but 9\" means that 9 are the *exception*; they *didn''t* run away. Therefore, those 9 sheep are the ones *still present*. The question is straightforward: \"How many sheep are left?\"  The answer is explicitly stated in the problem statement itself, within that clarifying clause. There''s no need for any complex calculations or interpretation beyond understanding that phrase. So, the number of sheep left is directly stated, and that is my answer.\n","thought":true},{"text":"Nine sheep are left."}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":5,"promptTokenCount":33,"promptTokensDetails":[{"modality":"TEXT","tokenCount":33}],"serviceTier":"standard","thoughtsTokenCount":127,"totalTokenCount":165}}'

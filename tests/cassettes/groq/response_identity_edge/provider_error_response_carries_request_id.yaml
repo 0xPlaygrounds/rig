@@ -1,0 +1,18 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"messages":[{"content":"Never answered","role":"user"}],"model":"groq-nonexistent-model-for-identity-edge"}'
+then:
+  status: 404
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"error":{"code":"model_not_found","message":"The model `groq-nonexistent-model-for-identity-edge` does not exist or you do not have access to it.","type":"invalid_request_error"}}'

@@ -1,0 +1,762 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a helpful math tutor. Be concise.","role":"system","type":"message"},{"content":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","role":"user","type":"message"}],"model":"grok-3-mini","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_REDACTED_1","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" problem","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":":","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" A","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" train","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" leaves","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" Station","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" A","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" at","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"60","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" km","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"/h","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" Another","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" train","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" leaves","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" Station","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" B","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" (","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"300","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" km","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" away","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":")","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"30","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":29,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" minutes","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" later","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":31,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" at","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":32,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":33,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"90","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":34,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" km","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":35,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"/h","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":36,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" heading","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":37,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" toward","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":38,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" Station","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":39,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" A","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":40,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":41,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" At","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":42,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" what","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":43,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" time","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":44,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" do","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":45,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" they","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":46,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" meet","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":47,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":48,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":49,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" how","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":50,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" far","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":51,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" from","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":52,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" Station...","item_id":"rs_REDACTED_1","output_index":0,"sequence_number":53,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"sequence_number":54,"summary_index":0,"text":"The problem: A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station...","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_REDACTED_1","output_index":0,"part":{"text":"The problem: A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station...","type":"summary_text"},"sequence_number":55,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The problem: A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station...","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":56,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_REDACTED_1","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":57,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":58,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Let","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":59,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\(","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":60,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" t","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":61,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\)","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":62,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" be","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":63,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" hours","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":64,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" after","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":65,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":66,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" first","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":67,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" train","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":68,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" departs","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":69,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" A","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":70,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":71,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" The","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":72,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" trains","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":73,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" meet","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":74,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" when","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":75,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"  \n","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":76,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\\[","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":77,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":78,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"60","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":79,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"t","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":80,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" +","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":81,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":82,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"90","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":83,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"(t","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":84,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"-","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":85,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"0","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":86,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":87,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"5","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":88,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":")=","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":89,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"300","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":90,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":91,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":92,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"]","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":93,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"  \n","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":94,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Simpl","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":95,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"ifying","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":96,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" gives","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":97,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\(","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":98,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":99,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"150","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":100,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"t","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":101,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"=","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":102,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"345","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":103,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":104,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"),","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":105,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" so","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":106,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\(","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":107,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" t","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":108,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"=","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":109,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"2","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":110,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":111,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"3","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":112,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\)","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":113,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" h","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":114,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" (","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":115,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"2","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":116,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" h","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":117,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":118,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"18","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":119,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" min","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":120,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":").","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":121,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"  \n","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":122,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"Distance","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":123,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" from","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":124,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" A","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":125,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":":","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":126,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\(","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":127,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":128,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"60","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":129,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"\\times","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":130,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"2","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":131,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":132,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"3","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":133,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"=","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":134,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"138","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":135,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" \\)","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":136,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" km","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":137,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":138,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"  \n\n","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":139,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"They","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":140,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" meet","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":141,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":142,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"2","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":143,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" h","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":144,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":145,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"18","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":146,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" min","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":147,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" after","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":148,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":149,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" first","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":150,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" train","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":151,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" leaves","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":152,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":153,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":154,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"138","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":155,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" km","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":156,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" from","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":157,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" A","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":158,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":159,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","logprobs":[],"output_index":1,"sequence_number":160,"text":"Let \\( t \\) be hours after the first train departs A. The trains meet when  \n\\[ 60t + 90(t-0.5)=300. \\]  \nSimplifying gives \\( 150t=345 \\), so \\( t=2.3 \\) h (2 h 18 min).  \nDistance from A: \\( 60\\times2.3=138 \\) km.  \n\nThey meet 2 h 18 min after the first train leaves, 138 km from A.","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_1","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"Let \\( t \\) be hours after the first train departs A. The trains meet when  \n\\[ 60t + 90(t-0.5)=300. \\]  \nSimplifying gives \\( 150t=345 \\), so \\( t=2.3 \\) h (2 h 18 min).  \nDistance from A: \\( 60\\times2.3=138 \\) km.  \n\nThey meet 2 h 18 min after the first train leaves, 138 km from A.","type":"output_text"},"sequence_number":161,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"Let \\( t \\) be hours after the first train departs A. The trains meet when  \n\\[ 60t + 90(t-0.5)=300. \\]  \nSimplifying gives \\( 150t=345 \\), so \\( t=2.3 \\) h (2 h 18 min).  \nDistance from A: \\( 60\\times2.3=138 \\) km.  \n\nThey meet 2 h 18 min after the first train leaves, 138 km from A.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":162,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The problem: A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station...","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"Let \\( t \\) be hours after the first train departs A. The trains meet when  \n\\[ 60t + 90(t-0.5)=300. \\]  \nSimplifying gives \\( 150t=345 \\), so \\( t=2.3 \\) h (2 h 18 min).  \nDistance from A: \\( 60\\times2.3=138 \\) km.  \n\nThey meet 2 h 18 min after the first train leaves, 138 km from A.","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":196,"output_tokens":485},"cost_in_usd_ticks":12559000,"input_tokens":196,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":485,"output_tokens_details":{"reasoning_tokens":384},"total_tokens":681},"user":null},"sequence_number":163,"type":"response.completed"}
+
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a helpful math tutor. Be concise.","role":"system","type":"message"},{"content":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","role":"user","type":"message"},{"id":"rs_REDACTED_1","summary":[{"text":"The problem: A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station...","type":"summary_text"}],"type":"reasoning"},{"content":"Let \\( t \\) be hours after the first train departs A. The trains meet when  \n\\[ 60t + 90(t-0.5)=300. \\]  \nSimplifying gives \\( 150t=345 \\), so \\( t=2.3 \\) h (2 h 18 min).  \nDistance from A: \\( 60\\times2.3=138 \\) km.  \n\nThey meet 2 h 18 min after the first train leaves, 138 km from A.","role":"assistant","type":"message"},{"content":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?","role":"user","type":"message"}],"model":"grok-3-mini","stream":true}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: |+
+    event: response.created
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":0,"type":"response.created"}
+
+    event: response.in_progress
+    data: {"response":{"background":false,"completed_at":null,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"in_progress","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":null,"user":null},"sequence_number":1,"type":"response.in_progress"}
+
+    event: response.output_item.added
+    data: {"item":{"id":"rs_REDACTED_2","status":"in_progress","summary":[],"type":"reasoning"},"output_index":0,"sequence_number":2,"type":"response.output_item.added"}
+
+    event: response.reasoning_summary_part.added
+    data: {"item_id":"rs_REDACTED_2","output_index":0,"part":{"text":"","type":"summary_text"},"sequence_number":3,"summary_index":0,"type":"response.reasoning_summary_part.added"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":4,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" first","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":5,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" train","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":6,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" slows","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":7,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" after","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":8,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":9,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"69","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":10,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" km","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":11,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" (","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":12,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"half","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":13,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":14,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" ","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":15,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"138","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":16,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" km","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":17,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"),","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":18,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" and","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":19,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":20,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" second","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":21,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" after","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":22,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" traveling","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":23,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" half","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":24,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" its","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":25,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" distance","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":26,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" to","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":27,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":28,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" meeting","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":29,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" point","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":30,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":".","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":31,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" But","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":32,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":33,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" meeting","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":34,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" point","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":35,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" will","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":36,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" change","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":37,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" because","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":38,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" of","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":39,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" the","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":40,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" slowdown","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":41,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"s","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":42,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":",","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":43,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" so","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":44,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" I","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":45,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" need","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":46,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" to","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":47,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":" solv...","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":48,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.delta
+    data: {"delta":"The problem is: Now suppose both trains slow down by 10 km/h after traveling half the original distance.","item_id":"rs_REDACTED_2","output_index":0,"sequence_number":49,"summary_index":0,"type":"response.reasoning_summary_text.delta"}
+
+    event: response.reasoning_summary_text.done
+    data: {"item_id":"rs_REDACTED_2","output_index":0,"sequence_number":50,"summary_index":0,"text":"The first train slows after 69 km (half of 138 km), and the second after traveling half its distance to the meeting point. But the meeting point will change because of the slowdowns, so I need to solv...The problem is: Now suppose both trains slow down by 10 km/h after traveling half the original distance.","type":"response.reasoning_summary_text.done"}
+
+    event: response.reasoning_summary_part.done
+    data: {"item_id":"rs_REDACTED_2","output_index":0,"part":{"text":"The first train slows after 69 km (half of 138 km), and the second after traveling half its distance to the meeting point. But the meeting point will change because of the slowdowns, so I need to solv...The problem is: Now suppose both trains slow down by 10 km/h after traveling half the original distance.","type":"summary_text"},"sequence_number":51,"summary_index":0,"type":"response.reasoning_summary_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"id":"rs_REDACTED_2","status":"completed","summary":[{"text":"The first train slows after 69 km (half of 138 km), and the second after traveling half its distance to the meeting point. But the meeting point will change because of the slowdowns, so I need to solv...The problem is: Now suppose both trains slow down by 10 km/h after traveling half the original distance.","type":"summary_text"}],"type":"reasoning"},"output_index":0,"sequence_number":52,"type":"response.output_item.done"}
+
+    event: response.output_item.added
+    data: {"item":{"content":[],"id":"msg_REDACTED_2","role":"assistant","status":"in_progress","type":"message"},"output_index":1,"sequence_number":53,"type":"response.output_item.added"}
+
+    event: response.content_part.added
+    data: {"content_index":0,"item_id":"msg_REDACTED_2","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"","type":"output_text"},"sequence_number":54,"type":"response.content_part.added"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"They","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":55,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" meet","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":56,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ≈","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":57,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"2","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":58,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" h","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":59,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":60,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"41","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":61,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" min","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":62,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" after","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":63,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" the","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":64,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" first","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":65,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" train","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":66,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" leaves","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":67,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":",","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":68,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" ","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":69,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":"116","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":70,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" km","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":71,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" from","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":72,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":" A","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":73,"type":"response.output_text.delta"}
+
+    event: response.output_text.delta
+    data: {"content_index":0,"delta":".","item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":74,"type":"response.output_text.delta"}
+
+    event: response.output_text.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_2","logprobs":[],"output_index":1,"sequence_number":75,"text":"They meet ≈2 h 41 min after the first train leaves, 116 km from A.","type":"response.output_text.done"}
+
+    event: response.content_part.done
+    data: {"content_index":0,"item_id":"msg_REDACTED_2","output_index":1,"part":{"annotations":[],"logprobs":[],"text":"They meet ≈2 h 41 min after the first train leaves, 116 km from A.","type":"output_text"},"sequence_number":76,"type":"response.content_part.done"}
+
+    event: response.output_item.done
+    data: {"item":{"content":[{"annotations":[],"logprobs":[],"text":"They meet ≈2 h 41 min after the first train leaves, 116 km from A.","type":"output_text"}],"id":"msg_REDACTED_2","role":"assistant","status":"completed","type":"message"},"output_index":1,"sequence_number":77,"type":"response.output_item.done"}
+
+    event: response.completed
+    data: {"response":{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_2","status":"completed","summary":[{"text":"The first train slows after 69 km (half of 138 km), and the second after traveling half its distance to the meeting point. But the meeting point will change because of the slowdowns, so I need to solv...The problem is: Now suppose both trains slow down by 10 km/h after traveling half the original distance.","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"They meet ≈2 h 41 min after the first train leaves, 116 km from A.","type":"output_text"}],"id":"msg_REDACTED_2","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":null,"summary":null},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.699999988079071,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.949999988079071,"truncation":"disabled","usage":{"context_details":{"input_tokens":716,"output_tokens":898},"cost_in_usd_ticks":29384000,"input_tokens":716,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":898,"output_tokens_details":{"reasoning_tokens":878},"total_tokens":1614},"user":null},"sequence_number":78,"type":"response.completed"}
+

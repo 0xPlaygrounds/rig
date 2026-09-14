@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-3-flash-preview:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":16,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":128}},"safetySettings":null,"systemInstruction":{"parts":[{"text":"You are a concise assistant. Answer directly.","thought":false}],"role":"model"},"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Exploring Rust's Memory Model**\\n\\nOkay, I'm currently diving into Rust's memory model. I'm focusing on how its ownership and borrowing system enforces memory safety at compile time. It seems incredibly effective in preventing common memory errors like dangling pointers and data races, which is quite impressive. I'm now looking at the trade-offs in terms of development time and complexity.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":29,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":29}],\"serviceTier\":\"standard\",\"totalTokenCount\":29}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"\",\"thoughtSignature\":\"signature_REDACTED_1\"}],\"role\":\"model\"},\"finishReason\":\"MAX_TOKENS\",\"index\":0}],\"modelVersion\":\"gemini-3-flash-preview\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":29,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":29}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":13,\"totalTokenCount\":42}}\r\n\r\n"

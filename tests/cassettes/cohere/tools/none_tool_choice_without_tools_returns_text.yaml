@@ -1,0 +1,16 @@
+when:
+  path: /v2/chat
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"documents":[],"max_tokens":16,"messages":[{"content":[{"text":"Reply with the single word ready.","type":"text"}],"role":"user"}],"model":"command-a-03-2025","tool_choice":"NONE"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"finish_reason":"COMPLETE","id":"7a35e9e7-4822-4bdd-91ef-35abeb6bfa9a","message":{"content":[{"text":"ready","type":"text"}],"role":"assistant"},"usage":{"billed_units":{"input_tokens":7,"output_tokens":1},"cached_tokens":448,"tokens":{"input_tokens":503,"output_tokens":3}}}'

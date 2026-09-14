@@ -1,0 +1,33 @@
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a helpful math tutor. Be concise.","role":"system","type":"message"},{"content":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","role":"user","type":"message"}],"model":"grok-3-mini"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_1","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_1","status":"completed","summary":[{"text":"The problem: A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station...","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"The trains close the 300 km gap at a combined speed of 150 km/h once both are moving. The second train starts 0.5 h later, so the effective closing time after the first departure is \\(300/150=2\\) h, but the 45 km \"head start\" the first train gains in those 0.5 h must be subtracted from the gap first: effective gap = 255 km. Thus total time after first departure is \\(255/150=1.7\\) h plus the initial 0.5 h offset, giving \\(t=2.3\\) h after the first train leaves (i.e., 2 h 18 min). Distance from A is then \\(60\\times2.3=138\\) km.\n\nFinal answer: 2 h 18 min after 1st dep.; 138 km from A","type":"output_text"}],"id":"msg_REDACTED_1","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":196,"output_tokens":608},"cost_in_usd_ticks":16306000,"input_tokens":196,"input_tokens_details":{"cached_tokens":128},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":608,"output_tokens_details":{"reasoning_tokens":433},"total_tokens":804},"user":null}'
+---
+when:
+  path: /v1/responses
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"input":[{"content":"You are a helpful math tutor. Be concise.","role":"system","type":"message"},{"content":"A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station A? Show your work.","role":"user","type":"message"},{"id":"rs_REDACTED_1","summary":[{"text":"The problem: A train leaves Station A at 60 km/h. Another train leaves Station B (300 km away) 30 minutes later at 90 km/h heading toward Station A. At what time do they meet, and how far from Station...","type":"summary_text"}],"type":"reasoning"},{"content":"The trains close the 300 km gap at a combined speed of 150 km/h once both are moving. The second train starts 0.5 h later, so the effective closing time after the first departure is \\(300/150=2\\) h, but the 45 km \"head start\" the first train gains in those 0.5 h must be subtracted from the gap first: effective gap = 255 km. Thus total time after first departure is \\(255/150=1.7\\) h plus the initial 0.5 h offset, giving \\(t=2.3\\) h after the first train leaves (i.e., 2 h 18 min). Distance from A is then \\(60\\times2.3=138\\) km.\n\nFinal answer: 2 h 18 min after 1st dep.; 138 km from A","role":"assistant","type":"message"},{"content":"Now suppose both trains slow down by 10 km/h after traveling half the original distance. When do they meet now?","role":"user","type":"message"}],"model":"grok-3-mini"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  body: '{"background":false,"completed_at":0,"created_at":0,"error":null,"frequency_penalty":0.0,"id":"resp_REDACTED_2","incomplete_details":null,"instructions":null,"max_output_tokens":null,"max_tool_calls":null,"metadata":{"system_fingerprint":"fp_REDACTED_1"},"model":"grok-4.3","object":"response","output":[{"id":"rs_REDACTED_2","status":"completed","summary":[{"text":"Both trains slow by 10 km/h after covering half the meeting distance each. Let the meeting point be x km from A. Then the first train travels x km at 60 km/h, then (x – 30) km at 50 km/h. The second t...","type":"summary_text"}],"type":"reasoning"},{"content":[{"annotations":[],"logprobs":[],"text":"They meet 2 h 19.2 min after first departure (139.2 km from A). \n\n(The second train''s slowdown never activates, as the meeting point lies before its 150 km mark.)","type":"output_text"}],"id":"msg_REDACTED_2","role":"assistant","status":"completed","type":"message"}],"parallel_tool_calls":true,"presence_penalty":0.0,"previous_response_id":null,"prompt_cache_key":null,"reasoning":{"effort":"low","summary":"detailed"},"safety_identifier":null,"service_tier":"default","status":"completed","store":true,"temperature":0.7,"text":{"format":{"type":"text"}},"tool_choice":"auto","tools":[],"top_logprobs":0,"top_p":0.95,"truncation":"disabled","usage":{"context_details":{"input_tokens":839,"output_tokens":432},"cost_in_usd_ticks":19271500,"input_tokens":839,"input_tokens_details":{"cached_tokens":192},"num_server_side_tools_used":0,"num_sources_used":0,"output_tokens":432,"output_tokens_details":{"reasoning_tokens":390},"total_tokens":1271},"user":null}'

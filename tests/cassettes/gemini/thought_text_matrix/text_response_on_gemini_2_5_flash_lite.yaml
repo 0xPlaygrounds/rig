@@ -1,0 +1,18 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash-lite:generateContent
+  method: POST
+  query_param:
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Work out how many minutes are in three and a half days, then answer with only the number.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=UTF-8
+  body: '{"candidates":[{"content":{"parts":[{"text":"**Calculating Total Minutes in Three and a Half Days**\n\nOkay, so I need to figure out the total number of minutes in three and a half days. It''s a straightforward calculation, and I''ll break it down into logical steps, as I''d approach any time-based problem. I could do this in my head, but let''s formalize the steps.\n\nFirst, I need to know the number of minutes in a single day. Then, I''ll calculate the minutes in half a day. Next, I''ll figure out the minutes in the full three days. Finally, I''ll add the minutes from the three days and the half day together to get my answer. I could also directly calculate the minutes in 3.5 days.\n\nLet''s begin. A day has 24 hours, and each hour has 60 minutes. Therefore, I multiply 24 * 60 to find the total minutes in a day. That gives me 1440 minutes per day.\n\nNow for half a day. That''s simply 0.5 times the minutes in a full day, or 0.5 * 1440, which comes out to 720 minutes.\n\nFor three days, I multiply the minutes per day by three: 3 * 1440, which is 4320 minutes.\n\nFinally, I add the minutes in three days (4320) and half a day (720) together: 4320 + 720 = 5040 minutes. Alternatively, I can just multiply the total days (3.5) by the minutes per day (1440).\n\nThe answer is 5040.\n","thought":true},{"text":"5040"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-lite","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":5,"promptTokenCount":21,"promptTokensDetails":[{"modality":"TEXT","tokenCount":21}],"serviceTier":"standard","thoughtsTokenCount":377,"totalTokenCount":403}}'

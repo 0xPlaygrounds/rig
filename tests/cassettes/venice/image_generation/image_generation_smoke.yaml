@@ -1,0 +1,16 @@
+when:
+  path: /api/v1/image/generate
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"embed_exif_metadata":false,"format":"webp","height":256,"model":"venice-sd35","prompt":"A lighthouse on a rocky cliff at sunrise, clean illustrative style.","safe_mode":true,"seed":42,"steps":4,"width":256}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json; charset=utf-8
+  body: '{"id":"id_REDACTED_1","images":["aGVsbG8="],"request":{"data":{"embed_exif_metadata":false,"format":"webp","height":256,"hide_watermark":false,"model":"venice-sd35","prompt":"A lighthouse on a rocky cliff at sunrise, clean illustrative style.","return_binary":false,"safe_mode":true,"seed":42,"steps":4,"width":256},"success":true},"timing":{"inferenceDuration":1166,"inferencePreprocessingTime":1181,"inferenceQueueTime":388,"total":1576}}'

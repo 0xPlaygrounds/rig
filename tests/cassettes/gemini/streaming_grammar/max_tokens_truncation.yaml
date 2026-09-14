@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Write a 200-word story about a lighthouse keeper.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":24,"thinkingConfig":{"thinkingBudget":0}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"Thomas\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":1,\"promptTokenCount\":15,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":15}],\"serviceTier\":\"standard\",\"totalTokenCount\":16}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\", the lighthouse keeper, stood by the lantern, the rhythmic flash cutting through the encro\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":18,\"promptTokenCount\":15,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":15}],\"serviceTier\":\"standard\",\"totalTokenCount\":33}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"aching dusk. The smell of\"}],\"role\":\"model\"},\"finishReason\":\"MAX_TOKENS\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":24,\"promptTokenCount\":15,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":15}],\"serviceTier\":\"standard\",\"totalTokenCount\":39}}\r\n\r\n"

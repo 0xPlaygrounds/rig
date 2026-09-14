@@ -1,0 +1,37 @@
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_completion_tokens":2048,"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":[{"image_url":{"detail":"auto","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"},"type":"image_url"},{"text":"Describe the dominant non-background color of this image in one short sentence.","type":"text"}],"role":"user"}],"model":"gpt-5-mini"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"The dominant non-background color is bright red.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":82,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":37,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":119}}'
+---
+when:
+  path: /v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_completion_tokens":2048,"messages":[{"content":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"role":"system"},{"content":[{"image_url":{"detail":"auto","url":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAAVElEQVR42u3ZwQ0AMAgDsey/NJ0CRJGjW8DvpD5fAAAAAAAAAAAAAADmAElvAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAD7AB4aAAAAAAAAAAAAgCuAB4I52koXpcXRAAAAAElFTkSuQmCC"},"type":"image_url"},{"text":"Describe the dominant non-background color of this image in one short sentence.","type":"text"}],"role":"user"},{"content":[{"text":"The dominant non-background color is bright red.","type":"text"}],"role":"assistant"},{"content":"What shape did the image I sent earlier contain? Answer in one short sentence.","role":"user"}],"model":"gpt-5-mini"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_2
+  body: '{"choices":[{"finish_reason":"stop","index":0,"message":{"annotations":[],"content":"The image contained a red square.","refusal":null,"role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_2","model":"gpt-5-mini-2025-08-07","object":"chat.completion","service_tier":"default","system_fingerprint":null,"usage":{"completion_tokens":80,"completion_tokens_details":{"accepted_prediction_tokens":0,"audio_tokens":0,"reasoning_tokens":64,"rejected_prediction_tokens":0},"prompt_tokens":72,"prompt_tokens_details":{"audio_tokens":0,"cached_tokens":0},"total_tokens":152}}'

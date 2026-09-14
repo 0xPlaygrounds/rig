@@ -1,0 +1,1262 @@
+{
+  "header": {
+    "run_spec": 15991439691162022817,
+    "handlers": [
+      {
+        "key": "golden/model:default",
+        "family": {
+          "family": "completion",
+          "model": "default",
+          "capabilities": {
+            "composes_native_output_with_tools": true
+          }
+        }
+      }
+    ],
+    "signature": {
+      "golden/model:default": "completion"
+    },
+    "hooks": [],
+    "required": {
+      "golden/model:default": "completion"
+    },
+    "bus": {
+      "command_capacity": 16,
+      "stream_capacity": 64,
+      "serial_per_handler": false
+    }
+  },
+  "records": [
+    {
+      "tool_output": null,
+      "id": 1,
+      "key": "golden/model:default",
+      "kind": {
+        "effect": "completion",
+        "request": {
+          "model": null,
+          "chat_history": [
+            {
+              "role": "system",
+              "content": "You are a concise assistant. Answer directly."
+            },
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "In one or two sentences, explain what Rust programming language is and why memory safety matters."
+                }
+              ]
+            }
+          ],
+          "documents": [],
+          "tools": [],
+          "temperature": null,
+          "max_tokens": 4096,
+          "tool_choice": null,
+          "additional_params": {
+            "reasoning": {
+              "effort": "low",
+              "summary": "auto"
+            },
+            "include": [
+              "reasoning.encrypted_content"
+            ]
+          },
+          "output_schema": null
+        },
+        "stream": true
+      },
+      "outcome": {
+        "Ok": {
+          "outcome": "completion",
+          "choice": [
+            {
+              "type": "reasoning",
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language designed for performance, concurrency, and memory safety through its ownership and borrowing system, all without using a garbage collector. Memory safety is crucial because it helps avoid bugs such as null or dangling pointers, data races, and security vulnerabilities, enhancing the reliability and security of programs."
+                },
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_2"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "Rust is a modern systems programming language that provides performance and control like C/C++ while enforcing memory safety and concurrency guarantees through its ownership and borrowing system (without a garbage collector). Memory safety matters because it prevents bugs such as null/dangling pointers, buffer overflows, and data races that cause crashes, incorrect behavior, and security vulnerabilities."
+            }
+          ],
+          "usage": {
+            "input_tokens": 37,
+            "output_tokens": 156,
+            "total_tokens": 193,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 64
+          },
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "finish_reason": "stop",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "input_tokens": 37,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 156,
+              "output_tokens_details": {
+                "reasoning_tokens": 64
+              },
+              "total_tokens": 193
+            },
+            "reasoning_metadata": {
+              "context": "current_turn",
+              "effort": "low",
+              "mode": "standard",
+              "summary": "detailed"
+            },
+            "reasoning_context": "current_turn",
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07"
+          }
+        }
+      },
+      "events": [
+        {
+          "event": "block_start",
+          "id": "wire:rs_REDACTED_1",
+          "kind": {
+            "kind": "reasoning",
+            "provider_id": "rs_REDACTED_1"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "**Explaining Rust and Memory Safety**\n\nRust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " designed"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " for"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " concurrency"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " through"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " ownership"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " borrowing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " system"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " all"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " using"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " collector"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " Memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " crucial"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " helps"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " avoid"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " such"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " null"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " or"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " dangling"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " pointers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " data"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " races"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " enhancing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " the"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " reliability"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " of"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": " programs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:rs_REDACTED_1",
+          "delta": {
+            "delta": "reasoning",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_end",
+          "id": "wire:rs_REDACTED_1",
+          "end": {
+            "close": "reasoning",
+            "reasoning": {
+              "id": "rs_REDACTED_1",
+              "content": [
+                {
+                  "type": "summary",
+                  "content": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language designed for performance, concurrency, and memory safety through its ownership and borrowing system, all without using a garbage collector. Memory safety is crucial because it helps avoid bugs such as null or dangling pointers, data races, and security vulnerabilities, enhancing the reliability and security of programs."
+                },
+                {
+                  "type": "encrypted",
+                  "content": "encrypted_content_REDACTED_2"
+                }
+              ]
+            },
+            "wire_sent": true
+          },
+          "block": {
+            "type": "reasoning",
+            "id": "rs_REDACTED_1",
+            "content": [
+              {
+                "type": "summary",
+                "content": "**Explaining Rust and Memory Safety**\n\nRust is a systems programming language designed for performance, concurrency, and memory safety through its ownership and borrowing system, all without using a garbage collector. Memory safety is crucial because it helps avoid bugs such as null or dangling pointers, data races, and security vulnerabilities, enhancing the reliability and security of programs."
+              },
+              {
+                "type": "encrypted",
+                "content": "encrypted_content_REDACTED_2"
+              }
+            ]
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "Rust"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " is"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " modern"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " systems"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " programming"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " language"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " provides"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " performance"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " control"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " like"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " C"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "/C"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "++"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " while"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " enforcing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " concurrency"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " guarantees"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " through"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " its"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ownership"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " borrowing"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " system"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " ("
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "without"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " a"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " garbage"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " collector"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ")."
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " Memory"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " safety"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " matters"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " because"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " it"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " prevents"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " bugs"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " such"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " as"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " null"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "/d"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "ang"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "ling"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " pointers"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " buffer"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " over"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "flows"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " data"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " races"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " that"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " cause"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " crashes"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " incorrect"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " behavior"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": ","
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " and"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " security"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": " vulnerabilities"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "wire:msg_REDACTED_1",
+          "delta": {
+            "delta": "text",
+            "text": "."
+          }
+        },
+        {
+          "event": "block_start",
+          "id": "wire:msg_REDACTED_1",
+          "kind": {
+            "kind": "message"
+          }
+        },
+        {
+          "event": "final",
+          "usage": {
+            "input_tokens": 37,
+            "output_tokens": 156,
+            "total_tokens": 193,
+            "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
+            "tool_use_prompt_tokens": 0,
+            "reasoning_tokens": 64
+          },
+          "finish_reason": "stop",
+          "message_id": "msg_REDACTED_1",
+          "response_id": "resp_REDACTED_1",
+          "provider_request_id": "req_REDACTED_1",
+          "provider": "openai",
+          "model": "gpt-5-mini-2025-08-07",
+          "raw": {
+            "usage": {
+              "input_tokens": 37,
+              "input_tokens_details": {
+                "cached_tokens": 0
+              },
+              "output_tokens": 156,
+              "output_tokens_details": {
+                "reasoning_tokens": 64
+              },
+              "total_tokens": 193
+            },
+            "reasoning_metadata": {
+              "context": "current_turn",
+              "effort": "low",
+              "mode": "standard",
+              "summary": "detailed"
+            },
+            "reasoning_context": "current_turn",
+            "status": "completed",
+            "message_id": "msg_REDACTED_1",
+            "response_id": "resp_REDACTED_1",
+            "model": "gpt-5-mini-2025-08-07"
+          }
+        }
+      ]
+    }
+  ]
+}

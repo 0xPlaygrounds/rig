@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Use the code execution tool to compute 7 factorial. State the number in your answer.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0},"safetySettings":null,"systemInstruction":null,"toolConfig":null,"tools":[{"codeExecution":{}}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"executableCode\":{\"code\":\"import math\\nfactorial_7 = math.factorial(7)\\nprint(f'{factorial_7=}')\\n\",\"language\":\"PYTHON\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":23,\"promptTokenCount\":19,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":19}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":31,\"totalTokenCount\":73}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"codeExecutionResult\":{\"outcome\":\"OUTCOME_OK\",\"output\":\"factorial_7=5040\\n\"}}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":23,\"promptTokenCount\":19,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":19}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":31,\"totalTokenCount\":73}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"The computation\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":25,\"promptTokenCount\":19,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":19}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":31,\"toolUsePromptTokenCount\":83,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":83}],\"totalTokenCount\":158}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\" of 7 factorial is 5040.\"}],\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":36,\"promptTokenCount\":19,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":19}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":31,\"toolUsePromptTokenCount\":83,\"toolUsePromptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":83}],\"totalTokenCount\":169}}\r\n\r\n"

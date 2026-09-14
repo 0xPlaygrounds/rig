@@ -1,0 +1,20 @@
+when:
+  path: /v1beta/models/gemini-2.5-flash:streamGenerateContent
+  method: POST
+  query_param:
+  - name: alt
+    value: sse
+  - name: key
+    value: '[REDACTED]'
+  header:
+  - name: accept
+    value: text/event-stream
+  - name: content-type
+    value: application/json
+  body: '{"contents":[{"parts":[{"text":"Work out how many minutes are in three and a half days, then answer with only the number.","thought":false}],"role":"user"}],"generationConfig":{"maxOutputTokens":2000,"temperature":0.0,"thinkingConfig":{"includeThoughts":true,"thinkingBudget":512}},"safetySettings":null,"systemInstruction":null,"toolConfig":null}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: text/event-stream
+  body: "data: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Calculating Time Units**\\n\\nI've started tackling the user's query about \\\"three and a half days.\\\" Currently, I'm breaking down the problem. First, I recall a standard day has 24 hours. Now, I'm working on the hour-to-minute conversion, which is 60 minutes. Next, I will use these values to find the total time.\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":21,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":21}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":69,\"totalTokenCount\":90}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"**Determining Total Minutes**\\n\\nI've refined my approach to calculate the total minutes, and I am quite pleased with the progress. I've successfully determined that one day has 1440 minutes, which is now key to my calculations. I calculated the value by multiplying 24 hours in a day by 60 minutes in an hour. With this as my basis, I've calculated the minutes in three days as well as half a day. Now, I'm simply adding the figures for the final answer!\\n\\n\\n\",\"thought\":true}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"promptTokenCount\":21,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":21}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":310,\"totalTokenCount\":331}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"5040\"}],\"role\":\"model\"},\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":21,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":21}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":310,\"totalTokenCount\":333}}\r\n\r\ndata: {\"candidates\":[{\"content\":{\"role\":\"model\"},\"finishReason\":\"STOP\",\"index\":0}],\"modelVersion\":\"gemini-2.5-flash\",\"responseId\":\"id_REDACTED_1\",\"usageMetadata\":{\"candidatesTokenCount\":2,\"promptTokenCount\":21,\"promptTokensDetails\":[{\"modality\":\"TEXT\",\"tokenCount\":21}],\"serviceTier\":\"standard\",\"thoughtsTokenCount\":310,\"totalTokenCount\":333}}\r\n\r\n"

@@ -1,3 +1,5 @@
+# Release: both gates on every push to main, then release-plz. Serialized per
+# ref and never cancelled, so a run that may be publishing is not killed.
 name: "Build & Release"
 
 on:
@@ -6,38 +8,36 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: release-plz-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # No `secrets: inherit`: the gates are hermetic and use no secrets.
   run-ci:
-    permissions:
-      checks: write
     uses: ./.github/workflows/ci.yaml
-    secrets: inherit
+
+  run-slow:
+    uses: ./.github/workflows/slow.yaml
 
   release-plz:
     name: Release-plz
-    needs: run-ci
+    needs: [run-ci, run-slow]
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
-
-      - name: Install Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+      - uses: ./.github/actions/rust-setup
         with:
-          toolchain: ${{ vars.RUST_VERSION }}
-          cache: true
-
-      # Required to compile rig-lancedb
-      - name: Install Protoc
-        uses: arduino/setup-protoc@v3
-
-      - name: Run release-plz
-        uses: MarcoIeni/release-plz-action@v0.5
+          protoc: "true"
+      - uses: MarcoIeni/release-plz-action@v0.5
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
