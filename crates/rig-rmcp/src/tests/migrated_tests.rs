@@ -58,11 +58,11 @@ impl ServerHandler for DynamicToolServer {
         &self,
         request: CallToolRequestParams,
         _: RequestContext<RoleServer>,
-    ) -> Result<CallToolResult, ErrorData> {
-        Ok(CallToolResult::success(vec![ContentBlock::text(format!(
-            "called {}",
-            request.name
-        ))]))
+    ) -> Result<CallToolResponse, ErrorData> {
+        Ok(
+            CallToolResult::success(vec![ContentBlock::text(format!("called {}", request.name))])
+                .into(),
+        )
     }
 }
 
@@ -694,7 +694,7 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
     use rig_agent::tool::DynamicTool;
     use rig_agent::tool::{ToolContext, ToolErrorKind};
     use rmcp::model::{
-        CallToolRequestParams, CallToolResult, ClientInfo, ErrorData, Implementation,
+        CallToolRequestParams, CallToolResponse, ClientInfo, ErrorData, Implementation,
         ProtocolVersion, ServerCapabilities, ServerInfo, Tool,
     };
     use rmcp::service::RequestContext;
@@ -712,8 +712,8 @@ async fn builder_rmcp_tools_thread_timeout_into_registered_tools() {
             &self,
             _request: CallToolRequestParams,
             _context: RequestContext<RoleServer>,
-        ) -> Result<CallToolResult, ErrorData> {
-            std::future::pending::<Result<CallToolResult, ErrorData>>().await
+        ) -> Result<CallToolResponse, ErrorData> {
+            std::future::pending::<Result<CallToolResponse, ErrorData>>().await
         }
     }
 
