@@ -109,6 +109,7 @@ pub mod record;
 #[cfg(feature = "reflect")]
 pub mod reflect;
 pub mod scene;
+pub mod stream_delivery;
 pub mod witness;
 
 #[cfg(feature = "replay")]
@@ -132,6 +133,7 @@ pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
 };
 pub use scene::{Scene, SceneEffect};
+pub use stream_delivery::StreamItemsDelivered;
 pub use witness::{
     AdapterOperation, BUS_EMITTER, Despawning, SubjectWalk, Subjects, Witnessing, bus_emitter,
 };
