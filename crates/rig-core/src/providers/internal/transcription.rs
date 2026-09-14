@@ -21,8 +21,7 @@ use crate::completion::Usage;
     feature = "azure",
     feature = "groq",
     feature = "openai",
-    feature = "venice",
-    feature = "mistral"
+    feature = "venice"
 ))]
 use bytes::Bytes;
 #[cfg(any(
@@ -76,6 +75,16 @@ use crate::http_client::MultipartForm;
     feature = "venice"
 ))]
 use crate::http_client::multipart::Part;
+#[cfg(any(
+    test,
+    feature = "azure",
+    feature = "gemini",
+    feature = "groq",
+    feature = "huggingface",
+    feature = "openai",
+    feature = "openrouter",
+    feature = "venice"
+))]
 use crate::http_client::{self, HttpClientExt};
 use crate::transcription::TranscriptionError;
 #[cfg(any(

@@ -1,11 +1,6 @@
 //! Synthetic wire edge cases complement cassette replay: missing and colliding IDs
 //! cannot be reliably requested from a live provider.
-#[cfg(any(
-    feature = "openai",
-    feature = "openrouter",
-    feature = "anthropic",
-    feature = "cohere"
-))]
+#[cfg(any(feature = "openai", feature = "openrouter", feature = "anthropic"))]
 use crate::completion::NormalizeCompletionResponse;
 use crate::{completion::CompletionResponse, message::AssistantContent};
 #[cfg(any(feature = "openai", feature = "openrouter", feature = "cohere"))]
