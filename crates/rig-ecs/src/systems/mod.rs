@@ -17,6 +17,9 @@
 //! The first steering slot is any system before `Assemble`: it edits the
 //! graph (utterances, documents, grants, settings).
 
+use crate::agent::checkpoint::{
+    ToolTurnCommit, ToolTurnCommitted, ToolTurnHolds, TurnAssistant, TurnResults,
+};
 use crate::agent::content::{
     binary::BinaryAssets,
     parts::{ContentError, ContentGraph, replace_deferred, spawn_deferred, write_message},
@@ -76,6 +79,8 @@ pub enum RigSet {
     Judge,
     /// The turn is read into the graph.
     Materialise,
+    /// Committed graph writes are visible; hosts may inspect or save before advancement.
+    Checkpoint,
     /// A run settled or failed.
     Settle,
 }
@@ -224,6 +229,7 @@ pub fn install_agent(world: &mut World) {
             RigSet::Fold,
             RigSet::Judge,
             RigSet::Materialise,
+            RigSet::Checkpoint,
             RigSet::Settle,
         )
             .chain()
@@ -485,6 +491,8 @@ pub fn advance(
     retrievals: Query<(), With<Retrieves>>,
     max_turns: Query<&MaxTurns>,
     retrying: Query<(), With<ProviderRetrying>>,
+    holds: Query<&ToolTurnHolds>,
+    commits: Query<(&ChildOf, &ToolTurnCommit)>,
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
 ) {
@@ -504,6 +512,13 @@ pub fn advance(
                 .remove::<Assembling>()
                 .insert(Failed(Failure::MaxTurns { limit }));
             progress.mark();
+            continue;
+        }
+        if holds.get(run).is_ok_and(|holds| {
+            commits
+                .iter()
+                .any(|(parent, commit)| parent.parent() == run && holds.blocks(commit.turn))
+        }) {
             continue;
         }
         let turn = commands
@@ -1503,17 +1518,17 @@ pub fn land_batch(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
     turns: Query<(Entity, &ChildOf, &Batch, &Outputs)>,
-    runs: Query<(&OutputToolName, &RunSeq), With<ResolvingTools>>,
+    runs: Query<(&OutputToolName, &RunSeq, &Cursor), With<ResolvingTools>>,
     children: Query<&Children>,
     tools: Query<ToolChildView>,
     mut orders: ResMut<OrderCounter>,
     mut progress: ResMut<Progress>,
 ) {
     let mut turns: Vec<_> = turns.iter().collect();
-    turns.sort_by_key(|(_, turn_of, _, _)| runs.get(turn_of.parent()).map(|(_, seq)| *seq).ok());
+    turns.sort_by_key(|(_, turn_of, _, _)| runs.get(turn_of.parent()).map(|(_, seq, _)| *seq).ok());
     for (turn, turn_of, batch, outs) in turns {
         let run = turn_of.parent();
-        let Ok((minted, _)) = runs.get(run) else {
+        let Ok((minted, _, cursor)) = runs.get(run) else {
             continue;
         };
         let calls = batch_children(turn, &children, &tools);
@@ -1575,7 +1590,7 @@ pub fn land_batch(
             continue;
         }
         let results = MessageParts::User { content: parts };
-        content_or_fail!(
+        let results_entity = content_or_fail!(
             spawn_deferred(
                 &mut commands,
                 &mut assets,
@@ -1587,6 +1602,10 @@ pub fn land_batch(
             run,
             progress
         );
+        commands.entity(turn).insert((
+            ToolTurnCommit { turn: cursor.turn },
+            TurnResults(results_entity),
+        ));
         let output_call = minted.0.as_deref().and_then(|name| {
             outs.content.iter().find_map(|part| match part {
                 AssistantContent::ToolCall(call) if call.function.name == name => {
@@ -1612,6 +1631,18 @@ pub fn land_batch(
                     .insert(Assembling);
             }
         }
+        commands.queue(move |world: &mut World| {
+            // A terminal observer may already have removed the run. Do not
+            // publish a live notification pointing at a graph it deleted.
+            if world.get::<Run>(run).is_some()
+                && world.get::<ToolTurnCommit>(turn).is_some()
+                && world
+                    .get::<ChildOf>(turn)
+                    .is_some_and(|parent| parent.parent() == run)
+            {
+                world.trigger(ToolTurnCommitted { run, turn });
+            }
+        });
         progress.mark();
     }
 }
@@ -2207,7 +2238,9 @@ pub fn materialise(
                     });
                 }
             }
-            commands.entity(turn).insert(Batch { calls: count });
+            commands
+                .entity(turn)
+                .insert((Batch { calls: count }, TurnAssistant(assistant_entity)));
             commands
                 .entity(run)
                 .remove::<AwaitingModel>()

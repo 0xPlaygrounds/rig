@@ -69,6 +69,12 @@ pub fn install_reflect(world: &mut World) {
             StreamEventsReflect,
             StreamErrorsReflect,
             // The graph.
+            agent::checkpoint::ToolTurnCommit,
+            agent::checkpoint::ToolTurnHolds,
+            agent::checkpoint::TurnAssistant,
+            agent::checkpoint::AssistantForTurns,
+            agent::checkpoint::TurnResults,
+            agent::checkpoint::ResultsForTurns,
             agent::Owner,
             agent::Preamble,
             agent::Temperature,
