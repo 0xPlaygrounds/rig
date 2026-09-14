@@ -6,7 +6,7 @@
     clippy::indexing_slicing,
     clippy::type_complexity
 )]
-mod run_support;
+use crate::run_support;
 
 use bevy_ecs::prelude::*;
 use rig_core::{completion::CompletionRequest, message::AssistantContent};

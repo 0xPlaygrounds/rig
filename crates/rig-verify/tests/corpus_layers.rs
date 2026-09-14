@@ -64,9 +64,7 @@
 //!   (`layers`) as well as in `hooks`; the equivalence row's tables differ
 //!   from the hook goldens' in that field only.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Answer, Ending, Hook, LayerAt, LayerKind, LayerSpec, Program};
 use rig_core::effect::EffectFamily;

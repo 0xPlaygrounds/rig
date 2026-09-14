@@ -1,18 +1,47 @@
 //! Reasoning contracts beside the shared matrix's effect-log oracle.
 //!
-//! The host observes collected stream deltas through `rig::observe`'s
+//! The host observes collected stream deltas through `rig_core::observe`'s
 //! explicit HostAction extension. AdapterEnding describes HTTP closure
 //! (`Decoded`/`Terminal`); the run's Ended observation carries `settled`.
 
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
-use rig::completion::{CompletionResponse, FinishReason};
-use rig::effect::{EffectKind, Outcome};
-use rig::effect_log::EffectLog;
-use rig::message::{AssistantContent, Message, ReasoningContent, canonical_streamed_choice};
-use rig::observe::{AdapterEnding, AdapterEvent, Emitter, HostAction, ObservationLog, Stage};
-use rig::streaming::{Delta, StreamEvent};
+
+use rig_agent::completion::CompletionResponse;
+
+use rig_agent::completion::FinishReason;
+
+use rig_core::effect::EffectKind;
+
+use rig_core::effect::Outcome;
+
+use rig_effect_log::EffectLog;
+
+use rig_core::message::AssistantContent;
+
+use rig_core::message::Message;
+
+use rig_core::message::ReasoningContent;
+
+use rig_core::message::canonical_streamed_choice;
+
+use rig_core::observe::AdapterEnding;
+
+use rig_core::observe::AdapterEvent;
+
+use rig_core::observe::Emitter;
+
+use rig_core::observe::HostAction;
+
+use rig_core::observe::ObservationLog;
+
+use rig_core::observe::Stage;
+
+use rig_core::streaming::Delta;
+
+use rig_core::streaming::StreamEvent;
+
 use rig_ecs::agent::{Order, Utterance};
 use rig_ecs::bus::{StreamItemsDelivered, Subjects, Witnessing};
 use serde::{Deserialize, Serialize};
@@ -20,8 +49,8 @@ use serde::{Deserialize, Serialize};
 use super::cells::{Cell, ReasoningCase, Thinking, ThinkingWire};
 
 pub(crate) struct Settlement {
-    pub messages: Vec<Message>,
-    pub error: Option<String>,
+    pub(crate) messages: Vec<Message>,
+    pub(crate) error: Option<String>,
 }
 
 pub(crate) type SettlementCapture = Arc<Mutex<Option<Settlement>>>;
@@ -30,19 +59,19 @@ pub(crate) type SettlementCapture = Arc<Mutex<Option<Settlement>>>;
 /// retains its payload so an error cannot hide a wrongly committed turn.
 pub(crate) struct RecordSettled(pub SettlementCapture);
 
-impl rig::agent::AgentHook for RecordSettled {
+impl rig_agent::agent::AgentHook for RecordSettled {
     async fn on_run_settled(
         &self,
-        _ctx: &rig::agent::HookContext,
-        event: rig::agent::RunSettled<'_>,
+        _ctx: &rig_agent::agent::HookContext,
+        event: rig_agent::agent::RunSettled<'_>,
     ) {
         let messages = event
             .messages
             .expect("the capped run reached the engine")
             .to_vec();
         let error = match event.outcome {
-            rig::agent::SettledOutcome::Error(error) => Some(error.to_owned()),
-            rig::agent::SettledOutcome::Response(_) => None,
+            rig_agent::agent::SettledOutcome::Error(error) => Some(error.to_owned()),
+            rig_agent::agent::SettledOutcome::Response(_) => None,
         };
         let previous = self
             .0
@@ -139,7 +168,7 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
                     .any(|event| matches!(
                         event,
                         StreamEvent::BlockStart {
-                            kind: rig::streaming::BlockKind::Reasoning { .. },
+                            kind: rig_core::streaming::BlockKind::Reasoning { .. },
                             ..
                         }
                     )),
@@ -148,7 +177,9 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
         }
         for response in &responses {
             assert_eq!(response.finish_reason(), Some(FinishReason::Length));
-            assert!(rig::message::turn_delivered_no_answer(&response.choice));
+            assert!(rig_core::message::turn_delivered_no_answer(
+                &response.choice
+            ));
         }
         return;
     }

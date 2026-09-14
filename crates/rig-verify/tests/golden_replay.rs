@@ -37,13 +37,11 @@
 //! | `openai_streaming_with_events` | `tests/providers/openai/cassette/effect_corpus.rs` `streaming_with_events_effect_log_is_the_golden_fixture` |
 //! | `openai_tool_call_turns` | `tests/providers/openai/cassette/effect_corpus.rs` `tool_call_turns_effect_log_is_the_golden_fixture` |
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Hook, Program};
 
-/// The root suite's constants, verbatim (`tests/common/support.rs`,
+/// The root suite's constants, verbatim (`test-support/rig-test-support/src/support.rs`,
 /// `tests/providers/gemini/cassette/hook_stress.rs`,
 /// `tests/core/golden_recovery.rs`).
 const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";

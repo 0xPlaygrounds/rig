@@ -123,80 +123,24 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     }
 }
 
-#[tokio::test]
-async fn setup_unary() {
-    with_venice_cassette("corpus_faults/setup_unary", |client| async move {
-        run_world(&missing(&client), &SETUP_UNARY, |log| {
-            crate::ecs_goldens::golden_effects("venice_fault_setup_unary", log)
-        })
-        .await;
-    })
-    .await;
+crate::matrix::golden_matrix! {
+    wrapper: with_venice_cassette, wire: missing, run: run_world, oracle: crate::ecs_goldens::golden_effects;
+    #[tokio::test]
+    setup_unary: ("corpus_faults/setup_unary", SETUP_UNARY, "venice_fault_setup_unary");
+    #[tokio::test]
+    setup_streamed: ("error_envelope/nonexistent_model_streaming_error_preserves_status_and_body", SETUP_STREAMED, "venice_fault_setup_streamed");
 }
 
-#[tokio::test]
-async fn setup_streamed() {
-    with_venice_cassette(
-        "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
-        |client| async move {
-            run_world(&missing(&client), &SETUP_STREAMED, |log| {
-                crate::ecs_goldens::golden_effects("venice_fault_setup_streamed", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn tool_error() {
-    with_venice_cassette("corpus_faults/tool_error", |client| async move {
-        run_world(&wire(&client), &faults::TOOL_ERROR, |log| {
-            crate::ecs_goldens::golden_effects("venice_fault_tool_error", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn tool_error_streamed() {
-    with_venice_cassette("corpus_faults/tool_error_streamed", |client| async move {
-        run_world(&wire(&client), &faults::TOOL_ERROR_STREAMED, |log| {
-            crate::ecs_goldens::golden_effects("venice_fault_tool_error_streamed", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn batch_second_fails() {
-    with_venice_cassette("corpus_faults/batch_second_fails", |client| async move {
-        run_world(&wire(&client), &faults::BATCH_SECOND_FAILS, |log| {
-            crate::ecs_goldens::golden_effects("venice_fault_batch_second_fails", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn batch_second_fails_concurrent() {
-    with_venice_cassette("corpus_faults/batch_second_fails", |client| async move {
-        run_world(
-            &wire(&client),
-            &faults::BATCH_SECOND_FAILS_CONCURRENT,
-            |log| {
-                crate::ecs_goldens::golden_effects(
-                    "venice_fault_batch_second_fails_concurrent",
-                    log,
-                )
-            },
-        )
-        .await;
-    })
-    .await;
+crate::matrix::golden_matrix! {
+    wrapper: with_venice_cassette, wire: wire, run: run_world, oracle: crate::ecs_goldens::golden_effects;
+    #[tokio::test]
+    tool_error: ("corpus_faults/tool_error", faults::TOOL_ERROR, "venice_fault_tool_error");
+    #[tokio::test]
+    tool_error_streamed: ("corpus_faults/tool_error_streamed", faults::TOOL_ERROR_STREAMED, "venice_fault_tool_error_streamed");
+    #[tokio::test]
+    batch_second_fails: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS, "venice_fault_batch_second_fails");
+    #[tokio::test]
+    batch_second_fails_concurrent: ("corpus_faults/batch_second_fails", faults::BATCH_SECOND_FAILS_CONCURRENT, "venice_fault_batch_second_fails_concurrent");
 }
 
 /// Row 9 over `endings_tool_outcome_cancelled`'s recording and golden.
@@ -270,93 +214,37 @@ async fn status_503_retried() {
     run_world(&scripted_unary(replies()), &cell, |_| {}).await;
 }
 
-#[tokio::test]
-async fn truncated_after_text() {
-    let frames = SHAPE.text_prefix(&recorded(TEXT_STREAM));
-    run_scripted(&faults::TRUNCATED_AFTER_TEXT, || scripted_stream(&frames)).await;
+crate::matrix::case_matrix! {
+    family: wire_matrix_case;
+    #[tokio::test]
+    truncated_after_text: truncated_after_text_0;
+    #[tokio::test]
+    truncated_after_tool_call: truncated_after_tool_call_1;
+    /// The in-band error frame's facts, as the funnel reports them on this
+    /// shape (`SseShape::error_{code,message,status}`).
+    #[tokio::test]
+    error_after_text: error_after_text_2;
+    #[tokio::test]
+    filtered_with_text: filtered_with_text_3;
+    #[tokio::test]
+    filtered_empty: filtered_empty_4;
+    /// Row 10: no request reaches the wire; the transport answers nothing.
+    #[tokio::test]
+    failing_load: failing_load_5;
+    #[tokio::test]
+    failing_load_streamed: failing_load_streamed_6;
+    /// Row 11: a bare `Cancelled` at the first tool-call delta; the stream is
+    /// left to its handler, the tool never dispatched. The recorded tool turn
+    /// is served whole by the sequenced transport: a cancelled run makes one
+    /// request, and the recording holds two.
+    #[tokio::test]
+    cancel_at_first_tool_call_delta: cancel_at_first_tool_call_delta_7;
 }
 
-#[tokio::test]
-async fn truncated_after_tool_call() {
-    let frames = SHAPE.tool_prefix(&recorded(TOOL_STREAM));
-    run_scripted(&faults::TRUNCATED_AFTER_TOOL_CALL, || {
-        scripted_stream(&frames)
-    })
-    .await;
-}
-
-/// The in-band error frame's facts, as the funnel reports them on this
-/// shape (`SseShape::error_{code,message,status}`).
-#[tokio::test]
-async fn error_after_text() {
-    let cell = Cell {
-        fault: Some(Fault::ErrorAfterText {
-            code: SHAPE.error_code(),
-            message: SHAPE.error_message(),
-            status: SHAPE.error_status(),
-        }),
-        ..faults::ERROR_AFTER_TEXT
-    };
-    let frames = SHAPE.error_frames(&recorded(TEXT_STREAM));
-    run_scripted(&cell, || scripted_stream(&frames)).await;
-}
-
-#[ignore = "the venice wire reports no refusal: it is OpenAI-compatible and sends neither a `refusal` part nor a blocked prompt"]
-#[tokio::test]
-async fn refusal() {}
-
-#[tokio::test]
-async fn filtered_with_text() {
-    let frames = SHAPE.filtered(&recorded(TEXT_STREAM), true);
-    run_scripted(&faults::FILTERED_WITH_TEXT, || scripted_stream(&frames)).await;
-}
-
-#[tokio::test]
-async fn filtered_empty() {
-    let frames = SHAPE.filtered(&recorded(TEXT_STREAM), false);
-    run_scripted(&faults::FILTERED_EMPTY, || scripted_stream(&frames)).await;
-}
-
-/// Row 10: no request reaches the wire; the transport answers nothing.
-#[tokio::test]
-async fn failing_load() {
-    run_scripted(&faults::FAILING_LOAD, || scripted_stream(&[])).await;
-}
-
-#[tokio::test]
-async fn failing_load_streamed() {
-    run_scripted(&faults::FAILING_LOAD_STREAMED, || scripted_stream(&[])).await;
-}
-
-/// Row 11: a bare `Cancelled` at the first tool-call delta; the stream is
-/// left to its handler, the tool never dispatched. The recorded tool turn
-/// is served whole by the sequenced transport: a cancelled run makes one
-/// request, and the recording holds two.
-#[tokio::test]
-async fn cancel_at_first_tool_call_delta() {
-    let frames = recorded(TOOL_STREAM);
-    cancel_at(
-        &scripted_stream(&frames),
-        &cells::HOOKS_PATCH_TOOL_ARGS_STREAMED,
-        Cut::FirstToolCallDelta,
-    )
-    .await;
-}
-
-/// Row 11: a bare `Cancelled` once the terminal record has landed and
-/// before `Fold`: a whole completion, the run cancelled, despawned at once.
-#[tokio::test]
-async fn cancel_after_terminal() {
-    with_venice_cassette(
-        "corpus_matrix/endings_text_delta_stop",
-        |client| async move {
-            cancel_at(
-                &wire(&client),
-                &cells::ENDINGS_TEXT_DELTA_STOP,
-                Cut::AfterTerminal,
-            )
-            .await;
-        },
-    )
-    .await;
+crate::matrix::case_matrix! {
+    wrapper: with_venice_cassette, family: ecs_faults_case;
+    # [doc = " Row 11: a bare `Cancelled` once the terminal record has landed and"]
+    # [doc = " before `Fold`: a whole completion, the run cancelled, despawned at once."]
+    #[tokio::test]
+    cancel_after_terminal: ("corpus_matrix/endings_text_delta_stop", cancel_after_terminal_6);
 }

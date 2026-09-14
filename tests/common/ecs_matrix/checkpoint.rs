@@ -3,9 +3,16 @@
 //! its arguments alone, so restoring a scene needs no hidden fixture state.
 #![allow(dead_code, reason = "checkpoint cells run on five provider columns")]
 
-use rig::effect::{EffectKind, Outcome};
-use rig::effect_log::EffectLog;
-use rig::tool::{Tool, ToolContext};
+use rig_core::effect::EffectKind;
+
+use rig_core::effect::Outcome;
+
+use rig_effect_log::EffectLog;
+
+use rig_core::tool::Tool;
+
+use rig_core::tool::ToolContext;
+
 use serde::{Deserialize, Serialize};
 
 use super::cells::{CELL, Cell, ToolKind};
@@ -73,7 +80,7 @@ pub(crate) struct CheckpointError(pub &'static str);
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct StepArgs {
-    pub token: String,
+    pub(crate) token: String,
 }
 #[derive(Deserialize, Serialize)]
 pub(crate) struct CheckpointStep;
@@ -103,7 +110,7 @@ impl Tool for CheckpointStep {
 
 #[derive(Deserialize, Serialize)]
 pub(crate) struct BatchArgs {
-    pub slot: usize,
+    pub(crate) slot: usize,
 }
 #[derive(Deserialize, Serialize)]
 pub(crate) struct CheckpointBatch;
@@ -167,8 +174,14 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
         cell.name
     );
     if cell.program.streamed {
-        use rig::message::AssistantContent;
-        use rig::streaming::{BlockKind, Delta, StreamEvent};
+        use rig_core::message::AssistantContent;
+
+        use rig_core::streaming::BlockKind;
+
+        use rig_core::streaming::Delta;
+
+        use rig_core::streaming::StreamEvent;
+
         for (turn, record) in requests.iter().enumerate() {
             assert!(matches!(
                 record.kind,
@@ -248,7 +261,11 @@ pub(crate) fn assert_log(cell: &Cell, log: &EffectLog) {
                 .iter()
                 .map(|record| record.kind.family())
                 .collect();
-            use rig::effect::EffectFamily::{Completion as C, Tool as T};
+
+            use rig_core::effect::EffectFamily::Completion as C;
+
+            use rig_core::effect::EffectFamily::Tool as T;
+
             assert_eq!(
                 families,
                 [C, T, C, T, C, T, C, T, C],
@@ -317,7 +334,7 @@ pub(crate) fn write_attempt(cell: &Cell, log: &EffectLog) {
 /// The first strict replay validates the program and saves complete evidence
 /// before goldens exist. It explicitly does not claim golden parity. Subsequent
 /// generation and verification use the ordinary producer golden callback.
-pub(crate) async fn run_agent<M: rig::completion::CompletionModel + Clone + 'static>(
+pub(crate) async fn run_agent<M: rig_agent::completion::CompletionModel + Clone + 'static>(
     wire: &super::Wire<M>,
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),

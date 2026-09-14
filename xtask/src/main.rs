@@ -17,7 +17,7 @@
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! ```
 
-mod scenarios;
+mod bevy;
 mod test_layout;
 mod verify;
 
@@ -31,9 +31,6 @@ fn main() -> ExitCode {
     let result = match task.as_deref() {
         Some("verify") => verify::run(&workspace_root(), args.collect()).map_err(|e| e.to_string()),
         Some("check-test-layout") => test_layout::check(&workspace_root()),
-        Some("check-ecs-scenarios") => {
-            scenarios::run(&workspace_root(), args.collect()).map_err(|e| e.to_string())
-        }
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
         None => Err(format!("no task given\n{USAGE}")),
     };
@@ -53,7 +50,6 @@ usage: cargo xtask <task>
 tasks:
   verify --changed|--pr|--full|--lanes [--base REF] [--dry-run]  plan and run verification
   verify --check ID           run one check by id (CI runs one per job)
-  check-ecs-scenarios [nextest.json]  validate current scenario files and compiled mappings
   check-test-layout           fail if any crates/*/src file has an inline
                               test-gated `mod x { }` instead of `mod x;`
 ";

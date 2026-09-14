@@ -7,7 +7,7 @@
 mod errors;
 #[path = "run_stream_boundary/multiple.rs"]
 mod multiple;
-mod run_support;
+use crate::run_support;
 
 use futures::channel::oneshot;
 use rig_core::{

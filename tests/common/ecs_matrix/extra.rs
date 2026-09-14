@@ -7,11 +7,25 @@ use std::time::Instant;
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
-use rig::completion::CompletionModel;
-use rig::error::ErrorKind;
-use rig::message::{AssistantContent, UserContent};
-use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
-use rig::streaming::{Delta, StreamEvent};
+
+use rig_agent::completion::CompletionModel;
+
+use rig_core::error::ErrorKind;
+
+use rig_core::message::AssistantContent;
+
+use rig_core::message::UserContent;
+
+use rig_core::observe::AdapterEnding;
+
+use rig_core::observe::AdapterErrorBoundary;
+
+use rig_core::observe::AdapterEvent;
+
+use rig_core::streaming::Delta;
+
+use rig_core::streaming::StreamEvent;
+
 use rig_ecs::{
     agent::{
         AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Order, Preamble,
@@ -34,18 +48,18 @@ const GUARD: std::time::Duration = std::time::Duration::from_secs(300);
 
 /// A 4xx the wire records, as the request the recording holds.
 pub(crate) struct ErrorProbe {
-    pub prompt: &'static str,
-    pub max_tokens: Option<u64>,
-    pub additional_params: Option<serde_json::Value>,
-    pub streamed: bool,
+    pub(crate) prompt: &'static str,
+    pub(crate) max_tokens: Option<u64>,
+    pub(crate) additional_params: Option<serde_json::Value>,
+    pub(crate) streamed: bool,
     /// The recorded status.
-    pub status: u16,
+    pub(crate) status: u16,
     /// The report's `code`: the transport's own machine code when it gave
     /// one apart from the body (a gRPC code, an AWS exception type), else
     /// the string the body names under `error.code`, `error.status` or
     /// `error.type` (`ProviderResponseError::machine_code`, CONTRACT §5);
     /// `None` on a wire whose envelope is prose (Venice's `{"error":"…"}`).
-    pub code: Option<&'static str>,
+    pub(crate) code: Option<&'static str>,
 }
 
 /// Row 13: a 4xx the wire records, driven through `spawn_run`: the run
@@ -77,7 +91,7 @@ pub(crate) async fn error_facts<M: CompletionModel + 'static>(model: M, probe: E
     assert_eq!(report.http_status, Some(probe.status), "{report:?}");
     assert_eq!(
         report.retryable,
-        rig::error::retryable_status(Some(probe.status)),
+        rig_core::error::retryable_status(Some(probe.status)),
         "the status table's verdict on a {}: {report:?}",
         probe.status
     );
@@ -93,7 +107,7 @@ pub(crate) async fn error_facts<M: CompletionModel + 'static>(model: M, probe: E
     assert!(!response.body.is_empty(), "the body is kept");
     // The record holds the same report.
     let log = ecs.effect_log();
-    assert_eq!(families(&log), [rig::effect::EffectFamily::Completion]);
+    assert_eq!(families(&log), [rig_core::effect::EffectFamily::Completion]);
     let recorded = log.records[0]
         .outcome
         .as_ref()
@@ -112,7 +126,7 @@ pub(crate) async fn error_facts<M: CompletionModel + 'static>(model: M, probe: E
                 boundary: AdapterErrorBoundary::ProviderResponse,
                 kind: "provider_response".into(),
                 status: Some(probe.status),
-                retryable: rig::error::retryable_status(Some(probe.status)),
+                retryable: rig_core::error::retryable_status(Some(probe.status)),
             }
         }),
         "the adapter's ending: {events:?}"
@@ -508,7 +522,7 @@ pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
     let log = recorder.log();
     assert_eq!(
         families(&log),
-        [rig::effect::EffectFamily::Completion],
+        [rig_core::effect::EffectFamily::Completion],
         "{cut:?}: the one completion, no tool"
     );
     if cut == Cut::AfterTerminal {

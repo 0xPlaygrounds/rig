@@ -8,12 +8,9 @@
 
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;
-#[path = "common/cassettes.rs"]
-mod cassettes;
-#[path = "common/reasoning.rs"]
-mod reasoning;
-#[path = "common/support.rs"]
-mod support;
+use rig_test_support::cassettes;
+use rig_test_support::reasoning;
+use rig_test_support::support;
 
 #[path = "providers/chatgpt/mod.rs"]
 mod chatgpt;

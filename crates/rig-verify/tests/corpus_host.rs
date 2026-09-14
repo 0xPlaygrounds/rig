@@ -68,9 +68,7 @@
 //!   The custom kind is described by the handler table;
 //!   `describe_required` cannot name it from the row and does not need to.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Hook, NOTE_KEY, Program};
 use rig_core::effect::{EffectFamily, FamilyDescriptor, HandlerKey};

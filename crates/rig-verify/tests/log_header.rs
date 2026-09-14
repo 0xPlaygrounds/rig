@@ -3,8 +3,6 @@
 //! process, and an agent refuses a log it cannot replay before the first
 //! dispatch.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
 use std::time::Duration;
 
 use rig_agent::AgentBuilder;

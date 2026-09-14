@@ -93,9 +93,7 @@
 //!   registered from the golden's tail. Tools are the server's and
 //!   continue.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Ending, Hook, Output, Program, ROUTE, STOP_AT_ANSWER, Unhandled};
 

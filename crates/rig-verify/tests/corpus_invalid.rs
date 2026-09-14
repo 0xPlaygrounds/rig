@@ -63,9 +63,7 @@
 //!   turn, and the run settles on it as an empty answer; the next
 //!   scripted turn is never asked for. Pinned on both media.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Choice, Ending, Hook, Program, Unhandled};
 

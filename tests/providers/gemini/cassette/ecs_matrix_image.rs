@@ -23,70 +23,20 @@ fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + 
     }
 }
 
-#[tokio::test]
-async fn inline_text_unary() {
-    with_gemini_cassette("image_matrix/inline_text_unary", |client| async move {
-        run_world(&wire(&client), &cells::IMAGE_INLINE_TEXT_UNARY, |log| {
-            crate::ecs_goldens::golden_effects("gemini_image_inline_text_unary", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn inline_text_streamed() {
-    with_gemini_cassette("image_matrix/inline_text_streamed", |client| async move {
-        run_world(&wire(&client), &cells::IMAGE_INLINE_TEXT_STREAMED, |log| {
-            crate::ecs_goldens::golden_effects("gemini_image_inline_text_streamed", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn inline_mixed_order() {
-    with_gemini_cassette("image_matrix/inline_mixed_order", |client| async move {
-        run_world(&wire(&client), &cells::IMAGE_INLINE_MIXED_ORDER, |log| {
-            crate::ecs_goldens::golden_effects("gemini_image_inline_mixed_order", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn inline_tool_unary() {
-    with_gemini_cassette("image_matrix/inline_tool_unary", |client| async move {
-        run_world(&wire(&client), &cells::IMAGE_INLINE_TOOL_UNARY, |log| {
-            crate::ecs_goldens::golden_effects("gemini_image_inline_tool_unary", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn inline_tool_streamed() {
-    with_gemini_cassette("image_matrix/inline_tool_streamed", |client| async move {
-        run_world(&wire(&client), &cells::IMAGE_INLINE_TOOL_STREAMED, |log| {
-            crate::ecs_goldens::golden_effects("gemini_image_inline_tool_streamed", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn inline_followup() {
-    with_gemini_cassette("image_matrix/inline_followup", |client| async move {
-        run_world(&wire(&client), &cells::IMAGE_INLINE_FOLLOWUP, |log| {
-            crate::ecs_goldens::golden_effects("gemini_image_inline_followup", log)
-        })
-        .await;
-    })
-    .await;
+crate::matrix::golden_matrix! {
+    wrapper: with_gemini_cassette, wire: wire, run: run_world, oracle: crate::ecs_goldens::golden_effects;
+    #[tokio::test]
+    inline_text_unary: ("image_matrix/inline_text_unary", cells::IMAGE_INLINE_TEXT_UNARY, "gemini_image_inline_text_unary");
+    #[tokio::test]
+    inline_text_streamed: ("image_matrix/inline_text_streamed", cells::IMAGE_INLINE_TEXT_STREAMED, "gemini_image_inline_text_streamed");
+    #[tokio::test]
+    inline_mixed_order: ("image_matrix/inline_mixed_order", cells::IMAGE_INLINE_MIXED_ORDER, "gemini_image_inline_mixed_order");
+    #[tokio::test]
+    inline_tool_unary: ("image_matrix/inline_tool_unary", cells::IMAGE_INLINE_TOOL_UNARY, "gemini_image_inline_tool_unary");
+    #[tokio::test]
+    inline_tool_streamed: ("image_matrix/inline_tool_streamed", cells::IMAGE_INLINE_TOOL_STREAMED, "gemini_image_inline_tool_streamed");
+    #[tokio::test]
+    inline_followup: ("image_matrix/inline_followup", cells::IMAGE_INLINE_FOLLOWUP, "gemini_image_inline_followup");
 }
 
 #[tokio::test]

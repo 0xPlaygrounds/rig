@@ -7,7 +7,7 @@
     clippy::panic
 )]
 
-mod bus_support;
+use crate::bus_support;
 
 use rig_core::effect::CustomEffect;
 use rig_ecs::bus::{

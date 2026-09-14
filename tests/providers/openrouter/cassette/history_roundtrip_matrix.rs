@@ -442,485 +442,54 @@ fn cell(transport: Transport, model: ModelVariant, surface: Surface, shape: Shap
 // Explicit cells keep the cassette source scanner able to prove a one-to-one
 // mapping between tests and fixtures.
 
-#[tokio::test]
-async fn blocking_gpt_4o_mini_raw_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4o_mini_raw_text";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt4oMini,
-        Surface::Raw,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4o_mini_raw_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4o_mini_raw_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4o_mini_raw_single_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt4oMini,
-        Surface::Raw,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4o_mini_raw_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4o_mini_raw_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4o_mini_raw_parallel_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt4oMini,
-        Surface::Raw,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4o_mini_raw_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4o_mini_normalized_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_text";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt4oMini,
-        Surface::Normalized,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4o_mini_normalized_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_single_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt4oMini,
-        Surface::Normalized,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4o_mini_normalized_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_parallel_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt4oMini,
-        Surface::Normalized,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4_1_mini_raw_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_text";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt41Mini,
-        Surface::Raw,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4_1_mini_raw_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_single_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt41Mini,
-        Surface::Raw,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4_1_mini_raw_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_parallel_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt41Mini,
-        Surface::Raw,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4_1_mini_normalized_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_text";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt41Mini,
-        Surface::Normalized,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4_1_mini_normalized_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_single_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt41Mini,
-        Surface::Normalized,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn blocking_gpt_4_1_mini_normalized_parallel_tool() -> Result<()> {
-    const SCENARIO: &str =
-        "history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_parallel_tool";
-    let cell = cell(
-        Transport::Blocking,
-        ModelVariant::Gpt41Mini,
-        Surface::Normalized,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4o_mini_raw_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4o_mini_raw_text";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt4oMini,
-        Surface::Raw,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4o_mini_raw_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4o_mini_raw_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4o_mini_raw_single_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt4oMini,
-        Surface::Raw,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4o_mini_raw_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4o_mini_raw_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4o_mini_raw_parallel_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt4oMini,
-        Surface::Raw,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4o_mini_raw_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4o_mini_normalized_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_text";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt4oMini,
-        Surface::Normalized,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4o_mini_normalized_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_single_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt4oMini,
-        Surface::Normalized,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4o_mini_normalized_parallel_tool() -> Result<()> {
-    const SCENARIO: &str =
-        "history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt4oMini,
-        Surface::Normalized,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4_1_mini_raw_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_text";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt41Mini,
-        Surface::Raw,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4_1_mini_raw_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_single_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt41Mini,
-        Surface::Raw,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4_1_mini_raw_parallel_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_parallel_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt41Mini,
-        Surface::Raw,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4_1_mini_normalized_text() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_text";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt41Mini,
-        Surface::Normalized,
-        Shape::Text,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_text",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4_1_mini_normalized_single_tool() -> Result<()> {
-    const SCENARIO: &str = "history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_single_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt41Mini,
-        Surface::Normalized,
-        Shape::SingleTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_single_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
-}
-
-#[tokio::test]
-async fn streaming_gpt_4_1_mini_normalized_parallel_tool() -> Result<()> {
-    const SCENARIO: &str =
-        "history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_parallel_tool";
-    let cell = cell(
-        Transport::Streaming,
-        ModelVariant::Gpt41Mini,
-        Surface::Normalized,
-        Shape::ParallelTool,
-    );
-    let observed = SharedObservation::default();
-    let capture = Arc::clone(&observed);
-    with_openrouter_history_roundtrip_cassette_result(
-        "history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_parallel_tool",
-        |client| async move { run_cell(client, cell, capture).await },
-    )
-    .await?;
-    assert_cell(SCENARIO, cell, observed);
-    Ok(())
+crate::matrix::case_matrix! {
+    wrapper: with_openrouter_history_roundtrip_cassette_result, family: history_roundtrip_matrix_case;
+    # [tokio :: test]
+    blocking_gpt_4o_mini_raw_text: ("history_roundtrip_matrix/blocking_gpt_4o_mini_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: Text ,));
+    # [tokio :: test]
+    blocking_gpt_4o_mini_raw_single_tool: ("history_roundtrip_matrix/blocking_gpt_4o_mini_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: SingleTool ,));
+    # [tokio :: test]
+    blocking_gpt_4o_mini_raw_parallel_tool: ("history_roundtrip_matrix/blocking_gpt_4o_mini_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    blocking_gpt_4o_mini_normalized_text: ("history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: Text ,));
+    # [tokio :: test]
+    blocking_gpt_4o_mini_normalized_single_tool: ("history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: SingleTool ,));
+    # [tokio :: test]
+    blocking_gpt_4o_mini_normalized_parallel_tool: ("history_roundtrip_matrix/blocking_gpt_4o_mini_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    blocking_gpt_4_1_mini_raw_text: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: Text ,));
+    # [tokio :: test]
+    blocking_gpt_4_1_mini_raw_single_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: SingleTool ,));
+    # [tokio :: test]
+    blocking_gpt_4_1_mini_raw_parallel_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_raw_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    blocking_gpt_4_1_mini_normalized_text: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_text", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: Text ,));
+    # [tokio :: test]
+    blocking_gpt_4_1_mini_normalized_single_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_single_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: SingleTool ,));
+    # [tokio :: test]
+    blocking_gpt_4_1_mini_normalized_parallel_tool: ("history_roundtrip_matrix/blocking_gpt_4_1_mini_normalized_parallel_tool", configured, cell (Transport :: Blocking , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    streaming_gpt_4o_mini_raw_text: ("history_roundtrip_matrix/streaming_gpt_4o_mini_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: Text ,));
+    # [tokio :: test]
+    streaming_gpt_4o_mini_raw_single_tool: ("history_roundtrip_matrix/streaming_gpt_4o_mini_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: SingleTool ,));
+    # [tokio :: test]
+    streaming_gpt_4o_mini_raw_parallel_tool: ("history_roundtrip_matrix/streaming_gpt_4o_mini_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Raw , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    streaming_gpt_4o_mini_normalized_text: ("history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: Text ,));
+    # [tokio :: test]
+    streaming_gpt_4o_mini_normalized_single_tool: ("history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: SingleTool ,));
+    # [tokio :: test]
+    streaming_gpt_4o_mini_normalized_parallel_tool: ("history_roundtrip_matrix/streaming_gpt_4o_mini_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt4oMini , Surface :: Normalized , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    streaming_gpt_4_1_mini_raw_text: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: Text ,));
+    # [tokio :: test]
+    streaming_gpt_4_1_mini_raw_single_tool: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: SingleTool ,));
+    # [tokio :: test]
+    streaming_gpt_4_1_mini_raw_parallel_tool: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_raw_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Raw , Shape :: ParallelTool ,));
+    # [tokio :: test]
+    streaming_gpt_4_1_mini_normalized_text: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_text", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: Text ,));
+    # [tokio :: test]
+    streaming_gpt_4_1_mini_normalized_single_tool: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_single_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: SingleTool ,));
+    # [tokio :: test]
+    streaming_gpt_4_1_mini_normalized_parallel_tool: ("history_roundtrip_matrix/streaming_gpt_4_1_mini_normalized_parallel_tool", configured, cell (Transport :: Streaming , ModelVariant :: Gpt41Mini , Surface :: Normalized , Shape :: ParallelTool ,));
 }

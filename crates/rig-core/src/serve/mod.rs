@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! Handlers return a [`Reply`]: an outcome or an owned stream. [`Dispatch`]
 //! carries identity, requested delivery mode and scopes. [`ErasedHandler`]
 //! is the shared registry boundary; drivers own polling and cancellation.

@@ -7,7 +7,7 @@
     clippy::panic
 )]
 
-mod bus_support;
+use crate::bus_support;
 
 use bevy_ecs::prelude::*;
 use futures::channel::oneshot;

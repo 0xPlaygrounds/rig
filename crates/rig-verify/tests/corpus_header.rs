@@ -43,9 +43,7 @@
 //! | `a_host_checks_its_row_against_the_bus_it_built` | required · missing key and family change · host |
 //! | `a_policy_round_trips_through_the_header` | bus · none · replayer and driver |
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::Program;
 use rig_agent::AgentBuilder;

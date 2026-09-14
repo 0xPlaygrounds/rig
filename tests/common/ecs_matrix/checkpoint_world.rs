@@ -4,7 +4,10 @@
 #![allow(dead_code, reason = "checkpoint cells run on five provider columns")]
 
 use super::{Wire, cells::Cell};
-use rig::{completion::CompletionModel, effect_log::EffectLog};
+
+use rig_agent::completion::CompletionModel;
+
+use rig_effect_log::EffectLog;
 
 pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
@@ -25,8 +28,19 @@ use std::sync::Arc;
 
 use bevy_app::App;
 use bevy_ecs::prelude::*;
-use rig::effect::{EffectKind, HandlerDescriptor};
-use rig::serve::{Dispatch, Reply, Serve, adapters::ToolAdapter};
+
+use rig_core::effect::EffectKind;
+
+use rig_core::effect::HandlerDescriptor;
+
+use rig_core::serve::Dispatch;
+
+use rig_core::serve::Reply;
+
+use rig_core::serve::Serve;
+
+use rig_core::serve::adapters::ToolAdapter;
+
 use rig_ecs::agent::{ToolCallSlot, checkpoint::ToolTurnCommit};
 use rig_ecs::bus::{BusSet, EffectOutcome, RigSchedule};
 use rig_ecs::systems::RigSet;
@@ -62,7 +76,7 @@ pub(crate) struct GatedBatch {
 }
 
 impl Serve for GatedBatch {
-    type Family = rig::effect::family::Tool;
+    type Family = rig_core::effect::family::Tool;
 
     fn descriptor(&self) -> HandlerDescriptor {
         self.inner.descriptor()

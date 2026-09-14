@@ -2,8 +2,6 @@
 //! order, and a fresh bus with no model and no tool behind the keys replays
 //! the run to the same answer from the log alone.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
 use std::{
     sync::{Arc, Mutex},
     time::Duration,

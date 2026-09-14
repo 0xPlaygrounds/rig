@@ -74,9 +74,7 @@
 //!   step-stop does (test support, not a production change: every live
 //!   wire ends its calls explicitly).
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{
     Ending, Hook, Output, Program, STOP_ON_TOOL_ARGUMENTS_DELTA, STOP_ON_TOOL_NAME_DELTA, Unhandled,

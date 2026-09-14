@@ -56,9 +56,7 @@
 //!   itself, the stack records it, and the stateful stop's header reads
 //!   `StopAfterTurn(2)` (`rig-agent`, with a unit test).
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Ending, Hook, Output, Program, RERANK_KEY};
 use rig_core::effect::{EffectFamily, HandlerKey};

@@ -71,9 +71,7 @@
 //!   prefix would differ by build. The schema is now quoted in a
 //!   canonical, key-sorted rendering (`rig-core::json_utils`).
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Choice, Output, Program};
 

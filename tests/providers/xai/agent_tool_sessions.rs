@@ -447,46 +447,14 @@ pub(super) fn image_content() -> UserContent {
     )
 }
 
-#[tokio::test]
-async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
-    with_xai_cassette_result(
-        "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming",
-        |client| async move {
-            let log = Arc::new(Mutex::new(Vec::new()));
-            let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
-                .preamble(COMPLEX_SESSION_PREAMBLE)
-                .tool(ping)
-                .tool(manifest)
-                .tool(labels)
-                .tool(echo)
-                .additional_params(json!({"parallel_tool_calls": false}))
-                .default_max_turns(10)
-                .build();
-            let mut history = Vec::<Message>::new();
-
-            let response = agent.chat(COMPLEX_SESSION_PROMPT, &mut history).await?;
-
-            assert_contains_all_case_insensitive(
-                &response.output,
-                &["EMPTY-OK", "MANIFEST-OK", "LABELS-OK", "ESCAPE-OK"],
-            );
-            assert_complex_invocations(&log);
-            assert_history_records_sequential_tool_roundtrips(
-                &history,
-                &[
-                    PingEmpty::NAME,
-                    InspectManifest::NAME,
-                    JoinLabels::NAME,
-                    EscapeEcho::NAME,
-                ],
-            );
-
-            Ok(())
-        },
-    )
-    .await
+crate::matrix::case_matrix! {
+    wrapper: with_xai_cassette_result, family: agent_tool_sessions_case;
+    # [tokio :: test]
+    sequential_complex_tool_calls_nonstreaming: ("agent_tool_sessions/sequential_complex_tool_calls_nonstreaming", sequential_complex_tool_calls_nonstreaming_0);
+    # [tokio :: test]
+    parallel_tool_calls_single_turn_nonstreaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming", parallel_tool_calls_single_turn_nonstreaming_3);
+    # [tokio :: test]
+    parallel_tool_calls_single_turn_streaming: ("agent_tool_sessions/parallel_tool_calls_single_turn_streaming", parallel_tool_calls_single_turn_streaming_4);
 }
 
 #[tokio::test]
@@ -543,81 +511,6 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
                 &["EMPTY-OK", "MANIFEST-OK", "LABELS-OK", "ESCAPE-OK"],
             );
             assert_complex_invocations(&log);
-
-            Ok(())
-        },
-    )
-    .await
-}
-
-#[tokio::test]
-async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
-    with_xai_cassette_result(
-        "agent_tool_sessions/parallel_tool_calls_single_turn_nonstreaming",
-        |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .additional_params(json!({"parallel_tool_calls": true}))
-                .default_max_turns(5)
-                .build();
-            let mut history = Vec::<Message>::new();
-
-            let response = agent.chat(TWO_TOOL_STREAM_PROMPT, &mut history).await?;
-
-            assert_contains_all_case_insensitive(
-                &response.output,
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
-            let calls = history_tool_calls(&history);
-            let call_names = calls
-                .iter()
-                .map(|call| call.name.as_str())
-                .collect::<Vec<_>>();
-            anyhow::ensure!(
-                calls.len() == 2
-                    && call_names.contains(&AlphaSignal::NAME)
-                    && call_names.contains(&BetaSignal::NAME),
-                "expected both zero-argument tools, saw {call_names:?}"
-            );
-            anyhow::ensure!(
-                calls[0].message_index == calls[1].message_index,
-                "parallel tool calls should be recorded on one assistant message"
-            );
-            anyhow::ensure!(
-                history_tool_results(&history).len() == 2,
-                "expected two tool results"
-            );
-
-            Ok(())
-        },
-    )
-    .await
-}
-
-#[tokio::test]
-async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
-    with_xai_cassette_result(
-        "agent_tool_sessions/parallel_tool_calls_single_turn_streaming",
-        |client| async move {
-            let agent = client
-                .agent(SESSION_MODEL)
-                .preamble(TWO_TOOL_STREAM_PREAMBLE)
-                .tool(AlphaSignal)
-                .tool(BetaSignal)
-                .additional_params(json!({"parallel_tool_calls": true}))
-                .build();
-
-            let mut stream = agent.prompt(TWO_TOOL_STREAM_PROMPT).max_turns(5).stream();
-            let observation = collect_stream_observation(&mut stream).await;
-
-            assert_two_tool_roundtrip_contract(
-                &observation,
-                &[AlphaSignal::NAME, BetaSignal::NAME],
-                &[ALPHA_SIGNAL_OUTPUT, BETA_SIGNAL_OUTPUT],
-            );
 
             Ok(())
         },

@@ -42,9 +42,7 @@
 //! | `openai_breadth_custom_at_outcome` | `custom_at_outcome_…` | `[Completion, Tool, Custom, Completion]` beside dual ids |
 //! | `openai_breadth_memory_two_runs` | `memory_two_runs_…` | `[Load, Completion, Append, Load, Completion, Append]` |
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{
     CANCEL_ADD_DISPATCH, CONVERSATION, Ending, Hook, Output, Program, STOP_ON_TEXT_DELTA,

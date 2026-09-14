@@ -65,9 +65,7 @@
 //!   program the builder describes, and a route registered on the
 //!   built agent is the host's to serve.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{Hook, LATE_ROUTE, Output, Program, ROUTE};
 use rig_core::effect::HandlerKey;

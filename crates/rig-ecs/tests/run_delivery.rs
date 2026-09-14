@@ -8,7 +8,7 @@
     clippy::indexing_slicing,
     dead_code
 )]
-mod run_support;
+use crate::run_support;
 
 use rig_core::serve::Dispatch;
 use std::sync::{Arc, Mutex};

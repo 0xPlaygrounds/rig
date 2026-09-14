@@ -18,7 +18,7 @@
     clippy::type_complexity
 )]
 
-mod bus_support;
+use crate::bus_support;
 
 use std::{
     sync::{Arc, atomic::Ordering},

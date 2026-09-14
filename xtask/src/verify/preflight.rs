@@ -21,9 +21,6 @@ pub(super) fn run(root: &Path, plan: &[Check]) -> Result<()> {
                         probes.insert(("cargo", vec![tool, "--version"]));
                     }
                 }
-                ("@registrations", _) => {
-                    probes.insert(("cargo", vec!["nextest", "--version"]));
-                }
                 ("@native-only", _) => wasm = true,
                 (p, _) if p.starts_with('@') => {}
                 (p, _) => {

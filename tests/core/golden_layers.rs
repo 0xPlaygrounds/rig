@@ -2,7 +2,7 @@
 //! and cancelled mid-suspend; a patch of the wrong family; an error
 //! replacing a streamed answer. Scripted because the world's timing and a
 //! stream's cancellation are the cell, not the wire; the layers are in
-//! `tests/common/goldens.rs`. The enumeration and the replays live in
+//! `test-support/rig-test-support/src/goldens.rs`. The enumeration and the replays live in
 //! `crates/rig-verify/tests/corpus_layers.rs`.
 
 use std::time::Duration;

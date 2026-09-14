@@ -23,7 +23,7 @@
 //!
 //! **What these cells can and cannot see.** The harness cannot match a
 //! multipart request body — a non-UTF-8 upload is exported with no body at
-//! all, and any multipart request then matches (`tests/common/cassettes.rs`).
+//! all, and any multipart request then matches (`test-support/rig-test-support/src/cassettes.rs`).
 //! So these cells pin the *response* mapping and that it survives the whole
 //! client stack; they cannot pin what went out. The outbound multipart shape,
 //! including `additional_params` flattening, is pinned separately by

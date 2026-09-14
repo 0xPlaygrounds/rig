@@ -687,7 +687,7 @@ fn classify_failure(status: u16, message: String, name: Option<&str>) -> CachedC
 /// The ids Gemini hands back are twelve lowercase alphanumerics
 /// (`cachedContents/n3v1qk0nqz9k`). `-` and `_` are admitted on top of that
 /// because the cassette scrubber rewrites every recorded id to
-/// `cached-REDACTED_1` (`tests/common/cassettes.rs`), and a replayed test
+/// `cached-REDACTED_1` (`test-support/rig-test-support/src/cassettes.rs`), and a replayed test
 /// hands that placeholder straight back to `delete`. `.` is deliberately left
 /// out: no observed id carries one, and a `..` segment is path traversal.
 fn is_cache_id_char(ch: char) -> bool {

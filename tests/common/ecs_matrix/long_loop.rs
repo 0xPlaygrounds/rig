@@ -37,12 +37,34 @@
 use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, LazyLock, Mutex};
 
-use rig::completion::Usage;
-use rig::effect::{EffectFamily, EffectKind, EffectRecord, Outcome};
-use rig::effect_log::EffectLog;
-use rig::error::ErrorKind;
-use rig::message::{AssistantContent, Message, UserContent};
-use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError};
+use rig_agent::completion::Usage;
+
+use rig_core::effect::EffectFamily;
+
+use rig_core::effect::EffectKind;
+
+use rig_core::effect::EffectRecord;
+
+use rig_core::effect::Outcome;
+
+use rig_effect_log::EffectLog;
+
+use rig_core::error::ErrorKind;
+
+use rig_core::message::AssistantContent;
+
+use rig_core::message::Message;
+
+use rig_core::message::UserContent;
+
+use rig_core::tool::Tool;
+
+use rig_core::tool::ToolContext;
+
+use rig_core::tool::ToolErrorKind;
+
+use rig_core::tool::ToolExecutionError;
+
 use serde::{Deserialize, Serialize};
 
 use super::cells::{CELL, Cell, ThinkingWire, ToolKind};
@@ -275,12 +297,12 @@ pub(crate) const FIXTURE: [(&str, &str); 5] = [
 /// value, the test that asserts on it, and the value it expects.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Fix {
-    pub path: &'static str,
-    pub function: &'static str,
-    pub test: &'static str,
+    pub(crate) path: &'static str,
+    pub(crate) function: &'static str,
+    pub(crate) test: &'static str,
     /// The `tests/basic.rs` line the assertion is on.
-    pub line: usize,
-    pub value: u64,
+    pub(crate) line: usize,
+    pub(crate) value: u64,
 }
 
 /// The two bugs, in the order the runner's tests run: the first is
@@ -314,9 +336,9 @@ const BIG_REPORT_HEADER: &str = "\n--- verbose runner log (49152 bytes) ---\n";
 /// arguments, and what it answered (the error's message for `Err`).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Invocation {
-    pub tool: &'static str,
-    pub args: serde_json::Value,
-    pub output: Result<String, String>,
+    pub(crate) tool: &'static str,
+    pub(crate) args: serde_json::Value,
+    pub(crate) output: Result<String, String>,
 }
 
 /// What a cell switches on the tree.
@@ -507,12 +529,12 @@ pub(crate) fn big_report(report: &str) -> String {
 pub(crate) struct NoArgs {}
 #[derive(Deserialize, Serialize)]
 pub(crate) struct PathArgs {
-    pub path: String,
+    pub(crate) path: String,
 }
 #[derive(Deserialize, Serialize)]
 pub(crate) struct WriteArgs {
-    pub path: String,
-    pub content: String,
+    pub(crate) path: String,
+    pub(crate) content: String,
 }
 
 fn no_args_schema() -> serde_json::Value {
@@ -635,7 +657,7 @@ static SLOTS: LazyLock<Mutex<HashMap<&'static str, Slot>>> =
 /// every tool bound under the cell's name until the lease drops (the head
 /// world's and the restored world's alike).
 pub(crate) struct Lease {
-    pub repo: RepoHandle,
+    pub(crate) repo: RepoHandle,
     _guard: tokio::sync::OwnedMutexGuard<()>,
 }
 
@@ -683,8 +705,8 @@ pub(crate) fn repo(cell: &Cell) -> RepoHandle {
 /// One model turn of the record: its completion and the tool records the
 /// interpreter dispatched for it.
 pub(crate) struct Turn<'a> {
-    pub completion: &'a EffectRecord,
-    pub tools: Vec<&'a EffectRecord>,
+    pub(crate) completion: &'a EffectRecord,
+    pub(crate) tools: Vec<&'a EffectRecord>,
 }
 
 pub(crate) fn turns(log: &EffectLog) -> Vec<Turn<'_>> {
@@ -727,7 +749,7 @@ fn requested_calls(record: &EffectRecord) -> Vec<(String, serde_json::Value)> {
 /// The ids of the calls a completion record's response asked for, in
 /// call order: the `i`-th id belongs to the `i`-th record of `turn.tools`
 /// (`assert_log` step 1 pins the two orders together).
-fn requested_call_ids(record: &EffectRecord) -> Vec<&rig::message::ToolCallId> {
+fn requested_call_ids(record: &EffectRecord) -> Vec<&rig_core::message::ToolCallId> {
     match &record.outcome {
         Ok(Outcome::Completion(response)) => response
             .choice
@@ -752,7 +774,7 @@ fn dispatched_call(record: &EffectRecord) -> (String, serde_json::Value) {
     }
 }
 
-fn dispatched_result(record: &EffectRecord) -> &rig::tool::ToolResult {
+fn dispatched_result(record: &EffectRecord) -> &rig_core::tool::ToolResult {
     match &record.outcome {
         Ok(Outcome::ToolResult { result }) => result,
         other => panic!("the tool outcome is published: {other:?}"),
@@ -989,7 +1011,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                 // committed output byte for byte — row 3's requirement
                 // that the 48 KiB result reaches the next request intact.
                 let source = last_tool_turn.expect("the history grew after a completed tool turn");
-                let parts: Vec<&rig::message::ToolResult> = match results {
+                let parts: Vec<&rig_core::message::ToolResult> = match results {
                     Message::User { content } => content
                         .iter()
                         .filter_map(|part| match part {
@@ -1015,7 +1037,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                         "{}: request {n}'s result {i} ({name}) answers the turn's {i}th call, in call order",
                         cell.name
                     );
-                    let replayed = rig::tool::ToolOutput::content(part.content.clone())
+                    let replayed = rig_core::tool::ToolOutput::content(part.content.clone())
                         .expect("a tool-result part carries content")
                         .render();
                     assert_eq!(
@@ -1450,7 +1472,7 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
                     };
                     assert_eq!(
                         response.finish_reason(),
-                        Some(rig::completion::FinishReason::Length),
+                        Some(rig_agent::completion::FinishReason::Length),
                         "{}: the last completion was cut by the cap",
                         cell.name
                     );
@@ -1624,7 +1646,12 @@ fn raw_finish_reason(thinking: ThinkingWire, raw: &serde_json::Value) -> serde_j
 /// delivered as a completed tool block with actual delta or block-start
 /// delivery, the answer's text streamed.
 fn assert_stream_delivery(cell: &Cell, turns: &[Turn<'_>]) {
-    use rig::streaming::{BlockKind, Delta, StreamEvent};
+    use rig_core::streaming::BlockKind;
+
+    use rig_core::streaming::Delta;
+
+    use rig_core::streaming::StreamEvent;
+
     for (n, turn) in turns.iter().enumerate() {
         assert!(matches!(
             turn.completion.kind,
@@ -1864,7 +1891,7 @@ pub(crate) fn write_restore_timing(
 /// The first strict replay validates the program and saves complete
 /// evidence before goldens exist (`LONG_LOOP_AUDIT_REPLAY`); it does not
 /// claim golden parity. Otherwise the ordinary producer golden callback.
-pub(crate) async fn run_agent<M: rig::completion::CompletionModel + Clone + 'static>(
+pub(crate) async fn run_agent<M: rig_agent::completion::CompletionModel + Clone + 'static>(
     wire: &super::Wire<M>,
     cell: &Cell,
     golden: impl FnOnce(&EffectLog),
@@ -1904,7 +1931,7 @@ pub(crate) async fn run_agent<M: rig::completion::CompletionModel + Clone + 'sta
 /// world over another built the same way, parity by the golden comparison's
 /// normalisation (`world::run_scripted`), each interpreter over its own
 /// fresh tree.
-pub(crate) async fn run_scripted<M: rig::completion::CompletionModel + Clone + 'static>(
+pub(crate) async fn run_scripted<M: rig_agent::completion::CompletionModel + Clone + 'static>(
     cell: &Cell,
     wire: impl Fn() -> super::Wire<M>,
 ) -> EffectLog {
@@ -1997,9 +2024,10 @@ impl UnaryShape {
 pub(crate) fn scripted_replies(
     thinking: ThinkingWire,
     cell: &Cell,
-    fault_reply: Option<rig::test_utils::MockHttpResponse>,
-) -> Vec<rig::test_utils::MockHttpResponse> {
-    use rig::test_utils::MockHttpResponse;
+    fault_reply: Option<rig_agent::test_utils::MockHttpResponse>,
+) -> Vec<rig_agent::test_utils::MockHttpResponse> {
+    use rig_agent::test_utils::MockHttpResponse;
+
     let (provider, scenario) = scenario(thinking, &LONG_UNARY);
     let recorded = crate::cassettes::recorded_statuses_and_bodies(provider, &scenario);
     assert!(

@@ -140,6 +140,7 @@ fn the_bus_module_and_its_suites_are_agent_free() {
             }),
     );
     files.extend(rust_files(&crate_root().join("tests/bus_support")));
+    files.extend(rust_files(&crate_root().join("tests/bus")));
     let mut offenders = Vec::new();
     for path in files {
         let text = read(&path);
@@ -280,7 +281,8 @@ fn no_serde_type_holds_an_entity() {
 /// The crate's tests live where the module guard can find them: every
 /// integration test file is a `bus_*` file (the substrate's own suite) or
 /// one of the agent's — `run_*`, `tool_*`, `steer_*`, `memory_*`,
-/// `reflect_*`, `assets_*` — and no `bus_*` file imports an agent module: the
+/// `reflect_*`, `assets_*` — with consolidated roots in `bus/` and `run/`.
+/// No bus suite file imports an agent module: the
 /// substrate's suite is the future rig-bevy suite verbatim.
 #[test]
 fn every_test_file_belongs_to_a_suite_and_the_bus_suite_is_agent_free() {
@@ -292,7 +294,9 @@ fn every_test_file_belongs_to_a_suite_and_the_bus_suite_is_agent_free() {
         .expect("rig-ecs has tests")
         .flatten()
         .map(|entry| entry.file_name().to_string_lossy().into_owned())
-        .filter(|name| !SUITES.iter().any(|suite| name.starts_with(suite)))
+        .filter(|name| {
+            name != "bus" && name != "run" && !SUITES.iter().any(|suite| name.starts_with(suite))
+        })
         .collect();
     assert!(
         offenders.is_empty(),
@@ -304,7 +308,10 @@ fn every_test_file_belongs_to_a_suite_and_the_bus_suite_is_agent_free() {
             .file_name()
             .map(|n| n.to_string_lossy().into_owned())
             .unwrap_or_default();
-        if !name.starts_with("bus_") && !path.to_string_lossy().contains("bus_support") {
+        if !name.starts_with("bus_")
+            && !path.starts_with(tests.join("bus_support"))
+            && !path.starts_with(tests.join("bus"))
+        {
             continue;
         }
         let text = read(&path);

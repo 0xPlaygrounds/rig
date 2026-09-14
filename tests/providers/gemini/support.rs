@@ -507,7 +507,7 @@ pub(super) async fn with_gemini_prompt_caching_cassette<F, Fut>(
 ///
 /// The failure is *caught* rather than threaded back as a `Result` because the
 /// checks these cells run are not all this suite's to reshape: `run_cache_probe`
-/// and `assert_cache_conformance` (`tests/common/cache_conformance.rs`) are
+/// and `assert_cache_conformance` (`test-support/rig-test-support/src/cache_conformance.rs`) are
 /// shared by every provider's cache suite and panic from the inside, as does
 /// every `.expect()` on an intermediate `get`/`list`/`update_expiry`.
 ///

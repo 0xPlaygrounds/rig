@@ -23,7 +23,7 @@ use rig_ecs::{
         AdditionalParams, DefaultMaxTurns, InvalidCalls, MaxTokens, MaxTurns, Output, Owner,
         Preamble, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{Bus, Handlers, run_to_quiescence},
+    bus::{Bus, run_to_quiescence},
     systems::install_agent,
 };
 
@@ -126,12 +126,9 @@ pub fn app() -> App {
     app
 }
 
-/// Register `handler` under `key` from outside a system.
-pub fn register(app: &mut App, key: &str, handler: impl Serve + 'static) -> Entity {
-    Handlers::with(app.world_mut(), |handlers| handlers.register(key, handler))
-        .expect("the world has a bus")
-        .expect("a fresh key")
-}
+#[path = "../bus_support/registration.rs"]
+mod registration;
+pub use registration::register;
 
 /// An agent entity over `model`, with a preamble and defaults.
 pub fn spawn_agent(world: &mut World, owner: &str, model: Entity) -> Entity {

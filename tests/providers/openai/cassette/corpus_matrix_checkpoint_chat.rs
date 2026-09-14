@@ -19,55 +19,14 @@ fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + 
     }
 }
 
-#[tokio::test]
-async fn multi_turn_unary() {
-    with_openai_cassette(
-        "checkpoint_matrix_chat/multi_turn_unary",
-        |client| async move {
-            checkpoint::run_agent(&wire(&client), &checkpoint::MULTI_TURN_UNARY, |log| {
-                crate::goldens::golden_effects("openai_chat_checkpoint_multi_turn_unary", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_streamed() {
-    with_openai_cassette(
-        "checkpoint_matrix_chat/multi_turn_streamed",
-        |client| async move {
-            checkpoint::run_agent(&wire(&client), &checkpoint::MULTI_TURN_STREAMED, |log| {
-                crate::goldens::golden_effects("openai_chat_checkpoint_multi_turn_streamed", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn parallel_batch() {
-    with_openai_cassette(
-        "checkpoint_matrix_chat/parallel_batch",
-        |client| async move {
-            checkpoint::run_agent(&wire(&client), &checkpoint::PARALLEL_BATCH, |log| {
-                crate::goldens::golden_effects("openai_chat_checkpoint_parallel_batch", log)
-            })
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn large_result() {
-    with_openai_cassette("checkpoint_matrix_chat/large_result", |client| async move {
-        checkpoint::run_agent(&wire(&client), &checkpoint::LARGE_RESULT, |log| {
-            crate::goldens::golden_effects("openai_chat_checkpoint_large_result", log)
-        })
-        .await;
-    })
-    .await;
+crate::matrix::golden_matrix! {
+    wrapper: with_openai_cassette, wire: wire, run: checkpoint::run_agent, oracle: crate::goldens::golden_effects;
+    #[tokio::test]
+    multi_turn_unary: ("checkpoint_matrix_chat/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, "openai_chat_checkpoint_multi_turn_unary");
+    #[tokio::test]
+    multi_turn_streamed: ("checkpoint_matrix_chat/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, "openai_chat_checkpoint_multi_turn_streamed");
+    #[tokio::test]
+    parallel_batch: ("checkpoint_matrix_chat/parallel_batch", checkpoint::PARALLEL_BATCH, "openai_chat_checkpoint_parallel_batch");
+    #[tokio::test]
+    large_result: ("checkpoint_matrix_chat/large_result", checkpoint::LARGE_RESULT, "openai_chat_checkpoint_large_result");
 }

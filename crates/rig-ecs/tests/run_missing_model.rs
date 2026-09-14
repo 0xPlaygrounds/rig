@@ -2,7 +2,7 @@
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 
-mod run_support;
+use crate::run_support;
 
 struct ParkedAdder {
     inner: Adder,

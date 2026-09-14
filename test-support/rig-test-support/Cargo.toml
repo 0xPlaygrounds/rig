@@ -1,0 +1,38 @@
+[package]
+name = "rig-test-support"
+version = "0.0.0"
+edition.workspace = true
+publish = false
+description = "Shared drivers and fixture assertions for repository tests."
+
+[lints]
+workspace = true
+
+[lib]
+doctest = false
+
+[dependencies]
+rig-core = { path = "../../crates/rig-core", default-features = false, features = ["test-utils"] }
+rig-agent = { path = "../../crates/rig-agent", default-features = false, features = ["test-utils"] }
+rig-reqwest = { path = "../../crates/rig-reqwest", default-features = false }
+rig-ecs = { path = "../../crates/rig-ecs" }
+rig-effect-log = { path = "../../crates/rig-effect-log" }
+rig-cassette = { path = "../../crates/rig-cassette", features = ["bedrock"] }
+anyhow.workspace = true
+bevy_app.workspace = true
+bevy_ecs.workspace = true
+bevy_tasks.workspace = true
+futures.workspace = true
+http.workspace = true
+schemars.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
+sha2.workspace = true
+syn = { workspace = true, features = ["full", "visit"] }
+tokio = { workspace = true, features = ["full"] }
+thiserror.workspace = true
+async-stream.workspace = true
+base64.workspace = true
+bytes.workspace = true
+serde_yaml.workspace = true
+reqwest = { workspace = true, features = ["json", "stream"] }

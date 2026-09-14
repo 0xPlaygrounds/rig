@@ -394,46 +394,10 @@ pub(super) fn assert_history_records_sequential_tool_roundtrips(
     }
 }
 
-#[tokio::test]
-async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
-    with_openrouter_cassette_result(
-        "agent_tool_sessions/sequential_complex_tool_calls_nonstreaming",
-        |client| async move {
-            let log = Arc::new(Mutex::new(Vec::new()));
-            let (ping, manifest, labels, echo) = complex_tools(&log);
-            let agent = client
-                .agent(SESSION_MODEL)
-                .preamble(COMPLEX_SESSION_PREAMBLE)
-                .tool(ping)
-                .tool(manifest)
-                .tool(labels)
-                .tool(echo)
-                .additional_params(json!({"parallel_tool_calls": false}))
-                .default_max_turns(10)
-                .build();
-            let mut history = Vec::<Message>::new();
-
-            let response = agent.chat(COMPLEX_SESSION_PROMPT, &mut history).await?;
-
-            assert_contains_all_case_insensitive(
-                &response.output,
-                &["EMPTY-OK", "MANIFEST-OK", "LABELS-OK", "ESCAPE-OK"],
-            );
-            assert_complex_invocations(&log);
-            assert_history_records_sequential_tool_roundtrips(
-                &history,
-                &[
-                    PingEmpty::NAME,
-                    InspectManifest::NAME,
-                    JoinLabels::NAME,
-                    EscapeEcho::NAME,
-                ],
-            );
-
-            Ok(())
-        },
-    )
-    .await
+crate::matrix::case_matrix! {
+    wrapper: with_openrouter_cassette_result, family: agent_tool_sessions_case;
+    # [tokio :: test]
+    sequential_complex_tool_calls_nonstreaming: ("agent_tool_sessions/sequential_complex_tool_calls_nonstreaming", sequential_complex_tool_calls_nonstreaming_0);
 }
 
 #[tokio::test]

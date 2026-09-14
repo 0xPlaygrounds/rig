@@ -7,8 +7,6 @@
 //! that record, naming the JSON pointer of the difference, and the run
 //! never reaches the record after it.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
 use std::time::Duration;
 
 use rig_agent::bus::Bus;
@@ -19,7 +17,7 @@ use rig_core::{
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 
-/// The root suite's constants, verbatim (`tests/common/support.rs`).
+/// The root suite's constants, verbatim (`test-support/rig-test-support/src/support.rs`).
 const PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 const PROMPT: &str = "In one or two sentences, explain what Rust programming language is and why memory safety matters.";
 const OWNER: &str = "golden";

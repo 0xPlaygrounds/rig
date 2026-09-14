@@ -21,83 +21,24 @@ fn wire(
     }
 }
 
-#[tokio::test]
-async fn long_unary() {
-    with_anthropic_cassette("long_loop_matrix/long_unary", |client| async move {
-        long_loop::run_agent(&wire(&client), &long_loop::LONG_UNARY, |log| {
-            crate::goldens::golden_effects("anthropic_long_loop_long_unary", log)
-        })
-        .await;
-    })
-    .await;
+crate::matrix::golden_matrix! {
+    wrapper: with_anthropic_cassette, wire: wire, run: long_loop::run_agent, oracle: crate::goldens::golden_effects;
+    #[tokio::test]
+    long_unary: ("long_loop_matrix/long_unary", long_loop::LONG_UNARY, "anthropic_long_loop_long_unary");
+    #[tokio::test]
+    long_streamed: ("long_loop_matrix/long_streamed", long_loop::LONG_STREAMED, "anthropic_long_loop_long_streamed");
+    #[tokio::test]
+    parallel_calls: ("long_loop_matrix/parallel_calls", long_loop::PARALLEL_CALLS, "anthropic_long_loop_parallel_calls");
+    #[tokio::test]
+    big_result: ("long_loop_matrix/big_result", long_loop::BIG_RESULT, "anthropic_long_loop_big_result");
+    #[tokio::test]
+    tool_error_midway: ("long_loop_matrix/tool_error_midway", long_loop::TOOL_ERROR_MIDWAY, "anthropic_long_loop_tool_error_midway");
+    #[tokio::test]
+    max_turns_midway: ("long_loop_matrix/max_turns_midway", long_loop::MAX_TURNS_MIDWAY, "anthropic_long_loop_max_turns_midway");
 }
 
-#[tokio::test]
-async fn long_streamed() {
-    with_anthropic_cassette("long_loop_matrix/long_streamed", |client| async move {
-        long_loop::run_agent(&wire(&client), &long_loop::LONG_STREAMED, |log| {
-            crate::goldens::golden_effects("anthropic_long_loop_long_streamed", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn parallel_calls() {
-    with_anthropic_cassette("long_loop_matrix/parallel_calls", |client| async move {
-        long_loop::run_agent(&wire(&client), &long_loop::PARALLEL_CALLS, |log| {
-            crate::goldens::golden_effects("anthropic_long_loop_parallel_calls", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn big_result() {
-    with_anthropic_cassette("long_loop_matrix/big_result", |client| async move {
-        long_loop::run_agent(&wire(&client), &long_loop::BIG_RESULT, |log| {
-            crate::goldens::golden_effects("anthropic_long_loop_big_result", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn tool_error_midway() {
-    with_anthropic_cassette("long_loop_matrix/tool_error_midway", |client| async move {
-        long_loop::run_agent(&wire(&client), &long_loop::TOOL_ERROR_MIDWAY, |log| {
-            crate::goldens::golden_effects("anthropic_long_loop_tool_error_midway", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn max_turns_midway() {
-    with_anthropic_cassette("long_loop_matrix/max_turns_midway", |client| async move {
-        long_loop::run_agent(&wire(&client), &long_loop::MAX_TURNS_MIDWAY, |log| {
-            crate::goldens::golden_effects("anthropic_long_loop_max_turns_midway", log)
-        })
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn output_cap_midway() {
-    with_anthropic_cassette("long_loop_matrix/output_cap_midway", |client| async move {
-        // Failed(Response): the cut write_file call is a response error on
-        // this wire (recording confirms).
-        long_loop::run_agent(
-            &wire(&client),
-            &long_loop::OUTPUT_CAP_MIDWAY_LENGTH_ANSWER,
-            |log| crate::goldens::golden_effects("anthropic_long_loop_output_cap_midway", log),
-        )
-        .await;
-    })
-    .await;
+crate::matrix::golden_matrix! {
+    wrapper: with_anthropic_cassette, wire: wire, run: long_loop::run_agent, oracle: crate::goldens::golden_effects;
+    #[tokio::test]
+    output_cap_midway: ("long_loop_matrix/output_cap_midway", long_loop::OUTPUT_CAP_MIDWAY_LENGTH_ANSWER, "anthropic_long_loop_output_cap_midway");
 }

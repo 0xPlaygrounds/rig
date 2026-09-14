@@ -36,29 +36,19 @@ fn legacy(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel 
     }
 }
 
-/// A batch-held call approved by removing `Held` dispatches, lands in call
-/// order, and the scene saved afterwards loads.
-#[tokio::test]
-async fn batch_held_call_approved_by_removing_held() {
-    with_openai_cassette(
-        "corpus_matrix_responses/serving_concurrent_concurrency_one",
-        |client| async move {
-            batch_hold(&wire(&client), Approval::RemoveHeld).await;
-        },
-    )
-    .await;
-}
-
-/// The same, approved by `release_hold("rig-ecs/batch")`.
-#[tokio::test]
-async fn batch_held_call_approved_by_releasing_the_batch_owner() {
-    with_openai_cassette(
-        "corpus_matrix_responses/serving_concurrent_concurrency_one",
-        |client| async move {
-            batch_hold(&wire(&client), Approval::ReleaseBatchOwner).await;
-        },
-    )
-    .await;
+crate::matrix::case_matrix! {
+    wrapper: with_openai_cassette, family: wire_matrix_case;
+    /// A batch-held call approved by removing `Held` dispatches, lands in call
+    /// order, and the scene saved afterwards loads.
+    #[tokio::test]
+    batch_held_call_approved_by_removing_held: ("corpus_matrix_responses/serving_concurrent_concurrency_one", batch_held_call_approved_by_removing_held_15);
+    /// The same, approved by `release_hold("rig-ecs/batch")`.
+    #[tokio::test]
+    batch_held_call_approved_by_releasing_the_batch_owner: ("corpus_matrix_responses/serving_concurrent_concurrency_one", batch_held_call_approved_by_releasing_the_batch_owner_16);
+    /// A run cancelled while its completion still streams refuses
+    /// `despawn_run` until the stream drains.
+    #[tokio::test]
+    despawn_run_waits_for_an_in_flight_stream: ("corpus_breadth/text_delta_stop", despawn_run_waits_for_an_in_flight_stream_17);
 }
 
 /// The recorded 4xx, unary: the run fails as the provider's response and
@@ -105,15 +95,5 @@ async fn error_facts_streamed() {
             .await;
         },
     )
-    .await;
-}
-
-/// A run cancelled while its completion still streams refuses
-/// `despawn_run` until the stream drains.
-#[tokio::test]
-async fn despawn_run_waits_for_an_in_flight_stream() {
-    with_openai_cassette("corpus_breadth/text_delta_stop", |client| async move {
-        despawn_waits_for_the_stream(&legacy(&client), &cells::BREADTH_TEXT_DELTA_STOP).await;
-    })
     .await;
 }

@@ -26,17 +26,49 @@ use std::time::{Duration, Instant};
 use bevy_app::{App, Update};
 use bevy_ecs::prelude::*;
 use futures::StreamExt;
-use rig::completion::{
-    CompletionError, CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
-};
-use rig::effect::{EffectFamily, EffectKind, HandlerKey, Outcome};
-use rig::error::ErrorKind;
-use rig::serve::{
-    ErasedHandler, Serve,
-    adapters::{CompletionAdapter, MemoryAdapter, ToolAdapter},
-};
-use rig::streaming::{Delta, StreamEvent, StreamEvents, StreamingCompletionResponse};
-use rig::tool::{Tool, ToolContext};
+
+use rig_agent::completion::CompletionError;
+
+use rig_agent::completion::CompletionModel;
+
+use rig_agent::completion::CompletionRequest;
+
+use rig_agent::completion::CompletionResponse;
+
+use rig_agent::completion::ProviderCapabilities;
+
+use rig_core::effect::EffectFamily;
+
+use rig_core::effect::EffectKind;
+
+use rig_core::effect::HandlerKey;
+
+use rig_core::effect::Outcome;
+
+use rig_core::error::ErrorKind;
+
+use rig_core::serve::ErasedHandler;
+
+use rig_core::serve::Serve;
+
+use rig_core::serve::adapters::CompletionAdapter;
+
+use rig_core::serve::adapters::MemoryAdapter;
+
+use rig_core::serve::adapters::ToolAdapter;
+
+use rig_core::streaming::Delta;
+
+use rig_core::streaming::StreamEvent;
+
+use rig_core::streaming::StreamEvents;
+
+use rig_core::streaming::StreamingCompletionResponse;
+
+use rig_core::tool::Tool;
+
+use rig_core::tool::ToolContext;
+
 use rig_ecs::{
     agent::{
         AdditionalParams, Assembling, Cancelled, Conversation, Cursor, DefaultMaxTurns, Failed,
@@ -88,11 +120,11 @@ fn one_thread_pool() {
 /// once `tool` has a permit; a gated stream goes on past its first delta
 /// once `stream` has one. A cell that names neither never touches them.
 pub(crate) struct Gates {
-    pub tool: Arc<Semaphore>,
-    pub stream: Arc<Semaphore>,
+    pub(crate) tool: Arc<Semaphore>,
+    pub(crate) stream: Arc<Semaphore>,
     /// The witness's log, installed for every failure-row cell: the ending
     /// it names is asserted beside the run's.
-    pub witness: Option<Arc<rig::observe::ObservationLog>>,
+    pub(crate) witness: Option<Arc<rig_core::observe::ObservationLog>>,
 }
 
 /// A model whose stream parks after the first delta of the given kind:
@@ -170,7 +202,7 @@ pub(crate) fn is_tool_call_progress(event: &StreamEvent) -> bool {
             delta: Delta::ToolName { .. } | Delta::ToolArguments { .. },
             ..
         } | StreamEvent::BlockEnd {
-            end: rig::streaming::BlockClose::ToolCall(_),
+            end: rig_core::streaming::BlockClose::ToolCall(_),
             ..
         }
     )
@@ -366,7 +398,7 @@ fn holds_tool_turn(cell: &Cell) -> bool {
 /// A tool adapter as an erased handler over the test's runtime.
 fn tool_handler<S>(adapter: S, runtime: &tokio::runtime::Handle) -> ErasedHandler
 where
-    S: rig::serve::Serve<Family = rig::effect::family::Tool> + Send + Sync + 'static,
+    S: rig_core::serve::Serve<Family = rig_core::effect::family::Tool> + Send + Sync + 'static,
 {
     ErasedHandler::new(RuntimeHandler {
         inner: Arc::new(adapter),
@@ -420,7 +452,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
     program: &Program,
     gate: Option<bool>,
     scene: Option<&WorldScene>,
-    witness: Option<Arc<rig::observe::ObservationLog>>,
+    witness: Option<Arc<rig_core::observe::ObservationLog>>,
 ) -> (App, Entity, EffectLogRecorder, Gates) {
     one_thread_pool();
     let policy = cell.bus.policy();
@@ -473,7 +505,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         let adapter: ErasedHandler = match cell.memory {
             Memory::InMemory => ErasedHandler::new(RuntimeHandler {
                 inner: Arc::new(MemoryAdapter::new(
-                    rig::memory::InMemoryConversationMemory::new(),
+                    rig_core::memory::InMemoryConversationMemory::new(),
                 )),
                 runtime: runtime.clone(),
             }),
@@ -701,7 +733,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
                 // The nesting tool is a key the world serves itself
                 // (`corpus::world_nesting`): only its descriptor is shared.
                 let nesting = program.nesting.expect("the nesting program");
-                let descriptor = rig::serve::Serve::descriptor(&corpus::Lookup {
+                let descriptor = rig_core::serve::Serve::descriptor(&corpus::Lookup {
                     nesting,
                     model_key: HandlerKey::from(format!("{OWNER}/model:default")),
                 });
@@ -1026,7 +1058,8 @@ async fn settle_open_effects(app: &mut App, start: Instant) {
 /// Whether the run's memory append, if it remembers and settled, has
 /// landed (a run that failed appends nothing).
 fn append_landed(world: &mut World, run: Entity) -> bool {
-    use rig::effect::MemoryOp;
+    use rig_core::effect::MemoryOp;
+
     if world.get::<rig_ecs::agent::Remembering>(run).is_none()
         || world.get::<Settled>(run).is_none()
     {
@@ -1170,7 +1203,7 @@ fn assert_graph(app: &mut App, runs: &[Entity], program: &Program, log: &EffectL
         let history = last
             .chat_history
             .iter()
-            .filter(|message| !matches!(message, rig::message::Message::System { .. }))
+            .filter(|message| !matches!(message, rig_core::message::Message::System { .. }))
             .count();
         let utterances = world
             .query_filtered::<&ChildOf, With<Utterance>>()
@@ -1242,7 +1275,7 @@ fn result_names(parts: &MessageParts, slots: &[rig_ecs::agent::ToolCallSlot]) ->
     content
         .iter()
         .filter_map(|part| match part {
-            rig::message::UserContent::ToolResult(result) => Some(
+            rig_core::message::UserContent::ToolResult(result) => Some(
                 slots
                     .iter()
                     .find(|slot| slot.id == result.call)
@@ -1316,7 +1349,7 @@ fn two_signals(cell: &Cell) -> bool {
 }
 
 /// The provider report a failed run carries.
-fn provider_report(world: &World, run: Entity, what: &str) -> rig::error::ErrorReport {
+fn provider_report(world: &World, run: Entity, what: &str) -> rig_core::error::ErrorReport {
     match world.get::<Failed>(run).map(|failed| &failed.0) {
         Some(Failure::Provider(report)) => report.clone(),
         other => panic!("{what}: a provider failure, not {other:?}"),
@@ -1364,7 +1397,7 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
             assert_eq!(report.http_status, Some(status), "{report:?}");
             assert_eq!(
                 report.retryable,
-                rig::error::retryable_status(Some(status)),
+                rig_core::error::retryable_status(Some(status)),
                 "the status table's verdict on a {status}: {report:?}"
             );
             assert_eq!(report.code.as_deref(), code, "{}: {report:?}", cell.name);
@@ -1424,7 +1457,7 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
         Fault::TruncatedAfterText | Fault::TruncatedAfterToolCall => {
             let report = provider_report(world, run, cell.name);
             assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
-            assert_eq!(report.message, rig::serve::stream_truncated().message);
+            assert_eq!(report.message, rig_core::serve::stream_truncated().message);
             let stream = sole_stream(world).expect("the stream's effect survived the run");
             assert!(
                 stream.errors.is_empty(),
@@ -1458,7 +1491,7 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
             assert_eq!(report.http_status, status, "the frame's status: {report:?}");
             assert_eq!(
                 report.retryable,
-                rig::error::retryable_status(status),
+                rig_core::error::retryable_status(status),
                 "the status table's verdict: {report:?}"
             );
             let recorded = log.records[0]
@@ -1500,7 +1533,7 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
                     };
                     assert_eq!(
                         finish,
-                        Some(rig::completion::FinishReason::ContentFilter),
+                        Some(rig_agent::completion::FinishReason::ContentFilter),
                         "the reason is on the record"
                     );
                 }
@@ -1533,9 +1566,9 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
             let report = provider_report(world, run, cell.name);
             assert_eq!(report.kind, ErrorKind::Response, "{report:?}");
             assert!(
-                report
-                    .message
-                    .contains(&rig::completion::FinishReason::ContentFilter.no_answer_message()),
+                report.message.contains(
+                    &rig_agent::completion::FinishReason::ContentFilter.no_answer_message()
+                ),
                 "the answerless turn's reason and remedy: {report:?}"
             );
             assert!(
@@ -1623,7 +1656,7 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
 }
 
 /// The `n`th tool record's result.
-fn tool_result(log: &EffectLog, n: usize) -> &rig::tool::ToolResult {
+fn tool_result(log: &EffectLog, n: usize) -> &rig_core::tool::ToolResult {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
@@ -1754,13 +1787,13 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
         .unwrap_or_default();
     let first = match cell.image {
         Some(image) => super::image::user_content(image, program.prompt),
-        None => vec![rig::message::UserContent::text(program.prompt)],
+        None => vec![rig_core::message::UserContent::text(program.prompt)],
     };
-    let prompts: Vec<Vec<rig::message::UserContent>> = std::iter::once(first)
+    let prompts: Vec<Vec<rig_core::message::UserContent>> = std::iter::once(first)
         .chain(
             program
                 .second_prompt
-                .map(|prompt| vec![rig::message::UserContent::text(prompt)]),
+                .map(|prompt| vec![rig_core::message::UserContent::text(prompt)]),
         )
         .collect();
     let last = prompts.len() - 1;
@@ -1999,7 +2032,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
             assert!(
                 report
                     .message
-                    .contains(&rig::completion::FinishReason::Length.no_answer_message()),
+                    .contains(&rig_agent::completion::FinishReason::Length.no_answer_message()),
                 "{report:?}"
             );
         }

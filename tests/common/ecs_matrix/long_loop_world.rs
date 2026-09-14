@@ -7,7 +7,10 @@
 #![allow(dead_code, reason = "long-loop cells run on five provider columns")]
 
 use super::{Wire, cells::Cell, long_loop};
-use rig::{completion::CompletionModel, effect_log::EffectLog};
+
+use rig_agent::completion::CompletionModel;
+
+use rig_effect_log::EffectLog;
 
 pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,

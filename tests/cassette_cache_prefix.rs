@@ -14,8 +14,8 @@
 //! Ported from `inspirations/pydantic-ai` (`tests/cassette_utils.py`
 //! `check_cache_prefix_stability`), which guards the same invariant across a
 //! 1313-cassette corpus. The invariant is imported; the plumbing is rig's. The
-//! rule itself lives in `tests/common/cache_prefix.rs` so that the per-scenario
-//! conformance harness (`tests/common/cache_conformance.rs`) applies the
+//! rule itself lives in `test-support/rig-test-support/src/cache_prefix.rs` so that the per-scenario
+//! conformance harness (`test-support/rig-test-support/src/cache_conformance.rs`) applies the
 //! identical flattening rather than a second copy that could drift.
 //!
 //! A test whose behavior is *deliberately* prefix-moving — compaction, history
@@ -51,8 +51,7 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use serde_json::Value;
 
-#[path = "common/cache_prefix.rs"]
-mod cache_prefix;
+use rig_test_support::cache_prefix;
 
 use cache_prefix::{EndpointKind, PrefixBlock, Violation};
 
@@ -476,7 +475,7 @@ fn every_provider_is_covered_by_the_prefix_check() {
     assert!(
         failures.is_empty(),
         "the cache prefix check does not actually cover every provider:\n{}\n\nAdd the endpoint \
-         to `canonical_prefix_blocks` in tests/common/cache_prefix.rs (preferred — it is real \
+         to `canonical_prefix_blocks` in test-support/rig-test-support/src/cache_prefix.rs (preferred — it is real \
          coverage), or, if it carries no cacheable prompt, to \
          `NON_CONVERSATIONAL_ENDPOINTS`, or, as a last resort, add the provider to \
          COVERAGE_EXEMPT_PROVIDERS with a reason.\n\nfull census:\n{report}",
@@ -1122,7 +1121,7 @@ fn every_provider_suite_has_a_cache_suite() {
     assert!(
         missing.is_empty(),
         "a provider's prompt cache is unobserved:\n{}\n\nRecord a cache suite for it \
-         (tests/common/cache_conformance.rs has the shared probe), or add it to NO_CACHE_SUITE \
+         (test-support/rig-test-support/src/cache_conformance.rs has the shared probe), or add it to NO_CACHE_SUITE \
          with a reason.",
         missing.join("\n")
     );

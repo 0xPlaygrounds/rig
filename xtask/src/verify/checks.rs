@@ -63,7 +63,7 @@ pub(super) fn all() -> Vec<Check> {
             "tooling",
             vec![
                 Step::new("@layout", &[]),
-                Step::new("@scenarios", &[]),
+                Step::new("@bevy-sources", &[]),
                 Step::new(
                     "python3",
                     &[
@@ -104,7 +104,17 @@ pub(super) fn all() -> Vec<Check> {
         ),
         check(
             "default-check",
-            vec![cargo(&["check", "--locked", "-p", "rig", "--tests"])],
+            // A dependency's #[cfg(test)] bodies are not compiled by the
+            // facade's test targets after moving helpers into this crate.
+            vec![cargo(&[
+                "check",
+                "--locked",
+                "-p",
+                "rig",
+                "-p",
+                "rig-test-support",
+                "--tests",
+            ])],
         ),
         check(
             "default-tests",
@@ -117,17 +127,13 @@ pub(super) fn all() -> Vec<Check> {
                 "--retries",
                 "2",
                 "-E",
-                "not binary(macro_hygiene)",
+                "not binary(macro_hygiene) and not package(rig-verify) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))",
             ])],
         ),
-        // The ECS parity goldens as their own lane: every producer and world
-        // cell of the agent/ECS matrices (`corpus_*` / `ecs_*` on the root
-        // provider targets), the golden pairing guard, and rig-verify's
-        // replay of every golden through a world. A subset of default-tests
-        // by construction, named so the merge queue can require it and a
-        // failure reads as what it is: the two runtimes disagree, or a golden
-        // is stale (a field added to `rig_ecs::replay::spec_json` invalidates
-        // every native golden's policy hash).
+        // Root parity cells have one lane owner; default-tests excludes them.
+        // world_replay stays a separate target so bus-verification can exclude
+        // that replay without excluding other rig-verify coverage. Distinct
+        // feature/target runs (core-all, wasm, loom) remain separate coverage.
         check(
             "ecs-parity",
             vec![
@@ -137,6 +143,9 @@ pub(super) fn all() -> Vec<Check> {
                     "--locked",
                     "-p",
                     "rig",
+                    // Extracted ECS helper regressions retain this graph too.
+                    "-p",
+                    "rig-test-support",
                     "--features",
                     "bedrock",
                     // The same retries as `test`: a divergence or a stale
@@ -159,25 +168,24 @@ pub(super) fn all() -> Vec<Check> {
                     "--all-features",
                     "-E",
                     "binary(world_replay)",
+                    "--retries",
+                    "0",
                 ]),
-            ],
-        ),
-        check(
-            "scenario-registrations",
-            // Match default-tests' package/feature graph; narrowing to -p rig
-            // recompiles root binaries after the default-member sweep.
-            vec![Step::new(
-                "@registrations",
-                &[
+                // The default-member graph enables different dependency
+                // implementations (including JSON/allocator features). Keep
+                // that execution separately from the standalone root graph.
+                cargo(&[
                     "nextest",
-                    "list",
+                    "run",
                     "--locked",
                     "--features",
                     "bedrock",
-                    "--message-format",
-                    "json",
-                ],
-            )],
+                    "--retries",
+                    "2",
+                    "-E",
+                    "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-verify) and binary(world_replay))",
+                ]),
+            ],
         ),
         check(
             "core-all",
@@ -204,16 +212,43 @@ pub(super) fn all() -> Vec<Check> {
         ),
         check(
             "bus-verification",
-            vec![cargo(&[
-                "nextest",
-                "run",
-                "--locked",
-                "-p",
-                "rig-verify",
-                "--all-features",
-                "--retries",
-                "0",
-            ])],
+            vec![
+                cargo(&[
+                    "nextest",
+                    "run",
+                    "--locked",
+                    "-p",
+                    "rig-verify",
+                    "--all-features",
+                    "--retries",
+                    "0",
+                    "-E",
+                    "not binary(world_replay)",
+                ]),
+                // Preserve the former default sweep's dependency graph and
+                // retry policy. It is not equivalent to standalone rig-verify:
+                // serde_json ordering and float parsing use different code.
+                cargo(&[
+                    "nextest",
+                    "run",
+                    "--locked",
+                    "--features",
+                    "bedrock",
+                    "--retries",
+                    "2",
+                    "-E",
+                    "package(rig-verify) and not binary(world_replay)",
+                ]),
+                // Benchmarks retain a locked build owner without executing a measurement.
+                cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    "rig-ecs",
+                    "--bench",
+                    "run_assembly_cost",
+                ]),
+            ],
         ),
         check(
             "macro-hygiene",
@@ -316,8 +351,8 @@ pub(super) fn all() -> Vec<Check> {
         // full-tests compiles every workspace member's lib, bin, test and
         // example targets under the same feature set (Cargo's default `test`
         // target selection), clippy checks the default members' `--all-targets`,
-        // and no member declares a bench target. Keep it that way, or a bench
-        // in a non-default member needs a locked-version owner again.
+        // and every bench has an explicit locked compile-only owner, enforced
+        // by the verification planner tests.
         // Existing repository floor checker; new verification tooling is Rust.
         check(
             "dependency-floors",

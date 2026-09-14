@@ -14,7 +14,7 @@
     clippy::type_complexity
 )]
 
-mod run_support;
+use crate::run_support;
 
 use rig_core::serve::Dispatch;
 use std::time::Instant;

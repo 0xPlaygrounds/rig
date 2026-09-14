@@ -69,9 +69,7 @@
 //!   cells' refusal depends on it: `Program::host_serial` tells the replay
 //!   which policy the producer ran under (the log stays as it was).
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{NESTING, NestedChild, Nesting, Program};
 use rig_core::effect::EffectFamily;

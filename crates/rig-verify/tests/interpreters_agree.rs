@@ -12,8 +12,6 @@
 //! calls from a fixed set of two tools, always ending in text; 256 cases by
 //! default, under a second.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
 use std::time::Duration;
 
 use proptest::prelude::*;

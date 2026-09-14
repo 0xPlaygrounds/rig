@@ -18,257 +18,36 @@ fn wire(
     }
 }
 
-#[tokio::test]
-async fn multi_turn_unary() {
-    with_anthropic_cassette("checkpoint_matrix/multi_turn_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: None,
-            ..checkpoint::MULTI_TURN_UNARY
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_multi_turn_unary,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_unary_cut_1() {
-    with_anthropic_cassette("checkpoint_matrix/multi_turn_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(1),
-            ..checkpoint::MULTI_TURN_UNARY
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_multi_turn_unary,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_unary_cut_2() {
-    with_anthropic_cassette("checkpoint_matrix/multi_turn_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(2),
-            ..checkpoint::MULTI_TURN_UNARY
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_multi_turn_unary,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_unary_cut_3() {
-    with_anthropic_cassette("checkpoint_matrix/multi_turn_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(3),
-            ..checkpoint::MULTI_TURN_UNARY
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_multi_turn_unary,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_unary_cut_final() {
-    with_anthropic_cassette("checkpoint_matrix/multi_turn_unary", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(usize::MAX),
-            ..checkpoint::MULTI_TURN_UNARY
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_multi_turn_unary,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_streamed() {
-    with_anthropic_cassette(
-        "checkpoint_matrix/multi_turn_streamed",
-        |client| async move {
-            let cell = cells::Cell {
-                resume_after: None,
-                ..checkpoint::MULTI_TURN_STREAMED
-            };
-            crate::ecs_matrix::checkpoint_world::run_world(
-                &wire(&client),
-                &cell,
-                golden_anthropic_checkpoint_multi_turn_streamed,
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_streamed_cut_1() {
-    with_anthropic_cassette(
-        "checkpoint_matrix/multi_turn_streamed",
-        |client| async move {
-            let cell = cells::Cell {
-                resume_after: Some(1),
-                ..checkpoint::MULTI_TURN_STREAMED
-            };
-            crate::ecs_matrix::checkpoint_world::run_world(
-                &wire(&client),
-                &cell,
-                golden_anthropic_checkpoint_multi_turn_streamed,
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_streamed_cut_2() {
-    with_anthropic_cassette(
-        "checkpoint_matrix/multi_turn_streamed",
-        |client| async move {
-            let cell = cells::Cell {
-                resume_after: Some(2),
-                ..checkpoint::MULTI_TURN_STREAMED
-            };
-            crate::ecs_matrix::checkpoint_world::run_world(
-                &wire(&client),
-                &cell,
-                golden_anthropic_checkpoint_multi_turn_streamed,
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_streamed_cut_3() {
-    with_anthropic_cassette(
-        "checkpoint_matrix/multi_turn_streamed",
-        |client| async move {
-            let cell = cells::Cell {
-                resume_after: Some(3),
-                ..checkpoint::MULTI_TURN_STREAMED
-            };
-            crate::ecs_matrix::checkpoint_world::run_world(
-                &wire(&client),
-                &cell,
-                golden_anthropic_checkpoint_multi_turn_streamed,
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn multi_turn_streamed_cut_final() {
-    with_anthropic_cassette(
-        "checkpoint_matrix/multi_turn_streamed",
-        |client| async move {
-            let cell = cells::Cell {
-                resume_after: Some(usize::MAX),
-                ..checkpoint::MULTI_TURN_STREAMED
-            };
-            crate::ecs_matrix::checkpoint_world::run_world(
-                &wire(&client),
-                &cell,
-                golden_anthropic_checkpoint_multi_turn_streamed,
-            )
-            .await;
-        },
-    )
-    .await;
-}
-
-#[tokio::test]
-async fn parallel_batch() {
-    with_anthropic_cassette("checkpoint_matrix/parallel_batch", |client| async move {
-        let cell = cells::Cell {
-            resume_after: None,
-            ..checkpoint::PARALLEL_BATCH
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_parallel_batch,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn parallel_batch_cut_final() {
-    with_anthropic_cassette("checkpoint_matrix/parallel_batch", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(usize::MAX),
-            ..checkpoint::PARALLEL_BATCH
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_parallel_batch,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn large_result() {
-    with_anthropic_cassette("checkpoint_matrix/large_result", |client| async move {
-        let cell = cells::Cell {
-            resume_after: None,
-            ..checkpoint::LARGE_RESULT
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_large_result,
-        )
-        .await;
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn large_result_cut_final() {
-    with_anthropic_cassette("checkpoint_matrix/large_result", |client| async move {
-        let cell = cells::Cell {
-            resume_after: Some(usize::MAX),
-            ..checkpoint::LARGE_RESULT
-        };
-        crate::ecs_matrix::checkpoint_world::run_world(
-            &wire(&client),
-            &cell,
-            golden_anthropic_checkpoint_large_result,
-        )
-        .await;
-    })
-    .await;
+crate::matrix::resume_matrix! {
+    wrapper: with_anthropic_cassette, wire: wire, run: crate::ecs_matrix::checkpoint_world::run_world;
+    #[tokio::test]
+    multi_turn_unary: ("checkpoint_matrix/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, None, golden_anthropic_checkpoint_multi_turn_unary);
+    #[tokio::test]
+    multi_turn_unary_cut_1: ("checkpoint_matrix/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(1), golden_anthropic_checkpoint_multi_turn_unary);
+    #[tokio::test]
+    multi_turn_unary_cut_2: ("checkpoint_matrix/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(2), golden_anthropic_checkpoint_multi_turn_unary);
+    #[tokio::test]
+    multi_turn_unary_cut_3: ("checkpoint_matrix/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(3), golden_anthropic_checkpoint_multi_turn_unary);
+    #[tokio::test]
+    multi_turn_unary_cut_final: ("checkpoint_matrix/multi_turn_unary", checkpoint::MULTI_TURN_UNARY, Some(usize::MAX), golden_anthropic_checkpoint_multi_turn_unary);
+    #[tokio::test]
+    multi_turn_streamed: ("checkpoint_matrix/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, None, golden_anthropic_checkpoint_multi_turn_streamed);
+    #[tokio::test]
+    multi_turn_streamed_cut_1: ("checkpoint_matrix/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(1), golden_anthropic_checkpoint_multi_turn_streamed);
+    #[tokio::test]
+    multi_turn_streamed_cut_2: ("checkpoint_matrix/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(2), golden_anthropic_checkpoint_multi_turn_streamed);
+    #[tokio::test]
+    multi_turn_streamed_cut_3: ("checkpoint_matrix/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(3), golden_anthropic_checkpoint_multi_turn_streamed);
+    #[tokio::test]
+    multi_turn_streamed_cut_final: ("checkpoint_matrix/multi_turn_streamed", checkpoint::MULTI_TURN_STREAMED, Some(usize::MAX), golden_anthropic_checkpoint_multi_turn_streamed);
+    #[tokio::test]
+    parallel_batch: ("checkpoint_matrix/parallel_batch", checkpoint::PARALLEL_BATCH, None, golden_anthropic_checkpoint_parallel_batch);
+    #[tokio::test]
+    parallel_batch_cut_final: ("checkpoint_matrix/parallel_batch", checkpoint::PARALLEL_BATCH, Some(usize::MAX), golden_anthropic_checkpoint_parallel_batch);
+    #[tokio::test]
+    large_result: ("checkpoint_matrix/large_result", checkpoint::LARGE_RESULT, None, golden_anthropic_checkpoint_large_result);
+    #[tokio::test]
+    large_result_cut_final: ("checkpoint_matrix/large_result", checkpoint::LARGE_RESULT, Some(usize::MAX), golden_anthropic_checkpoint_large_result);
 }
 
 fn golden_anthropic_checkpoint_multi_turn_unary(log: &rig::effect_log::EffectLog) {

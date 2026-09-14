@@ -1,3 +1,5 @@
+#![forbid(unsafe_code)]
+
 //! The effect bus runtime: one channel between whoever needs an effect
 //! served and the handlers that serve it.
 //!

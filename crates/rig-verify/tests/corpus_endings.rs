@@ -82,9 +82,7 @@
 //! settled outcome was the error; the replay's hook of that name observes
 //! nothing (its state is not identity).
 
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
-mod corpus;
+use crate::corpus;
 
 use corpus::{
     CANCEL_ADD_DISPATCH, CANCEL_ADD_OUTCOME, CANCEL_ANSWER, Ending, Hook, Program, STOP_AFTER_TURN,

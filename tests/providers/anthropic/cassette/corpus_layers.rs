@@ -3,7 +3,7 @@
 //! hooks, over the hooks cells' own cassettes, so the records can be
 //! asserted byte-equal to the hook goldens' — a host's denial and a
 //! host's patch beneath the agent's, and a memory `Load` replaced by a
-//! layer. The layers are in `tests/common/goldens.rs`; the enumeration and
+//! layer. The layers are in `test-support/rig-test-support/src/goldens.rs`; the enumeration and
 //! the replays live in `crates/rig-verify/tests/corpus_layers.rs`.
 
 use rig::agent::AgentBuilder;

@@ -1,37 +1,26 @@
 # Agent/ECS regression comparisons
 
-[scenarios.json](scenarios.json) indexes original test registrations and their
-native ECS counterparts. It records classifications and configurations, plus a
-deduplicated inventory of referenced sources, helpers and fixtures. `ecs: null`
-means no native mapping is recorded. Shared-provider correspondences do not count
-as agent migrations. An ignored registration or a source outside the compiled
-configuration is not an executed test.
+Original/native correspondences live in executable tests and their shared
+helpers. Use a compiled nextest listing to locate a provider's test modules;
+a listed or ignored registration does not establish execution or parity.
+Models, prompts, budgets, tool definitions and expected values belong in the
+tests, not a second handwritten inventory.
 
-`cargo xtask check-ecs-scenarios` checks files and mapping structure. Supplying a
-fresh, unfiltered root nextest JSON listing also checks mapped registrations; see
-[the test guide](../README.md#agentecs-regression-scenarios). This is an index,
-not a result archive or a proof of exhaustive behavioral equivalence. Models,
-prompts, budgets, tool definitions and expected values belong in the tests and
-their shared helpers, not a second handwritten inventory.
+## Native identity expectations
 
-## The policy hash
+The native log's payload is compared to its original golden. Native-only
+metadata is pinned in `test-support/rig-test-support/src/ecs_goldens/identities.json`: every program's
+policy hash, the exact record-to-scope boundaries and exceptional dispatch IDs.
+Each program's required row is compared to the original header's required row.
+Consecutive IDs starting at zero are implicit. The compact data preserves empty
+programs and repeated scope blocks without duplicating requests and responses.
 
-Every native golden's header carries, per run, the hash of the agent's
-effective policy (`rig_ecs::replay::spec_json`: preamble, budgets, tool
-choice, output mode, the provider-retry budget, the bound descriptors, …).
-A field added to that JSON changes the hash of every native golden at once,
-and the world cells then diverge from their goldens with nothing else
-different. A PR that touches `spec_json` regenerates every `ecs_parity`
-golden in the same PR (`RIG_REGENERATE_GOLDEN=1` in replay mode over the
-`ecs_*` cells; the `policy` line is the only change) — and a PR based before
-such a change must rebase and regenerate before it merges: #2500 added
-`provider_retries`, #2501 was based before it and merged green on its own
-base, and `main` failed 491 world cells until #2503 regenerated them. The
-hash is a run-time value (it needs a bound world), so no static check can
-recompute it from a golden's header; the `ecs-parity` verify check and CI
-job (required on the merge queue once the `Protect main` ruleset requires
-it) is what catches it, and a local `cargo xtask verify --changed` selects
-it for any edit to rig-ecs, rig-agent or rig-core.
+Policy hashes cover `rig_ecs::replay::spec_json`, including budgets and bound
+descriptors. A deliberate policy change requires reviewing and updating its
+fixed expectations. Identity checks compare independently committed values;
+they do not derive the expected policy from the actual program under test.
+The pairing guard requires every identity entry to have a native consumer and
+every original golden to have exactly one original producer.
 
 ## Execution and comparison boundaries
 
@@ -43,7 +32,7 @@ execution. Preserve strict request matching, interaction consumption, propagated
 errors and teardown requirements as well as explicit assertions. Cassette replay
 does not establish an operating-system network barrier or live provider behavior.
 
-The helpers in [tests/common](../common) define the important boundaries:
+The helpers in [shared test drivers](../../test-support/rig-test-support/src) define the important boundaries:
 
 - `ecs_agent.rs` waits for actual settlement and a run result. Its success path
   rejects all public stream errors, including errors after a terminal or with
@@ -64,7 +53,7 @@ The helpers in [tests/common](../common) define the important boundaries:
   effect IDs bijectively by position, including parent and error references;
   parents must exist and precede children. Native records must have corresponding
   scoped program identities. Cross-runtime comparison omits those native-only
-  scopes/programs; separate native goldens retain them. Scheduling-dependent
+  scopes/programs; compact fixed expectations retain them and the native IDs. Scheduling-dependent
   delivery batches are excluded from stable golden equality. Requests, responses,
   usage, errors and positions, tool publications, descriptors, builder identity
   and causal relationships remain compared. These goldens do not certify
@@ -74,14 +63,12 @@ The helpers in [tests/common](../common) define the important boundaries:
   without changing actual serving policy. Declared policy names do not hash
   application implementation or establish its correctness.
 
-Keep HTTP recordings unchanged during ordinary regression runs. Derived native
-goldens are produced by real native execution against replayed HTTP, after the
-cross-runtime comparison succeeds. Do not handwrite them or normalize away a
-new semantic difference.
+Keep HTTP recordings and original goldens unchanged during ordinary regression
+runs. Never normalize away a new semantic difference to make parity pass.
 
 ## Family-specific obligations
 
-Locate each original/native source pair through the catalog. The table summarizes
+Locate each original/native source pair in the provider's test modules. The table summarizes
 the distinctions worth preserving when editing those tests; executable assertions
 and fixtures remain authoritative for case-specific values and configuration.
 
