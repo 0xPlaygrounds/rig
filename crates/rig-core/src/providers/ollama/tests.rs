@@ -1685,3 +1685,56 @@ fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses_and_mess
     assert_eq!(calls[1].id.explicit(), Some("tool-0"));
     assert!(calls[2].provider.is_none());
 }
+
+// ---------- OpenAI- and Anthropic-compatible clients ----------
+
+#[test]
+fn compat_clients_build_with_and_without_a_key() {
+    let http = || crate::test_utils::RecordingHttpClient::new("");
+    let _openai = OpenAiClient::new_with(Nothing, http()).expect("OpenAiClient::new_with(Nothing)");
+    let _openai_keyed = OpenAiClient::builder()
+        .api_key("secret")
+        .http_client(http())
+        .build()
+        .expect("OpenAiClient::builder()");
+    let _anthropic =
+        AnthropicClient::new_with(Nothing, http()).expect("AnthropicClient::new_with(Nothing)");
+    let _anthropic_keyed = AnthropicClient::builder()
+        .api_key("secret")
+        .http_client(http())
+        .build()
+        .expect("AnthropicClient::builder()");
+}
+
+#[test]
+fn openai_compat_base_url_adds_v1_once() {
+    assert_eq!(
+        openai_compat_base_url("http://localhost:11434"),
+        "http://localhost:11434/v1"
+    );
+    assert_eq!(
+        openai_compat_base_url("http://myhost:11434/"),
+        "http://myhost:11434/v1"
+    );
+    // Values that already carry the /v1 suffix must not be doubled.
+    assert_eq!(
+        openai_compat_base_url("http://myhost:11434/v1"),
+        "http://myhost:11434/v1"
+    );
+    assert_eq!(
+        openai_compat_base_url("http://myhost:11434/v1/"),
+        "http://myhost:11434/v1"
+    );
+}
+
+#[test]
+fn anthropic_key_header_is_absent_without_a_key() {
+    assert!(OllamaAnthropicKey::from("").into_header().is_none());
+    assert!(OllamaAnthropicKey::from(Nothing).into_header().is_none());
+    let (name, value) = OllamaAnthropicKey::from("secret")
+        .into_header()
+        .expect("header")
+        .expect("valid header value");
+    assert_eq!(name.as_str(), "x-api-key");
+    assert_eq!(value.to_str().ok(), Some("secret"));
+}
