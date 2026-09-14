@@ -1,6 +1,6 @@
 # Test Suites
 
-For the fast edit/check loop, run `cargo xtask verify --changed`. Before publishing, run `cargo xtask verify --pr --base <intended-base-ref>` and complete independent review and committed-head CI. See [development verification](../DEVELOPING.md) for modes, prerequisites, result invalidation, and measurements.
+Default to minimal relevant local checks, independent review, prompt authorized PR publication, and comprehensive GitHub CI. Choose a focused regression test or narrow compile check for code; documentation/instruction edits need diff and links/consistency review, not Rust suites. `cargo xtask verify --pr` and `--full` are optional for explicit requests or debugging. `--changed` is optional too: inspect its dry-run selection when it could expand broadly; shared inputs can select the full plan, so choose explicit small checks or CI instead. Do not install expensive CI-only prerequisites to publish. See [development verification](../DEVELOPING.md) for check selection, review, publication, and committed-head CI completion.
 
 Rig's root crate uses integration test targets under `tests/`.
 

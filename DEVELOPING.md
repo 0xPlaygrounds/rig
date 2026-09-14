@@ -1,15 +1,29 @@
 # Development verification
 
-One list of checks, `xtask/src/verify/checks.rs`, is the whole verification
-policy. CI runs each check in its own job with `cargo xtask verify --check
-<id>`; locally the planner selects from the same list by what changed.
+`xtask/src/verify/checks.rs` defines the available checks shared by CI and
+the optional local planner. The default workflow is minimal relevant local
+checks, prompt authorized publication, and comprehensive GitHub CI.
+
+Before publication, inspect the intended diff against its actual merge base,
+preserve unrelated changes, check formatting/whitespace as applicable, and run
+the smallest useful check for the changed behavior. A focused regression test
+or narrow compile check can suffice for code. For documentation or instructions,
+review the diff and links/consistency; do not run Rust compilation, full docs,
+or workspace tests merely because instructions changed.
+
+Select local checks by relevance and cost. Workspace-wide tests, all-features
+builds, every provider/example, full docs/doctests, WASM matrices, Docker suites,
+and dependency-floor checks belong in CI by default. Explain the concrete need
+before an expensive local check; do not invent hypothetical risks to justify
+a full local gate. Broad planner commands remain available for explicit requests
+or deliberate debugging, not routine publication prerequisites:
 
 ```sh
-cargo xtask verify --changed                       # the edit/check loop
-cargo xtask verify --changed --dry-run             # show the selection only
-cargo xtask verify --pr --base origin/feat/effect-bus   # before publishing a PR
-cargo xtask verify --full                          # everything, including the slow lanes
-cargo xtask verify --check core-all                # one check by id
+cargo xtask verify --changed --dry-run             # optional selection preview
+cargo xtask verify --changed                       # optional; only if selection is suitably small
+cargo xtask verify --pr --base origin/feat/effect-bus   # optional broad plan; use actual base
+cargo xtask verify --full                          # optional exhaustive verification
+cargo xtask verify --check core-all                # explicit check by id; assess its cost first
 ```
 
 Every selected check executes, every time; nothing is reused or recorded
@@ -28,6 +42,11 @@ doctests. Shared inputs (manifests, the lockfile, the toolchain, Cargo and
 nextest configuration, CI, xtask, scripts, test support, the facade source)
 and unknown files select the full plan rather than guessing. An edit only to
 this file selects nothing.
+
+`--changed` is optional, not a promise of cheap verification. Inspect its dry-run
+selection before using it when it might expand broadly. If shared inputs or
+other changes select the full plan, choose explicit small checks or leave
+comprehensive execution to CI rather than running the selected plan locally.
 
 `--pr` requires the intended base and selects every check the PR gate runs,
 plus two slow lanes when the diff touches their inputs:
@@ -60,6 +79,8 @@ storage suites, Node, wasm-bindgen-test-runner at the lock file's
 isolation tests. The planner
 probes for what the selected checks need before compiling anything; a missing
 tool is a failed run.
+Install only prerequisites needed for the small local checks you choose.
+Expensive CI-only prerequisites are not required to publish a PR.
 
 ## Hosted CI
 
@@ -112,11 +133,39 @@ nextest priority so they start first.
 
 ## PR completion
 
-Finish the implementation and review before the expensive final plan:
-inspect the complete diff against the actual merge base, run formatting and
-targeted checks, obtain an independent full-diff review and fix confirmed
-findings, then run `cargo xtask verify --pr --base <intended-base>` on the
-frozen tree. After a later fix, rerun the affected checks and the review.
-Publish only after that; then watch committed-head CI and review threads.
+Finish implementation, examples, tests, migration notes, and scope review.
+Inspect the complete intended diff against its actual merge base, including
+staged, unstaged, and relevant untracked files. Complete minimal relevant local
+checks and independent full-diff review before authorized publication.
+Validate findings; fix confirmed P0/P1 and in-scope lower-severity issues, or
+document why lower-severity findings should remain. After fixes, run useful
+targeted local checks and the final independent review; repeat the review/fix
+loop if new confirmed P0/P1 issues appear. Do not restart the full local suite
+after each fix or rerun unchanged checks without a concrete reason.
+
+Commit/push/open a non-draft PR promptly when the task authorizes it. Do not
+delay publication to duplicate CI locally. This policy does not independently
+authorize commits, pushes, PR creation, merging, or comments on PRs/issues.
+Do not comment on PRs/issues unless asked.
+
+After publication, inspect required checks on the current committed head and
+actionable review feedback. CI is the comprehensive verification gate before
+claiming fully verified or ready to merge. Confirm selected jobs cover the task's
+comprehensive acceptance criteria; report and address missing coverage within
+scope. Absent or skipped coverage is not successful verification. Preserve CI
+coverage, required checks, feature-isolation matrices, regression tests, and
+assertions; never disable jobs or skip failing checks to speed publication.
+Fix in-scope failures and feedback, run only useful targeted local checks, and
+push when authorized for CI verification. Report unrelated failures or missing
+prerequisites without broadening scope.
+
+Report publication and verification separately: “PR opened; CI pending” is a
+valid publication handoff. An ordinary request to open a PR does not require
+waiting for all CI; continue monitoring when the task asks for completion through
+CI. Do not claim fully verified or ready to merge with required checks pending
+or failing, confirmed P0/P1 findings, or unresolved required work. Keep the
+handoff concise: PR link, review findings, local checks actually run, CI status,
+and concrete blockers.
+
 Keep progress notes outside the repository. Generated release documents stay
 untouched (see AGENTS.md).

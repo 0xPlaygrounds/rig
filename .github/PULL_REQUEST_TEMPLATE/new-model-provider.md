@@ -29,7 +29,7 @@ Fixes # (issue)
 
 ## Testing
 
-Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce your results.
+Describe the minimal relevant local checks actually run and how to reproduce them. Report committed-head CI status separately; CI may be pending when opening the PR, but required checks and comprehensive acceptance coverage must pass before claiming fully verified or ready to merge. Broad local suites are optional; see [DEVELOPING.md](../../DEVELOPING.md).
 
 - [ ] Test A
 - [ ] Test B
@@ -41,7 +41,7 @@ Please describe the tests that you ran to verify your changes. Provide instructi
 - [ ] I have updated READMEs and Rust docs affected by this change
 - [ ] My changes generate no new warnings
 - [ ] I have added tests that prove my fix is effective or that my feature works
-- [ ] New and existing unit tests pass locally with my changes
+- [ ] I have completed minimal relevant local checks and reported their results separately from CI status
 - [ ] I've reviewed the provider API documentation and implemented the types of response accurately
 - [ ] I did not edit `CHANGELOG.md` or `MIGRATING.md` (they are generated at release)
 
