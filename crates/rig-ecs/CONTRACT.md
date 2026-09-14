@@ -576,8 +576,8 @@ promptly. Long-running work must be handed to host-owned bounded processing.
 No observer order is promised. If one removes the graph, the payload remains
 readable to the others; entity queries must tolerate absence. An observer that
 removes a sibling effect cannot suppress the sibling's already accepted batch:
-live collection and policy-visible replay both deliver every batch accepted in
-a pass before applying any outcome or cancellation. Collected items are
+live collection and policy-visible replay both capture every batch accepted in
+a pass, as an owned payload, before any observer runs. Collected items are
 delivered before normal outcome/terminal cleanup in the same quiescence update. Notifications do not mark progress, alter collection limits, or execute
 tools from incomplete arguments.
 

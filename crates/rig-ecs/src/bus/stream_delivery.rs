@@ -20,8 +20,8 @@ use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
 /// No observer ordering is promised. An observer may remove the owning graph;
 /// the payload and id remain readable, but entity queries must handle absence.
 /// Removing a sibling effect never suppresses that sibling's already accepted
-/// batch: live collection and policy-visible replay both deliver every batch
-/// accepted in a collection pass before any outcome or cancellation is applied.
+/// batch: live collection and policy-visible replay both capture every batch
+/// accepted in a pass, as an owned payload, before any observer runs.
 ///
 /// Live batches follow collection limits and readiness. Policy-visible replay
 /// preserves its recorded batches; ordinary cassette replay promises item order,
