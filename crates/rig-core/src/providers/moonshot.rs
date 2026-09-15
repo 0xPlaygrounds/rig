@@ -7,7 +7,7 @@
 //!
 //! let client = moonshot::Client::new("YOUR_API_KEY").expect("Failed to build client");
 //!
-//! let kimi_model = client.completion_model(moonshot::KIMI_K2_5);
+//! let kimi_model = client.completion_model(moonshot::KIMI_K3);
 //! ```
 //!
 //! # Custom base URL
@@ -119,14 +119,20 @@ const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
 // Moonshot Completion API
 // ================================================================
 
-/// Moonshot v1 128K context model (legacy)
-pub const MOONSHOT_CHAT: &str = "moonshot-v1-128k";
+// Model IDs follow <https://platform.kimi.ai/docs/models>, which also lists the
+// discontinued `moonshot-v1-*`, `kimi-k2*` and `kimi-k2.5` IDs.
 
-/// Kimi K2 — Mixture-of-Experts model (1T total params, 32B active)
-pub const KIMI_K2: &str = "kimi-k2";
+/// Kimi K3 — flagship multimodal model with a 1M-token context window.
+pub const KIMI_K3: &str = "kimi-k3";
 
-/// Kimi K2.5 — Native multimodal agentic model with 256K context
-pub const KIMI_K2_5: &str = "kimi-k2.5";
+/// Kimi K2.7 Code — coding-focused model with a 256K context window.
+pub const KIMI_K2_7_CODE: &str = "kimi-k2.7-code";
+
+/// Kimi K2.7 Code (high-speed) — faster-output variant of `kimi-k2.7-code`.
+pub const KIMI_K2_7_CODE_HIGHSPEED: &str = "kimi-k2.7-code-highspeed";
+
+/// Kimi K2.6 — general-purpose multimodal model with thinking and non-thinking modes, 256K context.
+pub const KIMI_K2_6: &str = "kimi-k2.6";
 
 /// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =

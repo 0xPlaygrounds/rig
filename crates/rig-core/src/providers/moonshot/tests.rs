@@ -118,7 +118,7 @@ fn moonshot_joins_multiple_reasoning_blocks_with_newline() {
 #[test]
 fn moonshot_specific_tool_choice_is_rejected() {
     let request = CompletionRequest {
-        model: Some("kimi-k2.5".to_string()),
+        model: Some("kimi-k3".to_string()),
         chat_history: vec![Message::user("Use a tool.")],
         documents: vec![],
         // A choice rides only beside an advertised tool: the Chat wire
@@ -139,7 +139,7 @@ fn moonshot_specific_tool_choice_is_rejected() {
     };
 
     let mut request = OpenAICompletionRequest::try_from(OpenAIRequestParams {
-        model: "kimi-k2.5".to_string(),
+        model: "kimi-k3".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
@@ -158,7 +158,7 @@ fn moonshot_specific_tool_choice_is_rejected() {
 #[test]
 fn moonshot_required_tool_choice_is_coerced() {
     let request = CompletionRequest {
-        model: Some("kimi-k2.5".to_string()),
+        model: Some("kimi-k3".to_string()),
         chat_history: vec![Message::user("Use a tool.")],
         documents: vec![],
         // A choice rides only beside an advertised tool: the Chat wire
@@ -176,7 +176,7 @@ fn moonshot_required_tool_choice_is_coerced() {
         record_telemetry_content: false,
     };
 
-    let body = prepared_body(request, "kimi-k2.5");
+    let body = prepared_body(request, "kimi-k3");
     assert_eq!(body["tool_choice"], "auto");
     assert_eq!(
         body["messages"]
