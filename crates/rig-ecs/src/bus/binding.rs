@@ -29,7 +29,7 @@ use rig_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use super::handlers::{Bound, HandlerTable, Handlers};
+use super::handlers::{Bound, Handler, Handlers};
 
 /// Which rig-core provider client a binding builds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect)]
@@ -580,19 +580,16 @@ pub fn materialize_bindings(world: &mut World) -> Result<MaterializeReport, Mate
         .iter(world)
         .map(|(entity, bound)| (entity, bound.key.clone()))
         .collect();
-    {
-        let table = world.non_send::<HandlerTable>();
-        for item in &mut pending {
-            // Served on this entity (a hand registration, an earlier
-            // materialization), or bound on another — served there (what
-            // `Handlers::bind` would re-serve instead of this entity) or
-            // not: the existing handler wins, whether or not this entity
-            // carries a `Bound` of its own.
-            item.taken = table.served(item.entity).is_some()
-                || bound
-                    .iter()
-                    .any(|(entity, key)| *entity != item.entity && key == &item.binding.key);
-        }
+    for item in &mut pending {
+        // Served on this entity (a hand registration, an earlier
+        // materialization), or bound on another — served there (what
+        // `Handlers::bind` would re-serve instead of this entity) or
+        // not: the existing handler wins, whether or not this entity
+        // carries a `Bound` of its own.
+        item.taken = world.get::<Handler>(item.entity).is_some()
+            || bound
+                .iter()
+                .any(|(entity, key)| *entity != item.entity && key == &item.binding.key);
     }
     pending.sort_by(|a, b| a.binding.key.cmp(&b.binding.key));
     let mut report = MaterializeReport::default();
@@ -684,7 +681,7 @@ pub fn materialize_bindings(world: &mut World) -> Result<MaterializeReport, Mate
     // what registered before the refusal is unserved again, and every
     // `Bound` inserted here is taken out or put back as the scene saved it.
     for (entity, _) in &plan {
-        world.non_send_mut::<HandlerTable>().remove(*entity);
+        world.entity_mut(*entity).remove::<Handler>();
         let saved = todo
             .iter()
             .find(|item| item.entity == *entity)

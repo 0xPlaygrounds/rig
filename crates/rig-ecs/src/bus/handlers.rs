@@ -1,7 +1,9 @@
 //! Handlers are entities: a [`Bound`] component (the key and the
-//! descriptor, serde) on an entity, and the erased handler in the world's
-//! [`HandlerTable`], keyed by that entity. The registry is a query over
-//! `Bound`; registration spawns, deregistration despawns.
+//! descriptor, serde) and the erased handler as a [`Handler`] component on
+//! the same entity. The registry is a query over `Bound`; [`HandlerIndex`]
+//! is the key → entity map its hooks maintain; registration spawns,
+//! deregistration despawns. An effect names the entity serving it with the
+//! [`ServedBy`] relationship, resolved once from the index.
 
 use bevy_reflect::Reflect;
 use std::{
@@ -11,7 +13,6 @@ use std::{
 };
 
 use bevy_ecs::{
-    lifecycle::Remove,
     prelude::*,
     system::{EntityCommands, SystemParam},
 };
@@ -27,7 +28,10 @@ use super::effect::{Answer, Asked, WorldEffect};
 /// What a handler entity is bound to: its key and its descriptor. The serde
 /// twin of the handler; what a scene saves and what a typed key is checked
 /// against. One per handler entity; a key is bound to at most one entity.
+/// Immutable: every change is an insert, so the hooks see every one and
+/// [`HandlerIndex`] is exact.
 #[derive(Component, Debug, Clone, Serialize, Deserialize, Reflect)]
+#[component(immutable, on_insert = index_bound, on_discard = unindex_bound)]
 #[reflect(Component)]
 pub struct Bound {
     /// The key the handler serves.
@@ -37,6 +41,78 @@ pub struct Bound {
     #[reflect(remote = crate::bus::reflect::HandlerDescriptorReflect)]
     pub descriptor: HandlerDescriptor,
 }
+
+/// The key → handler entity map, maintained by [`Bound`]'s hooks and read
+/// by `Dispatch` to resolve an effect's key to the entity serving it. Kept
+/// ahead of the hooks by [`Handlers`], so a registration is visible to the
+/// same borrow that made it.
+#[derive(Resource, Debug, Default)]
+pub struct HandlerIndex {
+    keys: HashMap<HandlerKey, (Entity, rig_core::effect::EffectFamily)>,
+}
+
+impl HandlerIndex {
+    /// The entity bound to `key`.
+    pub fn entity(&self, key: &HandlerKey) -> Option<Entity> {
+        self.keys.get(key).map(|(entity, _)| *entity)
+    }
+
+    /// Bound keys.
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+
+    /// Whether nothing is bound.
+    pub fn is_empty(&self) -> bool {
+        self.keys.is_empty()
+    }
+}
+
+fn index_bound(
+    mut world: bevy_ecs::world::DeferredWorld<'_>,
+    context: bevy_ecs::lifecycle::HookContext,
+) {
+    let Some(bound) = world.get::<Bound>(context.entity) else {
+        return;
+    };
+    let (key, family) = (bound.key.clone(), bound.family());
+    if let Some(mut index) = world.get_resource_mut::<HandlerIndex>() {
+        index.keys.insert(key, (context.entity, family));
+    }
+}
+
+fn unindex_bound(
+    mut world: bevy_ecs::world::DeferredWorld<'_>,
+    context: bevy_ecs::lifecycle::HookContext,
+) {
+    let Some(bound) = world.get::<Bound>(context.entity) else {
+        return;
+    };
+    let key = bound.key.clone();
+    if let Some(mut index) = world.get_resource_mut::<HandlerIndex>()
+        && index
+            .keys
+            .get(&key)
+            .is_some_and(|(entity, _)| *entity == context.entity)
+    {
+        index.keys.remove(&key);
+    }
+}
+
+/// The handler entity serving an effect: resolved by `Dispatch` from the
+/// effect's key through [`HandlerIndex`], or set at spawn by a system that
+/// already holds the entity. Serial serving and reentrancy are queries
+/// over it and [`Serves`].
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[relationship(relationship_target = Serves)]
+#[reflect(Component)]
+pub struct ServedBy(pub Entity);
+
+/// The effects a handler entity serves or served.
+#[derive(Component, Debug, Default, Reflect)]
+#[relationship_target(relationship = ServedBy)]
+#[reflect(Component)]
+pub struct Serves(Vec<Entity>);
 
 impl Bound {
     /// The family the handler serves.
@@ -176,76 +252,74 @@ pub fn answered<E: WorldEffect>(
         .insert(super::effect::WorldOutcome::new(outcome));
 }
 
-/// The world's erased handlers, keyed by their [`Bound`] entity. `NonSend`
-/// on every target, by spelling: an [`ErasedHandler`] is `!Send` on browser
-/// wasm (a provider client there is), and one spelling on both targets
-/// beats a fork. Systems that dispatch or register therefore run on the
-/// main thread; nothing else needs the table.
+/// The erased handler, on its entity. Native only: an [`ErasedHandler`] is
+/// `Send + Sync` there; on wasm it is `!Send` and lives in [`HandlerTable`].
+#[cfg(not(target_family = "wasm"))]
+#[derive(Component)]
+pub struct Handler(pub Served);
+
+/// The marker of a handler held for the entity in the world's non-send
+/// [`HandlerTable`].
+#[cfg(target_family = "wasm")]
+#[derive(Component)]
+pub struct Handler;
+
+/// The world's erased handlers on wasm, keyed by their [`Bound`] entity: an
+/// [`ErasedHandler`] is `!Send` there and cannot be a component.
+#[cfg(target_family = "wasm")]
 #[derive(Default)]
 pub struct HandlerTable {
     served: HashMap<Entity, Served>,
-    /// The `E`s whose answer observer is installed.
-    world_kinds: HashSet<TypeId>,
-    /// The key each served entity is bound to: what `bind` consults for a
-    /// registration made earlier in the same system, whose `Bound` the
-    /// query cannot see yet (commands are deferred).
-    keys: HashMap<HandlerKey, Entity>,
-    /// Removed logically, but still visible to queries until deferred
-    /// despawns run. These entities must never be rebound or removed twice.
-    pending_despawns: HashSet<Entity>,
 }
 
-impl HandlerTable {
+/// A `Handler` component removed — a deregistration, a despawn — takes the
+/// handler out of the wasm table with it.
+#[cfg(target_family = "wasm")]
+pub fn unbound(removed: On<Remove, Handler>, mut table: NonSendMut<HandlerTable>) {
+    table.served.remove(&removed.event().entity);
+}
+
+/// How handler entities are served: the [`Handler`] components on native,
+/// the non-send table on wasm. One code path for `Dispatch` on both.
+#[derive(SystemParam)]
+pub struct Registry<'w, 's> {
+    #[cfg(not(target_family = "wasm"))]
+    handlers: Query<'w, 's, &'static Handler>,
+    #[cfg(target_family = "wasm")]
+    table: NonSend<'w, HandlerTable>,
+    #[cfg(target_family = "wasm")]
+    _marker: std::marker::PhantomData<&'s ()>,
+}
+
+impl Registry<'_, '_> {
     /// How the handler entity `entity` is served, if it is bound.
     pub fn served(&self, entity: Entity) -> Option<&Served> {
-        self.served.get(&entity)
+        #[cfg(not(target_family = "wasm"))]
+        {
+            self.handlers.get(entity).ok().map(|handler| &handler.0)
+        }
+        #[cfg(target_family = "wasm")]
+        {
+            self.table.served.get(&entity)
+        }
     }
-
-    /// Bound handler entities.
-    pub fn len(&self) -> usize {
-        self.served.len()
-    }
-
-    /// Whether nothing is bound.
-    pub fn is_empty(&self) -> bool {
-        self.served.is_empty()
-    }
-
-    /// Forget `entity`'s handler: the `Bound` removal observer's call.
-    pub fn remove(&mut self, entity: Entity) -> Option<Served> {
-        self.keys.retain(|_, bound| *bound != entity);
-        self.served.remove(&entity)
-    }
-}
-
-/// A `Bound` component removed — a deregistration, a despawn — takes the
-/// handler out of the table with it.
-pub fn unbound(
-    removed: On<Remove, Bound>,
-    mut table: NonSendMut<HandlerTable>,
-    mut commands: Commands,
-) {
-    let entity = removed.event().entity;
-    table.remove(entity);
-    // Remove observers still see the old Bound. Keep it excluded while
-    // other observers register replacements; cleanup runs after removal.
-    table.pending_despawns.insert(entity);
-    commands.queue(move |world: &mut World| {
-        world
-            .non_send_mut::<HandlerTable>()
-            .pending_despawns
-            .remove(&entity);
-    });
 }
 
 /// Register and deregister handlers from a system: the registry API over
-/// handler entities. Main-thread only ([`HandlerTable`] is `NonSend`).
+/// handler entities.
 #[derive(SystemParam)]
 pub struct Handlers<'w, 's> {
     commands: Commands<'w, 's>,
+    index: ResMut<'w, HandlerIndex>,
+    world_kinds: ResMut<'w, WorldKinds>,
+    bound: Query<'w, 's, &'static Bound>,
+    #[cfg(target_family = "wasm")]
     table: NonSendMut<'w, HandlerTable>,
-    bound: Query<'w, 's, (Entity, &'static Bound)>,
 }
+
+/// The `E`s whose answer observer is installed.
+#[derive(Resource, Default)]
+pub struct WorldKinds(HashSet<TypeId>);
 
 impl Handlers<'_, '_> {
     /// Install or clear the world's validated replay delivery plan.
@@ -344,7 +418,7 @@ impl Handlers<'_, '_> {
         let key = key.into();
         let descriptor = WorldHandler::<E>::descriptor(key.clone());
         let entity = self.bind(key, descriptor, WorldHandler::<E>::served())?;
-        if self.table.world_kinds.insert(TypeId::of::<E>()) {
+        if self.world_kinds.0.insert(TypeId::of::<E>()) {
             self.commands.add_observer(answered::<E>);
         }
         Ok(entity)
@@ -386,50 +460,8 @@ impl Handlers<'_, '_> {
         served: Served,
     ) -> Result<Entity, ErrorReport> {
         let family = descriptor.family.family();
-        let known = self
-            .table
-            .keys
-            .get(&key)
-            .copied()
-            .and_then(|entity| {
-                self.bound
-                    .get(entity)
-                    .ok()
-                    .map(|(_, bound)| (entity, bound.clone()))
-            })
-            .or_else(|| {
-                self.bound
-                    .iter()
-                    .find(|(entity, bound)| {
-                        bound.key == key && !self.table.pending_despawns.contains(entity)
-                    })
-                    .map(|(entity, bound)| (entity, bound.clone()))
-            });
-        // A registration earlier in this borrow, not yet a `Bound` the query
-        // can see: the table knows its entity and its family.
-        let known = known.or_else(|| {
-            self.table.keys.get(&key).copied().and_then(|entity| {
-                self.table.served.get(&entity).map(|served| {
-                    let family = match served {
-                        Served::Task(handler) => handler.descriptor().family,
-                        Served::World(world) => (*world.family).clone(),
-                    };
-                    (
-                        entity,
-                        Bound {
-                            key: key.clone(),
-                            descriptor: HandlerDescriptor {
-                                key: key.clone(),
-                                family,
-                                layers: Vec::new(),
-                            },
-                        },
-                    )
-                })
-            })
-        });
-        let entity = match known {
-            Some((entity, bound)) if bound.family() == family => {
+        let entity = match self.index.keys.get(&key).copied() {
+            Some((entity, bound)) if bound == family => {
                 self.commands.entity(entity).insert(Bound {
                     key: key.clone(),
                     descriptor,
@@ -440,8 +472,7 @@ impl Handlers<'_, '_> {
                 return Err(ErrorReport::new(
                     ErrorKind::HandlerUnavailable,
                     format!(
-                        "`{key}` is bound to a {} handler; a {family} handler cannot take its place while it is bound — deregister it first",
-                        bound.family()
+                        "`{key}` is bound to a {bound} handler; a {family} handler cannot take its place while it is bound — deregister it first"
                     ),
                 ));
             }
@@ -453,26 +484,26 @@ impl Handlers<'_, '_> {
                 })
                 .id(),
         };
-        self.table.keys.insert(key, entity);
-        self.table.served.insert(entity, served);
+        self.index.keys.insert(key, (entity, family));
+        self.serve(entity, served);
         Ok(entity)
+    }
+
+    fn serve(&mut self, entity: Entity, served: Served) {
+        #[cfg(not(target_family = "wasm"))]
+        self.commands.entity(entity).insert(Handler(served));
+        #[cfg(target_family = "wasm")]
+        {
+            self.table.served.insert(entity, served);
+            self.commands.entity(entity).insert(Handler);
+        }
     }
 
     /// Remove the handler bound to `key`: its entity despawns. Returns
     /// whether one was bound.
     pub fn deregister(&mut self, key: &HandlerKey) -> bool {
-        let entity = self.table.keys.get(key).copied().or_else(|| {
-            self.bound
-                .iter()
-                .find(|(entity, bound)| {
-                    &bound.key == key && !self.table.pending_despawns.contains(entity)
-                })
-                .map(|(entity, _)| entity)
-        });
-        match entity {
-            Some(entity) => {
-                self.table.remove(entity);
-                self.table.pending_despawns.insert(entity);
+        match self.index.keys.remove(key) {
+            Some((entity, _)) => {
                 self.commands.entity(entity).despawn();
                 true
             }
@@ -480,21 +511,23 @@ impl Handlers<'_, '_> {
         }
     }
 
+    /// The handler entity bound to `key`.
+    pub fn entity(&self, key: &HandlerKey) -> Option<Entity> {
+        self.index.entity(key)
+    }
+
     /// The descriptor bound to `key`.
     pub fn descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
+        let entity = self.index.entity(key)?;
         self.bound
-            .iter()
-            .find(|(_, bound)| &bound.key == key)
-            .map(|(_, bound)| bound.descriptor.clone())
+            .get(entity)
+            .ok()
+            .map(|bound| bound.descriptor.clone())
     }
 
     /// Every bound key.
     pub fn keys(&self) -> Vec<HandlerKey> {
-        let mut keys: Vec<HandlerKey> = self
-            .bound
-            .iter()
-            .map(|(_, bound)| bound.key.clone())
-            .collect();
+        let mut keys: Vec<HandlerKey> = self.bound.iter().map(|bound| bound.key.clone()).collect();
         keys.sort();
         keys
     }
@@ -504,7 +537,7 @@ impl Handlers<'_, '_> {
         let mut described: Vec<HandlerDescriptor> = self
             .bound
             .iter()
-            .map(|(_, bound)| bound.descriptor.clone())
+            .map(|bound| bound.descriptor.clone())
             .collect();
         described.sort_by(|a, b| a.key.cmp(&b.key));
         described

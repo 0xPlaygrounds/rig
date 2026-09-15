@@ -21,7 +21,7 @@ use super::{
     collect::{collect_streams, collect_tasks, settle},
     dispatch::dispatch,
     effect::{IdCounter, SeqCounter, WorldOutcomeCounter},
-    handlers::{HandlerTable, unbound},
+    handlers::{HandlerIndex, WorldKinds},
     record::{DeliveryBatch, begin_delivery_pass, record_bound, record_cancelled, record_outcome},
 };
 
@@ -234,13 +234,15 @@ impl BusPlugin {
         world.init_resource::<IdCounter>();
         world.init_resource::<DeliveryBatch>();
         world.init_resource::<WorldOutcomeCounter>();
-        world.init_non_send::<HandlerTable>();
+        world.init_resource::<HandlerIndex>();
+        world.init_resource::<WorldKinds>();
         #[cfg(target_family = "wasm")]
         {
             world.init_non_send::<super::effect::Executions>();
+            world.init_non_send::<super::handlers::HandlerTable>();
             world.add_observer(super::effect::drop_execution);
+            world.add_observer(super::handlers::unbound);
         }
-        world.add_observer(unbound);
         world.add_observer(record_outcome);
         world.add_observer(record_cancelled);
         world.add_observer(super::record::witness_cancelled);

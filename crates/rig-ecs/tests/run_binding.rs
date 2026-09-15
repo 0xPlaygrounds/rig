@@ -39,7 +39,7 @@ use rig_core::{
 use rig_ecs::{
     agent::scene::{SceneBinding, WorldScene, load_world, save_world},
     bus::{
-        Bound, CredentialRef, EffectLogResource, EffectOutcome, HandlerTable, Handlers,
+        Bound, CredentialRef, EffectLogResource, EffectOutcome, Handler, Handlers,
         MaterializeError, MaterializeFailed, MaterializeReport, Materializer, PendingEffect,
         ProviderBinding, ProviderKind, Replay, Secret,
     },
@@ -99,6 +99,11 @@ fn panicking_materializer() -> Materializer {
     )
 }
 
+/// How many handler entities are served.
+fn served(world: &mut World) -> usize {
+    world.query::<&Handler>().iter(world).count()
+}
+
 #[test]
 fn a_binding_round_trips_verbatim() {
     let binding = binding(ProviderKind::Anthropic)
@@ -144,12 +149,7 @@ fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
             .get::<Bound>(entity)
             .unwrap_or_else(|| panic!("{kind}: bound"));
         assert_eq!(bound.key, HandlerKey::from(KEY));
-        assert!(
-            app.world()
-                .non_send::<HandlerTable>()
-                .served(entity)
-                .is_some()
-        );
+        assert!(app.world().get::<Handler>(entity).is_some());
         // The descriptor is the one `CompletionAdapter::new("default", model)`
         // registered by hand under the key would produce.
         let by_hand: ErasedHandler = {
@@ -317,7 +317,7 @@ fn materialization_is_all_or_nothing() {
         "the good binding was not registered"
     );
     assert!(app.world().get::<Bound>(bad).is_none());
-    assert!(app.world().non_send::<HandlerTable>().is_empty());
+    assert!(served(app.world_mut()) == 0);
     // The one client that was built before the refusal is dropped, unserved.
     assert!(built.load(Ordering::SeqCst) <= 1);
     // Fixing the reference materializes both.
@@ -328,7 +328,7 @@ fn materialization_is_all_or_nothing() {
         .credential = CredentialRef::new("cassette");
     let report = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
     assert_eq!(report.materialized.len(), 2);
-    assert_eq!(app.world().non_send::<HandlerTable>().len(), 2);
+    assert_eq!(served(app.world_mut()), 2);
 }
 
 #[test]
@@ -439,7 +439,7 @@ fn refusals_are_deterministic_and_register_nothing() {
             key: HandlerKey::from(KEY)
         }
     );
-    assert!(app.world().non_send::<HandlerTable>().is_empty());
+    assert!(served(app.world_mut()) == 0);
     app.world_mut().entity_mut(second).despawn();
     // Foreign extra params.
     app.world_mut()
@@ -455,7 +455,7 @@ fn refusals_are_deterministic_and_register_nothing() {
         }
         other => panic!("{other:?}"),
     }
-    assert!(app.world().non_send::<HandlerTable>().is_empty());
+    assert!(served(app.world_mut()) == 0);
     assert_eq!(
         built.load(Ordering::SeqCst),
         0,
@@ -618,10 +618,7 @@ fn a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
     assert_eq!(restored.descriptor, saved);
     assert_eq!(restored_binding, binding(ProviderKind::Anthropic));
     assert!(
-        app.world()
-            .non_send::<HandlerTable>()
-            .served(entity)
-            .is_none(),
+        app.world().get::<Handler>(entity).is_none(),
         "bound, not served: the load built no client"
     );
     let unbound = app
@@ -654,10 +651,7 @@ fn a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
     assert_eq!(built.load(Ordering::SeqCst), 2);
     assert_eq!(app.world().get::<Bound>(entity).unwrap().descriptor, saved);
     assert!(
-        app.world()
-            .non_send::<HandlerTable>()
-            .served(entity)
-            .is_some(),
+        app.world().get::<Handler>(entity).is_some(),
         "the binding's entity is the handler entity"
     );
     let effect = app
@@ -778,7 +772,7 @@ fn a_loaded_binding_that_would_build_another_descriptor_is_refused() {
         }
         other => panic!("{other:?}"),
     }
-    assert!(app.world().non_send::<HandlerTable>().is_empty());
+    assert!(served(app.world_mut()) == 0);
 }
 
 #[test]
@@ -794,7 +788,7 @@ fn the_materialize_system_reports_through_the_resource() {
     app.world_mut().insert_resource(materializer);
     rig_ecs::bus::materialize(app.world_mut());
     assert!(app.world().get_resource::<MaterializeFailed>().is_none());
-    assert_eq!(app.world().non_send::<HandlerTable>().len(), 1);
+    assert_eq!(served(app.world_mut()), 1);
 }
 
 #[test]
@@ -829,14 +823,17 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
         }
     );
     {
-        let table = app.world().non_send::<HandlerTable>();
-        assert!(table.served(by_hand).is_some(), "the host's handler stays");
+        let world = app.world();
         assert!(
-            table.served(loaded).is_none(),
+            world.get::<Handler>(by_hand).is_some(),
+            "the host's handler stays"
+        );
+        assert!(
+            world.get::<Handler>(loaded).is_none(),
             "the loaded entity is not served"
         );
-        assert_eq!(table.len(), 1);
     }
+    assert_eq!(served(app.world_mut()), 1);
     let bound = app.world().get::<Bound>(loaded).unwrap();
     assert_eq!(
         bound.descriptor, saved.descriptor,
@@ -891,10 +888,13 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
     assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
     assert!(report.materialized.is_empty());
     {
-        let table = replay.world().non_send::<HandlerTable>();
-        assert!(table.served(replayer).is_some(), "the replayer stays");
-        assert!(table.served(loaded).is_none());
-        assert_eq!(table.len(), 1);
+        let world = replay.world();
+        assert!(
+            world.get::<Handler>(replayer).is_some(),
+            "the replayer stays"
+        );
+        assert!(world.get::<Handler>(loaded).is_none());
+        assert_eq!(served(replay.world_mut()), 1);
     }
 
     // Another entity merely holds the key in a `Bound` nothing serves: kept
@@ -908,7 +908,7 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
         .id();
     let report = rig_ecs::bus::materialize_bindings(fresh.world_mut()).unwrap();
     assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
-    assert!(fresh.world().non_send::<HandlerTable>().is_empty());
+    assert!(served(fresh.world_mut()) == 0);
     assert_eq!(
         fresh.world().get::<Bound>(holder).unwrap().descriptor,
         saved.descriptor
@@ -991,14 +991,16 @@ fn a_key_bound_to_another_family_is_kept_beside_a_good_binding() {
         1,
         "one client, for the good one"
     );
-    let table = app.world().non_send::<HandlerTable>();
-    assert!(table.served(good).is_some());
-    assert!(table.served(tool).is_some(), "the tool stays served");
+    assert!(app.world().get::<Handler>(good).is_some());
     assert!(
-        table.served(clashing).is_none(),
+        app.world().get::<Handler>(tool).is_some(),
+        "the tool stays served"
+    );
+    assert!(
+        app.world().get::<Handler>(clashing).is_none(),
         "the clashing binding is not served"
     );
-    assert_eq!(table.len(), 2);
+    assert_eq!(served(app.world_mut()), 2);
     assert_eq!(app.world().get::<Bound>(good).unwrap().key, good_key);
     assert_eq!(
         app.world().get::<Bound>(clashing).unwrap().descriptor,

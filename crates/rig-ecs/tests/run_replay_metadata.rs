@@ -59,6 +59,13 @@ fn bound(world: &mut World, key: &str) -> Entity {
         .0
 }
 
+/// Edit an immutable `Bound`: take it, change it, put it back.
+fn rebind(world: &mut World, entity: Entity, edit: impl FnOnce(&mut Bound)) {
+    let mut bound = world.entity_mut(entity).take::<Bound>().unwrap();
+    edit(&mut bound);
+    world.entity_mut(entity).insert(bound);
+}
+
 #[test]
 fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     let mut live = app();
@@ -117,19 +124,14 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
             capabilities: ProviderCapabilities::default(),
         },
     ] {
-        replay
-            .world_mut()
-            .get_mut::<Bound>(model)
-            .unwrap()
-            .descriptor
-            .family = family;
+        rebind(replay.world_mut(), model, |bound| {
+            bound.descriptor.family = family
+        });
         assert!(check_replayable(replay.world_mut(), run, &log).is_err());
     }
-    replay
-        .world_mut()
-        .get_mut::<Bound>(model)
-        .unwrap()
-        .descriptor = original;
+    rebind(replay.world_mut(), model, |bound| {
+        bound.descriptor = original
+    });
     replay
         .world_mut()
         .entity_mut(run)
@@ -142,42 +144,28 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
         .insert(PolicyVersion("changed".into()));
     assert!(check_replayable(replay.world_mut(), run, &log).is_err());
     replay.world_mut().entity_mut(run).remove::<PolicyVersion>();
-    replay
-        .world_mut()
-        .get_mut::<Bound>(model)
-        .unwrap()
-        .descriptor
-        .layers
-        .push("different-layer".into());
+    rebind(replay.world_mut(), model, |bound| {
+        bound.descriptor.layers.push("different-layer".into())
+    });
     assert!(check_replayable(replay.world_mut(), run, &log).is_err());
-    replay
-        .world_mut()
-        .get_mut::<Bound>(model)
-        .unwrap()
-        .descriptor
-        .layers
-        .clear();
+    rebind(replay.world_mut(), model, |bound| {
+        bound.descriptor.layers.clear()
+    });
     let tool_descriptor = replay
         .world()
         .get::<Bound>(tool)
         .unwrap()
         .descriptor
         .clone();
-    if let FamilyDescriptor::Tool { parameters, .. } = &mut replay
-        .world_mut()
-        .get_mut::<Bound>(tool)
-        .unwrap()
-        .descriptor
-        .family
-    {
-        *parameters = serde_json::json!({"type": "object", "required": ["new_argument"]});
-    }
+    rebind(replay.world_mut(), tool, |bound| {
+        if let FamilyDescriptor::Tool { parameters, .. } = &mut bound.descriptor.family {
+            *parameters = serde_json::json!({"type": "object", "required": ["new_argument"]});
+        }
+    });
     assert!(check_replayable(replay.world_mut(), run, &log).is_err());
-    replay
-        .world_mut()
-        .get_mut::<Bound>(tool)
-        .unwrap()
-        .descriptor = tool_descriptor;
+    rebind(replay.world_mut(), tool, |bound| {
+        bound.descriptor = tool_descriptor
+    });
     check_replayable(replay.world_mut(), run, &log).unwrap();
     tick_until(&mut replay, "replay terminal", |world| {
         world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()

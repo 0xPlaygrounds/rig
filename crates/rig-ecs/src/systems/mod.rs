@@ -56,7 +56,7 @@ use crate::{
         ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
-        Bound, BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, Scope,
+        Bound, BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, Scope, ServedBy,
         Streamed as BusStreamed, ToolInputs,
     },
     policy::{self, RequestGraph},
@@ -1259,8 +1259,9 @@ pub fn assemble(
             continue;
         };
         let agent = *agent;
-        let model_bound = model.and_then(|UsesModel(model)| bound.get(*model).ok());
-        let Some(model_bound) = model_bound else {
+        let model_entity = model.map(|UsesModel(model)| *model);
+        let model_bound = model_entity.and_then(|model| bound.get(model).ok());
+        let Some((model_entity, model_bound)) = model_entity.zip(model_bound) else {
             commands.entity(run).phase::<Assembling>(Failed(Failure::Provider(
                 rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::HandlerUnavailable,
                     "the run has no bound completion model; its selected model or its agent's binding was removed"),
@@ -1632,6 +1633,7 @@ pub fn assemble(
                     stream: *stream,
                 },
             ),
+            ServedBy(model_entity),
             ChildOf(turn),
         ));
         commands
@@ -2048,13 +2050,16 @@ pub fn materialise(
         let agent = *agent;
         let tool_choice = setting(run, agent, &choices).and_then(|c| c.0.clone());
 
-        // The tools this turn advertised, by name, with their keys.
-        let mut granted: Vec<(String, rig_core::effect::HandlerKey)> =
+        // The tools this turn advertised, by name, with their keys and
+        // their handler entities.
+        let mut granted: Vec<(String, rig_core::effect::HandlerKey, Option<Entity>)> =
             links_in_order(turn, &children, &adverts)
                 .into_iter()
-                .filter_map(|Advert(tool)| bound.get(*tool).ok())
-                .filter_map(|bound| match &bound.descriptor.family {
-                    FamilyDescriptor::Tool { name, .. } => Some((name.clone(), bound.key.clone())),
+                .filter_map(|Advert(tool)| bound.get(*tool).ok().map(|bound| (*tool, bound)))
+                .filter_map(|(tool, bound)| match &bound.descriptor.family {
+                    FamilyDescriptor::Tool { name, .. } => {
+                        Some((name.clone(), bound.key.clone(), Some(tool)))
+                    }
                     FamilyDescriptor::Completion { .. }
                     | FamilyDescriptor::Embed { .. }
                     | FamilyDescriptor::Rerank { .. }
@@ -2067,7 +2072,7 @@ pub fn materialise(
         if let Some(executable) = access.and_then(|access| access.executable.as_ref()) {
             granted = executable
                 .iter()
-                .map(|(name, key)| (name.clone(), key.clone()))
+                .map(|(name, key)| (name.clone(), key.clone(), None))
                 .collect();
         }
         let output_tool = minted.0.as_deref();
@@ -2159,7 +2164,7 @@ pub fn materialise(
                         .map(|streamed| streamed.events.as_slice());
                     let allowed_names: Vec<String> = granted
                         .iter()
-                        .map(|(name, _)| name.clone())
+                        .map(|(name, _, _)| name.clone())
                         .chain(output_tool.map(str::to_owned))
                         .collect();
                     let (content, diagnostic_id) =
@@ -2345,7 +2350,9 @@ pub fn materialise(
             .iter()
             .copied()
             .filter(|call| {
-                (!granted.iter().any(|(name, _)| *name == call.function.name)
+                (!granted
+                    .iter()
+                    .any(|(name, _, _)| *name == call.function.name)
                     || access
                         .and_then(|access| access.allowed.as_ref())
                         .is_some_and(|allowed| !allowed.contains(&call.function.name)))
@@ -2408,16 +2415,17 @@ pub fn materialise(
             usize,
             &rig_core::completion::message::ToolCall,
             rig_core::effect::HandlerKey,
+            Option<Entity>,
         )> = calls
             .iter()
             .filter_map(|call| {
                 granted
                     .iter()
-                    .find(|(name, _)| *name == call.function.name)
-                    .map(|(_, key)| (*call, key.clone()))
+                    .find(|(name, _, _)| *name == call.function.name)
+                    .map(|(_, key, handler)| (*call, key.clone(), *handler))
             })
             .enumerate()
-            .map(|(index, (call, key))| (index, call, key))
+            .map(|(index, (call, key, handler))| (index, call, key, handler))
             .collect();
         if !batch.is_empty() {
             let concurrency = setting(run, agent, &tool_policies)
@@ -2427,7 +2435,7 @@ pub fn materialise(
                 .map(|spec| spec.0.for_dispatch())
                 .unwrap_or_default();
             let count = batch.len();
-            for (index, call, key) in batch {
+            for (index, call, key, handler) in batch {
                 let mut effect = commands.spawn((
                     PendingEffect::new(
                         key,
@@ -2445,6 +2453,9 @@ pub fn materialise(
                     },
                     ChildOf(turn),
                 ));
+                if let Some(handler) = handler {
+                    effect.insert(ServedBy(handler));
+                }
                 if index >= concurrency {
                     effect.insert(BatchHeld);
                     let entity = effect.id();

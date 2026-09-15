@@ -1,10 +1,9 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
 use rig_core::{effect::EffectId, streaming::UnknownPayload};
-use std::sync::{
-    Arc,
-    atomic::{AtomicUsize, Ordering},
-};
+use std::sync::Arc;
+#[cfg(not(target_family = "wasm"))]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(not(target_family = "wasm"))]
 struct Dropped(Arc<AtomicUsize>);
