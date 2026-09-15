@@ -1,14 +1,21 @@
-//! Content graph scene remapping and asset validation before destination mutation.
-use bevy_ecs::prelude::*;
-use rig_core::message::{DocumentSourceKind, Image, UserContent};
-use rig_ecs::agent::content::{binary::*, parts::*};
-use rig_ecs::agent::{
-    MessageParts, Utterance,
-    scene::{RunScene, SceneKind},
-};
+//! Content graph checkpoints: the binary store travels once per payload,
+//! every part is remapped to its utterance, and a bad store or a bad graph
+//! is refused before the destination is touched.
+use std::any::type_name;
 
+use bevy_ecs::prelude::*;
+use rig_core::{
+    error::ErrorKind,
+    message::{DocumentSourceKind, Image, UserContent},
+};
+use rig_ecs::agent::content::{binary::*, parts::*};
+use rig_ecs::agent::{MessageParts, Order, Utterance};
+use rig_ecs::checkpoint::{Checkpoint, load_world, save_world};
+
+/// A world with one utterance of two texts and two images (one base64,
+/// one raw) of the same byte.
 fn fixture() -> (World, Entity, MessageParts) {
-    let mut world = World::new();
+    let mut world = bare_world();
     let utterance = world.spawn(Utterance).id();
     let parts = MessageParts::User {
         content: vec![
@@ -28,70 +35,111 @@ fn fixture() -> (World, Entity, MessageParts) {
     (world, utterance, parts)
 }
 
-/// Loading `scene` fails and leaves a fresh destination exactly as it was.
-fn refused_without_touching_destination(scene: &RunScene) {
-    let mut destination = World::new();
+/// A bare world with the bus and the agent installed and the crate's types
+/// registered: what a checkpoint saves from and loads into.
+fn bare_world() -> World {
+    let mut world = World::new();
+    rig_ecs::bus::BusPlugin::with_policy(rig_core::serve::ServingPolicy::default())
+        .install(&mut world);
+    rig_ecs::systems::AgentPlugin::install(&mut world);
+    rig_ecs::checkpoint::register_types(&mut world);
+    world
+}
+
+/// The checkpoint through its wire form.
+fn round_trip(checkpoint: &Checkpoint) -> Checkpoint {
+    Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap()
+}
+
+/// The checkpoint's entities carrying `C`, by index.
+fn entities_with<C: Component>(checkpoint: &Checkpoint) -> Vec<usize> {
+    checkpoint
+        .entities
+        .iter()
+        .enumerate()
+        .filter(|(_, entity)| entity.contains_key(type_name::<C>()))
+        .map(|(index, _)| index)
+        .collect()
+}
+
+/// Loading `checkpoint` fails as a request error and leaves a fresh
+/// destination exactly as it was: no entity, no binary store.
+fn refused_without_touching_destination(checkpoint: &Checkpoint, what: &str) {
+    let mut destination = bare_world();
+    destination.remove_resource::<BinaryAssets>();
     let sentinel = destination.spawn_empty().id();
     let before = destination.entities().len();
-    assert!(scene.load(&mut destination).is_err());
-    assert_eq!(destination.entities().len(), before);
-    assert!(destination.get_entity(sentinel).is_ok());
-    assert!(!destination.contains_resource::<BinaryAssets>());
+    let error = load_world(checkpoint, &mut destination).expect_err(what);
+    assert_eq!(error.kind, ErrorKind::Request, "{what}: {error:?}");
+    assert_eq!(destination.entities().len(), before, "{what}");
+    assert!(destination.get_entity(sentinel).is_ok(), "{what}");
+    assert!(
+        !destination.contains_resource::<BinaryAssets>(),
+        "{what}: the store was installed"
+    );
 }
 
 #[test]
-fn scenes_save_payload_once_and_remap_every_child() {
+fn checkpoints_save_payload_once_and_remap_every_child() {
     let (mut world, _, parts) = fixture();
-    let scene = RunScene::save(&mut world).unwrap();
-    assert_eq!(scene.binaries.len(), 1);
-    let encoded = serde_json::to_string(&scene).unwrap();
-    assert_eq!(encoded.matches("Zg==").count(), 1);
-    let scene: RunScene = serde_json::from_str(&encoded).unwrap();
-    let mut restored = World::new();
+    let saved = save_world(&mut world).unwrap();
+    assert_eq!(saved.binaries.len(), 1, "one payload for two spellings");
+    let encoded = saved.to_json().unwrap();
+    assert_eq!(
+        encoded.matches("Zg==").count(),
+        1,
+        "the payload occurs once"
+    );
+    let saved = Checkpoint::from_json(&encoded).unwrap();
+    let mut restored = bare_world();
     for _ in 0..17 {
         restored.spawn_empty();
     }
-    let entities = scene.load(&mut restored).unwrap();
-    let utterance = entities
-        .into_iter()
-        .find(|entity| restored.get::<Utterance>(*entity).is_some())
-        .unwrap();
+    let loaded = load_world(&saved, &mut restored).unwrap();
+    let utterance = loaded.with::<Utterance>(&restored)[0];
     assert_eq!(read_message(&restored, utterance).unwrap(), parts);
     assert_eq!(restored.resource::<BinaryAssets>().byte_len(), 1);
-    assert_eq!(restored.query::<&ContentPart>().iter(&restored).count(), 4);
+    let children: Vec<Entity> = loaded.with::<ContentPart>(&restored);
+    assert_eq!(children.len(), 4);
+    assert!(
+        children
+            .iter()
+            .all(|part| restored.get::<ChildOf>(*part).map(ChildOf::parent) == Some(utterance)),
+        "every part is the loaded utterance's"
+    );
 }
 
 #[test]
 fn corrupt_hash_missing_handle_and_bad_order_leave_destination_untouched() {
     let (mut world, _, _) = fixture();
-    let original = RunScene::save(&mut world).unwrap();
+    let original = round_trip(&save_world(&mut world).unwrap());
+    let parts = entities_with::<ContentPart>(&original);
+    assert_eq!(parts.len(), 4);
     let mut bad_hash = original.clone();
     bad_hash.binaries.first_mut().unwrap().data = "YQ==".into();
     let mut missing = original.clone();
     missing.binaries.clear();
     let mut bad_order = original.clone();
-    for part in &mut bad_order.entities {
-        if part.kind == SceneKind::ContentPart {
-            part.components.insert("order".into(), serde_json::json!(0));
-        }
+    for part in &parts {
+        bad_order.entities[*part].insert(type_name::<Order>().to_owned(), serde_json::json!(0));
     }
     let mut bad_parent = original.clone();
-    bad_parent
-        .entities
-        .iter_mut()
-        .find(|entity| entity.kind == SceneKind::ContentPart)
-        .unwrap()
-        .parent = None;
-    for scene in [bad_hash, missing, bad_order, bad_parent] {
-        refused_without_touching_destination(&scene);
+    bad_parent.entities[parts[0]].remove(type_name::<ChildOf>());
+    for (checkpoint, what) in [
+        (bad_hash, "a payload that is not its hash"),
+        (missing, "a handle without a payload"),
+        (bad_order, "siblings sharing an order"),
+        (bad_parent, "a part without its utterance"),
+    ] {
+        refused_without_touching_destination(&checkpoint, what);
     }
 }
 
 #[test]
 fn load_merges_with_live_assets_and_enforces_destination_limits() {
     let (mut source, _, _) = fixture();
-    let scene = RunScene::save(&mut source).unwrap();
-    let mut destination = World::new();
+    let saved = round_trip(&save_world(&mut source).unwrap());
+    let mut destination = bare_world();
     let mut assets = BinaryAssets::with_limits(BinaryLimits {
         per_asset: 1,
         total: 1,
@@ -100,7 +148,8 @@ fn load_merges_with_live_assets_and_enforces_destination_limits() {
     let existing = assets.insert(b"x".to_vec()).unwrap();
     destination.insert_resource(assets);
     let count = destination.entities().len();
-    assert!(scene.load(&mut destination).is_err());
+    let error = load_world(&saved, &mut destination).unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Request);
     assert_eq!(destination.entities().len(), count);
     assert_eq!(
         destination
@@ -109,31 +158,17 @@ fn load_merges_with_live_assets_and_enforces_destination_limits() {
             .unwrap(),
         b"x"
     );
+    assert_eq!(destination.resource::<BinaryAssets>().byte_len(), 1);
 }
 
+/// A run's prompt of two spellings of one image: the world's one payload
+/// travels once in the checkpoint's store, and the loaded run's prompt
+/// reads back with both spellings, through the wire form.
 #[test]
-fn caller_constructed_deep_graph_is_refused_before_destination_mutation() {
-    let (mut source, _, _) = fixture();
-    let mut scene = RunScene::save(&mut source).unwrap();
-    let mut nested = serde_json::Value::Null;
-    for _ in 0..65 {
-        nested = serde_json::Value::Array(vec![nested]);
-    }
-    scene
-        .entities
-        .first_mut()
-        .unwrap()
-        .components
-        .insert("unknown".into(), nested);
-    refused_without_touching_destination(&scene);
-}
-
-#[test]
-fn whole_scene_pools_effect_copies_and_escapes_application_json() {
+fn a_run_with_two_spellings_of_one_image_round_trips_with_one_payload() {
     use rig_ecs::{
-        agent::Prompt,
-        agent::scene::{WorldScene, save_world},
-        bus::RigSchedule,
+        agent::{Prompt, Run},
+        bus::{PendingEffect, RigSchedule},
         systems::RunCommands,
     };
     let (mut world, agent) = crate::run_support::open_model_world();
@@ -147,125 +182,36 @@ fn whole_scene_pools_effect_copies_and_escapes_application_json() {
             ..Default::default()
         }),
     ]);
-    world.spawn_run(agent, &[], prompt, false, None);
+    let run = world.spawn_run(agent, &[], prompt.clone(), false, None);
     world.run_schedule(RigSchedule);
-    let mut scene = save_world(&mut world).unwrap();
+    let utterance = crate::run_support::first_utterance(&mut world, run);
+    let expected = read_message(&world, utterance).unwrap();
     assert_eq!(
-        scene.effects.effects.len(),
+        expected,
+        MessageParts::User {
+            content: prompt.0.clone()
+        },
+        "the graph keeps the prompt's spellings"
+    );
+    let saved = save_world(&mut world).unwrap();
+    assert_eq!(
+        entities_with::<PendingEffect>(&saved).len(),
         1,
-        "actual completion effect retains its request"
+        "the completion effect retains its request"
     );
-    let extra = serde_json::json!({"$rig_object":{"$rig_binary":{"Binary":{"id":"not-an-asset"}}},"source":{"type":"base64","value":"Zh"},"literal":"Zg==","invalid_unknown":{"type":"base64","value":"not base64!"}});
-    scene.extensions.insert(
-        0,
-        std::collections::BTreeMap::from([("opaque-test".into(), extra)]),
-    );
-    let original_effects = serde_json::to_value(&scene.effects).unwrap();
-    let original_graph = serde_json::to_value(&scene.graph).unwrap();
-    let encoded = serde_json::to_string(&scene).unwrap();
+    assert_eq!(saved.binaries.len(), 1, "one payload for two spellings");
+    assert_eq!(saved.binaries[0].data, "Zg==", "stored canonically");
+    let encoded = saved.to_json().unwrap();
+    let decoded = Checkpoint::from_json(&encoded).unwrap();
     assert_eq!(
-        encoded.matches("Zg==").count(),
-        1,
-        "the payload occurs only in the asset table"
+        serde_json::to_value(&decoded).unwrap(),
+        serde_json::to_value(&saved).unwrap(),
+        "the wire form is lossless"
     );
-    assert_eq!(
-        encoded.matches("Zh").count(),
-        0,
-        "noncanonical spelling is represented without another payload copy"
-    );
-    let decoded = WorldScene::from_json(encoded.as_bytes()).unwrap();
-    assert_eq!(
-        serde_json::to_value(&decoded.effects).unwrap(),
-        original_effects
-    );
-    assert_eq!(
-        serde_json::to_value(&decoded.graph).unwrap(),
-        original_graph
-    );
-    assert_eq!(decoded.extensions, scene.extensions);
-    let mut bad: serde_json::Value = serde_json::from_str(&encoded).unwrap();
-    *bad.get_mut("graph")
-        .and_then(|graph| graph.get_mut("binaries"))
-        .expect("serialized scene has a binary table") = serde_json::json!([]);
-    assert!(serde_json::from_value::<WorldScene>(bad).is_err());
-}
-
-#[test]
-fn exact_reserved_object_shapes_round_trip_as_literals() {
-    use rig_ecs::agent::scene::WorldScene;
-    let values = [
-        serde_json::json!({"$rig_binary":"literal"}),
-        serde_json::json!({"$rig_object":{"$rig_binary":"nested literal"}}),
-        serde_json::json!({"type":"raw","value":[1,2,3]}),
-        serde_json::json!({"type":"base64","value":"AQID"}),
-    ];
-    for value in values {
-        let mut scene = WorldScene::default();
-        scene.extensions.insert(
-            0,
-            std::collections::BTreeMap::from([("test".into(), value)]),
-        );
-        let serialized = serde_json::to_vec(&scene).unwrap();
-        let restored = WorldScene::from_json(&serialized).unwrap();
-        assert_eq!(restored.extensions, scene.extensions);
-    }
-}
-
-#[test]
-fn shared_binary_fanout_is_bounded_before_dto_expansion() {
-    let mut source = World::new();
-    let mut assets = BinaryAssets::default();
-    let id = assets.insert(vec![1; 1024 * 1024]).unwrap();
-    source.insert_resource(assets);
-    let utterance = source.spawn((Utterance, rig_ecs::agent::Role::User)).id();
-    for order in 0..513 {
-        source.spawn((
-            ContentPart,
-            rig_ecs::agent::Order(order),
-            ChildOf(utterance),
-            ImagePart {
-                source: PartSource::Binary {
-                    id,
-                    encoding: BinaryEncoding::Raw,
-                },
-                media_type: None,
-                detail: None,
-                additional_params: None,
-            },
-        ));
-    }
-    let scene = RunScene::save(&mut source).unwrap();
-    assert_eq!(scene.binaries.len(), 1);
-    let mut destination = World::new();
-    let sentinel = destination.spawn_empty().id();
-    let before = destination.entities().len();
-    let error = scene.load(&mut destination).unwrap_err();
-    assert!(error.message.contains("expanded scene byte limit"));
-    assert_eq!(destination.entities().len(), before);
-    assert!(destination.get_entity(sentinel).is_ok());
-    assert!(!destination.contains_resource::<BinaryAssets>());
-}
-
-#[test]
-fn escaped_object_depth_is_checked_before_serialization_succeeds() {
-    use rig_ecs::agent::scene::WorldScene;
-    for (depth, accepted) in [(20, true), (40, false)] {
-        let mut value = serde_json::Value::Null;
-        for _ in 0..depth {
-            value = serde_json::json!({"$rig_object":value});
-        }
-        let mut scene = WorldScene::default();
-        scene.extensions.insert(
-            0,
-            std::collections::BTreeMap::from([("nested".into(), value)]),
-        );
-        let encoded = serde_json::to_vec(&scene);
-        assert_eq!(encoded.is_ok(), accepted);
-        if let Ok(encoded) = encoded {
-            assert_eq!(
-                WorldScene::from_json(&encoded).unwrap().extensions,
-                scene.extensions
-            );
-        }
-    }
+    let (mut restored, _) = crate::run_support::open_model_world();
+    let loaded = load_world(&decoded, &mut restored).unwrap();
+    let run = loaded.with::<Run>(&restored)[0];
+    let utterance = crate::run_support::first_utterance(&mut restored, run);
+    assert_eq!(read_message(&restored, utterance).unwrap(), expected);
+    assert_eq!(restored.resource::<BinaryAssets>().byte_len(), 1);
 }

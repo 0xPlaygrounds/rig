@@ -18,7 +18,7 @@
 //! | a `ToolResultLimit` applies over the view without a render | `a_limit_applies_over_the_view` |
 //! | an asset collection drops every view | `an_asset_collection_drops_the_views` |
 //! | a streamed and a unary run over the same history assemble the same request | `streaming_and_unary_assemble_the_same_request` |
-//! | a scene saved mid-run and loaded elsewhere has no views, assembles the requests the first world would, and holds views after | `a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views` |
+//! | a checkpoint saved mid-run and loaded elsewhere has no views, assembles the requests the first world would, and holds views after | `a_loaded_checkpoint_assembles_identical_requests_and_rebuilds_its_views` |
 
 use crate::run_support;
 
@@ -40,9 +40,9 @@ use rig_ecs::{
                 ToolResultPart, collect_binary_assets, read_message, write_message,
             },
         },
-        scene::{WorldScene, load_world, save_world},
     },
     bus::{PendingEffect, RigSchedule},
+    checkpoint::{Checkpoint, load_world, save_world},
     systems::{Fresh, RigSet, RunCommands},
 };
 use run_support::*;
@@ -575,7 +575,7 @@ fn every_request_equals_a_fresh_render_and_only_new_utterances_are_rendered() {
 }
 
 #[test]
-fn a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views() {
+fn a_loaded_checkpoint_assembles_identical_requests_and_rebuilds_its_views() {
     // The control: the whole run in one world, with a hold after the
     // second tool turn released at once.
     let (mut control, agent, control_requests) = tooling(script(3));
@@ -591,10 +591,10 @@ fn a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views() {
             .any(|commit| commit.turn >= 2)
     });
     assert_eq!(control_requests.lock().unwrap().len(), 2);
-    let json = serde_json::to_string(&save_world(control.world_mut()).unwrap()).unwrap();
+    let json = save_world(control.world_mut()).unwrap().to_json().unwrap();
     assert!(
         !json.contains("cached_message") && !json.contains("CachedMessage"),
-        "views are not scene data"
+        "views are not checkpoint data"
     );
     release_tool_turn_hold(control.world_mut(), run, "cache").unwrap();
     tick_until(&mut control, "the control settles", |world| {
@@ -604,18 +604,13 @@ fn a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views() {
     assert_eq!(control_requests.len(), 4);
 
     // The second world: the same script's tail, bound before the load.
-    let scene: WorldScene = serde_json::from_str(&json).unwrap();
+    let checkpoint = Checkpoint::from_json(&json).unwrap();
     let mut app = app();
     let (model, requests) = Scripted::new(MODEL, script(3).split_off(2));
     register(&mut app, MODEL, model);
     register(&mut app, ADD, Adder::new(ADD));
-    let loaded = load_world(&scene, app.world_mut()).unwrap();
-    let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|entity| app.world().get::<Run>(*entity).is_some())
-        .unwrap();
+    let loaded = load_world(&checkpoint, app.world_mut()).unwrap();
+    let run = loaded.with::<Run>(app.world())[0];
     assert_eq!(
         views_of(app.world_mut(), run),
         vec![false; 5],

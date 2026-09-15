@@ -3,7 +3,7 @@
 //! | claim | test |
 //! |---|---|
 //! | no limit is verbatim: the request is byte-identical to the graph's DTOs | `no_limit_is_verbatim` |
-//! | a run's limit cuts the request's tool-result text around the marker; the graph and a saved scene keep the full text | `a_limit_cuts_the_request_and_keeps_the_graph_and_scene_verbatim` |
+//! | a run's limit cuts the request's tool-result text around the marker; the graph and a saved checkpoint keep the full text | `a_limit_cuts_the_request_and_keeps_the_graph_and_checkpoint_verbatim` |
 //! | the cut lands on UTF-8 character boundaries | `the_cut_lands_on_character_boundaries` |
 //! | a JSON item is never cut, nor an ordinary user text | `json_items_and_user_text_are_never_cut` |
 //! | a limit set between turns affects only later turns; the agent's applies under the run's absence | `a_limit_change_between_turns_affects_only_later_turns` |
@@ -20,9 +20,9 @@ use rig_ecs::{
             EditTarget, RequestPartEdit, TOOL_RESULT_LIMIT_MARKER, TextPart, ToolResultLimit,
             ToolResultPart,
         },
-        scene::RunScene,
     },
-    bus::RigSchedule,
+    bus::{PendingEffect, RigSchedule},
+    checkpoint::save_world,
     systems::{Fresh, RunCommands},
 };
 
@@ -97,7 +97,7 @@ fn no_limit_is_verbatim() {
 }
 
 #[test]
-fn a_limit_cuts_the_request_and_keeps_the_graph_and_scene_verbatim() {
+fn a_limit_cuts_the_request_and_keeps_the_graph_and_checkpoint_verbatim() {
     let (mut world, _, run, _) = fixture(LONG);
     let before = graph_messages(&mut world, run);
     world.entity_mut(run).insert(ToolResultLimit::new(10));
@@ -137,7 +137,7 @@ fn a_limit_cuts_the_request_and_keeps_the_graph_and_scene_verbatim() {
         .unwrap();
     assert_eq!(cut, before);
 
-    // The graph and a scene keep the full text.
+    // The graph and a checkpoint keep the full text.
     assert_eq!(graph_messages(&mut world, run), before);
     let parts: Vec<_> = world
         .query::<&TextPart>()
@@ -146,16 +146,23 @@ fn a_limit_cuts_the_request_and_keeps_the_graph_and_scene_verbatim() {
         .collect();
     assert!(parts.contains(&LONG.to_owned()));
     assert!(parts.iter().all(|text| !text.contains("omitted")));
-    let scene = serde_json::to_string(&RunScene::save(&mut world).unwrap()).unwrap();
-    assert!(scene.contains(LONG));
+    let checkpoint = save_world(&mut world).unwrap();
+    let json = checkpoint.to_json().unwrap();
+    assert!(json.contains(LONG));
     assert!(
-        !scene.contains("26 bytes omitted"),
-        "the cut text is nowhere in the scene"
-    );
-    assert!(
-        scene.contains("\"tool_result_limit\""),
+        json.contains(std::any::type_name::<ToolResultLimit>()),
         "the limit is saved with the run"
     );
+    // The cut text is in the pending request alone, never in the graph.
+    for entity in &checkpoint.entities {
+        let entity_json = serde_json::to_string(entity).unwrap();
+        if entity_json.contains("26 bytes omitted") {
+            assert!(
+                entity.contains_key(std::any::type_name::<PendingEffect>()),
+                "the cut text is only in the request: {entity_json}"
+            );
+        }
+    }
 }
 
 #[test]

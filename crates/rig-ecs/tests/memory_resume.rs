@@ -13,11 +13,9 @@ use rig_core::{
     serve::Serve,
 };
 use rig_ecs::{
-    agent::{
-        Conversation, Remembers, Run, Settled,
-        scene::{load_world, save_world},
-    },
+    agent::{Conversation, Remembers, Run, Settled},
     bus::{EffectOutcome, Held, Issued, PendingEffect, RigSchedule},
+    checkpoint::{Checkpoint, load_world, save_world},
     systems::{RigSet, RunCommands},
 };
 use run_support::*;
@@ -108,7 +106,7 @@ fn appended(world: &mut World) -> bool {
 }
 
 #[derive(Resource)]
-struct BeforeAppend(rig_ecs::agent::scene::WorldScene);
+struct BeforeAppend(Checkpoint);
 
 #[test]
 fn settled_snapshot_before_finalization_schedules_one_append() {
@@ -125,8 +123,8 @@ fn settled_snapshot_before_finalization_schedules_one_append() {
                     .is_some()
             {
                 assert!(appends(world).is_empty());
-                let scene = save_world(world).unwrap();
-                world.insert_resource(BeforeAppend(scene));
+                let checkpoint = save_world(world).unwrap();
+                world.insert_resource(BeforeAppend(checkpoint));
             }
         })
         .after(RigSet::Materialise)
@@ -136,7 +134,7 @@ fn settled_snapshot_before_finalization_schedules_one_append() {
     tick_until(&mut first, "snapshot before finalization", |w| {
         w.contains_resource::<BeforeAppend>()
     });
-    let scene = first
+    let checkpoint = first
         .world_mut()
         .remove_resource::<BeforeAppend>()
         .unwrap()
@@ -146,7 +144,7 @@ fn settled_snapshot_before_finalization_schedules_one_append() {
     // not that abandoning another live branch undoes its writes.
     let calls = Arc::new(Mutex::new(vec![]));
     let (mut restored, _, _) = setup(calls.clone(), false);
-    load_world(&scene, restored.world_mut()).unwrap();
+    load_world(&checkpoint, restored.world_mut()).unwrap();
     tick_until(&mut restored, "new finalization completed", appended);
     assert_eq!(appends(restored.world_mut()).len(), 1);
     assert_eq!(calls.lock().unwrap().len(), 1);
@@ -158,10 +156,10 @@ fn completed_append_is_not_scheduled_again_after_load() {
     let (mut first, model, memory) = setup(calls.clone(), false);
     start(&mut first, model, memory);
     tick_until(&mut first, "append completed", appended);
-    let scene = save_world(first.world_mut()).unwrap();
+    let checkpoint = save_world(first.world_mut()).unwrap();
     drop(first);
     let (mut restored, _, _) = setup(calls.clone(), false);
-    load_world(&scene, restored.world_mut()).unwrap();
+    load_world(&checkpoint, restored.world_mut()).unwrap();
     for _ in 0..10 {
         restored.update();
     }
@@ -198,11 +196,11 @@ fn queued_append_survives_without_a_second_operation() {
         w.get::<Settled>(run).is_some() && !appends(w).is_empty()
     });
     assert!(calls.lock().unwrap().is_empty());
-    let scene = save_world(first.world_mut()).unwrap();
+    let checkpoint = save_world(first.world_mut()).unwrap();
     drop(first);
     let (mut restored, _, _) = setup(calls.clone(), false);
-    let loaded = load_world(&scene, restored.world_mut()).unwrap();
-    for effect in loaded.effects {
+    let loaded = load_world(&checkpoint, restored.world_mut()).unwrap();
+    for effect in loaded.with::<PendingEffect>(restored.world()) {
         restored.world_mut().entity_mut(effect).remove::<Held>();
     }
     tick_until(&mut restored, "restored append completed", appended);
@@ -219,23 +217,18 @@ fn unresolved_external_write_reissues_the_same_operation_identity() {
         !calls.lock().unwrap().is_empty()
     });
     assert!(!appended(first.world_mut()));
-    let scene = save_world(first.world_mut()).unwrap();
+    let checkpoint = save_world(first.world_mut()).unwrap();
     drop(first);
     let (mut restored, _, _) = setup(calls.clone(), false);
-    let loaded = load_world(&scene, restored.world_mut()).unwrap();
-    assert!(
-        loaded
-            .graph
-            .iter()
-            .any(|entity| restored.world().get::<Run>(*entity).is_some())
-    );
+    let loaded = load_world(&checkpoint, restored.world_mut()).unwrap();
+    assert!(!loaded.with::<Run>(restored.world()).is_empty());
     tick_until(&mut restored, "retried append completed", appended);
     assert_eq!(appends(restored.world_mut()).len(), 1);
     let calls = calls.lock().unwrap();
     assert_eq!(
         calls.len(),
         2,
-        "a scene cannot prove whether an unanswered external write happened"
+        "a checkpoint cannot prove whether an unanswered external write happened"
     );
     assert_eq!(
         calls.first(),

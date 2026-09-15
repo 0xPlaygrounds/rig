@@ -13,8 +13,8 @@
 //! | a replayer under the key wins: no transport, no credential | `a_replayer_wins_and_no_transport_is_built` |
 //! | duplicate keys, key mismatch, foreign extra params, no materializer are refused before any registration | `refusals_are_deterministic_and_register_nothing` |
 //! | no secret in `Debug`, in diagnostics, in JSON | `secrets_never_leave_the_resolver` |
-//! | a scene saves the binding with its bound descriptor and no secret; loading spawns it bound and unserved, resolving nothing; materializing after the load serves it under the saved descriptor | `a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word` |
-//! | a load is refused, before any spawn, for a duplicate key, a descriptor of another key, a served key of another family; a served key of the same family keeps the handler and attaches the binding | `a_scene_load_validates_its_bindings` |
+//! | a checkpoint saves the binding with its bound descriptor and no secret; loading spawns it bound and unserved, resolving nothing; materializing after the load serves it under the saved descriptor; saved again it is the same data | `a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word` |
+//! | a load is refused, before any spawn, for a served key of another family; a served key of the same family keeps the handler and attaches the binding | `a_checkpoint_load_validates_its_bindings` |
 //! | a binding whose built descriptor differs from the saved one is refused (`DescriptorDrift`), nothing served | `a_loaded_binding_that_would_build_another_descriptor_is_refused` |
 //! | the system: a refusal is left in `MaterializeFailed`, a success clears it | `the_materialize_system_reports_through_the_resource` |
 //! | a binding beside its own unserved `Bound` whose key another entity serves (a host registration made before it, a replayer) or merely holds is kept: the served handler untouched, its own `Bound` untouched, nothing built | `a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere` |
@@ -37,12 +37,12 @@ use rig_core::{
     test_utils::RecordingHttpClient,
 };
 use rig_ecs::{
-    agent::scene::{SceneBinding, WorldScene, load_world, save_world},
     bus::{
         Bound, CredentialRef, EffectLogResource, EffectOutcome, Handler, Handlers,
         MaterializeError, MaterializeFailed, MaterializeReport, Materializer, PendingEffect,
         ProviderBinding, ProviderKind, Replay, Secret,
     },
+    checkpoint::{Checkpoint, load_world, save_world},
 };
 use rig_effect_log::EffectLogRecorder;
 
@@ -549,11 +549,20 @@ fn secrets_never_leave_the_resolver() {
     assert!(!format!("{report:?}").contains(SENTINEL));
 }
 
-/// A bus-and-agent world: what a scene saves from and loads into.
+/// A bus-and-agent world: what a checkpoint saves from and loads into.
 fn world_app() -> bevy_app::App {
     let mut app = bus_support::app();
     rig_ecs::systems::AgentPlugin::install(app.world_mut());
     app
+}
+
+/// The checkpoint entities carrying a `Bound`.
+fn bound_entities(checkpoint: &Checkpoint) -> Vec<&rig_ecs::checkpoint::CheckpointEntity> {
+    checkpoint
+        .entities
+        .iter()
+        .filter(|entity| entity.contains_key(std::any::type_name::<Bound>()))
+        .collect()
 }
 
 fn descriptor(label: &str) -> HandlerDescriptor {
@@ -567,8 +576,19 @@ fn descriptor(label: &str) -> HandlerDescriptor {
     }
 }
 
+/// The checkpoint of a world with the Anthropic binding materialized: the
+/// binding beside the `Bound` the materializer gave it.
+fn materialized_binding_checkpoint() -> Checkpoint {
+    let mut head = world_app();
+    let (head_materializer, _, _) = materializer(ANTHROPIC_BODY);
+    head.world_mut().insert_resource(head_materializer);
+    head.world_mut().spawn(binding(ProviderKind::Anthropic));
+    rig_ecs::bus::materialize_bindings(head.world_mut()).unwrap();
+    save_world(head.world_mut()).unwrap()
+}
+
 #[test]
-fn a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
+fn a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
     // The saving world: a materialized binding, and one nothing served yet.
     let mut head = world_app();
     let (head_materializer, _, _) = materializer(ANTHROPIC_BODY);
@@ -579,7 +599,7 @@ fn a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
         ProviderBinding::new("t/model:later", ProviderKind::Gemini, "g", "cassette")
             .labelled("later"),
     );
-    let scene = save_world(head.world_mut()).unwrap();
+    let checkpoint = save_world(head.world_mut()).unwrap();
     let saved = head
         .world_mut()
         .query::<&Bound>()
@@ -587,25 +607,20 @@ fn a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
         .unwrap()
         .descriptor
         .clone();
-    assert_eq!(scene.bindings.len(), 2, "both, by key");
-    assert_eq!(scene.bindings[0].binding.key, HandlerKey::from(KEY));
-    assert_eq!(scene.bindings[0].descriptor.as_ref(), Some(&saved));
-    assert_eq!(
-        scene.bindings[1].binding.key,
-        HandlerKey::from("t/model:later")
+    let json = checkpoint.to_json().unwrap();
+    assert!(
+        json.contains("cassette"),
+        "the credential ref travels: {json}"
     );
-    assert_eq!(scene.bindings[1].descriptor, None, "never materialized");
-    let json = serde_json::to_string(&scene).unwrap();
-    assert!(json.contains(r#""credential":"cassette""#), "{json}");
-    assert!(!json.contains(SENTINEL), "no secret in the scene");
+    assert!(!json.contains(SENTINEL), "no secret in the checkpoint");
 
     // The loading world: a resolver and a transport that must not be
     // touched by the load.
-    let scene: WorldScene = serde_json::from_str(&json).unwrap();
+    let checkpoint = Checkpoint::from_json(&json).unwrap();
     let mut app = world_app();
     app.world_mut().insert_resource(panicking_materializer());
-    let loaded = load_world(&scene, app.world_mut()).unwrap();
-    assert!(loaded.graph.is_empty());
+    let loaded = load_world(&checkpoint, app.world_mut()).unwrap();
+    assert_eq!(loaded.with::<ProviderBinding>(app.world()).len(), 2);
     let mut bound: Vec<(Entity, Bound, ProviderBinding)> = app
         .world_mut()
         .query::<(Entity, &Bound, &ProviderBinding)>()
@@ -666,44 +681,26 @@ fn a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
         "hi"
     );
     assert_eq!(transport.requests().len(), 1);
-    // Saved again, the scene is the same data.
+    // Saved again, the bound binding is the same data.
     let again = save_world(app.world_mut()).unwrap();
-    assert_eq!(again.bindings[0], scene.bindings[0]);
+    let first = bound_entities(&checkpoint);
+    assert_eq!(first.len(), 1);
+    assert!(
+        bound_entities(&again).contains(&first[0]),
+        "{}",
+        again.to_json().unwrap()
+    );
 }
 
 #[test]
-fn a_scene_load_validates_its_bindings() {
-    let saved = SceneBinding {
-        binding: binding(ProviderKind::Anthropic),
-        descriptor: Some(descriptor("default")),
-    };
-    let scene_with = |bindings: Vec<SceneBinding>| {
-        let mut scene = save_world(world_app().world_mut()).unwrap();
-        scene.bindings = bindings;
-        scene
-    };
+fn a_checkpoint_load_validates_its_bindings() {
+    let checkpoint = materialized_binding_checkpoint();
     let spawned = |app: &mut bevy_app::App| {
         app.world_mut()
             .query::<&ProviderBinding>()
             .iter(app.world())
             .count()
     };
-    // A duplicate key.
-    let mut app = world_app();
-    let error = load_world(
-        &scene_with(vec![saved.clone(), saved.clone()]),
-        app.world_mut(),
-    )
-    .unwrap_err();
-    assert!(error.message.contains("twice"), "{error}");
-    assert_eq!(spawned(&mut app), 0, "refused before any spawn");
-    // A descriptor of another key.
-    let mut app = world_app();
-    let mut other = saved.clone();
-    other.descriptor.as_mut().unwrap().key = HandlerKey::from("t/model:other");
-    let error = load_world(&scene_with(vec![other]), app.world_mut()).unwrap_err();
-    assert!(error.message.contains("t/model:other"), "{error}");
-    assert_eq!(spawned(&mut app), 0);
     // The key served by a handler of another family.
     let mut app = world_app();
     let counters = Arc::new(bus_support::Counters::default());
@@ -721,10 +718,12 @@ fn a_scene_load_validates_its_bindings() {
     .unwrap()
     .unwrap();
     app.world_mut().flush();
-    let error = load_world(&scene_with(vec![saved.clone()]), app.world_mut()).unwrap_err();
-    assert_eq!(error.kind, ErrorKind::HandlerUnavailable);
+    let before = app.world().entities().len();
+    let error = load_world(&checkpoint, app.world_mut()).unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Request);
     assert!(error.message.contains("completion"), "{error}");
-    assert_eq!(spawned(&mut app), 0);
+    assert_eq!(spawned(&mut app), 0, "refused before any spawn");
+    assert_eq!(app.world().entities().len(), before);
     // The key served by a completion handler: the handler wins, the
     // binding rides on its entity, and a later materialization keeps it.
     let mut app = world_app();
@@ -734,9 +733,9 @@ fn a_scene_load_validates_its_bindings() {
         bus_support::MockModel::saying(&counters, "by hand"),
     );
     app.world_mut().insert_resource(panicking_materializer());
-    load_world(&scene_with(vec![saved]), app.world_mut()).unwrap();
+    let loaded = load_world(&checkpoint, app.world_mut()).unwrap();
+    assert_eq!(loaded.with::<ProviderBinding>(app.world()), vec![by_hand]);
     assert_eq!(spawned(&mut app), 1);
-    assert!(app.world().get::<ProviderBinding>(by_hand).is_some());
     let report = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
     assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
     let effect = app
@@ -754,14 +753,21 @@ fn a_scene_load_validates_its_bindings() {
 
 #[test]
 fn a_loaded_binding_that_would_build_another_descriptor_is_refused() {
+    // Bound under the label `default`; the binding then says `renamed`.
+    let mut head = world_app();
+    let (head_materializer, _, _) = materializer(ANTHROPIC_BODY);
+    head.world_mut().insert_resource(head_materializer);
+    let entity = head
+        .world_mut()
+        .spawn(binding(ProviderKind::Anthropic))
+        .id();
+    rig_ecs::bus::materialize_bindings(head.world_mut()).unwrap();
+    head.world_mut()
+        .entity_mut(entity)
+        .insert(binding(ProviderKind::Anthropic).labelled("renamed"));
+    let checkpoint = save_world(head.world_mut()).unwrap();
     let mut app = world_app();
-    let mut scene = save_world(app.world_mut()).unwrap();
-    // Saved under the label `default`; the binding now says `renamed`.
-    scene.bindings = vec![SceneBinding {
-        binding: binding(ProviderKind::Anthropic).labelled("renamed"),
-        descriptor: Some(descriptor("default")),
-    }];
-    load_world(&scene, app.world_mut()).unwrap();
+    load_world(&checkpoint, app.world_mut()).unwrap();
     let (materializer, _, _) = materializer(ANTHROPIC_BODY);
     app.world_mut().insert_resource(materializer);
     match rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err() {

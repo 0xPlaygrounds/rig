@@ -9,11 +9,9 @@ use rig_core::{
     serve::{Dispatch, Serve},
 };
 use rig_ecs::{
-    agent::{
-        Failed, Grant, Order, Output, OutputKind, PolicyVersion, Settled, Temperature,
-        scene::RunScene,
-    },
+    agent::{Failed, Grant, Order, Output, OutputKind, PolicyVersion, Settled, Temperature},
     bus::{Bound, EffectLogResource, EffectOutcome, Handlers, PendingEffect, Replay},
+    checkpoint::{Checkpoint, load_world, save_world},
     replay::{check_replayable, stamp_run},
     systems::RunCommands,
 };
@@ -173,16 +171,15 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     assert!(replay.world().get::<Failed>(run).is_none());
     assert!(replay.world().get::<Settled>(run).is_some());
 
-    let scene = RunScene::save(live.world_mut()).unwrap();
-    let scene: RunScene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
+    let checkpoint = save_world(live.world_mut()).unwrap();
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
     let mut restored = app();
     Handlers::with(restored.world_mut(), |handlers| {
         Replay::default().register(handlers, &log)
     })
     .unwrap()
     .unwrap();
-    scene
-        .load(restored.world_mut())
+    load_world(&checkpoint, restored.world_mut())
         .expect("all scope dependencies were reconstructed");
     let unexpected = restored
         .world_mut()

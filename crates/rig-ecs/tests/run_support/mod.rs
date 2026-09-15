@@ -390,6 +390,7 @@ pub fn open_model_world() -> (World, Entity) {
     let mut world = World::new();
     BusPlugin::with_policy(ServingPolicy::default()).install(&mut world);
     AgentPlugin::install(&mut world);
+    rig_ecs::checkpoint::register_types(&mut world);
     let model = Handlers::with(&mut world, |handlers| {
         handlers.register_open(
             "model",

@@ -139,30 +139,39 @@ fn populated() -> bevy_app::App {
         },
         Failed(Failure::MaxTurns { limit: 1 }),
     ));
-    app.world_mut().spawn((
-        Held,
-        Reserved(EffectId::from_raw(77)),
-        Conversation("c".to_owned()),
-        Remembered,
-        Remembering,
-        (
-            MemoryAppendScheduled,
-            rig_ecs::agent::PolicyVersion("reflect-test/v1".into()),
-            rig_ecs::bus::ToolOutputs(rig_core::tool::ToolContext::new()),
-        ),
-        LoadingMemory,
-        Retrievable,
-        Retrieving,
-        Retrieval {
-            samples: 2,
-            what: RetrievalKind::Tools,
-        },
-        Retrieves(model),
-        Route(model),
-        rig_ecs::agent::Remembers(model),
-        rig_ecs::agent::Attachment(document),
-        StreamRequested(true),
-    ));
+    let held = app
+        .world_mut()
+        .spawn((
+            Held,
+            Reserved(EffectId::from_raw(77)),
+            Conversation("c".to_owned()),
+            Remembered,
+            Remembering,
+            (rig_ecs::systems::BatchHeld, LoadingMemory),
+            (
+                MemoryAppendScheduled,
+                rig_ecs::agent::PolicyVersion("reflect-test/v1".into()),
+                rig_ecs::bus::ToolOutputs(rig_core::tool::ToolContext::new()),
+            ),
+            Retrievable,
+            Retrieving,
+            Retrieval {
+                samples: 2,
+                what: RetrievalKind::Tools,
+            },
+            Retrieves(model),
+            Route(model),
+            rig_ecs::agent::Remembers(model),
+            rig_ecs::agent::Attachment(document),
+            StreamRequested(true),
+        ))
+        .id();
+    rig_ecs::bus::acquire_hold(
+        app.world_mut(),
+        held,
+        rig_core::observe::Emitter::named("policy/reflect"),
+    )
+    .expect("a named owner");
     let utterance = app
         .world_mut()
         .spawn((
@@ -332,6 +341,8 @@ fn every_component_round_trips_through_reflection() {
             "rig_ecs::agent::checkpoint::TurnResults",
             "rig_ecs::agent::content::parts::EditTarget",
             "rig_ecs::agent::content::parts::EditedBy",
+            "rig_ecs::bus::handlers::ServedBy",
+            "rig_ecs::bus::handlers::Serves",
         ],
         "exactly the relationships hold an Entity"
     );

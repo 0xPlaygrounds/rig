@@ -818,7 +818,7 @@ fn malformed_delivery_metadata_is_refused_before_handlers_are_registered() {
 
 #[test]
 fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
-    use rig_ecs::bus::{Issued, Scene};
+    use rig_ecs::{bus::Issued, checkpoint::load_world};
     let (log, _) = ordered_live(false);
     let mut first = log.clone();
     first.records.truncate(1);
@@ -842,11 +842,13 @@ fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
         ))
         .id();
     assert!(head.world().get::<Issued>(tail_effect).is_none());
-    let scene = Scene::save(head.world_mut());
+    let saved = bus_support::checkpoint(&mut head);
     for replay_log in [log.clone(), log.tail(1)] {
         let mut restored = bus_support::app();
         replaying(&mut restored, &replay_log);
-        let loaded = scene.load(restored.world_mut()).unwrap();
+        let loaded = load_world(&saved, restored.world_mut()).unwrap();
+        let loaded = loaded.with::<PendingEffect>(restored.world());
+        assert_eq!(loaded.len(), 2);
         bus_support::tick_until(&mut restored, "resumed subset", |world| {
             loaded
                 .iter()
@@ -860,10 +862,12 @@ fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
                 .0
                 .is_ok()
         }));
-        assert_eq!(
-            restored.world().get::<Issued>(loaded[1]).unwrap().0,
-            log.records[1].id
-        );
+        let mut ids: Vec<_> = loaded
+            .iter()
+            .map(|entity| restored.world().get::<Issued>(*entity).unwrap().0)
+            .collect();
+        ids.sort();
+        assert_eq!(ids, [log.records[0].id, log.records[1].id]);
     }
 }
 

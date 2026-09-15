@@ -1,15 +1,15 @@
 //! A tool result's status is graph data beside `ToolResultPart` (CONTRACT
-//! §8.1): the batch lands it, a scene keeps it, and the DTO never shows it.
+//! §8.1): the batch lands it, a checkpoint keeps it, and the DTO never shows it.
 //!
 //! | claim | test |
 //! |---|---|
 //! | every outcome the batch distinguishes lands as its status, in call order, and `read_message` is what the model saw | `every_outcome_lands_as_its_status_and_the_dto_is_unchanged` |
 //! | a skipped invalid call and its peers land `Skipped` | `an_invalid_call_skipped_by_a_system_lands_skipped_results` |
-//! | a scene round-trips the status, and refuses one off a tool-result part | `a_scene_keeps_the_status_and_refuses_it_off_a_result_part` |
+//! | a checkpoint round-trips the status, and refuses one off a tool-result part | `a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part` |
 
 use crate::run_support;
 
-use std::{collections::BTreeMap, sync::Mutex};
+use std::{any::type_name, collections::BTreeMap, sync::Mutex};
 
 use bevy_ecs::prelude::*;
 use rig_core::{
@@ -22,10 +22,10 @@ use rig_core::{
 use rig_ecs::{
     agent::{
         Grant, InvalidCall, InvalidCalls, Order, Resolution, Settled,
-        content::parts::{ToolResultPart, ToolResultStatus, read_message},
-        scene::{RunScene, SceneKind},
+        content::parts::{TextPart, ToolResultPart, ToolResultStatus, read_message},
     },
     bus::{EffectLogResource, RigSchedule},
+    checkpoint::{Checkpoint, load_world, save_world},
     systems::{RigSet, RunCommands},
 };
 use rig_effect_log::EffectLogRecorder;
@@ -250,7 +250,7 @@ fn an_invalid_call_skipped_by_a_system_lands_skipped_results() {
 }
 
 #[test]
-fn a_scene_keeps_the_status_and_refuses_it_off_a_result_part() {
+fn a_checkpoint_keeps_the_status_and_refuses_it_off_a_result_part() {
     let replies: BTreeMap<i64, Result<Outcome, ErrorReport>> = [
         (
             1,
@@ -291,21 +291,28 @@ fn a_scene_keeps_the_status_and_refuses_it_off_a_result_part() {
     );
     let original = read_message(app.world(), before[0].0).unwrap();
 
-    let scene = RunScene::save(app.world_mut()).unwrap();
-    let encoded = serde_json::to_string(&scene).unwrap();
-    assert_eq!(encoded.matches("\"tool_result_status\"").count(), 2);
-    let scene: RunScene = serde_json::from_str(&encoded).unwrap();
+    let checkpoint = save_world(app.world_mut()).unwrap();
+    assert_eq!(
+        checkpoint
+            .entities
+            .iter()
+            .filter(|entity| entity.contains_key(type_name::<ToolResultStatus>()))
+            .count(),
+        2,
+        "one status per result part"
+    );
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
     // Loaded beside the original, into the world its handlers are bound in.
-    let loaded = scene.load(app.world_mut()).unwrap();
+    let loaded = load_world(&checkpoint, app.world_mut()).unwrap();
     let after: Vec<_> = results(app.world_mut())
         .into_iter()
-        .filter(|(utterance, _, _)| loaded.contains(utterance))
+        .filter(|(utterance, _, _)| loaded.entities.contains(utterance))
         .collect();
     assert_eq!(after.len(), 2);
     assert_eq!(
         statuses(&after),
         statuses(&before),
-        "the scene keeps the status"
+        "the checkpoint keeps the status"
     );
     let utterance = after[0].0;
     assert!(!before.iter().any(|(owner, _, _)| *owner == utterance));
@@ -313,18 +320,21 @@ fn a_scene_keeps_the_status_and_refuses_it_off_a_result_part() {
 
     // A status on a part that is not a tool result is refused before the
     // destination changes.
-    let mut misplaced = scene.clone();
+    let mut misplaced = checkpoint.clone();
+    let status = misplaced
+        .entities
+        .iter()
+        .find_map(|entity| entity.get(type_name::<ToolResultStatus>()))
+        .unwrap()
+        .clone();
     let text = misplaced
         .entities
         .iter_mut()
-        .find(|entity| {
-            entity.kind == SceneKind::ContentPart && entity.components.contains_key("text_part")
-        })
+        .find(|entity| entity.contains_key(type_name::<TextPart>()))
         .unwrap();
-    text.components
-        .insert("tool_result_status".into(), serde_json::json!("ok"));
+    text.insert(type_name::<ToolResultStatus>().to_owned(), status);
     let count = app.world().entities().len();
-    let error = misplaced.load(app.world_mut()).unwrap_err();
+    let error = load_world(&misplaced, app.world_mut()).unwrap_err();
     assert!(
         error.message.contains("tool result status"),
         "{}",

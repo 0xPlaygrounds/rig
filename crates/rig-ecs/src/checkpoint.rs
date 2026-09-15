@@ -117,14 +117,15 @@ fn is_relationship_target(id: TypeId) -> bool {
     .contains(&id)
 }
 
-/// The world's entities in checkpoint order: roots by id, then each root's
-/// subtree depth-first in `Children` order.
+/// The world's entities in checkpoint order: roots by spawn index (an
+/// `Entity`'s own `Ord` is over its opaque bits, which invert the index),
+/// then each root's subtree depth-first in `Children` order.
 fn ordered_entities(world: &mut World) -> Vec<Entity> {
     let mut roots: Vec<Entity> = world
         .query_filtered::<Entity, (Without<ChildOf>, Without<IsResource>)>()
         .iter(world)
         .collect();
-    roots.sort();
+    roots.sort_by_key(|entity| (entity.index().index(), entity.generation().to_bits()));
     let mut order = Vec::with_capacity(roots.len());
     let mut stack: Vec<Entity> = roots.into_iter().rev().collect();
     while let Some(entity) = stack.pop() {
@@ -322,7 +323,11 @@ fn spawn_into(
     let mut remap = Remapped {
         entities: &entities,
     };
-    // Effects: their saved `Seq`, to re-stamp in saved order afterwards.
+    // Effects: their saved `Seq`, re-stamped afterwards as the saved value
+    // offset by the counter as it stood before the load — the saved order
+    // and gaps kept, after everything already in the world, and in a
+    // fresh world the saved values themselves.
+    let base = world.resource::<SeqCounter>().0;
     let mut effects: Vec<(u64, Entity)> = Vec::new();
     for (row, components) in checkpoint.entities.iter().enumerate() {
         let Some(&entity) = entities.get(row) else {
@@ -361,18 +366,15 @@ fn spawn_into(
             component.insert(&mut world.entity_mut(entity), reflected.as_ref(), &registry);
         }
     }
-    // Every `PendingEffect` was stamped a fresh `Seq` on add; put them in
-    // their saved order, after everything already in the world.
-    effects.sort();
-    for (_, entity) in effects {
-        let seq = {
-            let mut counter = world.resource_mut::<SeqCounter>();
-            let seq = counter.0;
-            counter.0 += 1;
-            Seq(seq)
-        };
-        world.entity_mut(entity).insert(seq);
+    // Every `PendingEffect` was stamped a fresh `Seq` on add; overwrite it.
+    let mut next = base;
+    for (saved, entity) in effects {
+        let seq = base.saturating_add(saved);
+        next = next.max(seq.saturating_add(1));
+        world.entity_mut(entity).insert(Seq(seq));
     }
+    let mut counter = world.resource_mut::<SeqCounter>();
+    counter.0 = counter.0.max(next);
     // An effect taken but not answered is re-issued under its saved id.
     let taken: Vec<(Entity, Issued)> = world
         .query_filtered::<(Entity, &Issued), (With<InFlight>, Without<EffectOutcome>)>()

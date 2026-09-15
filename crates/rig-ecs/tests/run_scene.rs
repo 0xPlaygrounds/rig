@@ -2,14 +2,15 @@
 //! turn was answered resumes in a fresh world to the same second request
 //! and the same answer — the two-record golden
 //! `mock_output_tool_text_reprompt`, split at its first record. And the
-//! paired scene (stage 3 ruling 1a): a run saved with its model call in
-//! flight resumes in a fresh world where the effect, `ChildOf` its turn
-//! again, is re-issued under its saved id and answered there.
+//! checkpoint of a run mid-flight (stage 3 ruling 1a): a run saved with its
+//! model call in flight resumes in a fresh world where the effect,
+//! `ChildOf` its turn again, is re-issued under its saved id and answered
+//! there.
 
 use crate::run_support;
 
 use rig_core::serve::Dispatch;
-use std::time::Instant;
+use std::{any::type_name, time::Instant};
 
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
@@ -17,14 +18,14 @@ use rig_core::{effect::HandlerKey, serve::ServingPolicy};
 use rig_ecs::{
     agent::{
         AdditionalParams, Assembling, Cursor, DefaultMaxTurns, InvalidCalls, MaxTokens, MaxTurns,
-        Output, OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec,
-        UsesModel, Utterance,
-        scene::{RunScene, WorldScene, load_world, save_world},
+        Output, OutputKind, Owner, Preamble, Run, RunResult, Settled, Temperature, ToolChoiceSpec,
+        Turn, UsesModel, Utterance,
     },
     bus::{
-        EffectLogResource, Handlers, IdCounter, InFlight, Issued, PendingEffect, Replay,
-        RigSchedule,
+        EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight, Issued, PendingEffect,
+        Replay, Reserved, RigSchedule,
     },
+    checkpoint::{Checkpoint, load_world, save_world},
     systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
@@ -73,6 +74,22 @@ fn event_schema() -> serde_json::Value {
         },
         "required": ["title", "category", "summary"]
     })
+}
+
+/// The checkpoint through its wire form.
+fn round_trip(checkpoint: &Checkpoint) -> Checkpoint {
+    Checkpoint::from_json(&checkpoint.to_json().expect("serde")).expect("serde")
+}
+
+/// The checkpoint entities carrying `C`, by index.
+fn entities_with<C: Component>(checkpoint: &Checkpoint) -> Vec<usize> {
+    checkpoint
+        .entities
+        .iter()
+        .enumerate()
+        .filter(|(_, entity)| entity.contains_key(type_name::<C>()))
+        .map(|(index, _)| index)
+        .collect()
 }
 
 #[test]
@@ -137,23 +154,19 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
         .iter(app.world())
         .count();
     assert_eq!(utterances, 3, "prompt, the text answer, the reprompt");
-    let saved = RunScene::save(app.world_mut()).expect("every component serializes");
-    let json = serde_json::to_string(&saved).expect("serde");
-    assert!(!json.contains("Entity"), "no entity ids in a scene");
+    let saved = save_world(app.world_mut()).expect("every component serializes");
+    let json = saved.to_json().expect("serde");
     let head = app.world().resource::<EffectLogResource>().log();
     assert_eq!(head.records.len(), 1, "the first record was recorded here");
     drop(app);
 
     // A fresh world over the log's tail: the graph loaded, the second turn
     // folded from it, answered by record 2, settled to the golden's answer.
-    let saved: RunScene = serde_json::from_str(&json).expect("serde");
+    let saved = Checkpoint::from_json(&json).expect("serde");
     let (mut app, _model) = world_with(&log.tail(1));
     app.world_mut().resource_mut::<IdCounter>().0 = 2;
-    let loaded = saved.load(app.world_mut()).expect("the model is bound");
-    let run = loaded
-        .into_iter()
-        .find(|entity| app.world().get::<rig_ecs::agent::Run>(*entity).is_some())
-        .expect("the run");
+    let loaded = load_world(&saved, app.world_mut()).expect("the model is bound");
+    let run = loaded.with::<Run>(app.world())[0];
     let start = Instant::now();
     loop {
         app.update();
@@ -255,29 +268,25 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
             .is_some()
     });
     let saved = save_world(app.world_mut()).expect("every component serializes");
-    assert_eq!(saved.effects.effects.len(), 1);
-    let effect = &saved.effects.effects[0];
+    let effects = entities_with::<PendingEffect>(&saved);
+    assert_eq!(effects.len(), 1);
+    let effect = &saved.entities[effects[0]];
     assert_eq!(
-        effect.id,
-        Some(log.records[0].id),
+        effect.get(type_name::<Issued>()),
+        Some(&serde_json::json!(log.records[0].id)),
         "issued under the golden's id"
     );
-    assert!(effect.outcome.is_none(), "in flight: intent, no answer");
-    let turn_index = effect
-        .parent_ref
-        .expect("the effect names its turn in the graph");
-    assert_eq!(
-        saved.graph.entities[turn_index].kind,
-        rig_ecs::agent::scene::SceneKind::Turn
+    assert!(
+        !effect.contains_key(type_name::<EffectOutcome>()),
+        "in flight: intent, no answer"
     );
-    let json = serde_json::to_string(&saved).expect("serde");
-    assert!(!json.contains("Entity"), "no entity ids in a scene");
+    let json = saved.to_json().expect("serde");
     drop(app);
 
     // A fresh world with the golden's by-id replayer: the effect is
     // `ChildOf` its turn again, re-issued under its saved id, answered
     // from the record, and the run settles on the golden's answer.
-    let saved: WorldScene = serde_json::from_str(&json).expect("serde");
+    let saved = Checkpoint::from_json(&json).expect("serde");
     let mut app = run_support::app();
     Handlers::with(app.world_mut(), |handlers| {
         Replay::default()
@@ -287,17 +296,25 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
     .expect("a bus");
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let loaded = load_world(&saved, app.world_mut()).expect("the model is bound");
-    let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|entity| app.world().get::<rig_ecs::agent::Run>(*entity).is_some())
-        .expect("the run");
-    let effect = loaded.effects[0];
+    let run = loaded.with::<Run>(app.world())[0];
+    let effect = loaded.with::<PendingEffect>(app.world())[0];
+    let turn = app
+        .world()
+        .get::<ChildOf>(effect)
+        .map(ChildOf::parent)
+        .expect("the effect is the turn's child again");
+    assert!(app.world().get::<Turn>(turn).is_some());
     assert_eq!(
-        app.world().get::<ChildOf>(effect).map(ChildOf::parent),
-        Some(loaded.graph[turn_index]),
-        "the effect is the turn's child again"
+        app.world().get::<ChildOf>(turn).map(ChildOf::parent),
+        Some(run),
+        "the turn is the run's"
+    );
+    assert_eq!(
+        app.world()
+            .get::<Reserved>(effect)
+            .map(|reserved| reserved.0),
+        Some(log.records[0].id),
+        "re-issued under the saved id"
     );
     run_support::tick_until(&mut app, "the resumed run settles", |world| {
         assert!(
@@ -332,9 +349,9 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
     );
 }
 
-/// A run saved while its retrievals are out resumes: the scene carries
-/// each retrieval effect's `Retrieval`, so the loaded turn attaches the
-/// results and folds (the review's P1).
+/// A run saved while its retrievals are out resumes: the checkpoint
+/// carries each retrieval effect's `Retrieval`, so the loaded turn attaches
+/// the results and folds (the review's P1).
 #[test]
 fn a_run_saved_while_retrieving_resumes_and_attaches() {
     use rig_core::{
@@ -419,24 +436,22 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
             .count()
             == 1
     );
-    let saved = rig_ecs::agent::scene::save_world(app.world_mut()).expect("serializes");
-    assert_eq!(
-        saved.retrievals.len(),
-        1,
-        "the retrieval effect's marker is saved"
-    );
-    let json = serde_json::to_string(&saved).expect("serde");
+    let saved = save_world(app.world_mut()).expect("serializes");
+    let retrievals = saved
+        .entities
+        .iter()
+        .filter(|entity| {
+            entity.contains_key(type_name::<PendingEffect>())
+                && entity.contains_key(type_name::<Retrieval>())
+        })
+        .count();
+    assert_eq!(retrievals, 1, "the retrieval effect's marker is saved");
+    let saved = round_trip(&saved);
     drop(app);
 
     let (mut app, _, _) = world(true);
-    let saved: rig_ecs::agent::scene::WorldScene = serde_json::from_str(&json).expect("serde");
-    let loaded = rig_ecs::agent::scene::load_world(&saved, app.world_mut()).expect("bound");
-    let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|entity| app.world().get::<rig_ecs::agent::Run>(*entity).is_some())
-        .expect("the run");
+    let loaded = load_world(&saved, app.world_mut()).expect("bound");
+    let run = loaded.with::<Run>(app.world())[0];
     run_support::tick_until(&mut app, "the resumed run", |world| {
         world.get::<Settled>(run).is_some()
     });
@@ -448,111 +463,138 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
     assert_eq!(attachments, 1, "the retrieved document is attached");
 }
 
+/// A run saved with its effect out: the effect loads `ChildOf` the loaded
+/// run's turn, re-issued under its saved id, and nothing else of the run's
+/// subtree moves — the same utterance reads, the same order.
 #[test]
-fn contradictory_effect_ids_refuse_the_paired_graph_before_spawning() {
-    use rig_core::effect::{EffectId, EffectKind};
-    use rig_ecs::{
-        agent::scene::{SceneEntity, SceneKind},
-        bus::{Reserved, Scene},
-    };
-    let mut live = run_support::app();
-    live.world_mut().spawn((
-        PendingEffect::new(
-            "custom",
-            EffectKind::Custom {
-                kind: "scene-preflight".into(),
-                payload: serde_json::Value::Null,
-            },
-        ),
-        Reserved(EffectId::from_raw(8)),
-    ));
-    let scene = Scene::save(live.world_mut());
-    for (id, next_id) in [(8, Some(4)), (u64::MAX, None)] {
-        let mut bad = scene.clone();
-        bad.effects[0].id = Some(EffectId::from_raw(id));
-        bad.next_id = next_id;
-        let bad: Scene = serde_json::from_value(serde_json::to_value(bad).unwrap()).unwrap();
-        let mut restored = run_support::app();
-        restored.world_mut().resource_mut::<IdCounter>().0 = 5;
-        let before = restored.world().entities().len();
-        let world_scene = WorldScene {
-            effects: bad,
-            graph: RunScene {
-                entities: vec![SceneEntity {
-                    kind: SceneKind::Agent,
-                    components: Default::default(),
-                    parent: None,
-                    relations: Vec::new(),
-                }],
-                ..RunScene::default()
-            },
-            ..WorldScene::default()
-        };
-        assert!(load_world(&world_scene, restored.world_mut()).is_err());
-        assert_eq!(
-            restored.world().entities().len(),
-            before,
-            "paired graph preflight must also refuse"
-        );
-        assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
-    }
+fn an_effect_under_a_run_loads_under_the_loaded_run_with_its_saved_id() {
+    use rig_core::effect::EffectId;
+    use rig_ecs::agent::{Order, content::parts::read_message};
+
+    let (mut world, agent) = run_support::open_model_world();
+    world.resource_mut::<IdCounter>().0 = 40;
+    let run = world.spawn_run(agent, &[], "what?", false, None);
+    world.run_schedule(RigSchedule);
+    let effect = world
+        .query_filtered::<Entity, With<PendingEffect>>()
+        .single(&world)
+        .expect("the turn's one effect");
+    let turn = world.get::<ChildOf>(effect).expect("under a turn").parent();
+    assert!(world.get::<Turn>(turn).is_some());
+    assert_eq!(world.get::<ChildOf>(turn).map(ChildOf::parent), Some(run));
+    let id = world.get::<Issued>(effect).expect("dispatched").0;
+    assert_eq!(id, EffectId::from_raw(40));
+    let utterance = run_support::first_utterance(&mut world, run);
+    let prompt = read_message(&world, utterance).expect("the prompt");
+    let order = *world.get::<Order>(utterance).expect("ordered");
+    let saved = round_trip(&save_world(&mut world).expect("serializes"));
+    drop(world);
+
+    let (mut restored, _) = run_support::open_model_world();
+    let loaded = load_world(&saved, &mut restored).expect("the model is bound");
+    let run = loaded.with::<Run>(&restored)[0];
+    let effects = loaded.with::<PendingEffect>(&restored);
+    assert_eq!(effects.len(), 1);
+    let effect = effects[0];
+    let turn = restored
+        .get::<ChildOf>(effect)
+        .expect("the effect is the turn's child again")
+        .parent();
+    assert!(restored.get::<Turn>(turn).is_some());
+    assert_eq!(
+        restored.get::<ChildOf>(turn).map(ChildOf::parent),
+        Some(run)
+    );
+    assert_eq!(
+        restored.get::<Reserved>(effect).map(|reserved| reserved.0),
+        Some(id),
+        "re-issued under the saved id"
+    );
+    assert!(restored.get::<InFlight>(effect).is_none());
+    let utterance = run_support::first_utterance(&mut restored, run);
+    assert_eq!(
+        read_message(&restored, utterance).expect("the prompt"),
+        prompt
+    );
+    assert_eq!(restored.get::<Order>(utterance), Some(&order));
+    let agent = restored
+        .get::<rig_ecs::agent::RunOf>(run)
+        .expect("the run is its agent's")
+        .0;
+    assert_eq!(
+        restored.get::<Owner>(agent).map(|owner| owner.0.as_str()),
+        Some("owner")
+    );
+    restored.run_schedule(RigSchedule);
+    assert_eq!(
+        restored.get::<Issued>(effect).map(|issued| issued.0),
+        Some(id),
+        "dispatched again under the saved id"
+    );
 }
 
 #[test]
 fn malformed_run_graph_is_rejected_before_spawning() {
-    use rig_ecs::agent::scene::{SceneEntity, SceneKind, Target};
-    for fault in ["cycle", "self-parent", "missing-parent", "missing-relation"] {
-        let mut scene = RunScene {
-            entities: (0..2)
-                .map(|_| SceneEntity {
-                    kind: SceneKind::Agent,
-                    components: Default::default(),
-                    parent: None,
-                    relations: vec![],
-                })
-                .collect(),
-            ..Default::default()
-        };
+    use rig_ecs::agent::RunOf;
+
+    let (mut world, agent) = run_support::open_model_world();
+    // A run made by hand, not yet opened: it still carries its prompt.
+    let bundle = rig_ecs::systems::RunBundle::new(&mut world, agent, false);
+    let unopened = world
+        .spawn((bundle, rig_ecs::agent::Prompt::from("what?")))
+        .id();
+    let unread = round_trip(&save_world(&mut world).expect("serializes"));
+    world.despawn(unopened);
+    world.spawn_run(agent, &[], "what?", false, None);
+    world.run_schedule(RigSchedule);
+    let original = round_trip(&save_world(&mut world).expect("serializes"));
+    let run = entities_with::<Run>(&original)[0];
+    let effect = entities_with::<PendingEffect>(&original)[0];
+    let missing = original.entities.len();
+    for fault in [
+        "missing-parent",
+        "missing-effect-parent",
+        "missing-relation",
+        "misplaced-prompt",
+    ] {
+        let mut bad = original.clone();
         match fault {
-            "cycle" => {
-                scene.entities[0].parent = Some(1);
-                scene.entities[1].parent = Some(0);
+            "missing-parent" => {
+                bad.entities[run].insert(
+                    type_name::<ChildOf>().to_owned(),
+                    serde_json::json!(missing),
+                );
             }
-            "self-parent" => scene.entities[0].parent = Some(0),
-            "missing-parent" => scene.entities[0].parent = Some(2),
-            "missing-relation" => scene.entities[0]
-                .relations
-                .push(("context".into(), Target::Scene { index: 2 })),
+            "missing-effect-parent" => {
+                bad.entities[effect].insert(
+                    type_name::<ChildOf>().to_owned(),
+                    serde_json::json!(missing),
+                );
+            }
+            "missing-relation" => {
+                bad.entities[run]
+                    .insert(type_name::<RunOf>().to_owned(), serde_json::json!(missing));
+            }
+            "misplaced-prompt" => {
+                bad = unread.clone();
+                let run = entities_with::<Run>(&bad)[0];
+                let prompt = bad.entities[run]
+                    .remove(type_name::<rig_ecs::agent::Prompt>())
+                    .expect("the run's prompt is not yet read");
+                let owner = entities_with::<Owner>(&bad)[0];
+                bad.entities[owner]
+                    .insert(type_name::<rig_ecs::agent::Prompt>().to_owned(), prompt);
+            }
             _ => panic!("unknown graph fault {fault}"),
         }
-        let mut world = World::new();
-        let initial = world.entities().len();
-        assert!(scene.load(&mut world).is_err(), "{fault}");
-        assert_eq!(world.entities().len(), initial, "{fault} mutated the world");
+        let (mut destination, _) = run_support::open_model_world();
+        let initial = destination.entities().len();
+        let error = load_world(&bad, &mut destination).expect_err(fault);
+        assert_eq!(error.kind, rig_core::error::ErrorKind::Request, "{fault}");
+        assert_eq!(
+            destination.entities().len(),
+            initial,
+            "{fault} mutated the world"
+        );
     }
-}
-
-#[test]
-fn paired_scene_missing_graph_parent_is_rejected_before_spawning() {
-    let mut source = World::new();
-    source.init_resource::<rig_ecs::bus::SeqCounter>();
-    source.init_resource::<IdCounter>();
-    source.spawn(PendingEffect::new(
-        "custom",
-        rig_core::effect::EffectKind::Custom {
-            kind: "test".into(),
-            payload: serde_json::Value::Null,
-        },
-    ));
-    let mut scene = WorldScene {
-        effects: rig_ecs::bus::Scene::save(&mut source),
-        ..Default::default()
-    };
-    scene.effects.effects[0].parent_ref = Some(0);
-    let mut destination = World::new();
-    destination.init_resource::<rig_ecs::bus::SeqCounter>();
-    destination.init_resource::<IdCounter>();
-    let initial = destination.entities().len();
-    assert!(load_world(&scene, &mut destination).is_err());
-    assert_eq!(destination.entities().len(), initial);
 }

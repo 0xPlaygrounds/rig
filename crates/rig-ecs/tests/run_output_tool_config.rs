@@ -6,8 +6,9 @@ use rig_core::message::{AssistantContent, ToolChoice};
 use rig_ecs::{
     agent::{
         Failed, Failure, Grant, MaxTurns, Order, Output, OutputKind, OutputRetries,
-        OutputToolConfig, OutputToolName, Run, RunResult, Settled, ToolChoiceSpec, scene::RunScene,
+        OutputToolConfig, OutputToolName, Run, RunResult, Settled, ToolChoiceSpec,
     },
+    checkpoint::{Checkpoint, load_world, save_world},
     systems::RunCommands,
 };
 use run_support::*;
@@ -274,7 +275,7 @@ fn output_configuration_without_a_schema_does_not_create_a_tool() {
 }
 
 #[test]
-fn scene_restores_custom_configuration_in_a_fresh_world() {
+fn a_checkpoint_restores_custom_configuration_in_a_fresh_world() {
     let mut original = app();
     let (agent, _) = scripted_agent(&mut original, MODEL, vec![]);
     original
@@ -285,8 +286,8 @@ fn scene_restores_custom_configuration_in_a_fresh_world() {
         .world_mut()
         .spawn_run(agent, &[], "extract", false, None);
     original.world_mut().entity_mut(run).insert(config());
-    let scene = RunScene::save(original.world_mut()).unwrap();
-    let scene: RunScene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
+    let checkpoint = save_world(original.world_mut()).unwrap();
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
     drop(original);
     let mut restored = app();
     let (model, requests) = Scripted::new(
@@ -294,7 +295,7 @@ fn scene_restores_custom_configuration_in_a_fresh_world() {
         vec![vec![call("c", "submit", serde_json::json!({"answer":42}))]],
     );
     register(&mut restored, MODEL, model);
-    scene.load(restored.world_mut()).unwrap();
+    load_world(&checkpoint, restored.world_mut()).unwrap();
     let run = restored
         .world_mut()
         .query_filtered::<Entity, With<Run>>()

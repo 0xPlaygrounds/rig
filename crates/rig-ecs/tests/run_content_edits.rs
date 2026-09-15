@@ -1,4 +1,4 @@
-//! Part-targeted requests retain history and survive scene entity remapping.
+//! Part-targeted requests retain history and survive checkpoint entity remapping.
 use crate::run_support::{first_utterance, open_model_world};
 
 use bevy_ecs::prelude::*;
@@ -7,11 +7,9 @@ use rig_core::{
     message::{Message, UserContent},
 };
 use rig_ecs::{
-    agent::{
-        Failed, MessageParts, Order, RequestPatch, Turn, Utterance, content::parts::*,
-        scene::RunScene,
-    },
+    agent::{Failed, MessageParts, Order, RequestPatch, Turn, Utterance, content::parts::*},
     bus::{PendingEffect, RigSchedule},
+    checkpoint::{Checkpoint, load_world, save_world},
     systems::{Fresh, RunCommands},
 };
 
@@ -85,7 +83,7 @@ fn ordered_edits_change_only_one_request_and_preserve_history() {
 }
 
 #[test]
-fn edit_target_is_remapped_with_the_scene() {
+fn edit_target_is_remapped_with_the_checkpoint() {
     let (mut world, _, turn, _, target) = fixture();
     world.spawn((
         RequestPartEdit::Remove,
@@ -93,18 +91,13 @@ fn edit_target_is_remapped_with_the_scene() {
         Order(0),
         ChildOf(turn),
     ));
-    let scene = RunScene::save(&mut world).unwrap();
-    let encoded = serde_json::to_vec(&scene).unwrap();
-    let scene: RunScene = serde_json::from_slice(&encoded).unwrap();
-    let loaded = scene.load(&mut world).unwrap();
-    let link = loaded
-        .iter()
-        .copied()
-        .find(|entity| world.get::<RequestPartEdit>(*entity).is_some())
-        .unwrap();
+    let checkpoint = save_world(&mut world).unwrap();
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
+    let loaded = load_world(&checkpoint, &mut world).unwrap();
+    let link = loaded.with::<RequestPartEdit>(&world)[0];
     let remapped = world.get::<EditTarget>(link).unwrap().0;
     assert_ne!(remapped, target);
-    assert!(loaded.contains(&remapped));
+    assert!(loaded.entities.contains(&remapped));
     assert_eq!(
         world.get::<TextPart>(remapped),
         world.get::<TextPart>(target)

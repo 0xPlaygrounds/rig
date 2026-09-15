@@ -178,9 +178,9 @@ fn unadvertised_execution_binding_cannot_impersonate_output_tool() {
 
 #[test]
 fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
-    use rig_ecs::agent::{
-        Outputs, Run,
-        scene::{load_world, save_world},
+    use rig_ecs::{
+        agent::{Outputs, Run},
+        checkpoint::{Checkpoint, load_world, save_world},
     };
     let mut first = app();
     let (model, _) = Capturing::new("model", "unused");
@@ -212,14 +212,13 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
         ..Default::default()
     });
     let row = rig_ecs::replay::required_row(first.world_mut(), run);
-    let scene = save_world(first.world_mut()).expect("save graph");
-    let scene =
-        serde_json::from_slice(&serde_json::to_vec(&scene).expect("encode")).expect("decode");
+    let checkpoint = save_world(first.world_mut()).expect("save graph");
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().expect("encode")).expect("decode");
     drop(first);
     let mut restored = app();
     let (model, _) = Capturing::new("model", "unused");
     register(&mut restored, "model", model);
-    load_world(&scene, restored.world_mut()).expect("restore graph");
+    load_world(&checkpoint, restored.world_mut()).expect("restore graph");
     let run = restored
         .world_mut()
         .query_filtered::<Entity, With<Run>>()

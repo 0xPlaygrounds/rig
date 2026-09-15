@@ -23,10 +23,19 @@ use rig_core::{
     serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
-use rig_ecs::bus::{BusPlugin, EffectOutcome, PendingEffect};
+use rig_ecs::{
+    bus::{BusPlugin, EffectOutcome, PendingEffect},
+    checkpoint::{Checkpoint, save_world},
+};
 
 /// A hang is a failure, never a wait.
 pub const GUARD: Duration = Duration::from_secs(10);
+
+/// The world's checkpoint, taken through its wire form.
+pub fn checkpoint(app: &mut App) -> Checkpoint {
+    let saved = save_world(app.world_mut()).expect("the world saves");
+    Checkpoint::from_json(&saved.to_json().expect("serde")).expect("serde")
+}
 
 /// What a scripted model observed.
 #[derive(Default)]
@@ -228,10 +237,12 @@ pub fn streaming() -> EffectKind {
 }
 
 /// An app with the bus installed under `policy`, ambiguity detection at
-/// error level, the runner in `Update`.
+/// error level, the runner in `Update`, and the crate's types registered so
+/// a checkpoint covers the bus.
 pub fn app_with(policy: ServingPolicy) -> App {
     let mut app = App::new();
     app.add_plugins(BusPlugin::with_policy(policy).ambiguity_detection(LogLevel::Error));
+    rig_ecs::checkpoint::register_types(app.world_mut());
     app.finish();
     app.cleanup();
     app

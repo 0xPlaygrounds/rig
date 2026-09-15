@@ -8,18 +8,21 @@
 //! | a queued despawn of a live run is refused by `RunDespawnRefused` on the run, and takes the run once it ended | `a_queued_despawn_is_refused_by_event_while_the_run_lives` |
 //! | a run despawned while the queued spawn populates it (a host `Add<Run>` observer refusing it) is simply gone: no panic, no orphan utterance, no request | `a_reserved_run_despawned_before_it_was_populated_is_gone` |
 //! | a second queued despawn of an id an earlier one already took is refused `NotARun` on the dead id, without panicking | `a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run` |
-//! | a scene with `ready` or `prompt` on a non-run is refused before the destination changes | `a_scene_refuses_ready_and_prompt_off_a_run_before_it_loads` |
+//! | a checkpoint with `ready` or `prompt` on a non-run is refused before the destination changes | `a_checkpoint_refuses_ready_and_prompt_off_a_run_before_it_loads` |
 //! | a run assembled by hand from `RunBundle` and `Prompt` is not read until `Ready`: no utterance, no phase, no request; `Ready` opens it, history first | `a_run_assembled_by_hand_starts_on_ready_with_its_history_first` |
 //! | a `Ready` run saved before it opened loads with its `Prompt` and `Ready`, opens in the second world and answers | `a_ready_run_saved_before_it_opened_starts_after_the_load` |
 use crate::run_support;
+
+use std::any::type_name;
 
 use bevy_ecs::prelude::*;
 use rig_core::message::UserContent;
 use rig_ecs::{
     agent::{
-        Assembling, Failed, Failure, MessageParts, Prompt, Ready, Run, RunOf, Settled, Utterance,
-        scene::{RunScene, SceneKind, load_world, save_world},
+        Assembling, Failed, Failure, MessageParts, Owner, Prompt, Ready, Run, RunOf, Settled,
+        Utterance,
     },
+    checkpoint::{Checkpoint, load_world, save_world},
     systems::{Fresh, RunBundle, RunBusy, RunCommands, RunDespawnRefused, spawn_utterance},
 };
 use run_support::*;
@@ -242,35 +245,37 @@ fn a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run() {
 }
 
 #[test]
-fn a_scene_refuses_ready_and_prompt_off_a_run_before_it_loads() {
+fn a_checkpoint_refuses_ready_and_prompt_off_a_run_before_it_loads() {
     let mut app = app();
     let (agent, _) = capturing_agent(&mut app, "t/model:m", "t/model:m", "hello");
     let world = app.world_mut();
     let bundle = RunBundle::new(world, agent, false);
     world.spawn((bundle, Prompt::from("saved"), Ready));
-    let scene = RunScene::save(world).expect("every component serializes");
-    let run = scene
+    let checkpoint = save_world(world).expect("every component serializes");
+    let run = checkpoint
         .entities
         .iter()
-        .find(|entity| entity.kind == SceneKind::Run)
+        .find(|entity| entity.contains_key(type_name::<Run>()))
         .expect("the run");
     let prompt = run
-        .components
-        .get("prompt")
+        .get(type_name::<Prompt>())
         .expect("the unread prompt")
         .clone();
-    let ready = run.components.get("ready").expect("ready").clone();
+    let ready = run.get(type_name::<Ready>()).expect("ready").clone();
 
-    for (name, value) in [("ready", ready), ("prompt", prompt)] {
-        let mut misplaced = scene.clone();
+    for (name, path, value) in [
+        ("ready", type_name::<Ready>(), ready),
+        ("prompt", type_name::<Prompt>(), prompt),
+    ] {
+        let mut misplaced = checkpoint.clone();
         let agent = misplaced
             .entities
             .iter_mut()
-            .find(|entity| entity.kind == SceneKind::Agent)
+            .find(|entity| entity.contains_key(type_name::<Owner>()))
             .expect("the agent");
-        agent.components.insert(name.into(), value);
+        agent.insert(path.to_owned(), value);
         let count = app.world().entities().len();
-        let error = misplaced.load(app.world_mut()).unwrap_err();
+        let error = load_world(&misplaced, app.world_mut()).unwrap_err();
         assert!(
             error.message.contains(&format!("{name} is not on a run")),
             "{name}: {}",
@@ -351,24 +356,19 @@ fn a_ready_run_saved_before_it_opened_starts_after_the_load() {
     // Ready written by hand, saved before any pass opened the run.
     world.spawn((bundle, Prompt::from("saved"), Ready));
     let saved = save_world(world).expect("every component serializes");
-    let json = serde_json::to_string(&saved).expect("serde");
+    let json = saved.to_json().expect("serde");
     drop(app);
 
     let mut app = run_support::app();
     let (model, requests) = Capturing::new("t/model:m", "hello");
     register(&mut app, "t/model:m", model);
-    let saved = serde_json::from_str(&json).expect("serde");
+    let saved = Checkpoint::from_json(&json).expect("serde");
     let loaded = load_world(&saved, app.world_mut()).expect("the model is bound");
-    let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|entity| app.world().get::<Run>(*entity).is_some())
-        .expect("the run");
+    let run = loaded.with::<Run>(app.world())[0];
     let world = app.world_mut();
     assert!(
         world.get::<Ready>(run).is_some(),
-        "Ready survives the scene"
+        "Ready survives the checkpoint"
     );
     assert!(world.get::<Prompt>(run).is_some(), "the unread prompt too");
     assert!(

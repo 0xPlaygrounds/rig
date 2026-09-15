@@ -1,11 +1,12 @@
-//! Scenes and replay: the fixture's proofs 10 and 13 in the native shape,
-//! the goldens replayed through a world by id (the streamed one included),
-//! the log as a resource, typed keys across ticks, and re-registration.
+//! Checkpoints and replay: the fixture's proofs 10 and 13 in the native
+//! shape, the goldens replayed through a world by id (the streamed one
+//! included), the log as a resource, typed keys across ticks, and
+//! re-registration.
 //!
 //! | proof / behaviour | test |
 //! |---|---|
-//! | 10 scene round-trip: intent, ids, outcomes, causality | `a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered` |
-//! | 13 checkpointed scene: the log's tail replayed over a fresh world | `a_checkpoint_and_the_logs_tail_resume_in_a_fresh_world` |
+//! | 10 checkpoint round-trip: intent, ids, outcomes, causality | `a_checkpoint_saves_intent_and_a_loaded_world_reissues_what_was_unanswered` |
+//! | 13 checkpointed log: the log's tail replayed over a fresh world | `a_checkpoint_and_the_logs_tail_resume_in_a_fresh_world` |
 //! | §4.8 three goldens through a world, the streamed one asserting its events | `three_goldens_replay_through_a_world_by_id` |
 //! | §4.8 `EffectLog` as a resource with a replayer inside the world | `three_goldens_replay_through_a_world_by_id` |
 //! | §4.8 a typed key in a component across ticks | `a_typed_key_dispatches_across_ticks` |
@@ -23,9 +24,12 @@ use rig_core::{
     effect::{EffectFamily, EffectKind, HandlerKey, Key, Outcome, family},
     serve::Serve,
 };
-use rig_ecs::bus::{
-    EffectLogResource, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Replay, Reserved,
-    Scene, Streamed, Typed,
+use rig_ecs::{
+    bus::{
+        EffectLogResource, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Replay,
+        Reserved, Streamed, Typed,
+    },
+    checkpoint::{Checkpoint, Counters as SavedCounters, load_world},
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 
@@ -40,7 +44,7 @@ fn golden(name: &str) -> EffectLog {
 }
 
 #[test]
-fn completed_stream_survives_json_scene_without_serving_again() {
+fn completed_stream_survives_json_checkpoint_without_serving_again() {
     let (mut live, _, _) = served();
     let effect = live
         .world_mut()
@@ -51,10 +55,10 @@ fn completed_stream_survives_json_scene_without_serving_again() {
     });
     let before = serde_json::to_value(live.world().get::<Streamed>(effect).unwrap()).unwrap();
     assert_eq!(before["events"].as_array().unwrap().len(), STREAM_CAP + 3);
-    let scene = Scene::save(live.world_mut());
-    let scene: Scene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
+    let saved = checkpoint(&mut live);
     let (mut restored, _, counters) = served();
-    let loaded = scene.load(restored.world_mut()).unwrap()[0];
+    let loaded = load_world(&saved, restored.world_mut()).unwrap();
+    let loaded = loaded.with::<PendingEffect>(restored.world())[0];
     tick(&mut restored, 3);
     let after = serde_json::to_value(
         restored
@@ -86,21 +90,13 @@ fn unfinished_stream_with_observed_progress_is_refused_before_spawning() {
             .is_some_and(|streamed| !streamed.text.is_empty())
     });
     assert!(live.world().get::<EffectOutcome>(effect).is_none());
-    let scene = Scene::save(live.world_mut());
-    let scene: Scene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
+    let saved = checkpoint(&mut live);
     let mut restored = app();
     let before = restored.world().entities().len();
-    let error = scene
-        .load(restored.world_mut())
+    let error = load_world(&saved, restored.world_mut())
         .expect_err("no cursor to prevent duplicate delivery");
-    assert!(error.message.contains("unfinished stream"));
+    assert!(error.message.contains("unfinished stream"), "{error:?}");
     assert_eq!(restored.world().entities().len(), before);
-    assert!(
-        scene.effects[0]
-            .streamed
-            .as_ref()
-            .is_some_and(|streamed| !streamed.text.is_empty())
-    );
 }
 
 #[test]
@@ -116,10 +112,10 @@ fn an_unfinished_stream_without_progress_restarts_under_its_saved_id() {
     });
     assert_eq!(counters.stream_sends.load(Ordering::SeqCst), 0);
     let id = live.world().get::<Issued>(effect).unwrap().0;
-    let scene = Scene::save(live.world_mut());
-    let scene: Scene = serde_json::from_slice(&serde_json::to_vec(&scene).unwrap()).unwrap();
+    let saved = checkpoint(&mut live);
     let (mut resumed, _, resumed_counters) = served();
-    let loaded = scene.load(resumed.world_mut()).unwrap()[0];
+    let loaded = load_world(&saved, resumed.world_mut()).unwrap();
+    let loaded = loaded.with::<PendingEffect>(resumed.world())[0];
     tick_until(&mut resumed, "restarted stream completed", |world| {
         world.get::<EffectOutcome>(loaded).is_some()
     });
@@ -137,23 +133,7 @@ fn an_unfinished_stream_without_progress_restarts_under_its_saved_id() {
 }
 
 #[test]
-fn scene_wire_requires_explicit_stream_state_even_when_null() {
-    let mut live = app();
-    live.world_mut()
-        .spawn(PendingEffect::new("model", streaming()));
-    let mut wire = serde_json::to_value(Scene::save(live.world_mut())).unwrap();
-    assert!(wire["effects"][0]["streamed"].is_null());
-    serde_json::from_value::<Scene>(wire.clone()).unwrap();
-    wire["effects"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("streamed");
-    let error = serde_json::from_value::<Scene>(wire).unwrap_err();
-    assert!(error.to_string().contains("streamed"));
-}
-
-#[test]
-fn a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
+fn a_checkpoint_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
     let (mut app, _, counters) = served();
     // Answer the first, then hold the rest.
     answered(&mut app, "first answered");
@@ -175,34 +155,19 @@ fn a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
         .id();
     app.update();
     let taken_id = app.world().get::<Issued>(taken).expect("issued").0;
-
-    let scene = Scene::save(app.world_mut());
-    assert_eq!(scene.handlers.len(), 1);
-    assert_eq!(scene.effects.len(), 4);
-    let json = serde_json::to_string(&scene).expect("serde");
-    assert!(!json.contains("Entity"), "no entity ids in a scene");
-    let scene: Scene = serde_json::from_str(&json).expect("serde");
-    let saved_child = scene
-        .effects
-        .iter()
-        .find(|effect| effect.parent.is_some())
-        .expect("the child");
-    let parent_index = saved_child.parent.expect("has a parent");
-    assert_eq!(scene.effects[parent_index].id, Some(taken_id));
-    assert!(
-        scene.effects[0].outcome.is_some(),
-        "the answered one is answered"
-    );
+    let saved = checkpoint(&mut app);
     drop(app);
     let _ = (child, waiting);
 
-    // A fresh world, the scene loaded, the same handler bound: the answered
-    // effect stays answered, the two taken-or-waiting ones are re-issued —
-    // the taken one under its saved id — and the child is a child again.
+    // A fresh world, the checkpoint loaded, the same handler bound: the
+    // answered effect stays answered, the two taken-or-waiting ones are
+    // re-issued — the taken one under its saved id — and the child is a
+    // child again.
     let counters = Arc::new(Counters::default());
     let mut app = bus_support::app();
     register(&mut app, "model", MockModel::saying(&counters, "again"));
-    let loaded = scene.load(app.world_mut()).unwrap();
+    let loaded = load_world(&saved, app.world_mut()).unwrap();
+    let loaded = loaded.with::<PendingEffect>(app.world());
     assert_eq!(loaded.len(), 4);
     tick_until(&mut app, "all answered", |world| {
         loaded
@@ -215,10 +180,14 @@ fn a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
         3,
         "the answered effect was never re-dispatched"
     );
-    assert_eq!(
-        text_of(&world.get::<EffectOutcome>(loaded[0]).expect("kept").0),
-        "hello from the world"
-    );
+    let kept = loaded
+        .iter()
+        .filter(|entity| {
+            text_of(&world.get::<EffectOutcome>(**entity).expect("answered").0)
+                == "hello from the world"
+        })
+        .count();
+    assert_eq!(kept, 1, "the answered one keeps its answer");
     let reissued = loaded
         .iter()
         .find(|entity| world.get::<Issued>(**entity).map(|issued| issued.0) == Some(taken_id))
@@ -496,43 +465,26 @@ fn a_live_key_is_reserved_and_never_changes_family() {
 }
 
 #[test]
-fn a_loaded_scene_never_collides_with_minted_ids() {
+fn a_loaded_checkpoint_never_collides_with_minted_ids() {
+    // Answered effects with ids 0..3, loaded into a fresh world: the next
+    // minted id must be past them, not 0 again — the surviving ids alone
+    // say so, whatever counter the checkpoint carries.
+    let (mut live, _, _) = served();
+    for _ in 0..3 {
+        answered(&mut live, "saved answered");
+    }
+    let mut saved = checkpoint(&mut live);
+    saved.counters.next_id = 0;
     let (mut app, _, _) = served();
-    // A scene of answered effects with ids 0..3, loaded into a fresh world:
-    // the next minted id must be past them, not 0 again.
-    let scene = Scene {
-        next_id: None,
-        handlers: Vec::new(),
-        effects: (0..3)
-            .map(|n| rig_ecs::bus::SceneEffect {
-                streamed: None,
-                seq: rig_ecs::bus::Seq(n),
-                key: HandlerKey::from("model"),
-                kind: completion(),
-                id: Some(rig_core::effect::EffectId::from_raw(n)),
-                outcome: Some(Err(rig_core::error::ErrorReport::new(
-                    rig_core::error::ErrorKind::Cancelled,
-                    "saved answered",
-                ))),
-                parent: None,
-                parent_ref: None,
-                scope: None,
-                held: false,
-                hold_owners: None,
-                tool_inputs: None,
-                tool_outputs: None,
-            })
-            .collect(),
-    };
-    let loaded = scene.load(app.world_mut()).unwrap();
+    let loaded = load_world(&saved, app.world_mut()).unwrap();
+    assert_eq!(loaded.with::<PendingEffect>(app.world()).len(), 3);
     let fresh = answered(&mut app, "minted");
     let minted = app.world().get::<Issued>(fresh).expect("issued").0;
     assert_eq!(minted.as_u64(), 3, "past every saved id");
-    assert_eq!(loaded.len(), 3);
 }
 
 #[test]
-fn pruned_effects_do_not_refund_issued_ids_after_scene_load() {
+fn pruned_effects_do_not_refund_issued_ids_after_checkpoint_load() {
     for retain_lower in [false, true] {
         let (mut live, _, _) = served();
         let mut effects = Vec::new();
@@ -549,16 +501,14 @@ fn pruned_effects_do_not_refund_issued_ids_after_scene_load() {
                 live.world_mut().despawn(effect);
             }
         }
-        let scene = Scene::save(live.world_mut());
-        let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+        let saved = checkpoint(&mut live);
         let (mut restored, _, _) = served();
-        scene.load(restored.world_mut()).unwrap();
+        load_world(&saved, restored.world_mut()).unwrap();
         // A second checkpoint with no fresh dispatch must preserve the same
         // allocation history even when no effect entities survived.
-        let scene = Scene::save(restored.world_mut());
-        let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+        let saved = checkpoint(&mut restored);
         let (mut twice, _, _) = served();
-        scene.load(twice.world_mut()).unwrap();
+        load_world(&saved, twice.world_mut()).unwrap();
         let next = answered(&mut twice, "fresh dispatch after pruning");
         assert_eq!(
             twice.world().get::<Issued>(next).unwrap().0.as_u64(),
@@ -569,7 +519,7 @@ fn pruned_effects_do_not_refund_issued_ids_after_scene_load() {
 }
 
 #[test]
-fn removed_reservations_remain_consumed_after_scene_load() {
+fn removed_reservations_remain_consumed_after_checkpoint_load() {
     let mut live = app();
     let reserved = live
         .world_mut()
@@ -579,10 +529,9 @@ fn removed_reservations_remain_consumed_after_scene_load() {
         ))
         .id();
     live.world_mut().despawn(reserved);
-    let scene = Scene::save(live.world_mut());
-    let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+    let saved = checkpoint(&mut live);
     let (mut restored, _, _) = served();
-    scene.load(restored.world_mut()).unwrap();
+    load_world(&saved, restored.world_mut()).unwrap();
     let next = answered(&mut restored, "fresh dispatch after reservation");
     assert_eq!(restored.world().get::<Issued>(next).unwrap().0.as_u64(), 21);
 }
@@ -655,7 +604,7 @@ fn maximum_issued_id_never_wraps_the_insertion_hook() {
 }
 
 #[test]
-fn cancelled_highest_id_remains_consumed_after_scene_load() {
+fn cancelled_highest_id_remains_consumed_after_checkpoint_load() {
     let (mut live, _, counters) = served();
     EffectLogResource::install(live.world_mut(), EffectLogRecorder::new());
     answered(&mut live, "lower completed");
@@ -674,31 +623,33 @@ fn cancelled_highest_id_remains_consumed_after_scene_load() {
     assert!(
         matches!(&log.records[1].outcome, Err(error) if error.kind == rig_core::error::ErrorKind::Cancelled)
     );
-    let scene = Scene::save(live.world_mut());
-    let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+    let saved = checkpoint(&mut live);
     counters.hold.release();
     let mut restored = app();
     register(&mut restored, "model", MockModel::new(&counters));
-    scene.load(restored.world_mut()).unwrap();
+    load_world(&saved, restored.world_mut()).unwrap();
     let fresh = answered(&mut restored, "after cancelled highest");
     assert_eq!(restored.world().get::<Issued>(fresh).unwrap().0.as_u64(), 2);
 }
 
 #[test]
-fn scene_counter_never_rewinds_a_used_destination_and_preserves_exhaustion() {
-    for next_id in [None, Some(3), Some(101), Some(u64::MAX)] {
-        let scene = Scene {
-            next_id,
-            ..Scene::default()
+fn checkpoint_counter_never_rewinds_a_used_destination_and_preserves_exhaustion() {
+    for next_id in [0, 3, 101, u64::MAX] {
+        let saved = Checkpoint {
+            counters: SavedCounters {
+                next_id,
+                ..SavedCounters::default()
+            },
+            ..Checkpoint::default()
         };
-        let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+        let saved = Checkpoint::from_json(&saved.to_json().unwrap()).unwrap();
         let mut restored = app();
         restored
             .world_mut()
             .resource_mut::<rig_ecs::bus::IdCounter>()
             .0 = 100;
-        scene.load(restored.world_mut()).unwrap();
-        let expected = next_id.unwrap_or(0).max(100);
+        load_world(&saved, restored.world_mut()).unwrap();
+        let expected = next_id.max(100);
         assert_eq!(
             restored.world().resource::<rig_ecs::bus::IdCounter>().0,
             expected
@@ -738,52 +689,20 @@ fn scene_counter_never_rewinds_a_used_destination_and_preserves_exhaustion() {
 }
 
 #[test]
-fn saved_ids_omit_redundant_watermarks_and_reject_contradictions_before_spawning() {
-    let mut live = app();
-    live.world_mut().spawn((
-        PendingEffect::new("model", completion()),
-        Reserved(rig_core::effect::EffectId::from_raw(8)),
-    ));
-    let scene = Scene::save(live.world_mut());
-    let wire = serde_json::to_value(&scene).unwrap();
-    assert!(
-        wire.get("next_id").is_none(),
-        "surviving ids determine the counter"
-    );
-    for (id, next_id) in [(8, Some(4)), (u64::MAX, None)] {
-        let mut bad = scene.clone();
-        bad.effects[0].id = Some(rig_core::effect::EffectId::from_raw(id));
-        bad.next_id = next_id;
-        let bad: Scene = serde_json::from_value(serde_json::to_value(bad).unwrap()).unwrap();
-        let mut restored = app();
-        restored
-            .world_mut()
-            .resource_mut::<rig_ecs::bus::IdCounter>()
-            .0 = 5;
-        let before = restored.world().entities().len();
-        assert!(bad.load(restored.world_mut()).is_err());
-        assert_eq!(restored.world().entities().len(), before);
-        assert_eq!(restored.world().resource::<rig_ecs::bus::IdCounter>().0, 5);
-    }
-}
-
-#[test]
-fn an_exhausted_scene_can_resume_an_existing_reservation_but_cannot_mint() {
-    for (reserved_id, explicit) in [(5, true), (u64::MAX - 1, false), (u64::MAX - 1, true)] {
+fn an_exhausted_checkpoint_can_resume_an_existing_reservation_but_cannot_mint() {
+    for reserved_id in [5, u64::MAX - 1] {
         let mut live = app();
         live.world_mut().spawn((
             PendingEffect::new("model", completion()),
             Reserved(rig_core::effect::EffectId::from_raw(reserved_id)),
         ));
         live.world_mut().resource_mut::<rig_ecs::bus::IdCounter>().0 = u64::MAX;
-        let mut scene = Scene::save(live.world_mut());
-        if explicit {
-            scene.next_id = Some(u64::MAX);
-        }
-        let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
+        let saved = checkpoint(&mut live);
+        assert_eq!(saved.counters.next_id, u64::MAX, "exhaustion is saved");
         let (mut restored, _, _) = served();
         EffectLogResource::install(restored.world_mut(), EffectLogRecorder::new());
-        let loaded = scene.load(restored.world_mut()).unwrap()[0];
+        let loaded = load_world(&saved, restored.world_mut()).unwrap();
+        let loaded = loaded.with::<PendingEffect>(restored.world())[0];
         tick_until(&mut restored, "resume with exhausted allocator", |world| {
             world.get::<EffectOutcome>(loaded).is_some()
         });
@@ -829,7 +748,7 @@ fn an_exhausted_scene_can_resume_an_existing_reservation_but_cannot_mint() {
 }
 
 #[test]
-fn malformed_scene_identity_and_ancestry_are_refused_before_world_mutation() {
+fn a_malformed_checkpoint_is_refused_before_world_mutation() {
     let mut live = app();
     for id in [7, 8] {
         live.world_mut().spawn((
@@ -837,40 +756,35 @@ fn malformed_scene_identity_and_ancestry_are_refused_before_world_mutation() {
             Reserved(rig_core::effect::EffectId::from_raw(id)),
         ));
     }
-    let original = Scene::save(live.world_mut());
-    for fault in [
-        "duplicate-id",
-        "cycle",
-        "self-parent",
-        "missing-parent",
-        "ambiguous-parent",
-    ] {
+    let original = checkpoint(&mut live);
+    assert_eq!(original.entities.len(), 2);
+    let child_of = std::any::type_name::<ChildOf>();
+    for fault in ["missing-parent", "unknown-type", "malformed-value"] {
         let mut bad = original.clone();
         match fault {
-            "duplicate-id" => bad.effects[1].id = bad.effects[0].id,
-            "cycle" => {
-                bad.effects[0].parent = Some(1);
-                bad.effects[1].parent = Some(0);
+            "missing-parent" => {
+                bad.entities[0].insert(child_of.to_owned(), serde_json::json!(2));
             }
-            "self-parent" => bad.effects[0].parent = Some(0),
-            "missing-parent" => bad.effects[0].parent = Some(2),
-            "ambiguous-parent" => {
-                bad.effects[1].parent = Some(0);
-                bad.effects[1].parent_ref = Some(0);
+            "unknown-type" => {
+                bad.entities[1].insert("host::Unknown".to_owned(), serde_json::json!({}));
             }
-            _ => panic!("unknown malformed-scene case: {fault}"),
+            "malformed-value" => {
+                bad.entities[1].insert(
+                    std::any::type_name::<Reserved>().to_owned(),
+                    serde_json::json!("not an id"),
+                );
+            }
+            _ => panic!("unknown malformed-checkpoint case: {fault}"),
         }
-        let bad: Scene = serde_json::from_value(serde_json::to_value(bad).unwrap()).unwrap();
+        let bad = Checkpoint::from_json(&bad.to_json().unwrap()).unwrap();
         let mut restored = app();
         restored
             .world_mut()
             .resource_mut::<rig_ecs::bus::IdCounter>()
             .0 = 5;
         let count = restored.world().entities().len();
-        assert!(
-            bad.load(restored.world_mut()).is_err(),
-            "must refuse {fault}"
-        );
+        let error = load_world(&bad, restored.world_mut()).expect_err(fault);
+        assert_eq!(error.kind, rig_core::error::ErrorKind::Request, "{fault}");
         assert_eq!(
             restored.world().entities().len(),
             count,

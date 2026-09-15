@@ -10,7 +10,7 @@
 //! | a non-retryable report after tool work ends the run on the first failure | `a_non_retryable_failure_after_tool_work_ends_the_run_at_once` |
 //! | `ProviderRetries(0)` is the old behaviour | `a_zero_budget_never_retries` |
 //! | a backoff is a host hold on the re-issued effect; a cancel during it ends the run `Cancelled` with no further request | `a_host_hold_is_where_a_backoff_goes_and_a_cancel_during_it_ends_the_run` |
-//! | a scene saved during that hold resumes into the retry, not a fresh prompt | `a_scene_saved_during_the_hold_resumes_into_the_retry` |
+//! | a checkpoint saved during that hold resumes into the retry, not a fresh prompt | `a_checkpoint_saved_during_the_hold_resumes_into_the_retry` |
 //! | a stream cut before its terminal record is a transport fault: retryable, re-issued, answered | `a_truncated_stream_is_reissued` |
 
 use crate::run_support;
@@ -34,12 +34,12 @@ use rig_ecs::{
     agent::{
         Cancelled, Cursor, Failed, Failure, Grant, MaxTurns, Order, ProviderRetried,
         ProviderRetries, RunResult, Settled,
-        scene::{load_world, save_world},
     },
     bus::{
         Bound, BusSet, EffectLogResource, Handlers, Held, PendingEffect, Replay, RigSchedule,
         Witnessing,
     },
+    checkpoint::{Checkpoint, load_world, save_world},
     replay::stamp_run,
     systems::RunCommands,
 };
@@ -387,7 +387,7 @@ fn a_host_hold_is_where_a_backoff_goes_and_a_cancel_during_it_ends_the_run() {
 }
 
 #[test]
-fn a_scene_saved_during_the_hold_resumes_into_the_retry() {
+fn a_checkpoint_saved_during_the_hold_resumes_into_the_retry() {
     let (mut app, agent, requests, recorder, _) = tooling(vec![
         Ok(add_call()),
         Err(unavailable("status 503")),
@@ -408,13 +408,16 @@ fn a_scene_saved_during_the_hold_resumes_into_the_retry() {
     });
     assert_eq!(requests.lock().unwrap().len(), 2);
     let saved = save_world(app.world_mut()).expect("every component serializes");
-    let json = serde_json::to_string(&saved).expect("serde");
-    assert!(json.contains("\"provider_retried\""), "{json}");
+    let json = saved.to_json().expect("serde");
+    assert!(
+        json.contains(std::any::type_name::<ProviderRetried>()),
+        "the spent retry is checkpoint data: {json}"
+    );
     drop(app);
 
     // A fresh world, the same handlers, no hold: the loaded run carries its
     // spent retry and its held attempt, which is released and answered.
-    let saved = serde_json::from_str(&json).expect("serde");
+    let saved = Checkpoint::from_json(&json).expect("serde");
     let mut app = run_support::app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let requests: Requests = Arc::default();
@@ -428,12 +431,7 @@ fn a_scene_saved_during_the_hold_resumes_into_the_retry() {
     );
     register(&mut app, ADD, Adder::new(ADD));
     let loaded = load_world(&saved, app.world_mut()).expect("the handlers are bound");
-    let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|entity| app.world().get::<rig_ecs::agent::Run>(*entity).is_some())
-        .expect("the run");
+    let run = loaded.with::<rig_ecs::agent::Run>(app.world())[0];
     assert_eq!(retried(app.world(), run), 1, "the spent retry is restored");
     for held in holding(&mut app) {
         app.world_mut().entity_mut(held).remove::<Held>();
