@@ -197,13 +197,28 @@ impl HasModelListing for Ollama {
 
 // ---------- Embedding API ----------
 
+// Model names follow <https://ollama.com/library>.
+
+/// The `all-minilm` embedding model.
 pub const ALL_MINILM: &str = "all-minilm";
+/// The `nomic-embed-text` embedding model.
 pub const NOMIC_EMBED_TEXT: &str = "nomic-embed-text";
+/// The `mxbai-embed-large` embedding model.
+pub const MXBAI_EMBED_LARGE: &str = "mxbai-embed-large";
+/// The `bge-m3` multilingual embedding model.
+pub const BGE_M3: &str = "bge-m3";
+/// The `embeddinggemma` embedding model.
+pub const EMBEDDINGGEMMA: &str = "embeddinggemma";
+/// The `qwen3-embedding` embedding model family; dimensions vary by size, so pass them explicitly.
+pub const QWEN3_EMBEDDING: &str = "qwen3-embedding";
 
 fn model_dimensions_from_identifier(identifier: &str) -> Option<usize> {
     match identifier {
         ALL_MINILM => Some(384),
         NOMIC_EMBED_TEXT => Some(768),
+        MXBAI_EMBED_LARGE => Some(1024),
+        BGE_M3 => Some(1024),
+        EMBEDDINGGEMMA => Some(768),
         _ => None,
     }
 }
@@ -376,9 +391,42 @@ where
 
 // ---------- Completion API ----------
 
+/// The `llama3.2` model.
 pub const LLAMA3_2: &str = "llama3.2";
+/// The `llama3.1` model.
+pub const LLAMA3_1: &str = "llama3.1";
+/// The `llama3.3` model.
+pub const LLAMA3_3: &str = "llama3.3";
+/// The `llama4` multimodal model.
+pub const LLAMA4: &str = "llama4";
+/// The `llava` vision model.
 pub const LLAVA: &str = "llava";
+/// The `mistral` model.
 pub const MISTRAL: &str = "mistral";
+/// The `mistral-small3.2` model.
+pub const MISTRAL_SMALL3_2: &str = "mistral-small3.2";
+/// The `gemma3` model.
+pub const GEMMA3: &str = "gemma3";
+/// The `gemma4` model.
+pub const GEMMA4: &str = "gemma4";
+/// The `qwen3` model.
+pub const QWEN3: &str = "qwen3";
+/// The `qwen3.5` model.
+pub const QWEN3_5: &str = "qwen3.5";
+/// The `qwen3.6` model.
+pub const QWEN3_6: &str = "qwen3.6";
+/// The `qwen3.8` model.
+pub const QWEN3_8: &str = "qwen3.8";
+/// The `qwen3-coder` model.
+pub const QWEN3_CODER: &str = "qwen3-coder";
+/// The `deepseek-r1` reasoning model.
+pub const DEEPSEEK_R1: &str = "deepseek-r1";
+/// The `deepseek-v3.1` model.
+pub const DEEPSEEK_V3_1: &str = "deepseek-v3.1";
+/// The `gpt-oss` model.
+pub const GPT_OSS: &str = "gpt-oss";
+/// The `phi4` model.
+pub const PHI4: &str = "phi4";
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CompletionResponse {
