@@ -1,7 +1,5 @@
 //! A removed model binding produces a terminal diagnostic before dispatch.
 
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
-
 use crate::run_support;
 
 struct ParkedAdder {

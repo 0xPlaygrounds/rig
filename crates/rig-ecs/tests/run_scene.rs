@@ -6,14 +6,6 @@
 //! flight resumes in a fresh world where the effect, `ChildOf` its turn
 //! again, is re-issued under its saved id and answered there.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
-
 use crate::run_support;
 
 use rig_core::serve::Dispatch;

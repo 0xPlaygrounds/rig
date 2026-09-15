@@ -1,11 +1,4 @@
 //! Snapshot cuts around memory finalization, using a live scripted store.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use crate::run_support;
 
 use rig_core::serve::Dispatch;

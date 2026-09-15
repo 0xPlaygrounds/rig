@@ -11,13 +11,6 @@
 //! | a scene with `ready` or `prompt` on a non-run is refused before the destination changes | `a_scene_refuses_ready_and_prompt_off_a_run_before_it_loads` |
 //! | a run assembled by hand from `RunBundle` and `Prompt` is not read until `Ready`: no utterance, no phase, no request; `Ready` opens it, history first | `a_run_assembled_by_hand_starts_on_ready_with_its_history_first` |
 //! | a `Ready` run saved before it opened loads with its `Prompt` and `Ready`, opens in the second world and answers | `a_ready_run_saved_before_it_opened_starts_after_the_load` |
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
@@ -43,9 +36,7 @@ fn utterances(world: &mut World, run: Entity) -> usize {
 #[test]
 fn a_run_queued_on_commands_exists_after_the_flush_and_advances_on_the_next_pass() {
     let mut app = app();
-    let (model, requests) = Capturing::new("m", "hello");
-    let model = register(&mut app, "t/model:m", model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, requests) = capturing_agent(&mut app, "t/model:m", "m", "hello");
 
     let world = app.world_mut();
     let run = world.commands().spawn_run(agent, &[], "hi", false, None);
@@ -88,9 +79,7 @@ fn a_run_queued_on_commands_exists_after_the_flush_and_advances_on_the_next_pass
 #[test]
 fn a_cancel_queued_behind_the_spawn_ends_the_run_before_it_starts() {
     let mut app = app();
-    let (model, requests) = Capturing::new("m", "hello");
-    let model = register(&mut app, "t/model:m", model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, requests) = capturing_agent(&mut app, "t/model:m", "m", "hello");
 
     let world = app.world_mut();
     let mut commands = world.commands();
@@ -142,9 +131,7 @@ fn a_queued_despawn_is_refused_by_event_while_the_run_lives() {
     let mut app = app();
     app.world_mut().init_resource::<Refusals>();
     app.world_mut().add_observer(note_refusal);
-    let (model, _) = Capturing::new("m", "hello");
-    let model = register(&mut app, "t/model:m", model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, _) = capturing_agent(&mut app, "t/model:m", "m", "hello");
 
     let world = app.world_mut();
     let mut commands = world.commands();
@@ -179,9 +166,7 @@ fn a_queued_despawn_is_refused_by_event_while_the_run_lives() {
 #[test]
 fn a_reserved_run_despawned_before_it_was_populated_is_gone() {
     let mut app = app();
-    let (model, requests) = Capturing::new("m", "hello");
-    let model = register(&mut app, "t/model:m", model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, requests) = capturing_agent(&mut app, "t/model:m", "m", "hello");
     let world = app.world_mut();
     let before = world.spawn_run(agent, &[], "first", false, None);
 
@@ -234,9 +219,7 @@ fn a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run() {
     let mut app = app();
     app.world_mut().init_resource::<Refusals>();
     app.world_mut().add_observer(note_refusal);
-    let (model, _) = Capturing::new("m", "hello");
-    let model = register(&mut app, "t/model:m", model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, _) = capturing_agent(&mut app, "t/model:m", "m", "hello");
 
     let run = app.world_mut().spawn_run(agent, &[], "hi", false, None);
     tick_until(&mut app, "the run settles", |world| {
@@ -261,9 +244,7 @@ fn a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run() {
 #[test]
 fn a_scene_refuses_ready_and_prompt_off_a_run_before_it_loads() {
     let mut app = app();
-    let (model, _) = Capturing::new("t/model:m", "hello");
-    let model = register(&mut app, "t/model:m", model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, _) = capturing_agent(&mut app, "t/model:m", "t/model:m", "hello");
     let world = app.world_mut();
     let bundle = RunBundle::new(world, agent, false);
     world.spawn((bundle, Prompt::from("saved"), Ready));
@@ -306,9 +287,7 @@ fn a_scene_refuses_ready_and_prompt_off_a_run_before_it_loads() {
 #[test]
 fn a_run_assembled_by_hand_starts_on_ready_with_its_history_first() {
     let mut app = app();
-    let (model, requests) = Capturing::new("m", "hello");
-    let model = register(&mut app, "t/model:m", model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, requests) = capturing_agent(&mut app, "t/model:m", "m", "hello");
 
     let world = app.world_mut();
     let bundle = RunBundle::new(world, agent, false);
@@ -366,9 +345,7 @@ fn a_run_assembled_by_hand_starts_on_ready_with_its_history_first() {
 #[test]
 fn a_ready_run_saved_before_it_opened_starts_after_the_load() {
     let mut app = app();
-    let (model, _) = Capturing::new("t/model:m", "hello");
-    let model = register(&mut app, "t/model:m", model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, _) = capturing_agent(&mut app, "t/model:m", "t/model:m", "hello");
     let world = app.world_mut();
     let bundle = RunBundle::new(world, agent, false);
     // Ready written by hand, saved before any pass opened the run.

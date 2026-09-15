@@ -10,14 +10,6 @@
 //! | §11.2 the quiescence cap is a diagnostic, never a hang | `the_quiescence_cap_ends_the_tick` |
 //! | 9 a handler survives every effect it served; nothing is re-registered | `handlers_outlive_every_effect_and_serve_again` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
-
 use crate::bus_support;
 
 use std::{
@@ -179,16 +171,8 @@ fn the_quiescence_cap_ends_the_tick() {
 
 #[test]
 fn handlers_outlive_every_effect_and_serve_again() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
-    let first = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", completion()))
-        .id();
-    tick_until(&mut app, "first", |world| {
-        world.get::<EffectOutcome>(first).is_some()
-    });
+    let (mut app, _model, counters) = served();
+    let first = answered(&mut app, "first");
     // Every effect entity gone — the fixture's "driver dead" moment: here
     // nothing dies, because the handler is an entity of its own.
     app.world_mut().despawn(first);
@@ -199,12 +183,6 @@ fn handlers_outlive_every_effect_and_serve_again() {
         .iter(app.world())
         .count();
     assert_eq!(effects, 0);
-    let second = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", completion()))
-        .id();
-    tick_until(&mut app, "second", |world| {
-        world.get::<EffectOutcome>(second).is_some()
-    });
+    answered(&mut app, "second");
     assert_eq!(counters.unary_served.load(Ordering::SeqCst), 2);
 }

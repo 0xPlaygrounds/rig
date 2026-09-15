@@ -13,14 +13,6 @@
 //! | a scene saved during that hold resumes into the retry, not a fresh prompt | `a_scene_saved_during_the_hold_resumes_into_the_retry` |
 //! | a stream cut before its terminal record is a transport fault: retryable, re-issued, answered | `a_truncated_stream_is_reissued` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
-
 use crate::run_support;
 
 use std::{
@@ -143,12 +135,6 @@ fn tooling(
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
     (app, agent, requests, recorder, witness)
-}
-
-fn ended(app: &mut bevy_app::App, run: Entity, what: &str) {
-    tick_until(app, what, |world| {
-        world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
-    });
 }
 
 fn failure(world: &World, run: Entity) -> Failure {

@@ -232,13 +232,6 @@ pub struct UsesModel(pub Entity);
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct ModelOf(Vec<Entity>);
 
-impl ModelOf {
-    /// Who uses the model.
-    pub fn users(&self) -> &[Entity] {
-        &self.0
-    }
-}
-
 /// The agent remembers: a relationship to the memory handler entity. A run
 /// spawned with no history loads the conversation before its first turn
 /// and appends what it said when it settles (CONTRACT §11).
@@ -446,13 +439,6 @@ pub struct Attachment(pub Entity);
 #[relationship_target(relationship = Attachment)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
 pub struct AttachedTo(Vec<Entity>);
-
-impl AttachedTo {
-    /// The attachment link entities.
-    pub fn attachments(&self) -> &[Entity] {
-        &self.0
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Utterances: the conversation, one entity per message, `ChildOf` the run.

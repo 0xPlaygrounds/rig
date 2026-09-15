@@ -20,13 +20,6 @@
 //! | a binding beside its own unserved `Bound` whose key another entity serves (a host registration made before it, a replayer) or merely holds is kept: the served handler untouched, its own `Bound` untouched, nothing built | `a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere` |
 //! | a binding whose registration `bind` would refuse (its key bound to another family elsewhere) beside a good one: checked before the first registration — the good one materializes, the other is kept, nothing half-registered | `a_key_bound_to_another_family_is_kept_beside_a_good_binding` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic
-)]
-
 use crate::bus_support;
 
 use std::sync::{

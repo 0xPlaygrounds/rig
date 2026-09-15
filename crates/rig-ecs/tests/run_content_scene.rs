@@ -1,5 +1,4 @@
 //! Content graph scene remapping and asset validation before destination mutation.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 use bevy_ecs::prelude::*;
 use rig_core::message::{DocumentSourceKind, Image, UserContent};
 use rig_ecs::agent::content::{binary::*, parts::*};
@@ -27,6 +26,17 @@ fn fixture() -> (World, Entity, MessageParts) {
     };
     write_message(&mut world, utterance, parts.clone()).unwrap();
     (world, utterance, parts)
+}
+
+/// Loading `scene` fails and leaves a fresh destination exactly as it was.
+fn refused_without_touching_destination(scene: &RunScene) {
+    let mut destination = World::new();
+    let sentinel = destination.spawn_empty().id();
+    let before = destination.entities().len();
+    assert!(scene.load(&mut destination).is_err());
+    assert_eq!(destination.entities().len(), before);
+    assert!(destination.get_entity(sentinel).is_ok());
+    assert!(!destination.contains_resource::<BinaryAssets>());
 }
 
 #[test]
@@ -73,13 +83,7 @@ fn corrupt_hash_missing_handle_and_bad_order_leave_destination_untouched() {
         .unwrap()
         .parent = None;
     for scene in [bad_hash, missing, bad_order, bad_parent] {
-        let mut destination = World::new();
-        let sentinel = destination.spawn_empty().id();
-        let before = destination.entities().len();
-        assert!(scene.load(&mut destination).is_err());
-        assert_eq!(destination.entities().len(), before);
-        assert!(destination.get_entity(sentinel).is_ok());
-        assert!(!destination.contains_resource::<BinaryAssets>());
+        refused_without_touching_destination(&scene);
     }
 }
 
@@ -121,43 +125,18 @@ fn caller_constructed_deep_graph_is_refused_before_destination_mutation() {
         .unwrap()
         .components
         .insert("unknown".into(), nested);
-    let mut destination = World::new();
-    let sentinel = destination.spawn_empty().id();
-    let before = destination.entities().len();
-    assert!(scene.load(&mut destination).is_err());
-    assert_eq!(destination.entities().len(), before);
-    assert!(destination.get_entity(sentinel).is_ok());
-    assert!(!destination.contains_resource::<BinaryAssets>());
+    refused_without_touching_destination(&scene);
 }
 
 #[test]
 fn whole_scene_pools_effect_copies_and_escapes_application_json() {
-    use rig_core::{
-        completion::{ModelRef, ProviderCapabilities},
-        effect::FamilyDescriptor,
-        serve::ServingPolicy,
-    };
     use rig_ecs::{
+        agent::Prompt,
         agent::scene::{WorldScene, save_world},
-        agent::{Owner, Prompt, UsesModel},
-        bus::{Bus, Handlers, RigSchedule},
-        systems::{RunCommands, install_agent},
+        bus::RigSchedule,
+        systems::RunCommands,
     };
-    let mut world = World::new();
-    Bus::with_policy(ServingPolicy::default()).install(&mut world);
-    install_agent(&mut world);
-    let model = Handlers::with(&mut world, |handlers| {
-        handlers.register_open(
-            "model",
-            FamilyDescriptor::Completion {
-                model: ModelRef::new("model"),
-                capabilities: ProviderCapabilities::default(),
-            },
-        )
-    })
-    .unwrap()
-    .unwrap();
-    let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
+    let (mut world, agent) = crate::run_support::open_model_world();
     let prompt = Prompt(vec![
         UserContent::Image(Image {
             data: DocumentSourceKind::Base64("Zg==".into()),

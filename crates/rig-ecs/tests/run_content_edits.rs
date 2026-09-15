@@ -1,44 +1,24 @@
 //! Part-targeted requests retain history and survive scene entity remapping.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
+use crate::run_support::{first_utterance, open_model_world};
+
 use bevy_ecs::prelude::*;
 use rig_core::{
-    completion::{ModelRef, ProviderCapabilities},
-    effect::{EffectKind, FamilyDescriptor},
+    effect::EffectKind,
     message::{Message, UserContent},
-    serve::ServingPolicy,
 };
 use rig_ecs::{
     agent::{
-        Failed, MessageParts, Order, Owner, RequestPatch, Turn, UsesModel, Utterance,
-        content::parts::*, scene::RunScene,
+        Failed, MessageParts, Order, RequestPatch, Turn, Utterance, content::parts::*,
+        scene::RunScene,
     },
-    bus::{Bus, Handlers, PendingEffect, RigSchedule},
-    systems::{Fresh, RunCommands, install_agent},
+    bus::{PendingEffect, RigSchedule},
+    systems::{Fresh, RunCommands},
 };
 
 fn fixture() -> (World, Entity, Entity, Entity, Entity) {
-    let mut world = World::new();
-    Bus::with_policy(ServingPolicy::default()).install(&mut world);
-    install_agent(&mut world);
-    let model = Handlers::with(&mut world, |handlers| {
-        handlers.register_open(
-            "model",
-            FamilyDescriptor::Completion {
-                model: ModelRef::new("model"),
-                capabilities: ProviderCapabilities::default(),
-            },
-        )
-    })
-    .unwrap()
-    .unwrap();
-    let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
+    let (mut world, agent) = open_model_world();
     let run = world.spawn_run(agent, &[], "original", false, None);
-    let utterance = world
-        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
-        .iter(&world)
-        .find(|(_, parent)| parent.parent() == run)
-        .unwrap()
-        .0;
+    let utterance = first_utterance(&mut world, run);
     write_message(
         &mut world,
         utterance,

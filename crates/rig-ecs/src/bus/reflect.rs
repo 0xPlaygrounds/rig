@@ -8,82 +8,34 @@
 //! `Refused`, `SeenOutcome`) reflect nothing: tasks, answer
 //! inboxes and observation bookkeeping are transient.
 
-use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault, reflect_remote};
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault};
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
     streaming::StreamEvent,
     tool::ToolContext,
 };
-use serde::{Deserialize, Serialize};
 
-/// [`HandlerKey`], reflected.
-#[reflect_remote(HandlerKey)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, PartialEq, Serialize, Deserialize)]
-pub struct HandlerKeyReflect {}
-
-/// [`EffectKind`], reflected.
-#[reflect_remote(EffectKind)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, Serialize, Deserialize)]
-pub enum EffectKindReflect {}
-
-/// [`EffectId`], reflected.
-#[reflect_remote(EffectId)]
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, PartialEq, Serialize, Deserialize)]
-pub struct EffectIdReflect {}
-
-/// [`HandlerDescriptor`], reflected.
-#[reflect_remote(HandlerDescriptor)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, PartialEq, Serialize, Deserialize)]
-pub struct HandlerDescriptorReflect {}
-
-/// A [`ProviderBinding`](super::ProviderBinding)'s `extra_params`
-/// (`Option<serde_json::Value>`), reflected.
-#[reflect_remote(Option<serde_json::Value>)]
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, Default, PartialEq, Serialize, Deserialize)]
-pub enum ExtraParamsReflect {}
-
-/// [`ToolContext`], reflected.
-#[reflect_remote(ToolContext)]
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct ToolContextReflect {}
-
-/// An effect's answer, `Result<Outcome, ErrorReport>`, reflected.
-#[reflect_remote(Result<Outcome, ErrorReport>)]
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, Serialize, Deserialize)]
-pub enum OutcomeReflect {}
-
-/// A stream's answer so far, `Option<Result<Outcome, ErrorReport>>`, reflected.
-#[reflect_remote(Option<Result<Outcome, ErrorReport>>)]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, Default, Serialize, Deserialize)]
-pub enum StreamedOutcomeReflect {}
-
-/// A stream's events, `Vec<StreamEvent>`, reflected.
-#[reflect_remote(Vec<StreamEvent>)]
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct StreamEventsReflect {}
-
-/// Stream error reports with their item positions, reflected.
-#[reflect_remote(Vec<(usize, ErrorReport)>)]
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque)]
-#[reflect(Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct StreamErrorsReflect {}
+crate::reflect::opaque_reflect! {
+    /// [`HandlerKey`], reflected.
+    struct HandlerKeyReflect(HandlerKey): PartialEq;
+    /// [`EffectKind`], reflected.
+    enum EffectKindReflect(EffectKind):;
+    /// [`EffectId`], reflected.
+    struct EffectIdReflect(EffectId): PartialEq;
+    /// [`HandlerDescriptor`], reflected.
+    struct HandlerDescriptorReflect(HandlerDescriptor): PartialEq;
+    /// A [`ProviderBinding`](super::ProviderBinding)'s `extra_params`
+    /// (`Option<serde_json::Value>`), reflected.
+    enum ExtraParamsReflect(Option<serde_json::Value>): Default, PartialEq;
+    /// [`ToolContext`], reflected.
+    struct ToolContextReflect(ToolContext): Default, PartialEq;
+    /// An effect's answer, `Result<Outcome, ErrorReport>`, reflected.
+    enum OutcomeReflect(Result<Outcome, ErrorReport>):;
+    /// A stream's answer so far, `Option<Result<Outcome, ErrorReport>>`, reflected.
+    enum StreamedOutcomeReflect(Option<Result<Outcome, ErrorReport>>): Default;
+    /// A stream's events, `Vec<StreamEvent>`, reflected.
+    struct StreamEventsReflect(Vec<StreamEvent>): Default, PartialEq;
+    /// Stream error reports with their item positions, reflected.
+    struct StreamErrorsReflect(Vec<(usize, ErrorReport)>): Default, PartialEq;
+}

@@ -2,13 +2,6 @@
 //! and a wall-clock tick guard. Nothing agent-shaped.
 
 #![allow(dead_code, reason = "each suite uses the part of the support it needs")]
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    reason = "test support fails immediately when a fixture invariant is violated"
-)]
 
 use std::{
     sync::{
@@ -30,7 +23,7 @@ use rig_core::{
     serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
-use rig_ecs::bus::{Bus, run_to_quiescence};
+use rig_ecs::bus::{Bus, EffectOutcome, PendingEffect, run_to_quiescence};
 
 /// A hang is a failure, never a wait.
 pub const GUARD: Duration = Duration::from_secs(10);
@@ -304,4 +297,26 @@ pub fn text_of(outcome: &Result<Outcome, ErrorReport>) -> String {
             .collect(),
         other => panic!("not a completion: {other:?}"),
     }
+}
+
+/// An app serving `model` with a scripted handler, and its counters: the
+/// prologue of most bus suites.
+pub fn served() -> (App, Entity, std::sync::Arc<Counters>) {
+    let counters = std::sync::Arc::new(Counters::default());
+    let mut app = app();
+    let model = register(&mut app, "model", MockModel::new(&counters));
+    (app, model, counters)
+}
+
+/// Spawn a unary completion effect on `model`'s key and tick until it is
+/// answered. Returns the effect entity.
+pub fn answered(app: &mut App, what: &str) -> Entity {
+    let effect = app
+        .world_mut()
+        .spawn(PendingEffect::new("model", completion()))
+        .id();
+    tick_until(app, what, |world| {
+        world.get::<EffectOutcome>(effect).is_some()
+    });
+    effect
 }

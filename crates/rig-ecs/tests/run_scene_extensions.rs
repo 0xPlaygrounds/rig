@@ -1,11 +1,4 @@
 //! Registered application state is durable; omitted state is explicitly host-owned.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic
-)]
-
 use crate::bus_support;
 
 use bevy_ecs::prelude::*;

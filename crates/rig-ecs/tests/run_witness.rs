@@ -2,14 +2,6 @@
 //! requests, invalid-call resolutions and the tool batch's holds, each with
 //! the run's scope as its subject.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
-
 use crate::run_support;
 
 use std::sync::Arc;

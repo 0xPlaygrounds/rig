@@ -13,24 +13,17 @@ use rig_core::effect::HandlerKey;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
-use super::PolicyVersion;
 use super::checkpoint::{ToolTurnCommit, ToolTurnHolds, TurnAssistant, TurnResults};
 use super::content::{
     binary::{BinaryAssets, BinaryRecord},
     parts::*,
 };
 use super::{
-    AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
-    Conversation, Cursor, DefaultMaxTurns, DocumentId, DocumentProps, DocumentText, Failed, Grant,
-    InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory, MaxTokens, MaxTurns,
-    MemoryAppendScheduled, Order, OrderCounter, Output, OutputRetries, OutputToolConfig,
-    OutputToolName, Outputs, Owner, Preamble, Prompt, ProviderRetried, ProviderRetries,
-    ProviderRetrying, Ready, Remembered, Remembering, Remembers, Reprompt, RequestPatch,
-    Resolution, ResolvingTools, Retrievable, Retrieval, Retrieves, Retrieving, Retry, Role, Route,
-    Run, RunCounter, RunOf, RunResult, RunSeq, Settled, StreamRequested, Temperature, ToolAccess,
-    ToolCallSlot, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Turn, Usage, UsesModel, Utterance,
+    Advert, Attachment, Batch, Context, Cursor, DocumentId, Grant, InvalidCall, Order,
+    OrderCounter, Owner, Prompt, Ready, Retrieval, Retrieves, Role, Route, Run, RunCounter,
+    ToolCallSlot, Turn, Utterance,
 };
-use crate::bus::{Bound, ProviderBinding, Scope};
+use crate::bus::{Bound, ProviderBinding};
 
 /// What a scene entity is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -129,6 +122,85 @@ macro_rules! give {
                 }
             }
         )*
+    };
+}
+
+/// Every component the graph persists, by wire name, listed once: both
+/// directions and the relationship table below expand from this. Pass the
+/// macro to invoke with its leading arguments; the list is appended.
+macro_rules! graph_components {
+    ($mac:ident !($($args:tt)*)) => {
+        $mac!($($args)*,
+            crate::agent::Owner => "owner", crate::agent::Preamble => "preamble", crate::agent::Temperature => "temperature",
+            crate::agent::MaxTokens => "max_tokens", crate::agent::AdditionalParams => "additional_params",
+            crate::agent::ToolChoiceSpec => "tool_choice", crate::agent::Output => "output", crate::agent::OutputToolConfig => "output_tool_config", crate::agent::MaxTurns => "max_turns",
+            crate::agent::InvalidCalls => "invalid_calls", crate::agent::DefaultMaxTurns => "default_max_turns", crate::agent::ToolAccess => "tool_access",
+            crate::agent::DocumentId => "document_id", crate::agent::DocumentText => "document_text",
+            crate::agent::DocumentProps => "document_props", crate::agent::Order => "order",
+            crate::agent::Utterance => "utterance", crate::agent::Role => "role", crate::agent::content::parts::MessageId => "message_id",
+            crate::agent::content::parts::RequestPartEdit => "request_part_edit", crate::agent::content::parts::ContentPart => "content_part", crate::agent::content::parts::TextPart => "text_part", crate::agent::content::parts::ImagePart => "image_part",
+            crate::agent::content::parts::AudioPart => "audio_part", crate::agent::content::parts::VideoPart => "video_part", crate::agent::content::parts::DocumentPart => "document_part",
+            crate::agent::content::parts::ToolCallPart => "tool_call_part", crate::agent::content::parts::ToolResultPart => "tool_result_part", crate::agent::content::parts::ReasoningPart => "reasoning_part", crate::agent::content::parts::JsonPart => "json_part",
+            crate::agent::content::parts::ToolResultStatus => "tool_result_status", crate::agent::content::parts::ToolResultLimit => "tool_result_limit",
+            crate::agent::Run => "run", crate::agent::RunSeq => "run_seq", crate::agent::StreamRequested => "streamed", crate::agent::Cursor => "cursor",
+            crate::agent::Ready => "ready", crate::agent::Prompt => "prompt",
+            crate::agent::Assembling => "assembling", crate::agent::AwaitingModel => "awaiting_model",
+            crate::agent::Settled => "settled", crate::agent::Failed => "failed", crate::agent::RunResult => "run_result",
+            crate::agent::Usage => "usage", crate::agent::OutputRetries => "output_retries",
+            crate::agent::InvalidRetries => "invalid_retries", crate::agent::OutputToolName => "output_tool_name",
+            crate::agent::ProviderRetries => "provider_retries", crate::agent::ProviderRetried => "provider_retried", crate::agent::ProviderRetrying => "provider_retrying",
+            crate::bus::Scope => "scope", crate::agent::Turn => "turn", crate::agent::Outputs => "outputs", crate::agent::Reprompt => "reprompt",
+            crate::agent::checkpoint::ToolTurnCommit => "tool_turn_commit", crate::agent::checkpoint::ToolTurnHolds => "tool_turn_holds",
+            crate::agent::InvalidCall => "invalid_call", crate::agent::Resolution => "resolution",
+            crate::agent::ToolPolicy => "tool_policy", crate::agent::ToolContextSpec => "tool_context",
+            crate::agent::ResolvingTools => "resolving_tools", crate::agent::Batch => "batch",
+            crate::agent::Cancelled => "cancelled", crate::agent::Retry => "retry", crate::agent::RequestPatch => "request_patch",
+            crate::agent::Conversation => "conversation", crate::agent::Remembered => "remembered",
+            crate::agent::Remembering => "remembering", crate::agent::LoadingMemory => "loading_memory",
+            crate::agent::MemoryAppendScheduled => "memory_append_scheduled",
+            crate::agent::PolicyVersion => "policy_version",
+            crate::agent::Retrieval => "retrieval", crate::agent::Retrievable => "retrievable", crate::agent::Retrieving => "retrieving",
+        )
+    };
+}
+
+#[cfg(feature = "reflect")]
+pub(crate) use graph_components;
+
+/// Every single-entity relationship the graph persists, by wire name, in the
+/// order a save records them. The links with their own validation
+/// (`EditTarget`, the tool-turn utterances) stay explicit at their call sites.
+macro_rules! graph_relations {
+    ($mac:ident !($($args:tt)*)) => {
+        $mac!($($args)*,
+            crate::agent::UsesModel => "uses_model", crate::agent::RunOf => "run_of", crate::agent::Grant => "grant",
+            crate::agent::Route => "route", crate::agent::Remembers => "remembers", crate::agent::Retrieves => "retrieves",
+            crate::agent::Context => "context", crate::agent::Attachment => "attachment", crate::agent::Advert => "advert",
+        )
+    };
+}
+
+#[cfg(feature = "reflect")]
+pub(crate) use graph_relations;
+
+macro_rules! relate {
+    ($world:expr, $entity:expr, $relations:expr, $target_of:expr, $($ty:ty => $name:literal),* $(,)?) => {
+        $(
+            if let Some(link) = $world.get::<$ty>($entity)
+                && let Some(target) = $target_of($world, link.0)
+            {
+                $relations.push(($name.to_owned(), target));
+            }
+        )*
+    };
+}
+
+macro_rules! unrelate {
+    ($entity:expr, $name:expr, $to:expr, $other:block, $($ty:path => $label:literal),* $(,)?) => {
+        match $name {
+            $($label => { $entity.insert($ty($to)); })*
+            _ => $other,
+        }
     };
 }
 
@@ -674,37 +746,7 @@ impl RunScene {
             };
             let mut components = serde_json::Map::new();
             let mut errors: Vec<String> = Vec::new();
-            take!(world, entity, components, errors,
-                Owner => "owner", Preamble => "preamble", Temperature => "temperature",
-                MaxTokens => "max_tokens", AdditionalParams => "additional_params",
-                ToolChoiceSpec => "tool_choice", Output => "output", OutputToolConfig => "output_tool_config", MaxTurns => "max_turns",
-                InvalidCalls => "invalid_calls", DefaultMaxTurns => "default_max_turns", ToolAccess => "tool_access",
-                DocumentId => "document_id", DocumentText => "document_text",
-                DocumentProps => "document_props", Order => "order",
-                Utterance => "utterance", Role => "role", MessageId => "message_id",
-                RequestPartEdit => "request_part_edit", ContentPart => "content_part", TextPart => "text_part", ImagePart => "image_part",
-                AudioPart => "audio_part", VideoPart => "video_part", DocumentPart => "document_part",
-                ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
-                ToolResultStatus => "tool_result_status", ToolResultLimit => "tool_result_limit",
-                Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
-                Ready => "ready", Prompt => "prompt",
-                Assembling => "assembling", AwaitingModel => "awaiting_model",
-                Settled => "settled", Failed => "failed", RunResult => "run_result",
-                Usage => "usage", OutputRetries => "output_retries",
-                InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
-                ProviderRetries => "provider_retries", ProviderRetried => "provider_retried", ProviderRetrying => "provider_retrying",
-                Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
-                ToolTurnCommit => "tool_turn_commit", ToolTurnHolds => "tool_turn_holds",
-                InvalidCall => "invalid_call", Resolution => "resolution",
-                ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
-                ResolvingTools => "resolving_tools", Batch => "batch",
-                Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
-                Conversation => "conversation", Remembered => "remembered",
-                Remembering => "remembering", LoadingMemory => "loading_memory",
-                MemoryAppendScheduled => "memory_append_scheduled",
-                PolicyVersion => "policy_version",
-                Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
-            );
+            graph_components!(take!(world, entity, components, errors));
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
                     rig_core::error::ErrorKind::Internal,
@@ -732,51 +774,7 @@ impl RunScene {
                 .get::<ChildOf>(entity)
                 .and_then(|child_of| index_of(child_of.parent()));
             let mut relations = Vec::new();
-            if let Some(UsesModel(model)) = world.get::<UsesModel>(entity)
-                && let Some(target) = target_of(world, *model)
-            {
-                relations.push(("uses_model".to_owned(), target));
-            }
-            if let Some(RunOf(agent)) = world.get::<RunOf>(entity)
-                && let Some(target) = target_of(world, *agent)
-            {
-                relations.push(("run_of".to_owned(), target));
-            }
-            if let Some(Grant(tool)) = world.get::<Grant>(entity)
-                && let Some(target) = target_of(world, *tool)
-            {
-                relations.push(("grant".to_owned(), target));
-            }
-            if let Some(Route(model)) = world.get::<Route>(entity)
-                && let Some(target) = target_of(world, *model)
-            {
-                relations.push(("route".to_owned(), target));
-            }
-            if let Some(Remembers(memory)) = world.get::<Remembers>(entity)
-                && let Some(target) = target_of(world, *memory)
-            {
-                relations.push(("remembers".to_owned(), target));
-            }
-            if let Some(Retrieves(index)) = world.get::<Retrieves>(entity)
-                && let Some(target) = target_of(world, *index)
-            {
-                relations.push(("retrieves".to_owned(), target));
-            }
-            if let Some(Context(document)) = world.get::<Context>(entity)
-                && let Some(target) = target_of(world, *document)
-            {
-                relations.push(("context".to_owned(), target));
-            }
-            if let Some(Attachment(document)) = world.get::<Attachment>(entity)
-                && let Some(target) = target_of(world, *document)
-            {
-                relations.push(("attachment".to_owned(), target));
-            }
-            if let Some(Advert(tool)) = world.get::<Advert>(entity)
-                && let Some(target) = target_of(world, *tool)
-            {
-                relations.push(("advert".to_owned(), target));
-            }
+            graph_relations!(relate!(world, entity, relations, target_of));
             if let Some(EditTarget(part)) = world.get::<EditTarget>(entity) {
                 let target = target_of(world, *part)
                     .ok_or_else(|| extension_error("request edit target missing from scene"))?;
@@ -992,37 +990,7 @@ impl RunScene {
             };
             let components = &saved.components;
             let mut errors: Vec<String> = Vec::new();
-            give!(world, entity, components, errors,
-                Owner => "owner", Preamble => "preamble", Temperature => "temperature",
-                MaxTokens => "max_tokens", AdditionalParams => "additional_params",
-                ToolChoiceSpec => "tool_choice", Output => "output", OutputToolConfig => "output_tool_config", MaxTurns => "max_turns",
-                InvalidCalls => "invalid_calls", DefaultMaxTurns => "default_max_turns", ToolAccess => "tool_access",
-                DocumentId => "document_id", DocumentText => "document_text",
-                DocumentProps => "document_props", Order => "order",
-                Utterance => "utterance", Role => "role", MessageId => "message_id",
-                RequestPartEdit => "request_part_edit", ContentPart => "content_part", TextPart => "text_part", ImagePart => "image_part",
-                AudioPart => "audio_part", VideoPart => "video_part", DocumentPart => "document_part",
-                ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
-                ToolResultStatus => "tool_result_status", ToolResultLimit => "tool_result_limit",
-                Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
-                Ready => "ready", Prompt => "prompt",
-                Assembling => "assembling", AwaitingModel => "awaiting_model",
-                Settled => "settled", Failed => "failed", RunResult => "run_result",
-                Usage => "usage", OutputRetries => "output_retries",
-                InvalidRetries => "invalid_retries", OutputToolName => "output_tool_name",
-                ProviderRetries => "provider_retries", ProviderRetried => "provider_retried", ProviderRetrying => "provider_retrying",
-                Scope => "scope", Turn => "turn", Outputs => "outputs", Reprompt => "reprompt",
-                ToolTurnCommit => "tool_turn_commit", ToolTurnHolds => "tool_turn_holds",
-                InvalidCall => "invalid_call", Resolution => "resolution",
-                ToolPolicy => "tool_policy", ToolContextSpec => "tool_context",
-                ResolvingTools => "resolving_tools", Batch => "batch",
-                Cancelled => "cancelled", Retry => "retry", RequestPatch => "request_patch",
-                Conversation => "conversation", Remembered => "remembered",
-                Remembering => "remembering", LoadingMemory => "loading_memory",
-                MemoryAppendScheduled => "memory_append_scheduled",
-                PolicyVersion => "policy_version",
-                Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
-            );
+            graph_components!(give!(world, entity, components, errors));
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
                     rig_core::error::ErrorKind::Internal,
@@ -1068,42 +1036,15 @@ impl RunScene {
                     "turn_results" => {
                         entity.insert(TurnResults(to));
                     }
-                    "uses_model" => {
-                        entity.insert(UsesModel(to));
-                    }
-                    "run_of" => {
-                        entity.insert(RunOf(to));
-                    }
-                    "grant" => {
-                        entity.insert(Grant(to));
-                    }
-                    "route" => {
-                        entity.insert(Route(to));
-                    }
-                    "remembers" => {
-                        entity.insert(Remembers(to));
-                    }
-                    "retrieves" => {
-                        entity.insert(Retrieves(to));
-                    }
-                    "context" => {
-                        entity.insert(Context(to));
-                    }
                     "edit_target" => {
                         entity.insert(EditTarget(to));
                     }
-                    "attachment" => {
-                        entity.insert(Attachment(to));
-                    }
-                    "advert" => {
-                        entity.insert(Advert(to));
-                    }
-                    other => {
+                    name => graph_relations!(unrelate!(entity, name, to, {
                         return Err(rig_core::error::ErrorReport::new(
                             rig_core::error::ErrorKind::Internal,
-                            format!("the scene names a relationship `{other}` this crate has not"),
+                            format!("the scene names a relationship `{name}` this crate has not"),
                         ));
-                    }
+                    })),
                 }
             }
         }

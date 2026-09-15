@@ -1,11 +1,4 @@
 //! Custom output tools through the public native schedule and persistence APIs.
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
@@ -53,12 +46,11 @@ fn settle(app: &mut bevy_app::App, run: Entity) {
 #[test]
 fn custom_output_tool_is_advertised_and_finalizes_without_executing_a_tool() {
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![vec![call("c", "submit", serde_json::json!({"answer":42}))]],
     );
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert((
         schema(),
         config(),
@@ -105,15 +97,14 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
         ],
     });
     let mut app = app();
-    let (model, _) = Scripted::new(
+    let (agent, _) = scripted_agent(
+        &mut app,
         MODEL,
         vec![vec![
             reasoning.clone(),
             call("c", "submit", serde_json::json!({"answer":42})),
         ]],
     );
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config()));
@@ -146,7 +137,8 @@ fn output_tool_history_preserves_reasoning_and_commits_arguments_as_text() {
 #[test]
 fn run_configuration_overrides_and_can_reset_the_agent_configuration() {
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![vec![call(
             "c",
@@ -154,8 +146,6 @@ fn run_configuration_overrides_and_can_reset_the_agent_configuration() {
             serde_json::json!({"answer":42}),
         )]],
     );
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config()));
@@ -185,8 +175,7 @@ fn run_configuration_overrides_and_can_reset_the_agent_configuration() {
 #[test]
 fn reserved_name_collision_fails_before_provider_or_tool_dispatch() {
     let mut app = app();
-    let (model, requests) = Scripted::new(MODEL, vec![]);
-    let model = register(&mut app, MODEL, model);
+    let (agent, requests) = scripted_agent(&mut app, MODEL, vec![]);
     let tool = register(
         &mut app,
         "real-submit",
@@ -194,7 +183,6 @@ fn reserved_name_collision_fails_before_provider_or_tool_dispatch() {
             name: "submit".into(),
         },
     );
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config()));
@@ -225,15 +213,14 @@ fn reserved_name_collision_fails_before_provider_or_tool_dispatch() {
 #[test]
 fn a_committed_name_survives_later_configuration_changes() {
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![
             vec![AssistantContent::text("Use the tool next")],
             vec![call("c", "submit", serde_json::json!({"answer":42}))],
         ],
     );
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config(), MaxTurns(2)));
@@ -276,9 +263,7 @@ fn a_committed_name_survives_later_configuration_changes() {
 #[test]
 fn output_configuration_without_a_schema_does_not_create_a_tool() {
     let mut app = app();
-    let (model, requests) = Capturing::new(MODEL, "plain");
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, requests) = capturing_agent(&mut app, MODEL, MODEL, "plain");
     app.world_mut().entity_mut(agent).insert(config());
     let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     tick_until(&mut app, "plain settlement", |world| {
@@ -291,9 +276,7 @@ fn output_configuration_without_a_schema_does_not_create_a_tool() {
 #[test]
 fn scene_restores_custom_configuration_in_a_fresh_world() {
     let mut original = app();
-    let (model, _) = Scripted::new(MODEL, vec![]);
-    let model = register(&mut original, MODEL, model);
-    let agent = spawn_agent(original.world_mut(), "t", model);
+    let (agent, _) = scripted_agent(&mut original, MODEL, vec![]);
     original
         .world_mut()
         .entity_mut(agent)
@@ -332,9 +315,7 @@ fn scene_restores_custom_configuration_in_a_fresh_world() {
 #[test]
 fn replay_identity_includes_each_effective_output_tool_setting() {
     let mut app = app();
-    let (model, _) = Scripted::new(MODEL, vec![]);
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, _) = scripted_agent(&mut app, MODEL, vec![]);
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config()));
@@ -373,12 +354,11 @@ fn replay_identity_includes_each_effective_output_tool_setting() {
 fn reserved_name_commits_tool_mode_despite_native_or_auto_preference() {
     for mode in [OutputKind::Auto, OutputKind::Native] {
         let mut app = app();
-        let (model, requests) = Scripted::new(
+        let (agent, requests) = scripted_agent(
+            &mut app,
             MODEL,
             vec![vec![call("c", "submit", serde_json::json!({"answer":42}))]],
         );
-        let model = register(&mut app, MODEL, model);
-        let agent = spawn_agent(app.world_mut(), "t", model);
         app.world_mut()
             .entity_mut(agent)
             .insert((Output { mode, ..schema() }, config()));
@@ -396,7 +376,8 @@ fn reserved_name_commits_tool_mode_despite_native_or_auto_preference() {
 #[test]
 fn description_only_configuration_keeps_collision_safe_automatic_naming() {
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![vec![call(
             "c",
@@ -404,7 +385,6 @@ fn description_only_configuration_keeps_collision_safe_automatic_naming() {
             serde_json::json!({"answer":42}),
         )]],
     );
-    let model = register(&mut app, MODEL, model);
     let real = register(
         &mut app,
         "real-final",
@@ -412,7 +392,6 @@ fn description_only_configuration_keeps_collision_safe_automatic_naming() {
             name: "final_result".into(),
         },
     );
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert((
         schema(),
         OutputToolConfig {

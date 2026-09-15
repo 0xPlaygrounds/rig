@@ -7,14 +7,6 @@
 //! | a skipped invalid call and its peers land `Skipped` | `an_invalid_call_skipped_by_a_system_lands_skipped_results` |
 //! | a scene round-trips the status, and refuses one off a tool-result part | `a_scene_keeps_the_status_and_refuses_it_off_a_result_part` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
-
 use crate::run_support;
 
 use std::{collections::BTreeMap, sync::Mutex};
@@ -29,7 +21,7 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Failed, Grant, InvalidCall, InvalidCalls, Order, Resolution, Settled,
+        Grant, InvalidCall, InvalidCalls, Order, Resolution, Settled,
         content::parts::{ToolResultPart, ToolResultStatus, read_message},
         scene::{RunScene, SceneKind},
     },
@@ -88,8 +80,7 @@ fn tooling(
 ) -> (bevy_app::App, Entity, RequestsSeen) {
     let mut app = app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let (model, requests) = Scripted::new(MODEL, turns);
-    let model = register(&mut app, MODEL, model);
+    let (agent, requests) = scripted_agent(&mut app, MODEL, turns);
     let tool = register(
         &mut app,
         PROBE,
@@ -97,21 +88,12 @@ fn tooling(
             replies: Mutex::new(replies),
         },
     );
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(4));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
     (app, agent, requests)
-}
-
-type RequestsSeen = std::sync::Arc<Mutex<Vec<rig_core::completion::CompletionRequest>>>;
-
-fn ended(app: &mut bevy_app::App, run: Entity, what: &str) {
-    tick_until(app, what, |world| {
-        world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
-    });
 }
 
 /// The run's tool-result parts in utterance and sibling order, with their

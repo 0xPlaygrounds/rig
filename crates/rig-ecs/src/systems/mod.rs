@@ -277,6 +277,18 @@ pub fn install_agent(world: &mut World) {
     ));
 }
 
+/// Replace the run's phase marker: `remove::<P>()` then insert what comes
+/// next, as every phase change in this module does.
+trait PhaseCommands {
+    fn phase<P: Component>(&mut self, next: impl Bundle) -> &mut Self;
+}
+
+impl PhaseCommands for bevy_ecs::system::EntityCommands<'_> {
+    fn phase<P: Component>(&mut self, next: impl Bundle) -> &mut Self {
+        self.remove::<P>().insert(next)
+    }
+}
+
 fn fail_content(commands: &mut Commands, run: Entity, error: ContentError) {
     commands
         .entity(run)
@@ -300,6 +312,53 @@ macro_rules! content_or_fail {
                 return;
             }
         }
+    };
+}
+
+/// Spawn `parts` as the run's next utterance, with optional per-part result
+/// statuses. A content failure fails the run and returns from the system, as
+/// [`content_or_fail`] does.
+macro_rules! say {
+    ($commands:expr, $assets:expr, $orders:expr, $progress:expr, $run:expr, $parts:expr) => {
+        content_or_fail!(
+            spawn_deferred(
+                &mut $commands,
+                &mut $assets,
+                $run,
+                $parts,
+                next_order_in(&mut $orders)
+            ),
+            &mut $commands,
+            $run,
+            $progress
+        )
+    };
+    ($commands:expr, $assets:expr, $orders:expr, $progress:expr, $run:expr, $parts:expr, $statuses:expr) => {
+        content_or_fail!(
+            spawn_deferred_with(
+                &mut $commands,
+                &mut $assets,
+                $run,
+                $parts,
+                next_order_in(&mut $orders),
+                $statuses
+            ),
+            &mut $commands,
+            $run,
+            $progress
+        )
+    };
+}
+
+/// Rewrite an utterance already in the graph, failing the run as [`say`] does.
+macro_rules! restate {
+    ($commands:expr, $assets:expr, $progress:expr, $run:expr, $entity:expr, $parts:expr) => {
+        content_or_fail!(
+            replace_deferred(&mut $commands, &mut $assets, $entity, $parts),
+            &mut $commands,
+            $run,
+            $progress
+        )
     };
 }
 
@@ -763,8 +822,7 @@ pub fn advance(
         if !retrying && cursor.turn >= limit {
             commands
                 .entity(run)
-                .remove::<Assembling>()
-                .insert(Failed(Failure::MaxTurns { limit }));
+                .phase::<Assembling>(Failed(Failure::MaxTurns { limit }));
             progress.mark();
             continue;
         }
@@ -995,18 +1053,7 @@ pub fn land_memory(
             Ok(Outcome::Memory(rig_core::effect::MemoryOutcome::Loaded { messages })) => {
                 for message in messages {
                     if let Some(parts) = MessageParts::from_message(message) {
-                        let utterance = content_or_fail!(
-                            spawn_deferred(
-                                &mut commands,
-                                &mut assets,
-                                run,
-                                parts,
-                                next_order_in(&mut orders)
-                            ),
-                            &mut commands,
-                            run,
-                            progress
-                        );
+                        let utterance = say!(commands, assets, orders, progress, run, parts);
                         commands.entity(utterance).insert(Remembered);
                     }
                 }
@@ -1026,28 +1073,25 @@ pub fn land_memory(
                 for (entity, _) in existing {
                     commands.entity(entity).insert(next_order_in(&mut orders));
                 }
-                commands
-                    .entity(run)
-                    .remove::<LoadingMemory>()
-                    .insert(Assembling);
+                commands.entity(run).phase::<LoadingMemory>(Assembling);
             }
             Ok(other) => {
                 commands
                     .entity(run)
-                    .remove::<LoadingMemory>()
-                    .insert(Failed(Failure::Memory(rig_core::error::ErrorReport::new(
-                        ErrorKind::Internal,
-                        format!(
-                            "the memory handler answered a load with a {} outcome",
-                            other.family()
+                    .phase::<LoadingMemory>(Failed(Failure::Memory(
+                        rig_core::error::ErrorReport::new(
+                            ErrorKind::Internal,
+                            format!(
+                                "the memory handler answered a load with a {} outcome",
+                                other.family()
+                            ),
                         ),
-                    ))));
+                    )));
             }
             Err(report) => {
                 commands
                     .entity(run)
-                    .remove::<LoadingMemory>()
-                    .insert(Failed(Failure::Memory(report.clone())));
+                    .phase::<LoadingMemory>(Failed(Failure::Memory(report.clone())));
             }
         }
         progress.mark();
@@ -1215,7 +1259,7 @@ pub fn assemble(
         let agent = *agent;
         let model_bound = model.and_then(|UsesModel(model)| bound.get(*model).ok());
         let Some(model_bound) = model_bound else {
-            commands.entity(run).remove::<Assembling>().insert(Failed(Failure::Provider(
+            commands.entity(run).phase::<Assembling>(Failed(Failure::Provider(
                 rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::HandlerUnavailable,
                     "the run has no bound completion model; its selected model or its agent's binding was removed"),
             )));
@@ -1235,8 +1279,7 @@ pub fn assemble(
             | FamilyDescriptor::Custom { .. } => {
                 commands
                     .entity(run)
-                    .remove::<Assembling>()
-                    .insert(Failed(Failure::Provider(
+                    .phase::<Assembling>(Failed(Failure::Provider(
                         rig_core::error::ErrorReport::new(
                             rig_core::error::ErrorKind::HandlerUnavailable,
                             format!(
@@ -1548,11 +1591,11 @@ pub fn assemble(
             // A reserved or already minted name must not also advertise a
             // granted tool: refuse the ambiguous request before dispatch.
             commands.entity(turn).remove::<Fresh>();
-            commands.entity(run).remove::<Assembling>().insert(Failed(
-                Failure::OutputToolCollision {
+            commands
+                .entity(run)
+                .phase::<Assembling>(Failed(Failure::OutputToolCollision {
                     name: output_tool.clone(),
-                },
-            ));
+                }));
             progress.mark();
             continue;
         }
@@ -1599,10 +1642,7 @@ pub fn assemble(
             .entity(turn)
             .remove::<(Fresh, RequestPatch)>()
             .insert((Folded(resolved), Outputs::default()));
-        commands
-            .entity(run)
-            .remove::<Assembling>()
-            .insert(AwaitingModel);
+        commands.entity(run).phase::<Assembling>(AwaitingModel);
         progress.mark();
     }
 }
@@ -1855,8 +1895,7 @@ pub fn land_batch(
             commands.entity(turn).remove::<Batch>();
             commands
                 .entity(run)
-                .remove::<ResolvingTools>()
-                .insert(Failed(failure));
+                .phase::<ResolvingTools>(Failed(failure));
             for (entity, _, issued, outcome, _) in &calls {
                 if !*issued && outcome.is_none() {
                     commands.entity(*entity).despawn();
@@ -1896,25 +1935,12 @@ pub fn land_batch(
         if let Some(failure) = failed {
             commands
                 .entity(run)
-                .remove::<ResolvingTools>()
-                .insert(Failed(failure));
+                .phase::<ResolvingTools>(Failed(failure));
             progress.mark();
             continue;
         }
         let results = MessageParts::User { content: parts };
-        let results_entity = content_or_fail!(
-            spawn_deferred_with(
-                &mut commands,
-                &mut assets,
-                run,
-                results,
-                next_order_in(&mut orders),
-                statuses
-            ),
-            &mut commands,
-            run,
-            progress
-        );
+        let results_entity = say!(commands, assets, orders, progress, run, results, statuses);
         commands.entity(turn).insert((
             ToolTurnCommit { turn: cursor.turn },
             TurnResults(results_entity),
@@ -1934,14 +1960,10 @@ pub fn land_batch(
             Some(arguments) => {
                 commands
                     .entity(run)
-                    .remove::<ResolvingTools>()
-                    .insert((RunResult(arguments), Settled));
+                    .phase::<ResolvingTools>((RunResult(arguments), Settled));
             }
             None => {
-                commands
-                    .entity(run)
-                    .remove::<ResolvingTools>()
-                    .insert(Assembling);
+                commands.entity(run).phase::<ResolvingTools>(Assembling);
             }
         }
         commands.queue(move |world: &mut World| {
@@ -2132,24 +2154,14 @@ pub fn materialise(
                             id: outs.message_id.clone(),
                             content: call.prefix.clone(),
                         };
-                        content_or_fail!(
-                            spawn_deferred(
-                                &mut commands,
-                                &mut assets,
-                                run,
-                                assistant,
-                                next_order_in(&mut orders)
-                            ),
-                            &mut commands,
-                            run,
-                            progress
-                        );
+                        say!(commands, assets, orders, progress, run, assistant);
                     }
                     commands.entity(turn).insert(Materialised);
                     commands
                         .entity(run)
-                        .remove::<AwaitingModel>()
-                        .insert(Failed(Failure::UnknownToolCall { name: call.name }));
+                        .phase::<AwaitingModel>(Failed(Failure::UnknownToolCall {
+                            name: call.name,
+                        }));
                     progress.mark();
                     continue;
                 }
@@ -2176,18 +2188,7 @@ pub fn materialise(
                         id: outs.message_id.clone(),
                         content: content.clone(),
                     };
-                    content_or_fail!(
-                        spawn_deferred(
-                            &mut commands,
-                            &mut assets,
-                            run,
-                            assistant,
-                            next_order_in(&mut orders)
-                        ),
-                        &mut commands,
-                        run,
-                        progress
-                    );
+                    say!(commands, assets, orders, progress, run, assistant);
                     let results = policy::invalid_peer_results(&content, &diagnostic_id, &feedback);
                     let skipped = match &results {
                         MessageParts::User { content } => {
@@ -2195,19 +2196,7 @@ pub fn materialise(
                         }
                         MessageParts::Assistant { .. } => Vec::new(),
                     };
-                    content_or_fail!(
-                        spawn_deferred_with(
-                            &mut commands,
-                            &mut assets,
-                            run,
-                            results,
-                            next_order_in(&mut orders),
-                            skipped
-                        ),
-                        &mut commands,
-                        run,
-                        progress
-                    );
+                    say!(commands, assets, orders, progress, run, results, skipped);
                     commands.entity(turn).insert(Materialised);
                     let mut run_commands = commands.entity(run);
                     run_commands.remove::<AwaitingModel>().insert(Assembling);
@@ -2268,8 +2257,7 @@ pub fn materialise(
             Ok(other) => {
                 commands
                     .entity(run)
-                    .remove::<AwaitingModel>()
-                    .insert(Failed(Failure::Unsupported(format!(
+                    .phase::<AwaitingModel>(Failed(Failure::Unsupported(format!(
                         "a {} answer to a completion",
                         other.family()
                     ))));
@@ -2289,7 +2277,7 @@ pub fn materialise(
                 {
                     let attempt = provider_retried.0 + 1;
                     commands.entity(turn).insert(Materialised);
-                    commands.entity(run).remove::<AwaitingModel>().insert((
+                    commands.entity(run).phase::<AwaitingModel>((
                         ProviderRetried(attempt),
                         ProviderRetrying,
                         Assembling,
@@ -2311,10 +2299,7 @@ pub fn materialise(
                 } else {
                     Failure::Provider(report.clone())
                 };
-                commands
-                    .entity(run)
-                    .remove::<AwaitingModel>()
-                    .insert(Failed(failure));
+                commands.entity(run).phase::<AwaitingModel>(Failed(failure));
                 progress.mark();
                 continue;
             }
@@ -2335,8 +2320,7 @@ pub fn materialise(
             );
             commands
                 .entity(run)
-                .remove::<AwaitingModel>()
-                .insert(Failed(Failure::Provider(report)));
+                .phase::<AwaitingModel>(Failed(Failure::Provider(report)));
             progress.mark();
             continue;
         }
@@ -2352,30 +2336,15 @@ pub fn materialise(
                     let user = MessageParts::User {
                         content: vec![UserContent::text(feedback)],
                     };
-                    content_or_fail!(
-                        spawn_deferred(
-                            &mut commands,
-                            &mut assets,
-                            run,
-                            user,
-                            next_order_in(&mut orders)
-                        ),
-                        &mut commands,
-                        run,
-                        progress
-                    );
+                    say!(commands, assets, orders, progress, run, user);
                 }
-                commands
-                    .entity(run)
-                    .remove::<AwaitingModel>()
-                    .insert(Assembling);
+                commands.entity(run).phase::<AwaitingModel>(Assembling);
                 progress.mark();
                 continue;
             }
             commands
                 .entity(run)
-                .remove::<AwaitingModel>()
-                .insert((RunResult(String::new()), Settled));
+                .phase::<AwaitingModel>((RunResult(String::new()), Settled));
             progress.mark();
             continue;
         }
@@ -2431,8 +2400,7 @@ pub fn materialise(
             if !calls.is_empty() {
                 commands
                     .entity(run)
-                    .remove::<AwaitingModel>()
-                    .insert(Failed(Failure::Unsupported(
+                    .phase::<AwaitingModel>(Failed(Failure::Unsupported(
                         "a retry of a tool-bearing turn: steer the tool calls instead".to_owned(),
                     )));
                 progress.mark();
@@ -2443,38 +2411,13 @@ pub fn materialise(
                     id: response.message_id.clone(),
                     content: content.clone(),
                 };
-                content_or_fail!(
-                    spawn_deferred(
-                        &mut commands,
-                        &mut assets,
-                        run,
-                        assistant,
-                        next_order_in(&mut orders)
-                    ),
-                    &mut commands,
-                    run,
-                    progress
-                );
+                say!(commands, assets, orders, progress, run, assistant);
                 let user = MessageParts::User {
                     content: vec![UserContent::text(feedback)],
                 };
-                content_or_fail!(
-                    spawn_deferred(
-                        &mut commands,
-                        &mut assets,
-                        run,
-                        user,
-                        next_order_in(&mut orders)
-                    ),
-                    &mut commands,
-                    run,
-                    progress
-                );
+                say!(commands, assets, orders, progress, run, user);
             }
-            commands
-                .entity(run)
-                .remove::<AwaitingModel>()
-                .insert(Assembling);
+            commands.entity(run).phase::<AwaitingModel>(Assembling);
             progress.mark();
             continue;
         }
@@ -2484,18 +2427,7 @@ pub fn materialise(
             id: response.message_id.clone(),
             content: content.clone(),
         };
-        let assistant_entity = content_or_fail!(
-            spawn_deferred(
-                &mut commands,
-                &mut assets,
-                run,
-                assistant,
-                next_order_in(&mut orders)
-            ),
-            &mut commands,
-            run,
-            progress
-        );
+        let assistant_entity = say!(commands, assets, orders, progress, run, assistant);
 
         // Calls to granted tools: the batch, one effect per call `ChildOf`
         // the turn, in call order, held beyond the concurrency.
@@ -2561,10 +2493,7 @@ pub fn materialise(
             commands
                 .entity(turn)
                 .insert((Batch { calls: count }, TurnAssistant(assistant_entity)));
-            commands
-                .entity(run)
-                .remove::<AwaitingModel>()
-                .insert(ResolvingTools);
+            commands.entity(run).phase::<AwaitingModel>(ResolvingTools);
             progress.mark();
             continue;
         }
@@ -2592,24 +2521,20 @@ pub fn materialise(
                                 .cloned()
                                 .collect();
                             final_content.push(AssistantContent::text(output.clone()));
-                            content_or_fail!(
-                                replace_deferred(
-                                    &mut commands,
-                                    &mut assets,
-                                    assistant_entity,
-                                    MessageParts::Assistant {
-                                        id: response.message_id.clone(),
-                                        content: final_content
-                                    }
-                                ),
-                                &mut commands,
+                            restate!(
+                                commands,
+                                assets,
+                                progress,
                                 run,
-                                progress
+                                assistant_entity,
+                                MessageParts::Assistant {
+                                    id: response.message_id.clone(),
+                                    content: final_content
+                                }
                             );
                             commands
                                 .entity(run)
-                                .remove::<AwaitingModel>()
-                                .insert((RunResult(output), Settled));
+                                .phase::<AwaitingModel>((RunResult(output), Settled));
                         } else {
                             let feedback = policy::reprompt_missing_fields(name, &missing);
                             let reprompt = MessageParts::User {
@@ -2625,23 +2550,18 @@ pub fn materialise(
                             commands
                                 .entity(turn)
                                 .insert(Reprompt(reprompt.to_message()));
-                            content_or_fail!(
-                                spawn_deferred_with(
-                                    &mut commands,
-                                    &mut assets,
-                                    run,
-                                    reprompt,
-                                    next_order_in(&mut orders),
-                                    vec![ToolResultStatus::Skipped]
-                                ),
-                                &mut commands,
+                            say!(
+                                commands,
+                                assets,
+                                orders,
+                                progress,
                                 run,
-                                progress
+                                reprompt,
+                                vec![ToolResultStatus::Skipped]
                             );
                             commands
                                 .entity(run)
-                                .remove::<AwaitingModel>()
-                                .insert((OutputRetries(retries.0 + 1), Assembling));
+                                .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));
                         }
                     }
                     // A text that already is the structured output settles the
@@ -2661,28 +2581,16 @@ pub fn materialise(
                         commands
                             .entity(turn)
                             .insert(Reprompt(reprompt.to_message()));
-                        content_or_fail!(
-                            spawn_deferred(
-                                &mut commands,
-                                &mut assets,
-                                run,
-                                reprompt,
-                                next_order_in(&mut orders)
-                            ),
-                            &mut commands,
-                            run,
-                            progress
-                        );
+                        say!(commands, assets, orders, progress, run, reprompt);
                         commands
                             .entity(run)
-                            .remove::<AwaitingModel>()
-                            .insert((OutputRetries(retries.0 + 1), Assembling));
+                            .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));
                     }
                     None => {
-                        commands
-                            .entity(run)
-                            .remove::<AwaitingModel>()
-                            .insert((RunResult(policy::answer_text(&content)), Settled));
+                        commands.entity(run).phase::<AwaitingModel>((
+                            RunResult(policy::answer_text(&content)),
+                            Settled,
+                        ));
                     }
                 }
             }
@@ -2690,8 +2598,7 @@ pub fn materialise(
             | (OutputKind::Auto | OutputKind::Native | OutputKind::Prompted, _) => {
                 commands
                     .entity(run)
-                    .remove::<AwaitingModel>()
-                    .insert((RunResult(policy::answer_text(&content)), Settled));
+                    .phase::<AwaitingModel>((RunResult(policy::answer_text(&content)), Settled));
             }
         }
         progress.mark();
@@ -2730,16 +2637,10 @@ pub fn effect_cancelled(
         // A tool child despawned while its batch was out: the run ends
         // here, the batch with it.
         commands.entity(turn).remove::<Batch>();
-        commands
-            .entity(run)
-            .remove::<ResolvingTools>()
-            .insert(cancelled);
+        commands.entity(run).phase::<ResolvingTools>(cancelled);
     } else if !is_tool_call && !materialised && awaiting {
         commands.entity(turn).insert(Materialised);
-        commands
-            .entity(run)
-            .remove::<AwaitingModel>()
-            .insert(cancelled);
+        commands.entity(run).phase::<AwaitingModel>(cancelled);
     }
 }
 

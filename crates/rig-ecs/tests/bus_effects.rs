@@ -11,14 +11,6 @@
 //! | 7 register, dispatch, deregister from systems | `handlers_are_registered_and_removed_from_systems` |
 //! | — a tool call's context beside the effect (format 5): `ToolInputs` reaches the tool, what it publishes lands as `ToolOutputs` | `a_tool_calls_context_travels_beside_the_effect_and_its_published_values_land_as_outputs` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
-
 use crate::bus_support;
 
 use std::sync::{
@@ -35,28 +27,12 @@ use rig_core::{
 };
 use rig_ecs::bus::{
     Bound, BusSet, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Publishing,
-    RigSchedule, Seq, Serving, Streamed, Streaming, ToolInputs, ToolOutputs,
+    RigSchedule, Serving, Streamed, Streaming, ToolInputs, ToolOutputs,
 };
 
 #[test]
-fn every_component_a_system_holds_is_send_sync() {
-    fn assert_send_sync<T: Send + Sync + 'static>() {}
-    assert_send_sync::<PendingEffect>();
-    assert_send_sync::<Seq>();
-    assert_send_sync::<Issued>();
-    assert_send_sync::<InFlight>();
-    assert_send_sync::<Serving>();
-    assert_send_sync::<Streaming>();
-    assert_send_sync::<Streamed>();
-    assert_send_sync::<EffectOutcome>();
-    assert_send_sync::<Bound>();
-}
-
-#[test]
 fn a_pending_effect_is_taken_served_and_answered() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
+    let (mut app, _, counters) = served();
     let effect = app
         .world_mut()
         .spawn(PendingEffect::new("model", completion()))
@@ -80,9 +56,7 @@ fn a_pending_effect_is_taken_served_and_answered() {
 
 #[test]
 fn an_effect_despawned_before_dispatch_is_never_served() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
+    let (mut app, _, counters) = served();
     let effect = app
         .world_mut()
         .spawn(PendingEffect::new("model", completion()))
@@ -94,10 +68,8 @@ fn an_effect_despawned_before_dispatch_is_never_served() {
 
 #[test]
 fn despawning_an_effect_in_flight_cancels_its_handler() {
-    let counters = Arc::new(Counters::default());
+    let (mut app, _, counters) = served();
     counters.hold.hold();
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
     let effect = app
         .world_mut()
         .spawn(PendingEffect::new("model", completion()))
@@ -152,9 +124,7 @@ fn the_intake_bound_leaves_the_rest_pending_and_blocks_nobody() {
 
 #[test]
 fn a_stream_accumulates_per_tick() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
+    let (mut app, _, _) = served();
     let effect = app
         .world_mut()
         .spawn(PendingEffect::new("model", streaming()))
@@ -328,11 +298,8 @@ fn deregister_then_register_in_one_borrow_serves_the_replacement() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
     let key = HandlerKey::from("runtime/model");
-    let previous = Handlers::with(app.world_mut(), |handlers| {
-        handlers.register(key.clone(), MockModel::saying(&counters, "first"))
-    })
-    .expect("bus")
-    .expect("registered");
+    let first = MockModel::saying(&counters, "first");
+    let previous = register(&mut app, key.as_str(), first);
     let replacement = Handlers::with(app.world_mut(), |handlers| {
         assert!(handlers.deregister(&key));
         handlers.register(key.clone(), MockModel::saying(&counters, "second"))
@@ -368,11 +335,7 @@ fn deregister_then_register_in_one_borrow_can_change_family() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
     let key = HandlerKey::from("runtime/handler");
-    Handlers::with(app.world_mut(), |handlers| {
-        handlers.register(key.clone(), MockModel::new(&counters))
-    })
-    .expect("bus")
-    .expect("registered");
+    register(&mut app, key.as_str(), MockModel::new(&counters));
     let replacement = Handlers::with(app.world_mut(), |handlers| {
         assert!(handlers.deregister(&key));
         handlers.register(key.clone(), Echo)
@@ -393,11 +356,7 @@ fn deregister_twice_in_one_borrow_removes_only_once() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
     let key = HandlerKey::from("runtime/model");
-    Handlers::with(app.world_mut(), |handlers| {
-        handlers.register(key.clone(), MockModel::new(&counters))
-    })
-    .expect("bus")
-    .expect("registered");
+    register(&mut app, key.as_str(), MockModel::new(&counters));
     Handlers::with(app.world_mut(), |handlers| {
         assert!(handlers.deregister(&key));
         assert!(!handlers.deregister(&key));
@@ -410,11 +369,8 @@ fn deregistration_observer_can_register_a_replacement() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
     let key = HandlerKey::from("runtime/model");
-    let previous = Handlers::with(app.world_mut(), |handlers| {
-        handlers.register(key.clone(), MockModel::saying(&counters, "first"))
-    })
-    .expect("bus")
-    .expect("registered");
+    let first = MockModel::saying(&counters, "first");
+    let previous = register(&mut app, key.as_str(), first);
     let replacement_key = key.clone();
     app.world_mut().entity_mut(previous).observe(
         move |_: On<Remove, Bound>, mut handlers: Handlers| {

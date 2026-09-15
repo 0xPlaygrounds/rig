@@ -20,27 +20,17 @@
 //! | a streamed and a unary run over the same history assemble the same request | `streaming_and_unary_assemble_the_same_request` |
 //! | a scene saved mid-run and loaded elsewhere has no views, assembles the requests the first world would, and holds views after | `a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views` |
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::type_complexity
-)]
-
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
 use rig_core::{
-    completion::{CompletionRequest, ModelRef, ProviderCapabilities},
-    effect::{EffectKind, FamilyDescriptor},
+    completion::CompletionRequest,
+    effect::EffectKind,
     message::{AssistantContent, Message, ToolResultContent, UserContent},
-    serve::ServingPolicy,
 };
 use rig_ecs::{
     agent::{
-        Failed, Failure, Grant, MaxTurns, MessageParts, Order, Owner, Run, Settled, Turn,
-        UsesModel, Utterance,
+        Failed, Failure, Grant, MaxTurns, MessageParts, Order, Run, Settled, Turn, Utterance,
         checkpoint::{ToolTurnCommit, hold_after_tool_turn, release_tool_turn_hold},
         content::{
             cache::{AssemblyStats, CachedMessage},
@@ -52,8 +42,8 @@ use rig_ecs::{
         },
         scene::{WorldScene, load_world, save_world},
     },
-    bus::{Bus, Handlers, PendingEffect, RigSchedule},
-    systems::{Fresh, RigSet, RunCommands, install_agent},
+    bus::{PendingEffect, RigSchedule},
+    systems::{Fresh, RigSet, RunCommands},
 };
 use run_support::*;
 
@@ -99,21 +89,7 @@ struct Fixture {
 
 impl Fixture {
     fn new() -> Self {
-        let mut world = World::new();
-        Bus::with_policy(ServingPolicy::default()).install(&mut world);
-        install_agent(&mut world);
-        let model = Handlers::with(&mut world, |handlers| {
-            handlers.register_open(
-                "model",
-                FamilyDescriptor::Completion {
-                    model: ModelRef::new("model"),
-                    capabilities: ProviderCapabilities::default(),
-                },
-            )
-        })
-        .unwrap()
-        .unwrap();
-        let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
+        let (mut world, agent) = open_model_world();
         let run = world.spawn_run(agent, &history(), "next", false, None);
         Self {
             world,
@@ -177,17 +153,6 @@ fn stats(world: &World) -> AssemblyStats {
     *world.resource::<AssemblyStats>()
 }
 
-fn utterances_of(world: &mut World, run: Entity) -> Vec<Entity> {
-    let mut utterances: Vec<_> = world
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
-        .iter(world)
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| (order.0, entity))
-        .collect();
-    utterances.sort();
-    utterances.into_iter().map(|(_, entity)| entity).collect()
-}
-
 /// The direct children of `parent` holding `C`, in sibling order.
 fn parts_of<C: Component>(world: &World, parent: Entity) -> Vec<Entity> {
     let mut found: Vec<(u64, Entity)> = world
@@ -199,32 +164,6 @@ fn parts_of<C: Component>(world: &World, parent: Entity) -> Vec<Entity> {
         .collect();
     found.sort();
     found.into_iter().map(|(_, entity)| entity).collect()
-}
-
-/// The fresh, uncached render of `run`'s history.
-fn graph_messages(world: &mut World, run: Entity) -> Vec<Message> {
-    utterances_of(world, run)
-        .into_iter()
-        .map(|entity| read_message(world, entity).unwrap().to_message())
-        .collect()
-}
-
-/// The completion requests folded under `run`, by turn order.
-fn requests(world: &mut World, run: Entity) -> Vec<CompletionRequest> {
-    let mut found: Vec<_> = world
-        .query::<(&PendingEffect, &ChildOf)>()
-        .iter(world)
-        .filter_map(|(effect, parent)| match &effect.kind {
-            EffectKind::Completion { request, .. } => {
-                let turn = parent.parent();
-                (world.get::<ChildOf>(turn)?.parent() == run)
-                    .then(|| (world.get::<Order>(turn).map(|o| o.0), request.clone()))
-            }
-            _ => None,
-        })
-        .collect();
-    found.sort_by_key(|(order, _)| *order);
-    found.into_iter().map(|(_, request)| request).collect()
 }
 
 fn views_of(world: &mut World, run: Entity) -> Vec<bool> {
@@ -589,17 +528,13 @@ fn script(tool_turns: usize) -> Vec<Vec<AssistantContent>> {
 
 fn tooling(turns: Vec<Vec<AssistantContent>>) -> (bevy_app::App, Entity, RequestsSeen) {
     let mut app = app();
-    let (model, requests) = Scripted::new(MODEL, turns);
-    let model = register(&mut app, MODEL, model);
+    let (agent, requests) = scripted_agent(&mut app, MODEL, turns);
     let tool = register(&mut app, ADD, Adder::new(ADD));
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert(MaxTurns(12));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
     (app, agent, requests)
 }
-
-type RequestsSeen = std::sync::Arc<std::sync::Mutex<Vec<CompletionRequest>>>;
 
 #[test]
 fn every_request_equals_a_fresh_render_and_only_new_utterances_are_rendered() {

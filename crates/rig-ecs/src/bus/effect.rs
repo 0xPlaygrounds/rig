@@ -457,5 +457,7 @@ const _: () = {
     assert_send_sync::<ToolInputs>();
     assert_send_sync::<ToolOutputs>();
     assert_send_sync::<Publishing>();
+    assert_send_sync::<Serving>();
+    assert_send_sync::<Streaming>();
     assert_send_sync::<Typed<rig_core::effect::family::Completion>>();
 };

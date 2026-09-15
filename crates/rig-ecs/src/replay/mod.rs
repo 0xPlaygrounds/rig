@@ -2,7 +2,7 @@
 //! it, computed from the agent entity — never from a spec struct.
 
 use bevy_ecs::prelude::*;
-use rig_core::effect::{EffectFamily, EffectRow, HandlerKey};
+use rig_core::effect::{EffectFamily, EffectRow};
 use rig_effect_log::{EffectLogRecorder, stable_hash};
 
 use crate::{
@@ -451,14 +451,4 @@ pub fn check_replayable(
         ));
     }
     Ok(())
-}
-
-/// The key an agent mints for its model: `<owner>/model:<label>`.
-pub fn model_key(owner: &str, label: &str) -> HandlerKey {
-    HandlerKey::from(format!("{owner}/model:{label}"))
-}
-
-/// The key an agent mints for a tool: `<owner>/tool:<name>#<n>`.
-pub fn tool_key(owner: &str, name: &str, generation: u32) -> HandlerKey {
-    HandlerKey::from(format!("{owner}/tool:{name}#{generation}"))
 }

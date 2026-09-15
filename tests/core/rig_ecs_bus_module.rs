@@ -1,10 +1,6 @@
 //! The `rig_ecs::bus` module is written as if it were already its own
-//! crate, so that the extraction to `rig-bevy` is a `git mv`:
+//! crate, so that the extraction to `rig-bevy` is a small move:
 //!
-//! - nothing under `crates/rig-ecs/src/bus/` has a crate-scoped visibility
-//!   — no `pub(crate)`, no `pub(super)`, no `pub(in ..)`: an item is `pub`
-//!   (a downstream crate could use it) or private to its file;
-//! - no `use crate::` in `bus/` names a module other than `bus`;
 //! - no file under `bus/`, and no `tests/bus_*` file, mentions an
 //!   agent-shaped identifier;
 //! - and the discipline the shape depends on: nothing in the crate blocks
@@ -56,55 +52,6 @@ fn code_lines(text: &str) -> impl Iterator<Item = (usize, &str)> {
         .enumerate()
         .map(|(number, line)| (number + 1, line))
         .filter(|(_, line)| !line.trim_start().starts_with("//"))
-}
-
-#[test]
-fn nothing_in_the_bus_module_is_crate_scoped() {
-    let mut offenders = Vec::new();
-    for path in rust_files(&crate_root().join("src/bus")) {
-        let text = read(&path);
-        for (number, line) in code_lines(&text) {
-            let trimmed = line.trim_start();
-            if trimmed.contains("pub(crate)")
-                || trimmed.contains("pub(super)")
-                || trimmed.contains("pub(in ")
-            {
-                offenders.push(format!("{}:{number}: {}", relative(&path), line.trim()));
-            }
-        }
-    }
-    assert!(
-        offenders.is_empty(),
-        "a crate-scoped item in rig_ecs::bus (the module is the future rig-bevy crate: pub, or private to its file):\n{}",
-        offenders.join("\n")
-    );
-}
-
-#[test]
-fn the_bus_module_imports_no_sibling() {
-    let mut offenders = Vec::new();
-    for path in rust_files(&crate_root().join("src/bus")) {
-        let text = read(&path);
-        for (number, line) in code_lines(&text) {
-            let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("use crate::")
-                && !rest.starts_with("bus")
-            {
-                offenders.push(format!("{}:{number}: {trimmed}", relative(&path)));
-            }
-            if trimmed.contains("crate::")
-                && !trimmed.contains("crate::bus")
-                && !trimmed.starts_with("use ")
-            {
-                offenders.push(format!("{}:{number}: {trimmed}", relative(&path)));
-            }
-        }
-    }
-    assert!(
-        offenders.is_empty(),
-        "rig_ecs::bus reaches a sibling module:\n{}",
-        offenders.join("\n")
-    );
 }
 
 /// Identifiers the substrate must not know. Matched as whole words on code

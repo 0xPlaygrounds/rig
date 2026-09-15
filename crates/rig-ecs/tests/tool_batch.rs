@@ -13,14 +13,6 @@
 //! | `Resolution::Repair` written by a system renames the call and dispatches it | `a_system_repairs_an_invalid_call_to_a_granted_tool` |
 //! | `Resolution::Retry` retries the turn with feedback and the invalid-peer notice | `a_system_retries_an_invalid_call_with_feedback` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
-
 use crate::run_support;
 
 use std::sync::{Arc, atomic::Ordering};
@@ -59,11 +51,9 @@ fn add_system<M>(
 fn tooling(turns: Vec<Vec<AssistantContent>>) -> (bevy_app::App, Entity, Arc<Adder>, RequestsSeen) {
     let mut app = app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let (model, requests) = Scripted::new(MODEL, turns);
-    let model = register(&mut app, MODEL, model);
+    let (agent, requests) = scripted_agent(&mut app, MODEL, turns);
     let adder = Arc::new(Adder::new(ADD));
     let tool = register(&mut app, ADD, Arc::clone(&adder));
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(4));
@@ -71,8 +61,6 @@ fn tooling(turns: Vec<Vec<AssistantContent>>) -> (bevy_app::App, Entity, Arc<Add
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
     (app, agent, adder, requests)
 }
-
-type RequestsSeen = Arc<std::sync::Mutex<Vec<rig_core::completion::CompletionRequest>>>;
 
 fn two_calls_then_text() -> Vec<Vec<AssistantContent>> {
     vec![
@@ -82,12 +70,6 @@ fn two_calls_then_text() -> Vec<Vec<AssistantContent>> {
         ],
         vec![AssistantContent::text("3 and 7")],
     ]
-}
-
-fn ended(app: &mut bevy_app::App, run: Entity, what: &str) {
-    tick_until(app, what, |world| {
-        world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
-    });
 }
 
 fn tool_results(request: &rig_core::completion::CompletionRequest) -> Vec<(String, String)> {

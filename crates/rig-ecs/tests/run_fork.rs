@@ -6,13 +6,6 @@
 //! |---|---|
 //! | the forks share the prompt, take the next run numbers and scopes, and each settles | `a_forked_run_settles_beside_the_original` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use crate::run_support;
 
 use bevy_ecs::prelude::*;

@@ -7,13 +7,6 @@
 //! | `stamp_run` writes `programs[scope] = { required, policy }`; rig-agent's goldens carry none | `a_worlds_log_names_its_program_by_scope` |
 //! | a golden of another program is refused by policy, one with another row by the row's diff, one whose handlers do not serve the row by the gap | `check_replayable_refuses_a_foreign_log_by_name` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
