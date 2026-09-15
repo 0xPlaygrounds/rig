@@ -18,6 +18,7 @@ use crate::run_support;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
+    time::Duration,
 };
 
 use bevy_ecs::prelude::*;
@@ -306,7 +307,7 @@ fn a_zero_budget_never_retries() {
 
 /// Whether the host's backoff hold is in force.
 #[derive(Resource)]
-struct Backoff(bool);
+struct HostBackoff(bool);
 
 /// A host `Gate` system: the re-issued completion of a run that has
 /// retried waits under a hold until the host releases it (the backoff).
@@ -314,7 +315,7 @@ fn hold_retried_completion(
     fresh: Query<(Entity, &PendingEffect, &ChildOf), Added<PendingEffect>>,
     turns: Query<&ChildOf>,
     runs: Query<&ProviderRetried>,
-    backoff: Res<Backoff>,
+    backoff: Res<HostBackoff>,
     mut commands: Commands,
 ) {
     if !backoff.0 {
@@ -347,7 +348,7 @@ fn a_host_hold_is_where_a_backoff_goes_and_a_cancel_during_it_ends_the_run() {
         Err(unavailable("status 503")),
         Ok(done()),
     ]);
-    app.insert_resource(Backoff(true));
+    app.insert_resource(HostBackoff(true));
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, hold_retried_completion.in_set(BusSet::Gate));
@@ -390,7 +391,7 @@ fn a_checkpoint_saved_during_the_hold_resumes_into_the_retry() {
         Err(unavailable("status 503")),
         Ok(done()),
     ]);
-    app.insert_resource(Backoff(true));
+    app.insert_resource(HostBackoff(true));
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, hold_retried_completion.in_set(BusSet::Gate));
@@ -541,4 +542,59 @@ fn a_truncated_stream_is_reissued() {
         .map(|r| r.outcome.is_ok())
         .collect();
     assert_eq!(completions, [false, true]);
+}
+
+/// `agent::Backoff` on the agent: the retry's completion is held as
+/// `rig-ecs/backoff` and released when the world's clock has advanced by
+/// the delay — a paused `Time<Virtual>` holds it for as long as the host
+/// likes, and advancing the clock by hand releases it.
+#[test]
+fn a_backoff_on_the_agent_delays_the_retry_on_the_worlds_clock() {
+    use bevy_time::{Time, Virtual};
+    let (mut app, agent, requests, _, _) = tooling(vec![
+        Ok(add_call()),
+        Err(unavailable("status 503")),
+        Ok(done()),
+    ]);
+    app.world_mut()
+        .entity_mut(agent)
+        .insert(rig_ecs::agent::Backoff {
+            base: Duration::from_secs(10),
+            max: Duration::from_secs(60),
+        });
+    app.world_mut().resource_mut::<Time<Virtual>>().pause();
+    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    tick_until(&mut app, "the retry is held by the backoff", |world| {
+        world
+            .query_filtered::<&rig_ecs::bus::HoldOwners, With<PendingEffect>>()
+            .iter(world)
+            .any(|owners| {
+                owners
+                    .owners()
+                    .any(|owner| owner.name == rig_ecs::systems::backoff::BACKOFF_OWNER)
+            })
+    });
+    for _ in 0..8 {
+        app.update();
+    }
+    assert_eq!(requests.lock().unwrap().len(), 2, "the clock is paused");
+    assert!(app.world().get::<Settled>(run).is_none());
+    // Nine seconds is not ten.
+    app.world_mut()
+        .resource_mut::<Time<Virtual>>()
+        .advance_by(Duration::from_secs(9));
+    for _ in 0..4 {
+        app.update();
+    }
+    assert_eq!(requests.lock().unwrap().len(), 2);
+    app.world_mut()
+        .resource_mut::<Time<Virtual>>()
+        .advance_by(Duration::from_secs(1));
+    ended(&mut app, run, "the retried run");
+    assert_eq!(
+        app.world().get::<RunResult>(run).map(|r| r.0.clone()),
+        Some("done".into())
+    );
+    assert_eq!(requests.lock().unwrap().len(), 3);
+    assert!(holding(&mut app).is_empty());
 }

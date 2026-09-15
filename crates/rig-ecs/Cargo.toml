@@ -35,6 +35,7 @@ bevy_tasks = { workspace = true }
 bevy_reflect = { workspace = true }
 bevy_asset = { workspace = true, optional = true }
 bevy_app = { workspace = true, features = ["bevy_reflect"] }
+bevy_time = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

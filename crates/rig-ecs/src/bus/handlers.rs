@@ -462,10 +462,13 @@ impl Handlers<'_, '_> {
         let family = descriptor.family.family();
         let entity = match self.index.keys.get(&key).copied() {
             Some((entity, bound)) if bound == family => {
-                self.commands.entity(entity).insert(Bound {
-                    key: key.clone(),
-                    descriptor,
-                });
+                self.commands.entity(entity).insert((
+                    Bound {
+                        key: key.clone(),
+                        descriptor,
+                    },
+                    Name::new(key.to_string()),
+                ));
                 entity
             }
             Some((_, bound)) => {
@@ -478,10 +481,13 @@ impl Handlers<'_, '_> {
             }
             None => self
                 .commands
-                .spawn(Bound {
-                    key: key.clone(),
-                    descriptor,
-                })
+                .spawn((
+                    Bound {
+                        key: key.clone(),
+                        descriptor,
+                    },
+                    Name::new(key.to_string()),
+                ))
                 .id(),
         };
         self.index.keys.insert(key, (entity, family));

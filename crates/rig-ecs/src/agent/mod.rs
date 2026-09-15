@@ -151,6 +151,19 @@ pub struct ProviderRetries(pub usize);
 /// The provider-retry budget of a run that declares none.
 pub const DEFAULT_PROVIDER_RETRIES: usize = 3;
 
+/// How long a provider retry waits before its completion is re-issued:
+/// `base × 2^(attempt-1)`, at most `max`, on the world's clock (bevy_time's
+/// `Time`: a host that pauses `Time<Virtual>` holds every backoff). On the
+/// agent or the run; without one, a retry is re-issued at once.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
+pub struct Backoff {
+    /// The first retry's delay.
+    pub base: std::time::Duration,
+    /// The longest delay any retry waits.
+    pub max: std::time::Duration,
+}
+
 /// What to do with a tool call the program does not advertise when no
 /// system resolved it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
@@ -546,8 +559,9 @@ impl From<Vec<UserContent>> for Prompt {
 /// A run: one prompt through the agent to an answer or a failure. Requires
 /// what every run carries — its cursor, tallies, output-tool name and usage
 /// at their defaults — and stamps its [`RunSeq`] from the world's
-/// [`RunCounter`] and its [`crate::bus::Scope`] (`{owner}/run#{seq}`, from
-/// its [`RunOf`] agent's [`Owner`]) as it is added.
+/// [`RunCounter`], its [`crate::bus::Scope`] (`{owner}/run#{seq}`, from
+/// its [`RunOf`] agent's [`Owner`]) and a `Name` of the same text, as it
+/// is added.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]

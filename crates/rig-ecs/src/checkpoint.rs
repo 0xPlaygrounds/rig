@@ -19,6 +19,7 @@
 use std::{any::TypeId, collections::HashMap};
 
 use bevy_ecs::{
+    entity_disabling::Disabled,
     prelude::*,
     reflect::{AppTypeRegistry, ReflectComponent},
     resource::IsResource,
@@ -46,6 +47,9 @@ use crate::{
 
 /// One entity of a [`Checkpoint`]: its components by type path.
 pub type CheckpointEntity = serde_json::Map<String, serde_json::Value>;
+
+/// An entity's reflected components, by type path.
+type Reflected<'a> = Vec<(&'a str, Box<dyn PartialReflect>)>;
 
 /// The world as reflected data.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -119,8 +123,10 @@ fn is_relationship_target(id: TypeId) -> bool {
 /// `Entity`'s own `Ord` is over its opaque bits, which invert the index),
 /// then each root's subtree depth-first in `Children` order.
 fn ordered_entities(world: &mut World) -> Vec<Entity> {
+    // A host may disable an ended run to keep it out of its hot queries; it
+    // is still the world's, and a checkpoint keeps it.
     let mut roots: Vec<Entity> = world
-        .query_filtered::<Entity, (Without<ChildOf>, Without<IsResource>)>()
+        .query_filtered::<Entity, (Without<ChildOf>, Without<IsResource>, Allow<Disabled>)>()
         .iter(world)
         .collect();
     roots.sort_by_key(|entity| (entity.index().index(), entity.generation().to_bits()));
@@ -150,10 +156,10 @@ pub fn save_world(world: &mut World) -> Result<Checkpoint, ErrorReport> {
         .collect();
     components.sort_by_key(|(path, _)| *path);
     let order = ordered_entities(world);
-    let mut rows: Vec<(Entity, Vec<(&str, Box<dyn PartialReflect>)>)> = Vec::new();
+    let mut rows: Vec<(Entity, Reflected<'_>)> = Vec::new();
     for entity in order {
         let entity_ref = world.entity(entity);
-        let reflected: Vec<(&str, Box<dyn PartialReflect>)> = components
+        let reflected: Reflected<'_> = components
             .iter()
             .filter_map(|(path, data)| data.reflect(entity_ref).map(|c| (*path, c.to_dynamic())))
             .collect();

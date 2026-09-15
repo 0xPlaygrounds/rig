@@ -64,6 +64,7 @@ use crate::{
     policy::{self, RequestGraph},
 };
 
+pub mod backoff;
 mod stream_invalid;
 pub mod witness;
 pub use stream_invalid::discover_streamed_invalid_calls;
@@ -404,6 +405,9 @@ fn install_agent(world: &mut World) {
             .before(RigSet::Select),
         select.in_set(RigSet::Select),
         (gather_turn, fold_turn).chain().in_set(RigSet::Assemble),
+        backoff::hold_retries
+            .after(RigSet::Patch)
+            .before(RigSet::Release),
         release_batch.in_set(RigSet::Release),
         (fold, discover_streamed_invalid_calls)
             .chain()
@@ -808,6 +812,7 @@ pub fn advance(
     retrievals: Query<(), With<Retrieves>>,
     max_turns: Query<&MaxTurns>,
     retrying: Query<(), With<ProviderRetrying>>,
+    provider_retried: Query<&ProviderRetried>,
     holds: Query<&ToolTurnHolds>,
     commits: Query<(&ChildOf, &ToolTurnCommit)>,
 ) {
@@ -857,6 +862,9 @@ pub fn advance(
         }
         if retrying {
             commands.entity(run).remove::<ProviderRetrying>();
+            commands.entity(turn).insert(backoff::RetryAttempt(
+                provider_retried.get(run).map_or(1, |n| n.0),
+            ));
         } else {
             commands.entity(run).insert(Cursor {
                 turn: cursor.turn + 1,

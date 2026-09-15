@@ -82,6 +82,9 @@ impl RigPlugin {
 
 impl bevy_app::Plugin for RigPlugin {
     fn build(&self, app: &mut bevy_app::App) {
+        if !app.is_plugin_added::<bevy_time::TimePlugin>() {
+            app.add_plugins(bevy_time::TimePlugin);
+        }
         app.add_plugins((self.bus.clone(), systems::AgentPlugin));
         checkpoint::register_types(app.world_mut());
     }

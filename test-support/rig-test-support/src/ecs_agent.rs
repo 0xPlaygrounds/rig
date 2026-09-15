@@ -25,8 +25,8 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        DefaultMaxTurns, Failed, Failure, Grant, MaxTurns, Owner, Preamble, RunResult,
-        Settled, UsesModel,
+        DefaultMaxTurns, Failed, Failure, Grant, MaxTurns, Owner, Preamble, RunResult, Settled,
+        UsesModel,
     },
     bus::{Handlers, Recording},
     systems::RunCommands,

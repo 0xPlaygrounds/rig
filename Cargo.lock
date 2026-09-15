@@ -1866,7 +1866,10 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_platform",
+ "bevy_reflect",
+ "crossbeam-channel",
  "log",
+ "serde",
 ]
 
 [[package]]
@@ -10600,6 +10603,7 @@ dependencies = [
  "bevy_platform",
  "bevy_reflect",
  "bevy_tasks",
+ "bevy_time",
  "futures",
  "log",
  "rig-core",

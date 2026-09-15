@@ -249,12 +249,29 @@ fn every_component_round_trips_through_reflection() {
     let world = app.world_mut();
     let registry = world.resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
-    let entities: Vec<Entity> = world.query::<Entity>().iter(world).collect();
+    // The graph's entities: not the resource entities (`Time` and the
+    // like are the app's, registered by their own plugins).
+    let entities: Vec<Entity> = world
+        .query_filtered::<Entity, Without<bevy_ecs::resource::IsResource>>()
+        .iter(world)
+        .collect();
     let mut seen: Vec<&str> = Vec::new();
     let mut relationships: Vec<&str> = Vec::new();
     let mut checked = 0usize;
+    // The crate's components: its own and the hierarchy's, never a
+    // resource (a resource is a component on its resource entity in Bevy).
+    let ours = |registration: &bevy_reflect::TypeRegistration| {
+        let path = registration.type_info().type_path();
+        (path.starts_with("rig_ecs::") || path.starts_with("bevy_ecs::hierarchy::"))
+            && registration
+                .data::<bevy_ecs::reflect::ReflectResource>()
+                .is_none()
+    };
     for (registration, component) in registry.iter_with_data::<ReflectComponent>() {
         let path = registration.type_info().type_path();
+        if !ours(registration) {
+            continue;
+        }
         for entity in &entities {
             let Some(value) = component.reflect(world.entity(*entity)) else {
                 continue;
@@ -299,6 +316,7 @@ fn every_component_round_trips_through_reflection() {
     // Every registered component occurs: the vocabulary is covered.
     let missing: Vec<&str> = registry
         .iter_with_data::<ReflectComponent>()
+        .filter(|(registration, _)| ours(registration))
         .map(|(registration, _)| registration.type_info().type_path())
         .filter(|path| !seen.contains(path))
         .collect();
