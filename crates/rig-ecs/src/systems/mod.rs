@@ -1729,7 +1729,8 @@ pub type ToolChildView = (
 /// `Gate` policy's `Held` is not the runtime's to lift, so a call a policy
 /// holds stays held until that policy releases it, and a call the batch
 /// holds is released by the batch alone.
-#[derive(Component, Debug, Default, Clone, Copy)]
+#[derive(Component, Debug, Default, Clone, Copy, Reflect)]
+#[reflect(Component)]
 pub struct BatchHeld;
 
 /// The batch's marker and its ownership go with the hold. A host may

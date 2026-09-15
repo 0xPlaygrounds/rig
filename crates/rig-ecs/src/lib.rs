@@ -47,6 +47,7 @@ pub mod agent;
 #[cfg(feature = "assets")]
 pub mod assets;
 pub mod bus;
+pub mod checkpoint;
 pub mod policy;
 pub mod prelude;
 pub mod reflect;
@@ -82,5 +83,6 @@ impl RigPlugin {
 impl bevy_app::Plugin for RigPlugin {
     fn build(&self, app: &mut bevy_app::App) {
         app.add_plugins((self.bus.clone(), systems::AgentPlugin));
+        checkpoint::register_types(app.world_mut());
     }
 }

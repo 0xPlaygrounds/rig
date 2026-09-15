@@ -106,7 +106,6 @@ pub mod plugin;
 pub mod record;
 pub mod reflect;
 pub mod replay;
-pub mod scene;
 pub mod stream_delivery;
 pub mod witness;
 
@@ -132,7 +131,6 @@ pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
 };
 pub use replay::{EffectLogResource, Replay};
-pub use scene::{Scene, SceneEffect};
 pub use stream_delivery::StreamItemsDelivered;
 pub use witness::{
     AdapterOperation, BUS_EMITTER, Despawning, SubjectWalk, Subjects, Witnessing, bus_emitter,

@@ -22,7 +22,6 @@
 pub mod checkpoint;
 pub mod content;
 pub mod reflect;
-pub mod scene;
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
