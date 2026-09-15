@@ -146,7 +146,7 @@ async fn main() -> Result<(), anyhow::Error> {
 Note using `#[tokio::main]` requires you enable tokio's `macros` and `rt-multi-thread` features
 or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 
-You can find more examples in each crate's `examples` directory (for example, [`examples`](./examples)). Provider-specific integration coverage lives under [`tests/providers`](./tests/providers), with cassette-backed tests that replay offline by default and live-only tests kept separate when real provider APIs are still required. See [`tests/README.md`](./tests/README.md) for test target, replay, record, and cassette safety commands. More detailed use case walkthroughs are regularly published on our [Dev.to Blog](https://dev.to/0thtachi) and added to Rig's official documentation at [rig.rs/docs](https://rig.rs/docs).
+More examples live in [`examples`](./examples) and each crate's `examples` directory; provider test coverage and cassette commands are described in [`tests/README.md`](./tests/README.md). Detailed walkthroughs are published on our [Dev.to Blog](https://dev.to/0thtachi) and at [rig.rs/docs](https://rig.rs/docs).
 
 ## Supported Integrations
 
