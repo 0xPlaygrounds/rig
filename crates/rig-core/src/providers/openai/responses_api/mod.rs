@@ -1880,7 +1880,11 @@ pub struct AdditionalParameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub include: Option<Vec<Include>>,
     /// `top_p`. Mutually exclusive with the `temperature` argument.
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_top_p"
+    )]
     pub top_p: Option<f64>,
     /// Whether or not the response should be truncated.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1928,6 +1932,21 @@ where
         Option::<serde_json::Map<String, serde_json::Value>>::deserialize(deserializer)?
             .unwrap_or_default(),
     )
+}
+
+// Flattened fields and untagged stream events buffer numbers through Serde.
+// Number understands serde_json's arbitrary_precision representation there.
+fn deserialize_top_p<'de, D>(deserializer: D) -> Result<Option<f64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    Option::<serde_json::Number>::deserialize(deserializer)?
+        .map(|number| {
+            number
+                .as_f64()
+                .ok_or_else(|| serde::de::Error::custom("top_p is outside the range of f64"))
+        })
+        .transpose()
 }
 
 impl AdditionalParameters {

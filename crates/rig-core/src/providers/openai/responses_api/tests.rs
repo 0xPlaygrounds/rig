@@ -2822,3 +2822,91 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         assert_adapter_pairs(serde_json::to_value(wire).unwrap());
     }
 }
+
+// Keep this payload as text: constructing it with json! would bypass the
+// arbitrary_precision number representation that triggers issue #2493.
+const TOP_P_RESPONSE: &str = r#"{
+    "id": "resp_1", "object": "response", "created_at": 1,
+    "status": "completed", "model": "m", "output": [], "tools": [],
+    "top_p": 0.95,
+    "usage": {
+        "input_tokens": 7173, "input_tokens_details": {"cached_tokens": 7168},
+        "output_tokens": 2, "total_tokens": 7175
+    }
+}"#;
+
+/// Exercises Serde feature unification, not provider behavior; no live
+/// recording is needed to reproduce the numeric buffering failure.
+#[test]
+fn top_p_response_preserves_usage() {
+    let response: CompletionResponse =
+        serde_json::from_str(TOP_P_RESPONSE).expect("numeric top_p should decode");
+    assert_eq!(response.additional_parameters.top_p, Some(0.95));
+    let usage = response.usage.expect("reported usage");
+    assert_eq!(usage.input_tokens, 7173);
+    assert_eq!(usage.output_tokens, 2);
+    assert_eq!(usage.total_tokens, 7175);
+    assert_eq!(
+        usage
+            .input_tokens_details
+            .expect("input details")
+            .cached_tokens,
+        7168
+    );
+    let serialized = serde_json::to_value(&response).expect("response should serialize");
+    assert_eq!(serialized["top_p"], json!(0.95));
+}
+
+/// The untagged SSE decoder buffers the same JSON number again; this is
+/// an offline decoder regression, independent of a provider recording.
+#[test]
+fn top_p_completed_stream_chunk_preserves_usage() {
+    let frame = format!(
+        r#"{{"type":"response.completed","sequence_number":1,"response":{TOP_P_RESPONSE}}}"#
+    );
+    let chunk: streaming::StreamingCompletionChunk =
+        serde_json::from_str(&frame).expect("completed frame should decode");
+    let streaming::StreamingCompletionChunk::Response(chunk) = chunk else {
+        panic!("expected completed response");
+    };
+    assert_eq!(chunk.response.additional_parameters.top_p, Some(0.95));
+    let usage = chunk.response.usage.expect("reported usage");
+    assert_eq!(usage.total_tokens, 7175);
+    assert_eq!(
+        usage
+            .input_tokens_details
+            .expect("input details")
+            .cached_tokens,
+        7168
+    );
+}
+
+#[test]
+fn top_p_missing_null_and_integer_remain_supported() {
+    for (field, expected) in [
+        ("", None),
+        ("\"top_p\":null,", None),
+        ("\"top_p\":1,", Some(1.0)),
+    ] {
+        let payload = TOP_P_RESPONSE.replace("\"top_p\": 0.95,", field);
+        let response: CompletionResponse =
+            serde_json::from_str(&payload).expect("optional top_p should decode");
+        assert_eq!(response.additional_parameters.top_p, expected);
+    }
+}
+
+#[test]
+fn top_p_invalid_types_are_still_rejected() {
+    for value in ["true", "\"0.95\"", "[]", "{}", "1e400"] {
+        let params = format!(r#"{{"top_p":{value}}}"#);
+        assert!(
+            serde_json::from_str::<AdditionalParameters>(&params).is_err(),
+            "{value}"
+        );
+        let response = TOP_P_RESPONSE.replace("0.95", value);
+        assert!(
+            serde_json::from_str::<CompletionResponse>(&response).is_err(),
+            "{value}"
+        );
+    }
+}
