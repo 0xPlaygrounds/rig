@@ -1,7 +1,6 @@
 //! `BusSet::Collect`: land what finished, close the record.
 
 use bevy_ecs::prelude::*;
-use bevy_tasks::futures::check_ready;
 use rig_core::{
     serve::{Reply, stream_truncated},
     streaming::{Delta, StreamEvent},
@@ -10,7 +9,7 @@ use std::task::Poll;
 
 use super::{
     effect::{
-        EffectOutcome, Executions, InFlight, Issued, Publishing, Serving, Streamed, Streaming,
+        EffectOutcome, InFlight, Issued, Publishing, Serving, Streamed, Streaming, Tasks,
         ToolOutputs, WorldOutcome,
     },
     plugin::Wake,
@@ -65,19 +64,15 @@ pub fn collect_world(
 /// (`check_ready`), no waker kept, nothing awaited.
 pub fn collect_tasks(
     mut commands: Commands,
-    serving: Query<(Entity, &Serving, Option<&Publishing>), With<InFlight>>,
+    mut serving: Query<(Entity, &mut Serving, Option<&Publishing>), With<InFlight>>,
     policy: Res<super::Policy>,
     wake: Res<Wake>,
-    mut executions: NonSendMut<Executions>,
+    mut tasks: Tasks,
 ) {
-    for (entity, _, publishing) in &serving {
-        let Some(task) = executions.tasks.get_mut(&entity) else {
+    for (entity, mut serving, publishing) in &mut serving {
+        let Some(reply) = tasks.poll(entity, &mut serving) else {
             continue;
         };
-        let Some(reply) = check_ready(task) else {
-            continue;
-        };
-        executions.tasks.remove(&entity);
         let mut entity_commands = commands.entity(entity);
         entity_commands.remove::<Serving>();
         match reply {
@@ -93,9 +88,8 @@ pub fn collect_tasks(
                     .insert(EffectOutcome(outcome));
             }
             Reply::Stream(stream) => {
-                let (streaming, task) =
-                    Streaming::spawn(stream, policy.0.stream_capacity, wake.clone());
-                executions.streams.insert(entity, task);
+                let streaming =
+                    tasks.streaming(entity, stream, policy.0.stream_capacity, wake.clone());
                 entity_commands.insert(streaming);
             }
         }
@@ -112,7 +106,7 @@ pub fn collect_tasks(
 pub fn collect_streams(
     mut commands: Commands,
     mut streaming: Query<StreamingView, With<InFlight>>,
-    mut executions: NonSendMut<Executions>,
+    mut tasks: Tasks,
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
@@ -227,7 +221,7 @@ pub fn collect_streams(
                     }
                 },
             };
-            executions.streams.remove(&entity);
+            tasks.forget_stream(entity);
             if !items.is_empty() {
                 commands.trigger(super::StreamItemsDelivered {
                     effect: entity,

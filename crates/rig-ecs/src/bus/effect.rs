@@ -186,14 +186,27 @@ pub struct InFlight {
     pub key: HandlerKey,
 }
 
-/// An initial handler task owned by the world's non-send execution table.
-/// Removing `InFlight` or despawning the effect drops that task.
+/// The initial handler task, owned by the effect entity: dropping the
+/// component — removing it, despawning the effect — cancels the task.
+/// Native only; on wasm the task is `!Send` and lives in [`Executions`].
+#[cfg(not(target_family = "wasm"))]
+#[derive(Component)]
+pub struct Serving(pub Task<rig_core::serve::Reply>);
+
+/// The marker of an initial handler task, held for the entity in the
+/// world's non-send [`Executions`] (the task is `!Send` on wasm).
+#[cfg(target_family = "wasm")]
 #[derive(Component)]
 pub struct Serving;
 
 /// Delivery receiver and fold for a stream driven by an effect-owned worker.
+/// Dropping the component drops the receiver, and the worker returns at its
+/// next send.
 #[derive(Component)]
 pub struct Streaming {
+    /// The worker, owned here on native (dropped with the component).
+    #[cfg(not(target_family = "wasm"))]
+    pub task: Task<()>,
     /// Bounded worker delivery, exclusively consumed by Collect.
     pub events: futures::channel::mpsc::Receiver<
         Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>,
@@ -204,38 +217,132 @@ pub struct Streaming {
     pub delivered: usize,
 }
 
-impl Streaming {
-    /// Drive one owned stream on the pool with bounded delivery to Collect;
-    /// every delivered item raises `wake`.
-    pub fn spawn(
-        mut stream: StreamEvents,
-        capacity: usize,
-        wake: super::plugin::Wake,
-    ) -> (Self, Task<()>) {
-        use futures::{SinkExt, StreamExt};
-        let (mut sender, events) = futures::channel::mpsc::channel(capacity.max(1));
-        let task = bevy_tasks::IoTaskPool::get().spawn(async move {
-            while let Some(item) = stream.next().await {
-                if sender.send(item).await.is_err() {
-                    return;
-                }
-                wake.signal();
+/// Drive one owned stream on the pool with bounded delivery to Collect;
+/// every delivered item raises `wake`. Returns the receiver half and the
+/// worker task.
+fn spawn_stream_worker(
+    mut stream: StreamEvents,
+    capacity: usize,
+    wake: super::plugin::Wake,
+) -> (
+    futures::channel::mpsc::Receiver<
+        Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>,
+    >,
+    Task<()>,
+) {
+    use futures::{SinkExt, StreamExt};
+    let (mut sender, events) = futures::channel::mpsc::channel(capacity.max(1));
+    let task = bevy_tasks::IoTaskPool::get().spawn(async move {
+        while let Some(item) = stream.next().await {
+            if sender.send(item).await.is_err() {
+                return;
             }
             wake.signal();
-        });
-        (
-            Self {
+        }
+        wake.signal();
+    });
+    (events, task)
+}
+
+/// The tasks behind [`Serving`] and [`Streaming`]: a component's own field
+/// on native, a row in the non-send [`Executions`] table on wasm. One code
+/// path in `dispatch` and `collect` on both targets.
+#[derive(bevy_ecs::system::SystemParam)]
+pub struct Tasks<'w> {
+    #[cfg(target_family = "wasm")]
+    executions: NonSendMut<'w, Executions>,
+    #[cfg(not(target_family = "wasm"))]
+    _native: std::marker::PhantomData<&'w ()>,
+}
+
+impl Tasks<'_> {
+    /// The [`Serving`] component for `task`.
+    pub fn serving(&mut self, entity: Entity, task: Task<rig_core::serve::Reply>) -> Serving {
+        #[cfg(target_family = "wasm")]
+        {
+            self.executions.tasks.insert(entity, task);
+            Serving
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let _ = entity;
+            Serving(task)
+        }
+    }
+
+    /// Whether the serving task finished: its reply, once.
+    pub fn poll(
+        &mut self,
+        entity: Entity,
+        serving: &mut Serving,
+    ) -> Option<rig_core::serve::Reply> {
+        #[cfg(target_family = "wasm")]
+        {
+            let _ = serving;
+            let task = self.executions.tasks.get_mut(&entity)?;
+            let reply = bevy_tasks::futures::check_ready(task)?;
+            self.executions.tasks.remove(&entity);
+            Some(reply)
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let _ = entity;
+            bevy_tasks::futures::check_ready(&mut serving.0)
+        }
+    }
+
+    /// A [`Streaming`] component driving `stream` on the pool.
+    pub fn streaming(
+        &mut self,
+        entity: Entity,
+        stream: StreamEvents,
+        capacity: usize,
+        wake: super::plugin::Wake,
+    ) -> Streaming {
+        let (events, task) = spawn_stream_worker(stream, capacity, wake);
+        #[cfg(target_family = "wasm")]
+        {
+            self.executions.streams.insert(entity, task);
+            Streaming {
                 events,
                 fold: rig_core::serve::StreamTap::new(),
                 delivered: 0,
-            },
-            task,
-        )
+            }
+        }
+        #[cfg(not(target_family = "wasm"))]
+        {
+            let _ = entity;
+            Streaming {
+                task,
+                events,
+                fold: rig_core::serve::StreamTap::new(),
+                delivered: 0,
+            }
+        }
+    }
+
+    /// The stream worker of `entity` is done with: dropped now on wasm (on
+    /// native it goes with the component).
+    pub fn forget_stream(&mut self, entity: Entity) {
+        #[cfg(target_family = "wasm")]
+        self.executions.streams.remove(&entity);
+        #[cfg(not(target_family = "wasm"))]
+        let _ = entity;
+    }
+
+    /// The tasks of `world`, for an exclusive system. `None` when the bus
+    /// is not installed (the wasm table is missing).
+    pub fn with<T>(world: &mut World, f: impl FnOnce(&mut Tasks<'_>) -> T) -> Option<T> {
+        let mut state = bevy_ecs::system::SystemState::<Tasks>::new(world);
+        let mut tasks = state.get_mut(world).ok()?;
+        Some(f(&mut tasks))
     }
 }
 
-/// Effect-owned execution on native and browser wasm. Keeping both here
-/// avoids requiring an owned stream or initial task output to be `Sync`.
+/// The tasks of in-flight effects on wasm, where a task is `!Send` and
+/// cannot be a component: indexed by their effect entity, dropped by
+/// [`drop_execution`] when the effect leaves flight.
+#[cfg(target_family = "wasm")]
 #[derive(Default)]
 pub struct Executions {
     /// Initial tasks, indexed by their in-flight effect entity.
@@ -245,6 +352,7 @@ pub struct Executions {
 }
 
 /// Remove owned execution immediately when an effect leaves flight.
+#[cfg(target_family = "wasm")]
 pub fn drop_execution(removed: On<Remove, InFlight>, mut executions: NonSendMut<Executions>) {
     let entity = removed.event().entity;
     executions.tasks.remove(&entity);

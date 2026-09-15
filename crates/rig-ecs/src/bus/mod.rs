@@ -119,8 +119,8 @@ pub use delivery::{ReplayDelivery, ReplayFailure};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
     Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
-    Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, ToolInputs, ToolOutputs, Typed,
-    WorldEffect, WorldOutcome,
+    Reserved, Scope, Seq, SeqCounter, Serving, Streamed, Streaming, Tasks, ToolInputs, ToolOutputs,
+    Typed, WorldEffect, WorldOutcome,
 };
 pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,

@@ -270,7 +270,6 @@ async fn a_stream_accumulates_and_a_despawn_cancels() {
 
 #[wasm_bindgen_test]
 async fn local_streams_drop_on_marker_removal_scheduled_despawn_replacement_and_shutdown() {
-    use rig_ecs::bus::effect::{Executions, Streaming};
     struct Local(Rc<Cell<usize>>);
     impl Drop for Local {
         fn drop(&mut self) {
@@ -301,59 +300,39 @@ async fn local_streams_drop_on_marker_removal_scheduled_despawn_replacement_and_
             "cancelled local worker was not dropped"
         );
     }
-    let (streaming, task) = Streaming::spawn(stream(), 1);
+    fn worker(world: &mut World, entity: Entity, stream: rig_core::streaming::StreamEvents) {
+        let streaming = rig_ecs::bus::Tasks::with(world, |tasks| {
+            tasks.streaming(entity, stream, 1, Default::default())
+        })
+        .expect("the bus is installed");
+        world.entity_mut(entity).insert(streaming);
+    }
     let entity = world
-        .spawn((
-            InFlight {
-                key: "local".into(),
-            },
-            streaming,
-        ))
+        .spawn(InFlight {
+            key: "local".into(),
+        })
         .id();
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(entity, task);
-    let (streaming, task) = Streaming::spawn(stream(), 1);
-    world.entity_mut(entity).insert(streaming);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(entity, task);
+    worker(&mut world, entity, stream());
+    worker(&mut world, entity, stream());
     dropped(&drops, 1).await;
     world.entity_mut(entity).remove::<InFlight>();
     dropped(&drops, 2).await;
-    let (streaming, task) = Streaming::spawn(stream(), 1);
-    world.entity_mut(entity).insert((
-        InFlight {
-            key: "local".into(),
-        },
-        streaming,
-    ));
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(entity, task);
+    world.entity_mut(entity).insert(InFlight {
+        key: "local".into(),
+    });
+    worker(&mut world, entity, stream());
     let mut schedule = Schedule::default();
     schedule.add_systems(move |mut commands: Commands| {
         commands.entity(entity).despawn();
     });
     schedule.run(&mut world);
     dropped(&drops, 3).await;
-    assert!(world.non_send::<Executions>().streams.is_empty());
-    let (streaming, task) = Streaming::spawn(stream(), 1);
     let entity = world
-        .spawn((
-            InFlight {
-                key: "local".into(),
-            },
-            streaming,
-        ))
+        .spawn(InFlight {
+            key: "local".into(),
+        })
         .id();
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(entity, task);
+    worker(&mut world, entity, stream());
     drop(world);
     dropped(&drops, 4).await;
 }

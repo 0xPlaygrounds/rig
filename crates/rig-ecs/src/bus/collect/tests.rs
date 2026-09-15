@@ -6,7 +6,9 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 
+#[cfg(not(target_family = "wasm"))]
 struct Dropped(Arc<AtomicUsize>);
+#[cfg(not(target_family = "wasm"))]
 impl Drop for Dropped {
     fn drop(&mut self) {
         self.0.fetch_add(1, Ordering::SeqCst);
@@ -19,6 +21,7 @@ fn item() -> Result<StreamEvent, rig_core::error::ErrorReport> {
     )))
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn tracked_stream(
     pending: usize,
     polls: Arc<AtomicUsize>,
@@ -43,6 +46,12 @@ fn world() -> World {
     world
 }
 
+/// A finished worker, for a `Streaming` whose receiver is prefilled by hand.
+#[cfg(not(target_family = "wasm"))]
+fn idle_task() -> bevy_tasks::Task<()> {
+    bevy_tasks::IoTaskPool::get().spawn(async {})
+}
+
 fn insert(world: &mut World, streaming: Streaming, seq: u64) -> Entity {
     world
         .spawn((
@@ -64,6 +73,8 @@ fn ready(world: &mut World, seq: u64, count: usize) -> Entity {
     insert(
         world,
         Streaming {
+            #[cfg(not(target_family = "wasm"))]
+            task: idle_task(),
             events,
             fold: rig_core::serve::StreamTap::new(),
             delivered: 0,
@@ -104,6 +115,8 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
     insert(
         &mut world,
         Streaming {
+            #[cfg(not(target_family = "wasm"))]
+            task: idle_task(),
             events: first_events,
             fold: rig_core::serve::StreamTap::new(),
             delivered: 0,
@@ -120,6 +133,8 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
     insert(
         &mut world,
         Streaming {
+            #[cfg(not(target_family = "wasm"))]
+            task: idle_task(),
             events: second_events,
             fold: rig_core::serve::StreamTap::new(),
             delivered: 0,
@@ -208,28 +223,51 @@ fn wait_for(mut done: impl FnMut() -> bool) {
 }
 
 #[cfg(not(target_family = "wasm"))]
+fn worker(
+    world: &mut World,
+    effect: Entity,
+    stream: rig_core::streaming::StreamEvents,
+    capacity: usize,
+) {
+    let streaming = Tasks::with(world, |tasks| {
+        tasks.streaming(effect, stream, capacity, Default::default())
+    })
+    .unwrap();
+    world.entity_mut(effect).insert(streaming);
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn bare(world: &mut World, seq: u64) -> Entity {
+    world
+        .spawn((
+            InFlight { key: "test".into() },
+            super::super::Seq(seq),
+            Issued(EffectId::from_raw(seq)),
+            Streamed::default(),
+        ))
+        .id()
+}
+
+#[cfg(not(target_family = "wasm"))]
 #[test]
 fn worker_self_wakes_without_collect_and_stalls_on_full_delivery() {
     let mut world = world();
     let polls = Arc::new(AtomicUsize::new(0));
     let drops = Arc::new(AtomicUsize::new(0));
-    let (streaming, task) = Streaming::spawn(
+    let effect = bare(&mut world, 0);
+    worker(
+        &mut world,
+        effect,
         tracked_stream(3, polls.clone(), drops.clone()),
         4,
-        Default::default(),
     );
-    let effect = insert(&mut world, streaming, 0);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(effect, task);
     wait_for(|| polls.load(Ordering::SeqCst) >= 8);
     // futures mpsc has four shared slots and one sender-reserved slot.
     assert_eq!(polls.load(Ordering::SeqCst), 8);
     assert!(world.get::<Streamed>(effect).unwrap().events.is_empty());
-    world.entity_mut(effect).remove::<InFlight>();
+    // The component owns the worker: removing it drops the stream.
+    world.entity_mut(effect).remove::<Streaming>();
     wait_for(|| drops.load(Ordering::SeqCst) == 1);
-    assert!(world.non_send::<Executions>().streams.is_empty());
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -238,26 +276,20 @@ fn scheduled_despawn_replacement_and_shutdown_drop_owned_workers() {
     let mut world = world();
     let polls = Arc::new(AtomicUsize::new(0));
     let drops = Arc::new(AtomicUsize::new(0));
-    let (streaming, task) = Streaming::spawn(
+    let effect = bare(&mut world, 0);
+    worker(
+        &mut world,
+        effect,
         tracked_stream(0, polls.clone(), drops.clone()),
         1,
-        Default::default(),
     );
-    let effect = insert(&mut world, streaming, 0);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(effect, task);
-    let (streaming, task) = Streaming::spawn(
+    // Replacing the component drops the first worker.
+    worker(
+        &mut world,
+        effect,
         tracked_stream(0, polls.clone(), drops.clone()),
         1,
-        Default::default(),
     );
-    world.entity_mut(effect).insert(streaming);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(effect, task);
     wait_for(|| drops.load(Ordering::SeqCst) == 1);
     let mut schedule = Schedule::default();
     schedule.add_systems(move |mut commands: Commands| {
@@ -265,17 +297,13 @@ fn scheduled_despawn_replacement_and_shutdown_drop_owned_workers() {
     });
     schedule.run(&mut world);
     wait_for(|| drops.load(Ordering::SeqCst) == 2);
-    assert!(world.non_send::<Executions>().streams.is_empty());
-    let (streaming, task) = Streaming::spawn(
+    let effect = bare(&mut world, 1);
+    worker(
+        &mut world,
+        effect,
         tracked_stream(0, polls, drops.clone()),
         1,
-        Default::default(),
     );
-    let effect = insert(&mut world, streaming, 1);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(effect, task);
     drop(world);
     wait_for(|| drops.load(Ordering::SeqCst) == 3);
 }

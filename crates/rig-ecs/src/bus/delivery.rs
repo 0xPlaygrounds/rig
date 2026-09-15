@@ -3,7 +3,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use bevy_ecs::{prelude::*, world::CommandQueue};
-use bevy_tasks::futures::check_ready;
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -14,8 +13,8 @@ use std::task::Poll;
 
 use super::{
     effect::{
-        EffectOutcome, Executions, IdCounter, InFlight, Issued, PendingEffect, Publishing,
-        Reserved, Serving, Streamed, Streaming, ToolOutputs,
+        EffectOutcome, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved, Serving,
+        Streamed, Streaming, Tasks, ToolOutputs,
     },
     record::{DeliveryBatch, Observed, Recording},
 };
@@ -255,6 +254,7 @@ impl ReplayDelivery {
 #[derive(Component)]
 enum Buffered {
     Waiting {
+        serving: Serving,
         streamed: bool,
     },
     Unary {
@@ -272,19 +272,15 @@ impl Buffered {
     fn poll(
         &mut self,
         entity: Entity,
-        executions: &mut Executions,
+        tasks: &mut Tasks<'_>,
         remaining: Option<&mut usize>,
         capacity: usize,
         wake: super::plugin::Wake,
     ) {
-        if let Self::Waiting { streamed } = self {
-            let Some(task) = executions.tasks.get_mut(&entity) else {
+        if let Self::Waiting { serving, streamed } = self {
+            let Some(reply) = tasks.poll(entity, serving) else {
                 return;
             };
-            let Some(reply) = check_ready(task) else {
-                return;
-            };
-            executions.tasks.remove(&entity);
             match reply {
                 rig_core::serve::Reply::Outcome(answer) => {
                     *self = Self::Unary {
@@ -297,8 +293,7 @@ impl Buffered {
                         Some(&items) => cancelled_prefix(stream, items),
                         None => stream,
                     };
-                    let (streaming, task) = Streaming::spawn(stream, capacity, wake);
-                    executions.streams.insert(entity, task);
+                    let streaming = tasks.streaming(entity, stream, capacity, wake);
                     *self = Self::Stream {
                         streaming,
                         items: VecDeque::new(),
@@ -331,7 +326,7 @@ impl Buffered {
             match polled {
                 Poll::Ready(Some(item)) if *unary => {
                     if let Some(answer) = streaming.fold.observe(&item) {
-                        executions.streams.remove(&entity);
+                        tasks.forget_stream(entity);
                         *self = Self::Unary {
                             answer: Some(answer),
                         };
@@ -339,7 +334,7 @@ impl Buffered {
                 }
                 Poll::Ready(Some(item)) => items.push_back(item),
                 Poll::Ready(None) => {
-                    executions.streams.remove(&entity);
+                    tasks.forget_stream(entity);
                     if *unary {
                         *self = Self::Unary {
                             answer: Some(Err(rig_core::serve::stream_truncated())),
@@ -392,8 +387,8 @@ pub fn collect_replayed(world: &mut World) {
         for (id, entity) in &entities {
             let mut effect = world.entity_mut(*entity);
             let streamed = effect.contains::<Streamed>();
-            if effect.take::<Serving>().is_some() {
-                effect.insert(Buffered::Waiting { streamed });
+            if let Some(serving) = effect.take::<Serving>() {
+                effect.insert(Buffered::Waiting { serving, streamed });
             } else if let Some(streaming) = effect.take::<Streaming>() {
                 effect.insert(Buffered::Stream {
                     streaming,
@@ -405,7 +400,10 @@ pub fn collect_replayed(world: &mut World) {
             if let Some(mut buffered) = world.entity_mut(*entity).take::<Buffered>() {
                 let capacity = world.resource::<super::plugin::Policy>().0.stream_capacity;
                 let wake = world.resource::<super::plugin::Wake>().clone();
-                buffered.poll(*entity, &mut world.non_send_mut::<Executions>(), replay.cancelled_items.get_mut(id), capacity, wake);
+                let remaining = replay.cancelled_items.get_mut(id);
+                Tasks::with(world, |tasks| {
+                    buffered.poll(*entity, tasks, remaining, capacity, wake);
+                });
                 world.entity_mut(*entity).insert(buffered);
             }
         }

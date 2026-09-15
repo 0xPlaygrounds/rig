@@ -15,7 +15,7 @@ use rig_ecs::{
         AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
         OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{BusPlugin, EffectLogResource, Handlers, IdCounter},
+    bus::{EffectLogResource, Handlers, IdCounter},
     systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
