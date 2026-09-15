@@ -41,3 +41,22 @@ async fn claude_5_answers_without_a_caller_supplied_max_tokens() {
     )
     .await;
 }
+
+/// The rig-ecs run that the defect actually broke: no `MaxTokens` on the
+/// agent, a Claude 5 model, and the run must reach dispatch and settle. On
+/// `main` this fails `Failure::Provider` with
+/// `RequestError("`max_tokens` must be set for Anthropic")` before any
+/// request leaves the process.
+#[tokio::test]
+async fn a_native_ecs_run_reaches_claude_5_without_a_max_tokens_setting() {
+    with_anthropic_gateway_cassette("max_tokens/claude_5_ecs_run", |client| async move {
+        let mut ecs = crate::ecs_agent::EcsAgent::new(
+            client.completion_model("anthropic/claude-opus-5"),
+            "You are a concise assistant. Answer directly.",
+            1,
+        );
+        let answer = ecs.prompt("Reply with the single word: ok", false).await;
+        assert_nonempty_response(&answer);
+    })
+    .await;
+}

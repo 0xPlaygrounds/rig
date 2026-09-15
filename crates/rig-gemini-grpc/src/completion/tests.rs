@@ -615,3 +615,82 @@ fn rpc_codes_classify_retryability_and_keep_the_code() {
         assert_eq!(response.transient, Some(retryable));
     }
 }
+
+/// A warning sink: the crate reports a dropped field through `tracing`, so
+/// the test reads what a host's subscriber would see.
+#[derive(Clone, Default)]
+struct WarningSink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for WarningSink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("sink").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl tracing_subscriber::fmt::MakeWriter<'_> for WarningSink {
+    type Writer = Self;
+
+    fn make_writer(&self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+impl WarningSink {
+    fn captured(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("sink")).into_owned()
+    }
+
+    /// Run `body` with this sink as the only warning subscriber.
+    fn capture(body: impl FnOnce()) -> String {
+        let sink = Self::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(sink.clone())
+            .with_max_level(tracing::Level::WARN)
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::with_default(subscriber, body);
+        sink.captured()
+    }
+}
+
+/// The gRPC transport carries no schema, documents, tool choice or extra
+/// parameters. Each drop is reported where it happens, and the capability
+/// declares the schema gap so a runtime can route around it.
+#[test]
+fn every_dropped_field_is_reported() {
+    let request = CompletionRequest {
+        model: None,
+        chat_history: vec![rig_core::message::Message::user("hi")],
+        documents: vec![rig_core::completion::Document {
+            id: "d".to_owned(),
+            text: "t".to_owned(),
+            additional_props: std::collections::HashMap::new(),
+        }],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: Some(rig_core::message::ToolChoice::Auto),
+        additional_params: Some(serde_json::json!({"k": 1})),
+        output_schema: Some(
+            rig_core::schemars::Schema::try_from(serde_json::json!({"type": "object"}))
+                .expect("an object schema"),
+        ),
+        record_telemetry_content: false,
+    };
+
+    let warnings = WarningSink::capture(|| {
+        create_grpc_request("gemini-2.5-flash", request).expect("a request without tools");
+    });
+
+    for dropped in ["output_schema", "documents", "tool choice", "additional"] {
+        assert!(
+            warnings.contains(dropped),
+            "{dropped} not reported: {warnings}"
+        );
+    }
+}

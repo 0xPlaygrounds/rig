@@ -55,6 +55,16 @@ pub mod text {
         )
     }
 
+    /// The reprompt when the answer came back as prose and no output tool
+    /// was due (a `Native` or `Prompted` run, or a provider that never put
+    /// the schema on the wire); `{schema}` is the schema's canonical
+    /// rendering.
+    pub fn reprompt_unstructured_answer(schema: &str) -> String {
+        format!(
+            "Your answer must be a single JSON object that conforms to this JSON Schema, with no prose, explanation, or markdown code fences.\n{schema}"
+        )
+    }
+
     /// The separator between the preamble and an augmentation.
     pub const AUGMENTATION_SEPARATOR: &str = "\n\n";
 

@@ -2596,9 +2596,38 @@ pub fn materialise(
             }
             (OutputKind::Tool, None)
             | (OutputKind::Auto | OutputKind::Native | OutputKind::Prompted, _) => {
-                commands
-                    .entity(run)
-                    .phase::<AwaitingModel>((RunResult(policy::answer_text(&content)), Settled));
+                let answer = policy::answer_text(&content);
+                // No output tool is due, so nothing validated the answer on
+                // the way in: a `Native` run against a provider that never
+                // carried the schema, or a `Prompted` run the model answered
+                // in prose. A schema-bearing run is reprompted once while the
+                // budget lasts rather than reporting that prose as the
+                // structured result (CONTRACT §4).
+                let unmet = schema.as_ref().filter(|schema| {
+                    retries.0 < 1
+                        && cursor.turn < limit
+                        && !policy::text_satisfies_schema(Some(schema), &answer)
+                });
+                if let Some(schema) = unmet {
+                    let reprompt = MessageParts::User {
+                        content: vec![UserContent::text(
+                            policy::text::reprompt_unstructured_answer(
+                                &rig_core::json_utils::to_canonical_string(schema),
+                            ),
+                        )],
+                    };
+                    commands
+                        .entity(turn)
+                        .insert(Reprompt(reprompt.to_message()));
+                    say!(commands, assets, orders, progress, run, reprompt);
+                    commands
+                        .entity(run)
+                        .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));
+                } else {
+                    commands
+                        .entity(run)
+                        .phase::<AwaitingModel>((RunResult(answer), Settled));
+                }
             }
         }
         progress.mark();

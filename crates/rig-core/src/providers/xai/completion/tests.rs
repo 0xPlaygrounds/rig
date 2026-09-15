@@ -29,6 +29,25 @@ fn completion_keeps_xai_structured_output_capability() {
     let model = client.completion_model(super::GROK_4);
 
     assert!(!model.capabilities().composes_native_output_with_tools);
+    // The two questions are distinct, which is the whole point of the
+    // capability: xai does carry `response_format`, so it supports a native
+    // schema even though it cannot compose one with tools.
+    assert!(model.capabilities().supports_native_output_schema);
+}
+
+/// A provider that drops `output_schema` never asked the model for the
+/// schema at all, so it must not report native schema support - that is
+/// what let a schema-bearing run settle on unvalidated prose.
+#[test]
+fn an_openai_compatible_dropper_declares_no_native_schema_support() {
+    let client = crate::providers::deepseek::Client::builder()
+        .api_key("test-key")
+        .http_client(crate::test_utils::RecordingHttpClient::new(""))
+        .build()
+        .expect("build client");
+    let model = client.completion_model(crate::providers::deepseek::DEEPSEEK_V4_PRO);
+
+    assert!(!model.capabilities().supports_native_output_schema);
 }
 
 #[tokio::test]

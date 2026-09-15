@@ -1,0 +1,20 @@
+when:
+  path: /api/v1/messages
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  - name: anthropic-version
+    value: 2023-06-01
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Reply with the single word: ok","type":"text"}],"role":"user"}],"model":"anthropic/claude-opus-5","system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}]}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: request-id
+    value: req_REDACTED_1
+  body: '{"container":null,"content":[{"citations":[],"text":"ok","type":"text"}],"context_management":null,"id":"req_REDACTED_1","model":"anthropic/claude-opus-5","provider":"Claude Platform on AWS","role":"assistant","stop_details":null,"stop_reason":"end_turn","stop_sequence":null,"type":"message","usage":{"cache_creation":{"ephemeral_1h_input_tokens":0,"ephemeral_5m_input_tokens":0},"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"cost":0.00026,"cost_details":{"upstream_inference_completions_cost":0.0001,"upstream_inference_cost":0.00026,"upstream_inference_prompt_cost":0.00016},"inference_geo":"global","input_tokens":32,"is_byok":false,"output_tokens":4,"output_tokens_details":{"thinking_tokens":0},"server_tool_use":null,"service_tier":"standard","speed":"standard"}}'
