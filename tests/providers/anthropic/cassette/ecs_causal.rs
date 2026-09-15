@@ -64,9 +64,7 @@ async fn over_host(
     })
     .expect("bus")
     .expect("fresh lookup");
-    ecs.app
-        .world_mut()
-        .spawn((Grant(tool), ChildOf(ecs.agent)));
+    ecs.app.world_mut().spawn((Grant(tool), ChildOf(ecs.agent)));
     nesting::install(ecs.app.world_mut(), spec, "golden");
     let output = ecs
         .prompt_with_max_turns(PROMPT, host.streamed, Some(3))

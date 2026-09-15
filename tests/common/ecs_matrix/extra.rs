@@ -27,12 +27,12 @@ use rig_core::streaming::Delta;
 use rig_core::streaming::StreamEvent;
 
 use rig_ecs::{
-    checkpoint::{load_world, save_world},
     agent::{
-        AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Preamble,
-        Settled, ToolCallSlot, ToolPolicy, Turn, Utterance,
+        AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Preamble, Settled,
+        ToolCallSlot, ToolPolicy, Turn, Utterance,
     },
     bus::{BusSet, EffectOutcome, Held, PendingEffect, RigSchedule, Streamed, release_hold},
+    checkpoint::{load_world, save_world},
     systems::{BatchHeld, RigSet, RunBusy, RunCommands},
 };
 use rig_effect_log::RequestCheck;

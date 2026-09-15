@@ -3,7 +3,7 @@
 //! A hold is armed before the desired tool turn. It only prevents advancement
 //! after a real batch commit, never dispatch of the batch being awaited. Owners
 //! release their own named hold; all remaining owners must release before the
-//! run continues. Saving a scene preserves holds, but does not persist host tools
+//! run continues. A checkpoint preserves holds, but does not persist host tools
 //! or external side effects.
 
 use bevy_reflect::Reflect;
@@ -66,7 +66,7 @@ impl ToolTurnHolds {
 }
 
 /// A live batch commit notification, emitted after deferred graph writes and
-/// phase changes are visible. Scene loading does not emit this event. Inspect
+/// phase changes are visible. A checkpoint load does not emit this event. Inspect
 /// ToolTurnCommit for durable state; do not treat component insertion on load
 /// as a notification that tools ran again. A terminal observer that removes
 /// the owning graph before delivery suppresses this live event.

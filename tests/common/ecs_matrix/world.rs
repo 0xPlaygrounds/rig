@@ -70,18 +70,18 @@ use rig_core::tool::Tool;
 use rig_core::tool::ToolContext;
 
 use rig_ecs::{
-    checkpoint::{load_world, save_world},
     agent::{
-        AdditionalParams, Cancelled, Conversation, Cursor, DefaultMaxTurns, Failed,
-        Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Output, OutputKind,
-        Owner, PolicyVersion, Preamble, ProviderRetried, ProviderRetries, Remembers, Role, Route,
-        Run, RunOf, RunResult, Runs, Settled, Temperature, ToolChoiceSpec, ToolPolicy, Turn,
-        Unhandled as WorldUnhandled, UsesModel, Utterance,
+        AdditionalParams, Cancelled, Conversation, Cursor, DefaultMaxTurns, Failed, Failure, Grant,
+        InvalidCalls, MaxTokens, MaxTurns, MessageParts, Output, OutputKind, Owner, PolicyVersion,
+        Preamble, ProviderRetried, ProviderRetries, Remembers, Role, Route, Run, RunOf, RunResult,
+        Runs, Settled, Temperature, ToolChoiceSpec, ToolPolicy, Turn, Unhandled as WorldUnhandled,
+        UsesModel, Utterance,
     },
     bus::{
         BusSet, CredentialRef, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight,
         Materializer, PendingEffect, Policy, RigSchedule, Secret, Streamed, materialize_bindings,
     },
+    checkpoint::{load_world, save_world},
     replay::{stamp_legacy_builder_header, stamp_run},
     systems::{Fresh, RigSet, RunBusy, RunCommands},
 };
@@ -1691,10 +1691,10 @@ fn assert_failed_scene(
     let loaded = load_world(&saved, world)
         .unwrap_or_else(|error| panic!("{}: a failed run's scene loads: {error}", cell.name));
     let run = loaded
-            .with::<Run>(world)
-            .first()
-            .copied()
-            .expect("the scene holds the run");
+        .with::<Run>(world)
+        .first()
+        .copied()
+        .expect("the scene holds the run");
     let reloaded = world
         .get::<Failed>(run)
         .unwrap_or_else(|| panic!("{}: the loaded run stays failed", cell.name))
@@ -2136,10 +2136,10 @@ fn resume(
     world.resource_mut::<IdCounter>().0 = next_id;
     let loaded = load_world(&scene, world).expect("the scene's handlers are bound");
     let run = loaded
-            .with::<Run>(world)
-            .first()
-            .copied()
-            .expect("the scene holds the run");
+        .with::<Run>(world)
+        .first()
+        .copied()
+        .expect("the scene holds the run");
     let agent = world.get::<RunOf>(run).expect("the run's agent").0;
     if cell.reasoning.is_some() {
         let history = super::reasoning::assistant_history(world, run);

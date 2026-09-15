@@ -5,10 +5,7 @@ use crate::ecs_agent::EcsAgent;
 use anyhow::{Result, anyhow};
 use bevy_ecs::prelude::*;
 use rig::message::Message;
-use rig_ecs::{
-    agent::{Utterance},
-    systems::RunCommands,
-};
+use rig_ecs::{agent::Utterance, systems::RunCommands};
 
 pub(crate) struct SessionResult {
     pub output: String,

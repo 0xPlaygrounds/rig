@@ -1,12 +1,13 @@
-//! The `reflect` feature's wrappers for the rig-core types the bus's
-//! components hold, so an inspector shows an effect entity's payload:
-//! `bevy_reflect` remote wrappers, each opaque — the value reflects as a
-//! whole, serialized through its serde form (`ReflectSerialize` /
-//! `ReflectDeserialize`), which is the wire form the log already has. The
-//! runtime-only components (`Serving`, `Streaming`, `Publishing`, `Asked`,
-//! `Answer`, `WorldOutcome`, `CollectedOutcome`, `Typed`, and the witness's
-//! `Refused`, `SeenOutcome`) reflect nothing: tasks, answer
-//! inboxes and observation bookkeeping are transient.
+//! The reflection wrappers for the rig-core types the bus's components
+//! hold, so an inspector shows an effect entity's payload and a checkpoint
+//! saves it: `bevy_reflect` remote wrappers, each opaque — the value
+//! reflects as a whole, serialized through its serde form
+//! (`ReflectSerialize` / `ReflectDeserialize`), which is the wire form the
+//! log already has. The runtime-only components (`Serving`, `Streaming`,
+//! `Handler`, `Publishing`, `Asked`, `Answer`, `WorldOutcome`,
+//! `CollectedOutcome`, `Typed`, and the witness's `Refused`, `SeenOutcome`)
+//! reflect nothing: tasks, answer inboxes and observation bookkeeping are
+//! transient.
 
 use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault};
 use rig_core::{

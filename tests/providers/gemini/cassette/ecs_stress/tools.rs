@@ -9,8 +9,7 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, DefaultMaxTurns, Failure, Owner, Temperature, ToolCallSlot, Turn,
-        Utterance,
+        Cancelled, DefaultMaxTurns, Failure, Owner, Temperature, ToolCallSlot, Turn, Utterance,
     },
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::RunCommands,

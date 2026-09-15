@@ -23,9 +23,7 @@ use rig::{
     },
 };
 use rig_ecs::{
-    agent::{
-        Conversation, Grant, PolicyVersion, Remembered, Remembers, Temperature, ToolCallSlot,
-    },
+    agent::{Conversation, Grant, PolicyVersion, Remembered, Remembers, Temperature, ToolCallSlot},
     bus::{BusSet, EffectOutcome, Handlers, Issued, PendingEffect, RigSchedule},
     systems::{Fresh, RigSet},
 };
@@ -56,9 +54,7 @@ fn layered_agent(
     })
     .expect("bus")
     .expect("fresh layered tool");
-    ecs.app
-        .world_mut()
-        .spawn((Grant(tool), ChildOf(ecs.agent)));
+    ecs.app.world_mut().spawn((Grant(tool), ChildOf(ecs.agent)));
     ecs
 }
 async fn run_tool(ecs: &mut EcsAgent) -> rig::effect_log::EffectLog {

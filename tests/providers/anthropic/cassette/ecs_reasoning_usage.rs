@@ -47,7 +47,10 @@ async fn agent_blocking_thinking() {
                     let Ok(Outcome::Completion(response)) = &outcome.0 else {
                         return None;
                     };
-                    Some((crate::ecs_agent::sibling_index(world, turn)?, response.usage))
+                    Some((
+                        crate::ecs_agent::sibling_index(world, turn)?,
+                        response.usage,
+                    ))
                 })
                 .min_by_key(|(order, _)| *order)
                 .expect("the run makes at least one completion call")

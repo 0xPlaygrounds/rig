@@ -132,7 +132,12 @@ fn history(ecs: &mut EcsAgent) -> Vec<Vec<String>> {
         .query_filtered::<Entity, With<Utterance>>();
     let mut messages: Vec<_> = query
         .iter(ecs.app.world())
-        .map(|entity| (crate::ecs_agent::sibling_index(ecs.app.world(), entity), entity))
+        .map(|entity| {
+            (
+                crate::ecs_agent::sibling_index(ecs.app.world(), entity),
+                entity,
+            )
+        })
         .collect();
     messages.sort();
     messages

@@ -22,13 +22,11 @@ use rig_core::{
 use rig_ecs::{
     agent::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentText, Failed,
-        Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Output, OutputKind,
-        Owner, Preamble, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult,
-        Settled, Temperature, ToolChoiceSpec, ToolPolicy, Unhandled as WorldUnhandled, UsesModel,
+        Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Output, OutputKind, Owner,
+        Preamble, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult, Settled,
+        Temperature, ToolChoiceSpec, ToolPolicy, Unhandled as WorldUnhandled, UsesModel,
     },
-    bus::{
-        EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect,
-    },
+    bus::{EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect},
     replay::stamp_legacy_builder_header,
     systems::RunCommands,
 };

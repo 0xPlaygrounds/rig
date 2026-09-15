@@ -253,7 +253,7 @@ pub fn answered<E: WorldEffect>(
 }
 
 /// The erased handler, on its entity. Native only: an [`ErasedHandler`] is
-/// `Send + Sync` there; on wasm it is `!Send` and lives in [`HandlerTable`].
+/// `Send + Sync` there; on wasm it is `!Send` and lives in `HandlerTable`.
 #[cfg(not(target_family = "wasm"))]
 #[derive(Component)]
 pub struct Handler(pub Served);

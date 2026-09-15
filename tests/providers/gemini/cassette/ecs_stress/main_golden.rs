@@ -12,8 +12,8 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        DefaultMaxTurns, Failed, Grant, MaxTurns, Owner, Preamble, RunResult, Settled,
-        Temperature, UsesModel,
+        DefaultMaxTurns, Failed, Grant, MaxTurns, Owner, Preamble, RunResult, Settled, Temperature,
+        UsesModel,
     },
     bus::{Handlers, Recording},
     systems::RunCommands,
@@ -33,8 +33,7 @@ fn tool<T: Tool + 'static>(app: &mut App, agent: Entity, tool: T, order: u64) {
     })
     .expect("bus installed")
     .expect("unique named tool");
-    app.world_mut()
-        .spawn((Grant(handler), ChildOf(agent)));
+    app.world_mut().spawn((Grant(handler), ChildOf(agent)));
 }
 pub(super) async fn run(
     model: impl CompletionModel + 'static,

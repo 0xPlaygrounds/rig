@@ -42,7 +42,7 @@ use rig_core::streaming::Delta;
 
 use rig_core::streaming::StreamEvent;
 
-use rig_ecs::agent::{Utterance};
+use rig_ecs::agent::Utterance;
 use rig_ecs::bus::{StreamItemsDelivered, Subjects, Witnessing};
 use serde::{Deserialize, Serialize};
 

@@ -510,8 +510,8 @@ impl MessageParts {
 /// (`RunCommands::spawn_run` puts it there; a host assembling a run by
 /// hand does the same), consumed when the run opens: the pass after
 /// [`Ready`] is on the run, `systems::open_runs` spawns it as the run's
-/// last utterance and takes the component off. A scene saved before then
-/// carries it (§13).
+/// last utterance and takes the component off. A checkpoint saved before
+/// then carries it (§13).
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component, opaque, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Prompt(pub Vec<UserContent>);
@@ -522,7 +522,7 @@ pub struct Prompt(pub Vec<UserContent>);
 /// that populates a run by hand inserts it last. `systems::open_runs`
 /// gives a `Ready` run its first phase, and `Advance` takes only `Ready`
 /// runs: a run without it is never assembled, however complete. Kept for
-/// the life of the run; a scene saves and restores it (§13).
+/// the life of the run; a checkpoint saves and restores it (§13).
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -854,8 +854,8 @@ pub struct Outputs {
 /// A stop, written by any system at any moment: the run ends
 /// `Failed(Cancelled)` with this reason, its effects never issued are
 /// despawned (no record), the ones in flight left to their handler
-/// (CONTRACT §9.1). Serde: a scene saved between the write and the read
-/// restores the decision.
+/// (CONTRACT §9.1). Serde: a checkpoint saved between the write and the
+/// read restores the decision.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct Cancelled(pub String);
@@ -997,7 +997,7 @@ pub enum Resolution {
 }
 
 // Every state component is serde and entity-free: relationships are the
-// only holders of an `Entity`, and a scene remaps them.
+// only holders of an `Entity`, and a checkpoint remaps them.
 const _: () = {
     const fn assert_serde<T: Serialize + serde::de::DeserializeOwned>() {}
     assert_serde::<Owner>();

@@ -14,11 +14,9 @@ use std::time::Instant;
 
 use bevy_ecs::prelude::*;
 use rig_ecs::{
-    checkpoint::{load_world, save_world},
-    agent::{
-        Cursor, Failed, MessageParts, Run, RunOf, RunPhase, Settled,
-    },
+    agent::{Cursor, Failed, MessageParts, Run, RunOf, RunPhase, Settled},
     bus::{EffectLogResource, EffectOutcome, IdCounter, RigSchedule},
+    checkpoint::{load_world, save_world},
     replay::{stamp_legacy_builder_header, stamp_run},
     systems::{Fresh, RunCommands},
 };

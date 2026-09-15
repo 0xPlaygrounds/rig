@@ -16,8 +16,7 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, DefaultMaxTurns, Failure, RunResult, Settled, ToolChoiceSpec, Turn,
-        Utterance,
+        Cancelled, DefaultMaxTurns, Failure, RunResult, Settled, ToolChoiceSpec, Turn, Utterance,
     },
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::RunCommands,
@@ -387,7 +386,8 @@ fn history(ecs: &mut EcsAgent, run: Entity) -> Vec<Message> {
         .filter(|(_, parent)| parent.parent() == run)
         .map(|(entity, _)| {
             (
-                crate::ecs_agent::sibling_index(ecs.app.world(), entity).expect("a child of the run"),
+                crate::ecs_agent::sibling_index(ecs.app.world(), entity)
+                    .expect("a child of the run"),
                 rig_ecs::agent::content::parts::read_message(ecs.app.world(), entity)
                     .expect("valid content graph")
                     .to_message(),

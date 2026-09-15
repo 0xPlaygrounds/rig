@@ -188,7 +188,7 @@ pub struct InFlight {
 
 /// The initial handler task, owned by the effect entity: dropping the
 /// component — removing it, despawning the effect — cancels the task.
-/// Native only; on wasm the task is `!Send` and lives in [`Executions`].
+/// Native only; on wasm the task is `!Send` and lives in `Executions`.
 #[cfg(not(target_family = "wasm"))]
 #[derive(Component)]
 pub struct Serving(pub Task<rig_core::serve::Reply>);
@@ -245,7 +245,7 @@ fn spawn_stream_worker(
 }
 
 /// The tasks behind [`Serving`] and [`Streaming`]: a component's own field
-/// on native, a row in the non-send [`Executions`] table on wasm. One code
+/// on native, a row in the non-send `Executions` table on wasm. One code
 /// path in `dispatch` and `collect` on both targets.
 #[derive(bevy_ecs::system::SystemParam)]
 pub struct Tasks<'w> {
@@ -365,14 +365,14 @@ pub fn drop_execution(removed: On<Remove, InFlight>, mut executions: NonSendMut<
 /// when the stream reaches EOF, so a serial key stays busy until the
 /// handler is done, as it does on rig-agent's bus.
 ///
-/// Live collection checks at most 64 queue entries per effect per invocation,
-/// sharing 4,096 checks across a host tick. With the `replay` feature,
-/// `Replay::policy_visible()` preserves recorded delivery batches when the
-/// recorder kept event bytes. Keeping bytes alone in a driver without batch
-/// tracking promises event order only; folded recordings supply a final
-/// answer, not these partial states. Completed scenes restore all three
-/// fields. Loading an unfinished stream with delivered progress is refused
-/// because the scene has no cursor with which to resume after that prefix.
+/// Live collection checks at most 64 queue entries per effect per pass,
+/// sharing 4,096 checks across the pass. `Replay::policy_visible()`
+/// preserves recorded delivery batches when the recorder kept event bytes.
+/// Keeping bytes alone in a driver without batch tracking promises event
+/// order only; folded recordings supply a final answer, not these partial
+/// states. A checkpoint restores a completed stream's every field. Loading
+/// an unfinished stream with delivered progress is refused because the
+/// checkpoint has no cursor with which to resume after that prefix.
 #[derive(Component, Debug, Default, Clone, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct Streamed {

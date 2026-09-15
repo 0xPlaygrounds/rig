@@ -1,5 +1,5 @@
 //! The agent's systems: one per named set of [`RigSet`], in the bus
-//! module's `RigSchedule`, run to quiescence by its runner.
+//! module's `RigSchedule`, run once per pass by its runner.
 //!
 //! | set | true before | written during |
 //! |---|---|---|
@@ -8,12 +8,13 @@
 //! | `Select` | a run may lack a model of its own | the agent's `UsesModel` is copied to the run |
 //! | `Assemble` | a fresh turn's graph is complete | `gather_turn`: the graph as [`AssemblyInputs`] on the turn (the settings resolved, the history after edits and limits via the cache, the attachments, the allowed adverts, the output mode and the output tool's name minted, the `ToolAccess` snapshot), or the retrievals, or a failure; `fold_turn`: the fold spawns the turn's effect and the run is `AwaitingModel` |
 //! | `Patch` | the folded effect is a `PendingEffect` | a user system may rewrite it (the second steering slot) |
-//! | `Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to `ToolPolicy.concurrency` |
+//! | `Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to `ToolPolicy.concurrency`; before it, after `Patch`, `backoff::hold_retries` holds a retry's completion under `Backoff` until the world's clock releases it |
 //! | *the bus's `Gate`, `Dispatch`, `Collect`, `Judge`* | | |
-//! | `Fold` | the effect may have streamed or landed | `Outputs` on the turn, per tick |
+//! | `Fold` | the effect may have streamed or landed | `Outputs` on the turn, per pass; `discover_streamed_invalid_calls` |
 //! | `Judge` | the turn's outputs are complete | a user system may rewrite them, or an `EffectOutcome` of a tool child |
-//! | `Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: the results as one user utterance, or a failure; `record_usage`: the completion's usage into the run's `Usage`; `judge_invalid_calls`: the pending invalid calls' verdict — a failure, an abandoned turn, or the turn's content edited; `read_turn`: `Materialised`, a provider retry (`ProviderRetried`, `ProviderRetrying`, `Assembling`) or a failure, an invalid call awaiting its resolution, or [`TurnRead`] on the turn; `materialise_assistant`: the assistant utterance, or a retry's feedback and another turn, or the empty answer; `materialise_batch`: the tool batch and `ResolvingTools`; `materialise_reprompt`: a reprompt and another turn; `materialise_answer`: the answer and `Settled` |
-//! | `Settle` | a run settled or failed this pass | nothing yet (observers fire on `Settled`/`Failed`) |
+//! | `Materialise` | a complete turn is unread, or its batch has landed | `land_memory` (the conversation loaded); `resolve_invalid_defaults`; `land_batch`: the results as one user utterance, or a failure; `record_usage`: the completion's usage into the run's `Usage`; `judge_invalid_calls`: the pending invalid calls' verdict — a failure, an abandoned turn, or the turn's content edited; `read_turn`: `Materialised`, a provider retry (`ProviderRetried`, `ProviderRetrying`, `Assembling`) or a failure, an invalid call awaiting its resolution, or [`TurnRead`] on the turn; `materialise_assistant`: the assistant utterance, or a retry's feedback and another turn, or the empty answer; `materialise_batch`: the tool batch and `ResolvingTools`; `materialise_reprompt`: a reprompt and another turn; `materialise_answer`: the answer and `Settled`. A content failure ends that run only |
+//! | `Checkpoint` | committed graph writes are visible | nothing: the host's slot to inspect or save before the next advance |
+//! | `Settle` | a run settled or failed this pass | `append_memory`; `diagnostics::measure` when the app has a `DiagnosticsStore`; observers fire on `Settled`/`Failed` |
 //!
 //! The first steering slot is any system before `Assemble`: it edits the
 //! graph (utterances, documents, grants, settings).

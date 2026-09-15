@@ -440,7 +440,7 @@ pub fn collect_replayed(world: &mut World) {
             };
             if replay.policy_visible {
                 // Judge and later sets may need multiple passes. Diagnose an
-                // unreproduced cancellation only after full quiescence.
+                // unreproduced cancellation only after an idle pass.
                 continue;
             }
             let count = match world.get::<Buffered>(entity) {
@@ -495,7 +495,7 @@ pub fn collect_replayed(world: &mut World) {
                     return;
                 }
                 // Continuations may run after Collect. Diagnose a missing
-                // request only after the entire schedule is quiescent.
+                // request only after an idle pass.
                 replay.waiting_for = Some((step.id, batch));
                 return;
             };
