@@ -80,8 +80,13 @@
 //! [`BusSet::Gate`], [`BusSet::Dispatch`], [`BusSet::Collect`],
 //! [`BusSet::Judge`]. The host runs it **to quiescence** by calling
 //! [`run_to_quiescence`] once per tick from the schedule or loop it owns:
-//! as long as a bus system reports [`Progress`], the schedule runs again
-//! (capped at [`QUIESCENCE_CAP`] passes, a `warn!` when reached). Users add
+//! as long as a pass still advances the world, the schedule runs again
+//! (capped at [`QUIESCENCE_CAP`] passes, a `warn!` when reached). That
+//! question is asked of the world, not of a flag every system writes:
+//! [`quiescence::advanced`] reads the pass's component transitions — an
+//! effect answered, taken, or gone from flight — and a system whose advance
+//! is not one of those says so with [`AdvancedCommands::advanced`]
+//! (`commands.advanced()`), which a host system may call too. Users add
 //! their systems to `RigSchedule`, ordered against the sets, never beside
 //! the runner: a system beside the runner sees one pass, a system in
 //! `RigSchedule` sees every pass. Intake bounds can defer a dispatch to the
@@ -105,6 +110,7 @@ pub mod effect;
 pub mod handlers;
 pub mod hold;
 pub mod plugin;
+pub mod quiescence;
 pub mod record;
 pub mod reflect;
 pub mod replay;
@@ -128,9 +134,8 @@ pub use handlers::{
     Bound, HandlerTable, Handlers, Served, WorldHandler, WorldServe, answered, unbound,
 };
 pub use hold::{HoldOwners, HoldRefused, acquire_hold, release_hold};
-pub use plugin::{
-    Bus, BusSet, Intake, Policy, Progress, QUIESCENCE_CAP, RigSchedule, run_to_quiescence,
-};
+pub use plugin::{Bus, BusSet, Intake, Policy, QUIESCENCE_CAP, RigSchedule, run_to_quiescence};
+pub use quiescence::{Advanced, AdvancedCommands};
 pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
 };

@@ -45,18 +45,6 @@ pub enum BusSet {
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Policy(pub ServingPolicy);
 
-/// Set by a plugin system that moved an effect between states this pass;
-/// the runner loops [`RigSchedule`] while it is set.
-#[derive(Resource, Debug, Default, Clone, Copy)]
-pub struct Progress(pub bool);
-
-impl Progress {
-    /// Note progress.
-    pub fn mark(&mut self) {
-        self.0 = true;
-    }
-}
-
 /// How many effects `Dispatch` has taken this tick, against
 /// [`ServingPolicy::command_capacity`]: the per-tick intake bound. Reset by
 /// the runner at the start of every tick, and at the start of every pass a
@@ -129,8 +117,8 @@ impl Bus {
             ..self.policy
         }));
         world.init_resource::<SeqCounter>();
+        world.init_resource::<super::quiescence::Advanced>();
         world.init_resource::<IdCounter>();
-        world.init_resource::<Progress>();
         world.init_resource::<super::collect::CollectionBudget>();
         world.init_resource::<Intake>();
         world.init_resource::<DeliveryBatch>();
@@ -179,8 +167,9 @@ impl Bus {
     }
 }
 
-/// The runner: reset the tick's intake, then run [`RigSchedule`] while a
-/// plugin system reports [`Progress`], at most [`QUIESCENCE_CAP`] passes.
+/// The runner: reset the tick's intake, then run [`RigSchedule`] while a pass
+/// still advances the world ([`super::quiescence::advanced`]), at most
+/// [`QUIESCENCE_CAP`] passes.
 pub fn run_to_quiescence(world: &mut World) {
     world.resource_mut::<Intake>().0 = 0;
     {
@@ -189,10 +178,13 @@ pub fn run_to_quiescence(world: &mut World) {
         budget.remaining = super::collect::STREAM_WORK_PER_TICK;
     }
     for pass in 0..QUIESCENCE_CAP {
-        world.resource_mut::<Progress>().0 = false;
+        super::quiescence::reset(world);
         world.run_schedule(RigSchedule);
-        super::delivery::diagnose_idle_replay(world);
-        if !world.resource::<Progress>().0
+        // The diagnosis reads the answer for the pass that just ran, and may
+        // then advance the world itself; the read after it takes both.
+        super::delivery::diagnose_idle_replay(world, super::quiescence::advanced(world));
+        let advanced = super::quiescence::advanced(world);
+        if !advanced
             || world
                 .resource::<super::collect::CollectionBudget>()
                 .remaining

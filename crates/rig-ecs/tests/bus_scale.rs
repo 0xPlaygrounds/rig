@@ -21,7 +21,8 @@ use bevy_ecs::prelude::*;
 use bus_support::*;
 use rig_core::serve::ServingPolicy;
 use rig_ecs::bus::{
-    BusSet, EffectLogResource, EffectOutcome, InFlight, PendingEffect, Progress, RigSchedule, Seq,
+    AdvancedCommands, BusSet, EffectLogResource, EffectOutcome, InFlight, PendingEffect,
+    RigSchedule, Seq,
 };
 use rig_effect_log::EffectLogRecorder;
 
@@ -143,9 +144,9 @@ fn ten_thousand_effects_in_flight_cost_one_bounded_tick() {
     });
 }
 
-/// A system that always reports progress: the cap must end the tick.
-fn always_progress(mut progress: ResMut<Progress>, mut passes: ResMut<Passes>) {
-    progress.mark();
+/// A system that always says it advanced: the cap must end the tick.
+fn always_advances(mut commands: Commands, mut passes: ResMut<Passes>) {
+    commands.advanced();
     passes.0 += 1;
 }
 
@@ -158,7 +159,7 @@ fn the_quiescence_cap_ends_the_tick() {
     app.init_resource::<Passes>();
     app.world_mut()
         .resource_mut::<bevy_ecs::schedule::Schedules>()
-        .add_systems(RigSchedule, always_progress.after(BusSet::Judge));
+        .add_systems(RigSchedule, always_advances.after(BusSet::Judge));
     let start = Instant::now();
     app.update();
     assert!(start.elapsed() < GUARD);

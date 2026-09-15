@@ -17,7 +17,7 @@ use super::{
         EffectOutcome, Executions, IdCounter, InFlight, Issued, PendingEffect, Publishing,
         Reserved, Serving, Streamed, Streaming, ToolOutputs,
     },
-    plugin::Progress,
+    quiescence::AdvancedCommands,
     record::{DeliveryBatch, Observed, Recording},
 };
 
@@ -455,7 +455,7 @@ pub fn collect_replayed(world: &mut World) {
             deliveries.push(move |world: &mut World| {
                 deliver_outcome(world, entity);
             });
-            world.resource_mut::<Progress>().mark();
+            world.advanced();
         }
         let Some(first) = replay.pending.front() else {
             return;
@@ -492,7 +492,7 @@ pub fn collect_replayed(world: &mut World) {
                 // Intake is bounded per Update, not per quiescence pass.
                 // Pending unreserved effects may mint this id next Update;
                 // a Held effect may also await the host's release.
-                if queued || world.resource::<Progress>().0 {
+                if queued || super::quiescence::advanced(world) {
                     return;
                 }
                 // Continuations may run after Collect. Diagnose a missing
@@ -569,7 +569,8 @@ pub fn collect_replayed(world: &mut World) {
         }
         replay.pending.drain(..steps.len());
         replay.waiting_for = None;
-        world.resource_mut::<Progress>().mark();
+        // A batch of cancelled steps advances only this cursor.
+        world.advanced();
     });
     // Live collection updates every accepted stream in the batch before its
     // queued delivery/outcome observers run. Replay must do the same: an A
@@ -578,9 +579,11 @@ pub fn collect_replayed(world: &mut World) {
 }
 
 /// Diagnose absent requests and unreproduced cancellations after every policy
-/// set has run. Called by the bus runner before it stops at quiescence.
-pub fn diagnose_idle_replay(world: &mut World) {
-    if world.resource::<Progress>().0 || world.contains_resource::<ReplayFailure>() {
+/// set has run. Called by the bus runner before it stops at quiescence, with
+/// whether the pass that just ran advanced the world: a moving world may
+/// still mint the request this would otherwise call absent.
+pub fn diagnose_idle_replay(world: &mut World, advanced: bool) {
+    if advanced || world.contains_resource::<ReplayFailure>() {
         return;
     }
     let mut effects = world.query::<(Option<&Issued>, Option<&Reserved>, Option<&EffectOutcome>)>();
@@ -641,7 +644,7 @@ fn fail(world: &mut World, report: ErrorReport) {
     }
     world.insert_resource(ReplayFailure(report));
     if changed {
-        world.resource_mut::<Progress>().mark();
+        world.advanced();
     }
 }
 
@@ -723,7 +726,7 @@ fn deliver_stream(
         );
     }
     if progress {
-        world.resource_mut::<Progress>().mark();
+        world.advanced();
     }
     if let Some(delivery) = delivery {
         deliveries.push(move |world: &mut World| world.trigger(delivery));

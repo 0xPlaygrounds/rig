@@ -79,8 +79,8 @@ use rig_ecs::{
         scene::{WorldScene, load_world, save_world},
     },
     bus::{
-        BusSet, CredentialRef, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight,
-        Intake, Materializer, PendingEffect, Policy, Progress, RigSchedule, Secret, Streamed,
+        Advanced, BusSet, CredentialRef, EffectLogResource, EffectOutcome, Handlers, IdCounter,
+        InFlight, Intake, Materializer, PendingEffect, Policy, RigSchedule, Secret, Streamed,
         materialize_bindings, run_to_quiescence,
     },
     replay::{stamp_legacy_builder_header, stamp_run},
@@ -309,12 +309,12 @@ fn direct_dispatches_landed(
 }
 
 /// One pass of the schedule, as `run_to_quiescence` runs one: the tick's
-/// intake reset, progress cleared. A cell that saves a scene at a cut
-/// drives the schedule pass by pass, since an `update` runs to quiescence
-/// and would cross the cut.
+/// intake reset, the advance answer cleared. A cell that saves a scene at a
+/// cut drives the schedule pass by pass, since an `update` runs to
+/// quiescence and would cross the cut.
 pub(crate) fn one_pass(world: &mut World) {
     world.resource_mut::<Intake>().0 = 0;
-    world.resource_mut::<Progress>().0 = false;
+    world.insert_resource(Advanced(false));
     world.run_schedule(RigSchedule);
 }
 

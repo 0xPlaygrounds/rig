@@ -77,13 +77,16 @@ fn ready_delivery_is_bounded_and_deltas_do_not_spin_quiescence() {
     let mut world = world();
     let effect = ready(&mut world, 0, 1000);
     super::super::plugin::run_to_quiescence(&mut world);
+    // 64 of the effect's 1000 ready items, i.e. exactly one collect pass: a
+    // second pass would have delivered 64 more.
     assert_eq!(
         world.get::<Streamed>(effect).unwrap().events.len(),
-        STREAM_ITEMS_PER_EFFECT
+        STREAM_ITEMS_PER_EFFECT,
+        "deltas do not spin quiescence"
     );
     assert!(
-        !world.resource::<Progress>().0,
-        "deltas do not spin quiescence"
+        world.resource::<CollectionBudget>().remaining > 0,
+        "the tick stopped at quiescence, not at the streaming allowance"
     );
 }
 
@@ -149,8 +152,7 @@ fn whole_tick_allowance_rotates_service_across_hot_effects() {
     let effects: Vec<_> = (0..80).map(|seq| ready(&mut world, seq, 1000)).collect();
     world.resource_mut::<Schedules>().add_systems(
         super::super::plugin::RigSchedule,
-        (|mut progress: ResMut<Progress>| progress.mark())
-            .after(super::super::plugin::BusSet::Collect),
+        (|mut commands: Commands| commands.advanced()).after(super::super::plugin::BusSet::Collect),
     );
     super::super::plugin::run_to_quiescence(&mut world);
     let delivered = |world: &World| {
@@ -180,8 +182,7 @@ fn partial_final_pass_rotates_fairly_across_ticks() {
     let effects: Vec<_> = (0..40).map(|seq| ready(&mut world, seq, 1000)).collect();
     world.resource_mut::<Schedules>().add_systems(
         super::super::plugin::RigSchedule,
-        (|mut progress: ResMut<Progress>| progress.mark())
-            .after(super::super::plugin::BusSet::Collect),
+        (|mut commands: Commands| commands.advanced()).after(super::super::plugin::BusSet::Collect),
     );
     for _ in 0..5 {
         super::super::plugin::run_to_quiescence(&mut world);
@@ -200,8 +201,7 @@ fn repeated_quiescence_cannot_multiply_the_tick_allowance() {
     let second = ready(&mut world, 1, 5000);
     world.resource_mut::<Schedules>().add_systems(
         super::super::plugin::RigSchedule,
-        (|mut progress: ResMut<Progress>| progress.mark())
-            .after(super::super::plugin::BusSet::Collect),
+        (|mut commands: Commands| commands.advanced()).after(super::super::plugin::BusSet::Collect),
     );
     super::super::plugin::run_to_quiescence(&mut world);
     let first = world.get::<Streamed>(first).unwrap().events.len();

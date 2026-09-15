@@ -11,8 +11,8 @@ use rig_core::{
     streaming::StreamFinal,
 };
 use rig_ecs::bus::{
-    BusSet, EffectLogResource, EffectOutcome, Handlers, InFlight, PendingEffect, Replay,
-    RigSchedule, Streamed,
+    AdvancedCommands, BusSet, EffectLogResource, EffectOutcome, Handlers, InFlight, PendingEffect,
+    Replay, RigSchedule, Streamed,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use std::{
@@ -54,16 +54,12 @@ struct First(Option<String>);
 #[derive(Resource, Default)]
 struct ContinuationStarted(u8);
 
-fn continue_after_collect(
-    mut started: ResMut<ContinuationStarted>,
-    mut commands: Commands,
-    mut progress: ResMut<rig_ecs::bus::Progress>,
-) {
+fn continue_after_collect(mut started: ResMut<ContinuationStarted>, mut commands: Commands) {
     if started.0 == 2 {
         return;
     }
     started.0 += 1;
-    progress.mark();
+    commands.advanced();
     if started.0 == 1 {
         return;
     }
@@ -76,7 +72,7 @@ fn continue_after_collect(
             },
         ));
     }
-    progress.mark();
+    commands.advanced();
 }
 
 #[test]
@@ -973,7 +969,6 @@ fn policy_replay_allows_cancellation_after_multiple_judge_passes() {
             RigSchedule,
             (move |effects: Query<(Entity, &PendingEffect, Option<&EffectOutcome>)>,
                    mut stage: Local<u8>,
-                   mut progress: ResMut<rig_ecs::bus::Progress>,
                    mut commands: Commands| {
                 if !effects.iter().any(|(_, effect, outcome)| {
                     effect.key == HandlerKey::from("b") && outcome.is_some()
@@ -989,10 +984,10 @@ fn policy_replay_allows_cancellation_after_multiple_judge_passes() {
                     }
                     if *stage < delay {
                         *stage += 1;
-                        progress.mark();
+                        commands.advanced();
                     } else {
                         // The idle check must see this deferred removal even
-                        // when the final policy action does not mark Progress.
+                        // when the final policy action says nothing.
                         commands.entity(entity).despawn();
                     }
                 }

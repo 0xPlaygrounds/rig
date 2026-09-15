@@ -1,5 +1,6 @@
 #![allow(clippy::unwrap_used)]
 use super::*;
+use crate::bus::quiescence::AdvancedCommands;
 use crate::bus::{Handlers, Issued, PendingEffect};
 use rig_core::effect::{EffectKind, FamilyDescriptor};
 
@@ -70,3 +71,49 @@ fn a_host_driven_pass_is_a_tick_for_the_intake_bound() {
         "the intake bound must reset for every host-driven pass"
     );
 }
+
+/// A quiet world is one pass. Nothing is pending, nothing lands, so the
+/// condition is false the first time it is asked.
+#[test]
+fn a_quiet_tick_runs_exactly_one_pass() {
+    let mut world = world_with_capacity(2, 0);
+    world.insert_resource(Passes(0));
+    world.resource_mut::<Schedules>().add_systems(
+        RigSchedule,
+        (|mut passes: ResMut<Passes>| passes.0 += 1).after(BusSet::Judge),
+    );
+    run_to_quiescence(&mut world);
+    assert_eq!(
+        world.resource::<Passes>().0,
+        1,
+        "nothing moved, so nothing asks for another pass"
+    );
+}
+
+/// A host system that says it advanced gets another pass, and its signal is
+/// read once: a system that says so twice gets two further passes, not a
+/// tick that spins to the cap.
+#[test]
+fn a_host_signal_buys_exactly_one_further_pass_each_time() {
+    let mut world = world_with_capacity(2, 0);
+    world.insert_resource(Passes(0));
+    world.resource_mut::<Schedules>().add_systems(
+        RigSchedule,
+        (|mut passes: ResMut<Passes>, mut commands: Commands| {
+            passes.0 += 1;
+            if passes.0 <= 2 {
+                commands.advanced();
+            }
+        })
+        .after(BusSet::Judge),
+    );
+    run_to_quiescence(&mut world);
+    assert_eq!(
+        world.resource::<Passes>().0,
+        3,
+        "two signals, two further passes, then quiescence"
+    );
+}
+
+#[derive(Resource, Default)]
+struct Passes(usize);

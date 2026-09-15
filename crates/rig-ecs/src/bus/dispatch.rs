@@ -20,7 +20,8 @@ use super::{
         Reserved, Scope, Seq, Serving, Streamed, ToolInputs,
     },
     handlers::{Bound, HandlerTable, Served},
-    plugin::{Intake, Policy, Progress},
+    plugin::{Intake, Policy},
+    quiescence::AdvancedCommands,
     record::Recording,
     witness::{DispatchWitness, Refused, bus_emitter},
 };
@@ -82,7 +83,6 @@ pub fn dispatch(
     witnessing: DispatchWitness,
     mut ids: ResMut<IdCounter>,
     mut intake: ResMut<Intake>,
-    mut progress: ResMut<Progress>,
 ) {
     let mut candidates: Vec<_> = pending.iter().collect();
     candidates.sort_by_key(|(_, seq, _, _, _, _)| **seq);
@@ -123,7 +123,7 @@ pub fn dispatch(
                 commands
                     .entity(entity)
                     .insert((Refused, EffectOutcome(Err(reentrant(key)))));
-                progress.mark();
+                commands.advanced();
             }
             continue;
         }
@@ -150,7 +150,7 @@ pub fn dispatch(
             commands
                 .entity(entity)
                 .insert((Refused, EffectOutcome(Err(handler_unavailable(key)))));
-            progress.mark();
+            commands.advanced();
             continue;
         };
 
@@ -172,7 +172,7 @@ pub fn dispatch(
             commands
                 .entity(entity)
                 .insert((Refused, EffectOutcome(Err(report))));
-            progress.mark();
+            commands.advanced();
             continue;
         };
         ids.0 = ids.0.max(next_id);
@@ -250,7 +250,7 @@ pub fn dispatch(
             Served::World(world) => {
                 if let Err(report) = (world.ask)(&mut entity_commands, &effect.kind) {
                     entity_commands.insert(EffectOutcome(Err(report)));
-                    progress.mark();
+                    commands.advanced();
                     continue;
                 }
                 if let Some(recording) = &recording {
@@ -266,7 +266,7 @@ pub fn dispatch(
             busy.insert(key.clone());
         }
         intake.0 += 1;
-        progress.mark();
+        commands.advanced();
     }
 }
 

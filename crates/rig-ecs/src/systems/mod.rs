@@ -56,8 +56,8 @@ use crate::{
         ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
-        Bound, BusSet, EffectOutcome, Issued, PendingEffect, Progress, RigSchedule, Scope,
-        Streamed as BusStreamed, ToolInputs,
+        Bound, BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, Scope,
+        Streamed as BusStreamed, ToolInputs, quiescence::AdvancedCommands,
     },
     policy::{self, RequestGraph},
 };
@@ -304,12 +304,12 @@ fn fail_content(commands: &mut Commands, run: Entity, error: ContentError) {
 }
 
 macro_rules! content_or_fail {
-    ($result:expr, $commands:expr, $run:expr, $progress:expr) => {
+    ($result:expr, $commands:expr, $run:expr) => {
         match $result {
             Ok(value) => value,
             Err(error) => {
                 fail_content($commands, $run, error);
-                $progress.mark();
+                $commands.advanced();
                 return;
             }
         }
@@ -320,7 +320,7 @@ macro_rules! content_or_fail {
 /// statuses. A content failure fails the run and returns from the system, as
 /// [`content_or_fail`] does.
 macro_rules! say {
-    ($commands:expr, $assets:expr, $orders:expr, $progress:expr, $run:expr, $parts:expr) => {
+    ($commands:expr, $assets:expr, $orders:expr, $run:expr, $parts:expr) => {
         content_or_fail!(
             spawn_deferred(
                 &mut $commands,
@@ -330,11 +330,10 @@ macro_rules! say {
                 next_order_in(&mut $orders)
             ),
             &mut $commands,
-            $run,
-            $progress
+            $run
         )
     };
-    ($commands:expr, $assets:expr, $orders:expr, $progress:expr, $run:expr, $parts:expr, $statuses:expr) => {
+    ($commands:expr, $assets:expr, $orders:expr, $run:expr, $parts:expr, $statuses:expr) => {
         content_or_fail!(
             spawn_deferred_with(
                 &mut $commands,
@@ -345,20 +344,18 @@ macro_rules! say {
                 $statuses
             ),
             &mut $commands,
-            $run,
-            $progress
+            $run
         )
     };
 }
 
 /// Rewrite an utterance already in the graph, failing the run as [`say`] does.
 macro_rules! restate {
-    ($commands:expr, $assets:expr, $progress:expr, $run:expr, $entity:expr, $parts:expr) => {
+    ($commands:expr, $assets:expr, $run:expr, $entity:expr, $parts:expr) => {
         content_or_fail!(
             replace_deferred(&mut $commands, &mut $assets, $entity, $parts),
             &mut $commands,
-            $run,
-            $progress
+            $run
         )
     };
 }
@@ -691,7 +688,7 @@ fn open_run(world: &mut World, run: Entity) {
         world
             .entity_mut(run)
             .insert(Failed(Failure::Content(error)));
-        world.resource_mut::<Progress>().mark();
+        world.advanced();
         return;
     }
     // An agent that remembers, and a run given no history: the conversation
@@ -730,7 +727,7 @@ fn open_run(world: &mut World, run: Entity) {
             world.entity_mut(run).insert(Assembling);
         }
     }
-    world.resource_mut::<Progress>().mark();
+    world.advanced();
 }
 
 /// Spawn one utterance `ChildOf` `run`, next in order.
@@ -808,7 +805,6 @@ pub fn advance(
     holds: Query<&ToolTurnHolds>,
     commits: Query<(&ChildOf, &ToolTurnCommit)>,
     mut orders: ResMut<OrderCounter>,
-    mut progress: ResMut<Progress>,
 ) {
     let mut runs: Vec<_> = runs.iter().collect();
     runs.sort_by_key(|(_, _, _, seq)| **seq);
@@ -824,7 +820,7 @@ pub fn advance(
             commands
                 .entity(run)
                 .phase::<Assembling>(Failed(Failure::MaxTurns { limit }));
-            progress.mark();
+            commands.advanced();
             continue;
         }
         if holds.get(run).is_ok_and(|holds| {
@@ -865,7 +861,7 @@ pub fn advance(
                 turn: cursor.turn + 1,
             });
         }
-        progress.mark();
+        commands.advanced();
     }
 }
 
@@ -890,7 +886,6 @@ pub fn attach_retrieved(
     indexes: Query<&Retrieves, (With<Retrieval>, With<Order>)>,
     documents: Query<(Entity, &DocumentId)>,
     mut orders: ResMut<OrderCounter>,
-    mut progress: ResMut<Progress>,
 ) {
     for (turn, turn_of) in &turns {
         let run = turn_of.parent();
@@ -1006,7 +1001,7 @@ pub fn attach_retrieved(
             ));
         }
         commands.entity(turn).remove::<Retrieving>();
-        progress.mark();
+        commands.advanced();
     }
 }
 
@@ -1026,7 +1021,6 @@ pub fn land_memory(
     loads: Query<(&PendingEffect, &EffectOutcome)>,
     utterances: Query<(Entity, &Order), With<Utterance>>,
     mut orders: ResMut<OrderCounter>,
-    mut progress: ResMut<Progress>,
 ) {
     for run in &runs {
         let Some(outcome) = children.get(run).ok().and_then(|children| {
@@ -1054,7 +1048,7 @@ pub fn land_memory(
             Ok(Outcome::Memory(rig_core::effect::MemoryOutcome::Loaded { messages })) => {
                 for message in messages {
                     if let Some(parts) = MessageParts::from_message(message) {
-                        let utterance = say!(commands, assets, orders, progress, run, parts);
+                        let utterance = say!(commands, assets, orders, run, parts);
                         commands.entity(utterance).insert(Remembered);
                     }
                 }
@@ -1095,7 +1089,7 @@ pub fn land_memory(
                     .phase::<LoadingMemory>(Failed(Failure::Memory(report.clone())));
             }
         }
-        progress.mark();
+        commands.advanced();
     }
 }
 
@@ -1115,7 +1109,6 @@ pub fn append_memory(
     children: Query<&Children>,
     utterances: Query<(Entity, &Order, Has<Remembered>), With<Utterance>>,
     content: ContentGraph,
-    mut progress: ResMut<Progress>,
 ) {
     for (run, RunOf(agent), Conversation(conversation)) in &settled {
         let Some(key) = memories
@@ -1139,7 +1132,7 @@ pub fn append_memory(
                     .collect()
             })
             .unwrap_or_else(|_| Ok(Vec::new()));
-        let mut said = content_or_fail!(said, &mut commands, run, progress);
+        let mut said = content_or_fail!(said, &mut commands, run);
         said.sort_by_key(|(order, _)| *order);
         commands.spawn((
             PendingEffect::new(
@@ -1215,7 +1208,6 @@ pub fn assemble(
     bound: Query<&Bound>,
     settings: Settings,
     cached: Cached,
-    mut progress: ResMut<Progress>,
 ) {
     let Cached {
         mut cache,
@@ -1265,7 +1257,7 @@ pub fn assemble(
                     "the run has no bound completion model; its selected model or its agent's binding was removed"),
             )));
             commands.entity(turn).remove::<Fresh>();
-            progress.mark();
+            commands.advanced();
             continue;
         };
         let composes = match &model_bound.descriptor.family {
@@ -1290,7 +1282,7 @@ pub fn assemble(
                         ),
                     )));
                 commands.entity(turn).remove::<Fresh>();
-                progress.mark();
+                commands.advanced();
                 continue;
             }
         };
@@ -1336,8 +1328,7 @@ pub fn assemble(
             }
             Ok((edits, consumed, edited))
         })();
-        let (edits, consumed_edits, edited) =
-            content_or_fail!(requested, &mut commands, run, progress);
+        let (edits, consumed_edits, edited) = content_or_fail!(requested, &mut commands, run);
 
         let history: Result<Vec<(Order, std::borrow::Cow<'_, MessageParts>)>, ContentError> =
             children
@@ -1372,7 +1363,7 @@ pub fn assemble(
                         .collect()
                 })
                 .unwrap_or_else(|_| Ok(Vec::new()));
-        let mut history = content_or_fail!(history, &mut commands, run, progress);
+        let mut history = content_or_fail!(history, &mut commands, run);
         history.sort_by_key(|(order, _)| *order);
 
         if is_retrieving {
@@ -1430,7 +1421,7 @@ pub fn assemble(
             // If every index disappeared since attachment ran, leave the
             // marker for the next attachment pass to restore static links.
             if spawned > 0 {
-                progress.mark();
+                commands.advanced();
             }
             continue;
         }
@@ -1597,7 +1588,7 @@ pub fn assemble(
                 .phase::<Assembling>(Failed(Failure::OutputToolCollision {
                     name: output_tool.clone(),
                 }));
-            progress.mark();
+            commands.advanced();
             continue;
         }
         if resolved == OutputKind::Tool && minted.0.is_none() {
@@ -1644,7 +1635,7 @@ pub fn assemble(
             .remove::<(Fresh, RequestPatch)>()
             .insert((Folded(resolved), Outputs::default()));
         commands.entity(run).phase::<Assembling>(AwaitingModel);
-        progress.mark();
+        commands.advanced();
     }
 }
 
@@ -1652,9 +1643,9 @@ pub fn assemble(
 /// while it streams (`Changed<Outputs>` is the delta signal), the folded
 /// answer when it lands.
 pub fn fold(
+    mut commands: Commands,
     effects: Query<EffectView, NotRetrieval>,
     mut turns: Query<&mut Outputs, With<Turn>>,
-    mut progress: ResMut<Progress>,
 ) {
     for (child_of, streamed, outcome) in &effects {
         let Ok(mut outputs) = turns.get_mut(child_of.parent()) else {
@@ -1677,11 +1668,11 @@ pub fn fold(
                 };
                 outputs.message_id = response.message_id.clone();
                 outputs.done = true;
-                progress.mark();
+                commands.advanced();
             }
             Some(EffectOutcome(Ok(_))) | Some(EffectOutcome(Err(_))) => {
                 outputs.done = true;
-                progress.mark();
+                commands.advanced();
             }
             None => {
                 if let Some(streamed) = streamed
@@ -1871,7 +1862,6 @@ pub fn land_batch(
     children: Query<&Children>,
     tools: Query<ToolChildView>,
     mut orders: ResMut<OrderCounter>,
-    mut progress: ResMut<Progress>,
 ) {
     let mut turns: Vec<_> = turns.iter().collect();
     turns.sort_by_key(|(_, turn_of, _, _)| runs.get(turn_of.parent()).map(|(_, seq, _)| *seq).ok());
@@ -1902,7 +1892,7 @@ pub fn land_batch(
                     commands.entity(*entity).despawn();
                 }
             }
-            progress.mark();
+            commands.advanced();
             continue;
         }
         if calls.len() < batch.calls || calls.iter().any(|(_, _, _, outcome, _)| outcome.is_none())
@@ -1937,11 +1927,11 @@ pub fn land_batch(
             commands
                 .entity(run)
                 .phase::<ResolvingTools>(Failed(failure));
-            progress.mark();
+            commands.advanced();
             continue;
         }
         let results = MessageParts::User { content: parts };
-        let results_entity = say!(commands, assets, orders, progress, run, results, statuses);
+        let results_entity = say!(commands, assets, orders, run, results, statuses);
         commands.entity(turn).insert((
             ToolTurnCommit { turn: cursor.turn },
             TurnResults(results_entity),
@@ -1979,7 +1969,7 @@ pub fn land_batch(
                 world.trigger(ToolTurnCommitted { run, turn });
             }
         });
-        progress.mark();
+        commands.advanced();
     }
 }
 
@@ -2041,7 +2031,6 @@ pub fn materialise(
     contexts: Query<&ToolContextSpec>,
     invalid_calls: Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
     (mut assets, mut orders): (ResMut<BinaryAssets>, ResMut<OrderCounter>),
-    mut progress: ResMut<Progress>,
 ) {
     let MaterialiseReads {
         choices,
@@ -2155,7 +2144,7 @@ pub fn materialise(
                             id: outs.message_id.clone(),
                             content: call.prefix.clone(),
                         };
-                        say!(commands, assets, orders, progress, run, assistant);
+                        say!(commands, assets, orders, run, assistant);
                     }
                     commands.entity(turn).insert(Materialised);
                     commands
@@ -2163,7 +2152,7 @@ pub fn materialise(
                         .phase::<AwaitingModel>(Failed(Failure::UnknownToolCall {
                             name: call.name,
                         }));
-                    progress.mark();
+                    commands.advanced();
                     continue;
                 }
                 InvalidVerdict::Retry(call, feedback) | InvalidVerdict::Skip(call, feedback) => {
@@ -2189,7 +2178,7 @@ pub fn materialise(
                         id: outs.message_id.clone(),
                         content: content.clone(),
                     };
-                    say!(commands, assets, orders, progress, run, assistant);
+                    say!(commands, assets, orders, run, assistant);
                     let results = policy::invalid_peer_results(&content, &diagnostic_id, &feedback);
                     let skipped = match &results {
                         MessageParts::User { content } => {
@@ -2197,14 +2186,14 @@ pub fn materialise(
                         }
                         MessageParts::Assistant { .. } => Vec::new(),
                     };
-                    say!(commands, assets, orders, progress, run, results, skipped);
+                    say!(commands, assets, orders, run, results, skipped);
                     commands.entity(turn).insert(Materialised);
                     let mut run_commands = commands.entity(run);
                     run_commands.remove::<AwaitingModel>().insert(Assembling);
                     if retried {
                         run_commands.insert(InvalidRetries(invalid_retries.0 + 1));
                     }
-                    progress.mark();
+                    commands.advanced();
                     continue;
                 }
                 InvalidVerdict::Edit => {
@@ -2262,7 +2251,7 @@ pub fn materialise(
                         "a {} answer to a completion",
                         other.family()
                     ))));
-                progress.mark();
+                commands.advanced();
                 continue;
             }
             Err(report) => {
@@ -2291,7 +2280,7 @@ pub fn materialise(
                             report,
                         );
                     }
-                    progress.mark();
+                    commands.advanced();
                     continue;
                 }
                 let failure = if report.kind == ErrorKind::Cancelled {
@@ -2300,7 +2289,7 @@ pub fn materialise(
                     Failure::Provider(report.clone())
                 };
                 commands.entity(run).phase::<AwaitingModel>(Failed(failure));
-                progress.mark();
+                commands.advanced();
                 continue;
             }
         };
@@ -2321,7 +2310,7 @@ pub fn materialise(
             commands
                 .entity(run)
                 .phase::<AwaitingModel>(Failed(Failure::Provider(report)));
-            progress.mark();
+            commands.advanced();
             continue;
         }
 
@@ -2336,16 +2325,16 @@ pub fn materialise(
                     let user = MessageParts::User {
                         content: vec![UserContent::text(feedback)],
                     };
-                    say!(commands, assets, orders, progress, run, user);
+                    say!(commands, assets, orders, run, user);
                 }
                 commands.entity(run).phase::<AwaitingModel>(Assembling);
-                progress.mark();
+                commands.advanced();
                 continue;
             }
             commands
                 .entity(run)
                 .phase::<AwaitingModel>((RunResult(String::new()), Settled));
-            progress.mark();
+            commands.advanced();
             continue;
         }
 
@@ -2390,7 +2379,7 @@ pub fn materialise(
                     ChildOf(turn),
                 ));
             }
-            progress.mark();
+            commands.advanced();
             continue;
         }
 
@@ -2403,7 +2392,7 @@ pub fn materialise(
                     .phase::<AwaitingModel>(Failed(Failure::Unsupported(
                         "a retry of a tool-bearing turn: steer the tool calls instead".to_owned(),
                     )));
-                progress.mark();
+                commands.advanced();
                 continue;
             }
             if let Some(feedback) = feedback {
@@ -2411,14 +2400,14 @@ pub fn materialise(
                     id: response.message_id.clone(),
                     content: content.clone(),
                 };
-                say!(commands, assets, orders, progress, run, assistant);
+                say!(commands, assets, orders, run, assistant);
                 let user = MessageParts::User {
                     content: vec![UserContent::text(feedback)],
                 };
-                say!(commands, assets, orders, progress, run, user);
+                say!(commands, assets, orders, run, user);
             }
             commands.entity(run).phase::<AwaitingModel>(Assembling);
-            progress.mark();
+            commands.advanced();
             continue;
         }
 
@@ -2427,7 +2416,7 @@ pub fn materialise(
             id: response.message_id.clone(),
             content: content.clone(),
         };
-        let assistant_entity = say!(commands, assets, orders, progress, run, assistant);
+        let assistant_entity = say!(commands, assets, orders, run, assistant);
 
         // Calls to granted tools: the batch, one effect per call `ChildOf`
         // the turn, in call order, held beyond the concurrency.
@@ -2494,7 +2483,7 @@ pub fn materialise(
                 .entity(turn)
                 .insert((Batch { calls: count }, TurnAssistant(assistant_entity)));
             commands.entity(run).phase::<AwaitingModel>(ResolvingTools);
-            progress.mark();
+            commands.advanced();
             continue;
         }
 
@@ -2524,7 +2513,6 @@ pub fn materialise(
                             restate!(
                                 commands,
                                 assets,
-                                progress,
                                 run,
                                 assistant_entity,
                                 MessageParts::Assistant {
@@ -2554,7 +2542,6 @@ pub fn materialise(
                                 commands,
                                 assets,
                                 orders,
-                                progress,
                                 run,
                                 reprompt,
                                 vec![ToolResultStatus::Skipped]
@@ -2581,7 +2568,7 @@ pub fn materialise(
                         commands
                             .entity(turn)
                             .insert(Reprompt(reprompt.to_message()));
-                        say!(commands, assets, orders, progress, run, reprompt);
+                        say!(commands, assets, orders, run, reprompt);
                         commands
                             .entity(run)
                             .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));
@@ -2601,7 +2588,7 @@ pub fn materialise(
                     .phase::<AwaitingModel>((RunResult(policy::answer_text(&content)), Settled));
             }
         }
-        progress.mark();
+        commands.advanced();
     }
 }
 

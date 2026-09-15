@@ -13,7 +13,7 @@ use super::{
         EffectOutcome, Executions, InFlight, Issued, Publishing, Serving, Streamed, Streaming,
         ToolOutputs, WorldOutcome,
     },
-    plugin::Progress,
+    quiescence::AdvancedCommands,
     record::{DeliveryBatch, Observed, Recording},
     witness::{SeenOutcome, Subjects, Witnessing, bus_emitter, fingerprint},
 };
@@ -59,7 +59,6 @@ pub type WorldAnswersReady = (With<InFlight>, Without<EffectOutcome>);
 pub fn collect_world(
     mut commands: Commands,
     ready: Query<(Entity, &WorldOutcome), WorldAnswersReady>,
-    mut progress: ResMut<Progress>,
 ) {
     let mut ready: Vec<_> = ready.iter().collect();
     ready.sort_by_key(|(_, outcome)| outcome.order());
@@ -69,7 +68,7 @@ pub fn collect_world(
             .insert(CollectedOutcome)
             .insert(EffectOutcome(outcome.outcome.clone()))
             .remove::<WorldOutcome>();
-        progress.mark();
+        commands.advanced();
     }
 }
 
@@ -82,7 +81,6 @@ pub fn collect_tasks(
     serving: Query<(Entity, &Serving, Option<&Publishing>), With<InFlight>>,
     policy: Res<super::Policy>,
     mut executions: NonSendMut<Executions>,
-    mut progress: ResMut<Progress>,
 ) {
     for (entity, _, publishing) in &serving {
         let Some(task) = executions.tasks.get_mut(&entity) else {
@@ -105,7 +103,7 @@ pub fn collect_tasks(
                 entity_commands
                     .insert(CollectedOutcome)
                     .insert(EffectOutcome(outcome));
-                progress.mark();
+                commands.advanced();
             }
             Reply::Stream(stream) => {
                 let (streaming, task) = Streaming::spawn(stream, policy.0.stream_capacity);
@@ -131,7 +129,6 @@ pub fn collect_streams(
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
     batch: Res<DeliveryBatch>,
-    mut progress: ResMut<Progress>,
     mut budget: ResMut<CollectionBudget>,
     mut order: Local<Vec<(super::Seq, Entity)>>,
 ) {
@@ -179,7 +176,9 @@ pub fn collect_streams(
                             && let Some(outcome) = streaming.fold.observe(&item)
                         {
                             streamed.outcome = Some(outcome);
-                            progress.mark();
+                            // The fold landing inside `Streamed.outcome` is
+                            // no component transition: say so.
+                            commands.advanced();
                         }
                         if let Ok(event) = item {
                             if let StreamEvent::BlockDelta {
@@ -269,7 +268,7 @@ pub fn collect_streams(
                     .insert(CollectedOutcome)
                     .insert(EffectOutcome(outcome));
             });
-            progress.mark();
+            commands.advanced();
             break;
         }
         if !items.is_empty() {
@@ -331,7 +330,6 @@ pub fn settle(
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
-    mut progress: ResMut<Progress>,
 ) {
     for (entity, &Issued(id), outcome, observed, outputs) in &landed {
         // A layered handler: the record holds what the innermost handler
@@ -400,7 +398,7 @@ pub fn settle(
         commands
             .entity(entity)
             .remove::<(InFlight, Observed, super::record::ReplacedBy)>();
-        progress.mark();
+        commands.advanced();
     }
 }
 
