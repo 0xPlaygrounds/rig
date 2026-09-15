@@ -19,9 +19,11 @@
 //!   query; deregistration is a despawn.
 //! - **The driver is two systems.** [`BusSet::Dispatch`] takes pending
 //!   effects in [`Seq`] order and spawns each handler's future on the task
-//!   pool, held in the effect entity as Bevy's own `Task`; [`BusSet::Collect`]
-//!   reads what finished and writes the outcome component. Neither awaits,
-//!   neither blocks (a guard greps for `block_on`).
+//!   pool, held in the effect entity as Bevy's own `Task` (on browser wasm
+//!   that `Task` is neither `Send` nor `Sync`, so it lives in the world's
+//!   `Executions` table instead — the `execution` module is the only place
+//!   the difference is spelled); [`BusSet::Collect`] reads what finished
+//!   and writes the outcome component. Neither awaits, neither blocks.
 //! - **Causality is `ChildOf`.** A handler that is a system spawns child
 //!   effects `ChildOf` the one it answers; the record's `parent` is read off
 //!   the relationship, its `scope` off the nearest [`Scope`] ancestor.
@@ -102,6 +104,7 @@ pub mod collect;
 pub mod delivery;
 pub mod dispatch;
 pub mod effect;
+pub mod execution;
 pub mod handlers;
 pub mod hold;
 pub mod plugin;

@@ -186,8 +186,17 @@ pub struct InFlight {
     pub key: HandlerKey,
 }
 
-/// An initial handler task owned by the world's non-send execution table.
-/// Removing `InFlight` or despawning the effect drops that task.
+/// The initial handler task, owned by the effect entity. Dropping the
+/// component — removing it, removing [`InFlight`], despawning the effect,
+/// dropping the world — cancels the task.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+#[derive(Component)]
+pub struct Serving(pub(crate) Task<rig_core::serve::Reply>);
+
+/// The marker for an initial handler task held in the world's
+/// [`Executions`] table: on browser wasm the pool's `Task` is neither
+/// `Send` nor `Sync`, so it cannot live in a component.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[derive(Component)]
 pub struct Serving;
 
@@ -202,33 +211,73 @@ pub struct Streaming {
     pub fold: rig_core::serve::StreamTap,
     /// Items consumed from this receiver, across collection passes.
     pub delivered: usize,
+    /// The worker feeding `events`, owned beside the receiver it feeds so
+    /// the two cannot be separated. Dropping this component cancels it,
+    /// including a worker parked on a full queue.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub(crate) worker: Option<Task<()>>,
 }
 
 impl Streaming {
     /// Drive one owned stream on the pool with bounded delivery to Collect.
-    pub fn spawn(mut stream: StreamEvents, capacity: usize) -> (Self, Task<()>) {
+    /// The worker is the component's on native; on browser wasm it is
+    /// returned for the world's `Executions` table.
+    #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+    pub fn spawn(stream: StreamEvents, capacity: usize) -> Self {
+        let (events, fold, delivered, worker) = Self::start(stream, capacity);
+        Self {
+            events,
+            fold,
+            delivered,
+            worker: Some(worker),
+        }
+    }
+
+    /// Drive one owned stream on the pool with bounded delivery to Collect.
+    #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+    pub fn spawn(stream: StreamEvents, capacity: usize) -> (Self, Task<()>) {
+        let (events, fold, delivered, worker) = Self::start(stream, capacity);
+        (
+            Self {
+                events,
+                fold,
+                delivered,
+            },
+            worker,
+        )
+    }
+
+    /// The worker and the receiver it feeds.
+    #[allow(clippy::type_complexity, reason = "one private constructor tuple")]
+    fn start(
+        mut stream: StreamEvents,
+        capacity: usize,
+    ) -> (
+        futures::channel::mpsc::Receiver<
+            Result<rig_core::streaming::StreamEvent, rig_core::error::ErrorReport>,
+        >,
+        rig_core::serve::StreamTap,
+        usize,
+        Task<()>,
+    ) {
         use futures::{SinkExt, StreamExt};
         let (mut sender, events) = futures::channel::mpsc::channel(capacity.max(1));
-        let task = bevy_tasks::IoTaskPool::get().spawn(async move {
+        let worker = bevy_tasks::IoTaskPool::get().spawn(async move {
             while let Some(item) = stream.next().await {
                 if sender.send(item).await.is_err() {
                     return;
                 }
             }
         });
-        (
-            Self {
-                events,
-                fold: rig_core::serve::StreamTap::new(),
-                delivered: 0,
-            },
-            task,
-        )
+        (events, rig_core::serve::StreamTap::new(), 0, worker)
     }
 }
 
-/// Effect-owned execution on native and browser wasm. Keeping both here
-/// avoids requiring an owned stream or initial task output to be `Sync`.
+/// Handler tasks the browser's world owns on behalf of its effects: the
+/// single-threaded pool's `Task` is neither `Send` nor `Sync` there, and a
+/// provider client is `!Send`, so neither can live in a component. Native
+/// targets have no such table — the effect entity owns its work.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 #[derive(Default)]
 pub struct Executions {
     /// Initial tasks, indexed by their in-flight effect entity.
@@ -237,7 +286,19 @@ pub struct Executions {
     pub streams: std::collections::HashMap<Entity, Task<()>>,
 }
 
+/// An effect leaving flight drops the work it owns: the components that
+/// hold it go, and dropping a [`Task`] cancels it. Despawning the effect
+/// drops them with the entity, so this observer is the one case — a
+/// handler released while the entity lives on — that needs saying.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub fn drop_execution(removed: On<Remove, InFlight>, mut commands: Commands) {
+    commands
+        .entity(removed.event().entity)
+        .try_remove::<(Serving, Streaming)>();
+}
+
 /// Remove owned execution immediately when an effect leaves flight.
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
 pub fn drop_execution(removed: On<Remove, InFlight>, mut executions: NonSendMut<Executions>) {
     let entity = removed.event().entity;
     executions.tasks.remove(&entity);

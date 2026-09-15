@@ -136,8 +136,11 @@ impl Bus {
         world.init_resource::<DeliveryBatch>();
         world.init_resource::<WorldOutcomeCounter>();
         world.init_non_send::<HandlerTable>();
+        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
         world.init_non_send::<super::effect::Executions>();
         world.add_observer(super::effect::drop_execution);
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        world.add_observer(super::delivery::cancel_buffered);
         world.add_observer(unbound);
         world.add_observer(record_outcome);
         world.add_observer(record_cancelled);

@@ -1,7 +1,6 @@
 //! `BusSet::Collect`: land what finished, close the record.
 
 use bevy_ecs::prelude::*;
-use bevy_tasks::futures::check_ready;
 use rig_core::{
     serve::{Reply, stream_truncated},
     streaming::{Delta, StreamEvent},
@@ -10,9 +9,10 @@ use std::task::Poll;
 
 use super::{
     effect::{
-        EffectOutcome, Executions, InFlight, Issued, Publishing, Serving, Streamed, Streaming,
-        ToolOutputs, WorldOutcome,
+        EffectOutcome, InFlight, Issued, Publishing, Serving, Streamed, Streaming, ToolOutputs,
+        WorldOutcome,
     },
+    execution::ExecutionStore,
     plugin::Progress,
     record::{DeliveryBatch, Observed, Recording},
     witness::{SeenOutcome, Subjects, Witnessing, bus_emitter, fingerprint},
@@ -79,20 +79,20 @@ pub fn collect_world(
 /// (`check_ready`), no waker kept, nothing awaited.
 pub fn collect_tasks(
     mut commands: Commands,
-    serving: Query<(Entity, &Serving, Option<&Publishing>), With<InFlight>>,
+    mut serving: Query<(Entity, &mut Serving, Option<&Publishing>), With<InFlight>>,
     policy: Res<super::Policy>,
-    mut executions: NonSendMut<Executions>,
+    mut executions: ExecutionStore,
     mut progress: ResMut<Progress>,
 ) {
-    for (entity, _, publishing) in &serving {
-        let Some(task) = executions.tasks.get_mut(&entity) else {
+    for (entity, mut task, publishing) in &mut serving {
+        // Polling is not a change to the component a consumer could read.
+        let task = task.bypass_change_detection();
+        let Some(reply) = executions.as_mut().poll_task(entity, task) else {
             continue;
         };
-        let Some(reply) = check_ready(task) else {
-            continue;
-        };
-        executions.tasks.remove(&entity);
         let mut entity_commands = commands.entity(entity);
+        // The finished task goes with the marker it lived in; it is polled
+        // at most once, since every route here crosses a command flush.
         entity_commands.remove::<Serving>();
         match reply {
             Reply::Outcome(outcome) => {
@@ -108,9 +108,11 @@ pub fn collect_tasks(
                 progress.mark();
             }
             Reply::Stream(stream) => {
-                let (streaming, task) = Streaming::spawn(stream, policy.0.stream_capacity);
-                executions.streams.insert(entity, task);
-                entity_commands.insert(streaming);
+                let streaming =
+                    executions
+                        .as_mut()
+                        .spawn_stream(entity, stream, policy.0.stream_capacity);
+                commands.entity(entity).insert(streaming);
             }
         }
     }
@@ -126,7 +128,7 @@ pub fn collect_tasks(
 pub fn collect_streams(
     mut commands: Commands,
     mut streaming: Query<StreamingView, With<InFlight>>,
-    mut executions: NonSendMut<Executions>,
+    mut executions: ExecutionStore,
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
@@ -242,7 +244,10 @@ pub fn collect_streams(
                     }
                 },
             };
-            executions.streams.remove(&entity);
+            // Cancelling the worker is not a change a consumer reads.
+            executions
+                .as_mut()
+                .drop_worker(entity, streaming.bypass_change_detection());
             if !items.is_empty() {
                 commands.trigger(super::StreamItemsDelivered {
                     effect: entity,

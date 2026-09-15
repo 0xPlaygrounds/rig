@@ -16,9 +16,10 @@ use rig_core::{
 
 use super::{
     effect::{
-        EffectOutcome, Executions, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
-        Reserved, Scope, Seq, Serving, Streamed, ToolInputs,
+        EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved,
+        Scope, Seq, Streamed, ToolInputs,
     },
+    execution::ExecutionStore,
     handlers::{Bound, HandlerTable, Served},
     plugin::{Intake, Policy, Progress},
     record::Recording,
@@ -58,8 +59,8 @@ pub type CandidateView = (
 /// - otherwise issues the id ([`Reserved`] or minted), opens the record
 ///   (`parent` from the nearest issued ancestor, `scope` from the nearest
 ///   [`Scope`]; a tool call's [`ToolInputs`] and a [`Publishing`] slot on
-///   dispatch context), and starts one initial task in [`Executions`], with
-///   a [`Serving`] marker and an empty [`Streamed`] for a streaming consumer;
+///   dispatch context), and starts one initial task, owned by the effect
+///   entity in `Serving`, with an empty [`Streamed`] for a streaming consumer;
 ///   for a handler that is a system, puts
 ///   the effect on the entity as `Asked<E>` (an open key adds nothing: the
 ///   entity is the question); then marks it [`InFlight`].
@@ -71,7 +72,7 @@ pub fn dispatch(
     mut commands: Commands,
     policy: Res<Policy>,
     table: NonSend<HandlerTable>,
-    mut executions: NonSendMut<Executions>,
+    mut executions: ExecutionStore,
     bound: Query<(Entity, &Bound)>,
     pending: Query<CandidateView, Candidate>,
     in_flight: Query<&InFlight>,
@@ -241,8 +242,7 @@ pub fn dispatch(
                     }
                     reply
                 });
-                executions.tasks.insert(entity, task);
-                entity_commands.insert(Serving);
+                executions.as_mut().own_task(&mut entity_commands, task);
                 if effect.is_stream() {
                     entity_commands.insert(Streamed::default());
                 }

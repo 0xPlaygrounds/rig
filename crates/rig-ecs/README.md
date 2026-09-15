@@ -91,6 +91,17 @@ A run leaves its graph — turns, utterances, adverts, attachments, the settled 
 
 The first steering slot is any system before `Assemble`: it edits the graph. `tests/run_graph.rs` pins the wins: an utterance despawned leaves the next request; one document entity feeds two runs; a grant link advertises a tool and its removal un-advertises it; a model swapped on the run changes the next key; a `Patch` system's rewrite reaches the handler and the record; a system before `Assemble` rewrites an utterance. `tests/run_scene.rs` pins that the graph is the state: a run saved mid-turn resumes in a fresh world to the same second request.
 
+A completion lost to a retryable provider failure is re-issued **on the next
+pass, with no delay**, until the `ProviderRetries` budget — the run's, else
+the agent's, else `DEFAULT_PROVIDER_RETRIES` = 3 — is spent. The library owns no clock, because a
+clock in the world would make dispatch order depend on wall time and replay
+would no longer reproduce it: time is the host's. A backoff is a hold a `Gate`
+system acquires on the re-issued effect and releases when due (CONTRACT §5);
+`tests/run_provider_retry.rs` (`a_host_hold_is_where_a_backoff_goes_and_a_cancel_during_it_ends_the_run`,
+`a_scene_saved_during_the_hold_resumes_into_the_retry`) is the reference
+implementation, including a cancel and a scene save taken while held. Transport
+attempts inside a handler remain the handler's own affair.
+
 ## Steering with systems
 
 Application systems change components at explicit schedule boundaries. See
@@ -154,7 +165,7 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 | a dispatch | `commands.spawn(PendingEffect { key, kind })`; `PendingEffect::{new, typed, custom}` |
 | dispatch order | `Seq`, stamped on add from `SeqCounter` (global, reserved) |
 | the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a scene's or a log's id |
-| taken, in flight | `InFlight { key }` plus `Serving` (initial task) or `Streaming { fold }`; `Executions` owns tasks and streams |
+| taken, in flight | `InFlight { key }` plus `Serving` (the initial task) or `Streaming { fold }` (the delivery receiver and its worker) — the effect entity owns both, so dropping the component cancels the work; on browser wasm, where a `Task` is neither `Send` nor `Sync`, the world's `Executions` table holds them instead |
 | a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by submitting `WorldOutcome` |
 | the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, errors, text, outcome }`, with every error and its item position retained independently of recording |
 | held by a decision | `Held` |

@@ -55,21 +55,27 @@ fn insert(world: &mut World, streaming: Streaming, seq: u64) -> Entity {
         .id()
 }
 
+/// A receiver with no worker behind it, so scheduler tests cannot depend
+/// on OS timing.
+fn workerless(
+    events: futures::channel::mpsc::Receiver<Result<StreamEvent, rig_core::error::ErrorReport>>,
+) -> Streaming {
+    Streaming {
+        events,
+        fold: rig_core::serve::StreamTap::new(),
+        delivered: 0,
+        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+        worker: None,
+    }
+}
+
 fn ready(world: &mut World, seq: u64, count: usize) -> Entity {
     // Prefill without a worker so scheduler tests cannot depend on OS timing.
     let (mut sender, events) = futures::channel::mpsc::channel(count);
     for _ in 0..count {
         sender.try_send(item()).unwrap();
     }
-    insert(
-        world,
-        Streaming {
-            events,
-            fold: rig_core::serve::StreamTap::new(),
-            delivered: 0,
-        },
-        seq,
-    )
+    insert(world, workerless(events), seq)
 }
 
 #[test]
@@ -105,15 +111,7 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
         );
     }
     let (mut first_sender, first_events) = futures::channel::mpsc::channel(4);
-    insert(
-        &mut world,
-        Streaming {
-            events: first_events,
-            fold: rig_core::serve::StreamTap::new(),
-            delivered: 0,
-        },
-        0,
-    );
+    insert(&mut world, workerless(first_events), 0);
     let mut schedule = Schedule::default();
     schedule.add_systems(collect_streams);
     // Only the first worker has installed its empty stream. No delivery or
@@ -121,15 +119,7 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
     schedule.run(&mut world);
     assert!(recorder.header().deliveries.unwrap().is_empty());
     let (mut second_sender, second_events) = futures::channel::mpsc::channel(4);
-    insert(
-        &mut world,
-        Streaming {
-            events: second_events,
-            fold: rig_core::serve::StreamTap::new(),
-            delivered: 0,
-        },
-        1,
-    );
+    insert(&mut world, workerless(second_events), 1);
     first_sender.try_send(item()).unwrap();
     second_sender.try_send(item()).unwrap();
     schedule.run(&mut world);
@@ -231,19 +221,19 @@ fn worker_self_wakes_without_collect_and_stalls_on_full_delivery() {
     let mut world = world();
     let polls = Arc::new(AtomicUsize::new(0));
     let drops = Arc::new(AtomicUsize::new(0));
-    let (streaming, task) = Streaming::spawn(tracked_stream(3, polls.clone(), drops.clone()), 4);
+    let streaming = Streaming::spawn(tracked_stream(3, polls.clone(), drops.clone()), 4);
     let effect = insert(&mut world, streaming, 0);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(effect, task);
     wait_for(|| polls.load(Ordering::SeqCst) >= 8);
     // futures mpsc has four shared slots and one sender-reserved slot.
     assert_eq!(polls.load(Ordering::SeqCst), 8);
     assert!(world.get::<Streamed>(effect).unwrap().events.is_empty());
     world.entity_mut(effect).remove::<InFlight>();
+    world.flush();
     wait_for(|| drops.load(Ordering::SeqCst) == 1);
-    assert!(world.non_send::<Executions>().streams.is_empty());
+    assert!(
+        world.get::<Streaming>(effect).is_none(),
+        "leaving flight takes the worker with it"
+    );
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -252,18 +242,10 @@ fn scheduled_despawn_replacement_and_shutdown_drop_owned_workers() {
     let mut world = world();
     let polls = Arc::new(AtomicUsize::new(0));
     let drops = Arc::new(AtomicUsize::new(0));
-    let (streaming, task) = Streaming::spawn(tracked_stream(0, polls.clone(), drops.clone()), 1);
+    let streaming = Streaming::spawn(tracked_stream(0, polls.clone(), drops.clone()), 1);
     let effect = insert(&mut world, streaming, 0);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(effect, task);
-    let (streaming, task) = Streaming::spawn(tracked_stream(0, polls.clone(), drops.clone()), 1);
+    let streaming = Streaming::spawn(tracked_stream(0, polls.clone(), drops.clone()), 1);
     world.entity_mut(effect).insert(streaming);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(effect, task);
     wait_for(|| drops.load(Ordering::SeqCst) == 1);
     let mut schedule = Schedule::default();
     schedule.add_systems(move |mut commands: Commands| {
@@ -271,15 +253,64 @@ fn scheduled_despawn_replacement_and_shutdown_drop_owned_workers() {
     });
     schedule.run(&mut world);
     wait_for(|| drops.load(Ordering::SeqCst) == 2);
-    assert!(world.non_send::<Executions>().streams.is_empty());
-    let (streaming, task) = Streaming::spawn(tracked_stream(0, polls, drops.clone()), 1);
-    let effect = insert(&mut world, streaming, 1);
-    world
-        .non_send_mut::<Executions>()
-        .streams
-        .insert(effect, task);
+    let streaming = Streaming::spawn(tracked_stream(0, polls, drops.clone()), 1);
+    insert(&mut world, streaming, 1);
     drop(world);
     wait_for(|| drops.load(Ordering::SeqCst) == 3);
+}
+
+/// An initial task that never finishes, holding a drop tracker.
+#[cfg(not(target_family = "wasm"))]
+fn parked_task(drops: Arc<AtomicUsize>) -> Serving {
+    let guard = Dropped(drops);
+    Serving(bevy_tasks::IoTaskPool::get().spawn(async move {
+        let _guard = guard;
+        std::future::pending::<rig_core::serve::Reply>().await
+    }))
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[test]
+fn leaving_flight_despawning_and_dropping_the_world_cancel_an_initial_task() {
+    let mut world = world();
+    // Leaving flight: the marker that owns the task goes with `InFlight`.
+    let drops = Arc::new(AtomicUsize::new(0));
+    let effect = world
+        .spawn((
+            InFlight { key: "test".into() },
+            super::super::Seq(0),
+            Issued(EffectId::from_raw(0)),
+            parked_task(drops.clone()),
+        ))
+        .id();
+    world.entity_mut(effect).remove::<InFlight>();
+    world.flush();
+    assert!(world.get::<Serving>(effect).is_none());
+    wait_for(|| drops.load(Ordering::SeqCst) == 1);
+
+    // Despawning the effect: the component goes with the entity.
+    let drops = Arc::new(AtomicUsize::new(0));
+    let effect = world
+        .spawn((
+            InFlight { key: "test".into() },
+            super::super::Seq(1),
+            Issued(EffectId::from_raw(1)),
+            parked_task(drops.clone()),
+        ))
+        .id();
+    world.entity_mut(effect).despawn();
+    wait_for(|| drops.load(Ordering::SeqCst) == 1);
+
+    // Dropping the world.
+    let drops = Arc::new(AtomicUsize::new(0));
+    world.spawn((
+        InFlight { key: "test".into() },
+        super::super::Seq(2),
+        Issued(EffectId::from_raw(2)),
+        parked_task(drops.clone()),
+    ));
+    drop(world);
+    wait_for(|| drops.load(Ordering::SeqCst) == 1);
 }
 
 #[test]

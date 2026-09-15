@@ -3,7 +3,6 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use bevy_ecs::{prelude::*, world::CommandQueue};
-use bevy_tasks::futures::check_ready;
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -14,9 +13,10 @@ use std::task::Poll;
 
 use super::{
     effect::{
-        EffectOutcome, Executions, IdCounter, InFlight, Issued, PendingEffect, Publishing,
-        Reserved, Serving, Streamed, Streaming, ToolOutputs,
+        EffectOutcome, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved, Streamed,
+        Streaming, ToolOutputs,
     },
+    execution::{OwnedTask, StoreMut, store_of, take_serving},
     plugin::Progress,
     record::{DeliveryBatch, Observed, Recording},
 };
@@ -250,9 +250,12 @@ impl ReplayDelivery {
 /// Readiness stays on the effect entity. Removing the ordinary task/channel
 /// component prevents the unpaced collector from exposing replay data early.
 #[derive(Component)]
-enum Buffered {
+pub(crate) enum Buffered {
     Waiting {
         streamed: bool,
+        /// The initial task, taken off the entity with its `Serving`, and
+        /// dropped when the effect leaves flight.
+        task: Option<OwnedTask>,
     },
     Unary {
         answer: Option<Result<Outcome, ErrorReport>>,
@@ -269,18 +272,18 @@ impl Buffered {
     fn poll(
         &mut self,
         entity: Entity,
-        executions: &mut Executions,
+        executions: &mut StoreMut<'_>,
         remaining: Option<&mut usize>,
         capacity: usize,
     ) {
-        if let Self::Waiting { streamed } = self {
-            let Some(task) = executions.tasks.get_mut(&entity) else {
+        if let Self::Waiting { streamed, task } = self {
+            // No task: the effect left flight and its work was cancelled.
+            let Some(owned) = task.as_mut() else {
                 return;
             };
-            let Some(reply) = check_ready(task) else {
+            let Some(reply) = executions.poll_owned(entity, owned) else {
                 return;
             };
-            executions.tasks.remove(&entity);
             match reply {
                 rig_core::serve::Reply::Outcome(answer) => {
                     *self = Self::Unary {
@@ -293,8 +296,7 @@ impl Buffered {
                         Some(&items) => cancelled_prefix(stream, items),
                         None => stream,
                     };
-                    let (streaming, task) = Streaming::spawn(stream, capacity);
-                    executions.streams.insert(entity, task);
+                    let streaming = executions.spawn_stream(entity, stream, capacity);
                     *self = Self::Stream {
                         streaming,
                         items: VecDeque::new(),
@@ -327,7 +329,7 @@ impl Buffered {
             match polled {
                 Poll::Ready(Some(item)) if *unary => {
                     if let Some(answer) = streaming.fold.observe(&item) {
-                        executions.streams.remove(&entity);
+                        executions.drop_worker(entity, streaming);
                         *self = Self::Unary {
                             answer: Some(answer),
                         };
@@ -335,7 +337,7 @@ impl Buffered {
                 }
                 Poll::Ready(Some(item)) => items.push_back(item),
                 Poll::Ready(None) => {
-                    executions.streams.remove(&entity);
+                    executions.drop_worker(entity, streaming);
                     if *unary {
                         *self = Self::Unary {
                             answer: Some(Err(rig_core::serve::stream_truncated())),
@@ -347,6 +349,31 @@ impl Buffered {
                 Poll::Pending => {}
             }
         }
+    }
+}
+
+/// An effect buffered for replay leaves flight: the work parked inside
+/// [`Buffered`] is cancelled, as the work on the entity is. The buffer
+/// itself stays — a failing replay still stamps its outcome on it — and a
+/// `Waiting` without its task polls nothing, exactly as a missing entry
+/// did when the table owned these handles. On browser wasm the table's
+/// own observer already dropped them.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+pub(crate) fn cancel_buffered(
+    removed: On<bevy_ecs::lifecycle::Remove, InFlight>,
+    mut buffered: Query<&mut Buffered>,
+) {
+    let Ok(mut buffered) = buffered.get_mut(removed.event().entity) else {
+        return;
+    };
+    match buffered.bypass_change_detection() {
+        Buffered::Waiting { task, .. } => {
+            task.take();
+        }
+        Buffered::Stream { streaming, .. } => {
+            streaming.worker.take();
+        }
+        Buffered::Unary { .. } => {}
     }
 }
 
@@ -388,8 +415,11 @@ pub fn collect_replayed(world: &mut World) {
         for (id, entity) in &entities {
             let mut effect = world.entity_mut(*entity);
             let streamed = effect.contains::<Streamed>();
-            if effect.take::<Serving>().is_some() {
-                effect.insert(Buffered::Waiting { streamed });
+            if let Some(task) = take_serving(&mut effect) {
+                effect.insert(Buffered::Waiting {
+                    streamed,
+                    task: Some(task),
+                });
             } else if let Some(streaming) = effect.take::<Streaming>() {
                 effect.insert(Buffered::Stream {
                     streaming,
@@ -400,7 +430,15 @@ pub fn collect_replayed(world: &mut World) {
             }
             if let Some(mut buffered) = world.entity_mut(*entity).take::<Buffered>() {
                 let capacity = world.resource::<super::plugin::Policy>().0.stream_capacity;
-                buffered.poll(*entity, &mut world.non_send_mut::<Executions>(), replay.cancelled_items.get_mut(id), capacity);
+                {
+                    let mut executions = store_of(world);
+                    buffered.poll(
+                        *entity,
+                        &mut executions.as_mut(),
+                        replay.cancelled_items.get_mut(id),
+                        capacity,
+                    );
+                }
                 world.entity_mut(*entity).insert(buffered);
             }
         }

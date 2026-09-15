@@ -749,7 +749,10 @@ Deltas do not count as quiescence progress. These are streaming delivery limits,
 not total CPU-time or payload-size guarantees. Hosts must keep ticking to expose
 ready items and settle replies; quiescence is not completion.
 
-`Executions` owns task handles, removed when an effect leaves `InFlight`.
+The effect entity owns its task handles — `Serving` the initial task, `Streaming`
+its worker — and they are dropped when it leaves `InFlight` (on browser wasm,
+where a `Task` is neither `Send` nor `Sync`, the world's `Executions` table holds
+them instead, and the same removal drops them).
 Task cancellation reaches pending setup, unary folding and full delivery queues.
 An active native poll cannot be interrupted synchronously; observation closes
 atomically with cancellation so a late result cannot mutate the closed record.
