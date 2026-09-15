@@ -14,9 +14,9 @@ use std::time::Instant;
 
 use bevy_ecs::prelude::*;
 use rig_ecs::{
+    checkpoint::{load_world, save_world},
     agent::{
-        Assembling, Cursor, Failed, MessageParts, Run, RunOf, Settled,
-        scene::{WorldScene, load_world, save_world},
+        Cursor, Failed, MessageParts, Run, RunOf, RunPhase, Settled,
     },
     bus::{EffectLogResource, EffectOutcome, IdCounter, RigSchedule},
     replay::{stamp_legacy_builder_header, stamp_run},
@@ -98,7 +98,7 @@ pub fn world_resume_reproduces(
             program.fixture,
             world.get::<Failed>(run)
         );
-        let at_cut = world.get::<Assembling>(run).is_some()
+        let at_cut = world.get::<RunPhase>(run) == Some(&RunPhase::Assembling)
             && world
                 .get::<Cursor>(run)
                 .is_some_and(|cursor| cursor.turn == tool_turns)
@@ -139,7 +139,7 @@ pub fn world_resume_reproduces(
         .expect("the head log restores");
     let at = head.records.len();
     let (checkpoint, tail) = log.checkpoint(at, scene);
-    let checkpoint: Checkpoint<WorldScene> =
+    let checkpoint: Checkpoint<rig_ecs::checkpoint::Checkpoint> =
         serde_json::from_str(&serde_json::to_string(&checkpoint).expect("serde"))
             .expect("a checkpoint restores");
     assert_eq!(checkpoint.at, at);
@@ -181,10 +181,9 @@ pub fn world_resume_reproduces(
     world.resource_mut::<IdCounter>().0 = next_id;
     let loaded = load_world(&scene, world).expect("the scene's handlers are bound");
     let run = loaded
-        .graph
-        .iter()
+        .with::<Run>(world)
+        .first()
         .copied()
-        .find(|entity| world.get::<Run>(*entity).is_some())
         .expect("the scene holds the run");
     let agent = world.get::<RunOf>(run).expect("the run's agent").0;
     super::world_hooks::install(world, program);

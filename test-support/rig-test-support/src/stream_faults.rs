@@ -55,7 +55,7 @@ use rig_core::tool::Tool;
 use rig_core::tool::ToolContext;
 
 use rig_ecs::{
-    agent::{Failure, Order, Role, Utterance},
+    agent::{Failure, Role, Utterance},
     bus::{Streamed, Witnessing},
     systems::RunCommands,
 };
@@ -774,14 +774,15 @@ pub fn assert_witness_is_a_side_channel(observed: &NativeRun, plain: &NativeRun,
 
 /// The run's committed history, in order: who spoke.
 pub fn utterance_roles(world: &mut World, run: Entity) -> Vec<Role> {
-    let mut query = world.query_filtered::<(&ChildOf, &Role, &Order), With<Utterance>>();
-    let mut rows: Vec<_> = query
-        .iter(world)
-        .filter(|(parent, ..)| parent.parent() == run)
-        .map(|(_, role, order)| (order.0, *role))
-        .collect();
-    rows.sort_by_key(|(order, _)| *order);
-    rows.into_iter().map(|(_, role)| role).collect()
+    let children: Vec<Entity> = world
+        .get::<Children>(run)
+        .map(|children| children.iter().collect())
+        .unwrap_or_default();
+    children
+        .into_iter()
+        .filter(|child| world.get::<Utterance>(*child).is_some())
+        .filter_map(|child| world.get::<Role>(child).copied())
+        .collect()
 }
 
 /// The one stream's fold: its text so far, its error items with their

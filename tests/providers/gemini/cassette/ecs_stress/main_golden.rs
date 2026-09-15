@@ -12,11 +12,11 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        DefaultMaxTurns, Failed, Grant, MaxTurns, Order, Owner, Preamble, RunResult, Settled,
+        DefaultMaxTurns, Failed, Grant, MaxTurns, Owner, Preamble, RunResult, Settled,
         Temperature, UsesModel,
     },
-    bus::{Handlers, Recording, run_to_quiescence},
-    systems::{RunCommands, install_agent},
+    bus::{Handlers, Recording},
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use std::{sync::Arc, time::Duration};
@@ -34,7 +34,7 @@ fn tool<T: Tool + 'static>(app: &mut App, agent: Entity, tool: T, order: u64) {
     .expect("bus installed")
     .expect("unique named tool");
     app.world_mut()
-        .spawn((Grant(handler), Order(order), ChildOf(agent)));
+        .spawn((Grant(handler)(order), ChildOf(agent)));
 }
 pub(super) async fn run(
     model: impl CompletionModel + 'static,
@@ -44,9 +44,7 @@ pub(super) async fn run(
     subtract: impl Tool + 'static,
 ) -> (bool, EffectLog) {
     let mut app = App::new();
-    rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(rig_ecs::RigPlugin::with_policy(ServingPolicy::default()));
     app.finish();
     app.cleanup();
     // Original record_effects() does not retain stream events.

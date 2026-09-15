@@ -3,7 +3,7 @@
 use bevy_ecs::prelude::*;
 use rig::{completion::CompletionModel, effect::Outcome, message::Message};
 use rig_ecs::{
-    agent::{DefaultMaxTurns, Order, Run, Temperature, ToolPolicy, Usage, Utterance},
+    agent::{DefaultMaxTurns, Run, Temperature, ToolPolicy, Usage, Utterance},
     bus::EffectOutcome,
     systems::RunCommands,
 };
@@ -79,12 +79,12 @@ pub(super) async fn execute(
     let mut messages: Vec<_> = ecs
         .app
         .world_mut()
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(ecs.app.world())
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| {
+        .filter(|(_, parent)| parent.parent() == run)
+        .map(|(entity, _)| {
             (
-                order.0,
+                crate::ecs_agent::sibling_index(ecs.app.world(), entity).expect("a child of the run"),
                 rig_ecs::agent::content::parts::read_message(ecs.app.world(), entity)
                     .expect("valid content graph")
                     .to_message(),

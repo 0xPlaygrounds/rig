@@ -6,7 +6,7 @@ use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
 use rig::{effect::Outcome, prelude::*, providers::anthropic};
 use rig_ecs::{
-    agent::{AdditionalParams, DefaultMaxTurns, MaxTokens, Order, Turn},
+    agent::{AdditionalParams, DefaultMaxTurns, MaxTokens, Turn},
     bus::EffectOutcome,
     systems::RunCommands,
 };
@@ -47,7 +47,7 @@ async fn agent_blocking_thinking() {
                     let Ok(Outcome::Completion(response)) = &outcome.0 else {
                         return None;
                     };
-                    Some((world.get::<Order>(turn)?.0, response.usage))
+                    Some((crate::ecs_agent::sibling_index(world, turn)?, response.usage))
                 })
                 .min_by_key(|(order, _)| *order)
                 .expect("the run makes at least one completion call")

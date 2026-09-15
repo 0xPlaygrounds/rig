@@ -9,7 +9,7 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, DefaultMaxTurns, Failure, Order, Owner, Temperature, ToolCallSlot, Turn,
+        Cancelled, DefaultMaxTurns, Failure, Owner, Temperature, ToolCallSlot, Turn,
         Utterance,
     },
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
@@ -207,12 +207,12 @@ pub(super) async fn cancelled(ecs: &mut EcsAgent, prompt: &str, max_turns: usize
     };
     let world = ecs.app.world_mut();
     let mut history: Vec<_> = world
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(world)
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| {
+        .filter(|(_, parent)| parent.parent() == run)
+        .map(|(entity, _)| {
             (
-                order.0,
+                crate::ecs_agent::sibling_index(world, entity).expect("a child of the run"),
                 rig_ecs::agent::content::parts::read_message(world, entity)
                     .expect("valid content graph")
                     .to_message(),

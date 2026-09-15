@@ -70,21 +70,20 @@ use rig_core::tool::Tool;
 use rig_core::tool::ToolContext;
 
 use rig_ecs::{
+    checkpoint::{load_world, save_world},
     agent::{
-        AdditionalParams, Assembling, Cancelled, Conversation, Cursor, DefaultMaxTurns, Failed,
-        Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Order, Output, OutputKind,
+        AdditionalParams, Cancelled, Conversation, Cursor, DefaultMaxTurns, Failed,
+        Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Output, OutputKind,
         Owner, PolicyVersion, Preamble, ProviderRetried, ProviderRetries, Remembers, Role, Route,
         Run, RunOf, RunResult, Runs, Settled, Temperature, ToolChoiceSpec, ToolPolicy, Turn,
         Unhandled as WorldUnhandled, UsesModel, Utterance,
-        scene::{WorldScene, load_world, save_world},
     },
     bus::{
         BusSet, CredentialRef, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight,
-        Intake, Materializer, PendingEffect, Policy, Progress, RigSchedule, Secret, Streamed,
-        materialize_bindings, run_to_quiescence,
+        Materializer, PendingEffect, Policy, RigSchedule, Secret, Streamed, materialize_bindings,
     },
     replay::{stamp_legacy_builder_header, stamp_run},
-    systems::{Fresh, RigSet, RunBusy, RunCommands, install_agent},
+    systems::{Fresh, RigSet, RunBusy, RunCommands},
 };
 use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, RequestCheck};
 use tokio::sync::Semaphore;
@@ -308,13 +307,9 @@ fn direct_dispatches_landed(
     true
 }
 
-/// One pass of the schedule, as `run_to_quiescence` runs one: the tick's
-/// intake reset, progress cleared. A cell that saves a scene at a cut
-/// drives the schedule pass by pass, since an `update` runs to quiescence
-/// and would cross the cut.
+/// One pass of the schedule: what one `update` runs. A cell that saves a
+/// checkpoint at a cut drives the schedule pass by pass.
 pub(crate) fn one_pass(world: &mut World) {
-    world.resource_mut::<Intake>().0 = 0;
-    world.resource_mut::<Progress>().0 = false;
     world.run_schedule(RigSchedule);
 }
 
@@ -331,7 +326,9 @@ fn at_cut(world: &mut World, run: Entity, tool_turns: usize) -> bool {
         .filter(|(parent, _, _, _)| parent.parent() == run)
         .map(|(_, commit, assistant, results)| (commit.turn, assistant.0, results.0))
         .collect();
-    if commits.len() != tool_turns || world.get::<Assembling>(run).is_none() {
+    if commits.len() != tool_turns
+        || world.get::<rig_ecs::agent::RunPhase>(run) != Some(&rig_ecs::agent::RunPhase::Assembling)
+    {
         return false;
     }
     if world
@@ -380,8 +377,8 @@ fn at_cut(world: &mut World, run: Entity, tool_turns: usize) -> bool {
             );
         }
         assert!(
-            world.get::<Order>(assistant).expect("assistant order").0
-                < world.get::<Order>(results).expect("results order").0,
+            crate::ecs_agent::sibling_index(world, assistant).expect("assistant order")
+                < crate::ecs_agent::sibling_index(world, results).expect("results order"),
             "tool results follow their actual assistant utterance"
         );
     }
@@ -451,15 +448,13 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
     cell: &Cell,
     program: &Program,
     gate: Option<bool>,
-    scene: Option<&WorldScene>,
+    scene: Option<&rig_ecs::checkpoint::Checkpoint>,
     witness: Option<Arc<rig_core::observe::ObservationLog>>,
 ) -> (App, Entity, EffectLogRecorder, Gates) {
     one_thread_pool();
     let policy = cell.bus.policy();
     let mut app = App::new();
-    rig_ecs::bus::Bus::with_policy(policy).install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(rig_ecs::RigPlugin::with_policy(policy));
     app.finish();
     app.cleanup();
     let gates = Gates {
@@ -785,10 +780,9 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             super::stream_delivery::assert_hydration(world, cell);
         }
         let run = loaded
-            .graph
-            .iter()
+            .with::<Run>(world)
+            .first()
             .copied()
-            .find(|entity| world.get::<Run>(*entity).is_some())
             .expect("the saved run");
         world.get::<RunOf>(run).expect("the loaded run's agent").0
     } else {
@@ -825,10 +819,8 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         if let Some(retries) = cell.provider_retries {
             world.entity_mut(agent).insert(ProviderRetries(retries));
         }
-        let mut order = 0u64;
         for (_, tool) in &tools {
-            world.spawn((Grant(*tool), Order(order), ChildOf(agent)));
-            order += 1;
+            world.spawn((Grant(*tool), ChildOf(agent)));
         }
         if let Some(conversation) = program.conversation {
             world.entity_mut(agent).insert((
@@ -837,10 +829,8 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
             ));
         }
         if let Some(route) = route {
-            world.spawn((Route(route), Order(order), ChildOf(agent)));
-            order += 1;
+            world.spawn((Route(route), ChildOf(agent)));
         }
-        world.resource_mut::<rig_ecs::agent::OrderCounter>().0 = order;
         let hooks = corpus::program_hooks(program, OWNER);
         if !hooks.is_empty() {
             world
@@ -949,7 +939,7 @@ pub(crate) async fn drive_run(
     app: &mut App,
     run: Entity,
     cut_after: Option<usize>,
-    cut: &mut Option<(WorldScene, usize, u64)>,
+    cut: &mut Option<(rig_ecs::checkpoint::Checkpoint, usize, u64)>,
     recorder: &EffectLogRecorder,
 ) {
     drive_until(app, run, cut_after, cut, recorder, false).await;
@@ -959,7 +949,7 @@ async fn drive_until(
     app: &mut App,
     run: Entity,
     cut_after: Option<usize>,
-    cut: &mut Option<(WorldScene, usize, u64)>,
+    cut: &mut Option<(rig_ecs::checkpoint::Checkpoint, usize, u64)>,
     recorder: &EffectLogRecorder,
     pause_at_cut: bool,
 ) {
@@ -1289,17 +1279,27 @@ fn result_names(parts: &MessageParts, slots: &[rig_ecs::agent::ToolCallSlot]) ->
 }
 
 type PublishedMessages<'w, 's> =
-    Query<'w, 's, (&'static Order, Entity), (With<Utterance>, Added<Utterance>)>;
+    Query<'w, 's, (Entity, &'static ChildOf), (With<Utterance>, Added<Utterance>)>;
 
 fn observe_publication(
     messages: PublishedMessages,
+    children: Query<&Children>,
     content: rig_ecs::agent::content::parts::ContentGraph,
     tools: Query<(&rig_ecs::agent::ToolCallSlot, Option<&EffectOutcome>)>,
     mut published: ResMut<Published>,
 ) {
     let slots: Vec<_> = tools.iter().map(|(slot, _)| slot.clone()).collect();
-    let mut messages: Vec<_> = messages.iter().collect();
-    messages.sort_by_key(|(order, _)| order.0);
+    let mut messages: Vec<_> = messages
+        .iter()
+        .map(|(entity, parent)| {
+            let index = children
+                .get(parent.parent())
+                .ok()
+                .and_then(|children| children.iter().position(|child| child == entity));
+            (index, entity)
+        })
+        .collect();
+    messages.sort();
     for (_, entity) in messages {
         let parts = content.message(entity).expect("valid published content");
         let names = result_names(&parts, &slots);
@@ -1688,11 +1688,10 @@ fn assert_failed_scene(
     let loaded = load_world(&saved, world)
         .unwrap_or_else(|error| panic!("{}: a failed run's scene loads: {error}", cell.name));
     let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|entity| world.get::<Run>(*entity).is_some())
-        .expect("the scene holds the run");
+            .with::<Run>(world)
+            .first()
+            .copied()
+            .expect("the scene holds the run");
     let reloaded = world
         .get::<Failed>(run)
         .unwrap_or_else(|| panic!("{}: the loaded run stays failed", cell.name))
@@ -1918,7 +1917,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
                 delivery_head = Some(super::stream_delivery::save_head(app.world(), cell));
             }
             drop(std::mem::replace(&mut app, App::new()));
-            let scene: WorldScene =
+            let scene: rig_ecs::checkpoint::Checkpoint =
                 serde_json::from_str(&encoded_scene).expect("restore scene JSON");
             saved_head =
                 Some(serde_json::from_str::<EffectLog>(&encoded_head).expect("restore head JSON"));
@@ -2107,7 +2106,7 @@ fn resume(
     cell: &Cell,
     program: &Program,
     log: &EffectLog,
-    scene: WorldScene,
+    scene: rig_ecs::checkpoint::Checkpoint,
     at: usize,
     next_id: u64,
 ) {
@@ -2117,7 +2116,7 @@ fn resume(
     let tail_records = head.records.split_off(at);
     let (checkpoint, tail) = log.checkpoint(at, scene);
     assert_eq!(tail.records.len(), tail_records.len());
-    let checkpoint: Checkpoint<WorldScene> =
+    let checkpoint: Checkpoint<rig_ecs::checkpoint::Checkpoint> =
         serde_json::from_str(&serde_json::to_string(&checkpoint).expect("serde"))
             .expect("a checkpoint restores");
     let scene = checkpoint.state.clone();
@@ -2134,11 +2133,10 @@ fn resume(
     world.resource_mut::<IdCounter>().0 = next_id;
     let loaded = load_world(&scene, world).expect("the scene's handlers are bound");
     let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|entity| world.get::<Run>(*entity).is_some())
-        .expect("the scene holds the run");
+            .with::<Run>(world)
+            .first()
+            .copied()
+            .expect("the scene holds the run");
     let agent = world.get::<RunOf>(run).expect("the run's agent").0;
     if cell.reasoning.is_some() {
         let history = super::reasoning::assistant_history(world, run);

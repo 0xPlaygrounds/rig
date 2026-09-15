@@ -13,7 +13,7 @@ use rig::{
     tool::ToolOutput,
 };
 use rig_ecs::{
-    agent::{MessageParts, Order, Run, RunResult, Settled, ToolCallSlot, Turn, Utterance},
+    agent::{MessageParts, Run, RunResult, Settled, ToolCallSlot, Turn, Utterance},
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, Streamed},
     systems::RigSet,
 };
@@ -127,7 +127,7 @@ fn calls(world: &mut World) {
 // slot and actual outcome. Merely seeing Issued is not an execution commit.
 fn committed(world: &mut World) {
     let messages: Vec<_> = world
-        .query_filtered::<(Entity, &ChildOf, &Order), (With<Utterance>, Added<Utterance>)>()
+        .query_filtered::<(Entity, &ChildOf), (With<Utterance>, Added<Utterance>)>()
         .iter(world)
         .filter_map(|(entity, parent, order)| {
             match rig_ecs::agent::content::parts::read_message(world, entity)
@@ -146,7 +146,7 @@ fn committed(world: &mut World) {
             // Gemini's generated block IDs can repeat across turns. The native
             // turn immediately preceding this history commit owns the call.
             let turn = world
-                .query_filtered::<(Entity, &ChildOf, &Order), With<Turn>>()
+                .query_filtered::<(Entity, &ChildOf), With<Turn>>()
                 .iter(world)
                 .filter(|(_, parent, turn_order)| parent.parent() == run && turn_order.0 < order)
                 .max_by_key(|(_, _, turn_order)| turn_order.0)

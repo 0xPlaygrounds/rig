@@ -20,7 +20,7 @@ use crate::{
 use bevy_ecs::prelude::*;
 use rig::{message::UserContent, prelude::*, providers::anthropic};
 use rig_ecs::{
-    agent::{MessageParts, Order, ToolCallSlot, ToolPolicy, Utterance},
+    agent::{MessageParts, ToolCallSlot, ToolPolicy, Utterance},
     bus::{EffectOutcome, Policy, RigSchedule},
     systems::{RigSet, RunCommands},
 };
@@ -49,17 +49,27 @@ fn result_names(parts: &MessageParts, slots: &[ToolCallSlot]) -> Vec<String> {
 }
 
 type PublishedMessages<'w, 's> =
-    Query<'w, 's, (&'static Order, Entity), (With<Utterance>, Added<Utterance>)>;
+    Query<'w, 's, (Entity, &'static ChildOf), (With<Utterance>, Added<Utterance>)>;
 
 fn observe_publication(
     messages: PublishedMessages,
+    children: Query<&Children>,
     content: rig_ecs::agent::content::parts::ContentGraph,
     tools: Query<(&ToolCallSlot, Option<&EffectOutcome>)>,
     mut published: ResMut<Published>,
 ) {
     let slots: Vec<_> = tools.iter().map(|(slot, _)| slot.clone()).collect();
-    let mut messages: Vec<_> = messages.iter().collect();
-    messages.sort_by_key(|(order, _)| order.0);
+    let mut messages: Vec<_> = messages
+        .iter()
+        .map(|(entity, parent)| {
+            let index = children
+                .get(parent.parent())
+                .ok()
+                .and_then(|children| children.iter().position(|child| child == entity));
+            (index, entity)
+        })
+        .collect();
+    messages.sort();
     for (_, entity) in messages {
         let parts = content.message(entity).expect("valid published content");
         let names = result_names(&parts, &slots);
@@ -119,7 +129,7 @@ fn history(ecs: &mut EcsAgent) -> Vec<Vec<String>> {
     let mut query = ecs
         .app
         .world_mut()
-        .query_filtered::<(&Order, Entity), With<Utterance>>();
+        .query_filtered::<(&Entity), With<Utterance>>();
     let mut messages: Vec<_> = query.iter(ecs.app.world()).collect();
     messages.sort_by_key(|(order, _)| order.0);
     messages

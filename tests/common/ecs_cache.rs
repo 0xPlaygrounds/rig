@@ -10,7 +10,7 @@ use crate::{
 use bevy_ecs::prelude::*;
 use rig::effect::{EffectKind, Outcome};
 use rig_ecs::{
-    agent::{DefaultMaxTurns, Order, Temperature, Turn},
+    agent::{DefaultMaxTurns, Temperature, Turn},
     bus::{EffectOutcome, PendingEffect},
     systems::RunCommands,
 };
@@ -43,7 +43,7 @@ pub async fn assert_cache_growth(mut ecs: EcsAgent, support: &CacheSupport, cont
                 panic!("cache loop completion must succeed")
             };
             Some((
-                world.get::<Order>(turn).expect("turn order").0,
+                crate::ecs_agent::sibling_index(world, turn).expect("turn order"),
                 response.usage,
             ))
         })

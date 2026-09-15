@@ -14,7 +14,7 @@ use rig::{
     serve::{Serve, ServingPolicy},
 };
 use rig_ecs::{
-    agent::{Grant, Order, PolicyVersion, Temperature},
+    agent::{Grant, PolicyVersion, Temperature},
     bus::{EffectOutcome, Handlers, PendingEffect, Policy},
 };
 // Reuse the existing native graph-producing systems, not recorded leaf handlers.
@@ -66,7 +66,7 @@ async fn over_host(
     .expect("fresh lookup");
     ecs.app
         .world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(ecs.agent)));
+        .spawn((Grant(tool)(0), ChildOf(ecs.agent)));
     nesting::install(ecs.app.world_mut(), spec, "golden");
     let output = ecs
         .prompt_with_max_turns(PROMPT, host.streamed, Some(3))

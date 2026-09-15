@@ -27,10 +27,10 @@ use rig_core::streaming::Delta;
 use rig_core::streaming::StreamEvent;
 
 use rig_ecs::{
+    checkpoint::{load_world, save_world},
     agent::{
-        AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Order, Preamble,
+        AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Preamble,
         Settled, ToolCallSlot, ToolPolicy, Turn, Utterance,
-        scene::{load_world, save_world},
     },
     bus::{BusSet, EffectOutcome, Held, PendingEffect, RigSchedule, Streamed, release_hold},
     systems::{BatchHeld, RigSet, RunBusy, RunCommands},
@@ -296,12 +296,12 @@ pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
     assert_eq!(slots.len(), 2, "two calls in one turn: {slots:?}");
     assert_ne!(slots[0].id, slots[1].id, "distinct minted ids: {slots:?}");
     let mut utterances: Vec<(u64, MessageParts)> = world
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(world)
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| {
+        .filter(|(_, parent)| parent.parent() == run)
+        .map(|(entity, _)| {
             (
-                order.0,
+                crate::ecs_agent::sibling_index(world, entity).expect("a child of the run"),
                 rig_ecs::agent::content::parts::read_message(world, entity)
                     .expect("valid content graph"),
             )
