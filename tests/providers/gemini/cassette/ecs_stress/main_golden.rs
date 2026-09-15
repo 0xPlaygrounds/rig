@@ -1,6 +1,6 @@
 //! Exact named producer setup for the Gemini effect golden; real provider IO.
 use crate::ecs_agent::{RuntimeHandler, io_runtime};
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::prelude::*;
 use rig::{
     completion::CompletionModel,
@@ -34,7 +34,7 @@ fn tool<T: Tool + 'static>(app: &mut App, agent: Entity, tool: T, order: u64) {
     .expect("bus installed")
     .expect("unique named tool");
     app.world_mut()
-        .spawn((Grant(handler)(order), ChildOf(agent)));
+        .spawn((Grant(handler), ChildOf(agent)));
 }
 pub(super) async fn run(
     model: impl CompletionModel + 'static,

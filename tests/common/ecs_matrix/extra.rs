@@ -295,7 +295,7 @@ pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
     slots.sort_by_key(|slot| slot.index);
     assert_eq!(slots.len(), 2, "two calls in one turn: {slots:?}");
     assert_ne!(slots[0].id, slots[1].id, "distinct minted ids: {slots:?}");
-    let mut utterances: Vec<(u64, MessageParts)> = world
+    let mut utterances: Vec<(usize, MessageParts)> = world
         .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(world)
         .filter(|(_, parent)| parent.parent() == run)

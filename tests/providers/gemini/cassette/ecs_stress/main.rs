@@ -129,11 +129,12 @@ fn committed(world: &mut World) {
     let messages: Vec<_> = world
         .query_filtered::<(Entity, &ChildOf), (With<Utterance>, Added<Utterance>)>()
         .iter(world)
-        .filter_map(|(entity, parent, order)| {
+        .filter_map(|(entity, parent)| {
+            let order = crate::ecs_agent::sibling_index(world, entity).expect("a child of the run");
             match rig_ecs::agent::content::parts::read_message(world, entity)
                 .expect("valid committed graph")
             {
-                MessageParts::User { content } => Some((parent.parent(), order.0, content.clone())),
+                MessageParts::User { content } => Some((parent.parent(), order, content.clone())),
                 _ => None,
             }
         })
@@ -145,12 +146,18 @@ fn committed(world: &mut World) {
             };
             // Gemini's generated block IDs can repeat across turns. The native
             // turn immediately preceding this history commit owns the call.
-            let turn = world
+            let turns: Vec<(Entity, usize)> = world
                 .query_filtered::<(Entity, &ChildOf), With<Turn>>()
                 .iter(world)
-                .filter(|(_, parent, turn_order)| parent.parent() == run && turn_order.0 < order)
-                .max_by_key(|(_, _, turn_order)| turn_order.0)
-                .map(|(entity, _, _)| entity)
+                .filter(|(_, parent)| parent.parent() == run)
+                .map(|(entity, _)| (entity, crate::ecs_agent::sibling_index(world, entity)))
+                .filter_map(|(entity, index)| index.map(|index| (entity, index)))
+                .collect();
+            let turn = turns
+                .into_iter()
+                .filter(|(_, turn_order)| *turn_order < order)
+                .max_by_key(|(_, turn_order)| *turn_order)
+                .map(|(entity, _)| entity)
                 .expect("committed tool result belongs to an actual turn");
             let slots: Vec<_> = world
                 .query::<(Entity, &ToolCallSlot, Has<Issued>, Option<&EffectOutcome>)>()

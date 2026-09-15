@@ -57,7 +57,8 @@ pub(crate) async fn run_session(
         .filter(|(_, parent)| parent.parent() == run)
         .map(|(entity, _)| {
             (
-                crate::ecs_agent::sibling_index(world, entity).expect("a child of the run"),
+                crate::ecs_agent::sibling_index(ecs.app.world(), entity)
+                    .expect("a child of the run"),
                 rig_ecs::agent::content::parts::read_message(ecs.app.world(), entity)
                     .expect("valid content graph")
                     .to_message(),

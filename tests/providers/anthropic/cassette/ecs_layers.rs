@@ -58,7 +58,7 @@ fn layered_agent(
     .expect("fresh layered tool");
     ecs.app
         .world_mut()
-        .spawn((Grant(tool)(0), ChildOf(ecs.agent)));
+        .spawn((Grant(tool), ChildOf(ecs.agent)));
     ecs
 }
 async fn run_tool(ecs: &mut EcsAgent) -> rig::effect_log::EffectLog {

@@ -23,7 +23,7 @@ use rig_ecs::agent::checkpoint::{
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::prelude::*;
 use futures::StreamExt;
 
@@ -550,10 +550,13 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
     let data_bound: Option<WireBinding> = match (gate, scene) {
         (None, None) => wire.binding(),
         (_, Some(scene))
-            if scene
-                .bindings
-                .iter()
-                .any(|saved| saved.binding.key == default_key) =>
+            if scene.entities.iter().any(|entity| {
+                entity
+                    .get(std::any::type_name::<rig_ecs::bus::ProviderBinding>())
+                    .and_then(|binding| binding.get("key"))
+                    .and_then(|key| key.as_str())
+                    == Some(default_key.as_str())
+            }) =>
         {
             Some(wire.binding().expect("the scene's binding is this wire's"))
         }
