@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a research assistant. Use the lookup tool to answer.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Look a question up","input_schema":{"properties":{"leaf":{"description":"Answer directly, without looking further","type":"boolean"},"q":{"description":"The question to look up","type":"string"}},"required":["q"],"type":"object"},"name":"lookup"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a research assistant. Use the lookup tool to answer.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Look a question up","input_schema":{"properties":{"leaf":{"description":"Answer directly, without looking further","type":"boolean"},"q":{"description":"The question to look up","type":"string"}},"required":["q"],"type":"object"},"name":"lookup"}]}'
 then:
   status: 200
   header:
@@ -69,7 +69,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"What is the capital of France?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Answer in one word.","type":"text"}],"temperature":0.0}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"What is the capital of France?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"Answer in one word.","type":"text"}],"temperature":0.0}'
 then:
   status: 200
   header:
@@ -90,7 +90,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"q":"What is the capital of France?"},"name":"lookup","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"Paris","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a research assistant. Use the lookup tool to answer.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Look a question up","input_schema":{"properties":{"leaf":{"description":"Answer directly, without looking further","type":"boolean"},"q":{"description":"The question to look up","type":"string"}},"required":["q"],"type":"object"},"name":"lookup"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use the lookup tool with q set to exactly \"What is the capital of France?\" and reply with just the lookup result.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"q":"What is the capital of France?"},"name":"lookup","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"Paris","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a research assistant. Use the lookup tool to answer.","type":"text"}],"temperature":0.0,"tool_choice":{"type":"auto"},"tools":[{"description":"Look a question up","input_schema":{"properties":{"leaf":{"description":"Answer directly, without looking further","type":"boolean"},"q":{"description":"The question to look up","type":"string"}},"required":["q"],"type":"object"},"name":"lookup"}]}'
 then:
   status: 200
   header:

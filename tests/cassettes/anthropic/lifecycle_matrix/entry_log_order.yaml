@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"What is 9 + 16? Use the add tool, then reply with just the number.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a calculator. Use the add tool for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"What is 9 + 16? Use the add tool, then reply with just the number.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a calculator. Use the add tool for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
 then:
   status: 200
   header:
@@ -60,7 +60,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"What is 9 + 16? Use the add tool, then reply with just the number.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"x":9,"y":16},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"25","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a calculator. Use the add tool for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"What is 9 + 16? Use the add tool, then reply with just the number.","type":"text"}],"role":"user"},{"content":[{"id":"toolu_REDACTED_1","input":{"x":9,"y":16},"name":"add","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"25","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a calculator. Use the add tool for arithmetic.","type":"text"}],"tool_choice":{"type":"auto"},"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
 then:
   status: 200
   header:

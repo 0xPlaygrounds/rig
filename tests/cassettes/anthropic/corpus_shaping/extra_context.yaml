@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"source":{"data":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n","media_type":"text/plain","type":"text"},"type":"document"}],"role":"user"},{"content":[{"text":"What is a glarb-glarb? Answer in one sentence.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"temperature":0.0}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"source":{"data":"<file id: shaping-context>\nDefinition of a glarb-glarb: an ancient farming tool from planet Jiro.\n</file>\n","media_type":"text/plain","type":"text"},"type":"document"}],"role":"user"},{"content":[{"text":"What is a glarb-glarb? Answer in one sentence.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"temperature":0.0}'
 then:
   status: 200
   header:

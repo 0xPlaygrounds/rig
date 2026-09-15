@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"What is 2 + 3? Use the tool, then state the result.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","model":"gpt-4.1-nano","temperature":0.0,"tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"What is 2 + 3? Use the tool, then state the result.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","model":"gpt-4.1-nano","temperature":0.0,"tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:
@@ -26,7 +26,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"What is 2 + 3? Use the tool, then state the result.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"x\":2,\"y\":3}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"add","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"5","status":"completed","type":"function_call_output"}],"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","model":"gpt-4.1-nano","temperature":0.0,"tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"What is 2 + 3? Use the tool, then state the result.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{\"x\":2,\"y\":3}","call_id":"call_REDACTED_1","id":"fc_REDACTED_1","name":"add","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"5","status":"completed","type":"function_call_output"}],"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","model":"gpt-4.1-nano","temperature":0.0,"tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:

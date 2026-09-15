@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Look up user u-42 with the get_user_record tool and tell me their account status.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a support agent. Use the get_user_record tool to look up a user, then report their account status.","type":"text"}],"tools":[{"description":"Look up a user record by id.","input_schema":{"properties":{"user_id":{"description":"The user id, e.g. ''u-42''","type":"string"}},"required":["user_id"],"type":"object"},"name":"get_user_record"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Look up user u-42 with the get_user_record tool and tell me their account status.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a support agent. Use the get_user_record tool to look up a user, then report their account status.","type":"text"}],"tools":[{"description":"Look up a user record by id.","input_schema":{"properties":{"user_id":{"description":"The user id, e.g. ''u-42''","type":"string"}},"required":["user_id"],"type":"object"},"name":"get_user_record"}]}'
 then:
   status: 200
   header:
@@ -28,7 +28,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Look up user u-42 with the get_user_record tool and tell me their account status.","type":"text"}],"role":"user"},{"content":[{"text":"Sure! Let me look up user u-42 right away.","type":"text"},{"id":"toolu_REDACTED_1","input":{"user_id":"u-42"},"name":"get_user_record","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"name=Alice; ssn=[REDACTED]; status=active","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a support agent. Use the get_user_record tool to look up a user, then report their account status.","type":"text"}],"tools":[{"description":"Look up a user record by id.","input_schema":{"properties":{"user_id":{"description":"The user id, e.g. ''u-42''","type":"string"}},"required":["user_id"],"type":"object"},"name":"get_user_record"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Look up user u-42 with the get_user_record tool and tell me their account status.","type":"text"}],"role":"user"},{"content":[{"text":"Sure! Let me look up user u-42 right away.","type":"text"},{"id":"toolu_REDACTED_1","input":{"user_id":"u-42"},"name":"get_user_record","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"name=Alice; ssn=[REDACTED]; status=active","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a support agent. Use the get_user_record tool to look up a user, then report their account status.","type":"text"}],"tools":[{"description":"Look up a user record by id.","input_schema":{"properties":{"user_id":{"description":"The user id, e.g. ''u-42''","type":"string"}},"required":["user_id"],"type":"object"},"name":"get_user_record"}]}'
 then:
   status: 200
   header:

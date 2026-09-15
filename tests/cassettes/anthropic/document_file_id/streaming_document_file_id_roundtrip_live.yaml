@@ -32,7 +32,7 @@ when:
     value: 2023-06-01
   - name: anthropic-beta
     value: files-api-2025-04-14
-  body: '{"max_tokens":64000,"messages":[{"content":[{"source":{"file_id":"file_REDACTED_1","type":"file"},"type":"document"},{"text":"What verifier token is printed on page 2? Reply with only the exact token.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"Answer using only the attached PDF. Keep answers short and return exact visible tokens.","type":"text"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"source":{"file_id":"file_REDACTED_1","type":"file"},"type":"document"},{"text":"What verifier token is printed on page 2? Reply with only the exact token.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"Answer using only the attached PDF. Keep answers short and return exact visible tokens.","type":"text"}]}'
 then:
   status: 200
   header:

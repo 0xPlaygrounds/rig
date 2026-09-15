@@ -623,8 +623,9 @@ fn responses_function_tools_are_non_strict_by_default() {
     assert_eq!(tool.parameters["required"], json!(["location"]));
     assert!(tool.parameters.get("additionalProperties").is_none());
 
+    // Omitted `strict` means "try strict" on the Responses API; `false` must be explicit.
     let serialized = serde_json::to_value(tool).expect("tool should serialize");
-    assert!(serialized.get("strict").is_none());
+    assert_eq!(serialized.get("strict"), Some(&json!(false)));
 }
 
 #[test]

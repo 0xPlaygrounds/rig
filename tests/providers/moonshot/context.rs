@@ -12,7 +12,7 @@ async fn context_smoke() {
     let agent = CONTEXT_DOCS
         .iter()
         .copied()
-        .fold(client.agent(moonshot::MOONSHOT_CHAT), |builder, doc| {
+        .fold(client.agent(moonshot::KIMI_K3), |builder, doc| {
             builder.context(doc)
         })
         .build();

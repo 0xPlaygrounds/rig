@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Add 48151.62342 and 27182.81828 using the add tool. You must call the tool.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":16,"model":"gpt-5.6","reasoning":{"effort":"low"},"stream":true,"tool_choice":"required","tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"type":"function"}]}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Add 48151.62342 and 27182.81828 using the add tool. You must call the tool.","type":"input_text"}],"role":"user","type":"message"}],"max_output_tokens":16,"model":"gpt-5.6","reasoning":{"effort":"low"},"stream":true,"tool_choice":"required","tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:

@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"Look up the harbor label with the tool.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant with perfect recall of this conversation.","model":"gpt-4o","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"Look up the harbor label with the tool.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant with perfect recall of this conversation.","model":"gpt-4o","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:
@@ -24,7 +24,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":[{"text":"My favorite color is teal. Please remember it.","type":"input_text"}],"role":"user","type":"message"},{"content":"Noted - your favorite color is teal.","role":"assistant","type":"message"},{"content":[{"text":"Now look up the harbor label with the tool.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","name":"lookup_harbor_label","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"crimson-harbor","status":"completed","type":"function_call_output"},{"content":"The harbor label is crimson-harbor.","role":"assistant","type":"message"},{"content":[{"text":"In one short sentence: what is my favorite color, and what was the harbor label you looked up earlier?","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant with perfect recall of this conversation.","model":"gpt-4o","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
+  body: '{"input":[{"content":[{"text":"My favorite color is teal. Please remember it.","type":"input_text"}],"role":"user","type":"message"},{"content":"Noted - your favorite color is teal.","role":"assistant","type":"message"},{"content":[{"text":"Now look up the harbor label with the tool.","type":"input_text"}],"role":"user","type":"message"},{"arguments":"{}","call_id":"call_REDACTED_1","name":"lookup_harbor_label","status":"completed","type":"function_call"},{"call_id":"call_REDACTED_1","output":"crimson-harbor","status":"completed","type":"function_call_output"},{"content":"The harbor label is crimson-harbor.","role":"assistant","type":"message"},{"content":[{"text":"In one short sentence: what is my favorite color, and what was the harbor label you looked up earlier?","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a concise assistant with perfect recall of this conversation.","model":"gpt-4o","tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:

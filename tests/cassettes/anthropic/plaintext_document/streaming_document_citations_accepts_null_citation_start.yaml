@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"citations":{"enabled":true},"source":{"data":"The Rust Programming Language\n\nRust is a systems programming language focused on three goals: safety, speed,\nand concurrency. It accomplishes these goals without a garbage collector.\n\nKey Features:\n- Zero-cost abstractions\n- Move semantics\n- Guaranteed memory safety\n- Threads without data races","media_type":"text/plain","type":"text"},"title":"Rust Goals","type":"document"},{"text":"Using citations, answer in one sentence: what three goals does Rust focus on?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"Answer using the supplied document and citation metadata.","type":"text"}],"temperature":0.0}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"citations":{"enabled":true},"source":{"data":"The Rust Programming Language\n\nRust is a systems programming language focused on three goals: safety, speed,\nand concurrency. It accomplishes these goals without a garbage collector.\n\nKey Features:\n- Zero-cost abstractions\n- Move semantics\n- Guaranteed memory safety\n- Threads without data races","media_type":"text/plain","type":"text"},"title":"Rust Goals","type":"document"},{"text":"Using citations, answer in one sentence: what three goals does Rust focus on?","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"Answer using the supplied document and citation metadata.","type":"text"}],"temperature":0.0}'
 then:
   status: 200
   header:

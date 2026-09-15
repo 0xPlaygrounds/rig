@@ -7,7 +7,7 @@
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! let client = groq::Client::new("YOUR_API_KEY")?;
 //!
-//! let llama = client.completion_model(groq::LLAMA_3_1_8B_INSTANT);
+//! let gpt_oss = client.completion_model(groq::GPT_OSS_120B);
 //! # Ok(())
 //! # }
 //! ```
@@ -245,32 +245,29 @@ fn native_tool_kind(value: &Value) -> Option<&str> {
 // Groq Completion API
 // ================================================================
 
-/// The `deepseek-r1-distill-llama-70b` model. Used for chat completion.
-pub const DEEPSEEK_R1_DISTILL_LLAMA_70B: &str = "deepseek-r1-distill-llama-70b";
-/// The `gemma2-9b-it` model. Used for chat completion.
-pub const GEMMA2_9B_IT: &str = "gemma2-9b-it";
-/// The `llama-3.1-8b-instant` model. Used for chat completion.
+// Model IDs follow <https://console.groq.com/docs/models>. Retired IDs are listed at
+// <https://console.groq.com/docs/deprecations>.
+
+/// The `llama-3.1-8b-instant` model. Used for chat completion. Retired from free and
+/// developer tiers on 2026-08-16; still served to enterprise contracts.
 pub const LLAMA_3_1_8B_INSTANT: &str = "llama-3.1-8b-instant";
-/// The `llama-3.2-11b-vision-preview` model. Used for chat completion.
-pub const LLAMA_3_2_11B_VISION_PREVIEW: &str = "llama-3.2-11b-vision-preview";
-/// The `llama-3.2-1b-preview` model. Used for chat completion.
-pub const LLAMA_3_2_1B_PREVIEW: &str = "llama-3.2-1b-preview";
-/// The `llama-3.2-3b-preview` model. Used for chat completion.
-pub const LLAMA_3_2_3B_PREVIEW: &str = "llama-3.2-3b-preview";
-/// The `llama-3.2-90b-vision-preview` model. Used for chat completion.
-pub const LLAMA_3_2_90B_VISION_PREVIEW: &str = "llama-3.2-90b-vision-preview";
-/// The `llama-3.2-70b-specdec` model. Used for chat completion.
-pub const LLAMA_3_2_70B_SPECDEC: &str = "llama-3.2-70b-specdec";
-/// The `llama-3.2-70b-versatile` model. Used for chat completion.
-pub const LLAMA_3_2_70B_VERSATILE: &str = "llama-3.2-70b-versatile";
-/// The `llama-guard-3-8b` model. Used for chat completion.
-pub const LLAMA_GUARD_3_8B: &str = "llama-guard-3-8b";
-/// The `llama3-70b-8192` model. Used for chat completion.
-pub const LLAMA_3_70B_8192: &str = "llama3-70b-8192";
-/// The `llama3-8b-8192` model. Used for chat completion.
-pub const LLAMA_3_8B_8192: &str = "llama3-8b-8192";
-/// The `mixtral-8x7b-32768` model. Used for chat completion.
-pub const MIXTRAL_8X7B_32768: &str = "mixtral-8x7b-32768";
+/// The `llama-3.3-70b-versatile` model. Used for chat completion. Retired from free and
+/// developer tiers on 2026-08-16; still served to enterprise contracts.
+pub const LLAMA_3_3_70B_VERSATILE: &str = "llama-3.3-70b-versatile";
+/// The `openai/gpt-oss-120b` model. Used for chat completion.
+pub const GPT_OSS_120B: &str = "openai/gpt-oss-120b";
+/// The `openai/gpt-oss-20b` model. Used for chat completion.
+pub const GPT_OSS_20B: &str = "openai/gpt-oss-20b";
+/// The `openai/gpt-oss-safeguard-20b` model (preview). Used for chat completion.
+pub const GPT_OSS_SAFEGUARD_20B: &str = "openai/gpt-oss-safeguard-20b";
+/// The `qwen/qwen3.8-27b` model (preview). Used for chat completion.
+pub const QWEN3_8_27B: &str = "qwen/qwen3.8-27b";
+/// The `minimaxai/minimax-m2.7` model (preview, enterprise). Used for chat completion.
+pub const MINIMAX_M2_7: &str = "minimaxai/minimax-m2.7";
+/// The `groq/compound` agentic system (built-in web search and code execution).
+pub const COMPOUND: &str = "groq/compound";
+/// The `groq/compound-mini` agentic system (built-in web search and code execution).
+pub const COMPOUND_MINI: &str = "groq/compound-mini";
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -299,9 +296,10 @@ pub struct GroqAdditionalParameters {
 // Groq Transcription API
 // ================================================================
 
+/// The `whisper-large-v3` transcription model.
 pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
+/// The `whisper-large-v3-turbo` transcription model.
 pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
-pub const DISTIL_WHISPER_LARGE_V3_EN: &str = "distil-whisper-large-v3-en";
 
 /// Groq transcription model using the shared OpenAI-style implementation.
 pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =

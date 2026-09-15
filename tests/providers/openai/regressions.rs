@@ -85,8 +85,9 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
     let request: serde_json::Value =
         serde_json::from_slice(&requests[0].body).expect("request body should be valid JSON");
     assert_eq!(request["tools"][0]["name"], "submit");
-    assert!(
-        request["tools"][0].get("strict").is_none(),
-        "non-strict extractor tools should omit strict on the request"
+    assert_eq!(
+        request["tools"][0]["strict"],
+        json!(false),
+        "non-strict extractor tools must send an explicit strict: false (rig#2477)"
     );
 }

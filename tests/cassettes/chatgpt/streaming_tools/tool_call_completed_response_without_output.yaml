@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Call the ping tool with no arguments. Do not write any normal text before the tool call.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"","model":"gpt-5.4","store":false,"stream":true,"tool_choice":"required","tools":[{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Call the ping tool with no arguments. Do not write any normal text before the tool call.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"","model":"gpt-5.4","store":false,"stream":true,"tool_choice":"required","tools":[{"description":"A zero-argument tool named ping.","name":"ping","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header: []

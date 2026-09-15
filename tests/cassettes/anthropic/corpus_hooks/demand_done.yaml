@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"temperature":0.0}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"temperature":0.0}'
 then:
   status: 200
   header:
@@ -30,7 +30,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"},{"content":[{"text":"Rust is a systems programming language designed for performance, reliability, and productivity, with a unique ownership model that enforces memory safety at compile time without a garbage collector. Memory safety matters because violations like buffer overflows, use-after-free, and null pointer dereferences are among the most common sources of critical security vulnerabilities and crashes in software.","type":"text"}],"role":"assistant"},{"content":[{"text":"End your answer with the word DONE.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"temperature":0.0}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"In one or two sentences, explain what Rust programming language is and why memory safety matters.","type":"text"}],"role":"user"},{"content":[{"text":"Rust is a systems programming language designed for performance, reliability, and productivity, with a unique ownership model that enforces memory safety at compile time without a garbage collector. Memory safety matters because violations like buffer overflows, use-after-free, and null pointer dereferences are among the most common sources of critical security vulnerabilities and crashes in software.","type":"text"}],"role":"assistant"},{"content":[{"text":"End your answer with the word DONE.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a concise assistant. Answer directly.","type":"text"}],"temperature":0.0}'
 then:
   status: 200
   header:
