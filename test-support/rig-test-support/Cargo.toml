@@ -15,7 +15,7 @@ doctest = false
 rig-core = { path = "../../crates/rig-core", default-features = false, features = ["test-utils"] }
 rig-agent = { path = "../../crates/rig-agent", default-features = false, features = ["test-utils"] }
 rig-reqwest = { path = "../../crates/rig-reqwest", default-features = false }
-rig-ecs = { path = "../../crates/rig-ecs" }
+rig-ecs = { path = "../../crates/rig-ecs", features = ["app"] }
 rig-effect-log = { path = "../../crates/rig-effect-log" }
 rig-cassette = { path = "../../crates/rig-cassette", features = ["bedrock"] }
 anyhow.workspace = true

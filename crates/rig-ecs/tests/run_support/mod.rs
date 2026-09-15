@@ -11,123 +11,35 @@
 )]
 
 use rig_core::serve::Dispatch;
-use std::{
-    sync::{Arc, Mutex},
-    time::{Duration, Instant},
-};
+use std::sync::{Arc, Mutex};
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
-    completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
+    completion::CompletionRequest,
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
     serve::{Serve, ServingPolicy},
 };
 use rig_ecs::{
+    RigPlugin,
     agent::{
         AdditionalParams, DefaultMaxTurns, InvalidCalls, MaxTokens, MaxTurns, Output, Owner,
         Preamble, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{Bus, run_to_quiescence},
-    systems::install_agent,
+    bus::Bus,
 };
 
-pub const GUARD: Duration = Duration::from_secs(10);
-
-/// A model that keeps every request it is asked and answers a fixed text.
-pub struct Capturing {
-    pub label: String,
-    pub requests: Arc<Mutex<Vec<CompletionRequest>>>,
-    pub answer: String,
-}
-
-impl Capturing {
-    pub fn new(label: &str, answer: &str) -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
-        let requests = Arc::new(Mutex::new(Vec::new()));
-        (
-            Self {
-                label: label.to_owned(),
-                requests: Arc::clone(&requests),
-                answer: answer.to_owned(),
-            },
-            requests,
-        )
-    }
-}
-
-impl Serve for Capturing {
-    type Family = rig_core::effect::family::Completion;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: HandlerKey::from(self.label.as_str()),
-            family: FamilyDescriptor::Completion {
-                model: ModelRef::new(self.label.as_str()),
-                capabilities: ProviderCapabilities::default(),
-            },
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        match kind {
-            EffectKind::Completion { request, .. } => {
-                self.requests.lock().expect("requests").push(request);
-                let response = CompletionResponse::new(
-                    vec![AssistantContent::text(&self.answer)],
-                    Usage::new(),
-                    "capturing",
-                );
-                rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
-            }
-            other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
-                ErrorKind::HandlerUnavailable,
-                format!("a model cannot serve {}", other.name()),
-            ))),
-        }
-    }
-}
-
-/// A tool handler that is advertised and never called.
-pub struct NeverCalled {
-    pub name: String,
-}
-
-impl Serve for NeverCalled {
-    type Family = rig_core::effect::family::Tool;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: HandlerKey::from(self.name.as_str()),
-            family: FamilyDescriptor::Tool {
-                name: self.name.clone(),
-                description: format!("the {} tool", self.name),
-                parameters: serde_json::json!({"type": "object"}),
-                embedding: None,
-            },
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
-            ErrorKind::Internal,
-            "a tool advertised and never called was called",
-        )))
-    }
-}
+pub const GUARD: std::time::Duration = std::time::Duration::from_secs(10);
 
 /// An app with the bus and the agent installed, ambiguity detection at
 /// error level, the runner in `Update`.
 pub fn app() -> App {
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(RigPlugin {
+        bus: Bus::with_policy(ServingPolicy::default()).ambiguity_detection(LogLevel::Error),
+    });
     app.finish();
     app.cleanup();
     app
@@ -154,19 +66,6 @@ pub fn spawn_agent(world: &mut World, owner: &str, model: Entity) -> Entity {
             UsesModel(model),
         ))
         .id()
-}
-
-/// Tick the app until `done` holds, or fail after [`GUARD`].
-pub fn tick_until(app: &mut App, what: &str, mut done: impl FnMut(&mut World) -> bool) {
-    let start = Instant::now();
-    loop {
-        app.update();
-        if done(app.world_mut()) {
-            return;
-        }
-        assert!(start.elapsed() < GUARD, "{what}: not done within {GUARD:?}");
-        std::thread::yield_now();
-    }
 }
 
 /// The text parts of a request's user messages, in order.
@@ -204,91 +103,6 @@ pub fn texts(request: &CompletionRequest) -> Vec<String> {
             ),
         })
         .collect()
-}
-
-/// A completion model that never answers: the dispatch stays in flight
-/// for as long as the world lives.
-pub struct NeverAnswers {
-    pub label: String,
-}
-
-impl Serve for NeverAnswers {
-    type Family = rig_core::effect::family::Completion;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: HandlerKey::from(self.label.as_str()),
-            family: FamilyDescriptor::Completion {
-                model: ModelRef::new(self.label.as_str()),
-                capabilities: ProviderCapabilities::default(),
-            },
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        std::future::pending().await
-    }
-}
-
-/// A model that answers a script: one assistant turn per request, in
-/// order, then a fixed text.
-pub struct Scripted {
-    pub label: String,
-    pub turns: Mutex<std::collections::VecDeque<Vec<AssistantContent>>>,
-    pub requests: Arc<Mutex<Vec<CompletionRequest>>>,
-}
-
-impl Scripted {
-    pub fn new(
-        label: &str,
-        turns: Vec<Vec<AssistantContent>>,
-    ) -> (Self, Arc<Mutex<Vec<CompletionRequest>>>) {
-        let requests = Arc::new(Mutex::new(Vec::new()));
-        (
-            Self {
-                label: label.to_owned(),
-                turns: Mutex::new(turns.into()),
-                requests: Arc::clone(&requests),
-            },
-            requests,
-        )
-    }
-}
-
-impl Serve for Scripted {
-    type Family = rig_core::effect::family::Completion;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        HandlerDescriptor {
-            key: HandlerKey::from(self.label.as_str()),
-            family: FamilyDescriptor::Completion {
-                model: ModelRef::new(self.label.as_str()),
-                capabilities: ProviderCapabilities::default(),
-            },
-            layers: Vec::new(),
-        }
-    }
-
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> rig_core::serve::Reply {
-        match kind {
-            EffectKind::Completion { request, .. } => {
-                self.requests.lock().expect("requests").push(request);
-                let choice = self
-                    .turns
-                    .lock()
-                    .expect("turns")
-                    .pop_front()
-                    .unwrap_or_else(|| vec![AssistantContent::text("done")]);
-                let response = CompletionResponse::new(choice, Usage::new(), "scripted");
-                rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
-            }
-            other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(
-                ErrorKind::HandlerUnavailable,
-                format!("a model cannot serve {}", other.name()),
-            ))),
-        }
-    }
 }
 
 /// A tool call the model makes, as the script's assistant part.

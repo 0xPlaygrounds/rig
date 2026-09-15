@@ -82,7 +82,15 @@ fn fixture(text: &str) -> (World, Entity, Entity, Entity) {
     .unwrap()
     .unwrap();
     let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
-    let run = world.spawn_run(agent, &history(text), "next", false, None);
+    let run = world.spawn_run(
+        agent,
+        "next",
+        rig_ecs::systems::RunConfig {
+            history: &history(text),
+            streamed: false,
+            max_turns: None,
+        },
+    );
     let turn = world.spawn((Turn, Fresh, Order(100), ChildOf(run))).id();
     (world, agent, run, turn)
 }

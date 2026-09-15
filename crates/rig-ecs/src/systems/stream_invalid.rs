@@ -49,16 +49,21 @@ pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option
 )]
 pub fn discover_streamed_invalid_calls(
     mut commands: Commands,
-    effects: Query<(&ChildOf, &BusStreamed), NotRetrieval>,
+    effects: Query<(&ChildOf, &BusStreamed), CompletionEffect>,
     mut turns: Query<(&ChildOf, &mut Outputs), (With<Turn>, Without<Materialised>)>,
     runs: Query<&OutputToolName, (With<Run>, With<AwaitingModel>, Without<Failed>)>,
     children: Query<&Children>,
     adverts: Query<(&Advert, &Order)>,
     bound: Query<&Bound>,
     access: Query<&ToolAccess>,
-    invalid: Query<(&ChildOf, &InvalidCall, Option<&Resolution>)>,
+    invalid: Query<(Entity, &ChildOf, &InvalidCall, Option<&Resolution>)>,
     mut progress: ResMut<Progress>,
 ) {
+    let invalid_order: bevy_ecs::entity::EntityHashMap<usize> = invalid
+        .iter()
+        .enumerate()
+        .map(|(rank, (entity, ..))| (entity, rank))
+        .collect();
     for (parent, stream) in &effects {
         let turn = parent.parent();
         let Ok((run_of, mut outputs)) = turns.get_mut(turn) else {
@@ -69,11 +74,16 @@ pub fn discover_streamed_invalid_calls(
         };
         // An unresolved decision pauses validation. Skip/retry abandons the
         // prefix and drains later events without validating further calls.
-        let pending: Vec<_> = invalid
-            .iter()
-            .filter(|(parent, _, _)| parent.parent() == turn)
+        let mut pending: Vec<_> = invalid
+            .iter_many(
+                children
+                    .get(turn)
+                    .into_iter()
+                    .flat_map(|owned| owned.iter()),
+            )
             .collect();
-        if pending.iter().any(|(_, _, resolution)| {
+        pending.sort_by_key(|(entity, ..)| invalid_order.get(entity).copied());
+        if pending.iter().any(|(_, _, _, resolution)| {
             !matches!(
                 resolution,
                 Some(Resolution::Repair { .. } | Resolution::Ignore)
@@ -82,7 +92,6 @@ pub fn discover_streamed_invalid_calls(
             continue;
         }
         let mut allowed: Vec<String> = links_in_order(turn, &children, &adverts)
-            .into_iter()
             .filter_map(|Advert(entity)| bound.get(*entity).ok())
             .filter_map(|bound| match &bound.descriptor.family {
                 FamilyDescriptor::Tool { name, .. } => Some(name.clone()),
@@ -136,7 +145,7 @@ pub fn discover_streamed_invalid_calls(
             let call_id = ToolCallId::from_block(id);
             // Ignore applies to the whole open occurrence, not just the
             // first name delta. An ended block may reuse the same identifier.
-            if pending.iter().any(|(_, call, resolution)| {
+            if pending.iter().any(|(_, _, call, resolution)| {
                 (matches!(resolution, Some(Resolution::Ignore))
                     || (full && matches!(resolution, Some(Resolution::Repair { .. }))))
                     && call.stream_offset.is_some_and(|offset| {
@@ -168,7 +177,7 @@ pub fn discover_streamed_invalid_calls(
             };
             // Earlier repairs/ignores already took effect in the driver's
             // view, even while native execution waits for the final outcome.
-            for (_, call, resolution) in &pending {
+            for (_, _, call, resolution) in &pending {
                 let Some(offset) = call.stream_offset else {
                     continue;
                 };

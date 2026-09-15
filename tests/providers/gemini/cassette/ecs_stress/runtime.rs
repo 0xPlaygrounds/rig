@@ -171,10 +171,15 @@ pub(super) async fn prompt_with_mode(
     taps: Vec<EventTap>,
     readers: Vec<ScratchpadReader>,
 ) -> String {
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], prompt, streamed, Some(max_turns));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed,
+            max_turns: Some(max_turns),
+        },
+    );
     ecs.app
         .world_mut()
         .entity_mut(run)

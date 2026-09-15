@@ -75,7 +75,7 @@ fn run(app: &mut bevy_app::App) -> Entity {
         .world_mut()
         .spawn(PendingEffect::new("model", bus_support::streaming()))
         .id();
-    bus_support::tick_until(app, "stream closed", |world| {
+    rig_ecs::testing::tick_until(app, "stream closed", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     effect
@@ -115,6 +115,95 @@ fn independent_consumers_preserve_interleaved_errors_without_a_recorder() {
     assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_err());
 }
 
+#[test]
+fn entity_subscribers_isolate_effects_while_global_delivery_and_cleanup_are_preserved() {
+    #[derive(Resource, Default)]
+    struct Deliveries {
+        targeted: [Vec<(usize, serde_json::Value)>; 2],
+        global: Vec<(Entity, usize, serde_json::Value)>,
+    }
+    let mut app = bus_support::app();
+    bus_support::register(&mut app, "model", WithErrors);
+    let effects = [
+        app.world_mut()
+            .spawn(PendingEffect::new("model", bus_support::streaming()))
+            .id(),
+        app.world_mut()
+            .spawn(PendingEffect::new("model", bus_support::streaming()))
+            .id(),
+    ];
+    app.init_resource::<Deliveries>();
+    app.add_observer(
+        |event: On<StreamItemsDelivered>, mut deliveries: ResMut<Deliveries>| {
+            deliveries.global.push((
+                event.effect,
+                event.start,
+                serde_json::to_value(&event.items).unwrap(),
+            ));
+        },
+    );
+    for (index, effect) in effects.into_iter().enumerate() {
+        app.world_mut().entity_mut(effect).observe(
+            move |event: On<StreamItemsDelivered>,
+                  states: Query<&Streamed>,
+                  outcomes: Query<&EffectOutcome>,
+                  mut deliveries: ResMut<Deliveries>,
+                  mut commands: Commands| {
+                assert_eq!(event.effect, effect);
+                let state = states.get(effect).unwrap();
+                assert!(state.events.len() + state.errors.len() >= event.start + event.items.len());
+                assert!(outcomes.get(effect).is_err(), "delivery precedes cleanup");
+                deliveries.targeted[index]
+                    .push((event.start, serde_json::to_value(&event.items).unwrap()));
+                if index == 0
+                    && event
+                        .items
+                        .iter()
+                        .any(|item| matches!(item, Ok(StreamEvent::Final(_))))
+                {
+                    commands.entity(effect).despawn();
+                }
+            },
+        );
+    }
+    rig_ecs::testing::tick_until(
+        &mut app,
+        "targeted cleanup and sibling completion",
+        |world| {
+            world.get_entity(effects[0]).is_err()
+                && world.get::<EffectOutcome>(effects[1]).is_some()
+        },
+    );
+    let deliveries = app.world().resource::<Deliveries>();
+    for (index, effect) in effects.into_iter().enumerate() {
+        let global_batches: Vec<_> = deliveries
+            .global
+            .iter()
+            .filter(|(entity, _, _)| *entity == effect)
+            .map(|(_, start, items)| (*start, items.clone()))
+            .collect();
+        assert_eq!(global_batches, deliveries.targeted[index]);
+        let mut items = Vec::new();
+        for (start, batch) in &deliveries.targeted[index] {
+            assert_eq!(*start, items.len());
+            items.extend(batch.as_array().unwrap().iter().cloned());
+        }
+        assert!(items[0].get("Err").is_some());
+        assert_eq!(items[1]["Ok"]["event"], "final");
+        // The kept sibling receives even errors after the terminal record.
+        if index == 1 {
+            assert_eq!(items.len(), 3);
+            assert!(items[2].get("Err").is_some());
+        }
+    }
+    assert!(
+        app.world()
+            .get::<rig_ecs::bus::Streaming>(effects[1])
+            .is_none()
+    );
+    assert!(app.world().get::<Streamed>(effects[1]).is_some());
+}
+
 #[cfg(feature = "replay")]
 #[test]
 fn policy_replay_preserves_notification_batches_and_scene_load_emits_none() {
@@ -136,7 +225,7 @@ fn policy_replay_preserves_notification_batches_and_scene_load_emits_none() {
         .world_mut()
         .spawn(PendingEffect::new("model", bus_support::streaming()))
         .id();
-    bus_support::tick_until(&mut replay, "replayed stream", |world| {
+    rig_ecs::testing::tick_until(&mut replay, "replayed stream", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     assert_eq!(*original.lock().unwrap(), *replayed.lock().unwrap());
@@ -190,7 +279,7 @@ fn terminal_delivery_remains_readable_when_an_observer_despawns_the_effect() {
         .world_mut()
         .spawn(PendingEffect::new("model", bus_support::streaming()))
         .id();
-    bus_support::tick_until(&mut app, "consumer removed effect", |world| {
+    rig_ecs::testing::tick_until(&mut app, "consumer removed effect", |world| {
         world.get_entity(effect).is_err()
     });
     assert_eq!(*traces[0].lock().unwrap(), *traces[1].lock().unwrap());
@@ -229,7 +318,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
         .spawn(PendingEffect::new("model", bus_support::streaming()))
         .id();
     sender.unbounded_send(text("early α")).unwrap();
-    bus_support::tick_until(&mut app, "initial prefix", |world| {
+    rig_ecs::testing::tick_until(&mut app, "initial prefix", |world| {
         world
             .get::<Streamed>(effect)
             .is_some_and(|s| s.text == "early α")
@@ -254,12 +343,12 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
         }
     });
     sender.unbounded_send(text(" β")).unwrap();
-    bus_support::tick_until(&mut app, "future delivery", |_| {
+    rig_ecs::testing::tick_until(&mut app, "future delivery", |_| {
         *shown.lock().unwrap() == "early α β"
     });
     enabled.store(false, std::sync::atomic::Ordering::SeqCst);
     sender.unbounded_send(text(" skipped")).unwrap();
-    bus_support::tick_until(&mut app, "disabled observer", |world| {
+    rig_ecs::testing::tick_until(&mut app, "disabled observer", |world| {
         world
             .get::<Streamed>(effect)
             .unwrap()
@@ -277,7 +366,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
         ))))
         .unwrap();
     drop(sender);
-    bus_support::tick_until(&mut app, "hydrated stream closed", |world| {
+    rig_ecs::testing::tick_until(&mut app, "hydrated stream closed", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     assert_eq!(*shown.lock().unwrap(), "early α β skipped ω");
@@ -314,14 +403,14 @@ fn burst_delivery_is_bounded_and_does_not_starve_another_effect() {
                 .id()
         })
         .collect();
-    bus_support::tick_until(&mut app, "both streams deliver", |world| {
+    rig_ecs::testing::tick_until(&mut app, "both streams deliver", |world| {
         effects.iter().all(|e| {
             world
                 .get::<Streamed>(*e)
                 .is_some_and(|s| !s.events.is_empty())
         })
     });
-    bus_support::tick_until(&mut app, "both streams end", |world| {
+    rig_ecs::testing::tick_until(&mut app, "both streams end", |world| {
         effects
             .iter()
             .all(|e| world.get::<EffectOutcome>(*e).is_some())
@@ -391,8 +480,16 @@ fn final_delivery_precedes_run_settlement_and_terminal_graph_cleanup() {
         },
     );
     let agent = run_support::spawn_agent(app.world_mut(), "test", model);
-    let run = app.world_mut().spawn_run(agent, &[], "hello", true, None);
-    run_support::tick_until(&mut app, "settled run removed", |world| {
+    let run = app.world_mut().spawn_run(
+        agent,
+        "hello",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: None,
+        },
+    );
+    rig_ecs::testing::tick_until(&mut app, "settled run removed", |world| {
         world.get_entity(run).is_err()
     });
     assert!(!flattened(&trace).is_empty());
@@ -410,7 +507,7 @@ fn cancellation_and_truncated_closure_do_not_fabricate_delivery_items() {
             .spawn(PendingEffect::new("model", bus_support::streaming()))
             .id();
         sender.unbounded_send(text("partial")).unwrap();
-        bus_support::tick_until(&mut app, "prefix delivered", |_| {
+        rig_ecs::testing::tick_until(&mut app, "prefix delivered", |_| {
             flattened(&trace).len() == 1
         });
         if cancel {
@@ -421,7 +518,7 @@ fn cancellation_and_truncated_closure_do_not_fabricate_delivery_items() {
             app.update();
             assert!(app.world().get_entity(effect).is_err());
         } else {
-            bus_support::tick_until(&mut app, "truncated closure", |world| {
+            rig_ecs::testing::tick_until(&mut app, "truncated closure", |world| {
                 world.get::<EffectOutcome>(effect).is_some()
             });
             assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_err());
@@ -451,7 +548,7 @@ fn empty_final_and_unary_stream_fold_have_distinct_delivery_contracts() {
         let terminal = Ok(StreamEvent::Final(StreamFinal::new("mock", Usage::new())));
         sender.unbounded_send(terminal.clone()).unwrap();
         drop(sender);
-        bus_support::tick_until(&mut app, "empty stream closed", |world| {
+        rig_ecs::testing::tick_until(&mut app, "empty stream closed", |world| {
             world.get::<EffectOutcome>(effect).is_some()
         });
         assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_ok());
@@ -531,8 +628,16 @@ fn retried_streams_have_distinct_delivery_identities_and_identical_requests() {
             }
         }
     });
-    let run = app.world_mut().spawn_run(agent, &[], "hello", true, None);
-    run_support::tick_until(&mut app, "retry completed", |world| {
+    let run = app.world_mut().spawn_run(
+        agent,
+        "hello",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: None,
+        },
+    );
+    rig_ecs::testing::tick_until(&mut app, "retry completed", |world| {
         world.get::<Settled>(run).is_some()
     });
     assert_eq!(app.world().get::<RunResult>(run).unwrap().0, "done");
@@ -641,7 +746,7 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
         })
         .collect();
     let original = consumers(&mut live, effects[0], effects[1]);
-    bus_support::tick_until(&mut live, "both workers installed", |world| {
+    rig_ecs::testing::tick_until(&mut live, "both workers installed", |world| {
         effects
             .iter()
             .all(|entity| world.get::<Streaming>(*entity).is_some())
@@ -677,7 +782,7 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
         })
         .collect();
     let replayed = consumers(&mut replay, effects[0], effects[1]);
-    bus_support::tick_until(&mut replay, "replayed accepted deliveries", |_| {
+    rig_ecs::testing::tick_until(&mut replay, "replayed accepted deliveries", |_| {
         replayed[0].lock().unwrap().len() == 2
     });
     assert!(replay.world().get_entity(effects[1]).is_err());

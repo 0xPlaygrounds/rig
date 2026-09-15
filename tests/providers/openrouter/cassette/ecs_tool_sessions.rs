@@ -235,10 +235,8 @@ async fn nested_structured_output_schema_roundtrip() -> Result<()> {
             ));
             let run = agent.app.world_mut().spawn_run(
                 agent.agent,
-                &[],
                 "Create the OpenRouter cassette release validation plan.",
-                false,
-                None,
+                Default::default(),
             );
             agent
                 .app

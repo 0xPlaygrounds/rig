@@ -17,12 +17,12 @@ use rig_core::{
 use super::{
     effect::{
         EffectOutcome, Executions, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
-        Reserved, Scope, Seq, Serving, Streamed, ToolInputs,
+        Reserved, Seq, Serving, Streamed, ToolInputs,
     },
     handlers::{Bound, HandlerTable, Served},
     plugin::{Intake, Policy, Progress},
     record::Recording,
-    witness::{DispatchWitness, Refused, bus_emitter},
+    witness::{DispatchWitness, Refused, WALK_LIMIT, bus_emitter},
 };
 use rig_core::observe::{Action, Reason, Stage};
 
@@ -57,7 +57,7 @@ pub type CandidateView = (
 ///   bound to the key;
 /// - otherwise issues the id ([`Reserved`] or minted), opens the record
 ///   (`parent` from the nearest issued ancestor, `scope` from the nearest
-///   [`Scope`]; a tool call's [`ToolInputs`] and a [`Publishing`] slot on
+///   [`super::Scope`]; a tool call's [`ToolInputs`] and a [`Publishing`] slot on
 ///   dispatch context), and starts one initial task in [`Executions`], with
 ///   a [`Serving`] marker and an empty [`Streamed`] for a streaming consumer;
 ///   for a handler that is a system, puts
@@ -76,8 +76,6 @@ pub fn dispatch(
     pending: Query<CandidateView, Candidate>,
     in_flight: Query<&InFlight>,
     parents: Query<&ChildOf>,
-    issued: Query<&Issued>,
-    scopes: Query<&Scope>,
     recording: Option<Res<Recording>>,
     witnessing: DispatchWitness,
     mut ids: ResMut<IdCounter>,
@@ -109,8 +107,7 @@ pub fn dispatch(
         if serial && busy.contains(key) {
             if ancestor_in_flight_on(entity, key, &parents, &in_flight) {
                 if let Some(witness) = &witness {
-                    let mut subject = subjects.of(entity);
-                    subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                    let subject = subjects.of_with_issued(entity, |e| issued_now.get(&e).copied());
                     witness.emit(
                         subject,
                         Stage::Dispatch,
@@ -133,8 +130,7 @@ pub fn dispatch(
             .and_then(|(handler, _)| table.served(handler));
         let Some(served) = served else {
             if let Some(witness) = &witness {
-                let mut subject = subjects.of(entity);
-                subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                let subject = subjects.of_with_issued(entity, |e| issued_now.get(&e).copied());
                 witness.emit(
                     subject,
                     Stage::Dispatch,
@@ -158,8 +154,7 @@ pub fn dispatch(
         let Some(next_id) = raw_id.checked_add(1) else {
             let report = ErrorReport::new(ErrorKind::Request, "effect ID allocator exhausted");
             if let Some(witness) = &witness {
-                let mut subject = subjects.of(entity);
-                subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
+                let subject = subjects.of_with_issued(entity, |e| issued_now.get(&e).copied());
                 witness.emit(
                     subject,
                     Stage::Dispatch,
@@ -177,16 +172,14 @@ pub fn dispatch(
         };
         ids.0 = ids.0.max(next_id);
         let id = EffectId::from_raw(raw_id);
-        let origin = Origin {
-            parent: nearest_issued(entity, &parents, &issued, &issued_now),
-            scope: nearest_scope(entity, &parents, &scopes)
-                .map(|scope| std::sync::Arc::from(scope.as_str())),
-        };
         // Parent Issued writes can still be deferred in this dispatch pass.
         // Resolve once from issued_now for every observer/context surface.
-        let mut subject = subjects.of(entity);
+        let mut subject = subjects.of_with_issued(entity, |e| issued_now.get(&e).copied());
         subject.effect = Some(id);
-        subject.parent = origin.parent;
+        let origin = Origin {
+            parent: subject.parent,
+            scope: subject.scope.as_deref().map(Arc::from),
+        };
         let adapter = operation.map(|operation| {
             operation
                 .context
@@ -277,55 +270,15 @@ fn ancestor_in_flight_on(
     parents: &Query<&ChildOf>,
     in_flight: &Query<&InFlight>,
 ) -> bool {
-    let mut current = entity;
-    while let Ok(parent) = parents.get(current) {
-        current = parent.parent();
-        if in_flight
-            .get(current)
-            .is_ok_and(|flight| &flight.key == key)
-        {
-            return true;
-        }
-    }
-    false
-}
-
-/// The nearest issued ancestor's id: the record's `parent`.
-fn nearest_issued(
-    entity: Entity,
-    parents: &Query<&ChildOf>,
-    issued: &Query<&Issued>,
-    issued_now: &HashMap<Entity, EffectId>,
-) -> Option<EffectId> {
-    let mut current = entity;
-    while let Ok(parent) = parents.get(current) {
-        current = parent.parent();
-        if let Some(id) = issued_now.get(&current) {
-            return Some(*id);
-        }
-        if let Ok(Issued(id)) = issued.get(current) {
-            return Some(*id);
-        }
-    }
-    None
-}
-
-/// The nearest [`Scope`], the entity's own first: the record's `scope`.
-fn nearest_scope(
-    entity: Entity,
-    parents: &Query<&ChildOf>,
-    scopes: &Query<&Scope>,
-) -> Option<String> {
-    let mut current = entity;
-    loop {
-        if let Ok(Scope(scope)) = scopes.get(current) {
-            return Some(scope.clone());
-        }
-        match parents.get(current) {
-            Ok(parent) => current = parent.parent(),
-            Err(_) => return None,
-        }
-    }
+    parents
+        .iter_ancestors(entity)
+        .take(WALK_LIMIT)
+        .take_while(|ancestor| *ancestor != entity)
+        .any(|ancestor| {
+            in_flight
+                .get(ancestor)
+                .is_ok_and(|flight| &flight.key == key)
+        })
 }
 
 /// The report for a dispatch to a key with no bound handler.

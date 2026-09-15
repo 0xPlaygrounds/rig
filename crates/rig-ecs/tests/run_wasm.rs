@@ -1,10 +1,10 @@
 //! The agent on `wasm32-unknown-unknown`, executed: two goldens of the
 //! completion-only corpus — the smoke and the two-record text reprompt —
-//! replayed through the run graph on the browser target, driven by hand
-//! as `bus_wasm` is. Every other wasm claim about the agent modules is
-//! `cargo check`.
+//! replayed through the run graph on the wasm target. The optional app
+//! plugin drives each update; the host yields to the web executor between
+//! updates rather than using a native blocking tick loop.
 
-#![cfg(target_arch = "wasm32")]
+#![cfg(all(target_arch = "wasm32", feature = "replay"))]
 #![allow(
     clippy::expect_used,
     clippy::unwrap_used,
@@ -14,14 +14,15 @@
 
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
-use rig_core::{effect::HandlerKey, serve::ServingPolicy};
+use rig_core::effect::HandlerKey;
 use rig_ecs::{
+    RigPlugin,
     agent::{
         AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
         OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{Bus, EffectLogResource, Handlers, IdCounter, run_to_quiescence},
-    systems::{RunCommands, install_agent},
+    bus::{Bus, EffectLogResource, Handlers, IdCounter},
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use wasm_bindgen_test::wasm_bindgen_test;
@@ -35,10 +36,9 @@ fn app(log: &EffectLog) -> (App, Entity) {
     bevy_tasks::ComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     bevy_tasks::AsyncComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    install_agent(app.world_mut());
+    app.add_plugins(RigPlugin {
+        bus: Bus::default().ambiguity_detection(LogLevel::Error),
+    });
     app.finish();
     app.cleanup();
     app.world_mut().resource_mut::<IdCounter>().0 = 1;
@@ -59,7 +59,7 @@ fn app(log: &EffectLog) -> (App, Entity) {
 }
 
 async fn tick(app: &mut App) {
-    run_to_quiescence(app.world_mut());
+    app.update();
     rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
 }
 
@@ -117,12 +117,7 @@ async fn the_smoke_golden_replays_through_the_graph_on_wasm() {
             UsesModel(model),
         ))
         .id();
-    let run = app.world_mut().spawn_run(agent,
-        &[],
-        "In one or two sentences, explain what Rust programming language is and why memory safety matters.",
-        false,
-        Some(1),
-    );
+    let run = app.world_mut().spawn_run(agent, "In one or two sentences, explain what Rust programming language is and why memory safety matters.", rig_ecs::systems::RunConfig { history: &[], streamed: false, max_turns: Some(1) });
     let answer = settle(&mut app, run).await;
     assert!(answer.starts_with("Rust is a systems programming language"));
     same_records(&app.world().resource::<EffectLogResource>().log(), &log);
@@ -163,10 +158,12 @@ async fn the_text_reprompt_golden_replays_through_the_graph_on_wasm() {
         .id();
     let run = app.world_mut().spawn_run(
         agent,
-        &[],
         "Return a concise event object for a local Rust meetup in Seattle.",
-        false,
-        Some(3),
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(3),
+        },
     );
     let answer = settle(&mut app, run).await;
     assert!(answer.contains("Seattle Rust Meetup"));

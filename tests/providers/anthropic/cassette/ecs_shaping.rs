@@ -95,10 +95,15 @@ async fn tool_choice_none_on_committed_output_effect_log_is_the_golden_fixture()
                 .entity_mut(ecs.agent)
                 .insert(PolicyVersion("ecs-shaping/v1:none_second".into()));
 
-            let run =
-                ecs.app
-                    .world_mut()
-                    .spawn_run(ecs.agent, &[], SUM_EVENT_PROMPT, false, Some(3));
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                SUM_EVENT_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &[],
+                    streamed: false,
+                    max_turns: Some(3),
+                },
+            );
             let outcome = ecs.wait_for_outcome(run).await;
             let log = ecs.effect_log();
             // The patched turn answers in text, the run's output validation

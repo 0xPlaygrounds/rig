@@ -249,7 +249,7 @@ fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
     let agent = world
         .spawn((Owner("owner".into()), UsesModel(model), MaxTurns(1)))
         .id();
-    let run = world.spawn_run(agent, &[], "hello", false, None);
+    let run = world.spawn_run(agent, "hello", Default::default());
     world.run_schedule(RigSchedule);
     let utterance = world
         .query_filtered::<(Entity, &ChildOf), With<Utterance>>()

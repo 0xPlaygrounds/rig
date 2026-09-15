@@ -7,7 +7,7 @@ use serde::{
 };
 use serde_json::{Map, Number, Value};
 
-use super::Budget;
+use super::{Budget, SceneWireError};
 
 pub(super) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Value, D::Error> {
     Seed {
@@ -18,8 +18,8 @@ pub(super) fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<
 }
 
 /// Match the reader's accounting on the transformed envelope without copying it.
-pub(super) fn validate(value: &Value) -> Result<(), String> {
-    fn visit(value: &Value, budget: &mut Budget, depth: usize) -> Result<(), String> {
+pub(super) fn validate(value: &Value) -> Result<(), SceneWireError> {
+    fn visit(value: &Value, budget: &mut Budget, depth: usize) -> Result<(), SceneWireError> {
         budget.take(8, depth)?;
         match value {
             Value::String(text) => budget.take(text.len(), depth)?,
@@ -74,7 +74,7 @@ impl<'de> Visitor<'de> for Seed<'_> {
     fn visit_f64<E: de::Error>(self, value: f64) -> Result<Value, E> {
         Number::from_f64(value)
             .map(Value::Number)
-            .ok_or_else(|| E::custom("non-finite scene number"))
+            .ok_or_else(|| E::custom(SceneWireError::Content("non-finite scene number".into())))
     }
     fn visit_unit<E: de::Error>(self) -> Result<Value, E> {
         Ok(Value::Null)
@@ -112,7 +112,9 @@ impl<'de> Visitor<'de> for Seed<'_> {
                 .take(key.len(), self.depth)
                 .map_err(de::Error::custom)?;
             if values.contains_key(&key) {
-                return Err(de::Error::custom("duplicate scene object key"));
+                return Err(de::Error::custom(SceneWireError::Content(
+                    "duplicate scene object key".into(),
+                )));
             }
             let value = map.next_value_seed(Seed {
                 budget: self.budget,

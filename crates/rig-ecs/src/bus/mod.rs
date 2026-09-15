@@ -117,8 +117,8 @@ pub mod witness;
 pub mod replay;
 
 pub use binding::{
-    CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport, Materializer,
-    ProviderBinding, ProviderKind, Secret, materialize, materialize_bindings,
+    CredentialError, CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport,
+    Materializer, ProviderBinding, ProviderKind, Secret, materialize, materialize_bindings,
 };
 pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};

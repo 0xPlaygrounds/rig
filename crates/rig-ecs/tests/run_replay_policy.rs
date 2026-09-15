@@ -14,7 +14,7 @@ use rig_ecs::{
     systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 fn setup() -> (bevy_app::App, Entity, Entity, EffectLog) {
     let mut app = app();
@@ -24,7 +24,7 @@ fn setup() -> (bevy_app::App, Entity, Entity, EffectLog) {
     app.world_mut()
         .entity_mut(agent)
         .insert(PolicyVersion("test/v1".into()));
-    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, "go", Default::default());
     let recorder = EffectLogRecorder::new();
     EffectLogResource::install(app.world_mut(), recorder.clone());
     stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");

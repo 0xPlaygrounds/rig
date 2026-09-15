@@ -5,8 +5,11 @@ use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
 
 /// Newly collected items from one streaming effect, in their delivery order.
 ///
-/// Observe with `On<StreamItemsDelivered>`. Each observer sees the same owned
-/// batch after [`super::Streamed`] has been updated and before the collector
+/// Observe globally with `On<StreamItemsDelivered>`, or attach an observer to
+/// one effect with `world.entity_mut(effect).observe(...)`. Global observers
+/// still see every effect; delivery does not propagate to ancestors. Each
+/// observer sees the same owned batch after [`super::Streamed`] has been updated
+/// and before the collector
 /// publishes [`super::EffectOutcome`]. Errors retain their positions among
 /// events, including items accepted after the first terminal stream record.
 /// Stream closure and run settlement are separate boundaries, not extra items.
@@ -51,9 +54,10 @@ use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
 /// // Install the bus and execute streams in this world. On restore, hydrate
 /// // TextByEffect from durable state before advancing; discard it on cleanup.
 /// ```
-#[derive(Event, Debug)]
+#[derive(EntityEvent, Debug)]
 pub struct StreamItemsDelivered {
     /// Effect entity that accepted these items; it may since have been removed.
+    #[event_target]
     pub effect: Entity,
     /// Issued effect identity. Retries correlate through their distinct effects.
     pub id: EffectId,

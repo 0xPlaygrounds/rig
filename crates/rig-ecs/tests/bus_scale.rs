@@ -26,12 +26,13 @@ use std::{
 };
 
 use bevy_ecs::prelude::*;
-use bus_support::*;
 use rig_core::serve::ServingPolicy;
-use rig_ecs::bus::{
-    BusSet, EffectLogResource, EffectOutcome, InFlight, PendingEffect, Progress, RigSchedule, Seq,
-};
+#[cfg(feature = "replay")]
+use rig_ecs::bus::EffectLogResource;
+use rig_ecs::bus::{BusSet, EffectOutcome, InFlight, PendingEffect, Progress, RigSchedule, Seq};
+#[cfg(feature = "replay")]
 use rig_effect_log::EffectLogRecorder;
+use {bus_support::*, rig_ecs::testing::*};
 
 #[derive(Resource, Default)]
 struct Spawned(std::sync::Mutex<Vec<Entity>>);
@@ -70,6 +71,7 @@ fn a_thousand_effects_from_four_parallel_spawners_resolve_in_seq_order() {
         command_capacity: 1_000,
         ..ServingPolicy::default()
     });
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     register(&mut app, "model", MockModel::new(&counters));
     app.init_resource::<Spawned>();
@@ -103,12 +105,15 @@ fn a_thousand_effects_from_four_parallel_spawners_resolve_in_seq_order() {
     rows.sort_by_key(|(seq, _)| *seq);
     assert_eq!(rows.len(), 1_000);
     assert!(rows.windows(2).all(|w| w[0].1 < w[1].1), "ids follow seqs");
-    let log = world.resource::<EffectLogResource>().log();
-    assert_eq!(log.records.len(), 1_000);
-    assert!(
-        log.records.windows(2).all(|w| w[0].id < w[1].id),
-        "the log is in dispatch order"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = world.resource::<EffectLogResource>().log();
+        assert_eq!(log.records.len(), 1_000);
+        assert!(
+            log.records.windows(2).all(|w| w[0].id < w[1].id),
+            "the log is in dispatch order"
+        );
+    }
 }
 
 #[test]

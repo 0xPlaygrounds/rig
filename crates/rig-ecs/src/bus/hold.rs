@@ -32,8 +32,11 @@ pub struct HoldTransition {
     pub acquired: bool,
 }
 
-// Component observers can synchronously call the ownership API again. Queue
-// facts before mutation and publish after the outer mutation, preserving order.
+// Component observers can synchronously reenter acquire/release. Facts enter
+// FIFO before mutation, but publish only at depth zero, after all nested writes.
+// `publishing` keeps a fact observer's reentrant mutation behind queued facts
+// instead of recursively overtaking them. Bevy's deferred command queue cannot
+// supply this synchronous return/visibility contract.
 #[derive(Resource, Default)]
 struct Transitions {
     depth: usize,

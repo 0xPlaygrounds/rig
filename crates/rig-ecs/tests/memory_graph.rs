@@ -24,15 +24,19 @@ use rig_core::serve::Dispatch;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
+#[cfg(feature = "replay")]
+use rig_core::effect::EffectFamily;
 use rig_core::{
     effect::{
-        EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
-        MemoryOutcome, Outcome, RetrieveQuery, RetrievedDocuments,
+        EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp, MemoryOutcome,
+        Outcome, RetrieveQuery, RetrievedDocuments,
     },
     error::{ErrorKind, ErrorReport},
     message::{AssistantContent, Message},
     serve::Serve,
 };
+#[cfg(feature = "replay")]
+use rig_ecs::replay::required_row;
 use rig_ecs::{
     agent::{
         Context, Conversation, DocumentId, DocumentText, Failed, Failure, Grant, MessageParts,
@@ -40,10 +44,9 @@ use rig_ecs::{
         Settled, Utterance,
     },
     bus::{EffectOutcome, PendingEffect},
-    replay::required_row,
     systems::RunCommands,
 };
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const MEMORY: &str = "t/memory";
@@ -228,7 +231,7 @@ fn memory_loads_before_the_first_turn_and_appends_at_the_settle() {
         .insert((Remembers(memory), Conversation("c1".to_owned())));
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "What is my name?", false, None);
+        .spawn_run(agent, "What is my name?", Default::default());
     tick_until(&mut app, "the run", |world| {
         ended(world, run) && quiet(world)
     });
@@ -260,6 +263,7 @@ fn memory_loads_before_the_first_turn_and_appends_at_the_settle() {
     assert_eq!(&*ops.lock().unwrap(), &["load:c1", "append:c1:2"]);
     assert_eq!(messages.lock().unwrap().len(), 4);
     // The row names the memory.
+    #[cfg(feature = "replay")]
     assert_eq!(
         required_row(app.world_mut(), agent).get(&HandlerKey::from(MEMORY)),
         Some(&EffectFamily::Memory)
@@ -277,9 +281,15 @@ fn memory_is_bypassed_by_history() {
         .entity_mut(agent)
         .insert((Remembers(memory), Conversation("c1".to_owned())));
     let history = vec![MessageParts::from_message(&Message::user("earlier")).unwrap()];
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &history, "now", false, None);
+    let run = app.world_mut().spawn_run(
+        agent,
+        "now",
+        rig_ecs::systems::RunConfig {
+            history: &history,
+            streamed: false,
+            max_turns: None,
+        },
+    );
     tick_until(&mut app, "the run", |world| {
         ended(world, run) && quiet(world)
     });
@@ -288,6 +298,7 @@ fn memory_is_bypassed_by_history() {
         texts(&requests.lock().unwrap()[0]),
         vec!["system:You are terse.", "user:earlier", "user:now"]
     );
+    #[cfg(feature = "replay")]
     assert_eq!(
         required_row(app.world_mut(), agent).get(&HandlerKey::from(MEMORY)),
         Some(&EffectFamily::Memory)
@@ -304,7 +315,7 @@ fn memory_a_failed_load_fails_the_run() {
     app.world_mut()
         .entity_mut(agent)
         .insert((Remembers(memory), Conversation("c1".to_owned())));
-    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, "go", Default::default());
     tick_until(&mut app, "the run", |world| {
         ended(world, run) && quiet(world)
     });
@@ -326,11 +337,11 @@ fn memory_a_second_run_loads_what_the_first_appended() {
     app.world_mut()
         .entity_mut(agent)
         .insert((Remembers(memory), Conversation("c1".to_owned())));
-    let first = app.world_mut().spawn_run(agent, &[], "one", false, None);
+    let first = app.world_mut().spawn_run(agent, "one", Default::default());
     tick_until(&mut app, "the first run", |world| {
         ended(world, first) && quiet(world)
     });
-    let second = app.world_mut().spawn_run(agent, &[], "two", false, None);
+    let second = app.world_mut().spawn_run(agent, "two", Default::default());
     tick_until(&mut app, "the second run", |world| {
         ended(world, second) && quiet(world)
     });
@@ -424,7 +435,7 @@ fn memory_retrieval_attaches_documents_and_tools() {
         Order(4),
         ChildOf(agent),
     ));
-    let run = world.spawn_run(agent, &[], "subtract one from three", false, None);
+    let run = world.spawn_run(agent, "subtract one from three", Default::default());
     tick_until(&mut app, "the run", |world| {
         ended(world, run) && quiet(world)
     });
@@ -480,16 +491,19 @@ fn memory_retrieval_attaches_documents_and_tools() {
         .collect();
     assert_eq!(ids.len(), 3, "{ids:?}");
     // The row: the indexes as `retrieve`, the retrievable tool as a tool.
-    let row = required_row(app.world_mut(), agent);
-    assert_eq!(
-        row.get(&HandlerKey::from(INDEX)),
-        Some(&EffectFamily::Retrieve)
-    );
-    assert_eq!(
-        row.get(&HandlerKey::from(TOOLS)),
-        Some(&EffectFamily::Retrieve)
-    );
-    assert_eq!(row.get(&HandlerKey::from(SUB)), Some(&EffectFamily::Tool));
+    #[cfg(feature = "replay")]
+    {
+        let row = required_row(app.world_mut(), agent);
+        assert_eq!(
+            row.get(&HandlerKey::from(INDEX)),
+            Some(&EffectFamily::Retrieve)
+        );
+        assert_eq!(
+            row.get(&HandlerKey::from(TOOLS)),
+            Some(&EffectFamily::Retrieve)
+        );
+        assert_eq!(row.get(&HandlerKey::from(SUB)), Some(&EffectFamily::Tool));
+    }
 }
 
 /// A tool that subtracts `y` from `x`.
@@ -577,7 +591,7 @@ fn check_static_retrieval_fallback(ordered: bool) {
     if ordered {
         link.insert(Order(3));
     }
-    let run = world.spawn_run(agent, &[], "hello", false, None);
+    let run = world.spawn_run(agent, "hello", Default::default());
     tick_until(
         &mut app,
         "run without an available retrieval handler",

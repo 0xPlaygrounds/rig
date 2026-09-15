@@ -10,11 +10,11 @@ use rig_ecs::{
     agent::{Failed, Failure, Grant, Order, Settled, ToolAccess, Turn},
     systems::RunCommands,
 };
-use run_support::*;
 use std::{
     collections::{BTreeMap, BTreeSet},
     sync::atomic::Ordering,
 };
+use {rig_ecs::testing::*, run_support::*};
 
 #[test]
 fn empty_permission_set_denies_an_advertised_executable_tool() {
@@ -34,7 +34,15 @@ fn empty_permission_set_denies_an_advertised_executable_tool() {
         allowed: Some(BTreeSet::new()),
         ..Default::default()
     });
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, Some(2));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "add",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(2),
+        },
+    );
     tick_until(&mut app, "denied call fails", |world| {
         world.get::<Failed>(run).is_some()
     });
@@ -86,7 +94,15 @@ fn explicit_execution_binding_can_serve_an_unadvertised_tool() {
         )])),
         allowed: None,
     });
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, Some(2));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "add",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(2),
+        },
+    );
     tick_until(&mut app, "hidden tool completes", |world| {
         world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
     });
@@ -101,6 +117,7 @@ fn explicit_execution_binding_can_serve_an_unadvertised_tool() {
     assert!(requests.iter().all(|request| request.tools.is_empty()));
 }
 
+#[cfg(feature = "replay")]
 #[test]
 fn permission_and_binding_changes_affect_replay_identity_and_required_row() {
     use rig_ecs::replay::{required_row, spec_hash};
@@ -108,9 +125,15 @@ fn permission_and_binding_changes_affect_replay_identity_and_required_row() {
     let (model, _) = Capturing::new("model", "ok");
     let model = register(&mut app, "model", model);
     let agent = spawn_agent(app.world_mut(), "test", model);
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "hello", false, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "hello",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     let initial = spec_hash(app.world_mut(), run).expect("policy hash");
     app.world_mut().entity_mut(run).insert(ToolAccess {
         allowed: Some(BTreeSet::new()),
@@ -164,9 +187,15 @@ fn unadvertised_execution_binding_cannot_impersonate_output_tool() {
             allowed: None,
         },
     ));
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "extract", false, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "extract",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     tick_until(&mut app, "collision rejected", |world| {
         world.get::<Failed>(run).is_some()
     });
@@ -181,17 +210,25 @@ fn unadvertised_execution_binding_cannot_impersonate_output_tool() {
 
 #[test]
 fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
+    #[cfg(feature = "replay")]
+    use rig_ecs::agent::Run;
     use rig_ecs::agent::{
-        Outputs, Run,
+        Outputs,
         scene::{load_world, save_world},
     };
     let mut first = app();
     let (model, _) = Capturing::new("model", "unused");
     let model = register(&mut first, "model", model);
     let agent = spawn_agent(first.world_mut(), "test", model);
-    let run = first
-        .world_mut()
-        .spawn_run(agent, &[], "hello", true, Some(1));
+    let run = first.world_mut().spawn_run(
+        agent,
+        "hello",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: Some(1),
+        },
+    );
     let access = ToolAccess {
         executable: Some(BTreeMap::from([(
             "old".into(),
@@ -214,6 +251,7 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
         allowed: Some(BTreeSet::new()),
         ..Default::default()
     });
+    #[cfg(feature = "replay")]
     let row = rig_ecs::replay::required_row(first.world_mut(), run);
     let scene = save_world(first.world_mut()).expect("save graph");
     let scene =
@@ -223,6 +261,7 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     let (model, _) = Capturing::new("model", "unused");
     register(&mut restored, "model", model);
     load_world(&scene, restored.world_mut()).expect("restore graph");
+    #[cfg(feature = "replay")]
     let run = restored
         .world_mut()
         .query_filtered::<Entity, With<Run>>()
@@ -236,21 +275,24 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     assert_eq!(actual, &access);
     assert_eq!(outputs.stream_validated, 4);
     assert!(outputs.usage_recorded);
-    assert_eq!(
-        rig_ecs::replay::required_row(restored.world_mut(), run),
-        row
-    );
-    let mut expected = rig_core::effect::EffectRow::new();
-    expected.insert(
-        HandlerKey::from("model"),
-        rig_core::effect::EffectFamily::Completion,
-    );
-    expected.insert(
-        HandlerKey::from("old-handler"),
-        rig_core::effect::EffectFamily::Tool,
-    );
-    assert_eq!(
-        row, expected,
-        "new policy must not drop an in-flight snapshot dependency"
-    );
+    #[cfg(feature = "replay")]
+    {
+        assert_eq!(
+            rig_ecs::replay::required_row(restored.world_mut(), run),
+            row
+        );
+        let mut expected = rig_core::effect::EffectRow::new();
+        expected.insert(
+            HandlerKey::from("model"),
+            rig_core::effect::EffectFamily::Completion,
+        );
+        expected.insert(
+            HandlerKey::from("old-handler"),
+            rig_core::effect::EffectFamily::Tool,
+        );
+        assert_eq!(
+            row, expected,
+            "new policy must not drop an in-flight snapshot dependency"
+        );
+    }
 }

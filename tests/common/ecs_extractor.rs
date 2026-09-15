@@ -87,11 +87,15 @@ impl<T: JsonSchema + DeserializeOwned> EcsExtractor<T> {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let run =
-            self.ecs
-                .app
-                .world_mut()
-                .spawn_run(self.ecs.agent, &history, prompt, false, Some(1));
+        let run = self.ecs.app.world_mut().spawn_run(
+            self.ecs.agent,
+            prompt,
+            rig_ecs::systems::RunConfig {
+                history: &history,
+                streamed: false,
+                max_turns: Some(1),
+            },
+        );
         let text = self
             .ecs
             .wait_for_outcome(run)

@@ -168,7 +168,7 @@ fn whole_scene_pools_effect_copies_and_escapes_application_json() {
             ..Default::default()
         }),
     ]);
-    world.spawn_run(agent, &[], prompt, false, None);
+    world.spawn_run(agent, prompt, Default::default());
     world.run_schedule(RigSchedule);
     let mut scene = save_world(&mut world).unwrap();
     assert_eq!(

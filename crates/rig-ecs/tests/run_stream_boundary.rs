@@ -21,8 +21,8 @@ use rig_ecs::{
     bus::{EffectOutcome, Streamed},
     systems::RunCommands,
 };
-use run_support::*;
 use std::sync::{Arc, Mutex};
+use {rig_ecs::testing::*, run_support::*};
 
 use bevy_ecs::prelude::*;
 use rig_core::{
@@ -137,7 +137,15 @@ fn exhausted_early_retry_fails_without_waiting_for_eof() {
         NameThenGate(Arc::new(Mutex::new(Some(gate)))),
     );
     let agent = spawn_agent(app.world_mut(), "boundary", model);
-    let run = app.world_mut().spawn_run(agent, &[], "add", true, Some(2));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "add",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: Some(2),
+        },
+    );
     tick_until(&mut app, "exhausted retry fails before EOF", |world| {
         world.get::<Failed>(run).is_some()
     });
@@ -176,7 +184,15 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
     let agent = spawn_agent(app.world_mut(), "boundary", model);
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = app.world_mut().spawn_run(agent, &[], "add", true, Some(2));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "add",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: Some(2),
+        },
+    );
     tick_until(&mut app, "skip before EOF", |world| {
         world.resource::<RepairCount>().0 == 1
     });
@@ -275,7 +291,15 @@ fn early_repair_survives_raw_block_completion_and_provider_identity() {
     let agent = spawn_agent(app.world_mut(), "boundary", model);
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = app.world_mut().spawn_run(agent, &[], "add", true, Some(2));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "add",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: Some(2),
+        },
+    );
     tick_until(&mut app, "repair before EOF", |world| {
         world.resource::<RepairCount>().0 == 1
     });
@@ -397,9 +421,15 @@ fn invalid_tool_name_is_actionable_before_completion_outcome() {
         NameThenGate(Arc::new(Mutex::new(Some(gate)))),
     );
     let agent = spawn_agent(app.world_mut(), "boundary", model);
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "call an unavailable tool", true, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "call an unavailable tool",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: Some(1),
+        },
+    );
     tick_until(
         &mut app,
         "tool name delivered while producer is gated",

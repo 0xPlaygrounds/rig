@@ -17,16 +17,20 @@ default = ["replay"]
 # `Replay` and the `EffectLog` resource: record a world's effects into a
 # log and replay a log through a world.
 replay = ["dep:rig-effect-log"]
+# Thin Bevy App integration: RigPlugin installs the runtime and one Update driver.
+app = ["dep:bevy_app"]
+# Reusable fake handlers; no app or rig-core test-utils dependency.
+# Native tick_until additionally requires `app`; wasm hosts yield between updates.
+testing = []
 # The inspector's view: `Reflect` on every component (remote wrappers for
-# the rig-core types they hold), `reflect::ReflectPlugin` registering
+# the rig-core types they hold), `reflect::install_reflect` registering
 # them, `reflect::ReflectedScene` — the graph as reflected data beside the
 # serde scene. rig-core takes no Bevy dependency: the wrappers live here.
-reflect = ["dep:bevy_reflect", "bevy_ecs/bevy_reflect"]
+reflect = ["dep:bevy_reflect", "bevy_ecs/bevy_reflect", "bevy_app?/bevy_reflect"]
 # Prompts and tool definitions as assets: `assets::{PromptAsset, ToolDefinitions}`
 # with `bevy_asset` loaders, and the systems that turn them into a
-# `Preamble` and `Grant`s. The one feature that needs `bevy_app`:
-# `bevy_asset` is built on it.
-assets = ["dep:bevy_asset", "dep:bevy_app", "dep:bevy_reflect"]
+# `Preamble` and `Grant`s. Loaders need Bevy App but do not install RigPlugin.
+assets = ["dep:bevy_asset", "app", "dep:bevy_reflect"]
 
 [dependencies]
 base64 = { workspace = true }
@@ -57,8 +61,11 @@ bevy_app = { workspace = true, optional = true, features = ["web"] }
 
 [dev-dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
-# Tests and examples drive the bus from an `App`'s `Update`; the library
-# does not.
+rig-effect-log = { path = "../rig-effect-log", version = "0.42.0" }
+# Exercise the same optional public support used by downstream normal dependencies,
+# including when the non-replay aggregates run with --no-default-features.
+rig-ecs = { path = ".", default-features = false, features = ["app", "testing"] }
+# Bus-only tests still drive the bus directly from Update.
 bevy_app = { workspace = true }
 
 # The module executed on `wasm32-unknown-unknown` (`tests/bus_wasm.rs`),
@@ -81,9 +88,13 @@ required-features = ["reflect"]
 name = "assets_prompt"
 required-features = ["assets"]
 
+[[test]]
+name = "native_app"
+required-features = ["app", "testing"]
+
 [[example]]
 name = "prompt_from_assets"
-required-features = ["assets"]
+required-features = ["assets", "testing"]
 
 [[test]]
 name = "bus"
@@ -102,3 +113,20 @@ name = "run_wasm"
 [[bench]]
 name = "run_assembly_cost"
 harness = false
+required-features = ["app", "testing"]
+
+[[example]]
+name = "agent_with_tools"
+required-features = ["app", "testing"]
+
+[[example]]
+name = "best_of_n"
+required-features = ["app", "testing"]
+
+[[example]]
+name = "human_in_the_loop"
+required-features = ["app", "testing"]
+
+[[example]]
+name = "streaming_ui"
+required-features = ["app", "testing"]

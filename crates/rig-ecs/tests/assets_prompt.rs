@@ -24,16 +24,16 @@ use bevy_asset::{
     },
 };
 use bevy_ecs::{prelude::*, schedule::LogLevel};
-use rig_core::serve::ServingPolicy;
 use rig_ecs::{
+    RigPlugin,
     agent::{Grant, Grants, Order, Preamble, Settled},
     assets::{
         Applied, AssetsPlugin, AssetsSet, PromptAsset, PromptHandle, ToolDefinitions, ToolsHandle,
     },
     bus::{Bus, run_to_quiescence},
-    systems::{RunCommands, install_agent},
+    systems::RunCommands,
 };
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 #[test]
 fn a_prompt_and_tool_definitions_become_the_preamble_and_the_grants() {
@@ -47,11 +47,10 @@ fn a_prompt_and_tool_definitions_become_the_preamble_and_the_grants() {
         ]"#,
     );
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence.after(AssetsSet));
+    app.add_plugins(RigPlugin {
+        bus: Bus::default().ambiguity_detection(LogLevel::Error),
+    });
+    app.configure_sets(Update, AssetsSet.before(run_to_quiescence));
     app.register_asset_source(
         AssetSourceId::Default,
         AssetSourceBuilder::new(move || Box::new(MemoryAssetReader { root: dir.clone() })),
@@ -100,7 +99,7 @@ fn a_prompt_and_tool_definitions_become_the_preamble_and_the_grants() {
     assert_eq!(grants[0].1, add);
     // The relationship's target is the tool: it lists the one grant.
     assert_eq!(world.get::<Grants>(add).map(|g| g.len()), Some(1));
-    let run = world.spawn_run(agent, &[], "go", false, None);
+    let run = world.spawn_run(agent, "go", Default::default());
     tick_until(&mut app, "the run", |world| {
         world.get::<Settled>(run).is_some()
     });

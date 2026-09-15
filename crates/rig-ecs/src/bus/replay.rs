@@ -1,6 +1,8 @@
 //! Record a world's effects into an [`EffectLog`]; replay a log through a
 //! world, by id.
 
+use std::collections::HashMap;
+
 use bevy_ecs::prelude::*;
 use rig_core::error::ErrorReport;
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
@@ -112,8 +114,7 @@ impl Replay {
     pub fn load(world: &mut World, log: &EffectLog) -> Vec<Entity> {
         let mut records: Vec<&rig_core::effect::EffectRecord> = log.iter().collect();
         records.sort_by_key(|record| record.id);
-        let mut by_id: Vec<(rig_core::effect::EffectId, Entity)> =
-            Vec::with_capacity(records.len());
+        let mut by_id = HashMap::with_capacity(records.len());
         let mut spawned = Vec::with_capacity(records.len());
         for record in records {
             let mut entity = world.spawn((
@@ -126,15 +127,12 @@ impl Replay {
             if let Some(scope) = &record.scope {
                 entity.insert(super::effect::Scope(scope.to_string()));
             }
-            if let Some(parent) = record
-                .parent
-                .and_then(|parent| by_id.iter().find(|(id, _)| *id == parent))
-                .map(|(_, entity)| *entity)
-            {
+            if let Some(parent) = record.parent.and_then(|parent| by_id.get(&parent).copied()) {
                 entity.insert(ChildOf(parent));
             }
             let id = entity.id();
-            by_id.push((record.id, id));
+            // Preserve the first already-loaded match, including duplicate ids.
+            by_id.entry(record.id).or_insert(id);
             spawned.push(id);
         }
         spawned

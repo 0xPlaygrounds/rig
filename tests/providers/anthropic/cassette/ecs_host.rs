@@ -143,10 +143,15 @@ fn agent(
 }
 async fn run_prompt(ecs: &mut EcsAgent, host: &Host) -> String {
     let prompt = if host.with_tool { ADD_PROMPT } else { PROMPT };
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], prompt, host.streamed, Some(3));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: host.streamed,
+            max_turns: Some(3),
+        },
+    );
     let output = ecs.wait_for_success(run).await;
     // Native Settled publishes before an application-owned settled note finishes.
     // Await its real acknowledgement before exposing this consumer's response.

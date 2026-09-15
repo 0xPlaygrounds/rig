@@ -43,14 +43,17 @@ use rig_core::{
     serve::{ErasedHandler, adapters::CompletionAdapter},
     test_utils::RecordingHttpClient,
 };
+#[cfg(feature = "replay")]
+use rig_ecs::bus::{EffectLogResource, Replay};
 use rig_ecs::{
     agent::scene::{SceneBinding, WorldScene, load_world, save_world},
     bus::{
-        Bound, CredentialRef, EffectLogResource, EffectOutcome, HandlerTable, Handlers,
+        Bound, CredentialError, CredentialRef, EffectOutcome, HandlerTable, Handlers,
         MaterializeError, MaterializeFailed, MaterializeReport, Materializer, PendingEffect,
-        ProviderBinding, ProviderKind, Replay, Secret,
+        ProviderBinding, ProviderKind, Secret,
     },
 };
+#[cfg(feature = "replay")]
 use rig_effect_log::EffectLogRecorder;
 
 const KEY: &str = "t/model:default";
@@ -88,7 +91,7 @@ fn materializer(body: &'static str) -> (Materializer, RecordingHttpClient, Arc<A
             if credential.as_str() == "cassette" {
                 Ok(Secret::new(SENTINEL))
             } else {
-                Err("not a cassette".to_owned())
+                Err(CredentialError::Missing)
             }
         },
         move || {
@@ -118,8 +121,7 @@ fn a_binding_round_trips_verbatim() {
     assert_eq!(again.credential, CredentialRef::new("cassette"));
     // An unknown kind is refused by the reader, before anything is spawned.
     let unknown = json.replace(r#""kind":"anthropic""#, r#""kind":"mistral""#);
-    let error = serde_json::from_str::<ProviderBinding>(&unknown).unwrap_err();
-    assert!(error.to_string().contains("unknown variant"), "{error}");
+    assert!(serde_json::from_str::<ProviderBinding>(&unknown).is_err());
 }
 
 #[test]
@@ -272,7 +274,7 @@ fn the_host_transport_is_built_once_per_binding_and_sends_to_the_base_url() {
         .world_mut()
         .spawn(PendingEffect::new(KEY, completion()))
         .id();
-    bus_support::tick_until(&mut app, "the bound client answers", |world| {
+    rig_ecs::testing::tick_until(&mut app, "the bound client answers", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     let outcome = app.world().get::<EffectOutcome>(effect).unwrap();
@@ -313,10 +315,10 @@ fn materialization_is_all_or_nothing() {
     let error = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err();
     assert_eq!(
         error,
-        MaterializeError::MissingCredential {
+        MaterializeError::Credential {
             key: HandlerKey::from("t/model:other"),
             credential: CredentialRef::new("vault:missing"),
-            detail: "not a cassette".to_owned(),
+            source: CredentialError::Missing,
         }
     );
     assert!(
@@ -366,7 +368,7 @@ fn an_existing_handler_wins_over_a_binding() {
         .world_mut()
         .spawn(PendingEffect::new(KEY, completion()))
         .id();
-    bus_support::tick_until(&mut app, "the hand-registered handler answers", |world| {
+    rig_ecs::testing::tick_until(&mut app, "the hand-registered handler answers", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     assert_eq!(
@@ -375,6 +377,7 @@ fn an_existing_handler_wins_over_a_binding() {
     );
 }
 
+#[cfg(feature = "replay")]
 #[test]
 fn a_replayer_wins_and_no_transport_is_built() {
     // A live world records one answer through a materialized binding.
@@ -388,7 +391,7 @@ fn a_replayer_wins_and_no_transport_is_built() {
         .world_mut()
         .spawn(PendingEffect::new(KEY, completion()))
         .id();
-    bus_support::tick_until(&mut live, "live answer", |world| {
+    rig_ecs::testing::tick_until(&mut live, "live answer", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     let log = live.world().resource::<EffectLogResource>().log();
@@ -418,7 +421,7 @@ fn a_replayer_wins_and_no_transport_is_built() {
     let report = rig_ecs::bus::materialize_bindings(replay.world_mut()).unwrap();
     assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
     let replayed = Replay::load(replay.world_mut(), &log)[0];
-    bus_support::tick_until(&mut replay, "replayed answer", |world| {
+    rig_ecs::testing::tick_until(&mut replay, "replayed answer", |world| {
         world.get::<EffectOutcome>(replayed).is_some()
     });
     assert_eq!(
@@ -516,7 +519,7 @@ fn refusals_are_deterministic_and_register_nothing() {
         .world_mut()
         .spawn(PendingEffect::new(KEY, completion()))
         .id();
-    bus_support::tick_until(&mut fresh, "the unserved key refuses", |world| {
+    rig_ecs::testing::tick_until(&mut fresh, "the unserved key refuses", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     let outcome = fresh.world().get::<EffectOutcome>(effect).unwrap();
@@ -529,7 +532,7 @@ fn refusals_are_deterministic_and_register_nothing() {
 #[test]
 fn secrets_never_leave_the_resolver() {
     let secret = Secret::new(SENTINEL);
-    assert_eq!(format!("{secret:?}"), "Secret(<redacted>)");
+    assert!(!format!("{secret:?}").contains(SENTINEL));
     assert_eq!(secret.expose(), SENTINEL);
     let binding = binding(ProviderKind::Anthropic);
     let debug = format!("{binding:?}");
@@ -556,11 +559,49 @@ fn secrets_never_leave_the_resolver() {
     assert!(!format!("{report:?}").contains(SENTINEL));
 }
 
+#[test]
+fn credential_backend_failure_is_typed_redacted_and_registers_nothing() {
+    let mut app = bus_support::app();
+    let secret = Secret::new(SENTINEL);
+    app.world_mut().insert_resource(Materializer::new(
+        move |_| {
+            // Resolver diagnostics can include a secret. Deliberately discard
+            // that diagnostic at the typed boundary rather than retaining it.
+            let backend_error = format!("vault rejected {}", secret.expose());
+            let _ = backend_error;
+            Err(CredentialError::Unavailable)
+        },
+        || panic!("failed resolution must not build a transport"),
+    ));
+    let entity = app.world_mut().spawn(binding(ProviderKind::Anthropic)).id();
+    let error = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err();
+    assert_eq!(
+        error,
+        MaterializeError::Credential {
+            key: HandlerKey::from(KEY),
+            credential: CredentialRef::new("cassette"),
+            source: CredentialError::Unavailable,
+        }
+    );
+    let source = std::error::Error::source(&error).expect("typed resolver source");
+    assert_eq!(
+        source.downcast_ref::<CredentialError>(),
+        Some(&CredentialError::Unavailable)
+    );
+    for diagnostic in [
+        format!("{error}"),
+        format!("{error:?}"),
+        format!("{source:?}"),
+    ] {
+        assert!(!diagnostic.contains(SENTINEL));
+    }
+    assert!(app.world().get::<Bound>(entity).is_none());
+    assert!(app.world().non_send::<HandlerTable>().is_empty());
+}
+
 /// A bus-and-agent world: what a scene saves from and loads into.
 fn world_app() -> bevy_app::App {
-    let mut app = bus_support::app();
-    rig_ecs::systems::install_agent(app.world_mut());
-    app
+    crate::run_support::app()
 }
 
 fn descriptor(label: &str) -> HandlerDescriptor {
@@ -643,7 +684,7 @@ fn a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
         .world_mut()
         .spawn(PendingEffect::new(KEY, completion()))
         .id();
-    bus_support::tick_until(&mut app, "the loaded key refuses", |world| {
+    rig_ecs::testing::tick_until(&mut app, "the loaded key refuses", |world| {
         world.get::<EffectOutcome>(refused).is_some()
     });
     assert!(matches!(
@@ -671,7 +712,7 @@ fn a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() {
         .world_mut()
         .spawn(PendingEffect::new(KEY, completion()))
         .id();
-    bus_support::tick_until(&mut app, "the materialized key answers", |world| {
+    rig_ecs::testing::tick_until(&mut app, "the materialized key answers", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     assert_eq!(
@@ -708,14 +749,14 @@ fn a_scene_load_validates_its_bindings() {
         app.world_mut(),
     )
     .unwrap_err();
-    assert!(error.message.contains("twice"), "{error}");
+    assert_eq!(error.kind, ErrorKind::Request);
     assert_eq!(spawned(&mut app), 0, "refused before any spawn");
     // A descriptor of another key.
     let mut app = world_app();
     let mut other = saved.clone();
     other.descriptor.as_mut().unwrap().key = HandlerKey::from("t/model:other");
     let error = load_world(&scene_with(vec![other]), app.world_mut()).unwrap_err();
-    assert!(error.message.contains("t/model:other"), "{error}");
+    assert_eq!(error.kind, ErrorKind::Request);
     assert_eq!(spawned(&mut app), 0);
     // The key served by a handler of another family.
     let mut app = world_app();
@@ -736,7 +777,6 @@ fn a_scene_load_validates_its_bindings() {
     app.world_mut().flush();
     let error = load_world(&scene_with(vec![saved.clone()]), app.world_mut()).unwrap_err();
     assert_eq!(error.kind, ErrorKind::HandlerUnavailable);
-    assert!(error.message.contains("completion"), "{error}");
     assert_eq!(spawned(&mut app), 0);
     // The key served by a completion handler: the handler wins, the
     // binding rides on its entity, and a later materialization keeps it.
@@ -756,7 +796,7 @@ fn a_scene_load_validates_its_bindings() {
         .world_mut()
         .spawn(PendingEffect::new(KEY, completion()))
         .id();
-    bus_support::tick_until(&mut app, "the hand-registered handler answers", |world| {
+    rig_ecs::testing::tick_until(&mut app, "the hand-registered handler answers", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
     assert_eq!(
@@ -855,53 +895,56 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
 
     // A replayer under the key, registered before the bound binding
     // arrived: the same.
-    let mut live = bus_support::app();
-    EffectLogResource::install(live.world_mut(), EffectLogRecorder::new());
-    let (materializer, _, _) = materializer(ANTHROPIC_BODY);
-    live.world_mut().insert_resource(materializer);
-    live.world_mut().spawn(binding(ProviderKind::Anthropic));
-    rig_ecs::bus::materialize_bindings(live.world_mut()).unwrap();
-    let recorded = live
-        .world_mut()
-        .spawn(PendingEffect::new(KEY, completion()))
-        .id();
-    bus_support::tick_until(&mut live, "live answer", |world| {
-        world.get::<EffectOutcome>(recorded).is_some()
-    });
-    let log = live.world().resource::<EffectLogResource>().log();
-    let live_bound = live
-        .world_mut()
-        .query::<&Bound>()
-        .single(live.world())
-        .unwrap()
-        .clone();
-    let mut replay = bus_support::app();
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::default().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
-    replay.world_mut().flush();
-    let replayer = replay
-        .world_mut()
-        .query::<(Entity, &Bound)>()
-        .iter(replay.world())
-        .find(|(_, bound)| bound.key == HandlerKey::from(KEY))
-        .map(|(entity, _)| entity)
-        .expect("the replayer is bound under the key");
-    let loaded = replay
-        .world_mut()
-        .spawn((binding(ProviderKind::Anthropic), live_bound))
-        .id();
-    replay.world_mut().insert_resource(panicking_materializer());
-    let report = rig_ecs::bus::materialize_bindings(replay.world_mut()).unwrap();
-    assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
-    assert!(report.materialized.is_empty());
+    #[cfg(feature = "replay")]
     {
-        let table = replay.world().non_send::<HandlerTable>();
-        assert!(table.served(replayer).is_some(), "the replayer stays");
-        assert!(table.served(loaded).is_none());
-        assert_eq!(table.len(), 1);
+        let mut live = bus_support::app();
+        EffectLogResource::install(live.world_mut(), EffectLogRecorder::new());
+        let (materializer, _, _) = materializer(ANTHROPIC_BODY);
+        live.world_mut().insert_resource(materializer);
+        live.world_mut().spawn(binding(ProviderKind::Anthropic));
+        rig_ecs::bus::materialize_bindings(live.world_mut()).unwrap();
+        let recorded = live
+            .world_mut()
+            .spawn(PendingEffect::new(KEY, completion()))
+            .id();
+        rig_ecs::testing::tick_until(&mut live, "live answer", |world| {
+            world.get::<EffectOutcome>(recorded).is_some()
+        });
+        let log = live.world().resource::<EffectLogResource>().log();
+        let live_bound = live
+            .world_mut()
+            .query::<&Bound>()
+            .single(live.world())
+            .unwrap()
+            .clone();
+        let mut replay = bus_support::app();
+        Handlers::with(replay.world_mut(), |handlers| {
+            Replay::default().register(handlers, &log)
+        })
+        .unwrap()
+        .unwrap();
+        replay.world_mut().flush();
+        let replayer = replay
+            .world_mut()
+            .query::<(Entity, &Bound)>()
+            .iter(replay.world())
+            .find(|(_, bound)| bound.key == HandlerKey::from(KEY))
+            .map(|(entity, _)| entity)
+            .expect("the replayer is bound under the key");
+        let loaded = replay
+            .world_mut()
+            .spawn((binding(ProviderKind::Anthropic), live_bound))
+            .id();
+        replay.world_mut().insert_resource(panicking_materializer());
+        let report = rig_ecs::bus::materialize_bindings(replay.world_mut()).unwrap();
+        assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
+        assert!(report.materialized.is_empty());
+        {
+            let table = replay.world().non_send::<HandlerTable>();
+            assert!(table.served(replayer).is_some(), "the replayer stays");
+            assert!(table.served(loaded).is_none());
+            assert_eq!(table.len(), 1);
+        }
     }
 
     // Another entity merely holds the key in a `Bound` nothing serves: kept

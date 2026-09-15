@@ -41,10 +41,15 @@ pub(crate) async fn run_session(
     streamed: bool,
     max_turns: Option<usize>,
 ) -> Result<SessionResult> {
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], prompt, streamed, max_turns);
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed,
+            max_turns,
+        },
+    );
     let output = ecs
         .wait_for_outcome(run)
         .await

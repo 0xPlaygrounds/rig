@@ -66,10 +66,15 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
                     .after(BusSet::Collect)
                     .before(RigSet::Fold),
             );
-            let run = ecs
-                .app
-                .world_mut()
-                .spawn_run(ecs.agent, &[], NOTE_PROMPT, true, Some(3));
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                NOTE_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &[],
+                    streamed: true,
+                    max_turns: Some(3),
+                },
+            );
             let error = ecs
                 .wait_for_outcome(run)
                 .await
@@ -185,7 +190,7 @@ async fn model_error_effect_log_is_the_golden_fixture() {
         let run = ecs
             .app
             .world_mut()
-            .spawn_run(ecs.agent, &[], BASIC_PROMPT, false, None);
+            .spawn_run(ecs.agent, BASIC_PROMPT, Default::default());
         let error = ecs
             .wait_for_outcome(run)
             .await
@@ -222,10 +227,15 @@ async fn model_error_streamed_effect_log_is_the_golden_fixture() {
             .entity_mut(ecs.agent)
             .insert(Temperature(Some(0.0)));
 
-        let run = ecs
-            .app
-            .world_mut()
-            .spawn_run(ecs.agent, &[], BASIC_PROMPT, true, None);
+        let run = ecs.app.world_mut().spawn_run(
+            ecs.agent,
+            BASIC_PROMPT,
+            rig_ecs::systems::RunConfig {
+                history: &[],
+                streamed: true,
+                max_turns: None,
+            },
+        );
         let error = ecs
             .wait_for_outcome(run)
             .await
@@ -268,10 +278,15 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
                 .insert(Temperature(Some(0.0)));
             ecs.tool(Adder);
 
-            let run = ecs
-                .app
-                .world_mut()
-                .spawn_run(ecs.agent, &[], ADD_PROMPT, false, Some(1));
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                ADD_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &[],
+                    streamed: false,
+                    max_turns: Some(1),
+                },
+            );
             let error = ecs
                 .wait_for_outcome(run)
                 .await

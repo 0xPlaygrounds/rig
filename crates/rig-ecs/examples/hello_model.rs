@@ -18,7 +18,8 @@ use bevy_ecs::prelude::*;
 use rig_core::serve::Dispatch;
 use rig_core::{
     completion::{
-        CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
+        CompletionRequestBuilder, CompletionResponse, Message, ModelRef, ProviderCapabilities,
+        Usage,
     },
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     message::AssistantContent,
@@ -45,18 +46,7 @@ fn register_the_model(mut handlers: Handlers) {
 }
 
 fn ask(mut commands: Commands) {
-    let request = CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user("hello?")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    };
+    let request = CompletionRequestBuilder::unbound(Message::user("hello?")).build();
     commands.spawn(PendingEffect::new(
         "model",
         EffectKind::Completion {

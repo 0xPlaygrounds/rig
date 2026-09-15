@@ -1,8 +1,7 @@
 //! The mocks the examples run against, so no provider feature and no key:
-//! a scripted model (each request pops the next answer), a streaming
-//! scripted model (each request streams the next answer, a word at a
-//! time), a few tools, and an app with both plugins that exits when a run
-//! ends. A real `CompletionAdapter` and real tools register under the same
+//! a scripted model (each request pops the next answer, converted to events
+//! for streaming consumers), a few tools, and an agent app that exits when a
+//! run ends. A real `CompletionAdapter` and real tools register under the same
 //! keys with the same `Serve` trait.
 
 #![allow(
@@ -11,121 +10,27 @@
 )]
 
 use rig_core::serve::Dispatch;
-use std::sync::Mutex;
 
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
+use bevy_app::{App, AppExit, ScheduleRunnerPlugin};
 use bevy_ecs::prelude::*;
 use rig_core::{
-    completion::{CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
     message::AssistantContent,
-    serve::{Reply, Serve, ServingPolicy},
-    streaming::StreamFinal,
+    serve::Serve,
     tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::{
+    RigPlugin,
     agent::{
         AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
         Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{Handlers, run_to_quiescence},
-    systems::install_agent,
+    bus::Handlers,
+    testing::Scripted,
 };
 
 pub const MODEL: &str = "demo/model:default";
-
-/// A model answering each request with the next scripted turn.
-pub struct Scripted {
-    turns: Mutex<std::collections::VecDeque<Vec<AssistantContent>>>,
-}
-
-impl Scripted {
-    pub fn new(turns: Vec<Vec<AssistantContent>>) -> Self {
-        Self {
-            turns: Mutex::new(turns.into()),
-        }
-    }
-
-    fn next(&self) -> Vec<AssistantContent> {
-        self.turns
-            .lock()
-            .expect("turns")
-            .pop_front()
-            .unwrap_or_else(|| vec![AssistantContent::text("(the script is over)")])
-    }
-}
-
-impl Serve for Scripted {
-    type Family = rig_core::effect::family::Completion;
-
-    fn descriptor(&self) -> HandlerDescriptor {
-        model_descriptor()
-    }
-
-    async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
-        match kind {
-            EffectKind::Completion { stream: false, .. } => {
-                let response = CompletionResponse::new(self.next(), Usage::new(), "scripted");
-                Reply::Outcome(Ok(Outcome::Completion(response)))
-            }
-            EffectKind::Completion { stream: true, .. } => {
-                // The next answer, streamed a word at a time.
-                let parts = self.next();
-                Reply::written(move |mut writer| async move {
-                    for part in parts {
-                        match part {
-                            AssistantContent::Text(text) => {
-                                for word in text.text.split_inclusive(' ') {
-                                    if writer.text(word).await.is_err() {
-                                        return;
-                                    }
-                                }
-                            }
-                            AssistantContent::ToolCall(call) => {
-                                if writer
-                                    .tool_call(call.function.name, call.function.arguments)
-                                    .await
-                                    .is_err()
-                                {
-                                    return;
-                                }
-                            }
-                            AssistantContent::Reasoning(_) | AssistantContent::Image(_) => {}
-                        }
-                    }
-                    let _ = writer
-                        .finish(StreamFinal {
-                            usage: Usage::new(),
-                            finish_reason: None,
-                            message_id: None,
-                            response_id: None,
-                            provider_request_id: None,
-                            provider: "scripted".to_owned(),
-                            model: None,
-                            raw: serde_json::Value::Null,
-                        })
-                        .await;
-                })
-            }
-            other => Reply::Outcome(Err(ErrorReport::new(
-                ErrorKind::HandlerUnavailable,
-                format!("a model cannot serve {}", other.name()),
-            ))),
-        }
-    }
-}
-
-fn model_descriptor() -> HandlerDescriptor {
-    HandlerDescriptor {
-        key: HandlerKey::from(MODEL),
-        family: FamilyDescriptor::Completion {
-            model: ModelRef::new("scripted"),
-            capabilities: ProviderCapabilities::default(),
-        },
-        layers: Vec::new(),
-    }
-}
 
 /// A tool call the script makes.
 pub fn call(name: &str, arguments: serde_json::Value) -> AssistantContent {
@@ -221,10 +126,7 @@ pub fn send_email() -> Tool {
 /// `Update`; an example adds its own exit.
 pub fn app() -> App {
     let mut app = App::new();
-    app.add_plugins(ScheduleRunnerPlugin::default());
-    rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins((ScheduleRunnerPlugin::default(), RigPlugin::default()));
     app.add_observer(exit_when_failed);
     app
 }

@@ -15,7 +15,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 
 use bevy_app::{App, Update};
@@ -204,18 +204,7 @@ impl Drop for StreamGuard {
 
 /// A completion request with one user message.
 pub fn request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user("hi")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    rig_core::completion::CompletionRequestBuilder::unbound(Message::user("hi")).build()
 }
 
 /// A unary completion effect.
@@ -261,26 +250,6 @@ pub fn serial_app() -> App {
 }
 
 pub use crate::run_support::register;
-
-/// Tick the app until `done` holds, or fail after [`GUARD`]. Returns the
-/// ticks taken.
-pub fn tick_until(app: &mut App, what: &str, mut done: impl FnMut(&mut World) -> bool) -> usize {
-    let start = Instant::now();
-    let mut ticks = 0;
-    loop {
-        app.update();
-        ticks += 1;
-        if done(app.world_mut()) {
-            return ticks;
-        }
-        assert!(
-            start.elapsed() < GUARD,
-            "{what}: not done after {ticks} ticks and {:?}",
-            start.elapsed()
-        );
-        std::thread::yield_now();
-    }
-}
 
 /// Tick the app `n` times.
 pub fn tick(app: &mut App, n: usize) {

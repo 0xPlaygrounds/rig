@@ -6,6 +6,10 @@ mod bus_support;
 mod memory_graph;
 #[path = "../memory_resume.rs"]
 mod memory_resume;
+#[path = "../native_scene.rs"]
+mod native_scene;
+#[path = "../native_systems.rs"]
+mod native_systems;
 #[path = "../run_binding.rs"]
 mod run_binding;
 #[path = "../run_checkpoint.rs"]
@@ -26,6 +30,7 @@ mod run_delivery;
 mod run_fork;
 #[path = "../run_graph.rs"]
 mod run_graph;
+#[cfg(feature = "replay")]
 #[path = "../run_identity.rs"]
 mod run_identity;
 #[path = "../run_lifetime.rs"]
@@ -38,8 +43,10 @@ mod run_missing_model;
 mod run_output_tool_config;
 #[path = "../run_provider_retry.rs"]
 mod run_provider_retry;
+#[cfg(feature = "replay")]
 #[path = "../run_replay_metadata.rs"]
 mod run_replay_metadata;
+#[cfg(feature = "replay")]
 #[path = "../run_replay_policy.rs"]
 mod run_replay_policy;
 #[path = "../run_scene.rs"]

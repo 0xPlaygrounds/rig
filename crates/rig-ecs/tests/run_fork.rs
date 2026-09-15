@@ -22,7 +22,7 @@ use rig_ecs::{
     bus::Scope,
     systems::RunCommands,
 };
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 #[test]
 fn a_forked_run_settles_beside_the_original() {
@@ -37,9 +37,9 @@ fn a_forked_run_settles_beside_the_original() {
     );
     let model = register(&mut app, "t/model:default", model);
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
-    let second = fork(app.world_mut(), run);
-    let third = fork(app.world_mut(), run);
+    let run = app.world_mut().spawn_run(agent, "go", Default::default());
+    let second = fork(app.world_mut(), run).expect("valid run");
+    let third = fork(app.world_mut(), run).expect("valid run");
     let world = app.world_mut();
     assert_eq!(world.get::<RunSeq>(second).map(|s| s.0), Some(1));
     assert_eq!(world.get::<RunSeq>(third).map(|s| s.0), Some(2));

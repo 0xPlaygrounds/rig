@@ -30,20 +30,21 @@ fn main() {
 }
 
 fn ask(mut handlers: Handlers, mut commands: Commands) {
-    let model = support::Scripted::new(vec![
-        vec![support::call(
-            "subtract",
-            serde_json::json!({"x": 2, "y": 5}),
-        )],
-        vec![AssistantContent::text("-3")],
-    ]);
+    let (model, _) = rig_ecs::testing::Scripted::new(
+        support::MODEL,
+        vec![
+            vec![support::call(
+                "subtract",
+                serde_json::json!({"x": 2, "y": 5}),
+            )],
+            vec![AssistantContent::text("-3")],
+        ],
+    );
     let tools = vec![support::add(), support::subtract()];
     let (model, tools) = support::register(&mut handlers, model, tools);
     let agent = support::agent(&mut commands, model, PREAMBLE, 2);
     for (order, tool) in tools.into_iter().enumerate() {
         commands.spawn((Grant(tool), Order(order as u64), ChildOf(agent)));
     }
-    commands.queue(move |world: &mut World| {
-        world.spawn_run(agent, &[], "Calculate 2 - 5.", false, None);
-    });
+    commands.spawn_run(agent, "Calculate 2 - 5.", Default::default());
 }

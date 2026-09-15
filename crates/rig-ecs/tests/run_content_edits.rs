@@ -32,7 +32,7 @@ fn fixture() -> (World, Entity, Entity, Entity, Entity) {
     .unwrap()
     .unwrap();
     let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
-    let run = world.spawn_run(agent, &[], "original", false, None);
+    let run = world.spawn_run(agent, "original", Default::default());
     let utterance = world
         .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(&world)

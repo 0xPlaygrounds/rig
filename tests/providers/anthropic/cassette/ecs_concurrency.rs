@@ -94,10 +94,15 @@ async fn run(client: anthropic::Client, serial: bool) -> EcsAgent {
             .after(RigSet::Materialise)
             .before(RigSet::Settle),
     );
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], TWO_TOOL_STREAM_PROMPT, true, Some(8));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        TWO_TOOL_STREAM_PROMPT,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: Some(8),
+        },
+    );
     ecs.app
         .world_mut()
         .entity_mut(run)

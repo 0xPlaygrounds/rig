@@ -3,7 +3,7 @@
 //! completed answers and streams are restored. A partial unfinished stream
 //! cannot resume without a cursor and is refused before entities are spawned.
 
-use bevy_ecs::prelude::*;
+use bevy_ecs::{entity::EntityHashMap, prelude::*};
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
@@ -125,7 +125,11 @@ impl Scene {
             .map(|(entity, seq, _)| (entity, *seq))
             .collect();
         rows.sort_by_key(|(_, seq)| *seq);
-        let index_of = |entity: Entity| rows.iter().position(|(e, _)| *e == entity);
+        let indices: EntityHashMap<usize> = rows
+            .iter()
+            .enumerate()
+            .map(|(index, (entity, _))| (*entity, index))
+            .collect();
 
         let mut effects = Vec::with_capacity(rows.len());
         for (entity, seq) in &rows {
@@ -134,7 +138,7 @@ impl Scene {
                 continue;
             };
             let parent_entity = entity_ref.get::<ChildOf>().map(ChildOf::parent);
-            let parent = parent_entity.and_then(index_of);
+            let parent = parent_entity.and_then(|entity| indices.get(&entity).copied());
             let parent_ref = match parent {
                 Some(_) => None,
                 None => parent_entity.and_then(&sibling),

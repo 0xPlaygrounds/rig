@@ -29,7 +29,7 @@ use rig_ecs::{
     },
     systems::{Fresh, RunBundle, RunBusy, RunCommands, RunDespawnRefused, spawn_utterance},
 };
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 /// The utterances `ChildOf` `run`.
 fn utterances(world: &mut World, run: Entity) -> usize {
@@ -48,7 +48,7 @@ fn a_run_queued_on_commands_exists_after_the_flush_and_advances_on_the_next_pass
     let agent = spawn_agent(app.world_mut(), "t", model);
 
     let world = app.world_mut();
-    let run = world.commands().spawn_run(agent, &[], "hi", false, None);
+    let run = world.commands().spawn_run(agent, "hi", Default::default());
     assert!(
         world.get::<Run>(run).is_none(),
         "the id is reserved; the run is queued, not spawned"
@@ -94,7 +94,7 @@ fn a_cancel_queued_behind_the_spawn_ends_the_run_before_it_starts() {
 
     let world = app.world_mut();
     let mut commands = world.commands();
-    let run = commands.spawn_run(agent, &[], "hi", false, None);
+    let run = commands.spawn_run(agent, "hi", Default::default());
     commands.cancel_run(run, "changed my mind");
     world.flush();
     assert!(
@@ -148,7 +148,7 @@ fn a_queued_despawn_is_refused_by_event_while_the_run_lives() {
 
     let world = app.world_mut();
     let mut commands = world.commands();
-    let run = commands.spawn_run(agent, &[], "hi", false, None);
+    let run = commands.spawn_run(agent, "hi", Default::default());
     commands.despawn_run(run);
     world.flush();
     assert!(world.get::<Run>(run).is_some(), "the live run stays");
@@ -183,7 +183,7 @@ fn a_reserved_run_despawned_before_it_was_populated_is_gone() {
     let model = register(&mut app, "t/model:m", model);
     let agent = spawn_agent(app.world_mut(), "t", model);
     let world = app.world_mut();
-    let before = world.spawn_run(agent, &[], "first", false, None);
+    let before = world.spawn_run(agent, "first", Default::default());
 
     // A host observer that refuses every run of `agent` as it appears:
     // the run is despawned while the queued spawn is populating it.
@@ -197,9 +197,15 @@ fn a_reserved_run_despawned_before_it_was_populated_is_gone() {
     let history = [MessageParts::User {
         content: vec![UserContent::text("earlier")],
     }];
-    let run = world
-        .commands()
-        .spawn_run(agent, &history, "hi", false, Some(3));
+    let run = world.commands().spawn_run(
+        agent,
+        "hi",
+        rig_ecs::systems::RunConfig {
+            history: &history,
+            streamed: false,
+            max_turns: Some(3),
+        },
+    );
     world.flush();
     assert!(
         world.get_entity(run).is_err(),
@@ -238,7 +244,7 @@ fn a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run() {
     let model = register(&mut app, "t/model:m", model);
     let agent = spawn_agent(app.world_mut(), "t", model);
 
-    let run = app.world_mut().spawn_run(agent, &[], "hi", false, None);
+    let run = app.world_mut().spawn_run(agent, "hi", Default::default());
     tick_until(&mut app, "the run settles", |world| {
         world.get::<Settled>(run).is_some()
     });

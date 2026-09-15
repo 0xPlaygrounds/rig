@@ -8,9 +8,8 @@
 //! [`policy`] (the verbatim strings and the one fold from the graph to the
 //! wire `CompletionRequest`), [`systems`] (one system per named set, in the
 //! bus's schedule) and the optional `replay` module (the log header from
-//! components). Nothing in this crate awaits, blocks, or holds a future for
-//! a host to probe; nothing is copied from `rig-agent`, and a guard refuses
-//! its name.
+//! components). The runtime never blocks a host. The optional `testing`
+//! module also provides a native blocking tick guard for simulations.
 //!
 //! The request is a graph in the world and a struct on the wire, with
 //! [`policy::fold_request`] as the one function between them. What the
@@ -35,6 +34,9 @@
 //! component derives `Reflect`, `reflect::install_reflect` registers them,
 //! `reflect::ReflectedScene` is the world as reflected data beside the
 //! serde scene.
+//! The `app` feature exposes `RigPlugin` for one `Update` driver, while
+//! app-free hosts retain [`bus::Bus::install`] and [`systems::install_agent`].
+//! `testing` supplies reusable fake handlers without enabling rig-core test utilities.
 //!
 //! The `bus` module is written as if it were already its own crate (every
 //! item `pub` or private to its file, no import from a sibling module, no
@@ -47,10 +49,16 @@ pub mod agent;
 #[cfg(feature = "assets")]
 pub mod assets;
 pub mod bus;
+#[cfg(feature = "app")]
+mod plugin;
 pub mod policy;
+#[cfg(feature = "app")]
+pub use plugin::RigPlugin;
 pub mod prelude;
 #[cfg(feature = "reflect")]
 pub mod reflect;
 #[cfg(feature = "replay")]
 pub mod replay;
 pub mod systems;
+#[cfg(feature = "testing")]
+pub mod testing;

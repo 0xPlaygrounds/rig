@@ -74,10 +74,15 @@ pub(crate) async fn error_facts<M: CompletionModel + 'static>(model: M, probe: E
         AdditionalParams(probe.additional_params.clone()),
     ));
     let trace = witnessed(&mut ecs.app);
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], probe.prompt, probe.streamed, None);
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        probe.prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: probe.streamed,
+            max_turns: None,
+        },
+    );
     let outcome = ecs.wait_for_outcome(run).await;
     let report = match &outcome {
         Err(Failure::Provider(report)) => report.clone(),
@@ -169,10 +174,12 @@ pub(crate) async fn batch_hold<M: CompletionModel + Clone + 'static>(
     let (mut app, agent, recorder, _gates) = open(wire, cell, &program);
     let run = app.world_mut().spawn_run(
         agent,
-        &[],
         program.prompt,
-        program.streamed,
-        program.max_turns,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: program.streamed,
+            max_turns: program.max_turns,
+        },
     );
     app.world_mut()
         .entity_mut(run)
@@ -268,10 +275,12 @@ pub(crate) async fn minted_ids<M: CompletionModel + Clone + 'static>(
     let (mut app, agent, recorder, _gates) = open(wire, cell, &program);
     let run = app.world_mut().spawn_run(
         agent,
-        &[],
         program.prompt,
-        program.streamed,
-        program.max_turns,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: program.streamed,
+            max_turns: program.max_turns,
+        },
     );
     app.world_mut()
         .entity_mut(run)
@@ -458,9 +467,15 @@ pub(crate) async fn cancel_at<M: CompletionModel + Clone + 'static>(
             RigSchedule,
             cancel_at_cut.after(BusSet::Collect).before(RigSet::Fold),
         );
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], program.prompt, true, program.max_turns);
+    let run = app.world_mut().spawn_run(
+        agent,
+        program.prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: program.max_turns,
+        },
+    );
     let start = Instant::now();
     loop {
         app.update();

@@ -5,13 +5,14 @@
 use std::collections::BTreeMap;
 
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig_core::error::{ErrorKind, ErrorReport};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::{WorldScene, WorldSceneData};
 use crate::agent::content::binary::{
-    BinaryAssets, BinaryEncoding, BinaryId, BinaryRecord, PartSource,
+    BinaryAssets, BinaryEncoding, BinaryError, BinaryId, BinaryRecord, PartSource,
 };
 use rig_core::message::DocumentSourceKind;
 
@@ -27,9 +28,37 @@ const MAX_DEPTH: usize = 64;
 
 type SpellingIndex = BTreeMap<[u8; 32], PartSource>;
 
+/// The origin of a scene failure, before serde erases it into its own error type.
+#[derive(Debug, thiserror::Error)]
+pub(super) enum SceneWireError {
+    #[error("{0}")]
+    Limit(&'static str),
+    #[error("{0}")]
+    Reference(&'static str),
+    #[error("{0}")]
+    Content(String),
+    #[error(transparent)]
+    Binary(#[from] BinaryError),
+    #[error("{0}")]
+    Internal(&'static str),
+}
+
+impl From<SceneWireError> for ErrorReport {
+    fn from(error: SceneWireError) -> Self {
+        let kind = match &error {
+            SceneWireError::Internal(_) => ErrorKind::Internal,
+            SceneWireError::Limit(_)
+            | SceneWireError::Reference(_)
+            | SceneWireError::Content(_)
+            | SceneWireError::Binary(_) => ErrorKind::Request,
+        };
+        Self::new(kind, error.to_string())
+    }
+}
+
 /// Bound caller-constructed graph data before component decoding or world allocation.
-pub(super) fn validate_graph(scene: &super::RunScene) -> Result<(), String> {
-    fn value_node(value: &Value, budget: &mut Budget, depth: usize) -> Result<(), String> {
+pub(super) fn validate_graph(scene: &super::RunScene) -> Result<(), SceneWireError> {
+    fn value_node(value: &Value, budget: &mut Budget, depth: usize) -> Result<(), SceneWireError> {
         budget.take(value.as_str().map_or(8, str::len), depth)?;
         match value {
             Value::Object(map) => {
@@ -69,7 +98,9 @@ pub(super) fn validate_graph(scene: &super::RunScene) -> Result<(), String> {
 
 /// Typed handles stay compact in scene JSON, but content validation rebuilds DTOs.
 /// Charge every occurrence before resolving any of them, including shared handles.
-pub(super) fn validate_content_expansion(world: &mut bevy_ecs::world::World) -> Result<(), String> {
+pub(super) fn validate_content_expansion(
+    world: &mut bevy_ecs::world::World,
+) -> Result<(), SceneWireError> {
     use crate::agent::content::parts::{AudioPart, DocumentPart, ImagePart, VideoPart};
     let mut parts = world.query::<(
         Option<&ImagePart>,
@@ -89,19 +120,10 @@ pub(super) fn validate_content_expansion(world: &mut bevy_ecs::world::World) -> 
         .into_iter()
         .flatten()
         {
-            budget.take(
-                assets
-                    .resolved_len(source)
-                    .map_err(|error| error.to_string())?,
-                0,
-            )?;
+            budget.take(assets.resolved_len(source)?, 0)?;
         }
     }
     Ok(())
-}
-
-fn problem(message: &str) -> String {
-    message.to_owned()
 }
 
 struct Budget {
@@ -115,18 +137,18 @@ impl Budget {
             nodes: MAX_NODES,
         }
     }
-    fn take(&mut self, bytes: usize, depth: usize) -> Result<(), String> {
+    fn take(&mut self, bytes: usize, depth: usize) -> Result<(), SceneWireError> {
         if depth > MAX_DEPTH {
-            return Err(problem("scene depth limit exceeded"));
+            return Err(SceneWireError::Limit("scene depth limit exceeded"));
         }
         self.nodes = self
             .nodes
             .checked_sub(1)
-            .ok_or_else(|| problem("scene node limit exceeded"))?;
+            .ok_or(SceneWireError::Limit("scene node limit exceeded"))?;
         self.bytes = self
             .bytes
             .checked_sub(bytes)
-            .ok_or_else(|| problem("expanded scene byte limit exceeded"))?;
+            .ok_or(SceneWireError::Limit("expanded scene byte limit exceeded"))?;
         Ok(())
     }
 }
@@ -145,7 +167,7 @@ fn discover(
     spellings: &mut SpellingIndex,
     depth: usize,
     budget: &mut Budget,
-) -> Result<(), String> {
+) -> Result<(), SceneWireError> {
     budget.take(value.as_str().map_or(8, str::len), depth)?;
     match value {
         Value::Object(map) => {
@@ -173,7 +195,12 @@ fn discover(
                         // Unknown application JSON can resemble a source without
                         // being valid base64. Preserve it as literal data.
                         Err(crate::agent::content::binary::BinaryError::Base64) => {}
-                        Err(error) => return Err(error.to_string()),
+                        Err(BinaryError::Corrupt) => {
+                            return Err(SceneWireError::Internal(
+                                "interned binary asset hash collision",
+                            ));
+                        }
+                        Err(error) => return Err(error.into()),
                     }
                 }
             }
@@ -192,9 +219,9 @@ fn discover(
     Ok(())
 }
 
-fn marker(reference: PartSource) -> Result<Value, String> {
+fn marker(reference: PartSource) -> Result<Value, SceneWireError> {
     Ok(
-        serde_json::json!({ BINARY: serde_json::to_value(reference).map_err(|_|problem("binary reference serialization failed"))? }),
+        serde_json::json!({ BINARY: serde_json::to_value(reference).map_err(|_| SceneWireError::Internal("binary reference serialization failed"))? }),
     )
 }
 
@@ -202,7 +229,7 @@ fn compress(
     value: Value,
     assets: &BinaryAssets,
     spellings: &SpellingIndex,
-) -> Result<Value, String> {
+) -> Result<Value, SceneWireError> {
     match value {
         Value::String(value) => {
             let key: [u8; 32] = Sha256::digest(value.as_bytes()).into();
@@ -223,7 +250,7 @@ fn compress(
                 }
             }
             let Value::Array(items) = array else {
-                return Err(problem("invalid scene array"));
+                return Err(SceneWireError::Internal("invalid scene array"));
             };
             Ok(Value::Array(
                 items
@@ -237,7 +264,7 @@ fn compress(
             let map = map
                 .into_iter()
                 .map(|(key, value)| Ok((key, compress(value, assets, spellings)?)))
-                .collect::<Result<serde_json::Map<_, _>, String>>()?;
+                .collect::<Result<serde_json::Map<_, _>, SceneWireError>>()?;
             if escaped {
                 Ok(serde_json::json!({OBJECT:map}))
             } else {
@@ -253,25 +280,25 @@ fn charge_reference(
     assets: &BinaryAssets,
     budget: &mut Budget,
     depth: usize,
-) -> Result<(), String> {
+) -> Result<(), SceneWireError> {
     let PartSource::Binary { id, encoding } = reference else {
-        return Err(problem("scene reference must name binary content"));
+        return Err(SceneWireError::Reference(
+            "scene reference must name binary content",
+        ));
     };
-    assets
-        .resolved_len(reference)
-        .map_err(|error| error.to_string())?;
-    let bytes = assets.get(*id).map_err(|error| error.to_string())?.len();
+    assets.resolved_len(reference)?;
+    let bytes = assets.get(*id)?.len();
     let expanded = match encoding {
         BinaryEncoding::Raw => bytes.checked_mul(4),
         BinaryEncoding::Base64 { .. } => bytes.checked_add(2).map(|n| n / 3 * 4),
     }
-    .ok_or_else(|| problem("scene expansion overflow"))?;
+    .ok_or(SceneWireError::Limit("scene expansion overflow"))?;
     budget.take(expanded, depth)?;
     if matches!(encoding, BinaryEncoding::Raw) {
         budget.nodes = budget
             .nodes
             .checked_sub(bytes)
-            .ok_or_else(|| problem("scene node limit exceeded"))?;
+            .ok_or(SceneWireError::Limit("scene node limit exceeded"))?;
     }
     Ok(())
 }
@@ -282,20 +309,20 @@ fn check_expansion(
     assets: &BinaryAssets,
     budget: &mut Budget,
     depth: usize,
-) -> Result<(), String> {
+) -> Result<(), SceneWireError> {
     budget.take(value.as_str().map_or(8, str::len), depth)?;
     match value {
         Value::Object(map) => {
             let map = if map.len() == 1 {
                 if let Some(reference) = map.get(BINARY) {
                     let reference: PartSource = serde_json::from_value(reference.clone())
-                        .map_err(|_| problem("invalid binary scene reference"))?;
+                        .map_err(|_| SceneWireError::Reference("invalid binary scene reference"))?;
                     return charge_reference(&reference, assets, budget, depth);
                 }
                 if let Some(literal) = map.get(OBJECT) {
-                    literal
-                        .as_object()
-                        .ok_or_else(|| problem("invalid escaped scene object"))?
+                    literal.as_object().ok_or_else(|| {
+                        SceneWireError::Content("invalid escaped scene object".into())
+                    })?
                 } else {
                     map
                 }
@@ -322,24 +349,26 @@ fn expand(
     assets: &BinaryAssets,
     budget: &mut Budget,
     depth: usize,
-) -> Result<Value, String> {
+) -> Result<Value, SceneWireError> {
     budget.take(value.as_str().map_or(8, str::len), depth)?;
     match value {
         Value::Object(mut map) => {
             if map.len() == 1 {
                 if let Some(reference) = map.remove(BINARY) {
                     let reference: PartSource = serde_json::from_value(reference)
-                        .map_err(|_| problem("invalid binary scene reference"))?;
+                        .map_err(|_| SceneWireError::Reference("invalid binary scene reference"))?;
                     charge_reference(&reference, assets, budget, depth)?;
-                    return match assets.resolve(&reference).map_err(|e| e.to_string())? {
+                    return match assets.resolve(&reference)? {
                         DocumentSourceKind::Base64(value) => Ok(Value::String(value)),
                         DocumentSourceKind::Raw(bytes) => Ok(serde_json::json!(bytes)),
-                        _ => Err(problem("invalid resolved scene reference")),
+                        _ => Err(SceneWireError::Internal("invalid resolved scene reference")),
                     };
                 }
                 if let Some(literal) = map.remove(OBJECT) {
                     let Value::Object(map) = literal else {
-                        return Err(problem("invalid escaped scene object"));
+                        return Err(SceneWireError::Content(
+                            "invalid escaped scene object".into(),
+                        ));
                     };
                     return expand_object(map, assets, budget, depth);
                 }
@@ -361,7 +390,7 @@ fn expand_object(
     assets: &BinaryAssets,
     budget: &mut Budget,
     depth: usize,
-) -> Result<Value, String> {
+) -> Result<Value, SceneWireError> {
     let mut result = serde_json::Map::new();
     for (key, value) in map {
         budget.take(key.len(), depth)?;
@@ -370,91 +399,104 @@ fn expand_object(
     Ok(Value::Object(result))
 }
 
-fn table(value: &mut Value) -> Result<&mut serde_json::Map<String, Value>, String> {
+fn table(value: &mut Value) -> Result<&mut serde_json::Map<String, Value>, SceneWireError> {
     value
         .get_mut("graph")
         .and_then(Value::as_object_mut)
-        .ok_or_else(|| problem("scene graph missing"))
+        .ok_or(SceneWireError::Internal("scene graph missing"))
 }
 
 impl Serialize for WorldScene {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::Error;
-        let mut value = WorldSceneData::serialize(self, serde_json::value::Serializer)
-            .map_err(S::Error::custom)?;
-        table(&mut value)
+        encode(self)
             .map_err(S::Error::custom)?
-            .remove("binaries");
-        let mut assets = BinaryAssets::default()
-            .merged(&self.graph.binaries)
-            .map_err(S::Error::custom)?;
-        let mut spellings = SpellingIndex::new();
-        for (id, bytes) in assets.iter() {
-            let spelling = BASE64_STANDARD.encode(bytes);
-            spellings.insert(
-                Sha256::digest(spelling.as_bytes()).into(),
-                PartSource::Binary {
-                    id,
-                    encoding: BinaryEncoding::Base64 {
-                        padding: (spelling.len() - spelling.trim_end_matches('=').len()) as u8,
-                        last_symbol: None,
-                    },
-                },
-            );
-        }
-        discover(&value, &mut assets, &mut spellings, 0, &mut Budget::new())
-            .map_err(S::Error::custom)?;
-        let mut value = compress(value, &assets, &spellings).map_err(S::Error::custom)?;
-        check_expansion(&value, &assets, &mut Budget::new(), 0).map_err(S::Error::custom)?;
-        table(&mut value).map_err(S::Error::custom)?.insert(
-            "binaries".into(),
-            serde_json::to_value(assets.snapshot()).map_err(S::Error::custom)?,
-        );
-        value
-            .as_object_mut()
-            .ok_or_else(|| S::Error::custom("scene object missing"))?
-            .insert("format".into(), Value::String(FORMAT.into()));
-        bounded::validate(&value).map_err(S::Error::custom)?;
-        value.serialize(serializer)
+            .serialize(serializer)
     }
+}
+
+fn encode(scene: &WorldScene) -> Result<Value, SceneWireError> {
+    let mut value = WorldSceneData::serialize(scene, serde_json::value::Serializer)
+        .map_err(|_| SceneWireError::Internal("world scene serialization failed"))?;
+    table(&mut value)?.remove("binaries");
+    let mut assets = BinaryAssets::default().merged(&scene.graph.binaries)?;
+    let mut spellings = SpellingIndex::new();
+    for (id, bytes) in assets.iter() {
+        let spelling = BASE64_STANDARD.encode(bytes);
+        spellings.insert(
+            Sha256::digest(spelling.as_bytes()).into(),
+            PartSource::Binary {
+                id,
+                encoding: BinaryEncoding::Base64 {
+                    padding: (spelling.len() - spelling.trim_end_matches('=').len()) as u8,
+                    last_symbol: None,
+                },
+            },
+        );
+    }
+    discover(&value, &mut assets, &mut spellings, 0, &mut Budget::new())?;
+    let mut value = compress(value, &assets, &spellings)?;
+    check_expansion(&value, &assets, &mut Budget::new(), 0)?;
+    table(&mut value)?.insert(
+        "binaries".into(),
+        serde_json::to_value(assets.snapshot())
+            .map_err(|_| SceneWireError::Internal("binary table serialization failed"))?,
+    );
+    value
+        .as_object_mut()
+        .ok_or(SceneWireError::Internal("scene object missing"))?
+        .insert("format".into(), Value::String(FORMAT.into()));
+    bounded::validate(&value)?;
+    Ok(value)
 }
 
 impl<'de> Deserialize<'de> for WorldScene {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         use serde::de::Error;
-        let mut value = bounded::deserialize(deserializer)?;
-        if value.as_object_mut().and_then(|map| map.remove("format"))
-            != Some(Value::String(FORMAT.into()))
-        {
-            return Err(D::Error::custom("unsupported world scene format"));
-        }
-        let records = table(&mut value)
-            .map_err(D::Error::custom)?
-            .remove("binaries")
-            .ok_or_else(|| D::Error::custom("binary table missing"))?;
-        let records: Vec<BinaryRecord> =
-            serde_json::from_value(records).map_err(D::Error::custom)?;
-        let assets = BinaryAssets::default()
-            .merged(&records)
-            .map_err(D::Error::custom)?;
-        let mut value = expand(value, &assets, &mut Budget::new(), 0).map_err(D::Error::custom)?;
-        table(&mut value).map_err(D::Error::custom)?.insert(
-            "binaries".into(),
-            serde_json::to_value(records).map_err(D::Error::custom)?,
-        );
-        WorldSceneData::deserialize(value).map_err(D::Error::custom)
+        decode(bounded::deserialize(deserializer)?).map_err(D::Error::custom)
     }
+}
+
+fn decode(mut value: Value) -> Result<WorldScene, SceneWireError> {
+    if value.as_object_mut().and_then(|map| map.remove("format"))
+        != Some(Value::String(FORMAT.into()))
+    {
+        return Err(SceneWireError::Content(
+            "unsupported world scene format".into(),
+        ));
+    }
+    let records = table(&mut value)
+        .map_err(|_| SceneWireError::Content("scene graph missing".into()))?
+        .remove("binaries")
+        .ok_or_else(|| SceneWireError::Content("binary table missing".into()))?;
+    let records: Vec<BinaryRecord> = serde_json::from_value(records)
+        .map_err(|error| SceneWireError::Content(error.to_string()))?;
+    let assets = BinaryAssets::default().merged(&records)?;
+    let mut value = expand(value, &assets, &mut Budget::new(), 0)?;
+    table(&mut value)
+        .map_err(|_| SceneWireError::Content("expanded scene graph is not an object".into()))?
+        .insert(
+            "binaries".into(),
+            serde_json::to_value(records)
+                .map_err(|_| SceneWireError::Internal("binary table serialization failed"))?,
+        );
+    WorldSceneData::deserialize(value).map_err(|error| SceneWireError::Content(error.to_string()))
 }
 
 impl WorldScene {
     /// Parse a scene with a bounded input buffer and bounded binary expansion.
     /// Loading the parsed data still validates graph references before mutation.
-    pub fn from_json(bytes: &[u8]) -> Result<Self, rig_core::error::ErrorReport> {
+    pub fn from_json(bytes: &[u8]) -> Result<Self, ErrorReport> {
         if bytes.len() > MAX_BYTES {
-            return Err(super::extension_error("scene input byte limit exceeded"));
+            return Err(SceneWireError::Limit("scene input byte limit exceeded").into());
         }
-        serde_json::from_slice(bytes)
-            .map_err(|_| super::extension_error("invalid or oversized world scene"))
+        let mut deserializer = serde_json::Deserializer::from_slice(bytes);
+        let value = bounded::deserialize(&mut deserializer)
+            .map_err(|_| SceneWireError::Content("invalid or oversized world scene".into()))?;
+        deserializer
+            .end()
+            .map_err(|_| SceneWireError::Content("trailing world scene data".into()))?;
+        decode(value).map_err(ErrorReport::from)
     }
 }
 

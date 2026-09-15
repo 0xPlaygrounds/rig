@@ -25,18 +25,21 @@ use rig_core::serve::Dispatch;
 use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
-use bus_support::*;
 use rig_core::{
     completion::CompletionRequest,
     effect::{EffectFamily, EffectKind, HandlerKey, Key, Outcome, family},
     serve::Serve,
 };
+#[cfg(feature = "replay")]
+use rig_ecs::bus::{EffectLogResource, Replay};
 use rig_ecs::bus::{
-    EffectLogResource, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Replay, Reserved,
-    Scene, Streamed, Typed,
+    EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Reserved, Scene, Streamed, Typed,
 };
+#[cfg(feature = "replay")]
 use rig_effect_log::{EffectLog, EffectLogRecorder};
+use {bus_support::*, rig_ecs::testing::*};
 
+#[cfg(feature = "replay")]
 /// A golden log from the corpus.
 fn golden(name: &str) -> EffectLog {
     let path = format!(
@@ -260,6 +263,7 @@ fn a_scene_saves_intent_and_a_loaded_world_reissues_what_was_unanswered() {
     );
 }
 
+#[cfg(feature = "replay")]
 #[test]
 fn three_goldens_replay_through_a_world_by_id() {
     for name in [
@@ -329,6 +333,7 @@ fn three_goldens_replay_through_a_world_by_id() {
     }
 }
 
+#[cfg(feature = "replay")]
 #[test]
 fn a_checkpoint_and_the_logs_tail_resume_in_a_fresh_world() {
     let log = golden("anthropic_concurrent_tools_serial");
@@ -739,6 +744,7 @@ fn cancelled_highest_id_remains_consumed_after_scene_load() {
     let counters = Arc::new(Counters::default());
     let mut live = app();
     register(&mut live, "model", MockModel::new(&counters));
+    #[cfg(feature = "replay")]
     EffectLogResource::install(live.world_mut(), EffectLogRecorder::new());
     let lower = live
         .world_mut()
@@ -757,11 +763,14 @@ fn cancelled_highest_id_remains_consumed_after_scene_load() {
     });
     assert_eq!(live.world().get::<Issued>(highest).unwrap().0.as_u64(), 1);
     live.world_mut().despawn(highest);
-    let log = live.world().resource::<EffectLogResource>().log();
-    assert_eq!(log.records.len(), 2);
-    assert!(
-        matches!(&log.records[1].outcome, Err(error) if error.kind == rig_core::error::ErrorKind::Cancelled)
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = live.world().resource::<EffectLogResource>().log();
+        assert_eq!(log.records.len(), 2);
+        assert!(
+            matches!(&log.records[1].outcome, Err(error) if error.kind == rig_core::error::ErrorKind::Cancelled)
+        );
+    }
     let scene = Scene::save(live.world_mut());
     let scene: Scene = serde_json::from_value(serde_json::to_value(scene).unwrap()).unwrap();
     counters.hold.release();
@@ -799,6 +808,7 @@ fn scene_counter_never_rewinds_a_used_destination_and_preserves_exhaustion() {
         );
         let counters = Arc::new(Counters::default());
         register(&mut restored, "model", MockModel::new(&counters));
+        #[cfg(feature = "replay")]
         EffectLogResource::install(restored.world_mut(), EffectLogRecorder::new());
         let fresh = restored
             .world_mut()
@@ -809,6 +819,7 @@ fn scene_counter_never_rewinds_a_used_destination_and_preserves_exhaustion() {
         });
         if expected == u64::MAX {
             assert!(restored.world().get::<Issued>(fresh).is_none());
+            #[cfg(feature = "replay")]
             assert!(
                 restored
                     .world()
@@ -884,6 +895,7 @@ fn an_exhausted_scene_can_resume_an_existing_reservation_but_cannot_mint() {
         let mut restored = app();
         let counters = Arc::new(Counters::default());
         register(&mut restored, "model", MockModel::new(&counters));
+        #[cfg(feature = "replay")]
         EffectLogResource::install(restored.world_mut(), EffectLogRecorder::new());
         let loaded = scene.load(restored.world_mut()).unwrap()[0];
         tick_until(&mut restored, "resume with exhausted allocator", |world| {
@@ -911,6 +923,7 @@ fn an_exhausted_scene_can_resume_an_existing_reservation_but_cannot_mint() {
             |world| world.get::<EffectOutcome>(fresh).is_some(),
         );
         assert!(restored.world().get::<Issued>(fresh).is_none());
+        #[cfg(feature = "replay")]
         assert_eq!(
             restored
                 .world()

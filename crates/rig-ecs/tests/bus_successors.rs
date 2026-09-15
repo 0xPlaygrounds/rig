@@ -29,12 +29,12 @@ use crate::bus_support;
 use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
-use bus_support::*;
 use rig_core::{
     effect::{EffectFamily, FamilyDescriptor, HandlerDescriptor, HandlerKey},
     error::ErrorKind,
 };
 use rig_ecs::bus::{BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule, Scene};
+use {bus_support::*, rig_ecs::testing::*};
 
 #[test]
 fn a_reopened_bus_serves_handles_bound_before_the_drop() {

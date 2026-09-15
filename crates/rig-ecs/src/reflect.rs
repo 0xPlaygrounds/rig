@@ -167,6 +167,7 @@ pub fn install_reflect(world: &mut World) {
             agent::ResolvingTools,
             agent::Batch,
             agent::ToolCallSlot,
+            agent::Completion,
             agent::Settled,
             agent::Failed,
             agent::Failure,

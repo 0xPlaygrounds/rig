@@ -27,8 +27,9 @@ use crate::run_support;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
+#[cfg(feature = "replay")]
+use rig_core::effect::{EffectFamily, HandlerKey};
 use rig_core::{
-    effect::{EffectFamily, HandlerKey},
     error::ErrorKind,
     message::{AssistantContent, Message},
 };
@@ -38,12 +39,14 @@ use rig_ecs::{
         RequestPatch, Resolution, Retry, Route, RunResult, Settled, UsesModel,
         scene::{load_world, save_world},
     },
-    bus::{EffectLogResource, Handlers, PendingEffect, RigSchedule},
-    replay::required_row,
+    bus::{Handlers, PendingEffect, RigSchedule},
     systems::{Fresh, RigSet, RunCommands},
 };
+#[cfg(feature = "replay")]
+use rig_ecs::{bus::EffectLogResource, replay::required_row};
+#[cfg(feature = "replay")]
 use rig_effect_log::EffectLogRecorder;
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const FAST: &str = "t/model:fast";
@@ -63,6 +66,7 @@ fn ended(app: &mut bevy_app::App, run: Entity, what: &str) {
     });
 }
 
+#[cfg(feature = "replay")]
 fn records(app: &bevy_app::App) -> Vec<String> {
     app.world()
         .resource::<EffectLogResource>()
@@ -76,11 +80,12 @@ fn records(app: &bevy_app::App) -> Vec<String> {
 #[test]
 fn cancelled_at_start_dispatches_nothing_and_names_the_reason() {
     let mut app = app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let (model, _) = Capturing::new(MODEL, "never");
+    let (model, requests) = Capturing::new(MODEL, "never");
     let model = register(&mut app, MODEL, model);
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, "go", Default::default());
     app.world_mut()
         .entity_mut(run)
         .insert(Cancelled("stopped at run start".to_owned()));
@@ -91,6 +96,11 @@ fn cancelled_at_start_dispatches_nothing_and_names_the_reason() {
     assert_eq!(report.kind, ErrorKind::Cancelled);
     assert_eq!(report.message, "stopped at run start");
     app.update();
+    assert!(
+        requests.lock().unwrap().is_empty(),
+        "nothing was dispatched"
+    );
+    #[cfg(feature = "replay")]
     assert!(records(&app).is_empty(), "nothing was dispatched");
 }
 
@@ -111,14 +121,16 @@ fn stop_in_patch(
 #[test]
 fn cancelled_in_patch_leaves_no_record() {
     let mut app = app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let (model, requests) = Capturing::new(MODEL, "never");
     let model = register(&mut app, MODEL, model);
     let agent = spawn_agent(app.world_mut(), "t", model);
     add_system(&mut app, stop_in_patch.in_set(RigSet::Patch));
-    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
+    let run = app.world_mut().spawn_run(agent, "go", Default::default());
     ended(&mut app, run, "cancelled");
     app.update();
+    #[cfg(feature = "replay")]
     assert!(
         records(&app).is_empty(),
         "the folded effect never reached the bus"
@@ -176,7 +188,7 @@ fn a_request_patch_is_folded_into_the_turn() {
     );
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "What is my name?", false, None);
+        .spawn_run(agent, "What is my name?", Default::default());
     ended(&mut app, run, "answered");
     let requests = requests.lock().unwrap();
     assert_eq!(
@@ -233,7 +245,9 @@ fn a_retry_with_feedback_asks_again() {
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
     add_system(&mut app, demand_done.in_set(RigSet::Judge));
-    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, "say it", Default::default());
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
@@ -270,7 +284,9 @@ fn a_retry_written_on_an_empty_turn_asks_again() {
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
     add_system(&mut app, demand_done.in_set(RigSet::Judge));
-    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, "say it", Default::default());
     ended(&mut app, run, "answered after an empty turn");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
@@ -311,6 +327,7 @@ fn route_first_turn(
 #[test]
 fn uses_model_written_before_select_routes_the_turn() {
     let mut app = app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let (model, _) = Capturing::new(MODEL, "slow");
     let model = register(&mut app, MODEL, model);
@@ -326,17 +343,21 @@ fn uses_model_written_before_select_routes_the_turn() {
             .after(RigSet::Advance)
             .before(RigSet::Select),
     );
-    let row = required_row(app.world_mut(), agent);
-    assert_eq!(
-        row.get(&HandlerKey::from(FAST)),
-        Some(&EffectFamily::Completion)
-    );
-    let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
+    #[cfg(feature = "replay")]
+    {
+        let row = required_row(app.world_mut(), agent);
+        assert_eq!(
+            row.get(&HandlerKey::from(FAST)),
+            Some(&EffectFamily::Completion)
+        );
+    }
+    let run = app.world_mut().spawn_run(agent, "go", Default::default());
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
         Some("fast")
     );
+    #[cfg(feature = "replay")]
     assert_eq!(records(&app), [FAST]);
 }
 
@@ -354,7 +375,7 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
         .insert(rig_ecs::agent::MaxTurns(3));
     let _run = first
         .world_mut()
-        .spawn_run(agent, &[], "say it", false, None);
+        .spawn_run(agent, "say it", Default::default());
     tick_until(&mut first, "the turn answered", |world| {
         world
             .query_filtered::<&rig_ecs::agent::Outputs, With<rig_ecs::agent::Turn>>()
@@ -416,7 +437,9 @@ fn open_run() -> (bevy_app::App, Entity, Entity) {
         },
     );
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, "say it", Default::default());
     tick_until(&mut app, "the completion in flight", |world| {
         world
             .query_filtered::<(), (With<PendingEffect>, With<rig_ecs::bus::InFlight>)>()
@@ -632,7 +655,9 @@ fn a_part_patch_is_not_sticky_on_a_judge_retry() {
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
     add_system(&mut app, demand_done.in_set(RigSet::Judge));
-    let run = app.world_mut().spawn_run(agent, &[], "say it", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, "say it", Default::default());
     let target = app
         .world_mut()
         .query::<(Entity, &TextPart)>()

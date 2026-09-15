@@ -23,7 +23,7 @@ use rig_ecs::agent::checkpoint::{
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::prelude::*;
 use futures::StreamExt;
 
@@ -70,6 +70,7 @@ use rig_core::tool::Tool;
 use rig_core::tool::ToolContext;
 
 use rig_ecs::{
+    RigPlugin,
     agent::{
         AdditionalParams, Assembling, Cancelled, Conversation, Cursor, DefaultMaxTurns, Failed,
         Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Order, Output, OutputKind,
@@ -81,10 +82,10 @@ use rig_ecs::{
     bus::{
         BusSet, CredentialRef, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight,
         Intake, Materializer, PendingEffect, Policy, Progress, RigSchedule, Secret, Streamed,
-        materialize_bindings, run_to_quiescence,
+        materialize_bindings,
     },
     replay::{stamp_legacy_builder_header, stamp_run},
-    systems::{Fresh, RigSet, RunBusy, RunCommands, install_agent},
+    systems::{Fresh, RigSet, RunBusy, RunCommands},
 };
 use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, RequestCheck};
 use tokio::sync::Semaphore;
@@ -457,9 +458,9 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
     one_thread_pool();
     let policy = cell.bus.policy();
     let mut app = App::new();
-    rig_ecs::bus::Bus::with_policy(policy).install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(RigPlugin {
+        bus: rig_ecs::bus::Bus::with_policy(policy),
+    });
     app.finish();
     app.cleanup();
     let gates = Gates {
@@ -891,7 +892,7 @@ fn install_materializer(world: &mut World, data: &WireBinding, runtime: &tokio::
                 if credential.as_str() == CASSETTE_CREDENTIAL {
                     Ok(Secret::new(api_key.clone()))
                 } else {
-                    Err(format!("the harness resolves only `{CASSETTE_CREDENTIAL}`"))
+                    Err(rig_ecs::bus::CredentialError::Missing)
                 }
             },
             move || transport.clone(),
@@ -1805,7 +1806,15 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     for (n, prompt) in prompts.into_iter().enumerate() {
         before.push(live_entities(app.world_mut()));
         let world = app.world_mut();
-        let mut run = world.spawn_run(agent, &history, prompt, program.streamed, program.max_turns);
+        let mut run = world.spawn_run(
+            agent,
+            prompt,
+            rig_ecs::systems::RunConfig {
+                history: &history,
+                streamed: program.streamed,
+                max_turns: program.max_turns,
+            },
+        );
         if cell.name == "checkpoint_parallel_batch" {
             super::checkpoint_world::bind_parallel_run(world, run);
         }

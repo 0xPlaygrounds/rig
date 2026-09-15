@@ -16,11 +16,14 @@ mod bus_stream_delivery;
 mod bus_successors;
 #[path = "../bus_support/mod.rs"]
 mod bus_support;
+#[cfg(feature = "replay")]
 #[path = "../bus_tool_replay.rs"]
 mod bus_tool_replay;
 #[path = "../bus_witness.rs"]
 mod bus_witness;
 #[path = "../bus_world.rs"]
 mod bus_world;
+#[path = "../native_bus.rs"]
+mod native_bus;
 #[path = "../run_support/mod.rs"]
 mod run_support;

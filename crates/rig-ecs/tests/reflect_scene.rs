@@ -29,7 +29,7 @@ use rig_ecs::{
     reflect::ReflectedScene,
     systems::RunCommands,
 };
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const ADD: &str = "t/tool:add#0";
@@ -55,7 +55,7 @@ fn ran() -> bevy_app::App {
         .spawn((Grant(add), Order(0), ChildOf(agent)));
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "add one and two", false, None);
+        .spawn_run(agent, "add one and two", Default::default());
     tick_until(&mut app, "the run", |world| {
         world.get::<Settled>(run).is_some()
     });
@@ -92,7 +92,14 @@ fn a_world_and_its_loaded_scene_reflect_alike() {
         serde_json::to_string_pretty(&before).unwrap()
     );
     let entities = before.as_array().unwrap();
-    assert!(entities.len() > 8, "{} entities", entities.len());
+    assert_eq!(
+        entities
+            .iter()
+            .filter(|entity| entity.get("rig_ecs::agent::Completion").is_some())
+            .count(),
+        2,
+        "both model effects retain their positive identity through serde restoration"
+    );
 }
 
 #[test]
@@ -140,4 +147,28 @@ fn user_numeric_arrays_preserve_order_and_duplicates() {
         .find_map(|entity| entity.get(OrderedNumbers::type_path()))
         .expect("registered user component is exported");
     assert_eq!(*value, serde_json::json!([3, 1, 2, 1]));
+}
+
+#[test]
+fn removed_run_bookkeeping_stays_absent_in_reflected_restoration() {
+    use rig_ecs::agent::{
+        Cursor, InvalidRetries, OutputRetries, OutputToolName, ProviderRetried, Run, Usage,
+    };
+    let mut first = app();
+    rig_ecs::reflect::install_reflect(first.world_mut());
+    let run = first.world_mut().spawn(Run).id();
+    first.world_mut().entity_mut(run).remove::<(
+        Cursor,
+        InvalidRetries,
+        OutputRetries,
+        OutputToolName,
+        ProviderRetried,
+        Usage,
+    )>();
+    let before = json(&mut first);
+    let scene = save_world(first.world_mut()).unwrap();
+    let mut second = app();
+    rig_ecs::reflect::install_reflect(second.world_mut());
+    load_world(&scene, second.world_mut()).unwrap();
+    assert_eq!(json(&mut second), before);
 }

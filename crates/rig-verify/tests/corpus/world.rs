@@ -12,7 +12,7 @@
 
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
@@ -20,18 +20,16 @@ use rig_core::{
     serve::ServingPolicy,
 };
 use rig_ecs::{
+    RigPlugin,
     agent::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentText, Failed,
         Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Order, Output, OutputKind,
         Owner, Preamble, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult,
         Settled, Temperature, ToolChoiceSpec, ToolPolicy, Unhandled as WorldUnhandled, UsesModel,
     },
-    bus::{
-        Bus, EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect,
-        run_to_quiescence,
-    },
+    bus::{Bus, EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect},
     replay::stamp_legacy_builder_header,
-    systems::{RunCommands, install_agent},
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLogRecorder, EffectLogReplayer, RequestCheck};
 
@@ -73,14 +71,13 @@ pub fn open(program: &Program, log: &rig_effect_log::EffectLog, check: RequestCh
             .build()
     });
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy {
-        command_capacity: 1_000,
-        ..policy
-    })
-    .ambiguity_detection(LogLevel::Error)
-    .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(RigPlugin {
+        bus: Bus::with_policy(ServingPolicy {
+            command_capacity: 1_000,
+            ..policy
+        })
+        .ambiguity_detection(LogLevel::Error),
+    });
     app.finish();
     app.cleanup();
     let world = app.world_mut();
@@ -207,7 +204,15 @@ pub fn world_agent_reproduces(program: &Program) {
     let start = Instant::now();
     for (n, prompt) in prompts.into_iter().enumerate() {
         let world = app.world_mut();
-        let run = world.spawn_run(agent, &history, prompt, program.streamed, program.max_turns);
+        let run = world.spawn_run(
+            agent,
+            prompt,
+            rig_ecs::systems::RunConfig {
+                history: &history,
+                streamed: program.streamed,
+                max_turns: program.max_turns,
+            },
+        );
         if let Some(concurrency) = program.tool_concurrency {
             world.entity_mut(run).insert(ToolPolicy { concurrency });
         }

@@ -40,13 +40,16 @@ fn main() {
 }
 
 fn ask(mut handlers: Handlers, mut commands: Commands) {
-    let model = support::Scripted::new(vec![
-        vec![support::call(
-            "send_email",
-            serde_json::json!({"to": "ada@example.com", "subject": "Hi", "body": "Hello, Ada."}),
-        )],
-        vec![AssistantContent::text("Done.")],
-    ]);
+    let (model, _) = rig_ecs::testing::Scripted::new(
+        support::MODEL,
+        vec![
+            vec![support::call(
+                "send_email",
+                serde_json::json!({"to": "ada@example.com", "subject": "Hi", "body": "Hello, Ada."}),
+            )],
+            vec![AssistantContent::text("Done.")],
+        ],
+    );
     let (model, tools) = support::register(&mut handlers, model, vec![support::send_email()]);
     let agent = support::agent(
         &mut commands,
@@ -55,9 +58,7 @@ fn ask(mut handlers: Handlers, mut commands: Commands) {
         2,
     );
     commands.spawn((Grant(tools[0]), Order(0), ChildOf(agent)));
-    commands.queue(move |world: &mut World| {
-        world.spawn_run(agent, &[], "Email Ada to say hello.", false, None);
-    });
+    commands.spawn_run(agent, "Email Ada to say hello.", Default::default());
 }
 
 /// `on_dispatch`, as a system in `Gate`: a fresh tool child waits for the

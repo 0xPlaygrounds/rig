@@ -24,12 +24,17 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{Failed, Grant, MaxTurns, Order, PolicyVersion, RunResult, Settled},
-    bus::{Bound, EffectLogResource, Handlers, Replay},
-    replay::stamp_run,
+    bus::Handlers,
     systems::RunCommands,
 };
+#[cfg(feature = "replay")]
+use rig_ecs::{
+    bus::{Bound, EffectLogResource, Replay},
+    replay::stamp_run,
+};
+#[cfg(feature = "replay")]
 use rig_effect_log::EffectLogRecorder;
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const ADD: &str = "t/tool:add#0";
@@ -57,6 +62,7 @@ fn has_tool_result(request: &CompletionRequest) -> bool {
     })
 }
 
+#[cfg(feature = "replay")]
 fn bound_entity(world: &mut World, key: &str) -> Entity {
     world
         .query::<(Entity, &Bound)>()
@@ -178,7 +184,9 @@ fn two_run_agent(app: &mut bevy_app::App, model: Entity, tool: Entity) -> Entity
 fn concurrent_runs_replay_the_live_tool_identities() {
     let (tx, rx) = oneshot::channel();
     let mut live = app();
+    #[cfg(feature = "replay")]
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(live.world_mut(), recorder.clone());
     let model = register(
         &mut live,
@@ -196,45 +204,55 @@ fn concurrent_runs_replay_the_live_tool_identities() {
         },
     );
     let agent = two_run_agent(&mut live, model, tool);
-    let one = live.world_mut().spawn_run(agent, &[], "one", false, None);
-    let two = live.world_mut().spawn_run(agent, &[], "two", false, None);
+    let one = live.world_mut().spawn_run(agent, "one", Default::default());
+    let two = live.world_mut().spawn_run(agent, "two", Default::default());
+    #[cfg(feature = "replay")]
     stamp_run(live.world_mut(), one, &recorder).expect("the run stamps its program identity");
+    #[cfg(feature = "replay")]
     stamp_run(live.world_mut(), two, &recorder).expect("the run stamps its program identity");
     ended(&mut live, one, "run one");
     ended(&mut live, two, "run two");
+    #[cfg(feature = "replay")]
     let log: rig_effect_log::EffectLog =
         serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
     assert_eq!(ending(live.world(), one), "Settled(\"done\")");
     assert_eq!(ending(live.world(), two), "Settled(\"done\")");
-    // The live interleaving: two's tool call (x=2) got the lower id.
-    let tool_ids: Vec<(u64, String)> = log
-        .iter()
-        .filter_map(|r| match &r.kind {
-            EffectKind::ToolCall { args, .. } => Some((r.id.as_u64(), args.clone())),
-            _ => None,
-        })
-        .collect();
-    assert!(
-        tool_ids[0].1.contains("\"x\":2"),
-        "the probe needs two's tool call to be dispatched first: {tool_ids:?}"
-    );
+    #[cfg(feature = "replay")]
+    {
+        // The live interleaving: two's tool call (x=2) got the lower id.
+        let tool_ids: Vec<(u64, String)> = log
+            .iter()
+            .filter_map(|r| match &r.kind {
+                EffectKind::ToolCall { args, .. } => Some((r.id.as_u64(), args.clone())),
+                _ => None,
+            })
+            .collect();
+        assert!(
+            tool_ids[0].1.contains("\"x\":2"),
+            "the probe needs two's tool call to be dispatched first: {tool_ids:?}"
+        );
 
-    // Replay the same program, unchanged, over by-id replayers.
-    let mut replay = app();
-    Handlers::with(replay.world_mut(), |h| Replay::default().register(h, &log))
-        .unwrap()
-        .unwrap();
-    let model = bound_entity(replay.world_mut(), MODEL);
-    let tool = bound_entity(replay.world_mut(), ADD);
-    let agent = two_run_agent(&mut replay, model, tool);
-    let one = replay.world_mut().spawn_run(agent, &[], "one", false, None);
-    let two = replay.world_mut().spawn_run(agent, &[], "two", false, None);
-    ended(&mut replay, one, "replayed one");
-    ended(&mut replay, two, "replayed two");
-    let e1 = ending(replay.world(), one);
-    let e2 = ending(replay.world(), two);
-    assert_eq!(e1, "Settled(\"done\")");
-    assert_eq!(e2, "Settled(\"done\")");
+        // Replay the same program, unchanged, over by-id replayers.
+        let mut replay = app();
+        Handlers::with(replay.world_mut(), |h| Replay::default().register(h, &log))
+            .unwrap()
+            .unwrap();
+        let model = bound_entity(replay.world_mut(), MODEL);
+        let tool = bound_entity(replay.world_mut(), ADD);
+        let agent = two_run_agent(&mut replay, model, tool);
+        let one = replay
+            .world_mut()
+            .spawn_run(agent, "one", Default::default());
+        let two = replay
+            .world_mut()
+            .spawn_run(agent, "two", Default::default());
+        ended(&mut replay, one, "replayed one");
+        ended(&mut replay, two, "replayed two");
+        let e1 = ending(replay.world(), one);
+        let e2 = ending(replay.world(), two);
+        assert_eq!(e1, "Settled(\"done\")");
+        assert_eq!(e2, "Settled(\"done\")");
+    }
 }
 
 fn answer_coincident_models(
@@ -289,12 +307,13 @@ fn change_turn_archetype(
 
 #[test]
 fn coincident_model_answers_ignore_irrelevant_turn_archetypes() {
-    use rig_ecs::{
-        bus::{BusSet, RigSchedule},
-        systems::RigSet,
-    };
+    use rig_ecs::bus::{BusSet, RigSchedule};
+    #[cfg(feature = "replay")]
+    use rig_ecs::systems::RigSet;
     let mut live = app();
+    #[cfg(feature = "replay")]
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(live.world_mut(), recorder.clone());
     let model = Handlers::with(live.world_mut(), |handlers| {
         handlers.register_open(
@@ -321,30 +340,37 @@ fn coincident_model_answers_ignore_irrelevant_turn_archetypes() {
             .before(BusSet::Collect),
     );
     let agent = two_run_agent(&mut live, model, tool);
-    let one = live.world_mut().spawn_run(agent, &[], "one", false, None);
-    let two = live.world_mut().spawn_run(agent, &[], "two", false, None);
+    let one = live.world_mut().spawn_run(agent, "one", Default::default());
+    let two = live.world_mut().spawn_run(agent, "two", Default::default());
     ended(&mut live, one, "live one");
     ended(&mut live, two, "live two");
-    let log = recorder.log();
-    let mut replay = app();
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::policy_visible().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
-    replay.world_mut().resource_mut::<Schedules>().add_systems(
-        RigSchedule,
-        change_turn_archetype
-            .after(RigSet::Fold)
-            .before(RigSet::Judge),
-    );
-    let model = bound_entity(replay.world_mut(), MODEL);
-    let tool = bound_entity(replay.world_mut(), ADD);
-    let agent = two_run_agent(&mut replay, model, tool);
-    let one = replay.world_mut().spawn_run(agent, &[], "one", false, None);
-    let two = replay.world_mut().spawn_run(agent, &[], "two", false, None);
-    ended(&mut replay, one, "replay one");
-    ended(&mut replay, two, "replay two");
-    assert_eq!(ending(replay.world(), one), "Settled(\"done\")");
-    assert_eq!(ending(replay.world(), two), "Settled(\"done\")");
+    #[cfg(feature = "replay")]
+    {
+        let log = recorder.log();
+        let mut replay = app();
+        Handlers::with(replay.world_mut(), |handlers| {
+            Replay::policy_visible().register(handlers, &log)
+        })
+        .unwrap()
+        .unwrap();
+        replay.world_mut().resource_mut::<Schedules>().add_systems(
+            RigSchedule,
+            change_turn_archetype
+                .after(RigSet::Fold)
+                .before(RigSet::Judge),
+        );
+        let model = bound_entity(replay.world_mut(), MODEL);
+        let tool = bound_entity(replay.world_mut(), ADD);
+        let agent = two_run_agent(&mut replay, model, tool);
+        let one = replay
+            .world_mut()
+            .spawn_run(agent, "one", Default::default());
+        let two = replay
+            .world_mut()
+            .spawn_run(agent, "two", Default::default());
+        ended(&mut replay, one, "replay one");
+        ended(&mut replay, two, "replay two");
+        assert_eq!(ending(replay.world(), one), "Settled(\"done\")");
+        assert_eq!(ending(replay.world(), two), "Settled(\"done\")");
+    }
 }

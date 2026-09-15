@@ -73,10 +73,12 @@ pub fn world_resume_reproduces(
         .unwrap_or_default();
     let run = world.spawn_run(
         agent,
-        &history,
         program.prompt,
-        program.streamed,
-        program.max_turns,
+        rig_ecs::systems::RunConfig {
+            history: &history,
+            streamed: program.streamed,
+            max_turns: program.max_turns,
+        },
     );
     if let Some(concurrency) = program.tool_concurrency {
         world

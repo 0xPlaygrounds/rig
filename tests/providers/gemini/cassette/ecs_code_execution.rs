@@ -65,10 +65,12 @@ async fn blocking_code_execution_replayed_in_chat_history() {
             });
             let run = ecs.app.world_mut().spawn_run(
                 ecs.agent,
-                &history,
                 "Now double that number and state the result.",
-                false,
-                None,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: None,
+                },
             );
             let second = ecs.wait_for_success(run).await;
             assert!(

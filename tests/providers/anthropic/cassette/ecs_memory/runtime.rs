@@ -183,10 +183,12 @@ pub(super) async fn run_prompts(
     for &prompt in prompts {
         let run = ecs.app.world_mut().spawn_run(
             ecs.agent,
-            &[],
             prompt,
-            streamed,
-            Some(if streamed { 8 } else { 3 }),
+            rig_ecs::systems::RunConfig {
+                history: &[],
+                streamed,
+                max_turns: Some(if streamed { 8 } else { 3 }),
+            },
         );
         let output = ecs.wait_for_success(run).await;
         if !matches!(clears, Clears::Never) {

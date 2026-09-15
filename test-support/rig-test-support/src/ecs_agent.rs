@@ -12,24 +12,25 @@ use std::{
     time::Duration,
 };
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::prelude::*;
 use rig_core::{
     completion::CompletionModel,
     effect::{EffectKind, HandlerDescriptor},
     serve::{
-        Dispatch, Reply, Serve, ServingPolicy,
+        Dispatch, Reply, Serve,
         adapters::{CompletionAdapter, ToolAdapter},
     },
     tool::Tool,
 };
 use rig_ecs::{
+    RigPlugin,
     agent::{
         DefaultMaxTurns, Failed, Failure, Grant, MaxTurns, Order, Owner, Preamble, RunResult,
         Settled, UsesModel,
     },
-    bus::{Handlers, Recording, run_to_quiescence},
-    systems::{RunCommands, install_agent},
+    bus::{Handlers, Recording},
+    systems::RunCommands,
 };
 use rig_effect_log::EffectLogRecorder;
 
@@ -139,9 +140,7 @@ impl EcsAgent {
         setup: impl FnOnce(&mut World),
     ) -> Self {
         let mut app = App::new();
-        rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
-        install_agent(app.world_mut());
-        app.add_systems(Update, run_to_quiescence);
+        app.add_plugins(RigPlugin::default());
         app.finish();
         app.cleanup();
         let recorder = if keep_events {
@@ -227,10 +226,15 @@ impl EcsAgent {
         streamed: bool,
         max_turns: Option<usize>,
     ) -> String {
-        let run = self
-            .app
-            .world_mut()
-            .spawn_run(self.agent, &[], prompt, streamed, max_turns);
+        let run = self.app.world_mut().spawn_run(
+            self.agent,
+            prompt,
+            rig_ecs::systems::RunConfig {
+                history: &[],
+                streamed,
+                max_turns,
+            },
+        );
         self.wait_for_success(run).await
     }
 

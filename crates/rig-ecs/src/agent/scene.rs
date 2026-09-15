@@ -8,8 +8,10 @@
 
 mod wire;
 
+use bevy_ecs::entity::EntityHashMap;
 use bevy_ecs::prelude::*;
 use rig_core::effect::HandlerKey;
+use rig_core::error::ErrorReport;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -285,7 +287,7 @@ pub struct Loaded {
 /// Save the graph and the effects of `world` as one [`WorldScene`].
 #[must_use = "saving a scene does not remove it from the world"]
 pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::ErrorReport> {
-    let (graph, entities) = RunScene::take(world)?;
+    let (graph, entities, index) = RunScene::take_indexed(world)?;
     let mut extensions = BTreeMap::<usize, BTreeMap<String, serde_json::Value>>::new();
     if let Some(registry) = world.get_resource::<SceneExtensions>() {
         for (index, entity) in entities.iter().enumerate() {
@@ -301,9 +303,7 @@ pub fn save_world(world: &mut World) -> Result<WorldScene, rig_core::error::Erro
             }
         }
     }
-    let effects = crate::bus::Scene::save_with(world, |parent| {
-        entities.iter().position(|entity| *entity == parent)
-    });
+    let effects = crate::bus::Scene::save_with(world, |parent| index.get(&parent).copied());
     // The effects in the scene's order, to pair each tool effect's slot.
     let mut rows: Vec<(Entity, crate::bus::Seq)> = world
         .query::<(Entity, &crate::bus::Seq, &crate::bus::PendingEffect)>()
@@ -475,8 +475,10 @@ fn load_bindings(
 /// Parent ancestry and scene indices are validated before spawning anything.
 /// Registered extensions are validated before spawning and inserted after the
 /// graph and effects have loaded. Install application observers after loading:
-/// insertion observers can otherwise see a partially restored entity. The
-/// bindings are spawned before the graph (its links to their keys resolve
+/// insertion observers can otherwise see a partially restored entity.
+/// Deliberately absent run bookkeeping is removed after `Run` insertion;
+/// its insertion observers can briefly see required defaults for those fields.
+/// The bindings are spawned before the graph (its links to their keys resolve
 /// against their `Bound`s) and taken back out when the graph load is
 /// refused; loading is not transactional if an effects load, extension
 /// insertion/deserialization or application observer fails.
@@ -566,6 +568,11 @@ pub fn load_world(
     let effects = scene
         .effects
         .load_with(world, |index| graph.get(index).copied())?;
+    for (saved, entity) in scene.effects.effects.iter().zip(&effects) {
+        if matches!(saved.kind, rig_core::effect::EffectKind::Completion { .. }) {
+            world.entity_mut(*entity).insert(super::Completion);
+        }
+    }
     for (index, slot) in &scene.slots {
         if let Some(effect) = effects.get(*index).copied() {
             world.entity_mut(effect).insert(slot.clone());
@@ -606,6 +613,12 @@ impl RunScene {
     /// [`RunScene::save`], with the entity each scene index was taken from.
     #[must_use = "the taken scene is the only copy"]
     pub fn take(world: &mut World) -> Result<(Self, Vec<Entity>), rig_core::error::ErrorReport> {
+        Self::take_indexed(world).map(|(scene, entities, _)| (scene, entities))
+    }
+
+    fn take_indexed(
+        world: &mut World,
+    ) -> Result<(Self, Vec<Entity>, EntityHashMap<usize>), ErrorReport> {
         let mut order: Vec<(u8, Entity)> = Vec::new();
         for (entity, _) in world.query::<(Entity, &Owner)>().iter(world) {
             order.push((0, entity));
@@ -648,7 +661,13 @@ impl RunScene {
         }
         order.sort_by_key(|(rank, entity)| (*rank, entity.index()));
         let entities: Vec<Entity> = order.iter().map(|(_, entity)| *entity).collect();
-        let index_of = |entity: Entity| entities.iter().position(|e| *e == entity);
+        // Preserve vector order and the first occurrence of multi-kind entities.
+        // The same map resolves paired effects' graph parents in save_world.
+        let mut index = EntityHashMap::with_capacity(entities.len());
+        for (at, entity) in entities.iter().copied().enumerate() {
+            index.entry(entity).or_insert(at);
+        }
+        let index_of = |entity: Entity| index.get(&entity).copied();
         let target_of = |world: &World, entity: Entity| -> Option<Target> {
             if let Some(index) = index_of(entity) {
                 return Some(Target::Scene { index });
@@ -816,6 +835,7 @@ impl RunScene {
                 next_run: world.get_resource::<RunCounter>().map_or(0, |c| c.0),
             },
             entities,
+            index,
         ))
     }
 
@@ -824,6 +844,25 @@ impl RunScene {
             self.entities.iter().map(|entity| entity.parent),
         )?;
         for entity in &self.entities {
+            // Check raw presence before deserialization or required defaults can
+            // normalize anything. A phase-less unopened run remains valid.
+            if [
+                "assembling",
+                "awaiting_model",
+                "resolving_tools",
+                "loading_memory",
+                "settled",
+                "failed",
+            ]
+            .into_iter()
+            .filter(|name| entity.components.contains_key(*name))
+            .count()
+                > 1
+            {
+                return Err(extension_error(
+                    "run has conflicting phase or ending markers",
+                ));
+            }
             for (name, target) in &entity.relations {
                 if let Target::Scene { index } = target
                     && *index >= self.entities.len()
@@ -842,7 +881,7 @@ impl RunScene {
     /// naming the key. Returns the spawned entities by scene index.
     #[must_use = "the loaded entities are the caller's handles"]
     pub fn load(&self, world: &mut World) -> Result<Vec<Entity>, rig_core::error::ErrorReport> {
-        wire::validate_graph(self).map_err(extension_error)?;
+        wire::validate_graph(self).map_err(ErrorReport::from)?;
         self.validate_structure()?;
         let empty = BinaryAssets::default();
         let assets = world
@@ -858,8 +897,9 @@ impl RunScene {
             validation.spawn(bound.clone());
         }
         let entities = self.load_graph(&mut validation)?;
-        wire::validate_content_expansion(&mut validation).map_err(extension_error)?;
+        wire::validate_content_expansion(&mut validation).map_err(ErrorReport::from)?;
         for entity in &entities {
+            super::validate_run_phase(&validation, *entity)?;
             if validation.get::<Utterance>(*entity).is_some() {
                 read_message(&validation, *entity)
                     .map_err(|error| extension_error(error.to_string()))?;
@@ -1004,7 +1044,7 @@ impl RunScene {
                 AudioPart => "audio_part", VideoPart => "video_part", DocumentPart => "document_part",
                 ToolCallPart => "tool_call_part", ToolResultPart => "tool_result_part", ReasoningPart => "reasoning_part", JsonPart => "json_part",
                 ToolResultStatus => "tool_result_status", ToolResultLimit => "tool_result_limit",
-                Run => "run", RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
+                RunSeq => "run_seq", StreamRequested => "streamed", Cursor => "cursor",
                 Ready => "ready", Prompt => "prompt",
                 Assembling => "assembling", AwaitingModel => "awaiting_model",
                 Settled => "settled", Failed => "failed", RunResult => "run_result",
@@ -1023,6 +1063,23 @@ impl RunScene {
                 PolicyVersion => "policy_version",
                 Retrieval => "retrieval", Retrievable => "retrievable", Retrieving => "retrieving",
             );
+            if components.contains_key("run") {
+                // Insert Run after explicit bookkeeping so Add observers see
+                // saved values, not defaults subsequently overwritten.
+                give!(world, entity, components, errors, Run => "run");
+                macro_rules! preserve_absence {
+                    ($($component:ty => $name:literal),+ $(,)?) => {
+                        $(if !components.contains_key($name) {
+                            world.entity_mut(entity).remove::<$component>();
+                        })+
+                    };
+                }
+                preserve_absence!(
+                    Cursor => "cursor", OutputRetries => "output_retries",
+                    InvalidRetries => "invalid_retries", ProviderRetried => "provider_retried",
+                    OutputToolName => "output_tool_name", Usage => "usage",
+                );
+            }
             if !errors.is_empty() {
                 return Err(rig_core::error::ErrorReport::new(
                     rig_core::error::ErrorKind::Internal,

@@ -32,16 +32,19 @@ use rig_core::{
     message::{AssistantContent, Message, UserContent},
     tool::{ToolOutput, ToolResult},
 };
+#[cfg(feature = "replay")]
+use rig_ecs::bus::EffectLogResource;
 use rig_ecs::{
     agent::{
         Failed, Failure, Grant, InvalidCall, InvalidCalls, Order, Resolution, RunResult, Settled,
         ToolPolicy,
     },
-    bus::{BusSet, EffectLogResource, EffectOutcome, Issued, PendingEffect, RigSchedule},
+    bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
+#[cfg(feature = "replay")]
 use rig_effect_log::EffectLogRecorder;
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const ADD: &str = "t/tool:add#0";
@@ -58,6 +61,7 @@ fn add_system<M>(
 /// An app with a scripted model and the adder granted to one agent.
 fn tooling(turns: Vec<Vec<AssistantContent>>) -> (bevy_app::App, Entity, Arc<Adder>, RequestsSeen) {
     let mut app = app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let (model, requests) = Scripted::new(MODEL, turns);
     let model = register(&mut app, MODEL, model);
@@ -171,7 +175,7 @@ fn assert_active_tools(allowed: &[&str], executable: bool) {
     );
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "add numbers", false, None);
+        .spawn_run(agent, "add numbers", Default::default());
     ended(&mut app, run, "restricted tool decision");
     let requests = requests.lock().expect("requests");
     let advertised: Vec<_> = requests[0]
@@ -194,6 +198,7 @@ fn assert_active_tools(allowed: &[&str], executable: bool) {
             Some(Failed(Failure::UnknownToolCall { name })) if name == "add"
         ));
         assert!(app.world().get::<RunResult>(run).is_none());
+        #[cfg(feature = "replay")]
         assert!(
             app.world()
                 .resource::<EffectLogResource>()
@@ -225,33 +230,36 @@ fn a_turn_with_two_calls_is_a_batch_and_the_results_are_one_utterance() {
     let (mut app, agent, adder, requests) = tooling(two_calls_then_text());
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "add twice", false, None);
+        .spawn_run(agent, "add twice", Default::default());
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
         Some("3 and 7")
     );
-    let log = app.world().resource::<EffectLogResource>().log();
-    let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
-    assert_eq!(
-        keys,
-        [MODEL, ADD, ADD, MODEL],
-        "the batch between the two completions"
-    );
-    let args: Vec<&str> = log
-        .records
-        .iter()
-        .filter_map(|r| match &r.kind {
-            EffectKind::ToolCall { args, .. } => Some(args.as_str()),
-            EffectKind::Completion { .. }
-            | EffectKind::Embed { .. }
-            | EffectKind::Rerank { .. }
-            | EffectKind::Memory { .. }
-            | EffectKind::Retrieve { .. }
-            | EffectKind::Custom { .. } => None,
-        })
-        .collect();
-    assert_eq!(args, [r#"{"x":1,"y":2}"#, r#"{"x":3,"y":4}"#], "call order");
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [MODEL, ADD, ADD, MODEL],
+            "the batch between the two completions"
+        );
+        let args: Vec<&str> = log
+            .records
+            .iter()
+            .filter_map(|r| match &r.kind {
+                EffectKind::ToolCall { args, .. } => Some(args.as_str()),
+                EffectKind::Completion { .. }
+                | EffectKind::Embed { .. }
+                | EffectKind::Rerank { .. }
+                | EffectKind::Memory { .. }
+                | EffectKind::Retrieve { .. }
+                | EffectKind::Custom { .. } => None,
+            })
+            .collect();
+        assert_eq!(args, [r#"{"x":1,"y":2}"#, r#"{"x":3,"y":4}"#], "call order");
+    }
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 2);
     assert_eq!(
@@ -342,7 +350,7 @@ fn tool_policy_sets_how_many_calls_are_in_flight() {
                     .insert(ToolPolicy { concurrency });
                 let run = app
                     .world_mut()
-                    .spawn_run(agent, &[], "add twice", false, None);
+                    .spawn_run(agent, "add twice", Default::default());
                 tick_until(&mut app, "requested calls entered their gates", |_| {
                     gated.entered.load(Ordering::SeqCst) == concurrency
                 });
@@ -389,13 +397,16 @@ fn tool_policy_sets_how_many_calls_are_in_flight() {
                 ended(&mut app, run, "answered");
                 assert!(app.world().get::<Settled>(run).is_some());
                 assert_eq!(gated.peak.load(Ordering::SeqCst), concurrency);
-                let log = app.world().resource::<EffectLogResource>().log();
-                let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
-                assert_eq!(
-                    keys,
-                    [MODEL, ADD, ADD, MODEL],
-                    "policy preserves dispatch trace"
-                );
+                #[cfg(feature = "replay")]
+                {
+                    let log = app.world().resource::<EffectLogResource>().log();
+                    let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
+                    assert_eq!(
+                        keys,
+                        [MODEL, ADD, ADD, MODEL],
+                        "policy preserves dispatch trace"
+                    );
+                }
                 let requests = requests.lock().unwrap();
                 assert_eq!(
                     tool_results(&requests[1]),
@@ -425,22 +436,25 @@ fn a_judge_system_replaces_a_tool_result_and_the_record_keeps_the_answer() {
         vec![AssistantContent::text("99")],
     ]);
     add_system(&mut app, replace_tool_results.in_set(BusSet::Judge));
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
     ended(&mut app, run, "answered");
     let requests = requests.lock().unwrap();
     assert_eq!(
         tool_results(&requests[1]),
         [("c1".to_owned(), "99".to_owned())]
     );
-    let log = app.world().resource::<EffectLogResource>().log();
-    let Ok(Outcome::ToolResult { result }) = &log.records[1].outcome else {
-        panic!("the tool's record");
-    };
-    assert_eq!(
-        result.output().render(),
-        "3",
-        "the record keeps the handler's answer"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        let Ok(Outcome::ToolResult { result }) = &log.records[1].outcome else {
+            panic!("the tool's record");
+        };
+        assert_eq!(
+            result.output().render(),
+            "3",
+            "the record keeps the handler's answer"
+        );
+    }
 }
 
 fn deny_tool_calls(
@@ -533,7 +547,7 @@ fn a_gate_hold_on_a_call_the_batch_also_holds_survives_the_batch_release() {
         .insert(ToolPolicy { concurrency: 1 });
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "add twice", false, None);
+        .spawn_run(agent, "add twice", Default::default());
     tick_until(&mut app, "the first call landed", |world| {
         tool_children(world)
             .first()
@@ -643,7 +657,7 @@ fn a_gate_hold_is_not_lifted_by_the_batch_release() {
             .insert(ToolPolicy { concurrency });
         let run = app
             .world_mut()
-            .spawn_run(agent, &[], "add twice", false, None);
+            .spawn_run(agent, "add twice", Default::default());
         tick_until(&mut app, "the batch is out", |world| {
             tool_children(world).len() == 2
         });
@@ -681,16 +695,19 @@ fn a_gate_denial_is_a_skipped_result_and_no_record() {
         vec![AssistantContent::text("I could not add them.")],
     ]);
     add_system(&mut app, deny_tool_calls.in_set(BusSet::Gate));
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
     ended(&mut app, run, "answered");
     let requests = requests.lock().unwrap();
     assert_eq!(
         tool_results(&requests[1]),
         [("c1".to_owned(), "not today".to_owned())]
     );
-    let log = app.world().resource::<EffectLogResource>().log();
-    let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
-    assert_eq!(keys, [MODEL, MODEL], "a denial is no record");
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
+        assert_eq!(keys, [MODEL, MODEL], "a denial is no record");
+    }
     assert_eq!(adder.peak.load(Ordering::SeqCst), 0, "the tool never ran");
 }
 
@@ -709,7 +726,7 @@ fn despawn_tool_calls(
 fn despawning_a_tool_child_fails_the_run_cancelled() {
     let (mut app, agent, _, _) = tooling(two_calls_then_text());
     add_system(&mut app, despawn_tool_calls.in_set(BusSet::Gate));
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
     ended(&mut app, run, "cancelled");
     assert!(matches!(
         app.world().get::<Failed>(run),
@@ -737,14 +754,17 @@ fn a_system_repairs_an_invalid_call_to_a_granted_tool() {
     add_system(&mut app, repair_to_add.in_set(RigSet::Judge));
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "multiply", false, None);
+        .spawn_run(agent, "multiply", Default::default());
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
         Some("5")
     );
-    let log = app.world().resource::<EffectLogResource>().log();
-    assert!(matches!(&log.records[1].kind, EffectKind::ToolCall { name, .. } if name == "add"));
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        assert!(matches!(&log.records[1].kind, EffectKind::ToolCall { name, .. } if name == "add"));
+    }
     let requests = requests.lock().unwrap();
     let Message::Assistant { content, .. } = &requests[1].chat_history[2] else {
         panic!("the assistant turn");
@@ -828,7 +848,7 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
         add_system(&mut app, repair_to_add.in_set(RigSet::Judge));
         let run =
             app.world_mut()
-                .spawn_run(agent, &[], "repair only the invalid call", false, None);
+                .spawn_run(agent, "repair only the invalid call", Default::default());
         ended(&mut app, run, "typed repair complete");
         assert!(app.world().get::<Failed>(run).is_none());
         let requests = requests.lock().unwrap();
@@ -881,14 +901,17 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
                 matches!(result.content.as_slice(), [rig_core::message::ToolResultContent::Json { value }] if value == &serde_json::json!(if index == 0 { 5 } else { 9 }))
             );
         }
-        let log = app.world().resource::<EffectLogResource>().log();
-        assert_eq!(
-            log.records
-                .iter()
-                .filter(|record| matches!(record.kind, EffectKind::ToolCall { .. }))
-                .count(),
-            2
-        );
+        #[cfg(feature = "replay")]
+        {
+            let log = app.world().resource::<EffectLogResource>().log();
+            assert_eq!(
+                log.records
+                    .iter()
+                    .filter(|record| matches!(record.kind, EffectKind::ToolCall { .. }))
+                    .count(),
+                2
+            );
+        }
     }
 }
 
@@ -920,19 +943,22 @@ fn a_system_retries_an_invalid_call_with_feedback() {
     add_system(&mut app, retry_with_feedback.in_set(RigSet::Judge));
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "multiply", false, None);
+        .spawn_run(agent, "multiply", Default::default());
     ended(&mut app, run, "answered");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.as_str()),
         Some("5")
     );
-    let log = app.world().resource::<EffectLogResource>().log();
-    let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
-    assert_eq!(
-        keys,
-        [MODEL, MODEL, ADD, MODEL],
-        "nothing dispatched for the retried turn"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        let keys: Vec<&str> = log.records.iter().map(|r| r.key.as_str()).collect();
+        assert_eq!(
+            keys,
+            [MODEL, MODEL, ADD, MODEL],
+            "nothing dispatched for the retried turn"
+        );
+    }
     let requests = requests.lock().unwrap();
     assert_eq!(
         tool_results(&requests[1]),
@@ -985,16 +1011,19 @@ fn retry_feedback_targets_only_the_invalid_identity_namespace() {
         add_system(&mut app, retry_with_feedback.in_set(RigSet::Judge));
         let run = app
             .world_mut()
-            .spawn_run(agent, &[], "retry invalid identity", false, None);
+            .spawn_run(agent, "retry invalid identity", Default::default());
         ended(&mut app, run, "typed retry complete");
         assert!(app.world().get::<Failed>(run).is_none());
-        let log = app.world().resource::<EffectLogResource>().log();
-        assert!(
-            log.records
-                .iter()
-                .all(|record| !matches!(record.kind, EffectKind::ToolCall { .. })),
-            "neither invalid call nor its peer executes on retry"
-        );
+        #[cfg(feature = "replay")]
+        {
+            let log = app.world().resource::<EffectLogResource>().log();
+            assert!(
+                log.records
+                    .iter()
+                    .all(|record| !matches!(record.kind, EffectKind::ToolCall { .. })),
+                "neither invalid call nor its peer executes on retry"
+            );
+        }
         let requests = requests.lock().unwrap();
         assert_eq!(requests.len(), 2);
         let results: Vec<_> = requests[1]
@@ -1052,7 +1081,7 @@ fn concurrency_and_independent_holds_survive_mid_batch_checkpoints() {
                 .insert(ToolPolicy { concurrency });
             original
                 .world_mut()
-                .spawn_run(agent, &[], "add numbers", false, None);
+                .spawn_run(agent, "add numbers", Default::default());
             let started = std::time::Instant::now();
             let held = loop {
                 original.world_mut().run_schedule(RigSchedule);
@@ -1156,7 +1185,7 @@ fn approving_a_batch_held_call_by_any_route_keeps_the_batch_and_the_scene_consis
         let (mut app, agent, _, _) = tooling(two_calls_then_text());
         let run = app
             .world_mut()
-            .spawn_run(agent, &[], "add numbers", false, None);
+            .spawn_run(agent, "add numbers", Default::default());
         // One schedule pass at a time: an `update` runs to quiescence and
         // would land the batch before the hold is observable.
         let started = std::time::Instant::now();

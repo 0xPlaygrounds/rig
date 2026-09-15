@@ -29,7 +29,6 @@ use crate::bus_support;
 use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
-use bus_support::*;
 use rig_core::test_utils::observations::{Comparison, compare};
 use rig_core::{
     effect::{EffectFamily, EffectId, EffectKind, Outcome},
@@ -40,11 +39,14 @@ use rig_core::{
     },
     serve::{Decision, Dispatch, ErasedHandler, Intercept, Reply, Serve, ServingPolicy, Verdict},
 };
+#[cfg(feature = "replay")]
+use rig_ecs::bus::EffectLogResource;
 use rig_ecs::bus::{
-    BusSet, EffectLogResource, EffectOutcome, Handlers, Held, InFlight, Issued, PendingEffect,
-    RigSchedule, Scope, Witnessing, WorldOutcome,
+    BusSet, EffectOutcome, Handlers, Held, InFlight, Issued, PendingEffect, RigSchedule, Scope,
+    Witnessing, WorldOutcome,
 };
 use rig_effect_log::EffectLogRecorder;
+use {bus_support::*, rig_ecs::testing::*};
 
 fn witnessed(app: &mut bevy_app::App) -> Arc<ObservationLog> {
     let log = Arc::new(ObservationLog::default());
@@ -309,7 +311,9 @@ fn deny_model_calls(
 fn a_gate_denial_is_witnessed_with_its_reason_and_leaves_no_record() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
+    #[cfg(feature = "replay")]
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), recorder.clone());
     let log = witnessed(&mut app);
     register(&mut app, "model", MockModel::new(&counters));
@@ -330,6 +334,7 @@ fn a_gate_denial_is_witnessed_with_its_reason_and_leaves_no_record() {
             .load(std::sync::atomic::Ordering::SeqCst),
         0
     );
+    #[cfg(feature = "replay")]
     assert!(recorder.log().records.is_empty(), "a denial is no record");
     let trace = log.trace();
     assert_eq!(actions(&trace), [(Stage::Gate, "denied".to_owned())]);
@@ -728,7 +733,9 @@ fn replace_answers(
 fn a_judge_replacement_exposes_both_answers() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
+    #[cfg(feature = "replay")]
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), recorder.clone());
     let log = witnessed(&mut app);
     register(&mut app, "model", MockModel::new(&counters));
@@ -744,6 +751,7 @@ fn a_judge_replacement_exposes_both_answers() {
     });
     tick(&mut app, 2);
 
+    #[cfg(feature = "replay")]
     assert!(
         recorder.log().records[0].outcome.is_ok(),
         "the record keeps the handler's answer"
@@ -849,7 +857,9 @@ impl Intercept for Bouncer {
 fn layer_patches_are_recorded_and_denials_are_witnessed() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
+    #[cfg(feature = "replay")]
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), recorder.clone());
     let log = Arc::new(ObservationLog::default().with_clock(Arc::new(HandlerClock(
         std::sync::atomic::AtomicU64::new(10),
@@ -889,25 +899,28 @@ fn layer_patches_are_recorded_and_denials_are_witnessed() {
     });
     tick(&mut app, 2);
 
-    let records = recorder.log();
-    assert_eq!(
-        records.records.len(),
-        2,
-        "the bounced dispatch is no record; the withdrawn one keeps the handler's answer"
-    );
-    let warm_record = records
-        .records
-        .iter()
-        .find(|r| r.key.as_str() == "warm")
-        .expect("the warm record");
-    let EffectKind::Completion { request, .. } = &warm_record.kind else {
-        panic!()
-    };
-    assert_eq!(
-        request.temperature,
-        Some(0.7),
-        "the record holds the patched request"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let records = recorder.log();
+        assert_eq!(
+            records.records.len(),
+            2,
+            "the bounced dispatch is no record; the withdrawn one keeps the handler's answer"
+        );
+        let warm_record = records
+            .records
+            .iter()
+            .find(|r| r.key.as_str() == "warm")
+            .expect("the warm record");
+        let EffectKind::Completion { request, .. } = &warm_record.kind else {
+            panic!()
+        };
+        assert_eq!(
+            request.temperature,
+            Some(0.7),
+            "the record holds the patched request"
+        );
+    }
 
     let trace = log.trace();
     let denied = trace
@@ -953,6 +966,7 @@ fn layer_patches_are_recorded_and_denials_are_witnessed() {
         matches!(consumed, OutcomeSummary::Err { reason, .. } if reason.code == "denied"),
         "{consumed:?}"
     );
+    #[cfg(feature = "replay")]
     assert!(
         recorder
             .log()
@@ -1217,6 +1231,7 @@ fn program(
     let counters = Arc::new(Counters::default());
     let mut app = app();
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), recorder.clone());
     let log = with_witness.then(|| witnessed(&mut app));
     register(&mut app, "model", MockModel::new(&counters));
@@ -1269,18 +1284,20 @@ fn a_witness_changes_nothing() {
     let (witnessed_log, witnessed_outcomes, trace) = program(true);
     assert!(none.is_none());
     assert_eq!(plain_outcomes, witnessed_outcomes);
-    assert_eq!(
-        serde_json::to_value(&plain_log).unwrap(),
-        serde_json::to_value(&witnessed_log).unwrap(),
-        "the exchange record, delivery batches included, is identical with and without a witness"
-    );
-    assert!(
-        plain_log
-            .header
-            .deliveries
-            .as_ref()
-            .is_some_and(|d| !d.is_empty())
-    );
+    if cfg!(feature = "replay") {
+        assert_eq!(
+            serde_json::to_value(&plain_log).unwrap(),
+            serde_json::to_value(&witnessed_log).unwrap(),
+            "the exchange record, delivery batches included, is identical with and without a witness"
+        );
+        assert!(
+            plain_log
+                .header
+                .deliveries
+                .as_ref()
+                .is_some_and(|d| !d.is_empty())
+        );
+    }
     let trace = trace.unwrap();
     assert!(trace.is_complete());
     assert!(trace.observations.len() >= 5, "{:?}", actions(&trace));
@@ -1364,7 +1381,9 @@ fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
     };
     let mut app = app();
     let log = witnessed(&mut app);
+    #[cfg(feature = "replay")]
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), recorder.clone());
     let http = RecordingHttpClient::new(
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,

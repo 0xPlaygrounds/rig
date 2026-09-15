@@ -38,9 +38,12 @@ fn main() {
 }
 
 fn ask(mut handlers: Handlers, mut commands: Commands) {
-    let model = support::Scripted::new(vec![vec![AssistantContent::text(
-        "Why did the Rustacean cross the road? To get to the other side — safely.",
-    )]]);
+    let (model, _) = rig_ecs::testing::Scripted::new(
+        support::MODEL,
+        vec![vec![AssistantContent::text(
+            "Why did the Rustacean cross the road? To get to the other side — safely.",
+        )]],
+    );
     let (model, _) = support::register(&mut handlers, model, Vec::new());
     let agent = support::agent(
         &mut commands,
@@ -55,9 +58,15 @@ fn ask(mut handlers: Handlers, mut commands: Commands) {
     .iter()
     .filter_map(MessageParts::from_message)
     .collect();
-    commands.queue(move |world: &mut World| {
-        world.spawn_run(agent, &history, "Another one, about Rust.", true, None);
-    });
+    commands.spawn_run(
+        agent,
+        "Another one, about Rust.",
+        rig_ecs::systems::RunConfig {
+            history: &history,
+            streamed: true,
+            max_turns: None,
+        },
+    );
 }
 
 /// The UI: print what arrived since the last tick.

@@ -46,9 +46,9 @@ pub fn bus_emitter() -> Emitter {
     Emitter::versioned(BUS_EMITTER, env!("CARGO_PKG_VERSION"))
 }
 
-/// How far up a `ChildOf` chain a subject is resolved: a host bug that
-/// makes a cycle ends here, not in an observer that never returns.
-const WALK_LIMIT: usize = 4096;
+/// Maximum ancestor edges inspected. Scope includes self within the same
+/// 4096-entity budget; malformed cycles never stall dispatch or an observer.
+pub(crate) const WALK_LIMIT: usize = 4096;
 
 /// The world's witness. Cloning shares the sink. `Send + Sync` on every
 /// target, as a resource must be (the sink trait's compat bounds are
@@ -204,43 +204,39 @@ impl SubjectWalk<'_, '_> {
     /// [`Scope`] up the tree, its own first), its dispatch order, its id
     /// once issued, its parent's id.
     pub fn of_entity(&self, entity: Entity) -> Subject {
-        let mut subject = Subject {
+        self.of_entity_with_issued(entity, |_| None)
+    }
+
+    fn of_entity_with_issued(
+        &self,
+        entity: Entity,
+        issued_now: impl Fn(Entity) -> Option<rig_core::effect::EffectId>,
+    ) -> Subject {
+        Subject {
             order: self.seqs.get(entity).ok().map(|seq| seq.0),
             effect: self.issued.get(entity).ok().map(|issued| issued.0),
+            scope: self.of_scope(entity).scope,
+            parent: self
+                .parents
+                .iter_ancestors(entity)
+                .take(WALK_LIMIT)
+                .take_while(|ancestor| *ancestor != entity)
+                .find_map(|ancestor| {
+                    issued_now(ancestor)
+                        .or_else(|| self.issued.get(ancestor).ok().map(|issued| issued.0))
+                }),
             ..Subject::default()
-        };
-        let mut current = entity;
-        for _ in 0..WALK_LIMIT {
-            if subject.scope.is_none()
-                && let Ok(Scope(scope)) = self.scopes.get(current)
-            {
-                subject.scope = Some(scope.clone());
-            }
-            match self.parents.get(current) {
-                Ok(parent) => {
-                    current = parent.parent();
-                    if subject.parent.is_none()
-                        && let Ok(Issued(id)) = self.issued.get(current)
-                    {
-                        subject.parent = Some(*id);
-                    }
-                }
-                Err(_) => break,
-            }
         }
-        subject
     }
 
     /// The subject of a program entity (a run): its scope only.
     pub fn of_scope(&self, entity: Entity) -> Subject {
-        let mut current = entity;
-        for _ in 0..WALK_LIMIT {
+        for current in std::iter::once(entity)
+            .chain(self.parents.iter_ancestors(entity))
+            .take(WALK_LIMIT)
+        {
             if let Ok(Scope(scope)) = self.scopes.get(current) {
                 return Subject::scoped(scope.clone());
-            }
-            match self.parents.get(current) {
-                Ok(parent) => current = parent.parent(),
-                Err(_) => break,
             }
         }
         Subject::default()
@@ -259,7 +255,17 @@ impl Subjects<'_, '_> {
     /// The subject of `entity`: its scope, dispatch order, id once issued,
     /// parent's id, key and family.
     pub fn of(&self, entity: Entity) -> Subject {
-        let mut subject = self.walk.of_entity(entity);
+        self.of_with_issued(entity, |_| None)
+    }
+
+    /// Resolve deferred dispatch ids before committed ids, without an overlay
+    /// allocation for callers that only need the committed witness subject.
+    pub(crate) fn of_with_issued(
+        &self,
+        entity: Entity,
+        issued_now: impl Fn(Entity) -> Option<rig_core::effect::EffectId>,
+    ) -> Subject {
+        let mut subject = self.walk.of_entity_with_issued(entity, issued_now);
         if let Ok(pending) = self.pending.get(entity) {
             subject.key = Some(pending.key.clone());
             subject.family = Some(pending.kind.family());

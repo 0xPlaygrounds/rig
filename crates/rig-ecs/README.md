@@ -2,15 +2,51 @@
 
 Rig's effect bus and agent runtime in a Bevy `World`. Effects and handlers are
 entities; systems dispatch work and publish outcomes; relationships carry causal
-and conversation structure. The host owns the schedule and calls
-`run_to_quiescence` on each tick. Handler tasks and application systems retain
-their own execution costs; bounded collection does not make arbitrary user work
-nonblocking.
+and conversation structure. The host owns the schedule and either calls
+`run_to_quiescence` on each tick or uses the optional `RigPlugin` Update driver.
+Handler tasks and application systems retain their own execution costs; bounded
+collection does not make arbitrary user work nonblocking.
 
 The bus uses `bevy_ecs` and `bevy_tasks`. Agent components, request assembly,
 steering and replay build on that bus. See [CONTRACT.md](CONTRACT.md) for detailed
 behavior and [the provider comparison guide](../../tests/ecs_parity/README.md)
 for the scope of cross-runtime regression tests.
+
+## Host installation and run inputs
+
+With `features = ["app"]`, an application installs the existing runtime with:
+
+```rust
+use bevy_app::App;
+use rig_ecs::RigPlugin;
+
+let mut app = App::new();
+app.add_plugins(RigPlugin::default());
+```
+
+`RigPlugin { bus }` accepts a configured `Bus`. An already-installed bus keeps
+its policy, resources, schedule and ambiguity settings; `install_agent` is
+idempotent before or after the plugin. Add the unique plugin once. Do not also
+register `run_to_quiescence` or insert `RigSchedule` in `MainScheduleOrder`:
+either would add a second execution route. Assets, recording and host error
+policy are not installed automatically.
+
+App-free hosts retain `Bus::install`, `systems::install_agent` and direct
+`World`/`RigSchedule` driving. Once the agent and its model are registered,
+`RunCommands` works on either `World` or `Commands`:
+
+```rust
+use rig_ecs::systems::{RunCommands, RunConfig};
+
+let run = world.spawn_run(agent, "Explain the result.", RunConfig {
+    streamed: true,
+    ..Default::default()
+});
+```
+
+`RunConfig` names the borrowed `history: &[MessageParts]`, streaming choice and
+optional turn limit. Defaults mean empty history, unary output and inherited
+turn limit. The prompt follows the history; no borrow survives the call.
 
 ## The run as a graph
 
@@ -57,10 +93,10 @@ The request the model sees is derived, never authored: a run entity, utterances 
 |---|---|
 | Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
-| Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim), `Order`; `ChildOf` the run |
-| Run | `Run`, `RunOf` → agent, `RunSeq`, `StreamRequested`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
+| Utterance | `Utterance`, `Role`, ordered typed content children, `Order`; `ChildOf` the run |
+| Run | `Run`, `RunOf` → agent, `RunSeq`, `StreamRequested`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `ResolvingTools`, `LoadingMemory`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `InvalidRetries`, `ProviderRetried`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
 | Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
-| Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
+| Effect | the bus module's, `ChildOf` the turn: a folded model effect carries `Completion`; tool children carry `ToolCallSlot`, and the bus's `ToolInputs` carries the run's `ToolContextSpec`. The batch is the turn's children; `ToolPolicy { concurrency }` on the run or agent says how many fly at once. |
 | Invalid call | `InvalidCall` + `Resolution`, `ChildOf` the turn |
 | the scene | `agent::scene::RunScene` beside the bus's `Scene` |
 
@@ -80,10 +116,16 @@ The agent's sets, around the bus's:
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
 | `RigSet::Release` | a turn's tool batch is out | `release_batch` releases its `rig-ecs/batch` owner up to the concurrency, in call order. Policies use `bus::acquire_hold` and `bus::release_hold` with distinct stable emitter names; `Held` remains until every owner releases. A pre-existing bare `Held` is retained as an independent unknown owner. |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |
-| `RigSet::Fold` | the effect may have streamed or landed | `Outputs` on the turn |
+| `RigSet::Fold` | the model effect may have streamed or landed | streamed preview, then final completion folding into the turn's `Outputs`; tool outcomes cannot complete it |
 | `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them, or a tool child's `EffectOutcome` |
 | `RigSet::Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: one user utterance of the results in call order (CONTRACT §8), or a failure; `materialise`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, or a failure |
 | `RigSet::Settle` | a run settled or failed | observers on `Settled` / `Failed` |
+
+`Materialised` means the turn's outcome was consumed, not that it succeeded or
+committed a tool batch. Invalid-call waiting publishes no read notification;
+resolution can finish in that same pass and publishes the eventual read once.
+Malformed content fails its run without delaying later ordered runs. Already
+queued writes are not rolled back.
 
 `tests/tool_batch.rs` pins the batch: two calls are two children dispatched in call order and one utterance of results; `ToolPolicy` sets how many fly at once; a `Judge` system's replacement reaches history while the record keeps the answer; a `Gate` denial is a skipped result and no record; a despawned child fails the run `Cancelled`; a system's `Resolution::{Repair, Retry}` renames or retries an invalid call (`Skip` and `Ignore` likewise). The corpus's nesting cases run through a key the world serves (`Handlers::register_open`), the `lookup` tool answered by a system that spawns its child `ChildOf` the call.
 
@@ -337,17 +379,49 @@ them during restoration.
 
 `rig_ecs::prelude` names what a user's systems need and nothing else: the sets (`RigSet`, `BusSet`), the components a user writes (`Cancelled`, `RequestPatch`, `Retry`, `Resolution`, `Held`, `UsesModel`, `Grant`, `Context`, `Remembers`, `Retrieves`) and the components a user reads (`Streamed`, `Outputs`, `EffectOutcome`, `RunResult`, `Settled`, `Failed`, `Usage`).
 
+The default feature is `replay`; it enables effect-log recording/replay APIs,
+not app integration. `app` adds optional `bevy_app` and exports `RigPlugin`.
+`testing` exports the shared `Scripted`, `Capturing`, `NeverCalled` and
+`NeverAnswers` handlers without enabling app integration or rig-core's dev
+features. `testing` plus `app` also exports native-only `tick_until`, returning
+the update count. Wasm hosts must yield between updates instead of blocking.
+Scripted responses retain their content and call identities; streamed requests
+use rig-core's normal outcome-to-stream conversion.
+
 `reflect` (off by default): every component of the bus and the graph derives `Reflect`, the rig-core values they hold reflect through opaque remote wrappers (`bus::reflect`, `agent::reflect` — serialized as their wire form, so an inspector shows an effect entity's payload as the log would), `reflect::install_reflect` registers them all, and `reflect::ReflectedScene` is the world as reflected data beside the serde scene: canonical (entities ordered by content, an `Entity` in a component as its index in the scene, a relationship target's indexes sorted), so a world and the world its `WorldScene` loads into export the same JSON (`tests/reflect_scene.rs`); every component round-trips through `ReflectSerializer` / `ReflectDeserializer` / `FromReflect` by value (`tests/reflect_roundtrip.rs`). The runtime-only components (`Serving`, `Streaming`, `Publishing`, `Observed`, `Asked`, `Answer`, `Typed`, and the asset handles) reflect nothing. rig-core takes no Bevy dependency.
 
-`assets` (off by default; the one feature that takes `bevy_app`, because `bevy_asset` is built on it): `assets::PromptAsset` (a `.md` / `.txt` file) and `assets::ToolDefinitions` (a `.json` array of `{ name, description, parameters }`) are `bevy_asset` assets with loaders; `PromptHandle` / `ToolsHandle` on an agent become its `Preamble` and its `Grant`s — one per definition, in file order, to the bound handler whose descriptor is the tool of that name; a definition nothing serves is not granted — the tick the asset loads, once (`Applied<A>`). `assets::AssetsPlugin` after `bevy_asset::AssetPlugin`, and the host orders `run_to_quiescence` after `assets::AssetsSet`. `tests/assets_prompt.rs`, `examples/prompt_from_assets.rs` (an in-memory source; a directory with the default one).
+`assets` (off by default; enables `app` because `bevy_asset` needs Bevy App):
+`assets::PromptAsset` (`.md` / `.txt`) and `assets::ToolDefinitions` (a `.json`
+array of `{ name, description, parameters }`) have asset loaders.
+`PromptHandle` / `ToolsHandle` on an agent become its `Preamble` and `Grant`s,
+one per served tool definition in file order, once when loaded (`Applied<A>`).
+A definition nothing serves is not granted. Add `assets::AssetsPlugin` after
+`bevy_asset::AssetPlugin`; it does not install `RigPlugin`. The host orders
+`assets::AssetsSet` before `run_to_quiescence`, including when the driver comes
+from `RigPlugin`. See `tests/assets_prompt.rs` and `examples/prompt_from_assets.rs`
+for an in-memory source; the default source can read a directory.
 
 ## The examples, side by side
 
-Runnable programs over scripted mocks in `examples/support`: `agent_with_tools` (`Grant` links and a run entity for `dynamic_tools` and `prompt`), `human_in_the_loop` (a system in `BusSet::Gate` reading stdin for `AgentHook::on_dispatch`: approve, deny with an `EffectOutcome`, abort with `Cancelled`), `best_of_n` (`agent::fork` n − 1 times, a judging system over the settled runs, for a parallel fan-out), `streaming_ui` (a streamed run and a system after `RigSet::Fold` on `Changed<Streamed>` for a polled stream), `prompt_from_assets` (the `assets` feature). `cargo run -p rig-ecs --example <name>` — none needs a key.
+Runnable programs use shared `rig_ecs::testing` handlers and example-specific
+tools/setup in `examples/support`: `agent_with_tools` (`Grant` links and a run
+entity for `dynamic_tools` and `prompt`), `human_in_the_loop` (a system in
+`BusSet::Gate` reading stdin to approve, deny with an `EffectOutcome`, or abort
+with `Cancelled`), `best_of_n` (fallible `agent::fork` n − 1 times and a system
+judging settled runs), and `streaming_ui` (a streamed run and a system after
+`RigSet::Fold` reading `Changed<Streamed>`). Run them with
+`cargo run -p rig-ecs --features app,testing --example <name>`.
+`prompt_from_assets` instead needs `--features assets,testing`. `hello_model`
+remains a bus-only example. None needs a key.
 
 ## On wasm
 
-Everything a system holds is `Send + Sync` on every target. The erased handler lives in a `NonSend` resource on every target, one spelling, so a system that registers or dispatches runs on the main thread. `tests/bus_wasm.rs` drives the schedule by hand: `bevy_app`'s runner on the web is frame-scheduled by the browser.
+Everything a system holds is `Send + Sync` on every target. The erased handler
+lives in a `NonSend` resource on every target, so registration and dispatch run
+on the main thread. `tests/bus_wasm.rs` drives the bus by hand;
+`tests/run_wasm.rs` exercises `RigPlugin` through `App::update`. Both yield to
+the web executor between ticks. Bevy's browser runner is frame-scheduled;
+the native blocking `testing::tick_until` helper is not available on wasm.
 
 Cancellation after an original handler answer has been observed records a
 `DeliveryKind::Cancelled` boundary instead of an outcome delivery. This preserves

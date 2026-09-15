@@ -29,7 +29,6 @@ mod one_erasure;
 mod prompt_response_messages;
 mod provider_layout;
 mod reasoning_stream_stats;
-mod rig_ecs_bus_module;
 mod stream_ids;
 mod streaming_conformance;
 mod streaming_conformance_registry;

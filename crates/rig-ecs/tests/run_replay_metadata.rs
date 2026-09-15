@@ -25,7 +25,7 @@ use rig_ecs::{
     systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const TOOL: &str = "t/tool:unused";
@@ -81,7 +81,7 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
         },
     );
     let agent = program(live.world_mut(), model, tool);
-    let run = live.world_mut().spawn_run(agent, &[], "go", false, None);
+    let run = live.world_mut().spawn_run(agent, "go", Default::default());
     stamp_run(live.world_mut(), run, &recorder).expect("the run stamps its program identity");
     tick_until(&mut live, "live settled", |world| {
         world.get::<Settled>(run).is_some()
@@ -105,7 +105,9 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     let model = bound(replay.world_mut(), MODEL);
     let tool = bound(replay.world_mut(), TOOL);
     let agent = program(replay.world_mut(), model, tool);
-    let run = replay.world_mut().spawn_run(agent, &[], "go", false, None);
+    let run = replay
+        .world_mut()
+        .spawn_run(agent, "go", Default::default());
     check_replayable(replay.world_mut(), run, &log).expect("same program in the replay world");
 
     let original = replay
@@ -274,7 +276,7 @@ fn a_layered_program_replays_under_the_same_layer_and_refuses_another() {
         },
     );
     let agent = program(live.world_mut(), model, tool);
-    let run = live.world_mut().spawn_run(agent, &[], "go", false, None);
+    let run = live.world_mut().spawn_run(agent, "go", Default::default());
     stamp_run(live.world_mut(), run, &recorder).expect("stamps");
     tick_until(&mut live, "live settled", |world| {
         world.get::<Settled>(run).is_some()
@@ -307,7 +309,9 @@ fn a_layered_program_replays_under_the_same_layer_and_refuses_another() {
         let model = bound(replay.world_mut(), MODEL);
         let tool = bound(replay.world_mut(), TOOL);
         let agent = program(replay.world_mut(), model, tool);
-        let run = replay.world_mut().spawn_run(agent, &[], "go", false, None);
+        let run = replay
+            .world_mut()
+            .spawn_run(agent, "go", Default::default());
         let verdict = check_replayable(replay.world_mut(), run, &log);
         assert_eq!(verdict.is_ok(), accepted, "layer {layer:?}: {verdict:?}");
         if accepted {

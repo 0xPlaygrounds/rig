@@ -8,5 +8,8 @@ pub use crate::{
         Resolution, Retrieves, Retry, RunResult, Settled, Usage, UsesModel,
     },
     bus::{BusSet, EffectOutcome, Held, Streamed},
-    systems::{RigSet, RunCommands},
+    systems::{RigSet, RunCommands, RunConfig},
 };
+
+#[cfg(feature = "app")]
+pub use crate::RigPlugin;

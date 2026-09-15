@@ -1,22 +1,20 @@
 //! Exact named producer setup for the Gemini effect golden; real provider IO.
 use crate::ecs_agent::{RuntimeHandler, io_runtime};
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::prelude::*;
 use rig::{
     completion::CompletionModel,
-    serve::{
-        ServingPolicy,
-        adapters::{CompletionAdapter, ToolAdapter},
-    },
+    serve::adapters::{CompletionAdapter, ToolAdapter},
     tool::Tool,
 };
 use rig_ecs::{
+    RigPlugin,
     agent::{
         DefaultMaxTurns, Failed, Grant, MaxTurns, Order, Owner, Preamble, RunResult, Settled,
         Temperature, UsesModel,
     },
-    bus::{Handlers, Recording, run_to_quiescence},
-    systems::{RunCommands, install_agent},
+    bus::{Handlers, Recording},
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder};
 use std::{sync::Arc, time::Duration};
@@ -44,9 +42,7 @@ pub(super) async fn run(
     subtract: impl Tool + 'static,
 ) -> (bool, EffectLog) {
     let mut app = App::new();
-    rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(RigPlugin::default());
     app.finish();
     app.cleanup();
     // Original record_effects() does not retain stream events.
@@ -76,7 +72,15 @@ pub(super) async fn run(
         .id();
     tool(&mut app, agent, add, 0);
     tool(&mut app, agent, subtract, 1);
-    let run = app.world_mut().spawn_run(agent, &[], prompt, true, Some(6));
+    let run = app.world_mut().spawn_run(
+        agent,
+        prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: Some(6),
+        },
+    );
     let bus = app.world().resource::<rig_ecs::bus::Policy>().0;
     rig_ecs::replay::stamp_legacy_builder_header(
         app.world_mut(),

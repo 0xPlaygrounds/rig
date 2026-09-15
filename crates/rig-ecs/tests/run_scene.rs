@@ -19,24 +19,30 @@ use crate::run_support;
 use rig_core::serve::Dispatch;
 use std::time::Instant;
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
-use rig_core::{effect::HandlerKey, serve::ServingPolicy};
+use rig_core::effect::HandlerKey;
+#[cfg(feature = "replay")]
+use rig_ecs::agent::scene::save_world;
+#[cfg(feature = "replay")]
+use rig_ecs::bus::{EffectLogResource, InFlight, Issued, Replay};
+#[cfg(feature = "replay")]
+use rig_ecs::testing::NeverAnswers;
 use rig_ecs::{
+    RigPlugin,
     agent::{
         AdditionalParams, Assembling, Cursor, DefaultMaxTurns, InvalidCalls, MaxTokens, MaxTurns,
         Output, OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec,
         UsesModel, Utterance,
-        scene::{RunScene, WorldScene, load_world, save_world},
+        scene::{RunScene, WorldScene, load_world},
     },
-    bus::{
-        Bus, EffectLogResource, Handlers, IdCounter, InFlight, Issued, PendingEffect, Replay,
-        RigSchedule, run_to_quiescence,
-    },
-    systems::{RunCommands, install_agent},
+    bus::{Bus, Handlers, IdCounter, PendingEffect, RigSchedule},
+    systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
-use run_support::{GUARD, NeverAnswers};
+#[cfg(feature = "replay")]
+use rig_effect_log::EffectLogRecorder;
+use rig_effect_log::{EffectLog, EffectLogReplayer};
+use run_support::GUARD;
 
 fn golden(name: &str) -> EffectLog {
     let path = format!(
@@ -49,11 +55,9 @@ fn golden(name: &str) -> EffectLog {
 
 fn world_with(log: &EffectLog) -> (App, Entity) {
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(RigPlugin {
+        bus: Bus::default().ambiguity_detection(LogLevel::Error),
+    });
     app.finish();
     app.cleanup();
     let key = HandlerKey::from("golden/model:default");
@@ -68,6 +72,7 @@ fn world_with(log: &EffectLog) -> (App, Entity) {
             .expect("a fresh key")
     })
     .expect("a bus");
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     (app, model)
 }
@@ -113,10 +118,12 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
         .id();
     let run = app.world_mut().spawn_run(
         agent,
-        &[],
         "Return a concise event object for a local Rust meetup in Seattle.",
-        false,
-        Some(3),
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(3),
+        },
     );
 
     // One pass at a time, until the first turn was read and the run wants
@@ -149,8 +156,11 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
     let saved = RunScene::save(app.world_mut()).expect("every component serializes");
     let json = serde_json::to_string(&saved).expect("serde");
     assert!(!json.contains("Entity"), "no entity ids in a scene");
-    let head = app.world().resource::<EffectLogResource>().log();
-    assert_eq!(head.records.len(), 1, "the first record was recorded here");
+    #[cfg(feature = "replay")]
+    {
+        let head = app.world().resource::<EffectLogResource>().log();
+        assert_eq!(head.records.len(), 1, "the first record was recorded here");
+    }
     drop(app);
 
     // A fresh world over the log's tail: the graph loaded, the second turn
@@ -199,22 +209,26 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
         other => panic!("a completion: {other:?}"),
     };
     assert_eq!(answer, expected, "the golden's answer");
-    let tail = app.world().resource::<EffectLogResource>().log();
-    assert_eq!(tail.records.len(), 1);
-    let mine = &tail.records[0];
-    let theirs = &log.records[1];
-    assert_eq!(mine.id, theirs.id);
-    assert_eq!(
-        serde_json::to_value(&mine.kind).expect("serde"),
-        serde_json::to_value(&theirs.kind).expect("serde"),
-        "the second request, folded from the loaded graph, is the golden's"
-    );
-    assert_eq!(
-        serde_json::to_value(&mine.outcome).expect("serde"),
-        serde_json::to_value(&theirs.outcome).expect("serde")
-    );
+    #[cfg(feature = "replay")]
+    {
+        let tail = app.world().resource::<EffectLogResource>().log();
+        assert_eq!(tail.records.len(), 1);
+        let mine = &tail.records[0];
+        let theirs = &log.records[1];
+        assert_eq!(mine.id, theirs.id);
+        assert_eq!(
+            serde_json::to_value(&mine.kind).expect("serde"),
+            serde_json::to_value(&theirs.kind).expect("serde"),
+            "the second request, folded from the loaded graph, is the golden's"
+        );
+        assert_eq!(
+            serde_json::to_value(&mine.outcome).expect("serde"),
+            serde_json::to_value(&theirs.outcome).expect("serde")
+        );
+    }
 }
 
+#[cfg(feature = "replay")]
 #[test]
 fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_there() {
     let log = golden("anthropic_completion_smoke");
@@ -250,13 +264,8 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
             UsesModel(model),
         ))
         .id();
-    let _run = app.world_mut().spawn_run(agent,
-        &[],
-        "In one or two sentences, explain what Rust programming language is and why memory safety matters.",
-        false,
-        Some(1),
-    );
-    run_support::tick_until(&mut app, "the effect in flight", |world| {
+    let _run = app.world_mut().spawn_run(agent, "In one or two sentences, explain what Rust programming language is and why memory safety matters.", rig_ecs::systems::RunConfig { history: &[], streamed: false, max_turns: Some(1) });
+    rig_ecs::testing::tick_until(&mut app, "the effect in flight", |world| {
         world
             .query_filtered::<Entity, (With<PendingEffect>, With<InFlight>)>()
             .iter(world)
@@ -308,7 +317,7 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
         Some(loaded.graph[turn_index]),
         "the effect is the turn's child again"
     );
-    run_support::tick_until(&mut app, "the resumed run settles", |world| {
+    rig_ecs::testing::tick_until(&mut app, "the resumed run settles", |world| {
         assert!(
             world.get::<rig_ecs::agent::Failed>(run).is_none(),
             "{:?}",
@@ -390,7 +399,7 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
     }
     fn world(answers: bool) -> (App, Entity, Entity) {
         let mut app = run_support::app();
-        let (model, _) = run_support::Capturing::new("t/model:default", "ok");
+        let (model, _) = rig_ecs::testing::Capturing::new("t/model:default", "ok");
         let model = run_support::register(&mut app, "t/model:default", model);
         let index = run_support::register(&mut app, "t/retrieve:context#0", Index { answers });
         (app, model, index)
@@ -408,10 +417,16 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
         rig_ecs::agent::Order(0),
         ChildOf(agent),
     ));
-    let _run = app
-        .world_mut()
-        .spawn_run(agent, &[], "what?", false, Some(1));
-    run_support::tick_until(&mut app, "the retrieval out", |world| {
+    let _run = app.world_mut().spawn_run(
+        agent,
+        "what?",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
+    rig_ecs::testing::tick_until(&mut app, "the retrieval out", |world| {
         world
             .query_filtered::<(), (
                 With<rig_ecs::agent::Retrieval>,
@@ -446,7 +461,7 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
         .copied()
         .find(|entity| app.world().get::<rig_ecs::agent::Run>(*entity).is_some())
         .expect("the run");
-    run_support::tick_until(&mut app, "the resumed run", |world| {
+    rig_ecs::testing::tick_until(&mut app, "the resumed run", |world| {
         world.get::<Settled>(run).is_some()
     });
     let attachments = app

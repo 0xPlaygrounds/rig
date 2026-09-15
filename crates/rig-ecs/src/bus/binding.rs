@@ -205,6 +205,18 @@ impl ProviderBinding {
     }
 }
 
+/// A credential lookup failure. No payload or underlying resolver error is
+/// retained: backend diagnostics may contain credentials, URLs or response bodies.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum CredentialError {
+    /// The resolver has no credential for this reference.
+    #[error("credential not found")]
+    Missing,
+    /// The credential store could not complete the lookup.
+    #[error("credential store unavailable")]
+    Unavailable,
+}
+
 /// Why a materialization did not happen. Every variant is deterministic
 /// for a given world and resolver; none carries a secret.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -212,15 +224,15 @@ pub enum MaterializeError {
     /// The world has no [`Materializer`].
     #[error("the world has no `Materializer`: install one before materializing bindings")]
     NoMaterializer,
-    /// The resolver had nothing for the reference.
-    #[error("`{key}`: the credential `{credential}` did not resolve: {detail}")]
-    MissingCredential {
+    /// The host's credential resolver refused the lookup.
+    #[error("`{key}`: the credential `{credential}` did not resolve: {source}")]
+    Credential {
         /// The binding's key.
         key: HandlerKey,
         /// The reference that did not resolve.
         credential: CredentialRef,
-        /// The resolver's reason.
-        detail: String,
+        /// The redacted, typed resolver failure.
+        source: CredentialError,
     },
     /// Two binding entities name one key.
     #[error("`{key}` is bound by two `ProviderBinding` entities")]
@@ -291,7 +303,7 @@ pub struct MaterializeReport {
     pub kept: Vec<HandlerKey>,
 }
 
-type Credentials = dyn Fn(&CredentialRef) -> Result<Secret, String> + Send + Sync;
+type Credentials = dyn Fn(&CredentialRef) -> Result<Secret, CredentialError> + Send + Sync;
 type Transport = dyn Fn() -> BoxedHttpClient + Send + Sync;
 type Serving = dyn Fn(ErasedHandler) -> ErasedHandler + Send + Sync;
 
@@ -309,11 +321,11 @@ pub struct Materializer {
 impl Materializer {
     /// A materializer over `credentials` (a reference to its secret, or the
     /// reason it did not resolve — reported as
-    /// [`MaterializeError::MissingCredential`] under the binding's key) and
+    /// [`MaterializeError::Credential`] under the binding's key) and
     /// `transport` (one fresh transport handle per client built; a factory
     /// returning clones of one handle shares it).
     pub fn new(
-        credentials: impl Fn(&CredentialRef) -> Result<Secret, String> + Send + Sync + 'static,
+        credentials: impl Fn(&CredentialRef) -> Result<Secret, CredentialError> + Send + Sync + 'static,
         transport: impl Fn() -> BoxedHttpClient + Send + Sync + 'static,
     ) -> Self {
         Self {
@@ -335,7 +347,7 @@ impl Materializer {
     }
 
     /// Resolve a reference: the secret, or the resolver's reason.
-    pub fn resolve(&self, credential: &CredentialRef) -> Result<Secret, String> {
+    pub fn resolve(&self, credential: &CredentialRef) -> Result<Secret, CredentialError> {
         (self.credentials)(credential)
     }
 
@@ -350,13 +362,13 @@ impl Materializer {
     /// build one to register itself.
     pub fn build(&self, binding: &ProviderBinding) -> Result<ErasedHandler, MaterializeError> {
         validate_extra_params(binding)?;
-        let secret = self.resolve(&binding.credential).map_err(|detail| {
-            MaterializeError::MissingCredential {
-                key: binding.key.clone(),
-                credential: binding.credential.clone(),
-                detail,
-            }
-        })?;
+        let secret =
+            self.resolve(&binding.credential)
+                .map_err(|source| MaterializeError::Credential {
+                    key: binding.key.clone(),
+                    credential: binding.credential.clone(),
+                    source,
+                })?;
         let handler = build_adapter(binding, &secret, self.transport())?;
         Ok((self.serving)(handler))
     }

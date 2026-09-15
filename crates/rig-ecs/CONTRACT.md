@@ -24,15 +24,18 @@ explained in [the test guide](../../tests/ecs_parity/README.md).
 | `output_schema` | `Output.schema` when the resolved mode is `Native`; `null` otherwise | — | `anthropic_request_shape_output_schema_unary` (the schema verbatim, unsorted); `anthropic_output_prompted_unary` (`null`); `anthropic_output_tool_under_none_degrades` (the schema: `Tool` degraded to `Native`) |
 | `stream` (the effect's, beside the request) | the run's `StreamRequested` | — | every `*_streamed` golden |
 
-The fold is the only constructor of a `CompletionRequest` in the crate (`tests/core/rig_ecs_bus_module.rs::the_agent_modules_hold_the_discipline`).
+Agent request assembly constructs `CompletionRequest` through `policy::fold_request`; the bus dispatches the resulting effect.
 
-A run is spawned through `systems::RunCommands` — `spawn_run(agent, history,
-prompt, streamed, max_turns)` on `World` (at once) or on `Commands` (the
-entity reserved, the work queued: the run exists when the commands apply,
-and `Advance` sees it on the first schedule pass after that). Either form
-spawns the `RunBundle` (`Run`, `RunOf`, `RunSeq`, `StreamRequested`,
-`Cursor`, the retry tallies, `OutputToolName`, `Usage`, `Scope`) with the
-`Prompt` component and an optional `MaxTurns`, the history utterances
+A run is spawned through `systems::RunCommands` —
+`spawn_run(agent, prompt, RunConfig { history, streamed, max_turns })` on `World`
+(at once) or on `Commands` (the entity reserved, the work queued: the run exists
+when the commands apply, and `Advance` sees it on the first schedule pass after
+that). `RunConfig::default()` means no history, unary output and an inherited
+turn limit. Either form spawns `RunBundle` (`Run`, `RunOf`, `RunSeq`,
+`StreamRequested`, `Scope`). `Run` requires default `Cursor`, `OutputRetries`,
+`InvalidRetries`, `ProviderRetried`, `OutputToolName` and `Usage`; explicit
+values in the same insertion win. Construction adds `Prompt`, optional
+`MaxTurns`, and the history utterances
 `ChildOf` the run in `Order`, then `Ready`, then opens the run. A host
 assembling a run by hand spawns the same bundle and `Prompt`, its
 utterances, and writes `Ready` last. `open_runs` (first in
@@ -43,6 +46,24 @@ conversation's `Load` effect for an agent that `Remembers` given no history
 (§11). `Advance` takes only `Ready` runs in `Assembling`: before `Ready`
 nothing reads the run, so assembly never sees a half-populated prompt or
 history. Pinned by `tests/run_commands.rs`.
+
+Supported transitions remove the old phase before inserting the next, with a
+phaseless interval visible to removal callbacks and revalidation after those
+callbacks. Cancellation and existing endings retain their precedence.
+`Assembling`, `AwaitingModel`, `ResolvingTools`, `LoadingMemory`, `Settled` and
+`Failed` must not conflict at supported execution/checkpoint boundaries.
+An unopened run may have no phase. Public component writes can still create
+invalid combinations; required components are insertion defaults, not
+continuous enforcement. `Turn` does not require `Outputs`, and `Utterance`
+does not invent a missing `Role`.
+
+Only folded model effects carry `agent::Completion`; tool outcomes do not
+complete a turn's `Outputs`. Invalid-call waiting does not insert/remove
+`Materialised` or notify `On<Add, Materialised>`. Resolution may complete in
+the same pass and publishes the eventual read once. Provider-error, retry and
+empty-turn precedence is unchanged. Content failures stop only their run;
+later runs still advance in the ordered pass. Earlier queued writes and a
+legitimately consumed outcome are not rolled back on a later content error.
 
 A user utterance's content is the caller's, verbatim: `spawn_run` takes a
 `Prompt` (a user message's parts), and those parts — text and image, in the order given, each
@@ -478,6 +499,12 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 | a route bound after the agent exists (`late_route`) | `UsesModel` inserted on the run by a system (§9.2); not in the row | `anthropic_shaping_late_route` |
 | a route never selected | in the row, never dispatched | `anthropic_serving_model_route_unselected` |
 
+Retrieved document IDs are reserved in a pass-local lookup before deferred
+spawns become visible. Repeated IDs across result sets and turns reuse one
+entity and its first text. If committed entities already duplicate an ID, the
+first matching entity in the existing document query wins; hash iteration
+never selects the winner. Attachments retain result order.
+
 ### 12.1 A model bound as data
 
 A `bus::ProviderBinding` component is the data half of a provider-served
@@ -522,8 +549,13 @@ as saved (`Register`):
 | two binding entities with one key | `DuplicateKey` |
 | a binding beside a `Bound` of another key | `KeyMismatch` |
 | no `Materializer` | `NoMaterializer` |
-| a reference the resolver refuses | `MissingCredential { key, credential, detail }` |
+| a reference the resolver refuses | `Credential { key, credential, source: CredentialError }` |
 | `extra_params` the kind does not take, or a builder that refuses | `ExtraParams`, `Client` |
+
+Credential resolvers return `Result<Secret, CredentialError>`.
+`CredentialError::{Missing, Unavailable}` are fixed categories, not strings
+containing backend diagnostics or secret contents. Binding failures retain the
+reference and typed cause without exposing the resolved secret.
 
 A kind the reader does not know is refused by serde before anything is
 spawned. Pinned by `run_binding.rs`; the harness (`tests/common/ecs_matrix/world.rs`)
@@ -561,6 +593,25 @@ The binary table retains the asset-count and decoded-byte limits from section 1.
 Scenes using the previous envelope must be recreated. `run_content_scene` exercises
 effect-copy pooling, literal escaping and missing references; the wire reader's
 unit tests exercise depth, byte, node and duplicate-key rejection.
+
+The wire implementation distinguishes limits, references, structural/content
+failures, typed binary errors and broken internal invariants. Malformed external
+input is a `Request` error; `Internal` is reserved for broken implementation
+state. `WorldScene::from_json` rejects trailing JSON data as well as malformed
+envelopes. The wire version remains `rig-ecs/world/2`.
+
+Raw and staged graphs reject conflicting run phases/endings before destination
+graph observers run; no phase is silently chosen. Loading and forking restore
+deliberately absent bookkeeping after `Run` insertion, so its insertion
+observers can briefly see required defaults. Explicit saved values are present
+at initial insertion. `Completion` is reconstructed from saved `EffectKind`,
+not added to the wire. Reflection supports component round-trips and graph
+export, not a separate reflected graph loader.
+
+`agent::fork(world, run) -> Result<Entity, ErrorReport>` refuses missing runs
+and conflicting phases before allocating a run number or publishing entities.
+Fork at rest, between turns: effect identities/outcomes and `Completion` are
+not cloned. The clone keeps its agent and receives its own run number/scope.
 
 
 The bus scene preserves consumed effect IDs even when their entities have been
@@ -688,12 +739,14 @@ requests, effect identities, usage, retry budgets or the existing run policy has
 ## Live stream delivery
 
 `bus::StreamItemsDelivered { effect, id, start, items }` is a synchronous Bevy
-event for newly collected items of a streaming effect. `On<StreamItemsDelivered>`
-observers independently receive the same batch, including interleaved
-`StreamEvent` and `ErrorReport` values. `start` counts all prior events and
-errors for that effect; `id` is its issued effect identity, so retries remain
-distinct attempts. Provider block/call identity is carried unchanged in the
-items. Run/turn correlation uses existing relationships outside the bus.
+`EntityEvent`, targeted by `effect`, with propagation disabled. Attach an
+observer to one effect with `EntityWorldMut::observe` or
+`Observer::watch_entity`; global `On<StreamItemsDelivered>` observers still see
+all effects. Matching observers independently receive the same batch, including
+interleaved `StreamEvent` and `ErrorReport` values. `start` counts all prior
+events and errors for that effect; `id` is its issued effect identity, so retries
+remain distinct attempts. Provider block/call identity is unchanged.
+Run/turn correlation uses existing relationships outside the bus.
 
 The collector updates accumulated `Streamed` before delivery and publishes its
 `EffectOutcome` afterward. Live notifications execute during `BusSet::Collect`,

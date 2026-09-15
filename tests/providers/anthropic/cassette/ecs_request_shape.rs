@@ -45,10 +45,15 @@ async fn tool_choice_auto_effect_log_is_the_golden_fixture() {
                 .entity_mut(ecs.agent)
                 .insert(ToolChoiceSpec(Some(ToolChoice::Auto)));
             let history = vec![];
-            let run =
-                ecs.app
-                    .world_mut()
-                    .spawn_run(ecs.agent, &history, ADD_PROMPT, false, Some(3));
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                ADD_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: Some(3),
+                },
+            );
             let output = ecs.wait_for_success(run).await;
             assert!(output.contains("42"), "{}", output);
             let log = ecs.effect_log();
@@ -91,10 +96,15 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
                 .entity_mut(ecs.agent)
                 .insert(ToolChoiceSpec(Some(ToolChoice::Required)));
             let history = vec![];
-            let run =
-                ecs.app
-                    .world_mut()
-                    .spawn_run(ecs.agent, &history, ADD_PROMPT, false, Some(2));
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                ADD_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: Some(2),
+                },
+            );
             let error = ecs
                 .wait_for_outcome(run)
                 .await
@@ -144,10 +154,15 @@ async fn tool_choice_specific_effect_log_is_the_golden_fixture() {
                     function_names: vec!["add".into()],
                 })));
             let history = vec![];
-            let run =
-                ecs.app
-                    .world_mut()
-                    .spawn_run(ecs.agent, &history, ADD_PROMPT, false, Some(2));
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                ADD_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: Some(2),
+                },
+            );
             let error = ecs
                 .wait_for_outcome(run)
                 .await
@@ -190,7 +205,7 @@ async fn tool_choice_none_effect_log_is_the_golden_fixture() {
             ecs.tool(Adder);
             ecs.app.world_mut().entity_mut(ecs.agent).insert(ToolChoiceSpec(Some(ToolChoice::None)));
             let history = vec![];
-            let run = ecs.app.world_mut().spawn_run(ecs.agent, &history, NO_TOOL_PROMPT, false, Some(3));
+            let run = ecs.app.world_mut().spawn_run(ecs.agent, NO_TOOL_PROMPT, rig_ecs::systems::RunConfig { history: &history, streamed: false, max_turns: Some(3) });
             let output = ecs.wait_for_success(run).await;
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);
@@ -232,10 +247,15 @@ async fn max_tokens_effect_log_is_the_golden_fixture() {
                 .entity_mut(ecs.agent)
                 .insert(MaxTokens(Some(32)));
             let history = vec![];
-            let run = ecs
-                .app
-                .world_mut()
-                .spawn_run(ecs.agent, &history, BASIC_PROMPT, false, None);
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                BASIC_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: None,
+                },
+            );
             let output = ecs.wait_for_success(run).await;
             assert!(!output.is_empty());
             let log = ecs.effect_log();
@@ -268,10 +288,15 @@ async fn thinking_unary_effect_log_is_the_golden_fixture() {
                 .entity_mut(ecs.agent)
                 .insert(AdditionalParams(Some(thinking_params())));
             let history = vec![];
-            let run =
-                ecs.app
-                    .world_mut()
-                    .spawn_run(ecs.agent, &history, THINKING_PROMPT, false, None);
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                THINKING_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: None,
+                },
+            );
             let output = ecs.wait_for_success(run).await;
             assert!(output.contains("144"), "{}", output);
             let log = ecs.effect_log();
@@ -300,10 +325,15 @@ async fn thinking_streamed_effect_log_is_the_golden_fixture() {
                 .entity_mut(ecs.agent)
                 .insert(AdditionalParams(Some(thinking_params())));
             let history = vec![];
-            let run =
-                ecs.app
-                    .world_mut()
-                    .spawn_run(ecs.agent, &history, THINKING_PROMPT, true, None);
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                THINKING_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: true,
+                    max_turns: None,
+                },
+            );
             let output = ecs.wait_for_success(run).await;
             assert!(output.contains("144"), "{output}");
             let log = ecs.effect_log();
@@ -348,10 +378,15 @@ async fn static_context_effect_log_is_the_golden_fixture() {
                     .spawn((Context(document), Order(n as u64), ChildOf(ecs.agent)));
             }
             let history = vec![];
-            let run =
-                ecs.app
-                    .world_mut()
-                    .spawn_run(ecs.agent, &history, CONTEXT_PROMPT, false, None);
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                CONTEXT_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: None,
+                },
+            );
             let output = ecs.wait_for_success(run).await;
             assert!(!output.is_empty());
             let log = ecs.effect_log();
@@ -389,10 +424,15 @@ async fn append_preamble_effect_log_is_the_golden_fixture() {
                     "{BASIC_PREAMBLE}\nAlways end your answer with the word DONE."
                 ))));
             let history = vec![];
-            let run = ecs
-                .app
-                .world_mut()
-                .spawn_run(ecs.agent, &history, BASIC_PROMPT, false, None);
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                BASIC_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: None,
+                },
+            );
             let output = ecs.wait_for_success(run).await;
             assert!(output.contains("DONE"), "{}", output);
             let log = ecs.effect_log();
@@ -423,10 +463,15 @@ async fn without_preamble_effect_log_is_the_golden_fixture() {
                 .entity_mut(ecs.agent)
                 .insert(Preamble(None));
             let history = vec![];
-            let run = ecs
-                .app
-                .world_mut()
-                .spawn_run(ecs.agent, &history, BASIC_PROMPT, false, None);
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                BASIC_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: None,
+                },
+            );
             let output = ecs.wait_for_success(run).await;
             assert!(!output.is_empty());
             let log = ecs.effect_log();
@@ -466,10 +511,12 @@ async fn output_schema_unary_effect_log_is_the_golden_fixture() {
             let history = vec![];
             let run = ecs.app.world_mut().spawn_run(
                 ecs.agent,
-                &history,
                 STRUCTURED_OUTPUT_PROMPT,
-                false,
-                None,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: None,
+                },
             );
             let output = ecs.wait_for_success(run).await;
             let object: serde_json::Value =
@@ -506,10 +553,12 @@ async fn output_schema_streamed_effect_log_is_the_golden_fixture() {
             let history = vec![];
             let run = ecs.app.world_mut().spawn_run(
                 ecs.agent,
-                &history,
                 STRUCTURED_OUTPUT_PROMPT,
-                true,
-                None,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: true,
+                    max_turns: None,
+                },
             );
             let output = ecs.wait_for_success(run).await;
             let object: serde_json::Value =
@@ -547,10 +596,15 @@ async fn prior_history_effect_log_is_the_golden_fixture() {
                 .iter()
                 .map(|message| MessageParts::from_message(message).expect("prior message"))
                 .collect::<Vec<_>>();
-            let run = ecs
-                .app
-                .world_mut()
-                .spawn_run(ecs.agent, &history, NAME_PROMPT, false, None);
+            let run = ecs.app.world_mut().spawn_run(
+                ecs.agent,
+                NAME_PROMPT,
+                rig_ecs::systems::RunConfig {
+                    history: &history,
+                    streamed: false,
+                    max_turns: None,
+                },
+            );
             let output = ecs.wait_for_success(run).await;
             assert!(output.contains("Ada"), "{}", output);
             let log = ecs.effect_log();

@@ -229,7 +229,7 @@ async fn multimodal_image_input_mixed_text_ordering() -> Result<()> {
             let run = agent
                 .app
                 .world_mut()
-                .spawn_run(agent.agent, &[], "", false, None);
+                .spawn_run(agent.agent, "", Default::default());
             // Before scheduling, replace the fresh user utterance with its
             // actual multimodal parts. This is the native graph input surface.
             let (entity, parent) = agent

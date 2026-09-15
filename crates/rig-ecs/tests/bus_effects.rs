@@ -27,7 +27,6 @@ use std::sync::{
 };
 
 use bevy_ecs::prelude::*;
-use bus_support::*;
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
     error::ErrorKind,
@@ -37,6 +36,7 @@ use rig_ecs::bus::{
     Bound, BusSet, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Publishing,
     RigSchedule, Seq, Serving, Streamed, Streaming, ToolInputs, ToolOutputs,
 };
+use {bus_support::*, rig_ecs::testing::*};
 
 #[test]
 fn every_component_a_system_holds_is_send_sync() {
@@ -567,6 +567,7 @@ impl rig_core::serve::Serve for Echo {
 #[test]
 fn a_tool_calls_context_travels_beside_the_effect_and_its_published_values_land_as_outputs() {
     let mut app = app();
+    #[cfg(feature = "replay")]
     rig_ecs::bus::EffectLogResource::install(
         app.world_mut(),
         rig_effect_log::EffectLogRecorder::new(),
@@ -616,10 +617,13 @@ fn a_tool_calls_context_travels_beside_the_effect_and_its_published_values_land_
         world.get::<Publishing>(call).is_none(),
         "the slot leaves the entity with the flight"
     );
-    // Never on the wire: the record's request and answer carry no context.
-    let log = world.resource::<rig_ecs::bus::EffectLogResource>().log();
-    let kind = serde_json::to_value(&log.records[0].kind).expect("serde");
-    assert!(kind.get("context").is_none(), "{kind}");
-    let outcome = serde_json::to_value(&log.records[0].outcome).expect("serde");
-    assert!(outcome["Ok"].get("context").is_none(), "{outcome}");
+    #[cfg(feature = "replay")]
+    {
+        // Never on the wire: the record's request and answer carry no context.
+        let log = world.resource::<rig_ecs::bus::EffectLogResource>().log();
+        let kind = serde_json::to_value(&log.records[0].kind).expect("serde");
+        assert!(kind.get("context").is_none(), "{kind}");
+        let outcome = serde_json::to_value(&log.records[0].outcome).expect("serde");
+        assert!(outcome["Ok"].get("context").is_none(), "{outcome}");
+    }
 }

@@ -25,16 +25,19 @@ use rig_core::{
     effect::EffectKind,
     message::{Message, UserContent},
 };
+#[cfg(feature = "replay")]
+use rig_ecs::bus::EffectLogResource;
 use rig_ecs::{
     agent::{
         Context, DocumentId, DocumentText, Grant, MessageParts, Order, RunResult, Settled,
         UsesModel, Utterance,
     },
-    bus::{EffectLogResource, PendingEffect, RigSchedule},
+    bus::{PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
+#[cfg(feature = "replay")]
 use rig_effect_log::EffectLogRecorder;
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 fn add_before_assemble<M>(
     app: &mut bevy_app::App,
@@ -90,9 +93,15 @@ fn an_utterance_despawned_before_assemble_leaves_the_next_request() {
             content: vec![rig_core::message::AssistantContent::text("B")],
         },
     ];
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &history, "C", false, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "C",
+        rig_ecs::systems::RunConfig {
+            history: &history,
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     settle(&mut app, run, "answered");
     let requests = requests.lock().expect("requests");
     assert_eq!(requests.len(), 1);
@@ -118,12 +127,24 @@ fn one_document_attached_to_two_runs_appears_in_both_requests() {
         .id();
     app.world_mut()
         .spawn((Context(document), Order(0), ChildOf(agent)));
-    let first = app
-        .world_mut()
-        .spawn_run(agent, &[], "first?", false, Some(1));
-    let second = app
-        .world_mut()
-        .spawn_run(agent, &[], "second?", false, Some(1));
+    let first = app.world_mut().spawn_run(
+        agent,
+        "first?",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
+    let second = app.world_mut().spawn_run(
+        agent,
+        "second?",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     settle(&mut app, first, "first");
     settle(&mut app, second, "second");
     let requests = requests.lock().expect("requests");
@@ -154,18 +175,40 @@ fn a_tool_granted_by_a_relationship_is_advertised_and_gone_after_removal() {
         },
     );
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let before = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
+    let before = app.world_mut().spawn_run(
+        agent,
+        "one",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     settle(&mut app, before, "before the grant");
     let grant = app
         .world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)))
         .id();
-    let during = app.world_mut().spawn_run(agent, &[], "two", false, Some(1));
+    let during = app.world_mut().spawn_run(
+        agent,
+        "two",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     settle(&mut app, during, "with the grant");
     app.world_mut().despawn(grant);
-    let after = app
-        .world_mut()
-        .spawn_run(agent, &[], "three", false, Some(1));
+    let after = app.world_mut().spawn_run(
+        agent,
+        "three",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     settle(&mut app, after, "after the grant");
     let requests = requests.lock().expect("requests");
     let advertised: Vec<Vec<String>> = requests
@@ -185,25 +228,45 @@ fn uses_model_swapped_on_a_run_changes_the_next_requests_key() {
     let (fast_model, fast_requests) = Capturing::new("t/model:fast", "from fast");
     let default_model = register(&mut app, "t/model:default", default_model);
     let fast_model = register(&mut app, "t/model:fast", fast_model);
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let agent = spawn_agent(app.world_mut(), "t", default_model);
-    let first = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
+    let first = app.world_mut().spawn_run(
+        agent,
+        "one",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     assert_eq!(settle(&mut app, first, "default"), "from default");
     // A routing system's spelling: the run's own model, before Assemble.
-    let second = app.world_mut().spawn_run(agent, &[], "two", false, Some(1));
+    let second = app.world_mut().spawn_run(
+        agent,
+        "two",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     app.world_mut()
         .entity_mut(second)
         .insert(UsesModel(fast_model));
     assert_eq!(settle(&mut app, second, "fast"), "from fast");
     assert_eq!(default_requests.lock().expect("requests").len(), 1);
     assert_eq!(fast_requests.lock().expect("requests").len(), 1);
-    let log = app.world().resource::<EffectLogResource>().log();
-    let keys: Vec<String> = log
-        .records
-        .iter()
-        .map(|record| record.key.to_string())
-        .collect();
-    assert_eq!(keys, vec!["t/model:default", "t/model:fast"]);
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        let keys: Vec<String> = log
+            .records
+            .iter()
+            .map(|record| record.key.to_string())
+            .collect();
+        assert_eq!(keys, vec!["t/model:default", "t/model:fast"]);
+    }
 }
 
 fn patch_temperature(mut effects: Query<&mut PendingEffect, Added<PendingEffect>>) {
@@ -219,27 +282,39 @@ fn a_patch_system_rewrites_the_folded_request_and_the_record_holds_it() {
     let mut app = app();
     let (model, requests) = Capturing::new("t/model:default", "ok");
     let model = register(&mut app, "t/model:default", model);
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, patch_temperature.in_set(RigSet::Patch));
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "one",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     settle(&mut app, run, "patched");
     assert_eq!(
         requests.lock().expect("requests")[0].temperature,
         Some(0.5),
         "the handler saw the patch"
     );
-    let log = app.world().resource::<EffectLogResource>().log();
-    let EffectKind::Completion { request, .. } = &log.records[0].kind else {
-        panic!("a completion");
-    };
-    assert_eq!(
-        request.temperature,
-        Some(0.5),
-        "the record is the patched request"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        let EffectKind::Completion { request, .. } = &log.records[0].kind else {
+            panic!("a completion");
+        };
+        assert_eq!(
+            request.temperature,
+            Some(0.5),
+            "the record is the patched request"
+        );
+    }
     // And the graph is untouched: the agent's own temperature is unset.
     assert_eq!(
         app.world()
@@ -272,9 +347,15 @@ fn a_system_before_assemble_rewrites_an_utterance() {
     let model = register(&mut app, "t/model:default", model);
     add_before_assemble(&mut app, shout_the_prompt);
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "quietly", false, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "quietly",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     settle(&mut app, run, "shouted");
     let requests = requests.lock().expect("requests");
     assert_eq!(
@@ -301,12 +382,21 @@ fn despawning_the_effect_in_patch_fails_the_run_cancelled() {
     let mut app = app();
     let (model, requests) = Capturing::new("t/model:default", "ok");
     let model = register(&mut app, "t/model:default", model);
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, stop_the_run.in_set(RigSet::Patch));
     let agent = spawn_agent(app.world_mut(), "t", model);
-    let run = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "one",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     tick_until(&mut app, "cancelled", |world| {
         world.get::<rig_ecs::agent::Failed>(run).is_some()
     });
@@ -322,9 +412,12 @@ fn despawning_the_effect_in_patch_fails_the_run_cancelled() {
         requests.lock().expect("requests").is_empty(),
         "the handler never saw it"
     );
-    let log = app.world().resource::<EffectLogResource>().log();
-    assert!(
-        log.records.is_empty(),
-        "despawned before dispatch: no record"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        assert!(
+            log.records.is_empty(),
+            "despawned before dispatch: no record"
+        );
+    }
 }

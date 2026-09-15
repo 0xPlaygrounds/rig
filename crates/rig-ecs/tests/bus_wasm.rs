@@ -33,7 +33,8 @@ use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     completion::{
-        CompletionRequest, CompletionResponse, Message, ModelRef, ProviderCapabilities, Usage,
+        CompletionRequest, CompletionRequestBuilder, CompletionResponse, Message, ModelRef,
+        ProviderCapabilities, Usage,
     },
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -107,18 +108,7 @@ impl Serve for BrowserModel {
 }
 
 fn request() -> CompletionRequest {
-    CompletionRequest {
-        model: None,
-        chat_history: vec![Message::user("hi")],
-        documents: vec![],
-        tools: vec![],
-        temperature: None,
-        max_tokens: None,
-        tool_choice: None,
-        additional_params: None,
-        output_schema: None,
-        record_telemetry_content: false,
-    }
+    CompletionRequestBuilder::unbound(Message::user("hi")).build()
 }
 
 fn app() -> App {

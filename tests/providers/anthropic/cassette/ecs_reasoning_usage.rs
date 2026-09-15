@@ -31,7 +31,7 @@ async fn agent_blocking_thinking() {
             let run = ecs
                 .app
                 .world_mut()
-                .spawn_run(ecs.agent, &[], THINKING_PROMPT, false, None);
+                .spawn_run(ecs.agent, THINKING_PROMPT, Default::default());
             ecs.wait_for_success(run).await;
             let world = ecs.app.world_mut();
             let usage = world

@@ -35,19 +35,22 @@ fn main() {
 }
 
 fn ask(mut handlers: Handlers, mut commands: Commands) {
-    let model = support::Scripted::new(vec![
-        vec![AssistantContent::text("Rust is a systems language.")],
-        vec![AssistantContent::text(
-            "Rust is a systems language with memory safety and no garbage collector.",
-        )],
-        vec![AssistantContent::text("Rust: fast, safe.")],
-    ]);
+    let (model, _) = rig_ecs::testing::Scripted::new(
+        support::MODEL,
+        vec![
+            vec![AssistantContent::text("Rust is a systems language.")],
+            vec![AssistantContent::text(
+                "Rust is a systems language with memory safety and no garbage collector.",
+            )],
+            vec![AssistantContent::text("Rust: fast, safe.")],
+        ],
+    );
     let (model, _) = support::register(&mut handlers, model, Vec::new());
     let agent = support::agent(&mut commands, model, "You are concise.", 1);
     commands.queue(move |world: &mut World| {
-        let run = world.spawn_run(agent, &[], "What is Rust, in one sentence?", false, None);
+        let run = world.spawn_run(agent, "What is Rust, in one sentence?", Default::default());
         for _ in 1..N {
-            fork(world, run);
+            fork(world, run).expect("a valid source run");
         }
     });
 }

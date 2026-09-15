@@ -22,8 +22,8 @@ use rig_ecs::{
     },
     systems::RunCommands,
 };
-use run_support::*;
 use std::sync::{Arc, Mutex};
+use {rig_ecs::testing::*, run_support::*};
 const MODEL: &str = "t/model:default";
 const ADD: &str = "t/tool:add#0";
 
@@ -48,7 +48,9 @@ fn setup(
     app.world_mut().entity_mut(agent).insert(MaxTurns(limit));
     app.world_mut()
         .spawn((Grant(add), Order(0), ChildOf(agent)));
-    let run = app.world_mut().spawn_run(agent, &[], "count", false, None);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, "count", Default::default());
     (app, run, requests)
 }
 fn committed(world: &mut World, run: Entity, number: usize) -> bool {
@@ -214,7 +216,9 @@ fn one_held_run_does_not_stop_an_unrelated_run() {
     let (other_model, other_requests) = Capturing::new("other/model", "free");
     let model = register(&mut app, "other/model", other_model);
     let agent = spawn_agent(app.world_mut(), "other", model);
-    let other = app.world_mut().spawn_run(agent, &[], "other", false, None);
+    let other = app
+        .world_mut()
+        .spawn_run(agent, "other", Default::default());
     tick_until(&mut app, "other settled", |w| {
         w.get::<Settled>(other).is_some()
     });
@@ -297,7 +301,7 @@ fn partial_out_of_order_parallel_batch_has_no_commit_until_every_result_lands() 
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "parallel", false, None);
+        .spawn_run(agent, "parallel", Default::default());
     let seen = observe(&mut app);
     hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
     for (count, index) in [2, 1, 0].into_iter().enumerate() {
@@ -534,7 +538,7 @@ fn released_checkpoint_provider_retry_preserves_request_and_does_not_repeat_tool
         .insert((MaxTurns(2), rig_ecs::agent::ProviderRetries(1)));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
     let seen = observe(&mut app);
     hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
     tick_until(&mut app, "held", |w| committed(w, run, 1));
@@ -591,7 +595,7 @@ fn output_tool_settlement_commits_only_a_real_mixed_batch_and_ignores_hold() {
         });
         let run = app
             .world_mut()
-            .spawn_run(agent, &[], "extract", false, None);
+            .spawn_run(agent, "extract", Default::default());
         let seen = observe(&mut app);
         hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
         tick_until(&mut app, "output settled", |w| {
@@ -674,7 +678,7 @@ fn invalid_call_retry_feedback_is_not_a_completed_tool_batch() {
     ));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
     let seen = observe(&mut app);
     hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
     tick_until(&mut app, "real batch committed", |w| committed(w, run, 2));
@@ -718,7 +722,7 @@ fn terminal_cleanup_suppresses_commit_notification_for_deleted_run() {
     let seen = observe(&mut app);
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "extract", false, None);
+        .spawn_run(agent, "extract", Default::default());
     tick_until(&mut app, "terminal cleanup", |w| w.get_entity(run).is_err());
     assert_eq!(requests.lock().unwrap().len(), 1);
     assert!(
@@ -733,7 +737,7 @@ fn forked_held_run_remaps_committed_utterances_and_releases_independently() {
     hold_after_tool_turn(app.world_mut(), original, "workspace", 1).unwrap();
     tick_until(&mut app, "held", |w| committed(w, original, 1));
     let seen = observe(&mut app);
-    let fork = rig_ecs::agent::fork(app.world_mut(), original);
+    let fork = rig_ecs::agent::fork(app.world_mut(), original).expect("valid checkpoint");
     assert!(committed(app.world_mut(), fork, 1));
     let links: Vec<_> = app
         .world_mut()

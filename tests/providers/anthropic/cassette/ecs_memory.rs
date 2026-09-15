@@ -130,10 +130,15 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
             .iter()
             .map(|m| MessageParts::from_message(m).expect("history message"))
             .collect();
-        let run = ecs
-            .app
-            .world_mut()
-            .spawn_run(ecs.agent, &history, NAME_PROMPT, false, None);
+        let run = ecs.app.world_mut().spawn_run(
+            ecs.agent,
+            NAME_PROMPT,
+            rig_ecs::systems::RunConfig {
+                history: &history,
+                streamed: false,
+                max_turns: None,
+            },
+        );
         let output = ecs.wait_for_success(run).await;
         assert!(output.contains("Ada"), "{}", output);
         let log = ecs.effect_log();

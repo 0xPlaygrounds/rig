@@ -65,13 +65,16 @@ fn main() {
 }
 
 fn ask(mut handlers: Handlers, mut commands: Commands, server: Res<AssetServer>) {
-    let model = support::Scripted::new(vec![
-        vec![support::call(
-            "subtract",
-            serde_json::json!({"x": 2, "y": 5}),
-        )],
-        vec![AssistantContent::text("-3")],
-    ]);
+    let (model, _) = rig_ecs::testing::Scripted::new(
+        support::MODEL,
+        vec![
+            vec![support::call(
+                "subtract",
+                serde_json::json!({"x": 2, "y": 5}),
+            )],
+            vec![AssistantContent::text("-3")],
+        ],
+    );
     let tools = vec![support::add(), support::subtract()];
     let (model, _) = support::register(&mut handlers, model, tools);
     let agent = support::agent(&mut commands, model, "", 2);
@@ -95,8 +98,6 @@ fn start_when_applied(
     for agent in &agents {
         let granted = grants.iter().filter(|link| link.parent() == agent).count();
         println!("granted {granted} tool(s) from agent.tools.json");
-        commands.queue(move |world: &mut World| {
-            world.spawn_run(agent, &[], "Calculate 2 - 5.", false, None);
-        });
+        commands.spawn_run(agent, "Calculate 2 - 5.", Default::default());
     }
 }

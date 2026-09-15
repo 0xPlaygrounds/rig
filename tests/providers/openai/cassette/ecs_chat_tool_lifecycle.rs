@@ -121,10 +121,12 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
     let streamed = cell.transport == Transport::Streaming;
     let run = ecs.app.world_mut().spawn_run(
         ecs.agent,
-        &[],
         prompt(cell.shape),
-        streamed,
-        streamed.then_some(1),
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed,
+            max_turns: streamed.then_some(1),
+        },
     );
     let failure = ecs
         .wait_for_outcome(run)

@@ -192,10 +192,15 @@ pub(super) async fn prompt(
     streamed: bool,
     taps: Vec<EventTap>,
 ) -> String {
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], prompt, streamed, Some(max_turns));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed,
+            max_turns: Some(max_turns),
+        },
+    );
     ecs.app.world_mut().entity_mut(run).insert(Taps(taps));
     // Shared native consumer waits for stream EOF and actual settlement, rejects
     // every public stream error (including after Final), and requires RunResult.

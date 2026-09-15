@@ -13,10 +13,15 @@ async fn expected_budget_failure_retains_completed_effects_and_run_identity() {
     ]);
     let mut ecs = EcsAgent::for_golden(model, "", false);
     ecs.tool(crate::support::Adder);
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], "add twice", false, Some(2));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        "add twice",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(2),
+        },
+    );
     assert_eq!(
         ecs.wait_for_outcome(run).await,
         Err(Failure::MaxTurns { limit: 2 })

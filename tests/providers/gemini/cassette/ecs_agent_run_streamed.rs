@@ -114,10 +114,12 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
             install_invalid_policy(&mut ecs, rig_ecs::agent::Resolution::Fail);
             let run = ecs.app.world_mut().spawn_run(
                 ecs.agent,
-                &[],
                 "What is 21 + 21? Use the add tool.",
-                true,
-                Some(2),
+                rig_ecs::systems::RunConfig {
+                    history: &[],
+                    streamed: true,
+                    max_turns: Some(2),
+                },
             );
             let failure = ecs
                 .wait_for_outcome(run)
@@ -177,7 +179,7 @@ async fn streamed_repair_continues_the_same_stream() {
             allowed: Some(std::collections::BTreeSet::from(["sum".into()])),
         });
         install_invalid_policy(&mut ecs, rig_ecs::agent::Resolution::Repair { to: "sum".into() });
-        let run = ecs.app.world_mut().spawn_run(ecs.agent, &[], "Use the add tool to compute 2 + 3, then state the result.", true, Some(3));
+        let run = ecs.app.world_mut().spawn_run(ecs.agent, "Use the add tool to compute 2 + 3, then state the result.", rig_ecs::systems::RunConfig { history: &[], streamed: true, max_turns: Some(3) });
         let output = ecs.wait_for_success(run).await;
         assert_mentions_expected_number(&output, 5);
         let calls: Vec<_> = ecs.app.world_mut().query::<&PendingEffect>().iter(ecs.app.world())
@@ -266,10 +268,12 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
             );
             let run = ecs.app.world_mut().spawn_run(
                 ecs.agent,
-                &[],
                 "What is 21 + 21? Use the add tool.",
-                true,
-                Some(3),
+                rig_ecs::systems::RunConfig {
+                    history: &[],
+                    streamed: true,
+                    max_turns: Some(3),
+                },
             );
             let output = ecs.wait_for_success(run).await;
             assert_nonempty_response(&output);
@@ -336,7 +340,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         let mut ecs = setup(&client);
         ecs.app.world_mut().entity_mut(ecs.agent).insert(ToolChoiceSpec(None));
         ecs.tool(Subtract);
-        let run = ecs.app.world_mut().spawn_run(ecs.agent, &[], "Use the tools to compute (7 + 4) - 2: first compute 7 + 4 with the add tool, then subtract 2 from that result with the subtract tool, then state the final result.", true, Some(5));
+        let run = ecs.app.world_mut().spawn_run(ecs.agent, "Use the tools to compute (7 + 4) - 2: first compute 7 + 4 with the add tool, then subtract 2 from that result with the subtract tool, then state the final result.", rig_ecs::systems::RunConfig { history: &[], streamed: true, max_turns: Some(5) });
         // There is no native record-completion API to call on a fresh run.
         // Its graph has no completion or usage before the first scheduled turn.
         assert_eq!(ecs.app.world_mut().query::<&PendingEffect>().iter(ecs.app.world()).count(), 0);
@@ -406,10 +410,12 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
             let mut ecs = setup(&client);
             let run = ecs.app.world_mut().spawn_run(
                 ecs.agent,
-                &[],
                 "What is 21 + 21? Use the add tool.",
-                true,
-                Some(2),
+                rig_ecs::systems::RunConfig {
+                    history: &[],
+                    streamed: true,
+                    max_turns: Some(2),
+                },
             );
             let error = ecs
                 .wait_for_outcome(run)
@@ -491,10 +497,12 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
             );
             let run = ecs.app.world_mut().spawn_run(
                 ecs.agent,
-                &[],
                 "What is 21 + 21? Use the add tool.",
-                true,
-                Some(2),
+                rig_ecs::systems::RunConfig {
+                    history: &[],
+                    streamed: true,
+                    max_turns: Some(2),
+                },
             );
             let error = ecs
                 .wait_for_outcome(run)

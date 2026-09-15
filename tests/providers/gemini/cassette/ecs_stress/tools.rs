@@ -184,20 +184,30 @@ pub(super) fn terminate_result(ecs: &mut EcsAgent, tool: &'static str, reason: &
     );
 }
 pub(super) async fn prompt(ecs: &mut EcsAgent, prompt: &str, max_turns: usize) -> String {
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], prompt, false, Some(max_turns));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(max_turns),
+        },
+    );
     ecs.wait_for_success(run).await
 }
 // Projection only: the original validator consumes PromptError, while native
 // cancellation stores Failure on the run and retains separate utterance entities.
 // Neither reason nor history is supplied from scenario expectations.
 pub(super) async fn cancelled(ecs: &mut EcsAgent, prompt: &str, max_turns: usize) -> PromptError {
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], prompt, false, Some(max_turns));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(max_turns),
+        },
+    );
     let failure = ecs
         .wait_for_outcome(run)
         .await

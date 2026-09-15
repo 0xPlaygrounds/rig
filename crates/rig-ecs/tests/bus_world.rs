@@ -24,7 +24,6 @@ use crate::bus_support;
 use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
-use bus_support::*;
 use rig_core::{
     completion::Message,
     effect::{CustomEffect, EffectId, EffectKind, FamilyDescriptor, HandlerKey, Outcome},
@@ -32,11 +31,15 @@ use rig_core::{
     serve::Decision,
     tool::{ToolOutput, ToolResult},
 };
+#[cfg(feature = "replay")]
+use rig_ecs::bus::EffectLogResource;
 use rig_ecs::bus::{
-    Answer, Asked, BusSet, EffectLogResource, EffectOutcome, Handlers, Held, InFlight, Issued,
-    PendingEffect, RigSchedule,
+    Answer, Asked, BusSet, EffectOutcome, Handlers, Held, InFlight, Issued, PendingEffect,
+    RigSchedule,
 };
+#[cfg(feature = "replay")]
 use rig_effect_log::EffectLogRecorder;
+use {bus_support::*, rig_ecs::testing::*};
 
 /// A question the world answers.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -196,6 +199,7 @@ fn gate(
 fn a_held_effect_is_denied_or_approved_from_a_system_next_tick() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     register(&mut app, "model", MockModel::new(&counters));
     app.init_resource::<Decisions>();
@@ -237,9 +241,12 @@ fn a_held_effect_is_denied_or_approved_from_a_system_next_tick() {
 
     // Decisions are program, never record: the log has the approved
     // dispatch alone, and a despawn of the denied entity is safe.
-    let log = world.resource::<EffectLogResource>().log();
-    assert_eq!(log.records.len(), 1, "{:?}", log.records);
-    assert!(log.records[0].outcome.is_ok());
+    #[cfg(feature = "replay")]
+    {
+        let log = world.resource::<EffectLogResource>().log();
+        assert_eq!(log.records.len(), 1, "{:?}", log.records);
+        assert!(log.records[0].outcome.is_ok());
+    }
     app.world_mut().despawn(denied);
     tick(&mut app, 2);
 }
@@ -267,6 +274,7 @@ fn replace_answer(mut landed: Query<&mut EffectOutcome, Added<EffectOutcome>>) {
 fn gate_patches_and_judge_replaces_but_the_record_keeps_the_answer() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     register(&mut app, "model", MockModel::new(&counters));
     add_in_gate(&mut app, patch_greeting);
@@ -285,21 +293,24 @@ fn gate_patches_and_judge_replaces_but_the_record_keeps_the_answer() {
         ErrorKind::Timeout,
         "the consumer sees the judge's verdict"
     );
-    let log = world.resource::<EffectLogResource>().log();
-    assert_eq!(log.records.len(), 1);
-    let record = &log.records[0];
-    assert!(
-        record.outcome.is_ok(),
-        "the record keeps the handler's answer"
-    );
-    let EffectKind::Completion { request, .. } = &record.kind else {
-        panic!("a completion");
-    };
-    assert_eq!(
-        request.chat_history.len(),
-        2,
-        "the record's request is what the handler served: the patched one"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = world.resource::<EffectLogResource>().log();
+        assert_eq!(log.records.len(), 1);
+        let record = &log.records[0];
+        assert!(
+            record.outcome.is_ok(),
+            "the record keeps the handler's answer"
+        );
+        let EffectKind::Completion { request, .. } = &record.kind else {
+            panic!("a completion");
+        };
+        assert_eq!(
+            request.chat_history.len(),
+            2,
+            "the record's request is what the handler served: the patched one"
+        );
+    }
 }
 
 /// A question whose answer needs the model: the answering system spawns a
@@ -353,6 +364,7 @@ fn finish_nested(
 fn a_child_effect_records_its_parent_and_a_reentrant_one_is_refused() {
     let counters = Arc::new(Counters::default());
     let mut app = serial_app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     register(&mut app, "model", MockModel::new(&counters));
     Handlers::with(app.world_mut(), |handlers| {
@@ -385,21 +397,24 @@ fn a_child_effect_records_its_parent_and_a_reentrant_one_is_refused() {
         .custom::<Nested>()
         .expect("a string");
     assert_eq!(answer, "hello from the world");
-    let log = world.resource::<EffectLogResource>().log();
-    assert_eq!(log.records.len(), 2, "{:?}", log.records);
-    let parent_id = world.get::<Issued>(ask).expect("issued").0;
-    let child = log
-        .records
-        .iter()
-        .find(|record| record.key == HandlerKey::from("model"))
-        .expect("the child's record");
-    assert_eq!(child.parent, Some(parent_id), "causality in the record");
-    let parent = log
-        .records
-        .iter()
-        .find(|record| record.key == HandlerKey::from("world/nested"))
-        .expect("the parent's record");
-    assert_eq!(parent.parent, None);
+    #[cfg(feature = "replay")]
+    {
+        let log = world.resource::<EffectLogResource>().log();
+        assert_eq!(log.records.len(), 2, "{:?}", log.records);
+        let parent_id = world.get::<Issued>(ask).expect("issued").0;
+        let child = log
+            .records
+            .iter()
+            .find(|record| record.key == HandlerKey::from("model"))
+            .expect("the child's record");
+        assert_eq!(child.parent, Some(parent_id), "causality in the record");
+        let parent = log
+            .records
+            .iter()
+            .find(|record| record.key == HandlerKey::from("world/nested"))
+            .expect("the parent's record");
+        assert_eq!(parent.parent, None);
+    }
 
     // Same-key nesting under serial serving: the child would wait for its
     // ancestor's key, so it is refused before any dispatch, with no record.
@@ -425,13 +440,16 @@ fn a_child_effect_records_its_parent_and_a_reentrant_one_is_refused() {
         .custom::<Nested>()
         .expect("a string");
     assert_eq!(refused, "child failed: Request");
-    let log = world.resource::<EffectLogResource>().log();
-    assert_eq!(
-        log.records.len(),
-        3,
-        "the refused child left no record: {:?}",
-        log.records
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = world.resource::<EffectLogResource>().log();
+        assert_eq!(
+            log.records.len(),
+            3,
+            "the refused child left no record: {:?}",
+            log.records
+        );
+    }
 }
 
 #[test]
@@ -442,6 +460,7 @@ fn despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queue
         serial_per_handler: true,
         ..Default::default()
     });
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     register(&mut app, "model", MockModel::new(&counters));
     Handlers::with(app.world_mut(), |handlers| {
@@ -498,8 +517,10 @@ fn despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queue
         0,
         "the child in flight was dropped, not answered"
     );
-    let log = app.world().resource::<EffectLogResource>().log();
-    let mut cancelled: Vec<EffectId> = log
+    #[cfg(feature = "replay")]
+    {
+        let log = app.world().resource::<EffectLogResource>().log();
+        let mut cancelled: Vec<EffectId> = log
         .records
         .iter()
         .filter(
@@ -507,14 +528,15 @@ fn despawning_a_parent_cancels_its_children_in_flight_and_never_serves_the_queue
         )
         .map(|record| record.id)
         .collect();
-    cancelled.sort();
-    let mut expected = in_flight;
-    expected.sort();
-    assert_eq!(
-        cancelled, expected,
-        "both begun dispatches record Cancelled"
-    );
-    assert_eq!(log.records.len(), 2, "the queued child has no record");
+        cancelled.sort();
+        let mut expected = in_flight;
+        expected.sort();
+        assert_eq!(
+            cancelled, expected,
+            "both begun dispatches record Cancelled"
+        );
+        assert_eq!(log.records.len(), 2, "the queued child has no record");
+    }
     let _ = Outcome::Custom {
         payload: serde_json::Value::Null,
     };
@@ -563,6 +585,7 @@ fn finish_lookup(
 fn a_system_serves_an_open_tool_key_and_nests_a_completion_under_it() {
     let counters = Arc::new(Counters::default());
     let mut app = serial_app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     register(&mut app, "model", MockModel::new(&counters));
     let bound = Handlers::with(app.world_mut(), |handlers| {
@@ -613,15 +636,18 @@ fn a_system_serves_an_open_tool_key_and_nests_a_completion_under_it() {
         world.get::<InFlight>(call).is_none(),
         "the outcome closed the flight"
     );
-    let log = world.resource::<EffectLogResource>().log();
-    assert_eq!(log.records.len(), 2, "{:?}", log.records);
-    assert_eq!(log.records[0].key, HandlerKey::from("tool:lookup"));
-    assert_eq!(log.records[1].key, HandlerKey::from("model"));
-    assert_eq!(
-        log.records[1].parent,
-        Some(log.records[0].id),
-        "the completion names the tool call as its parent"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = world.resource::<EffectLogResource>().log();
+        assert_eq!(log.records.len(), 2, "{:?}", log.records);
+        assert_eq!(log.records[0].key, HandlerKey::from("tool:lookup"));
+        assert_eq!(log.records[1].key, HandlerKey::from("model"));
+        assert_eq!(
+            log.records[1].parent,
+            Some(log.records[0].id),
+            "the completion names the tool call as its parent"
+        );
+    }
     assert!(world.get::<rig_ecs::bus::Bound>(bound).is_some());
 }
 
@@ -673,6 +699,7 @@ impl rig_core::serve::Intercept for Deciding {
 fn a_layers_decisions_reach_the_record_through_the_sinks_observer() {
     let counters = Arc::new(Counters::default());
     let mut app = app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     Handlers::with(app.world_mut(), |handlers| {
         handlers
@@ -708,25 +735,28 @@ fn a_layers_decisions_reach_the_record_through_the_sinks_observer() {
         replaced.0.as_ref().expect_err("replaced").kind,
         ErrorKind::Timeout
     );
-    let log = world.resource::<EffectLogResource>().log();
-    assert_eq!(
-        log.records.len(),
-        2,
-        "the denial is no record: {:?}",
-        log.records
-    );
-    let EffectKind::Completion { request, .. } = &log.records[0].kind else {
-        panic!("a completion");
-    };
-    assert_eq!(
-        request.chat_history.len(),
-        2,
-        "the record's request is what the innermost handler served: the patched one"
-    );
-    assert!(
-        log.records[1].outcome.is_ok(),
-        "the record keeps the handler's answer, not the layer's verdict"
-    );
+    #[cfg(feature = "replay")]
+    {
+        let log = world.resource::<EffectLogResource>().log();
+        assert_eq!(
+            log.records.len(),
+            2,
+            "the denial is no record: {:?}",
+            log.records
+        );
+        let EffectKind::Completion { request, .. } = &log.records[0].kind else {
+            panic!("a completion");
+        };
+        assert_eq!(
+            request.chat_history.len(),
+            2,
+            "the record's request is what the innermost handler served: the patched one"
+        );
+        assert!(
+            log.records[1].outcome.is_ok(),
+            "the record keeps the handler's answer, not the layer's verdict"
+        );
+    }
     assert!(
         world.get::<rig_ecs::bus::Observed>(effects[2]).is_none(),
         "the observer leaves the entity with the flight"

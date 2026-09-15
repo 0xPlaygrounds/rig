@@ -44,15 +44,18 @@ use rig_ecs::{
         ProviderRetries, RunResult, Settled,
         scene::{load_world, save_world},
     },
-    bus::{
-        Bound, BusSet, EffectLogResource, Handlers, Held, PendingEffect, Replay, RigSchedule,
-        Witnessing,
-    },
-    replay::stamp_run,
+    bus::{BusSet, Held, PendingEffect, RigSchedule, Witnessing},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
-use run_support::*;
+#[cfg(feature = "replay")]
+use rig_ecs::{
+    bus::{Bound, EffectLogResource, Handlers, Replay},
+    replay::stamp_run,
+};
+#[cfg(feature = "replay")]
+use rig_effect_log::EffectLog;
+use rig_effect_log::EffectLogRecorder;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const ADD: &str = "t/tool:add#0";
@@ -125,6 +128,7 @@ fn tooling(
 ) {
     let mut app = run_support::app();
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), recorder.clone());
     let witness = Arc::new(ObservationLog::default());
     Witnessing::install(app.world_mut(), witness.clone());
@@ -177,6 +181,7 @@ fn retry_facts(log: &ObservationLog) -> Vec<(usize, usize, String)> {
         .collect()
 }
 
+#[cfg(feature = "replay")]
 fn bound_entity(world: &mut World, key: &str) -> Entity {
     world
         .query::<(Entity, &Bound)>()
@@ -188,13 +193,14 @@ fn bound_entity(world: &mut World, key: &str) -> Entity {
 
 #[test]
 fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
-    let (mut app, agent, requests, recorder, witness) = tooling(vec![
+    let (mut app, agent, requests, _recorder, witness) = tooling(vec![
         Ok(add_call()),
         Err(unavailable("status 503 Service Unavailable")),
         Ok(done()),
     ]);
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
-    stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
+    #[cfg(feature = "replay")]
+    stamp_run(app.world_mut(), run, &_recorder).expect("the run stamps its program identity");
     ended(&mut app, run, "the retried run");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.clone()),
@@ -208,23 +214,27 @@ fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
     let requests = requests.lock().unwrap();
     assert_eq!(requests.len(), 3);
     assert_eq!(requests[1].chat_history, requests[2].chat_history);
+    #[cfg(feature = "replay")]
     let log: EffectLog =
-        serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
-    let tools = log
-        .iter()
-        .filter(|r| matches!(r.kind, EffectKind::ToolCall { .. }))
-        .count();
-    assert_eq!(tools, 1, "the tool ran once");
-    let completions: Vec<bool> = log
-        .iter()
-        .filter(|r| matches!(r.kind, EffectKind::Completion { .. }))
-        .map(|r| r.outcome.is_ok())
-        .collect();
-    assert_eq!(
-        completions,
-        [true, false, true],
-        "every attempt is a record"
-    );
+        serde_json::from_str(&serde_json::to_string(&_recorder.log()).unwrap()).unwrap();
+    #[cfg(feature = "replay")]
+    {
+        let tools = log
+            .iter()
+            .filter(|r| matches!(r.kind, EffectKind::ToolCall { .. }))
+            .count();
+        assert_eq!(tools, 1, "the tool ran once");
+        let completions: Vec<bool> = log
+            .iter()
+            .filter(|r| matches!(r.kind, EffectKind::Completion { .. }))
+            .map(|r| r.outcome.is_ok())
+            .collect();
+        assert_eq!(
+            completions,
+            [true, false, true],
+            "every attempt is a record"
+        );
+    }
 
     // One retry spent; the lost attempt was not a model call against the
     // budget: two turns, not three.
@@ -238,26 +248,31 @@ fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
 
     // The log replays: the same program over by-id replayers sees the
     // failed attempt answered from its record, retries, and settles.
-    let mut replay = run_support::app();
-    Handlers::with(replay.world_mut(), |h| Replay::default().register(h, &log))
-        .unwrap()
-        .unwrap();
-    let model = bound_entity(replay.world_mut(), MODEL);
-    let tool = bound_entity(replay.world_mut(), ADD);
-    let agent = spawn_agent(replay.world_mut(), "t", model);
-    replay.world_mut().entity_mut(agent).insert(MaxTurns(4));
-    replay
-        .world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = replay.world_mut().spawn_run(agent, &[], "add", false, None);
-    ended(&mut replay, run, "the replayed run");
-    assert_eq!(
-        replay.world().get::<RunResult>(run).map(|r| r.0.clone()),
-        Some("done".into()),
-        "{:?}",
-        replay.world().get::<Failed>(run)
-    );
-    assert_eq!(retried(replay.world(), run), 1);
+    #[cfg(feature = "replay")]
+    {
+        let mut replay = run_support::app();
+        Handlers::with(replay.world_mut(), |h| Replay::default().register(h, &log))
+            .unwrap()
+            .unwrap();
+        let model = bound_entity(replay.world_mut(), MODEL);
+        let tool = bound_entity(replay.world_mut(), ADD);
+        let agent = spawn_agent(replay.world_mut(), "t", model);
+        replay.world_mut().entity_mut(agent).insert(MaxTurns(4));
+        replay
+            .world_mut()
+            .spawn((Grant(tool), Order(0), ChildOf(agent)));
+        let run = replay
+            .world_mut()
+            .spawn_run(agent, "add", Default::default());
+        ended(&mut replay, run, "the replayed run");
+        assert_eq!(
+            replay.world().get::<RunResult>(run).map(|r| r.0.clone()),
+            Some("done".into()),
+            "{:?}",
+            replay.world().get::<Failed>(run)
+        );
+        assert_eq!(retried(replay.world(), run), 1);
+    }
 }
 
 #[test]
@@ -270,7 +285,7 @@ fn a_spent_budget_ends_the_run_with_the_last_report() {
         Ok(done()),
     ]);
     app.world_mut().entity_mut(agent).insert(ProviderRetries(2));
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
     ended(&mut app, run, "the exhausted run");
     let Failure::Provider(report) = failure(app.world(), run) else {
         panic!("{:?}", failure(app.world(), run));
@@ -298,7 +313,7 @@ fn a_non_retryable_failure_after_tool_work_ends_the_run_at_once() {
         Err(ErrorReport::new(ErrorKind::Provider, "blocked: SAFETY")),
         Ok(done()),
     ]);
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
     ended(&mut app, run, "the refused run");
     let Failure::Provider(report) = failure(app.world(), run) else {
         panic!("{:?}", failure(app.world(), run));
@@ -314,7 +329,7 @@ fn a_zero_budget_never_retries() {
     let (mut app, agent, requests, _, _) =
         tooling(vec![Err(unavailable("status 503")), Ok(done())]);
     app.world_mut().entity_mut(agent).insert(ProviderRetries(0));
-    let run = app.world_mut().spawn_run(agent, &[], "hi", false, None);
+    let run = app.world_mut().spawn_run(agent, "hi", Default::default());
     ended(&mut app, run, "the unretried run");
     assert!(matches!(failure(app.world(), run), Failure::Provider(_)));
     assert_eq!(requests.lock().unwrap().len(), 1);
@@ -368,7 +383,7 @@ fn a_host_hold_is_where_a_backoff_goes_and_a_cancel_during_it_ends_the_run() {
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, hold_retried_completion.in_set(BusSet::Gate));
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
+    let run = app.world_mut().spawn_run(agent, "add", Default::default());
     tick_until(&mut app, "the retry is held", |world| {
         world
             .query_filtered::<Entity, (With<PendingEffect>, With<Held>)>()
@@ -402,7 +417,7 @@ fn a_host_hold_is_where_a_backoff_goes_and_a_cancel_during_it_ends_the_run() {
 
 #[test]
 fn a_scene_saved_during_the_hold_resumes_into_the_retry() {
-    let (mut app, agent, requests, recorder, _) = tooling(vec![
+    let (mut app, agent, requests, _recorder, _) = tooling(vec![
         Ok(add_call()),
         Err(unavailable("status 503")),
         Ok(done()),
@@ -411,8 +426,9 @@ fn a_scene_saved_during_the_hold_resumes_into_the_retry() {
     app.world_mut()
         .resource_mut::<Schedules>()
         .add_systems(RigSchedule, hold_retried_completion.in_set(BusSet::Gate));
-    let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
-    stamp_run(app.world_mut(), run, &recorder).expect("the run stamps its program identity");
+    let _run = app.world_mut().spawn_run(agent, "add", Default::default());
+    #[cfg(feature = "replay")]
+    stamp_run(app.world_mut(), _run, &_recorder).expect("the run stamps its program identity");
     tick_until(&mut app, "the retry is held", |world| {
         world
             .query_filtered::<Entity, (With<PendingEffect>, With<Held>)>()
@@ -430,6 +446,7 @@ fn a_scene_saved_during_the_hold_resumes_into_the_retry() {
     // spent retry and its held attempt, which is released and answered.
     let saved = serde_json::from_str(&json).expect("serde");
     let mut app = run_support::app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let requests: Requests = Arc::default();
     register(
@@ -529,7 +546,9 @@ fn a_truncated_stream_is_reissued() {
         "a truncation is a transport fault"
     );
     let mut app = run_support::app();
+    #[cfg(feature = "replay")]
     let recorder = EffectLogRecorder::new();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), recorder.clone());
     let witness = Arc::new(ObservationLog::default());
     Witnessing::install(app.world_mut(), witness.clone());
@@ -542,7 +561,15 @@ fn a_truncated_stream_is_reissued() {
     );
     let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert(MaxTurns(4));
-    let run = app.world_mut().spawn_run(agent, &[], "hi", true, None);
+    let run = app.world_mut().spawn_run(
+        agent,
+        "hi",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: None,
+        },
+    );
     ended(&mut app, run, "the retried stream");
     assert_eq!(
         app.world().get::<RunResult>(run).map(|r| r.0.clone()),
@@ -552,12 +579,15 @@ fn a_truncated_stream_is_reissued() {
     );
     assert_eq!(retried(app.world(), run), 1);
     assert_eq!(retry_facts(&witness).len(), 1);
-    let log: EffectLog =
-        serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
-    let completions: Vec<bool> = log
-        .iter()
-        .filter(|r| matches!(r.kind, EffectKind::Completion { .. }))
-        .map(|r| r.outcome.is_ok())
-        .collect();
-    assert_eq!(completions, [false, true]);
+    #[cfg(feature = "replay")]
+    {
+        let log: EffectLog =
+            serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
+        let completions: Vec<bool> = log
+            .iter()
+            .filter(|r| matches!(r.kind, EffectKind::Completion { .. }))
+            .map(|r| r.outcome.is_ok())
+            .collect();
+        assert_eq!(completions, [false, true]);
+    }
 }

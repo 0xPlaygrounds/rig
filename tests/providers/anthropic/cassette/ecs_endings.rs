@@ -164,10 +164,15 @@ async fn unary_tool_run(
             )),
         ));
     }
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], ADD_PROMPT, false, Some(3));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        ADD_PROMPT,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(3),
+        },
+    );
     cancelled_run(&mut ecs, run, reason).await;
     let log = ecs.effect_log();
     assert_eq!(families(&log), shape);
@@ -190,10 +195,15 @@ async fn streamed_run(
         Streamed::Note => ecs.tool(WriteNote),
         Streamed::Essay => {}
     }
-    let run = ecs
-        .app
-        .world_mut()
-        .spawn_run(ecs.agent, &[], prompt, true, Some(3));
+    let run = ecs.app.world_mut().spawn_run(
+        ecs.agent,
+        prompt,
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: true,
+            max_turns: Some(3),
+        },
+    );
     cancelled_run(&mut ecs, run, reason).await;
     for _ in 0..64 {
         tokio::task::yield_now().await;
@@ -255,7 +265,7 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
             let run = ecs
                 .app
                 .world_mut()
-                .spawn_run(ecs.agent, &[], BASIC_PROMPT, false, None);
+                .spawn_run(ecs.agent, BASIC_PROMPT, Default::default());
             cancelled_run(&mut ecs, run, CANCEL_ANSWER).await;
             let log = ecs.effect_log();
             assert_eq!(families(&log), [EffectFamily::Completion]);

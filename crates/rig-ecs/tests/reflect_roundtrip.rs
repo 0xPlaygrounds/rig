@@ -39,8 +39,8 @@ use rig_ecs::{
     bus::{EffectOutcome, Held, IdCounter, PendingEffect, Reserved, Streamed},
     systems::RunCommands,
 };
-use run_support::*;
 use serde::de::DeserializeSeed;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const ADD: &str = "t/tool:add#0";
@@ -102,7 +102,7 @@ fn populated() -> bevy_app::App {
         rig_ecs::agent::Order(1),
         ChildOf(agent),
     ));
-    let run = world.spawn_run(agent, &[], "add one and two", false, None);
+    let run = world.spawn_run(agent, "add one and two", Default::default());
     rig_ecs::agent::checkpoint::hold_after_tool_turn(world, run, "reflection", 99)
         .expect("a future hold preserves normal settlement");
     tick_until(&mut app, "the run", |world| {

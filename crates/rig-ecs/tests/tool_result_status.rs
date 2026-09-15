@@ -27,17 +27,20 @@ use rig_core::{
     serve::{Dispatch, Reply, Serve},
     tool::{ToolExecutionError, ToolOutput, ToolResult},
 };
+#[cfg(feature = "replay")]
+use rig_ecs::bus::EffectLogResource;
 use rig_ecs::{
     agent::{
         Failed, Grant, InvalidCall, InvalidCalls, Order, Resolution, Settled,
         content::parts::{ToolResultPart, ToolResultStatus, read_message},
         scene::{RunScene, SceneKind},
     },
-    bus::{EffectLogResource, RigSchedule},
+    bus::RigSchedule,
     systems::{RigSet, RunCommands},
 };
+#[cfg(feature = "replay")]
 use rig_effect_log::EffectLogRecorder;
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 const MODEL: &str = "t/model:default";
 const PROBE: &str = "t/tool:probe#0";
@@ -87,6 +90,7 @@ fn tooling(
     replies: BTreeMap<i64, Result<Outcome, ErrorReport>>,
 ) -> (bevy_app::App, Entity, RequestsSeen) {
     let mut app = app();
+    #[cfg(feature = "replay")]
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let (model, requests) = Scripted::new(MODEL, turns);
     let model = register(&mut app, MODEL, model);
@@ -183,7 +187,7 @@ fn every_outcome_lands_as_its_status_and_the_dto_is_unchanged() {
     );
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "probe everything", false, None);
+        .spawn_run(agent, "probe everything", Default::default());
     ended(&mut app, run, "answered");
     assert!(app.world().get::<Settled>(run).is_some());
 
@@ -249,7 +253,7 @@ fn an_invalid_call_skipped_by_a_system_lands_skipped_results() {
         .add_systems(RigSchedule, skip_invalid_calls.in_set(RigSet::Judge));
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "call nothing", false, None);
+        .spawn_run(agent, "call nothing", Default::default());
     ended(&mut app, run, "answered");
     assert!(app.world().get::<Settled>(run).is_some());
     let landed = results(app.world_mut());
@@ -294,7 +298,7 @@ fn a_scene_keeps_the_status_and_refuses_it_off_a_result_part() {
     );
     let run = app
         .world_mut()
-        .spawn_run(agent, &[], "probe twice", false, None);
+        .spawn_run(agent, "probe twice", Default::default());
     ended(&mut app, run, "answered");
     let before = results(app.world_mut());
     let statuses = |found: &[(Entity, String, Option<ToolResultStatus>)]| {

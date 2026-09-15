@@ -157,7 +157,7 @@ fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_
                 ChildOf(run),
             ))
             .id();
-        bus_support::tick_until(&mut live, "stream scene cut", |world| {
+        rig_ecs::testing::tick_until(&mut live, "stream scene cut", |world| {
             if completed {
                 world.get::<EffectOutcome>(effect).is_some()
             } else {

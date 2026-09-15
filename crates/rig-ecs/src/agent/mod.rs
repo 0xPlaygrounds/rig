@@ -589,8 +589,18 @@ impl From<Vec<UserContent>> for Prompt {
 // Runs and turns.
 
 /// A run: one prompt through the agent to an answer or a failure.
+/// Required bookkeeping is a construction default, not a permanent invariant:
+/// checkpoint restoration and forks preserve components deliberately removed.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[require(
+    Cursor,
+    OutputRetries,
+    InvalidRetries,
+    ProviderRetried,
+    OutputToolName,
+    Usage
+)]
 pub struct Run;
 
 /// The run's agent.
@@ -663,6 +673,12 @@ pub struct Batch {
     /// Calls in the batch.
     pub calls: usize,
 }
+
+/// A folded model-completion effect, `ChildOf` its turn.
+/// Runtime identity, reconstructed from the saved effect kind when loading.
+#[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+pub struct Completion;
 
 /// Which of the turn's calls a tool effect entity is: what the result is
 /// shaped with. On the effect entity, beside the bus module's components.
@@ -988,6 +1004,24 @@ const _: () = {
     assert_serde::<Retrieval>();
 };
 
+pub(crate) fn validate_run_phase(world: &World, entity: Entity) -> Result<(), ErrorReport> {
+    let phases = [
+        world.get::<Assembling>(entity).is_some(),
+        world.get::<AwaitingModel>(entity).is_some(),
+        world.get::<ResolvingTools>(entity).is_some(),
+        world.get::<LoadingMemory>(entity).is_some(),
+        world.get::<Settled>(entity).is_some(),
+        world.get::<Failed>(entity).is_some(),
+    ];
+    if phases.into_iter().filter(|present| *present).count() > 1 {
+        return Err(ErrorReport::new(
+            rig_core::error::ErrorKind::Request,
+            "run has conflicting phase or ending markers",
+        ));
+    }
+    Ok(())
+}
+
 /// Fork `run`: a clone of the run entity and its graph (the utterances,
 /// the turns — `ChildOf` is linked, so the clone is deep) under the next
 /// run number and its own scope, on the same agent. The effects are not
@@ -997,7 +1031,20 @@ const _: () = {
 /// Best-of-n is `fork` n − 1 times and a system that judges the settled
 /// runs (design §3.4). Fork a run at rest — between turns — so no turn
 /// is waiting on an effect the clone does not have.
-pub fn fork(world: &mut World, run: Entity) -> Entity {
+///
+/// Refuses a missing run or conflicting phase/ending markers before allocating
+/// a clone or notifying its observers. Arbitrary public component writes are
+/// not made exclusive by this checkpoint-boundary validation.
+/// Required defaults absent on the source are removed after clone insertion;
+/// insertion observers can briefly see them, just as during scene restoration.
+pub fn fork(world: &mut World, run: Entity) -> Result<Entity, ErrorReport> {
+    if world.get::<Run>(run).is_none() {
+        return Err(ErrorReport::new(
+            rig_core::error::ErrorKind::Request,
+            "fork source is not a run",
+        ));
+    }
+    validate_run_phase(world, run)?;
     let seq = {
         let mut counter = world.resource_mut::<RunCounter>();
         let seq = counter.0;
@@ -1031,6 +1078,7 @@ pub fn fork(world: &mut World, run: Entity) -> Entity {
     let mut cloner = EntityCloner::build_opt_out(world);
     cloner.linked_cloning(true).deny::<(
         crate::bus::PendingEffect,
+        Completion,
         crate::bus::Seq,
         crate::bus::Issued,
         crate::bus::Reserved,
@@ -1045,6 +1093,23 @@ pub fn fork(world: &mut World, run: Entity) -> Entity {
     )>();
     cloner.finish().clone_entity_mapped(world, run, &mut mapped);
     world.flush();
+    // Required components are inserted by the cloner's bundle insertion too.
+    // Keep deliberately absent bookkeeping absent, rather than normalizing it.
+    macro_rules! preserve_absence {
+        ($($component:ty),+ $(,)?) => {
+            $(if world.get::<$component>(run).is_none() {
+                world.entity_mut(clone).remove::<$component>();
+            })+
+        };
+    }
+    preserve_absence!(
+        Cursor,
+        OutputRetries,
+        InvalidRetries,
+        ProviderRetried,
+        OutputToolName,
+        Usage,
+    );
     for (turn, assistant, results) in links {
         if let Some(turn) = mapped.get(&turn).copied() {
             if let Some(TurnAssistant(target)) = assistant {
@@ -1060,5 +1125,5 @@ pub fn fork(world: &mut World, run: Entity) -> Entity {
     world
         .entity_mut(clone)
         .insert((RunSeq(seq), crate::bus::Scope(format!("{owner}/run#{seq}"))));
-    clone
+    Ok(clone)
 }

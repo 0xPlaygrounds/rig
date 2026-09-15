@@ -21,7 +21,7 @@ use rig_ecs::{
     bus::{Scope, Witnessing},
     systems::RunCommands,
 };
-use run_support::*;
+use {rig_ecs::testing::*, run_support::*};
 
 fn witnessed(app: &mut bevy_app::App) -> Arc<ObservationLog> {
     let log = Arc::new(ObservationLog::default());
@@ -70,12 +70,22 @@ fn run_endings_cover_settlement_failure_cancellation_and_unfinished_removal() {
             let (model, _) = Capturing::new("m", "fine");
             let model = register(&mut app, "m", model);
             let agent = spawn_agent(app.world_mut(), "app", model);
-            let run = app.world_mut().spawn_run(agent, &[], "hi", false, Some(1));
+            let run = app.world_mut().spawn_run(
+                agent,
+                "hi",
+                rig_ecs::systems::RunConfig {
+                    history: &[],
+                    streamed: false,
+                    max_turns: Some(1),
+                },
+            );
             clock.0.store(60, std::sync::atomic::Ordering::SeqCst);
             match ending {
-                "settled" => tick_until(&mut app, "settled", |world| {
-                    world.get::<Settled>(run).is_some()
-                }),
+                "settled" => {
+                    tick_until(&mut app, "settled", |world| {
+                        world.get::<Settled>(run).is_some()
+                    });
+                }
                 "max_turns" => {
                     app.world_mut()
                         .entity_mut(run)
@@ -128,7 +138,15 @@ fn a_settled_run_ends_in_the_trace_under_its_scope() {
     let (model, _) = Capturing::new("m", "fine");
     let model = register(&mut app, "m", model);
     let agent = spawn_agent(app.world_mut(), "app", model);
-    let run = app.world_mut().spawn_run(agent, &[], "hi", false, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "hi",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     tick_until(&mut app, "settled", |world| {
         world.get::<Settled>(run).is_some()
     });
@@ -163,7 +181,15 @@ fn a_cancelled_run_ends_and_leaves_its_flight_to_the_handler() {
         },
     );
     let agent = spawn_agent(app.world_mut(), "app", model);
-    let run = app.world_mut().spawn_run(agent, &[], "hi", false, Some(1));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "hi",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(1),
+        },
+    );
     tick_until(&mut app, "in flight", |world| {
         world
             .query_filtered::<(), With<rig_ecs::bus::InFlight>>()
@@ -225,7 +251,15 @@ fn an_invalid_tool_call_ends_with_its_failure_reason() {
     );
     let model = register(&mut app, "s", model);
     let agent = spawn_agent(app.world_mut(), "app", model);
-    let run = app.world_mut().spawn_run(agent, &[], "go", false, Some(2));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "go",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(2),
+        },
+    );
     tick_until(&mut app, "failed", |world| {
         world.get::<Failed>(run).is_some()
     });
@@ -257,9 +291,15 @@ fn a_tool_batch_beyond_its_concurrency_is_held_then_released() {
         .insert(ToolPolicy { concurrency: 1 });
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));
-    let run = app
-        .world_mut()
-        .spawn_run(agent, &[], "add things", false, Some(3));
+    let run = app.world_mut().spawn_run(
+        agent,
+        "add things",
+        rig_ecs::systems::RunConfig {
+            history: &[],
+            streamed: false,
+            max_turns: Some(3),
+        },
+    );
     tick_until(&mut app, "settled", |world| {
         world.get::<Settled>(run).is_some()
     });

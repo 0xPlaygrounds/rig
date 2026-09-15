@@ -9,7 +9,6 @@
 use crate::bus_support;
 
 use bevy_ecs::prelude::*;
-use bus_support::*;
 use rig_core::serve::Dispatch;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
@@ -20,6 +19,7 @@ use rig_core::{
 use rig_ecs::bus::{
     EffectLogResource, EffectOutcome, Handlers, PendingEffect, Replay, ToolInputs, ToolOutputs,
 };
+use {bus_support::*, rig_ecs::testing::*};
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Artifact(String);
