@@ -7,7 +7,7 @@ struct FacadeCoordinates {
 }
 
 /// Find nearby places
-#[rig::tool_macro]
+#[rig::rig_tool]
 fn facade_find_nearby(
     /// Location to search from
     location: FacadeCoordinates,
@@ -16,7 +16,7 @@ fn facade_find_nearby(
 }
 
 #[tokio::test]
-async fn test_tool_macro_accepts_facade_schemars_reexport() {
+async fn rig_tool_accepts_facade_schemars_reexport() {
     let definition = rig::tool::tool_definition(&FacadeFindNearby);
     let schema = serde_json::to_string(&definition.parameters).unwrap();
 

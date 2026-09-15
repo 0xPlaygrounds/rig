@@ -234,7 +234,7 @@ async fn duplicate_tool_name_uses_last_registration() {
 #[cfg(feature = "derive")]
 mod derive_macro {
     use rig::completion::Message;
-    use rig::tool_macro as rig_tool;
+    use rig::rig_tool;
 
     use super::super::super::agent_run_support::tool_result_texts;
     use super::super::super::support::with_gemini_cassette;

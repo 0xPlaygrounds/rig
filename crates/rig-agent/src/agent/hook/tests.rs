@@ -766,6 +766,7 @@ fn invalid_tool_call_context() -> InvalidToolCallContext {
         tool_choice: None,
         chat_history: vec![],
         is_streaming: false,
+        reason: Default::default(),
     }
 }
 

@@ -152,6 +152,49 @@ pub struct ErrorReport {
     /// the provider error it came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub provider_response: Option<Box<crate::provider_response::ProviderResponseError>>,
+    /// Structured diagnostic for failures a consumer may want to *route*
+    /// rather than only display. Absent for the common case; see
+    /// [`ErrorDetail`] for what each variant carries and why.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ErrorDetail>,
+}
+
+/// Typed diagnostic attached to an [`ErrorReport`] when a failure has a
+/// recovery path that needs more than the message text.
+///
+/// A report's `kind` and `message` stay the public contract; a `detail`
+/// is additive so anything matching on those keeps working.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "detail", rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum ErrorDetail {
+    /// A streamed tool call closed with input that is not JSON.
+    ///
+    /// The wire promised a complete block (Anthropic `content_block_stop`,
+    /// Bedrock `contentBlockStop`), so this is a response defect rather
+    /// than truncation — but it is the *model's* defect, and an agent can
+    /// feed it back for a retry instead of ending the run. `raw` is the
+    /// exact argument text the accumulator held, unmodified, so a consumer
+    /// can log or replay it; `error` is the parser's own description.
+    MalformedToolInput(Box<MalformedToolInput>),
+}
+
+/// The payload of [`ErrorDetail::MalformedToolInput`].
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MalformedToolInput {
+    /// The tool the model named.
+    pub name: String,
+    /// Rig's durable correlation id for the call — the same id the call
+    /// would have carried had its input parsed, so a recovery can address
+    /// it (a tool result, a rollback) exactly as it would a valid call.
+    pub id: crate::message::ToolCallId,
+    /// The provider's own call id(s), when the wire supplied any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<crate::message::ProviderCallId>,
+    /// The raw argument text, byte-for-byte as accumulated.
+    pub raw: String,
+    /// The JSON parser's description of what was wrong.
+    pub error: String,
 }
 
 impl ErrorReport {
@@ -167,6 +210,7 @@ impl ErrorReport {
             source_chain: Vec::new(),
             request_id: None,
             provider_response: None,
+            detail: None,
         }
     }
 
@@ -197,6 +241,12 @@ impl ErrorReport {
     /// Attach the provider's request id.
     pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
         self.request_id = Some(request_id.into());
+        self
+    }
+
+    /// Attach a typed diagnostic.
+    pub fn with_detail(mut self, detail: ErrorDetail) -> Self {
+        self.detail = Some(detail);
         self
     }
 
@@ -356,6 +406,7 @@ impl From<&CompletionError> for ErrorReport {
             source_chain: source_chain(error),
             request_id,
             provider_response,
+            detail: None,
         }
     }
 }
@@ -397,6 +448,7 @@ impl From<&ToolExecutionError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: None,
             provider_response: None,
+            detail: None,
         }
     }
 }
@@ -431,6 +483,7 @@ impl From<&MemoryError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: None,
             provider_response: None,
+            detail: None,
         }
     }
 }
@@ -486,6 +539,7 @@ impl From<&EmbeddingError> for ErrorReport {
             source_chain: source_chain(error),
             request_id,
             provider_response,
+            detail: None,
         }
     }
 }
@@ -535,6 +589,7 @@ impl From<&RerankError> for ErrorReport {
             source_chain: source_chain(error),
             request_id,
             provider_response,
+            detail: None,
         }
     }
 }
@@ -590,6 +645,7 @@ impl From<&VectorStoreError> for ErrorReport {
             source_chain: source_chain(error),
             request_id: None,
             provider_response,
+            detail: None,
         }
     }
 }

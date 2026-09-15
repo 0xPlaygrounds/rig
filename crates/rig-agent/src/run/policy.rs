@@ -5,6 +5,27 @@ use rig_core::message::{Message, ToolChoice};
 use rig_core::streaming::BlockId;
 use serde::{Deserialize, Serialize};
 
+/// Why a model-emitted tool call could not be accepted.
+///
+/// The recovery vocabulary ([`InvalidToolCallAction`]) is shared, but not
+/// every action fits every reason: a name can be repaired, argument bytes
+/// cannot. Hooks branch on this; the run enforces it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(tag = "reason", rename_all = "snake_case")]
+pub enum InvalidToolCallReason {
+    /// The name is not an executable tool for this turn, or the active
+    /// tool choice does not allow it.
+    #[default]
+    UnknownTool,
+    /// The wire delivered a complete call whose arguments are not JSON
+    /// (rig#2447). `error` is the parser's description; the raw text is on
+    /// [`InvalidToolCallContext::args`].
+    MalformedArguments {
+        /// What the JSON parser rejected.
+        error: String,
+    },
+}
+
 /// Diagnostics for an invalid model-emitted tool call.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InvalidToolCallContext {
@@ -15,7 +36,9 @@ pub struct InvalidToolCallContext {
     pub tool_call_id: Option<rig_core::message::ToolCallId>,
     /// The stream block the call arrived under, when it streamed.
     pub block_id: Option<BlockId>,
-    /// Emitted JSON arguments, when present.
+    /// Emitted JSON arguments, when present. For
+    /// [`InvalidToolCallReason::MalformedArguments`] this is the raw text
+    /// exactly as the wire delivered it.
     pub args: Option<String>,
     /// Executable tools advertised for the turn.
     pub available_tools: Vec<String>,
@@ -27,6 +50,9 @@ pub struct InvalidToolCallContext {
     pub chat_history: Vec<Message>,
     /// Whether the call came from the streaming path.
     pub is_streaming: bool,
+    /// Why the call was rejected.
+    #[serde(default)]
+    pub reason: InvalidToolCallReason,
 }
 
 /// How an accepted, tool-free model turn should be retried.

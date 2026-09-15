@@ -126,10 +126,10 @@ pub use completion::{Agent, AgentParts};
 pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
     AgentHook, CompletionCallAction, HookContext, HookStack, InvalidToolCallAction,
-    InvalidToolCallContext, ModelSelection, ModelSelectionAction, ModelTurnAction,
-    ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch, RetryRequest, RunEntry,
-    RunHandle, RunId, RunSettled, RunStart, RunStartAction, Scratchpad, SettledOutcome,
-    StepEventKind, TextDelta, ToolCallDelta,
+    InvalidToolCallContext, InvalidToolCallReason, ModelSelection, ModelSelectionAction,
+    ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
+    RetryRequest, RunEntry, RunHandle, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
+    SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 pub use rig_core::completion::ModelRef;

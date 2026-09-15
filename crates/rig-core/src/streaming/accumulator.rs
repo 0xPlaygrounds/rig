@@ -32,7 +32,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use crate::error::{ErrorKind, ErrorReport};
+use crate::error::{ErrorDetail, ErrorKind, ErrorReport, MalformedToolInput};
 use crate::message::{AssistantContent, Reasoning, ReasoningContent, ToolCall, ToolFunction};
 use crate::streaming::UnparseableToolInput;
 use crate::streaming::block_id::BlockId;
@@ -630,6 +630,24 @@ impl BlockAccumulator {
             return Ok(None);
         }
 
+        // Provider identifiers: a dual wire carries (call_id, item id); a
+        // single wire's id arrives as `tool_id` (or as the wire-derived
+        // assembly key). With none, the correlation handle is minted and
+        // `provider` stays `None` — the empty-string sentinel is
+        // unrepresentable here. Derived before the input is parsed so a
+        // malformed-input diagnostic carries the same ids a valid call would.
+        let wire_tool_id = end.tool_id.or(opened_wire_id);
+        let provider =
+            crate::message::ProviderCallId::from_optional_wire(end.call_id, wire_tool_id);
+        // No provider id: the block that assembled the call names it, so a
+        // re-run of the same wire mints the same handle.
+        let durable_id = end.durable_id.map(|id| *id).unwrap_or_else(|| {
+            crate::message::ToolCallId::for_provider_or(
+                provider.as_ref(),
+                crate::message::ToolCallId::from_block(&published),
+            )
+        });
+
         let arguments = match end.arguments {
             // The wire's completed item is authoritative over assembly.
             Some(arguments) => arguments,
@@ -670,14 +688,30 @@ impl BlockAccumulator {
                                 serde_json::Value::Object(serde_json::Map::new())
                             }
                             // The wire promised a complete block; malformed input
-                            // is a response defect, never a silent drop.
+                            // is a response defect, never a silent drop. The
+                            // raw text and the call's ids ride on the report so
+                            // an agent can route the model's mistake back to it
+                            // (rig#2447) instead of ending the run. The entity
+                            // finalizes like any other end: a repeated end for
+                            // this key must not resurrect it.
                             UnparseableToolInput::Error => {
+                                self.finished_tools.insert(id.clone());
+                                self.finished_tools.insert(published.clone());
                                 return Err(ErrorReport::new(
                                     ErrorKind::Response,
                                     format!(
                                         "tool call `{name}` arrived with malformed JSON input: {err}"
                                     ),
-                                ));
+                                )
+                                .with_detail(ErrorDetail::MalformedToolInput(Box::new(
+                                    MalformedToolInput {
+                                        name,
+                                        id: durable_id,
+                                        provider,
+                                        raw: buffer,
+                                        error: err.to_string(),
+                                    },
+                                ))));
                             }
                             // A completion probe: the input may still be extended.
                             UnparseableToolInput::Keep => {
@@ -690,22 +724,6 @@ impl BlockAccumulator {
             },
         };
 
-        // Provider identifiers: a dual wire carries (call_id, item id); a
-        // single wire's id arrives as `tool_id` (or as the wire-derived
-        // assembly key). With none, the correlation handle is minted and
-        // `provider` stays `None` — the empty-string sentinel is
-        // unrepresentable here.
-        let wire_tool_id = end.tool_id.or(opened_wire_id);
-        let provider =
-            crate::message::ProviderCallId::from_optional_wire(end.call_id, wire_tool_id);
-        // No provider id: the block that assembled the call names it, so a
-        // re-run of the same wire mints the same handle.
-        let durable_id = end.durable_id.map(|id| *id).unwrap_or_else(|| {
-            crate::message::ToolCallId::for_provider_or(
-                provider.as_ref(),
-                crate::message::ToolCallId::from_block(&published),
-            )
-        });
         let tool_call = ToolCall {
             id: durable_id,
             provider,

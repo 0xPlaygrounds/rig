@@ -627,7 +627,7 @@ struct ProviderCallIdWire {
 /// (`fc_…`) *and* a `call_id` (`call_…`), and expects the right one in each
 /// position. Single-identifier wires carry their id in `call_id` and leave
 /// `item_id` empty.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "ProviderCallIdWire")]
 pub struct ProviderCallId {
     /// The call-correlation identifier the provider expects echoed back.

@@ -154,7 +154,7 @@ fn main() {
         // See rig-derive `is_tool_context_type`.
         #[cfg(feature = "derive")]
         {
-            #[rig::tool_macro(description = "echoes using fully-qualified facade context")]
+            #[rig::rig_tool(description = "echoes using fully-qualified facade context")]
             fn facade_qualified_context_tool(
                 context: &mut rig::tool::ToolContext,
                 value: String,
