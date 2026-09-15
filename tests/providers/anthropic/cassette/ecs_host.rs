@@ -4,7 +4,7 @@ use super::{
     corpus_host::{ADD_PROMPT, PROMPT, note_ats},
 };
 use crate::{
-    ecs_agent::{EcsAgent, RuntimeHandler},
+    ecs_agent::{EcsAgent, RuntimeHandler, io_runtime},
     goldens::{NOTE_KEY, NoteTaker, families},
     support::{Adder, BASIC_PREAMBLE, TOOLS_PREAMBLE},
 };
@@ -80,7 +80,7 @@ fn agent(
                 NOTE_KEY,
                 RuntimeHandler {
                     inner: Arc::new(NoteTaker),
-                    runtime: tokio::runtime::Handle::current(),
+                    runtime: io_runtime(),
                 },
             )
         })

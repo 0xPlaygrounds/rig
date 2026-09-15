@@ -4,7 +4,7 @@ use super::{
     corpus_serving::{ADD_PROMPT, TWO_TOOLS},
 };
 use crate::{
-    ecs_agent::{EcsAgent, RuntimeHandler},
+    ecs_agent::{EcsAgent, RuntimeHandler, io_runtime},
     goldens::families,
     support::{
         Adder, AlphaSignal, BetaSignal, TOOLS_PREAMBLE, TWO_TOOL_STREAM_PREAMBLE,
@@ -58,7 +58,7 @@ fn routed_agent(client: &rig::providers::anthropic::Client, selected: bool) -> E
                     "fast",
                     client.completion_model(CLAUDE_HAIKU_4_5),
                 )),
-                runtime: tokio::runtime::Handle::current(),
+                runtime: io_runtime(),
             },
         )
     })
@@ -224,7 +224,7 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
                             inner: Arc::new(MemoryAdapter::new(
                                 rig::memory::InMemoryConversationMemory::new(),
                             )),
-                            runtime: tokio::runtime::Handle::current(),
+                            runtime: io_runtime(),
                         },
                     )
                 })

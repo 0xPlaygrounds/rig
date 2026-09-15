@@ -94,7 +94,7 @@ use super::corpus::{self, CANCEL_ADD_OUTCOME, Ending, Hook, LayerAt, Program, Un
 use super::faults::{BROKEN_ORCHARD, FailingOrchard, Fault, Scene};
 use super::{CASSETTE_CREDENTIAL, WireBinding};
 use super::{OWNER, Wire};
-use crate::ecs_agent::RuntimeHandler;
+use crate::ecs_agent::{RuntimeHandler, io_runtime};
 use crate::goldens::{
     Adder, BROKEN_ADD, FailingAdd, FailingMemory, NoteTaker, WriteNote, families,
 };
@@ -129,7 +129,7 @@ pub(crate) struct Gates {
 
 /// A model whose stream parks after the first delta of the given kind:
 /// the run's stop must land on that delta, before transport scheduling
-/// can publish more of the stream (the anthropic `FirstToolDelta` gate,
+/// can publish more of the stream (the anthropic `FirstDelta` gate,
 /// for both delta hooks); a driver that saves a scene mid-stream releases
 /// the gate afterwards.
 struct FirstDelta<M> {
@@ -395,7 +395,7 @@ fn holds_tool_turn(cell: &Cell) -> bool {
     cell.name.starts_with("checkpoint_") || super::long_loop::is_long_loop(cell)
 }
 
-/// A tool adapter as an erased handler over the test's runtime.
+/// A tool adapter as an erased handler over the harness IO runtime.
 fn tool_handler<S>(adapter: S, runtime: &tokio::runtime::Handle) -> ErasedHandler
 where
     S: rig_core::serve::Serve<Family = rig_core::effect::family::Tool> + Send + Sync + 'static,
@@ -495,7 +495,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
         super::stream_delivery::install(&mut app);
     }
     let world = app.world_mut();
-    let runtime = tokio::runtime::Handle::current();
+    let runtime = io_runtime();
     let layered =
         |handler: ErasedHandler, at: LayerAt| corpus::layered(handler, program, at, &None);
     let register_memory = |world: &mut World| -> Option<Entity> {
@@ -879,7 +879,7 @@ fn open_inner<M: CompletionModel + Clone + 'static>(
 
 /// The harness `Materializer`: `cassette` resolves to the head client's
 /// key, every client sends through the head client's transport, and each
-/// built adapter is served under the test runtime as a hand-registered
+/// built adapter is served under the harness IO runtime as a hand-registered
 /// one is. Any other reference is refused.
 fn install_materializer(world: &mut World, data: &WireBinding, runtime: &tokio::runtime::Handle) {
     let api_key = data.api_key.clone();

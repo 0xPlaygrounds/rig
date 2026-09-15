@@ -1,5 +1,5 @@
 //! Exact named producer setup for the Gemini effect golden; real provider IO.
-use crate::ecs_agent::RuntimeHandler;
+use crate::ecs_agent::{RuntimeHandler, io_runtime};
 use bevy_app::{App, Update};
 use bevy_ecs::prelude::*;
 use rig::{
@@ -27,7 +27,7 @@ fn tool<T: Tool + 'static>(app: &mut App, agent: Entity, tool: T, order: u64) {
             format!("stress-agent/tool:{}#{order}", T::NAME),
             RuntimeHandler {
                 inner: Arc::new(ToolAdapter::new(tool)),
-                runtime: tokio::runtime::Handle::current(),
+                runtime: io_runtime(),
             },
         )
     })
@@ -57,7 +57,7 @@ pub(super) async fn run(
             "stress-agent/model:default",
             RuntimeHandler {
                 inner: Arc::new(CompletionAdapter::new("default", model)),
-                runtime: tokio::runtime::Handle::current(),
+                runtime: io_runtime(),
             },
         )
     })
