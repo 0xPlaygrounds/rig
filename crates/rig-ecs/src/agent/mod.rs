@@ -13,7 +13,7 @@
 //! | Steering (§9) | [`Cancelled`] on a run; [`Retry`] and [`RequestPatch`] on a turn; [`Resolution`] on an invalid call; `UsesModel` on a run |
 //! | Model, Tool | the bus module's handler entities (`Bound`) |
 //! | Document | [`DocumentId`], [`DocumentText`], [`DocumentProps`]; attached to a turn by an [`Attachment`] link entity |
-//! | Utterance | [`Utterance`] + [`Role`] + ordered [`content::parts::ContentPart`] child entities, [`Order`]; `ChildOf` the run |
+//! | Utterance | [`Utterance`] + [`Role`] + ordered [`content::parts::ContentPart`] child entities; `ChildOf` the run, in sibling (`Children`) order |
 //! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a phase marker ([`Assembling`], [`AwaitingModel`], [`ResolvingTools`], [`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings ([`ToolPolicy`], [`ToolContextSpec`] among them) |
 //! | Turn | [`Turn`], `ChildOf` the run; [`Advert`] link entities → the tools it advertised; [`Attachment`] link entities → the documents it carried; [`Outputs`]; [`Reprompt`]; [`Batch`] while its tool calls are out |
 //! | Effect | the bus module's, `ChildOf` the turn: the completion, then one per tool call ([`ToolCallSlot`] names which) |
@@ -344,7 +344,7 @@ pub struct Route(pub Entity);
 pub struct RoutedTo(Vec<Entity>);
 
 /// A grant: a link entity, `ChildOf` the agent, naming one tool the agent
-/// advertises. Advertisement order is [`Order`].
+/// advertises. Advertisement order is the agent's sibling (`Children`) order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = Grants)]
 #[reflect(Component)]
@@ -377,7 +377,7 @@ pub struct ToolAccess {
 pub struct Grants(Vec<Entity>);
 
 /// A context link: a link entity, `ChildOf` the agent, naming one document
-/// every turn carries as static context, in [`Order`].
+/// every turn carries as static context, in sibling (`Children`) order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = ContextOf)]
 #[reflect(Component)]
@@ -388,32 +388,6 @@ pub struct Context(pub Entity);
 #[relationship_target(relationship = Context)]
 #[reflect(Component)]
 pub struct ContextOf(Vec<Entity>);
-
-/// The order of a link, an utterance or a turn among its siblings: the
-/// agent modules' own counter ([`OrderCounter`]), never the bus module's
-/// `Seq`, which is reserved for effects.
-#[derive(
-    Component,
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Reflect,
-)]
-#[reflect(Component)]
-pub struct Order(pub u64);
-
-/// The world's one order counter for [`Order`].
-#[derive(Resource, Debug, Default, Reflect)]
-#[reflect(Resource)]
-pub struct OrderCounter(pub u64);
 
 // ---------------------------------------------------------------------------
 // Documents: entities of their own, shared by attachment.
@@ -434,7 +408,7 @@ pub struct DocumentText(pub String);
 pub struct DocumentProps(pub std::collections::HashMap<String, String>);
 
 /// An attachment: a link entity, `ChildOf` a turn, naming one document the
-/// turn's request carries, in [`Order`].
+/// turn's request carries, in sibling (`Children`) order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = AttachedTo)]
 #[reflect(Component)]
@@ -450,7 +424,7 @@ pub struct AttachedTo(Vec<Entity>);
 // Utterances: the conversation, one entity per message, `ChildOf` the run.
 
 /// An utterance: one message of the conversation, `ChildOf` its run, in
-/// [`Order`]. Its parts are content components.
+/// sibling (`Children`) order. Its parts are content components.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -793,7 +767,7 @@ pub struct ProviderRetrying;
 #[reflect(Component)]
 pub struct OutputToolName(pub Option<String>);
 
-/// A turn: one model call of a run, `ChildOf` the run, in [`Order`].
+/// A turn: one model call of a run, `ChildOf` the run, in sibling (`Children`) order.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -801,7 +775,7 @@ pub struct OutputToolName(pub Option<String>);
 pub struct Turn;
 
 /// An advert: a link entity, `ChildOf` a turn, naming one tool the turn's
-/// request advertised, in [`Order`].
+/// request advertised, in sibling (`Children`) order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = AdvertisedOn)]
 #[reflect(Component)]

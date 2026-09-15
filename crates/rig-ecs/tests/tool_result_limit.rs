@@ -9,13 +9,13 @@
 //! | a limit set between turns affects only later turns; the agent's applies under the run's absence | `a_limit_change_between_turns_affects_only_later_turns` |
 //! | a `RequestPartEdit` is applied first, then the limit | `an_edit_is_applied_before_the_limit` |
 
-use crate::run_support::{graph_messages, open_model_world, requests};
+use crate::run_support::{graph_messages, open_model_world, requests, utterances_of};
 
 use bevy_ecs::prelude::*;
 use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig_ecs::{
     agent::{
-        MessageParts, Order, Turn, Utterance,
+        MessageParts, Turn,
         content::parts::{
             EditTarget, RequestPartEdit, TOOL_RESULT_LIMIT_MARKER, TextPart, ToolResultLimit,
             ToolResultPart,
@@ -59,7 +59,7 @@ fn history(text: &str) -> Vec<MessageParts> {
 fn fixture(text: &str) -> (World, Entity, Entity, Entity) {
     let (mut world, agent) = open_model_world();
     let run = world.spawn_run(agent, &history(text), "next", false, None);
-    let turn = world.spawn((Turn, Fresh, Order(100), ChildOf(run))).id();
+    let turn = world.spawn((Turn, Fresh, ChildOf(run))).id();
     (world, agent, run, turn)
 }
 
@@ -191,13 +191,7 @@ fn the_cut_lands_on_character_boundaries() {
 fn json_items_and_user_text_are_never_cut() {
     let (mut world, _, run, _) = fixture("short");
     // The prompt's own text is long: an ordinary user text, not a result.
-    let prompt = world
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
-        .iter(&world)
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .max_by_key(|(_, _, order)| order.0)
-        .map(|(entity, _, _)| entity)
-        .unwrap();
+    let prompt = *utterances_of(&mut world, run).last().unwrap();
     rig_ecs::agent::content::parts::write_message(
         &mut world,
         prompt,
@@ -224,10 +218,10 @@ fn a_limit_change_between_turns_affects_only_later_turns() {
     // The agent's limit applies to the second turn; the run's, once set,
     // to the third. The first request, already folded, is untouched.
     world.entity_mut(agent).insert(ToolResultLimit::new(20));
-    world.spawn((Turn, Fresh, Order(101), ChildOf(run)));
+    world.spawn((Turn, Fresh, ChildOf(run)));
     world.run_schedule(RigSchedule);
     world.entity_mut(run).insert(ToolResultLimit::new(10));
-    world.spawn((Turn, Fresh, Order(102), ChildOf(run)));
+    world.spawn((Turn, Fresh, ChildOf(run)));
     world.run_schedule(RigSchedule);
     let requests = requests(&mut world, run);
     assert_eq!(requests.len(), 3);
@@ -278,7 +272,6 @@ fn an_edit_is_applied_before_the_limit() {
     world.spawn((
         RequestPartEdit::Text(LONG.to_owned()),
         EditTarget(text_item),
-        Order(0),
         ChildOf(turn),
     ));
     world.entity_mut(run).insert(ToolResultLimit::new(10));

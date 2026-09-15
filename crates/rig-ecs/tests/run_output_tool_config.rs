@@ -5,8 +5,8 @@ use bevy_ecs::prelude::*;
 use rig_core::message::{AssistantContent, ToolChoice};
 use rig_ecs::{
     agent::{
-        Failed, Failure, Grant, MaxTurns, Order, Output, OutputKind, OutputRetries,
-        OutputToolConfig, OutputToolName, Run, RunResult, Settled, ToolChoiceSpec,
+        Failed, Failure, Grant, MaxTurns, Output, OutputKind, OutputRetries, OutputToolConfig,
+        OutputToolName, Run, RunResult, Settled, ToolChoiceSpec,
     },
     checkpoint::{Checkpoint, load_world, save_world},
     systems::RunCommands,
@@ -187,8 +187,7 @@ fn reserved_name_collision_fails_before_provider_or_tool_dispatch() {
     app.world_mut()
         .entity_mut(agent)
         .insert((schema(), config()));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     let run = app
         .world_mut()
         .spawn_run(agent, &[], "extract", false, None);
@@ -398,8 +397,7 @@ fn description_only_configuration_keeps_collision_safe_automatic_naming() {
             ..config()
         },
     ));
-    app.world_mut()
-        .spawn((Grant(real), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(real), ChildOf(agent)));
     let run = app
         .world_mut()
         .spawn_run(agent, &[], "extract", false, Some(1));

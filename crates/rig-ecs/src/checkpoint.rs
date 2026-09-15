@@ -53,8 +53,8 @@ pub struct Checkpoint {
     /// Every entity with a reflected component, parents before children,
     /// siblings in `Children` order.
     pub entities: Vec<CheckpointEntity>,
-    /// The world's counters: the next run number and the next order (the
-    /// id and sequence counters bump themselves from what is loaded).
+    /// The world's counters: the next run number (the id and sequence
+    /// counters bump themselves from what is loaded).
     #[serde(default)]
     pub counters: Counters,
     /// The binary store: every retained payload, once per content hash.
@@ -67,8 +67,6 @@ pub struct Checkpoint {
 pub struct Counters {
     /// [`agent::RunCounter`].
     pub next_run: u64,
-    /// [`agent::OrderCounter`].
-    pub next_order: u64,
     /// [`IdCounter`].
     pub next_id: u64,
 }
@@ -184,9 +182,6 @@ pub fn save_world(world: &mut World) -> Result<Checkpoint, ErrorReport> {
         entities,
         counters: Counters {
             next_run: world.get_resource::<agent::RunCounter>().map_or(0, |c| c.0),
-            next_order: world
-                .get_resource::<agent::OrderCounter>()
-                .map_or(0, |c| c.0),
             next_id: world.get_resource::<IdCounter>().map_or(0, |c| c.0),
         },
         binaries: world
@@ -394,8 +389,6 @@ fn spawn_into(
     ids.0 = ids.0.max(checkpoint.counters.next_id);
     let mut runs = world.get_resource_or_init::<agent::RunCounter>();
     runs.0 = runs.0.max(checkpoint.counters.next_run);
-    let mut orders = world.get_resource_or_init::<agent::OrderCounter>();
-    orders.0 = orders.0.max(checkpoint.counters.next_order);
     Ok(entities)
 }
 

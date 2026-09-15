@@ -6,7 +6,7 @@ use crate::run_support;
 use bevy_ecs::prelude::*;
 use rig_core::{effect::HandlerKey, message::AssistantContent};
 use rig_ecs::{
-    agent::{Failed, Failure, Grant, Order, ToolAccess, Turn},
+    agent::{Failed, Failure, Grant, ToolAccess, Turn},
     systems::RunCommands,
 };
 use run_support::*;
@@ -27,8 +27,7 @@ fn empty_permission_set_denies_an_advertised_executable_tool() {
     let peak = tool.peak.clone();
     let tool = register(&mut app, "adder", tool);
     let agent = spawn_agent(app.world_mut(), "test", model);
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     app.world_mut().entity_mut(agent).insert(ToolAccess {
         allowed: Some(BTreeSet::new()),
         ..Default::default()
@@ -198,7 +197,6 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     };
     first.world_mut().spawn((
         Turn,
-        Order(99),
         access.clone(),
         Outputs {
             stream_validated: 4,

@@ -32,7 +32,7 @@ use rig_core::{
     tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::{
-    agent::{Failed, Grant, MaxTurns, Order, Settled, Utterance},
+    agent::{Failed, Grant, MaxTurns, Settled, Utterance},
     bus::{PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
@@ -144,8 +144,7 @@ fn main() {
     app.world_mut()
         .entity_mut(agent)
         .insert(MaxTurns(TOOL_TURNS + 2));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     app.insert_resource(Turns::default());
     app.world_mut().resource_mut::<Schedules>().add_systems(
         RigSchedule,

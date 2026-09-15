@@ -47,8 +47,8 @@ use crate::{
         AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
         Conversation, Cursor, DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps, DocumentText,
         Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory,
-        MaxTokens, MaxTurns, MemoryAppendScheduled, MessageParts, Order, OrderCounter, Output,
-        OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs, Preamble, Prompt,
+        MaxTokens, MaxTurns, MemoryAppendScheduled, MessageParts, Output, OutputKind,
+        OutputRetries, OutputToolConfig, OutputToolName, Outputs, Preamble, Prompt,
         ProviderRetried, ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers,
         Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, RetrievalKind,
         Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq, Settled,
@@ -237,7 +237,6 @@ fn install_agent(world: &mut World) {
         world.contains_resource::<crate::bus::Policy>(),
         "AgentPlugin needs BusPlugin first: it runs in the bus's RigSchedule"
     );
-    world.init_resource::<OrderCounter>();
     world.init_resource::<BinaryAssets>();
     world.init_resource::<RunCounter>();
     world.init_resource::<AssemblyStats>();
@@ -335,29 +334,16 @@ macro_rules! content_or_fail {
 /// statuses. A content failure fails the run and returns from the system, as
 /// [`content_or_fail`] does.
 macro_rules! say {
-    ($commands:expr, $assets:expr, $orders:expr, $run:expr, $parts:expr) => {
+    ($commands:expr, $assets:expr, $run:expr, $parts:expr) => {
         content_or_fail!(
-            spawn_deferred(
-                &mut $commands,
-                &mut $assets,
-                $run,
-                $parts,
-                next_order_in(&mut $orders)
-            ),
+            spawn_deferred(&mut $commands, &mut $assets, $run, $parts),
             &mut $commands,
             $run
         )
     };
-    ($commands:expr, $assets:expr, $orders:expr, $run:expr, $parts:expr, $statuses:expr) => {
+    ($commands:expr, $assets:expr, $run:expr, $parts:expr, $statuses:expr) => {
         content_or_fail!(
-            spawn_deferred_with(
-                &mut $commands,
-                &mut $assets,
-                $run,
-                $parts,
-                next_order_in(&mut $orders),
-                $statuses
-            ),
+            spawn_deferred_with(&mut $commands, &mut $assets, $run, $parts, $statuses),
             &mut $commands,
             $run
         )
@@ -400,7 +386,7 @@ pub struct RunDespawnRefused {
 
 /// The components every run is made of: what [`RunCommands::spawn_run`]
 /// spawns, for a host that assembles a run by hand — `world.spawn((RunBundle::new(world, agent, false), Prompt::from("…")))`,
-/// its history utterances `ChildOf` the run in `Order`, an optional
+/// its history utterances `ChildOf` the run in sibling (`Children`) order, an optional
 /// [`MaxTurns`], and last [`Ready`](crate::agent::Ready). [`RunSeq`] is the world's next run
 /// number and [`Scope`] is `{owner}/run#{seq}`, both taken from the world
 /// by [`RunBundle::new`].
@@ -743,14 +729,13 @@ fn open_run(world: &mut World, run: Entity) {
     }
 }
 
-/// Spawn one utterance `ChildOf` `run`, next in order.
+/// Spawn one utterance `ChildOf` `run`, last among its siblings.
 pub fn spawn_utterance(
     world: &mut World,
     run: Entity,
     parts: MessageParts,
 ) -> Result<Entity, ContentError> {
-    let order = next_order(world);
-    let entity = world.spawn((Utterance, order, ChildOf(run))).id();
+    let entity = world.spawn((Utterance, ChildOf(run))).id();
     if let Err(error) = write_message(world, entity, parts) {
         world.despawn(entity);
         return Err(error);
@@ -758,42 +743,26 @@ pub fn spawn_utterance(
     Ok(entity)
 }
 
-/// The next [`Order`].
-pub(crate) fn next_order(world: &mut World) -> Order {
-    let mut counter = world.resource_mut::<OrderCounter>();
-    let order = Order(counter.0);
-    counter.0 += 1;
-    order
-}
-
-pub(crate) fn next_order_in(counter: &mut OrderCounter) -> Order {
-    let order = Order(counter.0);
-    counter.0 += 1;
-    order
-}
-
 /// A run's effective setting: its own component, else its agent's.
 fn setting<'a, C: Component>(run: Entity, agent: Entity, query: &'a Query<&C>) -> Option<&'a C> {
     query.get(run).ok().or_else(|| query.get(agent).ok())
 }
 
-/// The links of one kind under `owner`, in order.
+/// The links of one kind under `owner`, in sibling (`Children`) order.
 fn links_in_order<'a, L: Component, F: bevy_ecs::query::QueryFilter>(
     owner: Entity,
     children: &Query<&Children>,
-    links: &'a Query<(&L, &Order), F>,
+    links: &'a Query<&L, F>,
 ) -> Vec<&'a L> {
-    let mut found: Vec<(&Order, &L)> = children
+    children
         .get(owner)
         .map(|children| {
             children
                 .iter()
-                .filter_map(|child| links.get(child).ok().map(|(link, order)| (order, link)))
+                .filter_map(|child| links.get(child).ok())
                 .collect()
         })
-        .unwrap_or_default();
-    found.sort_by_key(|(order, _)| **order);
-    found.into_iter().map(|(_, link)| link).collect()
+        .unwrap_or_default()
 }
 
 /// `RigSet::Advance`: a `Ready` run in `Assembling` with no fresh turn gets one —
@@ -810,14 +779,13 @@ pub fn advance(
     runs: Query<(Entity, &RunOf, &Cursor, &RunSeq), Wanting>,
     fresh: Query<&ChildOf, With<Fresh>>,
     children: Query<&Children>,
-    grants: Query<(&Grant, &Order), Without<Retrievable>>,
-    contexts: Query<(&Context, &Order)>,
+    grants: Query<&Grant, Without<Retrievable>>,
+    contexts: Query<&Context>,
     retrievals: Query<(), With<Retrieves>>,
     max_turns: Query<&MaxTurns>,
     retrying: Query<(), With<ProviderRetrying>>,
     holds: Query<&ToolTurnHolds>,
     commits: Query<(&ChildOf, &ToolTurnCommit)>,
-    mut orders: ResMut<OrderCounter>,
 ) {
     let mut runs: Vec<_> = runs.iter().collect();
     runs.sort_by_key(|(_, _, _, seq)| **seq);
@@ -842,9 +810,7 @@ pub fn advance(
         }) {
             continue;
         }
-        let turn = commands
-            .spawn((Turn, Fresh, next_order_in(&mut orders), ChildOf(run)))
-            .id();
+        let turn = commands.spawn((Turn, Fresh, ChildOf(run))).id();
         let retrieves = children
             .get(*agent)
             .map(|children| children.iter().any(|child| retrievals.get(child).is_ok()))
@@ -856,14 +822,10 @@ pub fn advance(
             commands.entity(turn).insert(Retrieving);
         } else {
             for Grant(tool) in links_in_order(*agent, &children, &grants) {
-                commands.spawn((Advert(*tool), next_order_in(&mut orders), ChildOf(turn)));
+                commands.spawn((Advert(*tool), ChildOf(turn)));
             }
             for Context(document) in links_in_order(*agent, &children, &contexts) {
-                commands.spawn((
-                    Attachment(*document),
-                    next_order_in(&mut orders),
-                    ChildOf(turn),
-                ));
+                commands.spawn((Attachment(*document), ChildOf(turn)));
             }
         }
         if retrying {
@@ -891,12 +853,11 @@ pub fn attach_retrieved(
     runs: Query<&RunOf>,
     children: Query<&Children>,
     retrievals: Query<(&PendingEffect, &Retrieval, Option<&EffectOutcome>)>,
-    grants: Query<(&Grant, &Order, Has<Retrievable>)>,
-    contexts: Query<(&Context, &Order)>,
+    grants: Query<(&Grant, Has<Retrievable>)>,
+    contexts: Query<&Context>,
     bound: Query<&Bound>,
-    indexes: Query<&Retrieves, (With<Retrieval>, With<Order>)>,
+    indexes: Query<&Retrieves, With<Retrieval>>,
     documents: Query<(Entity, &DocumentId)>,
-    mut orders: ResMut<OrderCounter>,
 ) {
     for (turn, turn_of) in &turns {
         let run = turn_of.parent();
@@ -953,7 +914,7 @@ pub fn attach_retrieved(
                 | (RetrievalKind::Documents, rig_core::effect::RetrievedDocuments::Ids(_)) => {}
             }
         }
-        let mut links: Vec<(&Grant, &Order, bool)> = children
+        let links: Vec<(&Grant, bool)> = children
             .get(*agent)
             .map(|children| {
                 children
@@ -962,9 +923,8 @@ pub fn attach_retrieved(
                     .collect()
             })
             .unwrap_or_default();
-        links.sort_by_key(|(_, order, _)| **order);
         let tool_named = |name: &str| -> Option<Entity> {
-            links.iter().find_map(|(Grant(tool), _, _)| {
+            links.iter().find_map(|(Grant(tool), _)| {
                 bound
                     .get(*tool)
                     .ok()
@@ -984,20 +944,16 @@ pub fn attach_retrieved(
         };
         for name in &retrieved_tools {
             if let Some(tool) = tool_named(name) {
-                commands.spawn((Advert(tool), next_order_in(&mut orders), ChildOf(turn)));
+                commands.spawn((Advert(tool), ChildOf(turn)));
             }
         }
-        for (Grant(tool), _, retrievable) in &links {
+        for (Grant(tool), retrievable) in &links {
             if !retrievable {
-                commands.spawn((Advert(*tool), next_order_in(&mut orders), ChildOf(turn)));
+                commands.spawn((Advert(*tool), ChildOf(turn)));
             }
         }
         for Context(document) in links_in_order(*agent, &children, &contexts) {
-            commands.spawn((
-                Attachment(*document),
-                next_order_in(&mut orders),
-                ChildOf(turn),
-            ));
+            commands.spawn((Attachment(*document), ChildOf(turn)));
         }
         for (id, text) in retrieved_documents {
             let document = documents
@@ -1005,11 +961,7 @@ pub fn attach_retrieved(
                 .find(|(_, existing)| existing.0 == id)
                 .map(|(entity, _)| entity)
                 .unwrap_or_else(|| commands.spawn((DocumentId(id), DocumentText(text))).id());
-            commands.spawn((
-                Attachment(document),
-                next_order_in(&mut orders),
-                ChildOf(turn),
-            ));
+            commands.spawn((Attachment(document), ChildOf(turn)));
         }
         commands.entity(turn).remove::<Retrieving>();
     }
@@ -1019,18 +971,12 @@ pub fn attach_retrieved(
 /// the loaded messages become utterances before the prompt, each
 /// `Remembered`, and the run is `Assembling`; a failed load fails the run
 /// (CONTRACT §11).
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system pass reads the graph and its memory effect state"
-)]
 pub fn land_memory(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
     runs: Query<Entity, (With<LoadingMemory>, Without<Failed>)>,
     children: Query<&Children>,
     loads: Query<(&PendingEffect, &EffectOutcome)>,
-    utterances: Query<(Entity, &Order), With<Utterance>>,
-    mut orders: ResMut<OrderCounter>,
 ) {
     for run in &runs {
         let Some(outcome) = children.get(run).ok().and_then(|children| {
@@ -1056,27 +1002,18 @@ pub fn land_memory(
         };
         match outcome {
             Ok(Outcome::Memory(rig_core::effect::MemoryOutcome::Loaded { messages })) => {
+                // The loaded messages go first among the run's children:
+                // the prompt (and any history given) comes after them.
+                let mut loaded = Vec::with_capacity(messages.len());
                 for message in messages {
                     if let Some(parts) = MessageParts::from_message(message) {
-                        let utterance = say!(commands, assets, orders, run, parts);
+                        let utterance = say!(commands, assets, run, parts);
                         commands.entity(utterance).insert(Remembered);
+                        loaded.push(utterance);
                     }
                 }
-                // The prompt (and any history given) comes after what was
-                // loaded: its order is re-stamped past the loaded ones.
-                let mut existing: Vec<(Entity, Order)> = children
-                    .get(run)
-                    .map(|children| {
-                        children
-                            .iter()
-                            .filter_map(|child| utterances.get(child).ok())
-                            .map(|(entity, order)| (entity, *order))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                existing.sort_by_key(|(_, order)| *order);
-                for (entity, _) in existing {
-                    commands.entity(entity).insert(next_order_in(&mut orders));
+                if !loaded.is_empty() {
+                    commands.entity(run).insert_children(0, &loaded);
                 }
                 commands.entity(run).phase::<LoadingMemory>(Assembling);
             }
@@ -1116,7 +1053,7 @@ pub fn append_memory(
     memories: Query<&Remembers>,
     bound: Query<&Bound>,
     children: Query<&Children>,
-    utterances: Query<(Entity, &Order, Has<Remembered>), With<Utterance>>,
+    utterances: Query<(Entity, Has<Remembered>), With<Utterance>>,
     content: ContentGraph,
 ) {
     for (run, RunOf(agent), Conversation(conversation)) in &settled {
@@ -1128,31 +1065,25 @@ pub fn append_memory(
         else {
             continue;
         };
-        let said: Result<Vec<_>, ContentError> = children
+        let said: Result<Vec<MessageParts>, ContentError> = children
             .get(run)
             .map(|children| {
                 children
                     .iter()
                     .filter_map(|child| utterances.get(child).ok())
-                    .filter(|(_, _, remembered)| !*remembered)
-                    .map(|(entity, order, _)| {
-                        content.message(entity).map(|message| (*order, message))
-                    })
+                    .filter(|(_, remembered)| !*remembered)
+                    .map(|(entity, _)| content.message(entity))
                     .collect()
             })
             .unwrap_or_else(|_| Ok(Vec::new()));
-        let mut said = content_or_fail!(said, &mut commands, run);
-        said.sort_by_key(|(order, _)| *order);
+        let said = content_or_fail!(said, &mut commands, run);
         commands.spawn((
             PendingEffect::new(
                 key,
                 EffectKind::Memory {
                     op: rig_core::effect::MemoryOp::Append {
                         conversation: rig_core::id::ConversationId::from(conversation.as_str()),
-                        messages: said
-                            .into_iter()
-                            .map(|(_, parts)| parts.to_message())
-                            .collect(),
+                        messages: said.into_iter().map(|parts| parts.to_message()).collect(),
                     },
                 },
             ),
@@ -1176,11 +1107,10 @@ pub fn select(
     }
 }
 
-/// Ordered request edit links, including malformed links for explicit validation.
+/// A request edit link, including a malformed link for explicit validation;
+/// the links apply in the turn's sibling (`Children`) order.
 pub type PartEditView = (
     Entity,
-    &'static ChildOf,
-    Option<&'static Order>,
     Option<&'static EditTarget>,
     &'static RequestPartEdit,
 );
@@ -1206,13 +1136,13 @@ pub fn assemble(
     fresh: Query<FreshView, With<Fresh>>,
     runs: Query<AssemblingView, (With<Run>, Without<Failed>)>,
     children: Query<&Children>,
-    utterances: Query<(Entity, &Order), With<Utterance>>,
+    utterances: Query<Entity, With<Utterance>>,
     content: ContentGraph,
     part_edits: Query<PartEditView>,
-    retrievals: Query<(&Retrieves, &Order, &Retrieval)>,
+    retrievals: Query<(&Retrieves, &Retrieval)>,
     retrieving: Query<(), With<Retrieval>>,
-    adverts: Query<(&Advert, &Order)>,
-    attachments: Query<(&Attachment, &Order)>,
+    adverts: Query<&Advert>,
+    attachments: Query<&Attachment>,
     documents: Query<(&DocumentId, &DocumentText, Option<&DocumentProps>)>,
     bound: Query<&Bound>,
     settings: Settings,
@@ -1296,27 +1226,16 @@ pub fn assemble(
         };
 
         let requested: Result<_, ContentError> = (|| {
-            let mut links: Vec<_> = part_edits
-                .iter()
-                .filter(|(_, parent, _, _, _)| parent.parent() == turn)
+            let links: Vec<_> = children
+                .get(turn)
+                .into_iter()
+                .flat_map(|children| children.iter())
+                .filter_map(|link| part_edits.get(link).ok())
                 .collect();
-            if links
-                .iter()
-                .any(|(_, _, order, target, _)| order.is_none() || target.is_none())
-            {
-                return Err(ContentError::Missing);
-            }
-            links.sort_by_key(|(_, _, order, _, _)| order.copied());
-            if links
-                .windows(2)
-                .any(|pair| pair.first().map(|x| x.2) == pair.get(1).map(|x| x.2))
-            {
-                return Err(ContentError::DuplicateOrder);
-            }
             let mut edits = std::collections::BTreeMap::new();
             let mut consumed = Vec::new();
             let mut edited = std::collections::HashSet::new();
-            for (link, _, _, target, edit) in links {
+            for (link, target, edit) in links {
                 let target = target.ok_or(ContentError::Missing)?;
                 let utterance = content.target_utterance(target.0)?;
                 edited.insert(utterance);
@@ -1338,41 +1257,37 @@ pub fn assemble(
         })();
         let (edits, consumed_edits, edited) = content_or_fail!(requested, &mut commands, run);
 
-        let history: Result<Vec<(Order, std::borrow::Cow<'_, MessageParts>)>, ContentError> =
-            children
-                .get(run)
-                .map(|children| {
-                    children
-                        .iter()
-                        .filter_map(|child| utterances.get(child).ok())
-                        .map(|(entity, order)| {
-                            let parts = if edited.contains(&entity) {
-                                // The turn's edit: rendered with it, kept
-                                // out of the cache (the view is verbatim).
-                                stats.renders += 1;
-                                content
-                                    .message_with(entity, &edits)
-                                    .map(std::borrow::Cow::Owned)
-                            } else if let Some(view) = cache.view(entity, &stale) {
-                                stats.hits += 1;
-                                Ok(std::borrow::Cow::Borrowed(view))
-                            } else {
-                                stats.renders += 1;
-                                content.message(entity).map(|parts| {
-                                    commands.entity(entity).insert(CachedMessage::new(
-                                        parts.clone(),
-                                        assets_generation,
-                                    ));
-                                    std::borrow::Cow::Owned(parts)
-                                })
-                            };
-                            parts.map(|parts| (*order, parts))
-                        })
-                        .collect()
-                })
-                .unwrap_or_else(|_| Ok(Vec::new()));
+        let history: Result<Vec<std::borrow::Cow<'_, MessageParts>>, ContentError> = children
+            .get(run)
+            .map(|children| {
+                children
+                    .iter()
+                    .filter_map(|child| utterances.get(child).ok())
+                    .map(|entity| {
+                        if edited.contains(&entity) {
+                            // The turn's edit: rendered with it, kept
+                            // out of the cache (the view is verbatim).
+                            stats.renders += 1;
+                            content
+                                .message_with(entity, &edits)
+                                .map(std::borrow::Cow::Owned)
+                        } else if let Some(view) = cache.view(entity, &stale) {
+                            stats.hits += 1;
+                            Ok(std::borrow::Cow::Borrowed(view))
+                        } else {
+                            stats.renders += 1;
+                            content.message(entity).map(|parts| {
+                                commands
+                                    .entity(entity)
+                                    .insert(CachedMessage::new(parts.clone(), assets_generation));
+                                std::borrow::Cow::Owned(parts)
+                            })
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(|_| Ok(Vec::new()));
         let mut history = content_or_fail!(history, &mut commands, run);
-        history.sort_by_key(|(order, _)| *order);
 
         if is_retrieving {
             // The first pass over a retrieving turn (CONTRACT §12): one
@@ -1388,10 +1303,10 @@ pub fn assemble(
             let query = policy::retrieval_query(
                 &history
                     .iter()
-                    .map(|(_, parts)| parts.as_ref().clone())
+                    .map(|parts| parts.as_ref().clone())
                     .collect::<Vec<_>>(),
             );
-            let mut indexes: Vec<(&Retrieves, &Order, &Retrieval)> = children
+            let indexes: Vec<(&Retrieves, &Retrieval)> = children
                 .get(agent)
                 .map(|children| {
                     children
@@ -1400,9 +1315,8 @@ pub fn assemble(
                         .collect()
                 })
                 .unwrap_or_default();
-            indexes.sort_by_key(|(_, order, _)| **order);
             let mut spawned = 0usize;
-            for (Retrieves(index), _, retrieval) in indexes {
+            for (Retrieves(index), retrieval) in indexes {
                 let Ok(index) = bound.get(*index) else {
                     continue;
                 };
@@ -1436,7 +1350,7 @@ pub fn assemble(
         // after the part edits `message_with` applied and before the fold;
         // the graph keeps the full text.
         if let Some(limit) = setting(run, agent, &tool_result_limits) {
-            for (_, parts) in &mut history {
+            for parts in &mut history {
                 if policy::tool_results_exceed(parts, limit) {
                     policy::limit_tool_results(parts.to_mut(), limit);
                 }
@@ -1445,19 +1359,15 @@ pub fn assemble(
 
         // The turn's patch (CONTRACT §9.3), folded in as `prepare_request`
         // folded a completion-call hook's.
-        let mut tool_links: Vec<_> = children
+        let tools: Vec<&Bound> = children
             .get(turn)
             .into_iter()
             .flat_map(|children| children.iter())
             .filter_map(|link| {
-                let (Advert(tool), order) = adverts.get(link).ok()?;
-                Some((*order, link, bound.get(*tool).ok()?))
+                let Advert(tool) = adverts.get(link).ok()?;
+                Some((link, bound.get(*tool).ok()?))
             })
-            .collect();
-        tool_links.sort_by_key(|(order, _, _)| *order);
-        let tools: Vec<&Bound> = tool_links
-            .into_iter()
-            .filter_map(|(_, link, bound)| {
+            .filter_map(|(link, bound)| {
                 let allowed = match (
                     patch.and_then(|p| p.active_tools.as_ref()),
                     &bound.descriptor.family,
@@ -1502,7 +1412,7 @@ pub fn assemble(
                 messages
                     .iter()
                     .cloned()
-                    .chain(history.last().map(|(_, parts)| parts.as_ref().clone()))
+                    .chain(history.last().map(|parts| parts.as_ref().clone()))
                     .collect()
             });
         let merged_params: Option<serde_json::Value> = match (
@@ -1606,7 +1516,7 @@ pub fn assemble(
             preamble,
             utterances: match &patched_history {
                 Some(patched) => patched.iter().collect(),
-                None => history.iter().map(|(_, parts)| parts.as_ref()).collect(),
+                None => history.iter().map(|parts| parts.as_ref()).collect(),
             },
             documents: attached,
             tools: tools.iter().map(|bound| &bound.descriptor).collect(),
@@ -1861,7 +1771,6 @@ pub fn land_batch(
     runs: Query<(&OutputToolName, &RunSeq, &Cursor), With<ResolvingTools>>,
     children: Query<&Children>,
     tools: Query<ToolChildView>,
-    mut orders: ResMut<OrderCounter>,
 ) {
     let mut turns: Vec<_> = turns.iter().collect();
     turns.sort_by_key(|(_, turn_of, _, _)| runs.get(turn_of.parent()).map(|(_, seq, _)| *seq).ok());
@@ -1929,7 +1838,7 @@ pub fn land_batch(
             continue;
         }
         let results = MessageParts::User { content: parts };
-        let results_entity = say!(commands, assets, orders, run, results, statuses);
+        let results_entity = say!(commands, assets, run, results, statuses);
         commands.entity(turn).insert((
             ToolTurnCommit { turn: cursor.turn },
             TurnResults(results_entity),
@@ -2018,7 +1927,7 @@ pub fn materialise(
     effects: Query<(&ChildOf, &EffectOutcome, Option<&BusStreamed>), NotRetrieval>,
     runs: Query<(AwaitingView, &RunSeq), With<AwaitingModel>>,
     children: Query<&Children>,
-    adverts: Query<(&Advert, &Order)>,
+    adverts: Query<&Advert>,
     bound: Query<&Bound>,
     outputs: Query<&Output>,
     max_turns: Query<&MaxTurns>,
@@ -2028,7 +1937,6 @@ pub fn materialise(
     contexts: Query<&ToolContextSpec>,
     invalid_calls: Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
     mut assets: ResMut<BinaryAssets>,
-    mut orders: ResMut<OrderCounter>,
 ) {
     let MaterialiseReads {
         choices,
@@ -2145,7 +2053,7 @@ pub fn materialise(
                             id: outs.message_id.clone(),
                             content: call.prefix.clone(),
                         };
-                        say!(commands, assets, orders, run, assistant);
+                        say!(commands, assets, run, assistant);
                     }
                     commands.entity(turn).insert(Materialised);
                     commands
@@ -2178,7 +2086,7 @@ pub fn materialise(
                         id: outs.message_id.clone(),
                         content: content.clone(),
                     };
-                    say!(commands, assets, orders, run, assistant);
+                    say!(commands, assets, run, assistant);
                     let results = policy::invalid_peer_results(&content, &diagnostic_id, &feedback);
                     let skipped = match &results {
                         MessageParts::User { content } => {
@@ -2186,7 +2094,7 @@ pub fn materialise(
                         }
                         MessageParts::Assistant { .. } => Vec::new(),
                     };
-                    say!(commands, assets, orders, run, results, skipped);
+                    say!(commands, assets, run, results, skipped);
                     commands.entity(turn).insert(Materialised);
                     let mut run_commands = commands.entity(run);
                     run_commands.remove::<AwaitingModel>().insert(Assembling);
@@ -2320,7 +2228,7 @@ pub fn materialise(
                     let user = MessageParts::User {
                         content: vec![UserContent::text(feedback)],
                     };
-                    say!(commands, assets, orders, run, user);
+                    say!(commands, assets, run, user);
                 }
                 commands.entity(run).phase::<AwaitingModel>(Assembling);
                 continue;
@@ -2393,11 +2301,11 @@ pub fn materialise(
                     id: response.message_id.clone(),
                     content: content.clone(),
                 };
-                say!(commands, assets, orders, run, assistant);
+                say!(commands, assets, run, assistant);
                 let user = MessageParts::User {
                     content: vec![UserContent::text(feedback)],
                 };
-                say!(commands, assets, orders, run, user);
+                say!(commands, assets, run, user);
             }
             commands.entity(run).phase::<AwaitingModel>(Assembling);
             continue;
@@ -2408,7 +2316,7 @@ pub fn materialise(
             id: response.message_id.clone(),
             content: content.clone(),
         };
-        let assistant_entity = say!(commands, assets, orders, run, assistant);
+        let assistant_entity = say!(commands, assets, run, assistant);
 
         // Calls to granted tools: the batch, one effect per call `ChildOf`
         // the turn, in call order, held beyond the concurrency.
@@ -2536,7 +2444,6 @@ pub fn materialise(
                             say!(
                                 commands,
                                 assets,
-                                orders,
                                 run,
                                 reprompt,
                                 vec![ToolResultStatus::Skipped]
@@ -2563,7 +2470,7 @@ pub fn materialise(
                         commands
                             .entity(turn)
                             .insert(Reprompt(reprompt.to_message()));
-                        say!(commands, assets, orders, run, reprompt);
+                        say!(commands, assets, run, reprompt);
                         commands
                             .entity(run)
                             .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));

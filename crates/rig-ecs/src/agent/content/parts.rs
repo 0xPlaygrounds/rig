@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 use super::binary::{BinaryAssets, BinaryError, PartSource};
-use crate::agent::{MessageParts, Order, Role, Utterance};
+use crate::agent::{MessageParts, Role, Utterance};
 
 /// A content entity, owned by an utterance or a tool-result part.
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize, Reflect)]
@@ -210,9 +210,6 @@ pub enum ContentError {
     /// A part has conflicting types, an invalid parent, or the wrong role.
     #[error("content part has an invalid type or role")]
     Shape,
-    /// Two siblings share an order, which cannot round-trip unambiguously.
-    #[error("content siblings have duplicate orders")]
-    DuplicateOrder,
 }
 
 // Transient conversion plan. This is never a component or persisted alongside
@@ -315,8 +312,8 @@ fn prepare(
 }
 
 fn spawn_parts(world: &mut World, parent: Entity, parts: Vec<PartValue>) {
-    for (order, part) in parts.into_iter().enumerate() {
-        let mut entity = world.spawn((ContentPart, Order(order as u64), ChildOf(parent)));
+    for part in parts {
+        let mut entity = world.spawn((ContentPart, ChildOf(parent)));
         match part {
             PartValue::Text(value) => {
                 entity.insert(value);
@@ -353,8 +350,8 @@ fn spawn_parts(world: &mut World, parent: Entity, parts: Vec<PartValue>) {
 /// Replace an utterance's content graph. This is a persistent edit; request-only
 /// steering must patch the reconstructed request instead. A rejected source
 /// leaves the existing graph unchanged; unreferenced interned assets can be collected.
-/// Sibling Order values are local, contiguous indices and do not consume the
-/// run/utterance OrderCounter. Repeated identical parts remain distinct entities.
+/// Sibling order is the utterance's `Children` order, the parts as given.
+/// Repeated identical parts remain distinct entities.
 pub fn write_message(
     world: &mut World,
     utterance: Entity,
@@ -393,17 +390,9 @@ fn ordered<'a>(
         if entity.get::<ContentPart>().is_none() {
             return Err(ContentError::Shape);
         }
-        let order = entity.get::<Order>().ok_or(ContentError::Missing)?;
-        ordered.push((*order, child));
+        ordered.push(child);
     }
-    ordered.sort_by_key(|(order, _)| *order);
-    if ordered
-        .windows(2)
-        .any(|pair| pair.first().map(|x| x.0) == pair.get(1).map(|x| x.0))
-    {
-        return Err(ContentError::DuplicateOrder);
-    }
-    Ok(ordered.into_iter().map(|(_, entity)| entity).collect())
+    Ok(ordered)
 }
 
 fn read_image(assets: &BinaryAssets, value: &ImagePart) -> Result<message::Image, ContentError> {
@@ -529,8 +518,8 @@ fn to_user(assets: &BinaryAssets, value: PartValue) -> Result<UserContent, Conte
     })
 }
 
-/// Reconstruct a message from its role, ID and typed children. Invalid types,
-/// missing components, duplicate sibling orders and unresolved assets are errors.
+/// Reconstruct a message from its role, ID and typed children in sibling
+/// order. Invalid types, missing components and unresolved assets are errors.
 pub fn read_message(world: &World, utterance: Entity) -> Result<MessageParts, ContentError> {
     let empty = BinaryAssets::default();
     let assets = world.get_resource::<BinaryAssets>().unwrap_or(&empty);
@@ -716,9 +705,8 @@ pub(crate) fn spawn_deferred(
     assets: &mut BinaryAssets,
     parent: Entity,
     message: MessageParts,
-    order: Order,
 ) -> Result<Entity, ContentError> {
-    spawn_deferred_with(commands, assets, parent, message, order, Vec::new())
+    spawn_deferred_with(commands, assets, parent, message, Vec::new())
 }
 
 /// `spawn_deferred`, stamping `statuses` on the utterance's tool-result
@@ -728,11 +716,10 @@ pub(crate) fn spawn_deferred_with(
     assets: &mut BinaryAssets,
     parent: Entity,
     message: MessageParts,
-    order: Order,
     statuses: Vec<ToolResultStatus>,
 ) -> Result<Entity, ContentError> {
     let (role, id, parts) = prepare(assets, message)?;
-    let mut utterance = commands.spawn((Utterance, role, order, ChildOf(parent)));
+    let mut utterance = commands.spawn((Utterance, role, ChildOf(parent)));
     if let Some(id) = id {
         utterance.insert(id);
     }
@@ -748,15 +735,13 @@ fn stamp_statuses(world: &mut World, utterance: Entity, statuses: &[ToolResultSt
     if statuses.is_empty() {
         return;
     }
-    let mut results: Vec<(Order, Entity)> = world
+    let results: Vec<Entity> = world
         .get::<Children>(utterance)
         .into_iter()
         .flat_map(|children| children.iter())
         .filter(|child| world.get::<ToolResultPart>(*child).is_some())
-        .filter_map(|child| world.get::<Order>(child).map(|order| (*order, child)))
         .collect();
-    results.sort_by_key(|(order, _)| *order);
-    for ((_, entity), status) in results.into_iter().zip(statuses) {
+    for (entity, status) in results.into_iter().zip(statuses) {
         world.entity_mut(entity).insert(*status);
     }
 }

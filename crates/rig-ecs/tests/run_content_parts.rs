@@ -2,7 +2,7 @@
 use bevy_ecs::prelude::*;
 use rig_core::message::*;
 use rig_ecs::agent::content::{binary::*, parts::*};
-use rig_ecs::agent::{MessageParts, Order, Utterance};
+use rig_ecs::agent::{MessageParts, Role, Utterance};
 
 fn world(parts: MessageParts) -> (World, Entity) {
     let mut world = World::new();
@@ -121,17 +121,12 @@ fn part_edits_do_not_change_siblings_and_order_is_semantic() {
     let second = *children.get(1).unwrap();
     world.get_mut::<TextPart>(first).unwrap().0.text = "edited".into();
     assert_eq!(world.get::<TextPart>(second).unwrap().0.text, "second");
-    world.entity_mut(first).insert(Order(5));
+    world.entity_mut(entity).insert_children(0, &[second]);
     assert_eq!(
         read_message(&world, entity).unwrap(),
         MessageParts::User {
             content: vec![UserContent::text("second"), UserContent::text("edited")]
         }
-    );
-    world.entity_mut(second).insert(Order(5));
-    assert_eq!(
-        read_message(&world, entity),
-        Err(ContentError::DuplicateOrder)
     );
 }
 
@@ -152,7 +147,7 @@ fn missing_conflicting_or_wrong_role_components_are_rejected() {
     assert_eq!(read_message(&world, entity), Err(ContentError::Shape));
     world.entity_mut(child).remove::<TextPart>();
     assert_eq!(read_message(&world, entity), Err(ContentError::Shape));
-    world.entity_mut(child).remove::<Order>();
+    world.entity_mut(entity).remove::<Role>();
     assert_eq!(read_message(&world, entity), Err(ContentError::Missing));
 }
 

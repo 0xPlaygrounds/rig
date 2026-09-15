@@ -372,9 +372,6 @@ fn cancelled_prefix(
 /// policy system gets a pass between distinct batches, even if all handler
 /// futures completed together. Live handlers keep their ordinary collector.
 pub fn collect_replayed(world: &mut World) {
-    if !world.contains_resource::<ReplayDelivery>() {
-        return;
-    }
     let mut deliveries = CommandQueue::default();
     world.resource_scope(|world, mut replay: Mut<ReplayDelivery>| {
         replay.waiting_for = None;

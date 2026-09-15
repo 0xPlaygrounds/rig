@@ -19,7 +19,7 @@ use bevy_ecs::prelude::*;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
 use rig_core::message::AssistantContent;
 use rig_ecs::{
-    agent::{Grant, Order, Owner, Run, RunOf, Settled},
+    agent::{Grant, Owner, Run, RunOf, Settled},
     bus::{IdCounter, PendingEffect, Seq},
     checkpoint::{Checkpoint, load_world, save_world},
     systems::RunCommands,
@@ -57,8 +57,7 @@ fn ran() -> bevy_app::App {
     app.world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(2));
-    app.world_mut()
-        .spawn((Grant(add), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(add), ChildOf(agent)));
     let run = app
         .world_mut()
         .spawn_run(agent, &[], "add one and two", false, None);

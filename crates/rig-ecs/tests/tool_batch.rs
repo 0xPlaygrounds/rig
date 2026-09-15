@@ -26,7 +26,7 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Failed, Failure, Grant, InvalidCall, InvalidCalls, Order, Resolution, RunResult, Settled,
+        Failed, Failure, Grant, InvalidCall, InvalidCalls, Resolution, RunResult, Settled,
         ToolPolicy,
     },
     bus::{BusSet, EffectLogResource, EffectOutcome, Issued, PendingEffect, RigSchedule},
@@ -57,8 +57,7 @@ fn tooling(turns: Vec<Vec<AssistantContent>>) -> (bevy_app::App, Entity, Arc<Add
     app.world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(4));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     (app, agent, adder, requests)
 }
 
@@ -142,8 +141,7 @@ fn assert_active_tools(allowed: &[&str], executable: bool) {
             name: "other".into(),
         },
     );
-    app.world_mut()
-        .spawn((Grant(other), Order(1), ChildOf(agent)));
+    app.world_mut().spawn((Grant(other), ChildOf(agent)));
     app.insert_resource(ActiveTools(
         allowed.iter().map(|name| (*name).to_owned()).collect(),
     ));
@@ -805,8 +803,7 @@ fn repair_keeps_same_spelling_identity_namespaces_distinct() {
             "t/tool:peer_add",
             PeerAdder(Adder::new("t/tool:peer_add")),
         );
-        app.world_mut()
-            .spawn((Grant(peer), Order(1), ChildOf(agent)));
+        app.world_mut().spawn((Grant(peer), ChildOf(agent)));
         add_system(&mut app, repair_to_add.in_set(RigSet::Judge));
         let run =
             app.world_mut()

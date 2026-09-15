@@ -51,15 +51,15 @@ binding reports its key and wrong family. An outstanding tool can finish
 before the next assembly detects the missing model. This differs from
 cancelling an in-flight operation.
 
-The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in `Order`, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that walks the graph at `RigSet::Assemble` and writes the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-verify/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
+The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that walks the graph at `RigSet::Assemble` and writes the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-verify/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
 
 | Entity | Components |
 |---|---|
 | Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
-| Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim), `Order`; `ChildOf` the run |
+| Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim); `ChildOf` the run, in sibling (`Children`) order |
 | Run | `Run`, `RunOf` → agent, `RunSeq`, `StreamRequested`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
-| Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
+| Turn | `Turn`, `ChildOf` the run; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
 | Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
 | Invalid call | `InvalidCall` + `Resolution`, `ChildOf` the turn |
 | the scene | `agent::scene::RunScene` beside the bus's `Scene` |

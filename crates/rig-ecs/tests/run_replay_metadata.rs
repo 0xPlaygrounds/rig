@@ -9,7 +9,7 @@ use rig_core::{
     serve::{Dispatch, Serve},
 };
 use rig_ecs::{
-    agent::{Failed, Grant, Order, Output, OutputKind, PolicyVersion, Settled, Temperature},
+    agent::{Failed, Grant, Output, OutputKind, PolicyVersion, Settled, Temperature},
     bus::{Bound, EffectLogResource, EffectOutcome, Handlers, PendingEffect, Replay},
     checkpoint::{Checkpoint, load_world, save_world},
     replay::{check_replayable, stamp_run},
@@ -44,7 +44,7 @@ fn program(world: &mut World, model: Entity, tool: Entity) -> Entity {
         mode: OutputKind::Auto,
         schema: Some(serde_json::json!({"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]})),
     }));
-    world.spawn((Grant(tool), Order(0), ChildOf(agent)));
+    world.spawn((Grant(tool), ChildOf(agent)));
     agent
 }
 

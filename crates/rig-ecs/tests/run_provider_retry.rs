@@ -32,8 +32,8 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, Cursor, Failed, Failure, Grant, MaxTurns, Order, ProviderRetried,
-        ProviderRetries, RunResult, Settled,
+        Cancelled, Cursor, Failed, Failure, Grant, MaxTurns, ProviderRetried, ProviderRetries,
+        RunResult, Settled,
     },
     bus::{
         Bound, BusSet, EffectLogResource, Handlers, Held, PendingEffect, Replay, RigSchedule,
@@ -132,8 +132,7 @@ fn tooling(
     let tool = register(&mut app, ADD, Adder::new(ADD));
     let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert(MaxTurns(4));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     (app, agent, requests, recorder, witness)
 }
 
@@ -232,9 +231,7 @@ fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
     let tool = bound_entity(replay.world_mut(), ADD);
     let agent = spawn_agent(replay.world_mut(), "t", model);
     replay.world_mut().entity_mut(agent).insert(MaxTurns(4));
-    replay
-        .world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    replay.world_mut().spawn((Grant(tool), ChildOf(agent)));
     let run = replay.world_mut().spawn_run(agent, &[], "add", false, None);
     ended(&mut replay, run, "the replayed run");
     assert_eq!(

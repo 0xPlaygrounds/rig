@@ -53,7 +53,7 @@ pub fn discover_streamed_invalid_calls(
     mut turns: Query<(&ChildOf, &mut Outputs), (With<Turn>, Without<Materialised>)>,
     runs: Query<&OutputToolName, (With<Run>, With<AwaitingModel>, Without<Failed>)>,
     children: Query<&Children>,
-    adverts: Query<(&Advert, &Order)>,
+    adverts: Query<&Advert>,
     bound: Query<&Bound>,
     access: Query<&ToolAccess>,
     invalid: Query<(&ChildOf, &InvalidCall, Option<&Resolution>)>,

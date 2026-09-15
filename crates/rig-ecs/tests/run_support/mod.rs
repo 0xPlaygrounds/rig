@@ -20,8 +20,8 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Order,
-        Output, Owner, Preamble, Settled, Temperature, ToolChoiceSpec, UsesModel, Utterance,
+        AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
+        Owner, Preamble, Settled, Temperature, ToolChoiceSpec, UsesModel, Utterance,
         content::parts::read_message,
     },
     bus::{BusPlugin, Handlers, PendingEffect},
@@ -416,16 +416,14 @@ pub fn first_utterance(world: &mut World, run: Entity) -> Entity {
         .0
 }
 
-/// The utterances `ChildOf` `run`, in [`Order`].
+/// The utterances `ChildOf` `run`, in sibling (`Children`) order.
 pub fn utterances_of(world: &mut World, run: Entity) -> Vec<Entity> {
-    let mut utterances: Vec<_> = world
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
-        .iter(world)
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| (order.0, entity))
-        .collect();
-    utterances.sort();
-    utterances.into_iter().map(|(_, entity)| entity).collect()
+    world
+        .get::<Children>(run)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .filter(|child| world.get::<Utterance>(*child).is_some())
+        .collect()
 }
 
 /// The fresh, uncached render of `run`'s history, as the DTOs the graph
@@ -437,20 +435,25 @@ pub fn graph_messages(world: &mut World, run: Entity) -> Vec<Message> {
         .collect()
 }
 
-/// The completion requests folded under `run`, by turn order.
+/// The completion requests folded under `run`, by turn order (the run's
+/// sibling order).
 pub fn requests(world: &mut World, run: Entity) -> Vec<CompletionRequest> {
+    let turns: Vec<Entity> = world
+        .get::<Children>(run)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .collect();
     let mut found: Vec<_> = world
         .query::<(&PendingEffect, &ChildOf)>()
         .iter(world)
         .filter_map(|(effect, parent)| match &effect.kind {
             EffectKind::Completion { request, .. } => {
-                let turn = parent.parent();
-                (world.get::<ChildOf>(turn)?.parent() == run)
-                    .then(|| (world.get::<Order>(turn).map(|o| o.0), request.clone()))
+                let position = turns.iter().position(|turn| *turn == parent.parent())?;
+                Some((position, request.clone()))
             }
             _ => None,
         })
         .collect();
-    found.sort_by_key(|(order, _)| *order);
+    found.sort_by_key(|(position, _)| *position);
     found.into_iter().map(|(_, request)| request).collect()
 }

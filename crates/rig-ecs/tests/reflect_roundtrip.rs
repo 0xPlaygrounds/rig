@@ -92,16 +92,8 @@ fn populated() -> bevy_app::App {
             rig_ecs::agent::DocumentText("text".to_owned()),
         ))
         .id();
-    world.spawn((
-        rig_ecs::agent::Context(document),
-        rig_ecs::agent::Order(0),
-        ChildOf(agent),
-    ));
-    world.spawn((
-        rig_ecs::agent::Grant(add),
-        rig_ecs::agent::Order(1),
-        ChildOf(agent),
-    ));
+    world.spawn((rig_ecs::agent::Context(document), ChildOf(agent)));
+    world.spawn((rig_ecs::agent::Grant(add), ChildOf(agent)));
     let run = world.spawn_run(agent, &[], "add one and two", false, None);
     rig_ecs::agent::checkpoint::hold_after_tool_turn(world, run, "reflection", 99)
         .expect("a future hold preserves normal settlement");

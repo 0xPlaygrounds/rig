@@ -5,7 +5,7 @@ use bevy_ecs::prelude::*;
 use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{
-        Cancelled, Failed, Failure, Grant, MaxTurns, Order, Run, Settled,
+        Cancelled, Failed, Failure, Grant, MaxTurns, Run, Settled,
         checkpoint::{
             CheckpointError, ToolTurnCommit, ToolTurnCommitted, ToolTurnHolds, TurnAssistant,
             TurnResults, hold_after_tool_turn, release_tool_turn_hold,
@@ -34,8 +34,7 @@ fn setup(turns: usize, limit: usize) -> (bevy_app::App, Entity, RequestsSeen) {
     let (agent, requests) = scripted_agent(&mut app, MODEL, script);
     let add = register(&mut app, ADD, Adder::new(ADD));
     app.world_mut().entity_mut(agent).insert(MaxTurns(limit));
-    app.world_mut()
-        .spawn((Grant(add), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(add), ChildOf(agent)));
     let run = app.world_mut().spawn_run(agent, &[], "count", false, None);
     (app, run, requests)
 }
@@ -165,14 +164,6 @@ fn fresh_world_restore_preserves_holds_links_and_emits_only_new_commits() {
     let loaded = load_world(&checkpoint, restored.world_mut()).unwrap();
     let run = loaded.with::<Run>(restored.world())[0];
     assert!(committed(restored.world_mut(), run, 1));
-    // An utterance ordered after the load never collides with a loaded one.
-    assert!(
-        restored
-            .world()
-            .resource::<rig_ecs::agent::OrderCounter>()
-            .0
-            >= checkpoint.counters.next_order
-    );
     let links: Vec<_> = restored
         .world_mut()
         .query::<(&TurnAssistant, &TurnResults)>()
@@ -287,8 +278,7 @@ fn partial_out_of_order_parallel_batch_has_no_commit_until_every_result_lands() 
     app.world_mut()
         .entity_mut(agent)
         .insert((MaxTurns(2), rig_ecs::agent::ToolPolicy { concurrency: 3 }));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     let run = app
         .world_mut()
         .spawn_run(agent, &[], "parallel", false, None);
@@ -513,8 +503,7 @@ fn released_checkpoint_provider_retry_preserves_request_and_does_not_repeat_tool
     app.world_mut()
         .entity_mut(agent)
         .insert((MaxTurns(2), rig_ecs::agent::ProviderRetries(1)));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     let seen = observe(&mut app);
     hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
@@ -559,8 +548,7 @@ fn output_tool_settlement_commits_only_a_real_mixed_batch_and_ignores_hold() {
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let tool = register(&mut app, ADD, CountedAdder(calls.clone()));
         app.world_mut().entity_mut(agent).insert((Output {mode:OutputKind::Tool,schema:Some(serde_json::json!({"type":"object","properties":{"answer":{"type":"integer"}},"required":["answer"]}))},OutputToolConfig {name:Some("submit".into()),description:None,augment_preamble:false}));
-        app.world_mut()
-            .spawn((Grant(tool), Order(0), ChildOf(agent)));
+        app.world_mut().spawn((Grant(tool), ChildOf(agent)));
         app.world_mut().add_observer(move |event: On<Add, Settled>, commits: Query<(&ChildOf, &ToolTurnCommit, &TurnAssistant, &TurnResults)>| {
             let count = commits.iter().filter(|(parent, _, assistant, results)| {
                 assert_ne!(assistant.0, results.0);
@@ -650,8 +638,7 @@ fn invalid_call_retry_feedback_is_not_a_completed_tool_batch() {
             unhandled: Unhandled::Fail,
         },
     ));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     let run = app.world_mut().spawn_run(agent, &[], "add", false, None);
     let seen = observe(&mut app);
     hold_after_tool_turn(app.world_mut(), run, "checkpoint", 1).unwrap();
@@ -686,8 +673,7 @@ fn terminal_cleanup_suppresses_commit_notification_for_deleted_run() {
     );
     let tool = register(&mut app, ADD, Adder::new(ADD));
     app.world_mut().entity_mut(agent).insert((Output {mode:OutputKind::Tool,schema:Some(serde_json::json!({"type":"object","properties":{"answer":{"type":"integer"}},"required":["answer"]}))},OutputToolConfig {name:Some("submit".into()),description:None,augment_preamble:false}));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     app.world_mut()
         .add_observer(|event: On<Add, Settled>, mut commands: Commands| {
             commands.entity(event.entity).despawn();

@@ -413,7 +413,6 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
             samples: 1,
             what: RetrievalKind::Documents,
         },
-        rig_ecs::agent::Order(0),
         ChildOf(agent),
     ));
     let _run = app
@@ -469,7 +468,14 @@ fn a_run_saved_while_retrieving_resumes_and_attaches() {
 #[test]
 fn an_effect_under_a_run_loads_under_the_loaded_run_with_its_saved_id() {
     use rig_core::effect::EffectId;
-    use rig_ecs::agent::{Order, content::parts::read_message};
+    use rig_ecs::agent::content::parts::read_message;
+
+    fn position(world: &World, run: Entity, utterance: Entity) -> Option<usize> {
+        world
+            .get::<Children>(run)?
+            .iter()
+            .position(|child| child == utterance)
+    }
 
     let (mut world, agent) = run_support::open_model_world();
     world.resource_mut::<IdCounter>().0 = 40;
@@ -486,7 +492,7 @@ fn an_effect_under_a_run_loads_under_the_loaded_run_with_its_saved_id() {
     assert_eq!(id, EffectId::from_raw(40));
     let utterance = run_support::first_utterance(&mut world, run);
     let prompt = read_message(&world, utterance).expect("the prompt");
-    let order = *world.get::<Order>(utterance).expect("ordered");
+    let order = position(&world, run, utterance).expect("the run's child");
     let saved = round_trip(&save_world(&mut world).expect("serializes"));
     drop(world);
 
@@ -516,7 +522,7 @@ fn an_effect_under_a_run_loads_under_the_loaded_run_with_its_saved_id() {
         read_message(&restored, utterance).expect("the prompt"),
         prompt
     );
-    assert_eq!(restored.get::<Order>(utterance), Some(&order));
+    assert_eq!(position(&restored, run, utterance), Some(order));
     let agent = restored
         .get::<rig_ecs::agent::RunOf>(run)
         .expect("the run is its agent's")

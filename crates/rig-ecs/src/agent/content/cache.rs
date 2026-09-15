@@ -24,7 +24,7 @@ use super::parts::{
     AudioPart, ContentPart, DocumentPart, ImagePart, JsonPart, MessageId, ReasoningPart, TextPart,
     ToolCallPart, ToolResultPart, VideoPart,
 };
-use crate::agent::{MessageParts, Order, Role, Utterance};
+use crate::agent::{MessageParts, Role, Utterance};
 
 /// The version of the graph-to-DTO rendering a view was made by. A view
 /// made by another version is a miss. Bump it when `read_message` changes
@@ -80,11 +80,10 @@ pub struct AssemblyStats {
 }
 
 /// A part entity whose own components changed since the reading system
-/// last ran — including its `Order`, its parent, and (a tool result's)
-/// children.
+/// last ran — including its parent and (a tool result's) children; a
+/// sibling reorder is the parent's changed `Children`.
 type PartChanged = Or<(
     Changed<ContentPart>,
-    Changed<Order>,
     Changed<ChildOf>,
     Changed<Children>,
     Changed<TextPart>,
@@ -112,7 +111,6 @@ type UtteranceChanged = Or<(
 #[derive(SystemParam)]
 struct Removed<'w, 's> {
     content: RemovedComponents<'w, 's, ContentPart>,
-    order: RemovedComponents<'w, 's, Order>,
     child_of: RemovedComponents<'w, 's, ChildOf>,
     children: RemovedComponents<'w, 's, Children>,
     text: RemovedComponents<'w, 's, TextPart>,
@@ -132,7 +130,6 @@ impl Removed<'_, '_> {
     fn drain(&mut self) -> Vec<Entity> {
         let mut removed = Vec::new();
         removed.extend(self.content.read());
-        removed.extend(self.order.read());
         removed.extend(self.child_of.read());
         removed.extend(self.children.read());
         removed.extend(self.text.read());
@@ -177,10 +174,11 @@ pub struct MessageCache<'w, 's> {
 
 impl MessageCache<'_, '_> {
     /// The utterances whose views are stale: their own components, a part
-    /// of their subtree (at any depth), a sibling order, a parent link or a
-    /// child set changed since the reading system last ran; or a component
-    /// was removed from one of those. A despawned part reaches here through
-    /// its parent's changed `Children`. Read once per run of the system.
+    /// of their subtree (at any depth), a parent link or a child set (its
+    /// members or their order) changed since the reading system last ran;
+    /// or a component was removed from one of those. A despawned part
+    /// reaches here through its parent's changed `Children`. Read once per
+    /// run of the system.
     pub fn stale(&mut self) -> HashSet<Entity> {
         let mut stale: HashSet<Entity> = self.changed_utterances.iter().collect();
         let changed: Vec<Entity> = self.changed_parts.iter().collect();

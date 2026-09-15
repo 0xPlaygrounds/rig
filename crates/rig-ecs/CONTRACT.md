@@ -14,9 +14,9 @@ explained in [the test guide](../../tests/ecs_parity/README.md).
 |---|---|---|---|
 | `model` | none: always `null`; the model is the handler key the effect is dispatched to (`UsesModel` on the run, else the agent, → the handler entity's `Bound.key`) | — | every golden `/records/0/kind/request/model` |
 | `chat_history[0]` | the effective preamble as `system`, when there is one: the agent's `Preamble` (the run's override first) joined with the output mode's augmentation by `"\n\n"` (§3); no preamble and no augmentation is no system message | first | `anthropic_completion_smoke` `/…/chat_history/0`; `anthropic_request_shape_without_preamble` (no system message); `anthropic_request_shape_append_preamble` (the preamble's own `"\n"` join is the program's, stored already joined) |
-| `chat_history[1..]` | every `Utterance` `ChildOf` the run, in `Order`, reconstructed from its typed content children in sibling `Order`: the prior history the run was spawned with, then the prompt, then — turn by turn — the assistant utterance `Materialise` spawned and the reprompt utterance it added | `Order` ascending | `anthropic_request_shape_prior_history` `/…/chat_history` (system, user, assistant(id null), user); `mock_output_tool_text_reprompt` `/records/1/…/chat_history` (…, assistant text, user reprompt); `mock_output_tool_missing_field_reprompt` `/records/1/…/chat_history` (…, assistant call, user tool result) |
-| `documents` | the turn's `Attachment` links, in `Order`, each to a document entity (`DocumentId`, `DocumentText`, `DocumentProps`) — the agent's `Context` links are attached to every turn by `Advance` | link `Order` | `anthropic_request_shape_static_context` `/…/documents` (`static_doc_0`, `static_doc_1`; no `additional_props` key when empty) |
-| `tools` | the turn's `Advert` links, in `Order`, each to a tool handler entity whose `Bound.descriptor.family` is `Tool { name, description, parameters }` — the agent's `Grant` links, advertised by `Advance`; then the output tool (§3) when the resolved mode is `Tool` | grant `Order`, output tool last | `anthropic_request_shape_tool_choice_none` `/…/tools/0` (`add`, its description and parameters verbatim from the descriptor); `anthropic_output_tool_unary` `/…/tools/0` (`final_result`) |
+| `chat_history[1..]` | every `Utterance` `ChildOf` the run, in sibling (`Children`) order, reconstructed from its typed content children in sibling (`Children`) order: the prior history the run was spawned with, then the prompt, then — turn by turn — the assistant utterance `Materialise` spawned and the reprompt utterance it added | sibling (`Children`) order | `anthropic_request_shape_prior_history` `/…/chat_history` (system, user, assistant(id null), user); `mock_output_tool_text_reprompt` `/records/1/…/chat_history` (…, assistant text, user reprompt); `mock_output_tool_missing_field_reprompt` `/records/1/…/chat_history` (…, assistant call, user tool result) |
+| `documents` | the turn's `Attachment` links, in sibling (`Children`) order, each to a document entity (`DocumentId`, `DocumentText`, `DocumentProps`) — the agent's `Context` links are attached to every turn by `Advance` | link sibling (`Children`) order | `anthropic_request_shape_static_context` `/…/documents` (`static_doc_0`, `static_doc_1`; no `additional_props` key when empty) |
+| `tools` | the turn's `Advert` links, in sibling (`Children`) order, each to a tool handler entity whose `Bound.descriptor.family` is `Tool { name, description, parameters }` — the agent's `Grant` links, advertised by `Advance`; then the output tool (§3) when the resolved mode is `Tool` | grant sibling (`Children`) order, output tool last | `anthropic_request_shape_tool_choice_none` `/…/tools/0` (`add`, its description and parameters verbatim from the descriptor); `anthropic_output_tool_unary` `/…/tools/0` (`final_result`) |
 | `temperature` | `Temperature` (run, else agent) | — | `anthropic_completion_smoke` (`null`), `anthropic_output_tool_unary` (`0.0`) |
 | `max_tokens` | `MaxTokens` | — | `anthropic_request_shape_max_tokens` (`32`) |
 | `tool_choice` | `ToolChoiceSpec`, unchanged (`"none"`, `"required"`, `{"specific":{"function_names":[…]}}`) | — | `anthropic_request_shape_tool_choice_none`; `anthropic_output_tool_choice_required`; `anthropic_output_tool_choice_specific_output` |
@@ -33,7 +33,7 @@ and `Advance` sees it on the first schedule pass after that). Either form
 spawns the `RunBundle` (`Run`, `RunOf`, `RunSeq`, `StreamRequested`,
 `Cursor`, the retry tallies, `OutputToolName`, `Usage`, `Scope`) with the
 `Prompt` component and an optional `MaxTurns`, the history utterances
-`ChildOf` the run in `Order`, then `Ready`, then opens the run. A host
+`ChildOf` the run in sibling (`Children`) order, then `Ready`, then opens the run. A host
 assembling a run by hand spawns the same bundle and `Prompt`, its
 utterances, and writes `Ready` last. `open_runs` (first in
 `RigSet::Advance`) opens every `Ready` run that has no phase and no
@@ -91,7 +91,7 @@ reads it on later turns instead of walking the part subtree again. A view is
 dropped by Bevy change detection, relative to `assemble`'s own last run:
 a change, addition or removal of any component of the utterance (`Role`,
 `MessageId`, `Children`) or of any entity in its part subtree at any depth
-(the typed parts, `Order`, `ChildOf`, a tool result's `Children`), a
+(the typed parts, `ChildOf`, a tool result's `Children` — a sibling reorder is the parent's changed `Children`), a
 `write_message`, a reparenting into or out of it, and an asset collection
 (`collect_binary_assets` / `BinaryAssets::retain`, keyed by the store's
 generation). Removals reach the cache through `RemovedComponents`, which
@@ -314,14 +314,14 @@ No hook trait: a user system writes a component at a set boundary and a library 
 
 ### 9.3 The completion call: `RequestPatch` on the turn
 
-`content::parts::RequestPartEdit` adds entity targeting: spawn an ordered link
-`(RequestPartEdit, EditTarget(part), Order, ChildOf(fresh_turn))` before Assemble.
+`content::parts::RequestPartEdit` adds entity targeting: spawn a link
+`(RequestPartEdit, EditTarget(part), ChildOf(fresh_turn))` before Assemble.
 `Text` replaces only a TextPart's text, preserving annotations; `Remove` omits the
 part and its nested result items from this request. Stored history and siblings
-are unchanged. Edits run in sibling Order; the last edit to a target wins, and
-duplicate edit orders fail. A removed parent takes precedence over edits to its
-children. Targets must belong to this run's history. Missing targets or orders,
-wrong types and combination with replacement RequestPatch.history fail before
+are unchanged. Edits run in sibling (`Children`) order; the last edit to a
+target wins. A removed parent takes precedence over edits to its children.
+Targets must belong to this run's history. Missing targets, wrong types and
+combination with replacement RequestPatch.history fail before
 model dispatch. Successful folds consume the edit links; scene relationships
 remap them when saved before folding. Gate/Judge systems can query these same
 part entities and edit their typed components persistently; those writes affect

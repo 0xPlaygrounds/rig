@@ -19,8 +19,8 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Context, DocumentId, DocumentText, Grant, MessageParts, Order, RunResult, Settled,
-        UsesModel, Utterance,
+        Context, DocumentId, DocumentText, Grant, MessageParts, RunResult, Settled, UsesModel,
+        Utterance,
     },
     bus::{EffectLogResource, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
@@ -106,8 +106,7 @@ fn one_document_attached_to_two_runs_appears_in_both_requests() {
             DocumentText("one document, many turns".to_owned()),
         ))
         .id();
-    app.world_mut()
-        .spawn((Context(document), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Context(document), ChildOf(agent)));
     let first = app
         .world_mut()
         .spawn_run(agent, &[], "first?", false, Some(1));
@@ -144,10 +143,7 @@ fn a_tool_granted_by_a_relationship_is_advertised_and_gone_after_removal() {
     );
     let before = app.world_mut().spawn_run(agent, &[], "one", false, Some(1));
     settle(&mut app, before, "before the grant");
-    let grant = app
-        .world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)))
-        .id();
+    let grant = app.world_mut().spawn((Grant(tool), ChildOf(agent))).id();
     let during = app.world_mut().spawn_run(agent, &[], "two", false, Some(1));
     settle(&mut app, during, "with the grant");
     app.world_mut().despawn(grant);

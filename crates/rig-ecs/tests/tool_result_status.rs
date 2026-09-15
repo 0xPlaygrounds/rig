@@ -21,7 +21,7 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Grant, InvalidCall, InvalidCalls, Order, Resolution, Settled,
+        Grant, InvalidCall, InvalidCalls, Resolution, Run, RunSeq, Settled,
         content::parts::{TextPart, ToolResultPart, ToolResultStatus, read_message},
     },
     bus::{EffectLogResource, RigSchedule},
@@ -91,28 +91,36 @@ fn tooling(
     app.world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(4));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     (app, agent, requests)
 }
 
-/// The run's tool-result parts in utterance and sibling order, with their
-/// statuses and the utterance each belongs to.
+/// The world's tool-result parts in run, utterance and sibling order, with
+/// their statuses and the utterance each belongs to.
 fn results(world: &mut World) -> Vec<(Entity, String, Option<ToolResultStatus>)> {
-    let mut found: Vec<_> = world
-        .query::<(&ChildOf, &Order, &ToolResultPart, Option<&ToolResultStatus>)>()
+    let mut runs: Vec<(u64, Entity)> = world
+        .query_filtered::<(Entity, &RunSeq), With<Run>>()
         .iter(world)
-        .map(|(parent, order, part, status)| {
-            let utterance = parent.parent();
-            let utterance_order = world.get::<Order>(utterance).map(|o| o.0).unwrap_or(0);
-            (
-                (utterance_order, order.0),
-                (utterance, part.name.clone(), status.copied()),
-            )
-        })
+        .map(|(run, seq)| (seq.0, run))
         .collect();
-    found.sort_by_key(|(key, _)| *key);
-    found.into_iter().map(|(_, value)| value).collect()
+    runs.sort();
+    let mut found = Vec::new();
+    for (_, run) in runs {
+        for utterance in utterances_of(world, run) {
+            let parts: Vec<Entity> = world
+                .get::<Children>(utterance)
+                .into_iter()
+                .flat_map(|children| children.iter())
+                .collect();
+            for part in parts {
+                if let Some(result) = world.get::<ToolResultPart>(part) {
+                    let status = world.get::<ToolResultStatus>(part).copied();
+                    found.push((utterance, result.name.clone(), status));
+                }
+            }
+        }
+    }
+    found
 }
 
 #[test]

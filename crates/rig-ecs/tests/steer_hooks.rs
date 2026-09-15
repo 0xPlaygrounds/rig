@@ -26,8 +26,8 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, InvalidCall, Order,
-        RequestPatch, Resolution, Retry, Route, RunResult, Settled, UsesModel,
+        Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, InvalidCall, RequestPatch,
+        Resolution, Retry, Route, RunResult, Settled, UsesModel,
     },
     bus::{EffectLogResource, Handlers, PendingEffect, RigSchedule},
     checkpoint::{Checkpoint, load_world, save_world},
@@ -147,7 +147,7 @@ fn a_request_patch_is_folded_into_the_turn() {
         ))
         .id();
     app.world_mut()
-        .spawn((rig_ecs::agent::Context(document), Order(0), ChildOf(agent)));
+        .spawn((rig_ecs::agent::Context(document), ChildOf(agent)));
     add_system(
         &mut app,
         patch_the_turn
@@ -293,8 +293,7 @@ fn uses_model_written_before_select_routes_the_turn() {
     let (agent, _) = capturing_agent(&mut app, MODEL, MODEL, "slow");
     let (fast, _) = Capturing::new(FAST, "fast");
     let fast = register(&mut app, FAST, fast);
-    app.world_mut()
-        .spawn((Route(fast), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Route(fast), ChildOf(agent)));
     app.insert_resource(Fast(fast));
     add_system(
         &mut app,
@@ -627,7 +626,6 @@ fn a_part_patch_is_not_sticky_on_a_judge_retry() {
                         commands.spawn((
                             RequestPartEdit::Text("only first request".into()),
                             EditTarget(target),
-                            Order(0),
                             ChildOf(turn),
                         ));
                     }

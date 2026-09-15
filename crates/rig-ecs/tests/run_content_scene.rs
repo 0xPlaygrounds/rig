@@ -9,7 +9,7 @@ use rig_core::{
     message::{DocumentSourceKind, Image, UserContent},
 };
 use rig_ecs::agent::content::{binary::*, parts::*};
-use rig_ecs::agent::{MessageParts, Order, Utterance};
+use rig_ecs::agent::{MessageParts, Utterance};
 use rig_ecs::checkpoint::{Checkpoint, load_world, save_world};
 
 /// A world with one utterance of two texts and two images (one base64,
@@ -110,7 +110,7 @@ fn checkpoints_save_payload_once_and_remap_every_child() {
 }
 
 #[test]
-fn corrupt_hash_missing_handle_and_bad_order_leave_destination_untouched() {
+fn corrupt_hash_missing_handle_and_bad_parent_leave_destination_untouched() {
     let (mut world, _, _) = fixture();
     let original = round_trip(&save_world(&mut world).unwrap());
     let parts = entities_with::<ContentPart>(&original);
@@ -119,16 +119,11 @@ fn corrupt_hash_missing_handle_and_bad_order_leave_destination_untouched() {
     bad_hash.binaries.first_mut().unwrap().data = "YQ==".into();
     let mut missing = original.clone();
     missing.binaries.clear();
-    let mut bad_order = original.clone();
-    for part in &parts {
-        bad_order.entities[*part].insert(type_name::<Order>().to_owned(), serde_json::json!(0));
-    }
     let mut bad_parent = original.clone();
     bad_parent.entities[parts[0]].remove(type_name::<ChildOf>());
     for (checkpoint, what) in [
         (bad_hash, "a payload that is not its hash"),
         (missing, "a handle without a payload"),
-        (bad_order, "siblings sharing an order"),
         (bad_parent, "a part without its utterance"),
     ] {
         refused_without_touching_destination(&checkpoint, what);

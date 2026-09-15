@@ -12,7 +12,7 @@ use crate::run_support;
 use bevy_ecs::prelude::*;
 use rig_core::effect::{EffectFamily, HandlerKey};
 use rig_ecs::{
-    agent::{Grant, Order, PolicyVersion, Preamble},
+    agent::{Grant, PolicyVersion, Preamble},
     bus::{EffectLogResource, Scope},
     replay::{check_replayable, required_row, spec_hash, stamp_legacy_builder_header, stamp_run},
     systems::RunCommands,
@@ -112,10 +112,7 @@ fn check_replayable_refuses_a_foreign_log_by_name() {
             name: ADD.to_owned(),
         },
     );
-    let grant = app
-        .world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)))
-        .id();
+    let grant = app.world_mut().spawn((Grant(tool), ChildOf(agent))).id();
     let mut wrong_row = smoke.clone();
     let scope = app.world().get::<Scope>(run).unwrap().0.clone();
     wrong_row.header.programs.get_mut(&scope).unwrap().policy =
