@@ -130,6 +130,8 @@ jobs:
         with:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check core-all
+      - name: Responses decoder with arbitrary-precision JSON numbers
+        run: cargo test --locked -p rig-core --lib --features serde_json/arbitrary_precision providers::openai::responses_api::tests::top_p_
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check bus-verification
       - if: ${{ !cancelled() }}
