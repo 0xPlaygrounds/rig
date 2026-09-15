@@ -3,7 +3,7 @@
 //!
 //! | set | true before | written during |
 //! |---|---|---|
-//! | `Advance` (first) | a `Ready` run has no phase | `open_runs`: the `Prompt` becomes the last utterance; the run is `Assembling`, or `LoadingMemory` with its `Load` effect |
+//! | `Advance` (first) | a `Ready` run has no phase | `open_runs`: the `Prompt` becomes the last utterance; the run is `RunPhase::Assembling`, or `LoadingMemory` with its `Load` effect |
 //! | `Advance` | a `Ready` run in `Assembling` has no fresh turn | a turn is spawned `ChildOf` the run with its adverts and attachments, or the run fails `MaxTurns` |
 //! | `Select` | a run may lack a model of its own | the agent's `UsesModel` is copied to the run |
 //! | `Assemble` | a fresh turn's graph is complete | the fold spawns the turn's effect; the run is `AwaitingModel` |
@@ -44,19 +44,18 @@ use rig_core::{
 
 use crate::{
     agent::{
-        AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
-        Conversation, Cursor, DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps, DocumentText,
-        Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory,
-        MaxTokens, MaxTurns, MemoryAppendScheduled, MessageParts, Output, OutputKind,
-        OutputRetries, OutputToolConfig, OutputToolName, Outputs, Preamble, Prompt,
-        ProviderRetried, ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers,
-        Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, RetrievalKind,
-        Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq, Settled,
-        StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec,
-        ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
+        AdditionalParams, Advert, Attachment, Batch, Cancelled, Context, Conversation, Cursor,
+        DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps, DocumentText, Failed, Failure, Grant,
+        InvalidCall, InvalidCalls, InvalidRetries, MaxTokens, MaxTurns, MemoryAppendScheduled,
+        MessageParts, Output, OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs,
+        Preamble, Prompt, ProviderRetried, ProviderRetries, ProviderRetrying, Remembered,
+        Remembering, Remembers, Reprompt, RequestPatch, Resolution, Retrievable, Retrieval,
+        RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunPhase, RunResult,
+        RunSeq, Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
+        ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
-        Bound, BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, Scope, ServedBy,
+        Bound, BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, ServedBy,
         Streamed as BusStreamed, ToolInputs,
     },
     policy::{self, RequestGraph},
@@ -91,18 +90,16 @@ pub enum RigSet {
     Settle,
 }
 
-/// A run that wants a turn: `Ready`, `Assembling`, not failed.
-pub type Wanting = (With<Assembling>, With<crate::agent::Ready>, Without<Failed>);
+/// A run that may want a turn: `Ready`, phased, not failed (`Assembling`
+/// is read off the phase).
+pub type Wanting = (With<RunPhase>, With<crate::agent::Ready>, Without<Failed>);
 /// A `Ready` run that has neither a phase nor an ending: `open_runs` opens it.
 pub type Unopened = (
     With<Run>,
     With<crate::agent::Ready>,
     Without<Failed>,
     Without<Settled>,
-    Without<Assembling>,
-    Without<LoadingMemory>,
-    Without<AwaitingModel>,
-    Without<ResolvingTools>,
+    Without<RunPhase>,
 );
 /// A run with no model of its own yet.
 pub type Unselected = (With<Run>, Without<UsesModel>);
@@ -191,9 +188,8 @@ pub type AwaitingView = (
     &'static Usage,
     &'static ProviderRetried,
 );
-/// What the cancel observer reads of a run: awaiting its model, resolving
-/// its tools, already ended.
-pub type RunPhase = (Has<AwaitingModel>, Has<ResolvingTools>, Has<Failed>);
+/// What the cancel observer reads of a run: its phase, whether ended.
+pub type RunState = (Option<&'static RunPhase>, Has<Failed>);
 /// What the cancel observer reads of a turn: its run, whether it was
 /// read, whether its batch is out.
 pub type TurnState = (&'static ChildOf, Has<Materialised>, Has<Batch>);
@@ -293,28 +289,25 @@ fn install_agent(world: &mut World) {
     ));
 }
 
-/// Replace the run's phase marker: `remove::<P>()` then insert what comes
-/// next, as every phase change in this module does.
+/// The run's phase changes: the next phase, or an ending in its place.
 trait PhaseCommands {
-    fn phase<P: Component>(&mut self, next: impl Bundle) -> &mut Self;
+    fn phase(&mut self, next: RunPhase) -> &mut Self;
+    fn end(&mut self, ending: impl Bundle) -> &mut Self;
 }
 
 impl PhaseCommands for bevy_ecs::system::EntityCommands<'_> {
-    fn phase<P: Component>(&mut self, next: impl Bundle) -> &mut Self {
-        self.remove::<P>().insert(next)
+    fn phase(&mut self, next: RunPhase) -> &mut Self {
+        self.insert(next)
+    }
+    fn end(&mut self, ending: impl Bundle) -> &mut Self {
+        self.remove::<RunPhase>().insert(ending)
     }
 }
 
 fn fail_content(commands: &mut Commands, run: Entity, error: ContentError) {
     commands
         .entity(run)
-        .remove::<(
-            Assembling,
-            AwaitingModel,
-            LoadingMemory,
-            ResolvingTools,
-            Settled,
-        )>()
+        .remove::<(RunPhase, Settled)>()
         .insert(Failed(Failure::Content(error)));
 }
 
@@ -382,68 +375,6 @@ pub struct RunDespawnRefused {
     pub entity: Entity,
     /// Why.
     pub reason: RunBusy,
-}
-
-/// The components every run is made of: what [`RunCommands::spawn_run`]
-/// spawns, for a host that assembles a run by hand — `world.spawn((RunBundle::new(world, agent, false), Prompt::from("…")))`,
-/// its history utterances `ChildOf` the run in sibling (`Children`) order, an optional
-/// [`MaxTurns`], and last [`Ready`](crate::agent::Ready). [`RunSeq`] is the world's next run
-/// number and [`Scope`] is `{owner}/run#{seq}`, both taken from the world
-/// by [`RunBundle::new`].
-#[derive(Bundle, Debug, Clone)]
-pub struct RunBundle {
-    /// The run marker.
-    pub run: Run,
-    /// The run's agent.
-    pub run_of: RunOf,
-    /// The run's number in the world.
-    pub seq: RunSeq,
-    /// Whether the model is asked for a stream.
-    pub streamed: StreamRequested,
-    /// The turn cursor, at zero.
-    pub cursor: Cursor,
-    /// The output-tool reprompts spent, none.
-    pub output_retries: OutputRetries,
-    /// The invalid-call retries spent, none.
-    pub invalid_retries: crate::agent::InvalidRetries,
-    /// The provider retries spent, none.
-    pub provider_retried: ProviderRetried,
-    /// The output tool's name, unresolved.
-    pub output_tool_name: OutputToolName,
-    /// The usage tally, empty.
-    pub usage: Usage,
-    /// The witness scope: `{owner}/run#{seq}`.
-    pub scope: Scope,
-}
-
-impl RunBundle {
-    /// A fresh run of `agent`: takes the next [`RunSeq`] from the world's
-    /// [`RunCounter`] and the agent's `Owner` for the [`Scope`].
-    pub fn new(world: &mut World, agent: Entity, streamed: bool) -> Self {
-        let seq = {
-            let mut counter = world.resource_mut::<RunCounter>();
-            let seq = counter.0;
-            counter.0 += 1;
-            seq
-        };
-        let owner = world
-            .get::<crate::agent::Owner>(agent)
-            .map(|owner| owner.0.clone())
-            .unwrap_or_default();
-        Self {
-            run: Run,
-            run_of: RunOf(agent),
-            seq: RunSeq(seq),
-            streamed: StreamRequested(streamed),
-            cursor: Cursor::default(),
-            output_retries: OutputRetries::default(),
-            invalid_retries: crate::agent::InvalidRetries::default(),
-            provider_retried: ProviderRetried::default(),
-            output_tool_name: OutputToolName::default(),
-            usage: Usage::default(),
-            scope: Scope(format!("{owner}/run#{seq}")),
-        }
-    }
 }
 
 /// The run entry points, on `Commands` and on `World`. The `Commands`
@@ -582,11 +513,10 @@ fn spawn_run_at(
     if world.get_entity(run).is_err() {
         return;
     }
-    let bundle = RunBundle::new(world, agent, streamed);
     let Ok(mut entity) = world.get_entity_mut(run) else {
         return;
     };
-    entity.insert((bundle, prompt));
+    entity.insert((Run, RunOf(agent), StreamRequested(streamed), prompt));
     if let Some(limit) = max_turns {
         let Ok(mut entity) = world.get_entity_mut(run) else {
             return;
@@ -670,10 +600,7 @@ fn open_run(world: &mut World, run: Entity) {
         || !entity.contains::<crate::agent::Ready>()
         || entity.contains::<Failed>()
         || entity.contains::<Settled>()
-        || entity.contains::<Assembling>()
-        || entity.contains::<LoadingMemory>()
-        || entity.contains::<AwaitingModel>()
-        || entity.contains::<ResolvingTools>()
+        || entity.contains::<RunPhase>()
     {
         return;
     }
@@ -707,7 +634,7 @@ fn open_run(world: &mut World, run: Entity) {
     match memory {
         Some((key, conversation)) => {
             world.entity_mut(run).insert((
-                LoadingMemory,
+                RunPhase::LoadingMemory,
                 Remembering,
                 Conversation(conversation.clone()),
             ));
@@ -724,7 +651,7 @@ fn open_run(world: &mut World, run: Entity) {
             ));
         }
         None => {
-            world.entity_mut(run).insert(Assembling);
+            world.entity_mut(run).insert(RunPhase::Assembling);
         }
     }
 }
@@ -776,7 +703,7 @@ fn links_in_order<'a, L: Component, F: bevy_ecs::query::QueryFilter>(
 )]
 pub fn advance(
     mut commands: Commands,
-    runs: Query<(Entity, &RunOf, &Cursor, &RunSeq), Wanting>,
+    runs: Query<(Entity, &RunOf, &Cursor, &RunSeq, &RunPhase), Wanting>,
     fresh: Query<&ChildOf, With<Fresh>>,
     children: Query<&Children>,
     grants: Query<&Grant, Without<Retrievable>>,
@@ -787,9 +714,12 @@ pub fn advance(
     holds: Query<&ToolTurnHolds>,
     commits: Query<(&ChildOf, &ToolTurnCommit)>,
 ) {
-    let mut runs: Vec<_> = runs.iter().collect();
-    runs.sort_by_key(|(_, _, _, seq)| **seq);
-    for (run, RunOf(agent), cursor, _) in runs {
+    let mut runs: Vec<_> = runs
+        .iter()
+        .filter(|(_, _, _, _, phase)| **phase == RunPhase::Assembling)
+        .collect();
+    runs.sort_by_key(|(_, _, _, seq, _)| **seq);
+    for (run, RunOf(agent), cursor, _, _) in runs {
         if fresh.iter().any(|child_of| child_of.parent() == run) {
             continue;
         }
@@ -800,7 +730,7 @@ pub fn advance(
         if !retrying && cursor.turn >= limit {
             commands
                 .entity(run)
-                .phase::<Assembling>(Failed(Failure::MaxTurns { limit }));
+                .end(Failed(Failure::MaxTurns { limit }));
             continue;
         }
         if holds.get(run).is_ok_and(|holds| {
@@ -974,11 +904,14 @@ pub fn attach_retrieved(
 pub fn land_memory(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
-    runs: Query<Entity, (With<LoadingMemory>, Without<Failed>)>,
+    runs: Query<(Entity, &RunPhase), Without<Failed>>,
     children: Query<&Children>,
     loads: Query<(&PendingEffect, &EffectOutcome)>,
 ) {
-    for run in &runs {
+    for (run, _) in runs
+        .iter()
+        .filter(|(_, phase)| **phase == RunPhase::LoadingMemory)
+    {
         let Some(outcome) = children.get(run).ok().and_then(|children| {
             children.iter().find_map(|child| {
                 loads
@@ -1015,25 +948,23 @@ pub fn land_memory(
                 if !loaded.is_empty() {
                     commands.entity(run).insert_children(0, &loaded);
                 }
-                commands.entity(run).phase::<LoadingMemory>(Assembling);
+                commands.entity(run).phase(RunPhase::Assembling);
             }
             Ok(other) => {
-                commands
-                    .entity(run)
-                    .phase::<LoadingMemory>(Failed(Failure::Memory(
-                        rig_core::error::ErrorReport::new(
-                            ErrorKind::Internal,
-                            format!(
-                                "the memory handler answered a load with a {} outcome",
-                                other.family()
-                            ),
+                commands.entity(run).end(Failed(Failure::Memory(
+                    rig_core::error::ErrorReport::new(
+                        ErrorKind::Internal,
+                        format!(
+                            "the memory handler answered a load with a {} outcome",
+                            other.family()
                         ),
-                    )));
+                    ),
+                )));
             }
             Err(report) => {
                 commands
                     .entity(run)
-                    .phase::<LoadingMemory>(Failed(Failure::Memory(report.clone())));
+                    .end(Failed(Failure::Memory(report.clone())));
             }
         }
     }
@@ -1192,7 +1123,7 @@ pub fn assemble(
         let model_entity = model.map(|UsesModel(model)| *model);
         let model_bound = model_entity.and_then(|model| bound.get(model).ok());
         let Some((model_entity, model_bound)) = model_entity.zip(model_bound) else {
-            commands.entity(run).phase::<Assembling>(Failed(Failure::Provider(
+            commands.entity(run).end(Failed(Failure::Provider(
                 rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::HandlerUnavailable,
                     "the run has no bound completion model; its selected model or its agent's binding was removed"),
             )));
@@ -1209,17 +1140,15 @@ pub fn assemble(
             | FamilyDescriptor::Memory { .. }
             | FamilyDescriptor::Retrieve { .. }
             | FamilyDescriptor::Custom { .. } => {
-                commands
-                    .entity(run)
-                    .phase::<Assembling>(Failed(Failure::Provider(
-                        rig_core::error::ErrorReport::new(
-                            rig_core::error::ErrorKind::HandlerUnavailable,
-                            format!(
-                                "selected model `{}` does not serve completions",
-                                model_bound.key
-                            ),
+                commands.entity(run).end(Failed(Failure::Provider(
+                    rig_core::error::ErrorReport::new(
+                        rig_core::error::ErrorKind::HandlerUnavailable,
+                        format!(
+                            "selected model `{}` does not serve completions",
+                            model_bound.key
                         ),
-                    )));
+                    ),
+                )));
                 commands.entity(turn).remove::<Fresh>();
                 continue;
             }
@@ -1501,7 +1430,7 @@ pub fn assemble(
             commands.entity(turn).remove::<Fresh>();
             commands
                 .entity(run)
-                .phase::<Assembling>(Failed(Failure::OutputToolCollision {
+                .end(Failed(Failure::OutputToolCollision {
                     name: output_tool.clone(),
                 }));
             continue;
@@ -1550,7 +1479,7 @@ pub fn assemble(
             .entity(turn)
             .remove::<(Fresh, RequestPatch)>()
             .insert((Folded(resolved), Outputs::default()));
-        commands.entity(run).phase::<Assembling>(AwaitingModel);
+        commands.entity(run).phase(RunPhase::AwaitingModel);
     }
 }
 
@@ -1768,15 +1697,17 @@ pub fn land_batch(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
     turns: Query<(Entity, &ChildOf, &Batch, &Outputs)>,
-    runs: Query<(&OutputToolName, &RunSeq, &Cursor), With<ResolvingTools>>,
+    runs: Query<(&OutputToolName, &RunSeq, &Cursor, &RunPhase)>,
     children: Query<&Children>,
     tools: Query<ToolChildView>,
 ) {
     let mut turns: Vec<_> = turns.iter().collect();
-    turns.sort_by_key(|(_, turn_of, _, _)| runs.get(turn_of.parent()).map(|(_, seq, _)| *seq).ok());
+    turns.sort_by_key(|(_, turn_of, _, _)| {
+        runs.get(turn_of.parent()).map(|(_, seq, _, _)| *seq).ok()
+    });
     for (turn, turn_of, batch, outs) in turns {
         let run = turn_of.parent();
-        let Ok((minted, _, cursor)) = runs.get(run) else {
+        let Ok((minted, _, cursor, &RunPhase::ResolvingTools)) = runs.get(run) else {
             continue;
         };
         let calls = batch_children(turn, &children, &tools);
@@ -1793,9 +1724,7 @@ pub fn land_batch(
             // The ending first, so the despawns' observer finds the run
             // ended with this failure and leaves it.
             commands.entity(turn).remove::<Batch>();
-            commands
-                .entity(run)
-                .phase::<ResolvingTools>(Failed(failure));
+            commands.entity(run).end(Failed(failure));
             for (entity, _, issued, outcome, _) in &calls {
                 if !*issued && outcome.is_none() {
                     commands.entity(*entity).despawn();
@@ -1832,9 +1761,7 @@ pub fn land_batch(
         }
         commands.entity(turn).remove::<Batch>();
         if let Some(failure) = failed {
-            commands
-                .entity(run)
-                .phase::<ResolvingTools>(Failed(failure));
+            commands.entity(run).end(Failed(failure));
             continue;
         }
         let results = MessageParts::User { content: parts };
@@ -1856,12 +1783,10 @@ pub fn land_batch(
         });
         match output_call {
             Some(arguments) => {
-                commands
-                    .entity(run)
-                    .phase::<ResolvingTools>((RunResult(arguments), Settled));
+                commands.entity(run).end((RunResult(arguments), Settled));
             }
             None => {
-                commands.entity(run).phase::<ResolvingTools>(Assembling);
+                commands.entity(run).phase(RunPhase::Assembling);
             }
         }
         commands.queue(move |world: &mut World| {
@@ -1925,7 +1850,7 @@ pub fn materialise(
     mut commands: Commands,
     mut turns: Query<(Entity, &ChildOf, &mut Outputs, &Folded, Option<&Retry>), Unread>,
     effects: Query<(&ChildOf, &EffectOutcome, Option<&BusStreamed>), NotRetrieval>,
-    runs: Query<(AwaitingView, &RunSeq), With<AwaitingModel>>,
+    runs: Query<(AwaitingView, &RunSeq, &RunPhase)>,
     children: Query<&Children>,
     adverts: Query<&Advert>,
     bound: Query<&Bound>,
@@ -1946,12 +1871,15 @@ pub fn materialise(
         witness,
     } = reads;
     let mut turns: Vec<_> = turns.iter_mut().collect();
-    turns.sort_by_key(|(_, turn_of, _, _, _)| runs.get(turn_of.parent()).map(|(_, seq)| *seq).ok());
+    turns.sort_by_key(|(_, turn_of, _, _, _)| {
+        runs.get(turn_of.parent()).map(|(_, seq, _)| *seq).ok()
+    });
     for (turn, turn_of, mut outs, Folded(mode), retry) in turns {
         let run = turn_of.parent();
         let Ok((
             (RunOf(agent), cursor, retries, invalid_retries, minted, usage, provider_retried),
             _,
+            &RunPhase::AwaitingModel,
         )) = runs.get(run)
         else {
             continue;
@@ -2058,9 +1986,7 @@ pub fn materialise(
                     commands.entity(turn).insert(Materialised);
                     commands
                         .entity(run)
-                        .phase::<AwaitingModel>(Failed(Failure::UnknownToolCall {
-                            name: call.name,
-                        }));
+                        .end(Failed(Failure::UnknownToolCall { name: call.name }));
                     continue;
                 }
                 InvalidVerdict::Retry(call, feedback) | InvalidVerdict::Skip(call, feedback) => {
@@ -2097,7 +2023,7 @@ pub fn materialise(
                     say!(commands, assets, run, results, skipped);
                     commands.entity(turn).insert(Materialised);
                     let mut run_commands = commands.entity(run);
-                    run_commands.remove::<AwaitingModel>().insert(Assembling);
+                    run_commands.insert(RunPhase::Assembling);
                     if retried {
                         run_commands.insert(InvalidRetries(invalid_retries.0 + 1));
                     }
@@ -2154,7 +2080,7 @@ pub fn materialise(
             Ok(other) => {
                 commands
                     .entity(run)
-                    .phase::<AwaitingModel>(Failed(Failure::Unsupported(format!(
+                    .end(Failed(Failure::Unsupported(format!(
                         "a {} answer to a completion",
                         other.family()
                     ))));
@@ -2172,10 +2098,10 @@ pub fn materialise(
                     && provider_retried.0 < budget
                 {
                     let attempt = provider_retried.0 + 1;
-                    commands.entity(run).phase::<AwaitingModel>((
+                    commands.entity(run).insert((
                         ProviderRetried(attempt),
                         ProviderRetrying,
-                        Assembling,
+                        RunPhase::Assembling,
                     ));
                     if let Some(witness) = witness.as_deref() {
                         witness::observe_provider_retry(
@@ -2193,7 +2119,7 @@ pub fn materialise(
                 } else {
                     Failure::Provider(report.clone())
                 };
-                commands.entity(run).phase::<AwaitingModel>(Failed(failure));
+                commands.entity(run).end(Failed(failure));
                 continue;
             }
         };
@@ -2211,9 +2137,7 @@ pub fn materialise(
             let report = rig_core::error::ErrorReport::from(
                 &rig_core::completion::CompletionError::ResponseError(reason.no_answer_message()),
             );
-            commands
-                .entity(run)
-                .phase::<AwaitingModel>(Failed(Failure::Provider(report)));
+            commands.entity(run).end(Failed(Failure::Provider(report)));
             continue;
         }
 
@@ -2230,12 +2154,12 @@ pub fn materialise(
                     };
                     say!(commands, assets, run, user);
                 }
-                commands.entity(run).phase::<AwaitingModel>(Assembling);
+                commands.entity(run).phase(RunPhase::Assembling);
                 continue;
             }
             commands
                 .entity(run)
-                .phase::<AwaitingModel>((RunResult(String::new()), Settled));
+                .end((RunResult(String::new()), Settled));
             continue;
         }
 
@@ -2289,11 +2213,9 @@ pub fn materialise(
         if let Some(Retry { feedback }) = retry {
             commands.entity(turn).remove::<Retry>();
             if !calls.is_empty() {
-                commands
-                    .entity(run)
-                    .phase::<AwaitingModel>(Failed(Failure::Unsupported(
-                        "a retry of a tool-bearing turn: steer the tool calls instead".to_owned(),
-                    )));
+                commands.entity(run).end(Failed(Failure::Unsupported(
+                    "a retry of a tool-bearing turn: steer the tool calls instead".to_owned(),
+                )));
                 continue;
             }
             if let Some(feedback) = feedback {
@@ -2307,7 +2229,7 @@ pub fn materialise(
                 };
                 say!(commands, assets, run, user);
             }
-            commands.entity(run).phase::<AwaitingModel>(Assembling);
+            commands.entity(run).phase(RunPhase::Assembling);
             continue;
         }
 
@@ -2386,7 +2308,7 @@ pub fn materialise(
             commands
                 .entity(turn)
                 .insert((Batch { calls: count }, TurnAssistant(assistant_entity)));
-            commands.entity(run).phase::<AwaitingModel>(ResolvingTools);
+            commands.entity(run).phase(RunPhase::ResolvingTools);
             continue;
         }
 
@@ -2423,9 +2345,7 @@ pub fn materialise(
                                     content: final_content
                                 }
                             );
-                            commands
-                                .entity(run)
-                                .phase::<AwaitingModel>((RunResult(output), Settled));
+                            commands.entity(run).end((RunResult(output), Settled));
                         } else {
                             let feedback = policy::reprompt_missing_fields(name, &missing);
                             let reprompt = MessageParts::User {
@@ -2450,7 +2370,7 @@ pub fn materialise(
                             );
                             commands
                                 .entity(run)
-                                .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));
+                                .end((OutputRetries(retries.0 + 1), RunPhase::Assembling));
                         }
                     }
                     // A text that already is the structured output settles the
@@ -2473,13 +2393,12 @@ pub fn materialise(
                         say!(commands, assets, run, reprompt);
                         commands
                             .entity(run)
-                            .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));
+                            .end((OutputRetries(retries.0 + 1), RunPhase::Assembling));
                     }
                     None => {
-                        commands.entity(run).phase::<AwaitingModel>((
-                            RunResult(policy::answer_text(&content)),
-                            Settled,
-                        ));
+                        commands
+                            .entity(run)
+                            .end((RunResult(policy::answer_text(&content)), Settled));
                     }
                 }
             }
@@ -2487,7 +2406,7 @@ pub fn materialise(
             | (OutputKind::Auto | OutputKind::Native | OutputKind::Prompted, _) => {
                 commands
                     .entity(run)
-                    .phase::<AwaitingModel>((RunResult(policy::answer_text(&content)), Settled));
+                    .end((RunResult(policy::answer_text(&content)), Settled));
             }
         }
     }
@@ -2500,7 +2419,7 @@ pub fn effect_cancelled(
     removed: On<bevy_ecs::lifecycle::Remove, PendingEffect>,
     effects: Query<(&ChildOf, Has<ToolCallSlot>), With<PendingEffect>>,
     turns: Query<TurnState, With<Turn>>,
-    runs: Query<RunPhase, With<Run>>,
+    runs: Query<RunState, With<Run>>,
     mut commands: Commands,
 ) {
     let effect = removed.event().entity;
@@ -2512,7 +2431,7 @@ pub fn effect_cancelled(
         return;
     };
     let run = run_of.parent();
-    let Ok((awaiting, resolving, failed)) = runs.get(run) else {
+    let Ok((phase, failed)) = runs.get(run) else {
         return;
     };
     // A run already ended keeps its ending: `run_cancelled` writes the
@@ -2521,14 +2440,14 @@ pub fn effect_cancelled(
         return;
     }
     let cancelled = Failed(Failure::Cancelled(rig_core::serve::cancelled()));
-    if is_tool_call && batched && resolving {
+    if is_tool_call && batched && phase == Some(&RunPhase::ResolvingTools) {
         // A tool child despawned while its batch was out: the run ends
         // here, the batch with it.
         commands.entity(turn).remove::<Batch>();
-        commands.entity(run).phase::<ResolvingTools>(cancelled);
-    } else if !is_tool_call && !materialised && awaiting {
+        commands.entity(run).end(cancelled);
+    } else if !is_tool_call && !materialised && phase == Some(&RunPhase::AwaitingModel) {
         commands.entity(turn).insert(Materialised);
-        commands.entity(run).phase::<AwaitingModel>(cancelled);
+        commands.entity(run).end(cancelled);
     }
 }
 
@@ -2585,7 +2504,7 @@ pub fn run_cancelled(
     // finds the run ended with this reason and leaves it.
     commands
         .entity(run)
-        .remove::<(Assembling, AwaitingModel, ResolvingTools, LoadingMemory)>()
+        .remove::<RunPhase>()
         .insert(Failed(Failure::Cancelled(
             rig_core::error::ErrorReport::new(ErrorKind::Cancelled, reason.clone()),
         )));

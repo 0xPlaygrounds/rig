@@ -30,7 +30,7 @@ impl rig_core::serve::Serve for ParkedAdder {
 
 use rig_core::{effect::HandlerKey, error::ErrorKind};
 use rig_ecs::{
-    agent::{Assembling, Failed, Failure, Settled},
+    agent::{Failed, Failure, RunPhase, Settled},
     bus::{Bound, Handlers, PendingEffect},
     systems::RunCommands,
 };
@@ -56,7 +56,7 @@ fn deregistered_model_before_first_dispatch_fails_without_issuing_an_effect() {
         matches!(&failed.0, Failure::Provider(report) if report.kind == ErrorKind::HandlerUnavailable)
     );
     assert!(app.world().get::<Settled>(run).is_none());
-    assert!(app.world().get::<Assembling>(run).is_none());
+    assert!(app.world().get::<RunPhase>(run).is_none());
     assert_eq!(
         app.world_mut()
             .query::<&PendingEffect>()

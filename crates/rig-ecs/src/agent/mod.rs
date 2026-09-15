@@ -14,7 +14,7 @@
 //! | Model, Tool | the bus module's handler entities (`Bound`) |
 //! | Document | [`DocumentId`], [`DocumentText`], [`DocumentProps`]; attached to a turn by an [`Attachment`] link entity |
 //! | Utterance | [`Utterance`] + [`Role`] + ordered [`content::parts::ContentPart`] child entities; `ChildOf` the run, in sibling (`Children`) order |
-//! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a phase marker ([`Assembling`], [`AwaitingModel`], [`ResolvingTools`], [`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings ([`ToolPolicy`], [`ToolContextSpec`] among them) |
+//! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a [`RunPhase`] or an ending ([`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings ([`ToolPolicy`], [`ToolContextSpec`] among them) |
 //! | Turn | [`Turn`], `ChildOf` the run; [`Advert`] link entities → the tools it advertised; [`Attachment`] link entities → the documents it carried; [`Outputs`]; [`Reprompt`]; [`Batch`] while its tool calls are out |
 //! | Effect | the bus module's, `ChildOf` the turn: the completion, then one per tool call ([`ToolCallSlot`] names which) |
 //! | Invalid call | [`InvalidCall`] + [`Resolution`], `ChildOf` the turn |
@@ -273,13 +273,6 @@ pub struct Remembering;
 )]
 #[reflect(Component)]
 pub struct MemoryAppendScheduled;
-
-/// The run's memory load is out; its first turn waits for it.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
-#[reflect(Component)]
-pub struct LoadingMemory;
 
 /// A retrieval the agent makes before every turn: a link entity, `ChildOf`
 /// the agent, naming the index handler entity, with [`Retrieval`] saying
@@ -550,12 +543,50 @@ impl From<Vec<UserContent>> for Prompt {
 // ---------------------------------------------------------------------------
 // Runs and turns.
 
-/// A run: one prompt through the agent to an answer or a failure.
+/// A run: one prompt through the agent to an answer or a failure. Requires
+/// what every run carries — its cursor, tallies, output-tool name and usage
+/// at their defaults — and stamps its [`RunSeq`] from the world's
+/// [`RunCounter`] and its [`crate::bus::Scope`] (`{owner}/run#{seq}`, from
+/// its [`RunOf`] agent's [`Owner`]) as it is added.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
+#[require(
+    Cursor,
+    OutputRetries,
+    InvalidRetries,
+    ProviderRetried,
+    OutputToolName,
+    Usage,
+    StreamRequested
+)]
+#[component(on_add = stamp_run)]
 #[reflect(Component)]
 pub struct Run;
+
+fn stamp_run(
+    mut world: bevy_ecs::world::DeferredWorld<'_>,
+    context: bevy_ecs::lifecycle::HookContext,
+) {
+    let entity = context.entity;
+    // A world without the counter (a checkpoint's scratch world) stamps
+    // nothing: the loaded run carries its own `RunSeq`.
+    if world.get::<RunSeq>(entity).is_none()
+        && let Some(mut counter) = world.get_resource_mut::<RunCounter>()
+    {
+        let seq = counter.0;
+        counter.0 += 1;
+        let owner = world
+            .get::<RunOf>(entity)
+            .and_then(|run_of| world.get::<Owner>(run_of.0))
+            .map(|owner| owner.0.clone())
+            .unwrap_or_default();
+        world
+            .commands()
+            .entity(entity)
+            .insert((RunSeq(seq), crate::bus::Scope(format!("{owner}/run#{seq}"))));
+    }
+}
 
 /// The run's agent.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
@@ -618,27 +649,25 @@ pub struct Cursor {
     pub turn: usize,
 }
 
-/// The run wants a turn: `Advance` spawns one and `Assemble` folds it.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
+/// Where a run is between its opening and its ending, one component,
+/// replaced by insert (immutable: `On<Insert, RunPhase>` sees every
+/// change). A `Ready` run without one has not opened; a run with an ending
+/// ([`Settled`], [`Failed`]) has none.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[component(immutable)]
+#[serde(rename_all = "snake_case")]
 #[reflect(Component)]
-pub struct Assembling;
-
-/// The run's current turn has an effect in flight.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
-#[reflect(Component)]
-pub struct AwaitingModel;
-
-/// The run's current turn has its tool batch out: one effect per call,
-/// `ChildOf` the turn; the run goes on when every one has landed.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
-#[reflect(Component)]
-pub struct ResolvingTools;
+pub enum RunPhase {
+    /// The run's memory load is out; its first turn waits for it.
+    LoadingMemory,
+    /// The run wants a turn: `Advance` spawns one and `Assemble` folds it.
+    Assembling,
+    /// The run's current turn has an effect in flight.
+    AwaitingModel,
+    /// The run's current turn has its tool batch out: one effect per call,
+    /// `ChildOf` the turn; the run goes on when every one has landed.
+    ResolvingTools,
+}
 
 /// A turn whose batch is out: how many calls it holds. Removed when the
 /// batch lands and the results are history.

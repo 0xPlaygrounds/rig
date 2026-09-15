@@ -31,10 +31,10 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, Conversation, Failed, Failure, InvalidCall, LoadingMemory,
-        MemoryAppendScheduled, MessageParts, Remembered, Remembering, Reprompt, RequestPatch,
-        Resolution, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Route,
-        StreamRequested, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
+        Cancelled, Conversation, Failed, Failure, InvalidCall, MemoryAppendScheduled, MessageParts,
+        Remembered, Remembering, Reprompt, RequestPatch, Resolution, Retrievable, Retrieval,
+        RetrievalKind, Retrieves, Retrieving, Retry, Route, StreamRequested, ToolChoiceSpec,
+        ToolContextSpec, ToolPolicy, Utterance,
     },
     bus::{EffectOutcome, Held, IdCounter, PendingEffect, Reserved, Streamed},
     systems::RunCommands,
@@ -139,7 +139,10 @@ fn populated() -> bevy_app::App {
             Conversation("c".to_owned()),
             Remembered,
             Remembering,
-            (rig_ecs::systems::BatchHeld, LoadingMemory),
+            (
+                rig_ecs::systems::BatchHeld,
+                rig_ecs::agent::RunPhase::LoadingMemory,
+            ),
             (
                 MemoryAppendScheduled,
                 rig_ecs::agent::PolicyVersion("reflect-test/v1".into()),
@@ -185,11 +188,9 @@ fn populated() -> bevy_app::App {
             },
             rig_ecs::systems::Fresh,
             rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
-            rig_ecs::agent::AwaitingModel,
-            rig_ecs::agent::ResolvingTools,
             rig_ecs::agent::Prompt(vec![rig_core::message::UserContent::text("p")]),
             (
-                rig_ecs::agent::Assembling,
+                rig_ecs::agent::RunPhase::Assembling,
                 rig_ecs::agent::ProviderRetries(2),
                 rig_ecs::agent::ProviderRetrying,
             ),

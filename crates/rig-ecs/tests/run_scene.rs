@@ -17,9 +17,9 @@ use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{effect::HandlerKey, serve::ServingPolicy};
 use rig_ecs::{
     agent::{
-        AdditionalParams, Assembling, Cursor, DefaultMaxTurns, InvalidCalls, MaxTokens, MaxTurns,
-        Output, OutputKind, Owner, Preamble, Run, RunResult, Settled, Temperature, ToolChoiceSpec,
-        Turn, UsesModel, Utterance,
+        AdditionalParams, Cursor, DefaultMaxTurns, InvalidCalls, MaxTokens, MaxTurns, Output,
+        OutputKind, Owner, Preamble, Run, RunResult, Settled, Temperature, ToolChoiceSpec, Turn,
+        UsesModel, Utterance,
     },
     bus::{
         EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight, Issued, PendingEffect,
@@ -134,7 +134,8 @@ fn a_run_saved_mid_turn_resumes_to_the_same_request_and_answer() {
     loop {
         app.world_mut().run_schedule(RigSchedule);
         let world = app.world_mut();
-        let wants_second = world.get::<Assembling>(run).is_some()
+        let wants_second = world.get::<rig_ecs::agent::RunPhase>(run)
+            == Some(&rig_ecs::agent::RunPhase::Assembling)
             && world
                 .get::<Cursor>(run)
                 .is_some_and(|cursor| cursor.turn == 1);
@@ -545,7 +546,7 @@ fn malformed_run_graph_is_rejected_before_spawning() {
 
     let (mut world, agent) = run_support::open_model_world();
     // A run made by hand, not yet opened: it still carries its prompt.
-    let bundle = rig_ecs::systems::RunBundle::new(&mut world, agent, false);
+    let bundle = (rig_ecs::agent::Run, rig_ecs::agent::RunOf(agent));
     let unopened = world
         .spawn((bundle, rig_ecs::agent::Prompt::from("what?")))
         .id();

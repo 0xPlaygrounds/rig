@@ -1,5 +1,5 @@
 //! Runs as bundles and commands: `RunCommands` on `Commands` and `World`,
-//! `RunBundle` for a run assembled by hand, and `Ready` as the start.
+//! `(Run, RunOf(agent))` for a run assembled by hand, and `Ready` as the start.
 //!
 //! | claim | test |
 //! |---|---|
@@ -9,7 +9,7 @@
 //! | a run despawned while the queued spawn populates it (a host `Add<Run>` observer refusing it) is simply gone: no panic, no orphan utterance, no request | `a_reserved_run_despawned_before_it_was_populated_is_gone` |
 //! | a second queued despawn of an id an earlier one already took is refused `NotARun` on the dead id, without panicking | `a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run` |
 //! | a checkpoint with `ready` or `prompt` on a non-run is refused before the destination changes | `a_checkpoint_refuses_ready_and_prompt_off_a_run_before_it_loads` |
-//! | a run assembled by hand from `RunBundle` and `Prompt` is not read until `Ready`: no utterance, no phase, no request; `Ready` opens it, history first | `a_run_assembled_by_hand_starts_on_ready_with_its_history_first` |
+//! | a run assembled by hand from `Run`, `RunOf` and `Prompt` is not read until `Ready`: no utterance, no phase, no request; `Ready` opens it, history first | `a_run_assembled_by_hand_starts_on_ready_with_its_history_first` |
 //! | a `Ready` run saved before it opened loads with its `Prompt` and `Ready`, opens in the second world and answers | `a_ready_run_saved_before_it_opened_starts_after_the_load` |
 use crate::run_support;
 
@@ -19,11 +19,11 @@ use bevy_ecs::prelude::*;
 use rig_core::message::UserContent;
 use rig_ecs::{
     agent::{
-        Assembling, Failed, Failure, MessageParts, Owner, Prompt, Ready, Run, RunOf, Settled,
+        Failed, Failure, MessageParts, Owner, Prompt, Ready, Run, RunOf, RunPhase, Settled,
         Utterance,
     },
     checkpoint::{Checkpoint, load_world, save_world},
-    systems::{Fresh, RunBundle, RunBusy, RunCommands, RunDespawnRefused, spawn_utterance},
+    systems::{Fresh, RunBusy, RunCommands, RunDespawnRefused, spawn_utterance},
 };
 use run_support::*;
 
@@ -51,7 +51,7 @@ fn a_run_queued_on_commands_exists_after_the_flush_and_advances_on_the_next_pass
     assert!(world.get::<Run>(run).is_some(), "spawned by the flush");
     assert!(world.get::<Ready>(run).is_some(), "ready by the flush");
     assert!(
-        world.get::<Assembling>(run).is_some(),
+        world.get::<RunPhase>(run) == Some(&RunPhase::Assembling),
         "opened by the flush: the command path opens the run it made"
     );
     assert!(
@@ -97,7 +97,7 @@ fn a_cancel_queued_behind_the_spawn_ends_the_run_before_it_starts() {
         "cancelled by the flush: {:?}",
         world.get::<Failed>(run)
     );
-    assert!(world.get::<Assembling>(run).is_none(), "the phase went");
+    assert!(world.get::<RunPhase>(run).is_none(), "the phase went");
 
     for _ in 0..3 {
         app.update();
@@ -249,7 +249,7 @@ fn a_checkpoint_refuses_ready_and_prompt_off_a_run_before_it_loads() {
     let mut app = app();
     let (agent, _) = capturing_agent(&mut app, "t/model:m", "t/model:m", "hello");
     let world = app.world_mut();
-    let bundle = RunBundle::new(world, agent, false);
+    let bundle = (Run, RunOf(agent));
     world.spawn((bundle, Prompt::from("saved"), Ready));
     let checkpoint = save_world(world).expect("every component serializes");
     let run = checkpoint
@@ -295,7 +295,7 @@ fn a_run_assembled_by_hand_starts_on_ready_with_its_history_first() {
     let (agent, requests) = capturing_agent(&mut app, "t/model:m", "m", "hello");
 
     let world = app.world_mut();
-    let bundle = RunBundle::new(world, agent, false);
+    let bundle = (Run, RunOf(agent));
     let run = world.spawn((bundle, Prompt::from("by hand"))).id();
     for _ in 0..3 {
         app.update();
@@ -307,7 +307,7 @@ fn a_run_assembled_by_hand_starts_on_ready_with_its_history_first() {
     );
     assert_eq!(utterances(world, run), 0, "no utterance before Ready");
     assert!(
-        world.get::<Assembling>(run).is_none(),
+        world.get::<RunPhase>(run).is_none(),
         "no phase before Ready"
     );
     assert!(
@@ -352,7 +352,7 @@ fn a_ready_run_saved_before_it_opened_starts_after_the_load() {
     let mut app = app();
     let (agent, _) = capturing_agent(&mut app, "t/model:m", "t/model:m", "hello");
     let world = app.world_mut();
-    let bundle = RunBundle::new(world, agent, false);
+    let bundle = (Run, RunOf(agent));
     // Ready written by hand, saved before any pass opened the run.
     world.spawn((bundle, Prompt::from("saved"), Ready));
     let saved = save_world(world).expect("every component serializes");
@@ -372,7 +372,7 @@ fn a_ready_run_saved_before_it_opened_starts_after_the_load() {
     );
     assert!(world.get::<Prompt>(run).is_some(), "the unread prompt too");
     assert!(
-        world.get::<Assembling>(run).is_none(),
+        world.get::<RunPhase>(run).is_none(),
         "loaded as saved: unopened"
     );
     tick_until(&mut app, "the loaded run settles", |world| {

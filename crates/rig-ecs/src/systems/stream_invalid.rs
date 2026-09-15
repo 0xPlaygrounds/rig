@@ -51,7 +51,7 @@ pub fn discover_streamed_invalid_calls(
     mut commands: Commands,
     effects: Query<(&ChildOf, &BusStreamed), NotRetrieval>,
     mut turns: Query<(&ChildOf, &mut Outputs), (With<Turn>, Without<Materialised>)>,
-    runs: Query<&OutputToolName, (With<Run>, With<AwaitingModel>, Without<Failed>)>,
+    runs: Query<(&OutputToolName, &RunPhase), (With<Run>, Without<Failed>)>,
     children: Query<&Children>,
     adverts: Query<&Advert>,
     bound: Query<&Bound>,
@@ -63,7 +63,7 @@ pub fn discover_streamed_invalid_calls(
         let Ok((run_of, mut outputs)) = turns.get_mut(turn) else {
             continue;
         };
-        let Ok(minted) = runs.get(run_of.parent()) else {
+        let Ok((minted, &RunPhase::AwaitingModel)) = runs.get(run_of.parent()) else {
             continue;
         };
         // An unresolved decision pauses validation. Skip/retry abandons the
