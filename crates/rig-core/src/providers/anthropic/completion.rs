@@ -1811,9 +1811,17 @@ where
 
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
-/// published synchronous Messages API output limits for current models.
+/// published synchronous Messages API output limits for current models. A model the table does
+/// not know has no default, and a caller that supplies none is refused before the request is
+/// built — so a missing family here is not a smaller answer, it is a run that cannot start.
 fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4-8")
+    // A gateway names the same model with its vendor prefix
+    // (`anthropic/claude-opus-5` on OpenRouter's Messages endpoint); the
+    // limit is the model's, not the route's.
+    let model = model.rsplit('/').next().unwrap_or(model);
+    if model.starts_with("claude-opus-5")
+        || model.starts_with("claude-sonnet-5")
+        || model.starts_with("claude-opus-4-8")
         || model.starts_with("claude-opus-4-7")
         || model.starts_with("claude-opus-4-6")
     {

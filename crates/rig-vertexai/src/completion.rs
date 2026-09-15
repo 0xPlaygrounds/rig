@@ -73,6 +73,7 @@ impl CompletionModel {
         );
 
         let vertex_request = VertexCompletionRequest(request);
+        vertex_request.warn_unsupported();
 
         let generation_config = vertex_request.generation_config()?;
         let system_instruction = vertex_request.system_instruction();
@@ -127,6 +128,14 @@ fn streaming_unsupported() -> CompletionError {
 }
 
 impl CompletionModelTrait for CompletionModel {
+    /// This crate never puts `output_schema` or `documents` on the wire: the
+    /// request builder reads neither. Declaring the schema gap keeps a runtime
+    /// from reporting an unconstrained answer as schema-constrained —
+    /// `rig-ecs` routes a schema-bearing run to its output tool instead.
+    fn capabilities(&self) -> rig_core::completion::ProviderCapabilities {
+        rig_core::completion::ProviderCapabilities::default().with_native_output_schema(false)
+    }
+
     async fn completion(
         &self,
         request: CompletionRequest,

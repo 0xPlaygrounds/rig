@@ -1268,10 +1268,11 @@ pub fn assemble(
             progress.mark();
             continue;
         };
-        let composes = match &model_bound.descriptor.family {
-            FamilyDescriptor::Completion { capabilities, .. } => {
-                capabilities.composes_native_output_with_tools
-            }
+        let (composes, carries_schema) = match &model_bound.descriptor.family {
+            FamilyDescriptor::Completion { capabilities, .. } => (
+                capabilities.composes_native_output_with_tools,
+                capabilities.supports_native_output_schema,
+            ),
             FamilyDescriptor::Tool { .. }
             | FamilyDescriptor::Embed { .. }
             | FamilyDescriptor::Rerank { .. }
@@ -1586,6 +1587,7 @@ pub fn assemble(
                 granted_names.len(),
                 callable,
                 composes,
+                carries_schema,
             )
         };
         if resolved == OutputKind::Tool && occupied_names.contains(&output_tool.as_str()) {

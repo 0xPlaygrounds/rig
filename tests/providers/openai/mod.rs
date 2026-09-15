@@ -66,6 +66,7 @@ mod cassette {
     mod max_completion_tokens_matrix;
     mod models;
     mod multi_extract;
+    mod native_schema_capability;
     mod openai_compatible_reasoning_content;
     mod permission_control;
     mod prompt_caching;

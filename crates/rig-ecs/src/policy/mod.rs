@@ -81,15 +81,26 @@ pub fn output_tool_callable(choice: Option<&ToolChoice>, name: &str) -> bool {
 /// only with a real tool of the program's own, a permitting choice, and a
 /// provider that does not compose native output with tools — else
 /// `Native`.
+///
+/// A provider that does not carry `output_schema` to the wire at all
+/// (`provider_supports_native_schema`) can never enforce the schema natively,
+/// so a schema-bearing run takes the output tool whenever the choice permits
+/// one: the tool's arguments are validated, where a native answer from such a
+/// provider is unconstrained text this runtime would settle as the structured
+/// result.
 pub fn resolve_output(
     mode: OutputKind,
     has_schema: bool,
     granted_tools: usize,
     callable: bool,
     provider_composes_native: bool,
+    provider_supports_native_schema: bool,
 ) -> OutputKind {
     if !has_schema {
         return OutputKind::Native;
+    }
+    if !provider_supports_native_schema && callable {
+        return OutputKind::Tool;
     }
     match mode {
         OutputKind::Native => OutputKind::Native,

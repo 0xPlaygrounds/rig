@@ -22,6 +22,10 @@ use rig_core::client::ProviderClientError;
 use rig_core::providers::openai;
 use rig_reqwest::prelude::*;
 
+#[expect(
+    unsafe_code,
+    reason = "std::env::set_var is unsafe since edition 2024; see the SAFETY comment below"
+)]
 fn empty_the_ca_store() {
     // SAFETY: this test binary has one test and no other threads read the
     // environment before it runs.

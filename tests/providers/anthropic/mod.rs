@@ -53,6 +53,7 @@ mod cassette {
     mod error_identity_edge;
     mod image;
     mod lifecycle_matrix;
+    mod max_tokens;
     mod messages_behaviors;
     mod messages_sessions;
     mod messages_strict_tools;
@@ -77,6 +78,7 @@ mod cassette {
     mod request_override;
     mod response_identity;
     mod response_identity_edge;
+    mod retry_classification;
     mod stop_sequence_terminal_matrix;
     mod streamed_server_tools;
     mod streaming;

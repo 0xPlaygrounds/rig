@@ -51,6 +51,10 @@ impl SqliteVectorStoreTable for Document {
 type SqliteExtensionFn =
     unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
+#[expect(
+    unsafe_code,
+    reason = "sqlite3_auto_extension is a C FFI entry point and takes a transmuted fn pointer"
+)]
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt()

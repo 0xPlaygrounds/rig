@@ -2569,6 +2569,10 @@ where
         // pre-migration hand-rolled models did.
         completion::ProviderCapabilities::default()
             .with_native_output_tool_composition(Ext::SUPPORTS_RESPONSE_FORMAT)
+            // The same flag answers the prior question: a provider that drops
+            // `output_schema` never asked the model for the schema at all, so
+            // a runtime must not report its answer as schema-constrained.
+            .with_native_output_schema(Ext::SUPPORTS_RESPONSE_FORMAT)
     }
 
     async fn completion(

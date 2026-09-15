@@ -116,7 +116,15 @@ impl ProviderResponseError {
         }
         match self.status {
             Some(status) => crate::error::retryable_status(Some(status.as_u16())),
-            None => self.transient.unwrap_or(false),
+            // No status: the transport's own verdict, else the provider's
+            // machine code. An error frame delivered inside a stream never
+            // carries a status, so the code is all the overload or throttle
+            // says about itself (rig#2210's sibling: the retry the caller
+            // configured must survive the wire it arrived on).
+            None => self.transient.unwrap_or_else(|| {
+                self.machine_code()
+                    .is_some_and(|code| crate::error::transient_provider_code(&code))
+            }),
         }
     }
 

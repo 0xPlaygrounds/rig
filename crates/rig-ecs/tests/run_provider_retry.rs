@@ -547,3 +547,82 @@ fn a_truncated_stream_is_reissued() {
         .collect();
     assert_eq!(completions, [false, true]);
 }
+
+/// A model whose first call fails with a provider error frame that carries no
+/// HTTP status — the shape every mid-stream error has — and whose second call
+/// answers.
+struct Overloaded {
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl Serve for Overloaded {
+    type Family = rig_core::effect::family::Completion;
+
+    fn descriptor(&self) -> HandlerDescriptor {
+        HandlerDescriptor {
+            key: HandlerKey::from(MODEL),
+            family: FamilyDescriptor::Completion {
+                model: ModelRef::new(MODEL),
+                capabilities: ProviderCapabilities::default(),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
+        let call = self.calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if call == 0 {
+            let error = rig_core::completion::CompletionError::ProviderResponse(
+                rig_core::ProviderResponseError::without_status(
+                    r#"{"error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+                ),
+            );
+            return Reply::Outcome(Err(ErrorReport::from(&error)));
+        }
+        Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
+            done(),
+            Usage::new(),
+            "whole",
+        ))))
+    }
+}
+
+/// An overload the provider reported inside a stream carries no HTTP status,
+/// so it used to reach the runtime as a permanent failure and the run ended
+/// without spending a single retry. The provider's own code says the
+/// condition is transient, so the run re-issues and settles.
+#[test]
+fn an_overload_reported_without_a_status_is_reissued() {
+    let error = rig_core::completion::CompletionError::ProviderResponse(
+        rig_core::ProviderResponseError::without_status(
+            r#"{"error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+        ),
+    );
+    let report = ErrorReport::from(&error);
+    assert_eq!(report.http_status, None, "a stream error has no status");
+    assert!(report.retryable, "the provider's code says it is transient");
+
+    let mut app = run_support::app();
+    let witness = Arc::new(ObservationLog::default());
+    Witnessing::install(app.world_mut(), witness.clone());
+    let model = register(
+        &mut app,
+        MODEL,
+        Overloaded {
+            calls: std::sync::atomic::AtomicUsize::new(0),
+        },
+    );
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    app.world_mut().entity_mut(agent).insert(MaxTurns(4));
+    let run = app.world_mut().spawn_run(agent, &[], "hi", true, None);
+    ended(&mut app, run, "the retried overload");
+
+    assert_eq!(
+        app.world().get::<RunResult>(run).map(|r| r.0.clone()),
+        Some("done".into()),
+        "{:?}",
+        app.world().get::<Failed>(run)
+    );
+    assert_eq!(retried(app.world(), run), 1);
+    assert_eq!(retry_facts(&witness).len(), 1);
+}

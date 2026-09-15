@@ -2187,6 +2187,10 @@ async fn live_pattern_and_null_filters_are_applied_after_candidate_search() -> a
 type SqliteExtensionFn =
     unsafe extern "C" fn(*mut sqlite3, *mut *mut c_char, *const sqlite3_api_routines) -> i32;
 
+#[expect(
+    unsafe_code,
+    reason = "sqlite3_auto_extension is a C FFI entry point and takes a transmuted fn pointer"
+)]
 fn register_sqlite_vec_extension() {
     static REGISTER_SQLITE_VEC: Once = Once::new();
 

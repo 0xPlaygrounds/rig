@@ -83,6 +83,7 @@ mod cassette {
     mod raw_stream_capture_matrix;
     mod reasoning_roundtrip;
     mod reasoning_tool_roundtrip;
+    mod recursive_schema;
     mod regression_suite;
     mod response_identity;
     mod stream_faults;

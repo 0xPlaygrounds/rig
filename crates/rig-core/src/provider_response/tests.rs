@@ -1,3 +1,4 @@
+use super::ProviderResponseError;
 use http::StatusCode;
 
 /// Asserts the one funnel preserves a provider's status + body across the
@@ -492,4 +493,57 @@ fn a_refusal_is_never_retryable_whatever_its_status_or_transport_verdict() {
     let plain_block =
         ProviderResponseError::without_status("blocked".to_owned()).with_refusal(true);
     assert!(!plain_block.is_retryable());
+}
+
+/// A provider error that arrives with no HTTP status — an error frame inside
+/// a stream, or a gRPC reply — is still retried when the provider's own
+/// machine code says the condition is transient. Without this, a mid-stream
+/// `overloaded_error` is indistinguishable from a permanent refusal and the
+/// caller's retry budget is never spent.
+#[test]
+fn a_body_borne_transient_code_is_retryable_without_a_status() {
+    let overloaded = ProviderResponseError::without_status(
+        r#"{"error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+    );
+    assert_eq!(
+        overloaded.machine_code().as_deref(),
+        Some("overloaded_error")
+    );
+    assert!(overloaded.is_retryable());
+
+    let throttled = ProviderResponseError::without_status(
+        r#"{"error":{"type":"rate_limit_error","message":"slow down"}}"#,
+    );
+    assert!(throttled.is_retryable());
+
+    let grpc = ProviderResponseError::without_status(
+        r#"{"error":{"status":"UNAVAILABLE","message":"backend unavailable"}}"#,
+    );
+    assert!(grpc.is_retryable(), "the same condition, spelled by gRPC");
+
+    // A spent quota is not transient: the same call gets the same answer.
+    let quota = ProviderResponseError::without_status(
+        r#"{"error":{"type":"insufficient_quota","message":"billing"}}"#,
+    );
+    assert!(!quota.is_retryable());
+
+    // A code the table does not know still decides nothing.
+    let unknown = ProviderResponseError::without_status(
+        r#"{"error":{"type":"invalid_request_error","message":"bad"}}"#,
+    );
+    assert!(!unknown.is_retryable());
+
+    // The transport's own verdict still wins over the code.
+    let refused_by_transport = ProviderResponseError::without_status(
+        r#"{"error":{"type":"overloaded_error","message":"Overloaded"}}"#,
+    )
+    .with_transient(Some(false));
+    assert!(!refused_by_transport.is_retryable());
+
+    // A refusal is never retried, whatever the code says.
+    let refusal = ProviderResponseError::without_status(
+        r#"{"error":{"type":"server_error","message":"blocked"}}"#,
+    )
+    .with_refusal(true);
+    assert!(!refusal.is_retryable());
 }

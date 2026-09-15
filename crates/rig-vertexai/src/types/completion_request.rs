@@ -10,6 +10,25 @@ use rig_core::providers::gemini::completion::gemini_api_types::{
 pub struct VertexCompletionRequest(pub rig_core::completion::CompletionRequest);
 
 impl VertexCompletionRequest {
+    /// Report what this crate cannot carry, once per request.
+    ///
+    /// `documents` and `output_schema` are read by no accessor here, so a
+    /// caller that set either gets an answer shaped by neither. Saying so is
+    /// the difference between an unsupported feature and a silent one.
+    pub fn warn_unsupported(&self) {
+        if !self.0.documents.is_empty() {
+            tracing::warn!(
+                documents = self.0.documents.len(),
+                "Vertex AI requests do not carry documents; ignoring them"
+            );
+        }
+        if self.0.output_schema.is_some() {
+            tracing::warn!(
+                "Vertex AI requests do not carry a native output schema; ignoring output_schema"
+            );
+        }
+    }
+
     pub fn contents(self) -> Result<Vec<vertexai::model::Content>, CompletionError> {
         // Vertex's `functionResponse.name` is the *function name*, not a
         // call identifier — `ToolResult::name` carries it as required data.

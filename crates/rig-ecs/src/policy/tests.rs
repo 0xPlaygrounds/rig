@@ -112,23 +112,23 @@ fn the_missing_field_reprompt_is_the_goldens() {
 #[test]
 fn output_resolution_follows_the_goldens() {
     assert_eq!(
-        resolve_output(OutputKind::Auto, true, 0, true, true),
+        resolve_output(OutputKind::Auto, true, 0, true, true, true),
         OutputKind::Native
     );
     assert_eq!(
-        resolve_output(OutputKind::Auto, true, 1, true, false),
+        resolve_output(OutputKind::Auto, true, 1, true, false, true),
         OutputKind::Tool
     );
     assert_eq!(
-        resolve_output(OutputKind::Tool, true, 0, false, true),
+        resolve_output(OutputKind::Tool, true, 0, false, true, true),
         OutputKind::Native
     );
     assert_eq!(
-        resolve_output(OutputKind::Tool, true, 0, true, true),
+        resolve_output(OutputKind::Tool, true, 0, true, true, true),
         OutputKind::Tool
     );
     assert_eq!(
-        resolve_output(OutputKind::Prompted, false, 0, true, true),
+        resolve_output(OutputKind::Prompted, false, 0, true, true, true),
         OutputKind::Native
     );
     assert!(!output_tool_callable(
@@ -416,4 +416,38 @@ fn the_tool_result_cut_takes_a_zero_budget_and_a_marker_wider_than_the_budget() 
     );
     // A zero-length text under a zero budget is within the limit.
     assert_eq!(limit_tool_result_text("", &limit(0, marker)), None);
+}
+
+/// A provider that never puts `output_schema` on the wire cannot enforce a
+/// schema natively, so a schema-bearing run takes the output tool instead of
+/// settling on unconstrained text the runtime would report as structured.
+#[test]
+fn a_provider_that_drops_the_schema_takes_the_output_tool() {
+    // Auto with no granted tool used to resolve Native, which asks the
+    // dropping provider for nothing at all.
+    assert_eq!(
+        resolve_output(OutputKind::Auto, true, 0, true, false, false),
+        OutputKind::Tool
+    );
+    // An explicit Native request is overridden for the same reason.
+    assert_eq!(
+        resolve_output(OutputKind::Native, true, 0, true, false, false),
+        OutputKind::Tool
+    );
+    // With no callable output tool there is nowhere to go: the run keeps its
+    // mode rather than inventing an uncallable one.
+    assert_eq!(
+        resolve_output(OutputKind::Native, true, 0, false, false, false),
+        OutputKind::Native
+    );
+    // Nothing changes for a provider that does carry the schema.
+    assert_eq!(
+        resolve_output(OutputKind::Native, true, 0, true, false, true),
+        OutputKind::Native
+    );
+    // No schema, nothing to enforce.
+    assert_eq!(
+        resolve_output(OutputKind::Auto, false, 0, true, false, false),
+        OutputKind::Native
+    );
 }

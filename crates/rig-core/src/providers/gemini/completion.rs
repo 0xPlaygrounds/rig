@@ -2252,9 +2252,23 @@ pub mod gemini_api_types {
 
     /// Recursively resolves all `$ref` references in a JSON value by
     /// replacing them with their definitions.
+    ///
+    /// Inlining cannot express a schema that refers to itself: a `Node` whose
+    /// `child` is a `Node` expands forever. `expanding` carries the chain of
+    /// definitions currently being inlined, so a cycle is refused by naming
+    /// the path that closes it instead of overflowing the stack and killing
+    /// the process.
     fn resolve_refs(
         value: &mut Value,
         defs: &serde_json::Map<String, Value>,
+    ) -> Result<(), CompletionError> {
+        resolve_refs_within(value, defs, &mut Vec::new())
+    }
+
+    fn resolve_refs_within(
+        value: &mut Value,
+        defs: &serde_json::Map<String, Value>,
+        expanding: &mut Vec<String>,
     ) -> Result<(), CompletionError> {
         match value {
             Value::Object(obj) => {
@@ -2264,23 +2278,38 @@ pub mod gemini_api_types {
                     // "#/$defs/Person" -> "Person"
                     let def_name = parse_ref_path(ref_str)?;
 
+                    if expanding.iter().any(|name| name == &def_name) {
+                        let mut path = expanding.clone();
+                        path.push(def_name);
+                        return Err(CompletionError::RequestError(
+                            format!(
+                                "a recursive JSON schema cannot be inlined for Gemini: {}",
+                                path.join(" -> ")
+                            )
+                            .into(),
+                        ));
+                    }
+
                     let def = defs.get(&def_name).ok_or_else(|| {
                         CompletionError::ResponseError(format!("Reference not found: {ref_str}"))
                     })?;
 
                     let mut resolved = def.clone();
-                    resolve_refs(&mut resolved, defs)?;
+                    expanding.push(def_name);
+                    let outcome = resolve_refs_within(&mut resolved, defs, expanding);
+                    expanding.pop();
+                    outcome?;
                     *value = resolved;
                     return Ok(());
                 }
 
                 for (_, v) in obj.iter_mut() {
-                    resolve_refs(v, defs)?;
+                    resolve_refs_within(v, defs, expanding)?;
                 }
             }
             Value::Array(arr) => {
                 for item in arr.iter_mut() {
-                    resolve_refs(item, defs)?;
+                    resolve_refs_within(item, defs, expanding)?;
                 }
             }
             _ => {}

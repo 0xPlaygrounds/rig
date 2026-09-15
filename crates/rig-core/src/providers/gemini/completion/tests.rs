@@ -1855,3 +1855,84 @@ fn block_reasons_split_into_final_refusals_and_transient_blocks() {
         }
     }
 }
+
+/// A schema that refers to itself cannot be inlined into Gemini's OpenAPI
+/// subset: expanding `Node.child` yields another `Node`, forever. The
+/// converter used to recurse until the stack ran out, which aborts the whole
+/// process — in a host like `rig-ecs` every other run dies with it, and no
+/// failure is ever written because nothing survives to write one. It now
+/// refuses the request and names the cycle.
+///
+/// A unit test rather than a cassette because the failure never reaches the
+/// wire: it happens while rig builds the request. What the wire does with a
+/// recursive schema is recorded in `tests/cassettes/gemini/recursive_schema/`.
+#[test]
+fn a_self_referential_schema_is_refused_instead_of_overflowing_the_stack() {
+    let schema = json!({
+        "type": "object",
+        "$defs": {
+            "Node": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "child": {"$ref": "#/$defs/Node"}
+                }
+            }
+        },
+        "properties": {"root": {"$ref": "#/$defs/Node"}},
+        "required": ["root"]
+    });
+
+    let error = flatten_schema(schema).expect_err("a recursive schema cannot be inlined");
+    let message = error.to_string();
+    assert!(
+        message.contains("recursive JSON schema"),
+        "the refusal should say what it refused: {message}"
+    );
+    assert!(
+        message.contains("Node -> Node"),
+        "the refusal should name the cycle it found: {message}"
+    );
+}
+
+/// Mutual recursion closes the same way, one hop later.
+#[test]
+fn a_mutually_recursive_schema_is_refused() {
+    let schema = json!({
+        "type": "object",
+        "$defs": {
+            "A": {"type": "object", "properties": {"b": {"$ref": "#/$defs/B"}}},
+            "B": {"type": "object", "properties": {"a": {"$ref": "#/$defs/A"}}}
+        },
+        "properties": {"root": {"$ref": "#/$defs/A"}}
+    });
+
+    let error = flatten_schema(schema).expect_err("a mutually recursive schema cannot be inlined");
+    let message = error.to_string();
+    assert!(
+        message.contains("A -> B -> A") || message.contains("B -> A -> B"),
+        "the refusal should name the cycle, whichever definition it entered first: {message}"
+    );
+}
+
+/// A definition used twice on separate branches is not a cycle: the chain
+/// unwinds between them, and both sides still inline.
+#[test]
+fn a_definition_reused_on_two_branches_still_inlines() {
+    let schema = json!({
+        "type": "object",
+        "$defs": {"Leaf": {"type": "object", "properties": {"name": {"type": "string"}}}},
+        "properties": {
+            "left": {"$ref": "#/$defs/Leaf"},
+            "right": {"$ref": "#/$defs/Leaf"}
+        }
+    });
+
+    let flattened = flatten_schema(schema).expect("a reused definition is not a cycle");
+    let properties = flattened
+        .get("properties")
+        .and_then(serde_json::Value::as_object)
+        .expect("properties survive");
+    assert!(properties["left"].get("properties").is_some());
+    assert!(properties["right"].get("properties").is_some());
+}
