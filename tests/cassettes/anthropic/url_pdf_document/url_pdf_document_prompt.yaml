@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"source":{"type":"url","url":"https://bitcoin.org/bitcoin.pdf"},"type":"document"},{"text":"What is the title of this paper? Answer in one short sentence.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a helpful assistant that analyzes documents.","type":"text"}],"temperature":0.0}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"source":{"type":"url","url":"https://bitcoin.org/bitcoin.pdf"},"type":"document"},{"text":"What is the title of this paper? Answer in one short sentence.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a helpful assistant that analyzes documents.","type":"text"}],"temperature":0.0}'
 then:
   status: 200
   header:

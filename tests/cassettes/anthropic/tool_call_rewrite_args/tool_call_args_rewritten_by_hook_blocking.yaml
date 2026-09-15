@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"What is the weather in Tokyo right now? Use the get_weather tool to find out.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a weather assistant. Always use the get_weather tool to answer.","type":"text"}],"tools":[{"description":"Get the current weather for a location.","input_schema":{"properties":{"location":{"description":"City to get the weather for, e.g. ''Tokyo''","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"What is the weather in Tokyo right now? Use the get_weather tool to find out.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a weather assistant. Always use the get_weather tool to answer.","type":"text"}],"tools":[{"description":"Get the current weather for a location.","input_schema":{"properties":{"location":{"description":"City to get the weather for, e.g. ''Tokyo''","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather"}]}'
 then:
   status: 200
   header:
@@ -28,7 +28,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"What is the weather in Tokyo right now? Use the get_weather tool to find out.","type":"text"}],"role":"user"},{"content":[{"text":"Sure! Let me check the current weather in Tokyo for you right now!","type":"text"},{"id":"toolu_REDACTED_1","input":{"location":"Tokyo"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"It is 18 degrees Celsius and sunny in Tokyo.","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a weather assistant. Always use the get_weather tool to answer.","type":"text"}],"tools":[{"description":"Get the current weather for a location.","input_schema":{"properties":{"location":{"description":"City to get the weather for, e.g. ''Tokyo''","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"What is the weather in Tokyo right now? Use the get_weather tool to find out.","type":"text"}],"role":"user"},{"content":[{"text":"Sure! Let me check the current weather in Tokyo for you right now!","type":"text"},{"id":"toolu_REDACTED_1","input":{"location":"Tokyo"},"name":"get_weather","type":"tool_use"}],"role":"assistant"},{"content":[{"content":[{"text":"It is 18 degrees Celsius and sunny in Tokyo.","type":"text"}],"tool_use_id":"toolu_REDACTED_1","type":"tool_result"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a weather assistant. Always use the get_weather tool to answer.","type":"text"}],"tools":[{"description":"Get the current weather for a location.","input_schema":{"properties":{"location":{"description":"City to get the weather for, e.g. ''Tokyo''","type":"string"}},"required":["location"],"type":"object"},"name":"get_weather"}]}'
 then:
   status: 200
   header:

@@ -5,12 +5,19 @@ use serde_path_to_error::deserialize;
 
 #[test]
 fn current_model_default_max_tokens_match_anthropic_limits() {
+    assert_eq!(
+        default_max_tokens_for_model(CLAUDE_FABLE_5_1),
+        Some(128_000)
+    );
+    assert_eq!(default_max_tokens_for_model(CLAUDE_FABLE_5), Some(128_000));
+    assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_5), Some(128_000));
+    assert_eq!(default_max_tokens_for_model(CLAUDE_SONNET_5), Some(128_000));
     assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_8), Some(128_000));
     assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_7), Some(128_000));
     assert_eq!(default_max_tokens_for_model(CLAUDE_OPUS_4_6), Some(128_000));
     assert_eq!(
         default_max_tokens_for_model(CLAUDE_SONNET_4_6),
-        Some(64_000)
+        Some(128_000)
     );
     assert_eq!(default_max_tokens_for_model(CLAUDE_HAIKU_4_5), Some(64_000));
 }

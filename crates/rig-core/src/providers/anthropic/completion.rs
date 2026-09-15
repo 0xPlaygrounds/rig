@@ -20,6 +20,14 @@ use tracing::Instrument;
 // Anthropic Completion API
 // ================================================================
 
+/// `claude-fable-5-1` completion model
+pub const CLAUDE_FABLE_5_1: &str = "claude-fable-5-1";
+/// `claude-fable-5` completion model
+pub const CLAUDE_FABLE_5: &str = "claude-fable-5";
+/// `claude-opus-5` completion model
+pub const CLAUDE_OPUS_5: &str = "claude-opus-5";
+/// `claude-sonnet-5` completion model
+pub const CLAUDE_SONNET_5: &str = "claude-sonnet-5";
 /// `claude-opus-4-6` completion model
 pub const CLAUDE_OPUS_4_6: &str = "claude-opus-4-6";
 /// `claude-opus-4-7` completion model
@@ -1813,9 +1821,13 @@ where
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
 fn default_max_tokens_for_model(model: &str) -> Option<u64> {
-    if model.starts_with("claude-opus-4-8")
+    if model.starts_with("claude-fable-5")
+        || model.starts_with("claude-opus-5")
+        || model.starts_with("claude-sonnet-5")
+        || model.starts_with("claude-opus-4-8")
         || model.starts_with("claude-opus-4-7")
         || model.starts_with("claude-opus-4-6")
+        || model.starts_with("claude-sonnet-4-6")
     {
         Some(128_000)
     } else if model.starts_with("claude-opus-4")
@@ -1832,8 +1844,12 @@ fn default_max_tokens_with_fallback(model: &str) -> u64 {
     default_max_tokens_for_model(model).unwrap_or(2_048)
 }
 
+/// Per Anthropic's mid-conversation system messages docs: Fable 5.x, Opus 4.8 and
+/// Opus 5 accept `role: "system"` inside `messages`; Sonnet 5 does not.
 pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
-    model.starts_with(CLAUDE_OPUS_4_8)
+    model.starts_with(CLAUDE_FABLE_5)
+        || model.starts_with(CLAUDE_OPUS_5)
+        || model.starts_with(CLAUDE_OPUS_4_8)
 }
 
 #[derive(Debug, Deserialize, Serialize)]

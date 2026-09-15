@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Return a concise event object for a local Rust meetup in Seattle.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","output_config":{"format":{"schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"title":"SmokeStructuredOutput","type":"object"},"type":"json_schema"}}}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Return a concise event object for a local Rust meetup in Seattle.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","output_config":{"format":{"schema":{"$schema":"https://json-schema.org/draft/2020-12/schema","additionalProperties":false,"properties":{"category":{"type":"string"},"summary":{"type":"string"},"title":{"type":"string"}},"required":["title","category","summary"],"title":"SmokeStructuredOutput","type":"object"},"type":"json_schema"}}}'
 then:
   status: 200
   header:

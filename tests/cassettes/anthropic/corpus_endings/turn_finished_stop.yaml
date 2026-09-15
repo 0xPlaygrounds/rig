@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"temperature":0.0,"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"Use the add tool to add 17 and 25, then reply with just the number.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","type":"text"}],"temperature":0.0,"tools":[{"description":"Add x and y together","input_schema":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"name":"add"}]}'
 then:
   status: 200
   header:

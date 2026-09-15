@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"source":{"data":"The Rust Programming Language\n\nRust is a systems programming language focused on three goals: safety, speed,\nand concurrency. It accomplishes these goals without a garbage collector.\n\nKey Features:\n- Zero-cost abstractions\n- Move semantics\n- Guaranteed memory safety\n- Threads without data races","media_type":"text/plain","type":"text"},"type":"document"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a helpful assistant that analyzes documents.","type":"text"}],"temperature":0.5}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"source":{"data":"The Rust Programming Language\n\nRust is a systems programming language focused on three goals: safety, speed,\nand concurrency. It accomplishes these goals without a garbage collector.\n\nKey Features:\n- Zero-cost abstractions\n- Move semantics\n- Guaranteed memory safety\n- Threads without data races","media_type":"text/plain","type":"text"},"type":"document"}],"role":"user"}],"model":"claude-sonnet-4-6","system":[{"text":"You are a helpful assistant that analyzes documents.","type":"text"}],"temperature":0.5}'
 then:
   status: 200
   header:

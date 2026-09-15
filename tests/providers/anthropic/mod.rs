@@ -59,6 +59,7 @@ mod cassette {
     mod messages_thinking;
     mod messages_tool_args;
     mod messages_tool_choice;
+    mod model_defaults_matrix;
     mod models;
     mod multi_turn_streaming;
     mod opus_4_7;

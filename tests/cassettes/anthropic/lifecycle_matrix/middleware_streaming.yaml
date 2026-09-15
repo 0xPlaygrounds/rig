@@ -9,7 +9,7 @@ when:
     value: application/json
   - name: anthropic-version
     value: 2023-06-01
-  body: '{"max_tokens":64000,"messages":[{"content":[{"text":"In one short paragraph, explain what a solar eclipse is.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a concise assistant. Answer directly in plain text.","type":"text"}]}'
+  body: '{"max_tokens":128000,"messages":[{"content":[{"text":"In one short paragraph, explain what a solar eclipse is.","type":"text"}],"role":"user"}],"model":"claude-sonnet-4-6","stream":true,"system":[{"text":"You are a concise assistant. Answer directly in plain text.","type":"text"}]}'
 then:
   status: 200
   header:
