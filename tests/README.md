@@ -380,7 +380,7 @@ status, the provider's verdict, usage and error envelope, the closure) for
 Gemini, the OpenAI Chat Completions and Responses wires and Anthropic;
 Cohere, Ollama and the Gemini Interactions wire report the transport facts
 without a payload projection. Error classification follows the one funnel in
-`rig_core::provider_response` (see `AGENTS.md`, Provider Changes).
+`rig_core::provider_response` (see `AGENTS.md`, Error Handling).
 
 Consumed cassettes and goldens remain in Git; historical execution logs, proof
 snapshots, and archive infrastructure are intentionally not maintained.
