@@ -30,6 +30,6 @@ mod streaming_conformance;
 mod streaming_conformance_registry;
 mod streaming_conformance_suites;
 #[cfg(feature = "derive")]
-mod tool_macro;
+mod rig_tool_facade;
 
 mod pull_parser;
