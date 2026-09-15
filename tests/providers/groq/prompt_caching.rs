@@ -61,13 +61,8 @@ use crate::cache_conformance::{
 
 use super::support::with_groq_prompt_caching_cassette;
 
-/// A model Groq actually serves today.
-///
-/// Deliberately a literal rather than one of `rig::providers::groq`'s model
-/// constants: every one of them (`llama-3.1-8b-instant`, `mixtral-8x7b-32768`,
-/// the llama-3.2 previews) now 404s with `model_not_found`. That is its own
-/// staleness problem, out of scope here; this suite just needs a live model.
-const CACHE_MODEL: &str = "openai/gpt-oss-20b";
+/// A model Groq actually serves today; the cassette was recorded against it.
+const CACHE_MODEL: &str = rig::providers::groq::GPT_OSS_20B;
 
 const GROQ_CACHE_SUPPORT: CacheSupport = CacheSupport {
     provider: "groq",

@@ -1,0 +1,18 @@
+when:
+  path: /openai/v1/chat/completions
+  method: POST
+  query_param: []
+  header:
+  - name: accept
+    value: '*/*'
+  - name: content-type
+    value: application/json
+  body: '{"max_tokens":64,"messages":[{"content":"Reply with the single word OK.","role":"user"}],"model":"qwen/qwen3.8-27b"}'
+then:
+  status: 200
+  header:
+  - name: content-type
+    value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
+  body: '{"choices":[{"finish_reason":"stop","index":0,"logprobs":null,"message":{"content":"OK","role":"assistant"}}],"created":0,"id":"chatcmpl-REDACTED_1","model":"qwen/qwen3.8-27b","object":"chat.completion","service_tier":"on_demand","system_fingerprint":"fp_REDACTED_1","usage":{"completion_time":0.004015899,"completion_tokens":2,"prompt_time":0.001013459,"prompt_tokens":19,"queue_time":0.032507012,"total_time":0.005029358,"total_tokens":21},"usage_breakdown":null,"x_groq":{"id":"req_REDACTED_1","seed":1505196990}}'
