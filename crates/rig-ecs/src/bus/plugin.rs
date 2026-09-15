@@ -168,8 +168,9 @@ impl Bus {
 }
 
 /// The runner: reset the tick's intake, then run [`RigSchedule`] while a pass
-/// still advances the world ([`super::quiescence::advanced`]), at most
-/// [`QUIESCENCE_CAP`] passes.
+/// still advances the world — while anything said so through
+/// [`AdvancedCommands::advanced`](super::quiescence::AdvancedCommands::advanced)
+/// — at most [`QUIESCENCE_CAP`] passes.
 pub fn run_to_quiescence(world: &mut World) {
     world.resource_mut::<Intake>().0 = 0;
     {
