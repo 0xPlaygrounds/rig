@@ -41,7 +41,7 @@ use rig_core::{
     serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
-use rig_ecs::bus::{Bus, EffectOutcome, Handlers, InFlight, PendingEffect, Streamed};
+use rig_ecs::bus::{BusPlugin, EffectOutcome, Handlers, InFlight, PendingEffect, Streamed};
 use wasm_bindgen_test::wasm_bindgen_test;
 
 /// A `!Send` handler, honestly: an `Rc` counter, as a browser provider
@@ -131,7 +131,7 @@ fn app() -> App {
 
 /// One host pass, then let the browser run its queued executor microtasks.
 async fn tick(app: &mut App) {
-    run_to_quiescence(app.world_mut());
+    app.update();
     rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
 }
 

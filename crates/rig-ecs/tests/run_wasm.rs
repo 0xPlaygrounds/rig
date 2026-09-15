@@ -54,7 +54,7 @@ fn app(log: &EffectLog) -> (App, Entity) {
 }
 
 async fn tick(app: &mut App) {
-    run_to_quiescence(app.world_mut());
+    app.update();
     rig_core::wasm_compat::sleep(std::time::Duration::from_millis(1)).await;
 }
 
