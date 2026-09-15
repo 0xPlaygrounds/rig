@@ -26,6 +26,14 @@ fn portable_tool_facade_is_feature_additive() -> Result<(), Box<dyn std::error::
     let fixture = root.join("tests/fixtures/tool_facade/Cargo.toml");
     let target_dir = root.join("target/tool-facade-fixture");
 
+    // This checks feature additivity against the workspace's dependency set,
+    // not a fresh registry resolution. Cargo adapts the copied lockfile to the
+    // standalone fixture while retaining the workspace's compatible versions.
+    std::fs::copy(
+        root.join("Cargo.lock"),
+        fixture.with_file_name("Cargo.lock"),
+    )?;
+
     for (name, args) in [
         ("core-only", &["--no-default-features"][..]),
         (
