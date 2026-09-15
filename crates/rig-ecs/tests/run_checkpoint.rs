@@ -1,15 +1,8 @@
 //! Checkpoint holds are durable tool-batch boundaries, independent of tick granularity.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
-use rig_core::{completion::CompletionRequest, message::AssistantContent};
+use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{
         Cancelled, Failed, Failure, Grant, MaxTurns, Order, Run, Settled,
@@ -27,10 +20,7 @@ use std::sync::{Arc, Mutex};
 const MODEL: &str = "t/model:default";
 const ADD: &str = "t/tool:add#0";
 
-fn setup(
-    turns: usize,
-    limit: usize,
-) -> (bevy_app::App, Entity, Arc<Mutex<Vec<CompletionRequest>>>) {
+fn setup(turns: usize, limit: usize) -> (bevy_app::App, Entity, RequestsSeen) {
     let mut app = app();
     let script = (0..turns)
         .map(|i| {
@@ -41,10 +31,8 @@ fn setup(
             )]
         })
         .collect();
-    let (model, requests) = Scripted::new(MODEL, script);
-    let model = register(&mut app, MODEL, model);
+    let (agent, requests) = scripted_agent(&mut app, MODEL, script);
     let add = register(&mut app, ADD, Adder::new(ADD));
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert(MaxTurns(limit));
     app.world_mut()
         .spawn((Grant(add), Order(0), ChildOf(agent)));
@@ -57,11 +45,7 @@ fn committed(world: &mut World, run: Entity, number: usize) -> bool {
         .iter(world)
         .any(|(parent, c)| parent.parent() == run && c.turn == number)
 }
-fn assert_stays_held(
-    app: &mut bevy_app::App,
-    requests: &Arc<Mutex<Vec<CompletionRequest>>>,
-    count: usize,
-) {
+fn assert_stays_held(app: &mut bevy_app::App, requests: &RequestsSeen, count: usize) {
     for _ in 0..8 {
         app.update();
     }
@@ -264,7 +248,8 @@ impl rig_core::serve::Serve for GatedTool {
 #[test]
 fn partial_out_of_order_parallel_batch_has_no_commit_until_every_result_lands() {
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![
             (0..3)
@@ -272,7 +257,6 @@ fn partial_out_of_order_parallel_batch_has_no_commit_until_every_result_lands() 
                 .collect(),
         ],
     );
-    let model = register(&mut app, MODEL, model);
     let completed = Arc::new(Mutex::new(Vec::new()));
     let mut gates = std::collections::BTreeMap::new();
     let mut senders = std::collections::BTreeMap::new();
@@ -289,7 +273,6 @@ fn partial_out_of_order_parallel_batch_has_no_commit_until_every_result_lands() 
             completed: completed.clone(),
         },
     );
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert((MaxTurns(2), rig_ecs::agent::ToolPolicy { concurrency: 3 }));
@@ -470,7 +453,7 @@ impl rig_core::serve::Serve for CountedAdder {
     }
 }
 struct RetryModel {
-    requests: Arc<Mutex<Vec<CompletionRequest>>>,
+    requests: RequestsSeen,
 }
 impl rig_core::serve::Serve for RetryModel {
     type Family = rig_core::effect::family::Completion;
@@ -574,11 +557,9 @@ fn output_tool_settlement_commits_only_a_real_mixed_batch_and_ignores_hold() {
             parts.push(call("real", "add", serde_json::json!({"x":1,"y":2})));
         }
         parts.push(call("output", "submit", serde_json::json!({"answer":42})));
-        let (model, requests) = Scripted::new(MODEL, vec![parts]);
-        let model = register(&mut app, MODEL, model);
+        let (agent, requests) = scripted_agent(&mut app, MODEL, vec![parts]);
         let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let tool = register(&mut app, ADD, CountedAdder(calls.clone()));
-        let agent = spawn_agent(app.world_mut(), "t", model);
         app.world_mut().entity_mut(agent).insert((Output {mode:OutputKind::Tool,schema:Some(serde_json::json!({"type":"object","properties":{"answer":{"type":"integer"}},"required":["answer"]}))},OutputToolConfig {name:Some("submit".into()),description:None,augment_preamble:false}));
         app.world_mut()
             .spawn((Grant(tool), Order(0), ChildOf(agent)));
@@ -650,7 +631,8 @@ fn invalid_call_retry_feedback_is_not_a_completed_tool_batch() {
         .get_mut(RigSchedule)
         .unwrap()
         .add_systems(retry.in_set(RigSet::Judge));
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![
             vec![
@@ -661,10 +643,8 @@ fn invalid_call_retry_feedback_is_not_a_completed_tool_batch() {
             vec![AssistantContent::text("done")],
         ],
     );
-    let model = register(&mut app, MODEL, model);
     let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let tool = register(&mut app, ADD, CountedAdder(calls.clone()));
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert((
         MaxTurns(3),
         InvalidCalls {
@@ -698,16 +678,15 @@ fn invalid_call_retry_feedback_is_not_a_completed_tool_batch() {
 fn terminal_cleanup_suppresses_commit_notification_for_deleted_run() {
     use rig_ecs::agent::{Output, OutputKind, OutputToolConfig};
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![vec![
             call("real", "add", serde_json::json!({"x":1,"y":2})),
             call("output", "submit", serde_json::json!({"answer":42})),
         ]],
     );
-    let model = register(&mut app, MODEL, model);
     let tool = register(&mut app, ADD, Adder::new(ADD));
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut().entity_mut(agent).insert((Output {mode:OutputKind::Tool,schema:Some(serde_json::json!({"type":"object","properties":{"answer":{"type":"integer"}},"required":["answer"]}))},OutputToolConfig {name:Some("submit".into()),description:None,augment_preamble:false}));
     app.world_mut()
         .spawn((Grant(tool), Order(0), ChildOf(agent)));

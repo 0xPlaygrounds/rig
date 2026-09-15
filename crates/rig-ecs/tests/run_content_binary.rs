@@ -1,6 +1,4 @@
 //! Asset identity, exact transport spelling and bounded retention.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
-
 use rig_core::message::DocumentSourceKind;
 use rig_ecs::agent::content::binary::*;
 

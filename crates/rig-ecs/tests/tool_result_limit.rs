@@ -9,31 +9,21 @@
 //! | a limit set between turns affects only later turns; the agent's applies under the run's absence | `a_limit_change_between_turns_affects_only_later_turns` |
 //! | a `RequestPartEdit` is applied first, then the limit | `an_edit_is_applied_before_the_limit` |
 
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic
-)]
+use crate::run_support::{graph_messages, open_model_world, requests};
 
 use bevy_ecs::prelude::*;
-use rig_core::{
-    completion::{ModelRef, ProviderCapabilities},
-    effect::{EffectKind, FamilyDescriptor},
-    message::{AssistantContent, Message, ToolResultContent, UserContent},
-    serve::ServingPolicy,
-};
+use rig_core::message::{AssistantContent, Message, ToolResultContent, UserContent};
 use rig_ecs::{
     agent::{
-        MessageParts, Order, Owner, Turn, UsesModel, Utterance,
+        MessageParts, Order, Turn, Utterance,
         content::parts::{
             EditTarget, RequestPartEdit, TOOL_RESULT_LIMIT_MARKER, TextPart, ToolResultLimit,
-            ToolResultPart, read_message,
+            ToolResultPart,
         },
         scene::RunScene,
     },
-    bus::{Bus, Handlers, PendingEffect, RigSchedule},
-    systems::{Fresh, RunCommands, install_agent},
+    bus::RigSchedule,
+    systems::{Fresh, RunCommands},
 };
 
 const LONG: &str = "0123456789abcdefghijklmnopqrstuvwxyz";
@@ -67,57 +57,10 @@ fn history(text: &str) -> Vec<MessageParts> {
 /// A world with an open model, one agent, and a run whose history holds a
 /// tool result of one text and one JSON item, with a fresh turn.
 fn fixture(text: &str) -> (World, Entity, Entity, Entity) {
-    let mut world = World::new();
-    Bus::with_policy(ServingPolicy::default()).install(&mut world);
-    install_agent(&mut world);
-    let model = Handlers::with(&mut world, |handlers| {
-        handlers.register_open(
-            "model",
-            FamilyDescriptor::Completion {
-                model: ModelRef::new("model"),
-                capabilities: ProviderCapabilities::default(),
-            },
-        )
-    })
-    .unwrap()
-    .unwrap();
-    let agent = world.spawn((Owner("owner".into()), UsesModel(model))).id();
+    let (mut world, agent) = open_model_world();
     let run = world.spawn_run(agent, &history(text), "next", false, None);
     let turn = world.spawn((Turn, Fresh, Order(100), ChildOf(run))).id();
     (world, agent, run, turn)
-}
-
-/// The utterances of `run` in order, as the DTOs the graph reconstructs.
-fn graph_messages(world: &mut World, run: Entity) -> Vec<Message> {
-    let mut utterances: Vec<_> = world
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
-        .iter(world)
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| (order.0, entity))
-        .collect();
-    utterances.sort();
-    utterances
-        .into_iter()
-        .map(|(_, entity)| read_message(world, entity).unwrap().to_message())
-        .collect()
-}
-
-/// The completion requests folded under `run`, by turn order.
-fn requests(world: &mut World, run: Entity) -> Vec<rig_core::completion::CompletionRequest> {
-    let mut found: Vec<_> = world
-        .query::<(&PendingEffect, &ChildOf)>()
-        .iter(world)
-        .filter_map(|(effect, parent)| match &effect.kind {
-            EffectKind::Completion { request, .. } => {
-                let turn = parent.parent();
-                (world.get::<ChildOf>(turn)?.parent() == run)
-                    .then(|| (world.get::<Order>(turn).map(|o| o.0), request.clone()))
-            }
-            _ => None,
-        })
-        .collect();
-    found.sort_by_key(|(order, _)| *order);
-    found.into_iter().map(|(_, request)| request).collect()
 }
 
 fn result_items(message: &Message) -> Vec<ToolResultContent> {

@@ -1,13 +1,4 @@
 //! Concurrent live delivery must reproduce the same effect identities on replay.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::unreachable,
-    clippy::type_complexity,
-    clippy::indexing_slicing,
-    dead_code
-)]
 use crate::run_support;
 
 use rig_core::serve::Dispatch;
@@ -23,7 +14,7 @@ use rig_core::{
     tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::{
-    agent::{Failed, Grant, MaxTurns, Order, PolicyVersion, RunResult, Settled},
+    agent::{Failed, Grant, MaxTurns, Order, PolicyVersion, RunResult},
     bus::{Bound, EffectLogResource, Handlers, Replay},
     replay::stamp_run,
     systems::RunCommands,
@@ -64,12 +55,6 @@ fn bound_entity(world: &mut World, key: &str) -> Entity {
         .find(|(_, b)| b.key == HandlerKey::from(key))
         .map(|(e, _)| e)
         .expect("key bound")
-}
-
-fn ended(app: &mut bevy_app::App, run: Entity, what: &str) {
-    tick_until(app, what, |world| {
-        world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
-    });
 }
 
 fn ending(world: &World, run: Entity) -> String {

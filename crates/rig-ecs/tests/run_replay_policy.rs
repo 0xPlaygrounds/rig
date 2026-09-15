@@ -1,10 +1,4 @@
 //! Effective configuration, explicit scope and declared custom policy identity.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
 use crate::run_support;
 use bevy_ecs::prelude::*;
 use rig_ecs::{

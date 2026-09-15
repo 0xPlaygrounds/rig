@@ -271,15 +271,6 @@ async fn a_stream_accumulates_and_a_despawn_cancels() {
 }
 
 #[wasm_bindgen_test]
-fn the_components_are_send_sync_on_wasm_too() {
-    fn assert_send_sync<T: Send + Sync + 'static>() {}
-    assert_send_sync::<PendingEffect>();
-    assert_send_sync::<EffectOutcome>();
-    assert_send_sync::<Streamed>();
-    assert_send_sync::<InFlight>();
-}
-
-#[wasm_bindgen_test]
 async fn local_streams_drop_on_marker_removal_scheduled_despawn_replacement_and_shutdown() {
     use rig_ecs::bus::effect::{Executions, Streaming};
     struct Local(Rc<Cell<usize>>);

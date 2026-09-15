@@ -1,8 +1,6 @@
 //! A delivered invalid name must be actionable before the producer finishes.
 //! The producer gate prevents EOF from masquerading as a midstream boundary.
 // Test assertions and the shared run_support fixtures intentionally panic.
-#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
-
 #[path = "run_stream_boundary/errors.rs"]
 mod errors;
 #[path = "run_stream_boundary/multiple.rs"]

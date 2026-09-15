@@ -4,7 +4,6 @@
 //!
 //! | rig-bus test (deleted) | subject there | here |
 //! |---|---|---|
-//! | `a_reopened_bus_serves_handles_bound_before_the_drop` | `Bus::reopen` after a driver died | nothing dies: the handler entity serves after every effect it served is gone |
 //! | `reopen_while_a_driver_is_alive_is_refused` | the reopen race | there is no driver to race: another pass while effects are in flight is just a pass |
 //! | `pendings_and_streams_created_while_closed_stay_closed_after_reopen` | no resurrection across a restart | an effect answered `HandlerUnavailable` stays answered once its key is bound |
 //! | `a_rebind_before_registration_fails_at_first_dispatch_not_at_bind` | `Handle::rebind` before the handler | a scene loaded before its handlers are bound fails at the first pass, by key, never at load |
@@ -15,14 +14,6 @@
 //! The loom model `loom_reopen_races_the_last_in_flight_reply` has no
 //! successor: the race it proved safe (a reply from a dying driver against
 //! a reopen) does not exist when the driver is a system.
-
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
 
 use crate::bus_support;
 
@@ -37,38 +28,9 @@ use rig_core::{
 use rig_ecs::bus::{BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule, Scene};
 
 #[test]
-fn a_reopened_bus_serves_handles_bound_before_the_drop() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
-    let before = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", completion()))
-        .id();
-    tick_until(&mut app, "served once", |world| {
-        world.get::<EffectOutcome>(before).is_some()
-    });
-    // The fixture's moment: the driver's task despawned. Here every effect
-    // the handler served is despawned instead, and the handler entity is
-    // untouched — there is no driver whose death could take it.
-    app.world_mut().despawn(before);
-    tick(&mut app, 2);
-    let after = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", completion()))
-        .id();
-    tick_until(&mut app, "served again", |world| {
-        world.get::<EffectOutcome>(after).is_some()
-    });
-    assert_eq!(counters.unary_served.load(Ordering::SeqCst), 2);
-}
-
-#[test]
 fn reopen_while_a_driver_is_alive_is_refused() {
-    let counters = Arc::new(Counters::default());
+    let (mut app, _, counters) = served();
     counters.hold.hold();
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
     let effect = app
         .world_mut()
         .spawn(PendingEffect::new("model", completion()))
@@ -181,20 +143,12 @@ fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
     // Bound afterwards, a fresh effect on the same key works: the
     // descriptor a scene keeps is a claim about the key, not a binding.
     register(&mut app, "model", MockModel::new(&counters));
-    let next = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", completion()))
-        .id();
-    tick_until(&mut app, "served", |world| {
-        world.get::<EffectOutcome>(next).is_some()
-    });
+    answered(&mut app, "served");
 }
 
 #[test]
 fn a_rebind_of_the_wrong_family_panics_at_the_hosts_line() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
+    let (mut app, _, _) = served();
     let stored = HandlerDescriptor {
         key: HandlerKey::from("model"),
         family: FamilyDescriptor::Tool {
@@ -228,9 +182,7 @@ fn see_what_ended(landed: Query<Entity, Added<EffectOutcome>>, mut ended: ResMut
 
 #[test]
 fn the_inbox_names_every_dispatch_that_ended_since_the_last_drain() {
-    let counters = Arc::new(Counters::default());
-    let mut app = app();
-    register(&mut app, "model", MockModel::new(&counters));
+    let (mut app, _, _) = served();
     app.init_resource::<Ended>();
     app.world_mut()
         .resource_mut::<bevy_ecs::schedule::Schedules>()

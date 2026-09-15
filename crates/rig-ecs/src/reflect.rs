@@ -26,6 +26,32 @@ use bevy_reflect::{
 
 pub use crate::{agent::reflect::*, bus::reflect::*};
 
+/// Declare opaque [`reflect_remote`](bevy_reflect::reflect_remote) wrappers
+/// for rig-core types: each reflects as a whole through its serde form, which
+/// is the wire form the log already has. `Debug`, `Clone`, `Serialize` and
+/// `Deserialize` come with every wrapper; anything else listed after the colon
+/// is both derived and reflected.
+macro_rules! opaque_reflect {
+    ($(
+        $(#[doc = $doc:literal])*
+        $kind:ident $name:ident($($remote:tt)*) $(: $($extra:ident),*)? ;
+    )*) => {$(
+        $(#[doc = $doc])*
+        #[bevy_reflect::reflect_remote($($remote)*)]
+        #[derive(Debug, Clone, $($($extra,)*)? serde::Serialize, serde::Deserialize)]
+        #[reflect(opaque, Debug, $($($extra,)*)? Serialize, Deserialize)]
+        pub $kind $name {}
+    )*};
+}
+
+pub(crate) use opaque_reflect;
+
+macro_rules! register_named {
+    ($registry:expr, $($ty:path => $name:literal),* $(,)?) => {
+        $( $registry.register::<$ty>(); )*
+    };
+}
+
 macro_rules! register_all {
     ($registry:expr, [$($ty:ty),* $(,)?]) => {
         $( $registry.register::<$ty>(); )*
@@ -57,7 +83,6 @@ pub fn install_reflect(world: &mut World) {
             bus::EffectOutcome,
             bus::ToolInputs,
             bus::ToolOutputs,
-            bus::Scope,
             bus::Bound,
             bus::ProviderBinding,
             bus::ProviderKind,
@@ -73,75 +98,23 @@ pub fn install_reflect(world: &mut World) {
             StreamEventsReflect,
             StreamErrorsReflect,
             // The graph.
-            agent::checkpoint::ToolTurnCommit,
-            agent::checkpoint::ToolTurnHolds,
             agent::checkpoint::TurnAssistant,
             agent::checkpoint::AssistantForTurns,
             agent::checkpoint::TurnResults,
             agent::checkpoint::ResultsForTurns,
-            agent::Owner,
-            agent::Preamble,
-            agent::Temperature,
-            agent::MaxTokens,
-            agent::AdditionalParams,
-            agent::ToolChoiceSpec,
-            agent::ToolAccess,
-            agent::OutputToolConfig,
             agent::OutputKind,
-            agent::Output,
-            agent::MaxTurns,
             agent::Unhandled,
-            agent::InvalidCalls,
-            agent::ToolPolicy,
-            agent::ToolContextSpec,
-            agent::DefaultMaxTurns,
-            agent::UsesModel,
             agent::ModelOf,
-            agent::Remembers,
             agent::RememberedBy,
-            agent::Conversation,
-            agent::Remembered,
-            agent::Remembering,
-            agent::MemoryAppendScheduled,
-            agent::PolicyVersion,
-            agent::LoadingMemory,
-            agent::Retrieves,
             agent::RetrievedBy,
-            agent::Retrieval,
             agent::RetrievalKind,
-            agent::Retrievable,
-            agent::Retrieving,
-            agent::Route,
             agent::RoutedTo,
-            agent::Grant,
             agent::Grants,
-            agent::Context,
             agent::ContextOf,
-            agent::Order,
             agent::OrderCounter,
-            agent::DocumentId,
-            agent::DocumentText,
-            agent::DocumentProps,
-            agent::Attachment,
             agent::AttachedTo,
-            agent::Utterance,
-            agent::Role,
-            agent::content::parts::RequestPartEdit,
             agent::content::parts::EditTarget,
             agent::content::parts::EditedBy,
-            agent::content::parts::ContentPart,
-            agent::content::parts::MessageId,
-            agent::content::parts::TextPart,
-            agent::content::parts::ImagePart,
-            agent::content::parts::AudioPart,
-            agent::content::parts::VideoPart,
-            agent::content::parts::DocumentPart,
-            agent::content::parts::ToolCallPart,
-            agent::content::parts::ToolResultPart,
-            agent::content::parts::ReasoningPart,
-            agent::content::parts::JsonPart,
-            agent::content::parts::ToolResultStatus,
-            agent::content::parts::ToolResultLimit,
             agent::content::reflect::TextPartReflect,
             agent::content::reflect::ToolCallPartReflect,
             agent::content::reflect::ReasoningPartReflect,
@@ -153,41 +126,11 @@ pub fn install_reflect(world: &mut World) {
             agent::content::reflect::PartParamsReflect,
             agent::content::reflect::ImageDetailReflect,
             agent::MessageParts,
-            agent::Run,
-            agent::Ready,
-            agent::Prompt,
-            agent::RunOf,
             agent::Runs,
-            agent::RunSeq,
             agent::RunCounter,
-            agent::StreamRequested,
-            agent::Cursor,
-            agent::Assembling,
-            agent::AwaitingModel,
-            agent::ResolvingTools,
-            agent::Batch,
             agent::ToolCallSlot,
-            agent::Settled,
-            agent::Failed,
             agent::Failure,
-            agent::RunResult,
-            agent::Usage,
-            agent::OutputRetries,
-            agent::InvalidRetries,
-            agent::ProviderRetries,
-            agent::ProviderRetried,
-            agent::ProviderRetrying,
-            agent::OutputToolName,
-            agent::Turn,
-            agent::Advert,
             agent::AdvertisedOn,
-            agent::Outputs,
-            agent::Cancelled,
-            agent::Retry,
-            agent::RequestPatch,
-            agent::Reprompt,
-            agent::InvalidCall,
-            agent::Resolution,
             systems::Fresh,
             systems::Folded,
             systems::Materialised,
@@ -201,6 +144,10 @@ pub fn install_reflect(world: &mut World) {
             MessageReflect,
         ]
     );
+    // The graph's serde lists are the single source of truth for what the
+    // scene persists; reflection registers exactly the same set.
+    crate::agent::scene::graph_components!(register_named!(registry));
+    crate::agent::scene::graph_relations!(register_named!(registry));
 }
 
 /// One entity of a [`ReflectedScene`]: its reflected components, in type

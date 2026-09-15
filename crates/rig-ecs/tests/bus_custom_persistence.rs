@@ -1,12 +1,5 @@
 //! Typed custom answers retain every JSON shape through logs and scenes.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic
-)]
-
 use crate::bus_support;
 
 use rig_core::effect::CustomEffect;

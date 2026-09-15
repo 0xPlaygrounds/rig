@@ -1,11 +1,4 @@
 //! Durable published results are observable output, not ambient inputs.
-#![allow(
-    clippy::unwrap_used,
-    clippy::expect_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
-
 use crate::bus_support;
 
 use bevy_ecs::prelude::*;

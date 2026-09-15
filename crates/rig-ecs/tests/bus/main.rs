@@ -1,5 +1,16 @@
 //! Bus integration suites with shared support compiled once.
 
+#![allow(
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::panic,
+    clippy::unreachable,
+    clippy::indexing_slicing,
+    clippy::type_complexity,
+    dead_code,
+    reason = "test suites assert directly and share support each uses part of"
+)]
+
 #[path = "../bus_custom_persistence.rs"]
 mod bus_custom_persistence;
 #[path = "../bus_delivery.rs"]

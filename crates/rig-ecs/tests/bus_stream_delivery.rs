@@ -1,11 +1,4 @@
 //! Independent live consumers and policy replay observe actual delivery batches.
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic
-)]
-
 use crate::bus_support;
 use crate::run_support;
 
@@ -69,12 +62,16 @@ impl Serve for WithErrors {
     }
 }
 
+/// Spawn a streaming completion effect on `key`.
+fn spawn_stream(app: &mut bevy_app::App, key: &str) -> Entity {
+    app.world_mut()
+        .spawn(PendingEffect::new(key, bus_support::streaming()))
+        .id()
+}
+
 fn run(app: &mut bevy_app::App) -> Entity {
     bus_support::register(app, "model", WithErrors);
-    let effect = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", bus_support::streaming()))
-        .id();
+    let effect = spawn_stream(app, "model");
     bus_support::tick_until(app, "stream closed", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
@@ -132,10 +129,7 @@ fn policy_replay_preserves_notification_batches_and_scene_load_emits_none() {
     })
     .unwrap()
     .unwrap();
-    let effect = replay
-        .world_mut()
-        .spawn(PendingEffect::new("model", bus_support::streaming()))
-        .id();
+    let effect = spawn_stream(&mut replay, "model");
     bus_support::tick_until(&mut replay, "replayed stream", |world| {
         world.get::<EffectOutcome>(effect).is_some()
     });
@@ -186,10 +180,7 @@ fn terminal_delivery_remains_readable_when_an_observer_despawns_the_effect() {
         );
     }
     bus_support::register(&mut app, "model", WithErrors);
-    let effect = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", bus_support::streaming()))
-        .id();
+    let effect = spawn_stream(&mut app, "model");
     bus_support::tick_until(&mut app, "consumer removed effect", |world| {
         world.get_entity(effect).is_err()
     });
@@ -224,10 +215,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
     let mut app = bus_support::app();
     let (sender, receiver) = futures::channel::mpsc::unbounded();
     bus_support::register(&mut app, "model", Controlled(Mutex::new(Some(receiver))));
-    let effect = app
-        .world_mut()
-        .spawn(PendingEffect::new("model", bus_support::streaming()))
-        .id();
+    let effect = spawn_stream(&mut app, "model");
     sender.unbounded_send(text("early α")).unwrap();
     bus_support::tick_until(&mut app, "initial prefix", |world| {
         world
@@ -307,13 +295,7 @@ fn burst_delivery_is_bounded_and_does_not_starve_another_effect() {
             ..bus_support::MockModel::new(&counters)
         },
     );
-    let effects: Vec<_> = (0..2)
-        .map(|_| {
-            app.world_mut()
-                .spawn(PendingEffect::new("model", bus_support::streaming()))
-                .id()
-        })
-        .collect();
+    let effects: Vec<_> = (0..2).map(|_| spawn_stream(&mut app, "model")).collect();
     bus_support::tick_until(&mut app, "both streams deliver", |world| {
         effects.iter().all(|e| {
             world
@@ -405,10 +387,7 @@ fn cancellation_and_truncated_closure_do_not_fabricate_delivery_items() {
         let trace = observe(&mut app);
         let (sender, receiver) = futures::channel::mpsc::unbounded();
         bus_support::register(&mut app, "model", Controlled(Mutex::new(Some(receiver))));
-        let effect = app
-            .world_mut()
-            .spawn(PendingEffect::new("model", bus_support::streaming()))
-            .id();
+        let effect = spawn_stream(&mut app, "model");
         sender.unbounded_send(text("partial")).unwrap();
         bus_support::tick_until(&mut app, "prefix delivered", |_| {
             flattened(&trace).len() == 1
@@ -634,11 +613,7 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
     }
     let effects: Vec<_> = ["a", "b"]
         .into_iter()
-        .map(|key| {
-            live.world_mut()
-                .spawn(PendingEffect::new(key, bus_support::streaming()))
-                .id()
-        })
+        .map(|key| spawn_stream(&mut live, key))
         .collect();
     let original = consumers(&mut live, effects[0], effects[1]);
     bus_support::tick_until(&mut live, "both workers installed", |world| {
@@ -669,12 +644,7 @@ fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effe
     .unwrap();
     let effects: Vec<_> = ["a", "b"]
         .into_iter()
-        .map(|key| {
-            replay
-                .world_mut()
-                .spawn(PendingEffect::new(key, bus_support::streaming()))
-                .id()
-        })
+        .map(|key| spawn_stream(&mut replay, key))
         .collect();
     let replayed = consumers(&mut replay, effects[0], effects[1]);
     bus_support::tick_until(&mut replay, "replayed accepted deliveries", |_| {

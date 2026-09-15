@@ -1,12 +1,5 @@
 //! Reconstruct and verify the actual replay world from serialized metadata.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::indexing_slicing,
-    clippy::panic
-)]
-
 use crate::run_support;
 
 use bevy_ecs::prelude::*;

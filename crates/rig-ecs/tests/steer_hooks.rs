@@ -14,14 +14,6 @@
 //! | `RequestPatch` on the turn and `Resolution` on the invalid call survive a scene the same way | `a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load` |
 //! | `Cancelled` is read at once; the scene carries it and the ending it made, and the loaded run stays ended when the re-issued effect answers | `a_cancel_written_before_a_save_is_the_ending_after_the_load` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
-)]
-
 use crate::run_support;
 
 use std::sync::{Arc, Mutex};
@@ -57,12 +49,6 @@ fn add_system<M>(
         .add_systems(RigSchedule, system);
 }
 
-fn ended(app: &mut bevy_app::App, run: Entity, what: &str) {
-    tick_until(app, what, |world| {
-        world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
-    });
-}
-
 fn records(app: &bevy_app::App) -> Vec<String> {
     app.world()
         .resource::<EffectLogResource>()
@@ -77,9 +63,7 @@ fn records(app: &bevy_app::App) -> Vec<String> {
 fn cancelled_at_start_dispatches_nothing_and_names_the_reason() {
     let mut app = app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let (model, _) = Capturing::new(MODEL, "never");
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, _) = capturing_agent(&mut app, MODEL, MODEL, "never");
     let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     app.world_mut()
         .entity_mut(run)
@@ -112,9 +96,7 @@ fn stop_in_patch(
 fn cancelled_in_patch_leaves_no_record() {
     let mut app = app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let (model, requests) = Capturing::new(MODEL, "never");
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, requests) = capturing_agent(&mut app, MODEL, MODEL, "never");
     add_system(&mut app, stop_in_patch.in_set(RigSet::Patch));
     let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     ended(&mut app, run, "cancelled");
@@ -156,9 +138,7 @@ fn patch_the_turn(fresh: Query<Entity, Added<Fresh>>, mut commands: Commands) {
 #[test]
 fn a_request_patch_is_folded_into_the_turn() {
     let mut app = app();
-    let (model, requests) = Capturing::new(MODEL, "Ada");
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
+    let (agent, requests) = capturing_agent(&mut app, MODEL, MODEL, "Ada");
     let document = app
         .world_mut()
         .spawn((
@@ -220,15 +200,14 @@ fn demand_done(
 #[test]
 fn a_retry_with_feedback_asks_again() {
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![
             vec![AssistantContent::text("first")],
             vec![AssistantContent::text("second DONE")],
         ],
     );
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
@@ -260,12 +239,11 @@ fn a_retry_written_on_an_empty_turn_asks_again() {
     // before the empty settlement: the feedback is history, the empty
     // turn is not, and the next turn answers.
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![Vec::new(), vec![AssistantContent::text("second DONE")]],
     );
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));
@@ -312,11 +290,9 @@ fn route_first_turn(
 fn uses_model_written_before_select_routes_the_turn() {
     let mut app = app();
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
-    let (model, _) = Capturing::new(MODEL, "slow");
-    let model = register(&mut app, MODEL, model);
+    let (agent, _) = capturing_agent(&mut app, MODEL, MODEL, "slow");
     let (fast, _) = Capturing::new(FAST, "fast");
     let fast = register(&mut app, FAST, fast);
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .spawn((Route(fast), Order(0), ChildOf(agent)));
     app.insert_resource(Fast(fast));
@@ -345,9 +321,11 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
     // The first world: the turn answered, a `Retry` written on it, the
     // world saved before `Materialise` read it.
     let mut first = app();
-    let (model, _) = Scripted::new(MODEL, vec![vec![AssistantContent::text("first")]]);
-    let model = register(&mut first, MODEL, model);
-    let agent = spawn_agent(first.world_mut(), "t", model);
+    let (agent, _) = scripted_agent(
+        &mut first,
+        MODEL,
+        vec![vec![AssistantContent::text("first")]],
+    );
     first
         .world_mut()
         .entity_mut(agent)
@@ -619,15 +597,14 @@ fn a_cancel_written_before_a_save_is_the_ending_after_the_load() {
 fn a_part_patch_is_not_sticky_on_a_judge_retry() {
     use rig_ecs::agent::content::parts::{EditTarget, RequestPartEdit, TextPart};
     let mut app = app();
-    let (model, requests) = Scripted::new(
+    let (agent, requests) = scripted_agent(
+        &mut app,
         MODEL,
         vec![
             vec![AssistantContent::text("first")],
             vec![AssistantContent::text("second DONE")],
         ],
     );
-    let model = register(&mut app, MODEL, model);
-    let agent = spawn_agent(app.world_mut(), "t", model);
     app.world_mut()
         .entity_mut(agent)
         .insert(rig_ecs::agent::MaxTurns(3));

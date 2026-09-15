@@ -1,13 +1,12 @@
 //! Execution permissions are distinct from the request's advertisements.
 //! Synthetic models make denied and unadvertised calls deliberately; provider
 //! recordings cannot guarantee these adversarial choices on every recapture.
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
 use rig_core::{effect::HandlerKey, message::AssistantContent};
 use rig_ecs::{
-    agent::{Failed, Failure, Grant, Order, Settled, ToolAccess, Turn},
+    agent::{Failed, Failure, Grant, Order, ToolAccess, Turn},
     systems::RunCommands,
 };
 use run_support::*;
@@ -87,9 +86,7 @@ fn explicit_execution_binding_can_serve_an_unadvertised_tool() {
         allowed: None,
     });
     let run = app.world_mut().spawn_run(agent, &[], "add", false, Some(2));
-    tick_until(&mut app, "hidden tool completes", |world| {
-        world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
-    });
+    ended(&mut app, run, "hidden tool completes");
     assert!(
         app.world().get::<Failed>(run).is_none(),
         "{:?}",

@@ -1,5 +1,4 @@
 //! Typed graph round-trips and malformed content rejection.
-#![allow(clippy::unwrap_used, clippy::expect_used)]
 use bevy_ecs::prelude::*;
 use rig_core::message::*;
 use rig_ecs::agent::content::{binary::*, parts::*};

@@ -349,7 +349,7 @@ impl Materializer {
     /// serves it. What [`materialize_bindings`] registers; a host can also
     /// build one to register itself.
     pub fn build(&self, binding: &ProviderBinding) -> Result<ErasedHandler, MaterializeError> {
-        validate_extra_params(binding)?;
+        extra_object(binding, allowed_extra_params(binding.kind))?;
         let secret = self.resolve(&binding.credential).map_err(|detail| {
             MaterializeError::MissingCredential {
                 key: binding.key.clone(),
@@ -404,12 +404,6 @@ fn allowed_extra_params(kind: ProviderKind) -> &'static [&'static str] {
         ProviderKind::OpenAiResponses => &["system_instructions_as_messages"],
         ProviderKind::OpenAiChat | ProviderKind::Gemini | ProviderKind::DeepSeek => &[],
     }
-}
-
-/// Refuse `extra_params` the kind does not take, before any credential is
-/// resolved or transport built.
-fn validate_extra_params(binding: &ProviderBinding) -> Result<(), MaterializeError> {
-    extra_object(binding, allowed_extra_params(binding.kind)).map(|_| ())
 }
 
 fn client_error(binding: &ProviderBinding, error: impl std::fmt::Display) -> MaterializeError {

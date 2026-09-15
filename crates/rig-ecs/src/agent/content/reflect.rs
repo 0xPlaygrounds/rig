@@ -1,64 +1,27 @@
 //! Reflection wrappers for shared transport DTOs; typed ECS part fields remain visible.
-use bevy_reflect::{ReflectDeserialize, ReflectSerialize, reflect_remote};
+
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 use rig_core::message;
-use serde::{Deserialize, Serialize};
 
-/// Reflected shared transport value `message::Text`.
-#[reflect_remote(message::Text)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TextPartReflect {}
-
-/// Reflected shared transport value `message::ToolCall`.
-#[reflect_remote(message::ToolCall)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ToolCallPartReflect {}
-
-/// Reflected shared transport value `message::Reasoning`.
-#[reflect_remote(message::Reasoning)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ReasoningPartReflect {}
-
-/// Reflected shared transport value `serde_json::Value`.
-#[reflect_remote(serde_json::Value)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct JsonPartReflect {}
-
-/// Reflected shared transport value `Option<message::ImageMediaType>`.
-#[reflect_remote(Option<message::ImageMediaType>)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ImageMediaReflect {}
-
-/// Reflected shared transport value `Option<message::AudioMediaType>`.
-#[reflect_remote(Option<message::AudioMediaType>)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AudioMediaReflect {}
-
-/// Reflected shared transport value `Option<message::VideoMediaType>`.
-#[reflect_remote(Option<message::VideoMediaType>)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct VideoMediaReflect {}
-
-/// Reflected shared transport value `Option<message::DocumentMediaType>`.
-#[reflect_remote(Option<message::DocumentMediaType>)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct DocumentMediaReflect {}
-
-/// Reflected shared transport value `Option<message::AdditionalParams>`.
-#[reflect_remote(Option<message::AdditionalParams>)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct PartParamsReflect {}
-
-/// Reflected shared transport value `Option<message::ImageDetail>`.
-#[reflect_remote(Option<message::ImageDetail>)]
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[reflect(opaque, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ImageDetailReflect {}
+crate::reflect::opaque_reflect! {
+    /// Reflected shared transport value `message::Text`.
+    struct TextPartReflect(message::Text): PartialEq;
+    /// Reflected shared transport value `message::ToolCall`.
+    struct ToolCallPartReflect(message::ToolCall): PartialEq;
+    /// Reflected shared transport value `message::Reasoning`.
+    struct ReasoningPartReflect(message::Reasoning): PartialEq;
+    /// Reflected shared transport value `serde_json::Value`.
+    struct JsonPartReflect(serde_json::Value): PartialEq;
+    /// Reflected shared transport value `Option<message::ImageMediaType>`.
+    struct ImageMediaReflect(Option<message::ImageMediaType>): PartialEq;
+    /// Reflected shared transport value `Option<message::AudioMediaType>`.
+    struct AudioMediaReflect(Option<message::AudioMediaType>): PartialEq;
+    /// Reflected shared transport value `Option<message::VideoMediaType>`.
+    struct VideoMediaReflect(Option<message::VideoMediaType>): PartialEq;
+    /// Reflected shared transport value `Option<message::DocumentMediaType>`.
+    struct DocumentMediaReflect(Option<message::DocumentMediaType>): PartialEq;
+    /// Reflected shared transport value `Option<message::AdditionalParams>`.
+    struct PartParamsReflect(Option<message::AdditionalParams>): PartialEq;
+    /// Reflected shared transport value `Option<message::ImageDetail>`.
+    struct ImageDetailReflect(Option<message::ImageDetail>): PartialEq;
+}
