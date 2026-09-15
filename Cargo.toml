@@ -83,6 +83,14 @@ exclude = [
 # `sync.rs`); a build flag, not a feature, and crate-specific so no
 # dependency reacts to it (`event-listener` reacts to a bare `loom`).
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(rig_loom)'] }
+# No `unsafe` in rig. `deny` rather than `forbid` so the handful of
+# unavoidable sites can carry an audited `#[expect(unsafe_code, reason = …)]`:
+# `std::env::set_var` (unsafe since edition 2024) in build scripts and tests,
+# and the `sqlite3_auto_extension` FFI registration. Every such site is an
+# exemption with a written reason, and `expect` makes an obsolete one a
+# warning. New `unsafe` needs a reason a reviewer accepts, not a local
+# `#[allow]`.
+unsafe_code = "deny"
 
 [workspace.lints.clippy]
 dbg_macro = "forbid"

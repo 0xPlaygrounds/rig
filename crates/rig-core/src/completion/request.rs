@@ -650,7 +650,8 @@ impl AddAssign for Usage {
 /// enabling flags with the `with_*` methods: that form keeps external
 /// implementations compiling when new capabilities are added, where a struct
 /// literal does not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct ProviderCapabilities {
     /// Whether this provider's native structured output (`output_schema` ->
     /// `format`/`response_format`) composes with tool calls in the same
@@ -662,6 +663,50 @@ pub struct ProviderCapabilities {
     /// OpenAI, Anthropic) set this to `true`, which lets runtimes keep
     /// guaranteed native structured output active when tools are present.
     pub composes_native_output_with_tools: bool,
+    /// Whether this provider puts [`CompletionRequest::output_schema`] on the
+    /// wire at all.
+    ///
+    /// `true` is the historical assumption and stays the default, because most
+    /// providers do. A provider that drops the field — it has no native
+    /// structured-output surface, or its request builder never reads it —
+    /// declares `false`, so a runtime choosing between native output and an
+    /// output tool can tell "the model will be constrained by the schema"
+    /// apart from "the schema will be silently discarded". Without it a
+    /// caller's schema can vanish between the request and the wire and the
+    /// answer still be reported as structured.
+    ///
+    /// This is a different question from
+    /// [`Self::composes_native_output_with_tools`], which asks whether native
+    /// output survives *alongside tools*; a provider can support the schema
+    /// and still not compose it with tool calls.
+    ///
+    /// Serialized only when it is `false`: the default is the historical
+    /// behaviour, so a log or descriptor recorded before this capability
+    /// existed reads back identically and a replay identity does not move
+    /// for a provider whose answer to the question never changed.
+    #[serde(
+        default = "carries_native_output_schema",
+        skip_serializing_if = "carries_native_output_schema_ref"
+    )]
+    pub supports_native_output_schema: bool,
+}
+
+const fn carries_native_output_schema() -> bool {
+    true
+}
+
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "serde's skip_serializing_if takes the field by reference"
+)]
+fn carries_native_output_schema_ref(supported: &bool) -> bool {
+    *supported
+}
+
+impl Default for ProviderCapabilities {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl ProviderCapabilities {
@@ -669,12 +714,19 @@ impl ProviderCapabilities {
     pub const fn new() -> Self {
         Self {
             composes_native_output_with_tools: false,
+            supports_native_output_schema: true,
         }
     }
 
     /// Declare whether native structured output composes with tool calls.
     pub const fn with_native_output_tool_composition(mut self, supported: bool) -> Self {
         self.composes_native_output_with_tools = supported;
+        self
+    }
+
+    /// Declare whether the provider sends `output_schema` to the wire.
+    pub const fn with_native_output_schema(mut self, supported: bool) -> Self {
+        self.supports_native_output_schema = supported;
         self
     }
 }

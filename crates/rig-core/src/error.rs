@@ -260,6 +260,37 @@ pub const fn retryable_status(status: Option<u16>) -> bool {
     }
 }
 
+/// The one provider-code → retryable table, for a reply that carries the
+/// provider's own machine code but no HTTP status: an error frame delivered
+/// inside a stream, or a gRPC/SDK transport that reports a code and nothing
+/// else.
+///
+/// Transient: the provider says it is busy, throttled, or broke on its own
+/// side — the same call may well succeed. Anything else, including a spent
+/// quota (`insufficient_quota`, which a retry cannot cure) and every code
+/// the table does not know, decides nothing: the caller falls back to what
+/// the transport said.
+///
+/// Matched case-insensitively, because the same condition is spelled
+/// `overloaded_error` by Anthropic, `UNAVAILABLE` by gRPC and `server_error`
+/// by the OpenAI-compatible wires.
+pub fn transient_provider_code(code: &str) -> bool {
+    matches!(
+        code.to_ascii_lowercase().as_str(),
+        "overloaded"
+            | "overloaded_error"
+            | "rate_limit_error"
+            | "rate_limit_exceeded"
+            | "too_many_requests"
+            | "resource_exhausted"
+            | "server_error"
+            | "internal"
+            | "internal_error"
+            | "service_unavailable"
+            | "unavailable"
+    )
+}
+
 /// The one transport-failure → retryable table, for the failures that
 /// carry no HTTP status.
 ///

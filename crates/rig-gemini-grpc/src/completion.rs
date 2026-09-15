@@ -123,6 +123,14 @@ impl CompletionModel {
 }
 
 impl completion::CompletionModel for CompletionModel {
+    /// This crate never puts `output_schema` on the wire: the request builder
+    /// does not read it. Declaring that keeps a runtime from reporting an
+    /// unconstrained answer as schema-constrained — `rig-ecs` routes a
+    /// schema-bearing run to its output tool instead.
+    fn capabilities(&self) -> completion::ProviderCapabilities {
+        completion::ProviderCapabilities::default().with_native_output_schema(false)
+    }
+
     async fn completion(
         &self,
         completion_request: CompletionRequest,
@@ -208,15 +216,38 @@ pub(crate) fn create_grpc_request(
     let CompletionRequest {
         model: _,
         chat_history,
-        documents: _,
+        documents,
         tools,
         temperature,
         max_tokens,
-        tool_choice: _,
-        additional_params: _,
-        output_schema: _,
+        tool_choice,
+        additional_params,
+        output_schema,
         record_telemetry_content: _,
     } = completion_request;
+
+    // This transport carries none of these. Saying so is the difference
+    // between an unsupported feature and a silent one: a caller that set a
+    // schema otherwise gets an answer shaped by nothing and no way to know.
+    if !documents.is_empty() {
+        tracing::warn!(
+            documents = documents.len(),
+            "the Gemini gRPC transport does not carry documents; ignoring them"
+        );
+    }
+    if output_schema.is_some() {
+        tracing::warn!(
+            "the Gemini gRPC transport does not carry a native output schema; ignoring output_schema"
+        );
+    }
+    if tool_choice.is_some() {
+        tracing::warn!("the Gemini gRPC transport does not carry a tool choice; ignoring it");
+    }
+    if additional_params.is_some() {
+        tracing::warn!(
+            "the Gemini gRPC transport does not carry additional parameters; ignoring them"
+        );
+    }
 
     let (history_system, mut chat_history) = split_system_messages_from_history(chat_history);
     // functionResponse.name keys the replay: cross-provider ingested

@@ -2,6 +2,10 @@ fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     compile_gemini_protos()
 }
 
+#[expect(
+    unsafe_code,
+    reason = "std::env::set_var is unsafe since edition 2024; a build script is single-threaded before it spawns anything"
+)]
 fn compile_gemini_protos() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     unsafe {
         std::env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path()?);

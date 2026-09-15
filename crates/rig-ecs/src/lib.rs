@@ -43,6 +43,10 @@
 //! evidence for a later crate-boundary decision; they do not require an
 //! automatic extraction into a separate `rig-bevy` crate.
 
+// This crate has no `unsafe`, and the effect bus's task ownership must never
+// acquire any: `forbid` cannot be lifted by a local attribute.
+#![forbid(unsafe_code)]
+
 pub mod agent;
 #[cfg(feature = "assets")]
 pub mod assets;

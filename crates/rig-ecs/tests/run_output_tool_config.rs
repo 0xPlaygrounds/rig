@@ -417,3 +417,117 @@ fn description_only_configuration_keeps_collision_safe_automatic_naming() {
         Some("final_result_1")
     );
 }
+
+/// A model that declares it never puts `output_schema` on the wire - the
+/// seven OpenAI-compatible droppers' honest descriptor - and answers a
+/// script.
+struct Dropping {
+    label: String,
+    turns: std::sync::Mutex<std::collections::VecDeque<Vec<AssistantContent>>>,
+}
+
+impl rig_core::serve::Serve for Dropping {
+    type Family = rig_core::effect::family::Completion;
+
+    fn descriptor(&self) -> rig_core::effect::HandlerDescriptor {
+        rig_core::effect::HandlerDescriptor {
+            key: rig_core::effect::HandlerKey::from(self.label.as_str()),
+            family: rig_core::effect::FamilyDescriptor::Completion {
+                model: rig_core::completion::ModelRef::new(self.label.as_str()),
+                capabilities: rig_core::completion::ProviderCapabilities::default()
+                    .with_native_output_schema(false),
+            },
+            layers: Vec::new(),
+        }
+    }
+
+    async fn serve(
+        &self,
+        kind: rig_core::effect::EffectKind,
+        _dispatch: rig_core::serve::Dispatch,
+    ) -> rig_core::serve::Reply {
+        match kind {
+            rig_core::effect::EffectKind::Completion { .. } => {
+                let choice = self
+                    .turns
+                    .lock()
+                    .unwrap()
+                    .pop_front()
+                    .unwrap_or_else(|| vec![AssistantContent::text("still prose")]);
+                rig_core::serve::Reply::Outcome(Ok(rig_core::effect::Outcome::Completion(
+                    rig_core::completion::CompletionResponse::new(
+                        choice,
+                        rig_core::completion::Usage::new(),
+                        "dropping",
+                    ),
+                )))
+            }
+            other => rig_core::serve::Reply::Outcome(Err(rig_core::error::ErrorReport::new(
+                rig_core::error::ErrorKind::HandlerUnavailable,
+                format!("a model cannot serve {}", other.name()),
+            ))),
+        }
+    }
+}
+
+fn dropping_agent(app: &mut bevy_app::App, turns: Vec<Vec<AssistantContent>>) -> Entity {
+    let model = register(
+        app,
+        MODEL,
+        Dropping {
+            label: MODEL.to_owned(),
+            turns: std::sync::Mutex::new(turns.into()),
+        },
+    );
+    let agent = spawn_agent(app.world_mut(), "t", model);
+    app.world_mut().entity_mut(agent).insert(Output {
+        mode: OutputKind::Native,
+        ..schema()
+    });
+    agent
+}
+
+/// A `Native` run against a provider that never carries the schema gets
+/// prose back. Nothing on the wire enforced the schema and no output tool
+/// validated it, so the run reprompts rather than reporting the prose as
+/// the structured result.
+#[test]
+fn a_native_run_does_not_settle_on_an_answer_that_misses_the_schema() {
+    let mut app = app();
+    let agent = dropping_agent(
+        &mut app,
+        vec![
+            vec![AssistantContent::text("forty two, roughly")],
+            vec![AssistantContent::text("{\"answer\":42}")],
+        ],
+    );
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, Some(3));
+    settle(&mut app, run);
+    assert_eq!(
+        app.world().get::<OutputRetries>(run).map(|spent| spent.0),
+        Some(1),
+        "the prose answer cost one reprompt"
+    );
+}
+
+/// The reprompt is spent once: a run whose model never answers the schema
+/// settles on its last word rather than looping.
+#[test]
+fn a_native_run_settles_once_the_schema_reprompt_is_spent() {
+    let mut app = app();
+    let agent = dropping_agent(&mut app, vec![]);
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "extract", false, Some(3));
+    tick_until(&mut app, "prose settlement", |world| {
+        world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
+    });
+    assert!(app.world().get::<Failed>(run).is_none());
+    assert_eq!(app.world().get::<RunResult>(run).unwrap().0, "still prose");
+    assert_eq!(
+        app.world().get::<OutputRetries>(run).map(|spent| spent.0),
+        Some(1)
+    );
+}

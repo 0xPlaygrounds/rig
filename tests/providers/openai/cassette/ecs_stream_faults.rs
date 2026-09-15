@@ -274,7 +274,17 @@ async fn error_event_after_content_fails_with_the_provider_error() {
             STREAMING_PREAMBLE,
             STREAMING_PROMPT,
             witness,
-            |_| {},
+            // The frame says `server_error`, which is transient, so the run
+            // would re-issue and this cell would observe two streams. It is
+            // about how the fault reaches the run, not about the retry, so
+            // the budget is spent to zero as the truncation cell does.
+            |ecs| {
+                let agent = ecs.agent;
+                ecs.app
+                    .world_mut()
+                    .entity_mut(agent)
+                    .insert(rig_ecs::agent::ProviderRetries(0));
+            },
         )
         .await;
         let report = run.provider_report();
@@ -308,7 +318,11 @@ async fn error_event_after_content_fails_with_the_provider_error() {
             boundary: AdapterErrorBoundary::ProviderResponse,
             kind: "provider_response".into(),
             status: None,
-            retryable: false,
+            // The frame carries no status, so its `server_error` code is the
+            // only thing it says about itself: transient, and retried when the
+            // run has budget (this cell spends it to zero to stay about the
+            // fault rather than the retry).
+            retryable: true,
         },
     );
     assert!(

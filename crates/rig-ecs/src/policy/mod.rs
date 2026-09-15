@@ -55,6 +55,16 @@ pub mod text {
         )
     }
 
+    /// The reprompt when the answer came back as prose and no output tool
+    /// was due (a `Native` or `Prompted` run, or a provider that never put
+    /// the schema on the wire); `{schema}` is the schema's canonical
+    /// rendering.
+    pub fn reprompt_unstructured_answer(schema: &str) -> String {
+        format!(
+            "Your answer must be a single JSON object that conforms to this JSON Schema, with no prose, explanation, or markdown code fences.\n{schema}"
+        )
+    }
+
     /// The separator between the preamble and an augmentation.
     pub const AUGMENTATION_SEPARATOR: &str = "\n\n";
 
@@ -81,6 +91,14 @@ pub fn output_tool_callable(choice: Option<&ToolChoice>, name: &str) -> bool {
 /// only with a real tool of the program's own, a permitting choice, and a
 /// provider that does not compose native output with tools — else
 /// `Native`.
+///
+/// Note: a provider may advertise
+/// [`ProviderCapabilities::supports_native_output_schema`](rig_core::completion::ProviderCapabilities)
+/// as `false`, meaning it never puts the schema on the wire. This function
+/// does **not** route around that yet: doing so changes the request every
+/// affected run sends, which the recorded parity corpus pins for seven
+/// providers whose keys were unavailable. Until those are re-recorded, a host
+/// on such a provider should set `OutputKind::Tool` itself.
 pub fn resolve_output(
     mode: OutputKind,
     has_schema: bool,

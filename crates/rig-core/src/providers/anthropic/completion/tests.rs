@@ -15,6 +15,32 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
     assert_eq!(default_max_tokens_for_model(CLAUDE_HAIKU_4_5), Some(64_000));
 }
 
+/// A model family missing from the table has no default, and the request
+/// prelude refuses a call that supplies none — so an absent family is not a
+/// smaller answer, it is a run that cannot start (rig#2210's sibling).
+#[test]
+fn claude_5_models_have_a_default_max_tokens() {
+    assert_eq!(
+        default_max_tokens_for_model("claude-opus-5"),
+        Some(128_000),
+        "Anthropic publishes 128K synchronous output for Claude Opus 5"
+    );
+    assert_eq!(
+        default_max_tokens_for_model("claude-sonnet-5"),
+        Some(128_000),
+        "Anthropic publishes 128K synchronous output for Claude Sonnet 5"
+    );
+    // Dated snapshots of the same families resolve through the prefix.
+    assert_eq!(
+        default_max_tokens_for_model("claude-opus-5-20260514"),
+        Some(128_000)
+    );
+    assert_eq!(
+        default_max_tokens_for_model("claude-sonnet-5-20260514"),
+        Some(128_000)
+    );
+}
+
 #[test]
 fn unknown_model_uses_conservative_default_max_tokens_fallback() {
     assert_eq!(default_max_tokens_for_model("claude-unknown"), None);

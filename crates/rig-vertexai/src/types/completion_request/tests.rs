@@ -803,3 +803,67 @@ fn generation_config_rejects_invalid_thinking_config() {
             .contains("thinking_budget and thinking_level cannot both be set")
     );
 }
+
+/// A warning sink: the crate reports a dropped field through `tracing`, so
+/// the test reads what a host's subscriber would see.
+#[derive(Clone, Default)]
+struct WarningSink(std::sync::Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for WarningSink {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().expect("sink").extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl tracing_subscriber::fmt::MakeWriter<'_> for WarningSink {
+    type Writer = Self;
+
+    fn make_writer(&self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+impl WarningSink {
+    fn captured(&self) -> String {
+        String::from_utf8_lossy(&self.0.lock().expect("sink")).into_owned()
+    }
+
+    /// Run `body` with this sink as the only warning subscriber.
+    fn capture(body: impl FnOnce()) -> String {
+        let sink = Self::default();
+        let subscriber = tracing_subscriber::fmt()
+            .with_writer(sink.clone())
+            .with_max_level(tracing::Level::WARN)
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::with_default(subscriber, body);
+        sink.captured()
+    }
+}
+
+/// This transport never puts `output_schema` or `documents` on the wire.
+/// Dropping them silently let a caller believe the answer was schema
+/// constrained, so the drop is reported and the capability says so.
+#[test]
+fn a_dropped_schema_and_documents_are_reported() {
+    let mut request = minimal_request();
+    request.output_schema = Some(
+        rig_core::schemars::Schema::try_from(serde_json::json!({"type": "object"}))
+            .expect("an object schema"),
+    );
+    request.documents = vec![rig_core::completion::Document {
+        id: "d".to_owned(),
+        text: "t".to_owned(),
+        additional_props: std::collections::HashMap::new(),
+    }];
+
+    let warnings = WarningSink::capture(|| VertexCompletionRequest(request).warn_unsupported());
+
+    assert!(warnings.contains("output_schema"), "{warnings}");
+    assert!(warnings.contains("documents"), "{warnings}");
+}

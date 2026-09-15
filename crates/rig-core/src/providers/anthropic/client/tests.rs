@@ -8,6 +8,10 @@ struct EnvVarGuard {
 }
 
 impl EnvVarGuard {
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var is unsafe since edition 2024; see the SAFETY comment below"
+    )]
     fn set(key: &'static str, value: &str) -> Self {
         let original = std::env::var(key).ok();
         // SAFETY: Tests in this module hold ENV_LOCK while mutating process
@@ -17,6 +21,10 @@ impl EnvVarGuard {
         Self { key, original }
     }
 
+    #[expect(
+        unsafe_code,
+        reason = "std::env::remove_var is unsafe since edition 2024; see the SAFETY comment below"
+    )]
     fn remove(key: &'static str) -> Self {
         let original = std::env::var(key).ok();
         // SAFETY: Tests in this module hold ENV_LOCK while mutating process
@@ -28,6 +36,10 @@ impl EnvVarGuard {
 }
 
 impl Drop for EnvVarGuard {
+    #[expect(
+        unsafe_code,
+        reason = "std::env::set_var/remove_var are unsafe since edition 2024; see the SAFETY comment below"
+    )]
     fn drop(&mut self) {
         // SAFETY: Tests in this module hold ENV_LOCK while mutating process
         // environment and restore the original value before releasing it.
