@@ -10,14 +10,14 @@ fn custom() -> EffectKind {
     }
 }
 
-fn world_with_capacity(command_capacity: usize, pending: usize) -> World {
-    let mut world = World::new();
-    crate::bus::Bus::with_policy(ServingPolicy {
+fn app_with_capacity(command_capacity: usize, pending: usize) -> App {
+    let mut app = App::new();
+    app.add_plugins(BusPlugin::with_policy(ServingPolicy {
         command_capacity,
         ..ServingPolicy::default()
-    })
-    .install(&mut world);
-    Handlers::with(&mut world, |handlers| {
+    }));
+    let world = app.world_mut();
+    Handlers::with(world, |handlers| {
         handlers.register_open(
             "open",
             FamilyDescriptor::Custom {
@@ -30,43 +30,36 @@ fn world_with_capacity(command_capacity: usize, pending: usize) -> World {
     for _ in 0..pending {
         world.spawn(PendingEffect::new("open", custom()));
     }
-    world
+    app
 }
 
-fn issued(world: &mut World) -> usize {
+fn issued(app: &mut App) -> usize {
+    let world = app.world_mut();
     world.query::<&Issued>().iter(world).count()
 }
 
-/// The intake bound measures issues per tick: the runner takes at most
-/// `command_capacity` effects in one tick, however many passes the tick
-/// runs, and the rest wait for later ticks rather than for anything else.
+/// The intake bound measures issues per update: one update takes at most
+/// `command_capacity` effects, and the rest wait for later updates rather
+/// than for anything else.
 #[test]
-fn the_runner_bounds_intake_per_tick_and_the_rest_wait_for_later_ticks() {
-    let mut world = world_with_capacity(2, 5);
-    run_to_quiescence(&mut world);
-    assert_eq!(issued(&mut world), 2, "one tick issues at most the bound");
-    run_to_quiescence(&mut world);
-    assert_eq!(issued(&mut world), 4);
-    run_to_quiescence(&mut world);
-    assert_eq!(issued(&mut world), 5);
+fn an_update_bounds_intake_and_the_rest_wait_for_later_updates() {
+    let mut app = app_with_capacity(2, 5);
+    app.update();
+    assert_eq!(issued(&mut app), 2, "one update issues at most the bound");
+    app.update();
+    assert_eq!(issued(&mut app), 4);
+    app.update();
+    assert_eq!(issued(&mut app), 5);
 }
 
-/// A host that runs `RigSchedule` itself, pass by pass (as `DeliveryBatch`
-/// and the collection budget support), never calls the runner that resets
-/// the tick's intake. Each of its passes is a tick for the bound: a queue
-/// longer than `command_capacity` drains over several passes instead of
-/// stalling at the bound for the life of the world.
+/// A finished task raises the wake; a runner waiting on it returns at once,
+/// and an untouched wake times out as not raised.
 #[test]
-fn a_host_driven_pass_is_a_tick_for_the_intake_bound() {
-    let mut world = world_with_capacity(2, 5);
-    world.run_schedule(RigSchedule);
-    assert_eq!(issued(&mut world), 2, "one pass issues at most the bound");
-    for _ in 0..4 {
-        world.run_schedule(RigSchedule);
-    }
-    assert_eq!(
-        issued(&mut world),
-        5,
-        "the intake bound must reset for every host-driven pass"
-    );
+fn the_wake_is_raised_by_signal_and_taken_by_wait() {
+    let wake = Wake::default();
+    assert!(!wake.wait(Duration::from_millis(1)));
+    let raiser = wake.clone();
+    std::thread::spawn(move || raiser.signal());
+    assert!(wake.wait(Duration::from_secs(5)));
+    assert!(!wake.take(), "wait took the signal");
 }

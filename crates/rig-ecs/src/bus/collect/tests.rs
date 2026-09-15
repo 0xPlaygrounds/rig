@@ -39,7 +39,7 @@ fn tracked_stream(
 
 fn world() -> World {
     let mut world = World::new();
-    crate::bus::Bus::with_policy(Default::default()).install(&mut world);
+    crate::bus::BusPlugin::with_policy(Default::default()).install(&mut world);
     world
 }
 
@@ -73,17 +73,13 @@ fn ready(world: &mut World, seq: u64, count: usize) -> Entity {
 }
 
 #[test]
-fn ready_delivery_is_bounded_and_deltas_do_not_spin_quiescence() {
+fn ready_delivery_is_bounded_per_pass() {
     let mut world = world();
     let effect = ready(&mut world, 0, 1000);
-    super::super::plugin::run_to_quiescence(&mut world);
+    world.run_schedule(super::super::plugin::RigSchedule);
     assert_eq!(
         world.get::<Streamed>(effect).unwrap().events.len(),
         STREAM_ITEMS_PER_EFFECT
-    );
-    assert!(
-        !world.resource::<Progress>().0,
-        "deltas do not spin quiescence"
     );
 }
 
@@ -147,12 +143,7 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
 fn whole_tick_allowance_rotates_service_across_hot_effects() {
     let mut world = world();
     let effects: Vec<_> = (0..80).map(|seq| ready(&mut world, seq, 1000)).collect();
-    world.resource_mut::<Schedules>().add_systems(
-        super::super::plugin::RigSchedule,
-        (|mut progress: ResMut<Progress>| progress.mark())
-            .after(super::super::plugin::BusSet::Collect),
-    );
-    super::super::plugin::run_to_quiescence(&mut world);
+    world.run_schedule(super::super::plugin::RigSchedule);
     let delivered = |world: &World| {
         effects
             .iter()
@@ -162,9 +153,9 @@ fn whole_tick_allowance_rotates_service_across_hot_effects() {
     assert_eq!(
         delivered(&world),
         STREAM_WORK_PER_TICK,
-        "repeated quiescence passes share the streaming allowance"
+        "one pass spends the whole allowance"
     );
-    super::super::plugin::run_to_quiescence(&mut world);
+    world.run_schedule(super::super::plugin::RigSchedule);
     assert_eq!(delivered(&world), 2 * STREAM_WORK_PER_TICK);
     assert!(
         effects
@@ -175,42 +166,33 @@ fn whole_tick_allowance_rotates_service_across_hot_effects() {
 }
 
 #[test]
-fn partial_final_pass_rotates_fairly_across_ticks() {
+/// Forty hot effects under the allowance: every pass serves each its
+/// per-effect cap, so five passes give every effect five caps. (Re-recorded
+/// from 512: one pass per update, no quiescence loop spending the whole
+/// allowance in one update.)
+fn hot_effects_under_the_allowance_get_the_per_effect_cap_every_pass() {
     let mut world = world();
     let effects: Vec<_> = (0..40).map(|seq| ready(&mut world, seq, 1000)).collect();
-    world.resource_mut::<Schedules>().add_systems(
-        super::super::plugin::RigSchedule,
-        (|mut progress: ResMut<Progress>| progress.mark())
-            .after(super::super::plugin::BusSet::Collect),
-    );
     for _ in 0..5 {
-        super::super::plugin::run_to_quiescence(&mut world);
+        world.run_schedule(super::super::plugin::RigSchedule);
     }
     let counts: Vec<_> = effects
         .iter()
         .map(|entity| world.get::<Streamed>(*entity).unwrap().events.len())
         .collect();
-    assert_eq!(counts, vec![512; 40]);
+    assert_eq!(counts, vec![5 * STREAM_ITEMS_PER_EFFECT; 40]);
 }
 
 #[test]
-fn repeated_quiescence_cannot_multiply_the_tick_allowance() {
+fn two_hot_effects_get_equal_service_in_one_pass() {
     let mut world = world();
     let first = ready(&mut world, 0, 5000);
     let second = ready(&mut world, 1, 5000);
-    world.resource_mut::<Schedules>().add_systems(
-        super::super::plugin::RigSchedule,
-        (|mut progress: ResMut<Progress>| progress.mark())
-            .after(super::super::plugin::BusSet::Collect),
-    );
-    super::super::plugin::run_to_quiescence(&mut world);
+    world.run_schedule(super::super::plugin::RigSchedule);
     let first = world.get::<Streamed>(first).unwrap().events.len();
     let second = world.get::<Streamed>(second).unwrap().events.len();
-    assert_eq!(first + second, STREAM_WORK_PER_TICK);
-    assert_eq!(
-        first, second,
-        "both ready effects retain equal service across passes"
-    );
+    assert_eq!(first, STREAM_ITEMS_PER_EFFECT);
+    assert_eq!(first, second, "both ready effects get equal service");
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -231,7 +213,11 @@ fn worker_self_wakes_without_collect_and_stalls_on_full_delivery() {
     let mut world = world();
     let polls = Arc::new(AtomicUsize::new(0));
     let drops = Arc::new(AtomicUsize::new(0));
-    let (streaming, task) = Streaming::spawn(tracked_stream(3, polls.clone(), drops.clone()), 4);
+    let (streaming, task) = Streaming::spawn(
+        tracked_stream(3, polls.clone(), drops.clone()),
+        4,
+        Default::default(),
+    );
     let effect = insert(&mut world, streaming, 0);
     world
         .non_send_mut::<Executions>()
@@ -252,13 +238,21 @@ fn scheduled_despawn_replacement_and_shutdown_drop_owned_workers() {
     let mut world = world();
     let polls = Arc::new(AtomicUsize::new(0));
     let drops = Arc::new(AtomicUsize::new(0));
-    let (streaming, task) = Streaming::spawn(tracked_stream(0, polls.clone(), drops.clone()), 1);
+    let (streaming, task) = Streaming::spawn(
+        tracked_stream(0, polls.clone(), drops.clone()),
+        1,
+        Default::default(),
+    );
     let effect = insert(&mut world, streaming, 0);
     world
         .non_send_mut::<Executions>()
         .streams
         .insert(effect, task);
-    let (streaming, task) = Streaming::spawn(tracked_stream(0, polls.clone(), drops.clone()), 1);
+    let (streaming, task) = Streaming::spawn(
+        tracked_stream(0, polls.clone(), drops.clone()),
+        1,
+        Default::default(),
+    );
     world.entity_mut(effect).insert(streaming);
     world
         .non_send_mut::<Executions>()
@@ -272,7 +266,11 @@ fn scheduled_despawn_replacement_and_shutdown_drop_owned_workers() {
     schedule.run(&mut world);
     wait_for(|| drops.load(Ordering::SeqCst) == 2);
     assert!(world.non_send::<Executions>().streams.is_empty());
-    let (streaming, task) = Streaming::spawn(tracked_stream(0, polls, drops.clone()), 1);
+    let (streaming, task) = Streaming::spawn(
+        tracked_stream(0, polls, drops.clone()),
+        1,
+        Default::default(),
+    );
     let effect = insert(&mut world, streaming, 1);
     world
         .non_send_mut::<Executions>()
@@ -292,7 +290,7 @@ fn unary_stream_truncation_counts_items_across_collection_passes() {
     // Exercise the collector's unary fold, with a closed, prefilled receiver.
     world.entity_mut(effect).remove::<Streamed>();
     for _ in 0..4 {
-        super::super::plugin::run_to_quiescence(&mut world);
+        world.run_schedule(super::super::plugin::RigSchedule);
         if world.get::<EffectOutcome>(effect).is_some() {
             break;
         }

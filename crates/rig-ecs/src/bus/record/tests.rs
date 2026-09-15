@@ -55,11 +55,11 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
 /// record takes.
 #[test]
 fn a_despawn_from_the_outcome_observer_still_closes_the_record() {
-    use crate::bus::{Handlers, InFlight, PendingEffect, WorldOutcome, run_to_quiescence};
+    use crate::bus::{Handlers, InFlight, PendingEffect, WorldOutcome};
     use rig_core::effect::FamilyDescriptor;
 
     let mut world = World::new();
-    crate::bus::Bus::with_policy(Default::default()).install(&mut world);
+    crate::bus::BusPlugin::with_policy(Default::default()).install(&mut world);
     let recorder = rig_effect_log::EffectLogRecorder::new();
     Recording::install(&mut world, recorder.clone());
     Handlers::with(&mut world, |handlers| {
@@ -80,7 +80,7 @@ fn a_despawn_from_the_outcome_observer_still_closes_the_record() {
         payload: serde_json::Value::Null,
     };
     let effect = world.spawn(PendingEffect::new("open", kind)).id();
-    run_to_quiescence(&mut world);
+    world.run_schedule(crate::bus::RigSchedule);
     assert!(
         world.get::<InFlight>(effect).is_some(),
         "issued to the open key"
@@ -91,7 +91,7 @@ fn a_despawn_from_the_outcome_observer_still_closes_the_record() {
     world
         .entity_mut(effect)
         .insert(WorldOutcome::new(Ok(answer.clone())));
-    run_to_quiescence(&mut world);
+    world.run_schedule(crate::bus::RigSchedule);
     assert!(
         world.get_entity(effect).is_err(),
         "the observer despawned the effect as its outcome landed"

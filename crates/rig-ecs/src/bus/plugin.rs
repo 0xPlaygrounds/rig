@@ -1,6 +1,15 @@
-//! The bus's installation into a world, the schedule and its sets, and the
-//! run to quiescence.
+//! The bus as a `bevy_app` plugin: the schedule and its sets, the policy,
+//! and the wake that lets a host run the app only when a task finished.
 
+use std::{
+    sync::{
+        Arc, Condvar, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    time::Duration,
+};
+
+use bevy_app::{App, AppExit, MainScheduleOrder, Plugin, PluginsState, Update};
 use bevy_ecs::{
     prelude::*,
     schedule::{LogLevel, ScheduleBuildSettings, ScheduleLabel},
@@ -16,10 +25,16 @@ use super::{
     record::{DeliveryBatch, begin_delivery_pass, record_bound, record_cancelled, record_outcome},
 };
 
-/// The schedule the bus runs in, to quiescence, once per host tick. Users add
-/// their systems here, ordered against [`BusSet`]s.
+/// The schedule the bus runs in, once per app update, after `Update`.
+/// Users add their systems here, ordered against [`BusSet`]s.
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RigSchedule;
+
+/// The schedule after [`RigSchedule`] in every app update: the pass is over
+/// and every command of it applied. The bus diagnoses an idle replay here;
+/// nothing else runs in it.
+#[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RigEnd;
 
 /// The four sets of one pass of [`RigSchedule`], in this order.
 ///
@@ -45,40 +60,121 @@ pub enum BusSet {
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Policy(pub ServingPolicy);
 
-/// Set by a plugin system that moved an effect between states this pass;
-/// the runner loops [`RigSchedule`] while it is set.
-#[derive(Resource, Debug, Default, Clone, Copy)]
-pub struct Progress(pub bool);
+/// The signal that another app update is worth running: every task the bus
+/// spawns raises it when it finishes or delivers a stream item, and a host
+/// system raises it when it did something a later pass must see (a policy
+/// still deliberating, a world change made outside a tick). A runner waits
+/// on it ([`Wake::wait`] blocking, [`Wake::woken`] async) instead of
+/// spinning; [`woken_runner`] is that runner. Every raise also advances
+/// [`Wake::generation`], the activity counter a system reads to tell an
+/// idle pass from a busy one. Raising it is a read of the resource:
+/// systems that raise it never conflict.
+#[derive(Resource, Clone, Default)]
+pub struct Wake(Arc<WakeInner>);
 
-impl Progress {
-    /// Note progress.
-    pub fn mark(&mut self) {
-        self.0 = true;
+#[derive(Default)]
+struct WakeInner {
+    raised: AtomicBool,
+    generation: AtomicU64,
+    waker: futures::task::AtomicWaker,
+    lock: Mutex<()>,
+    condvar: Condvar,
+}
+
+impl Wake {
+    /// Raise the signal.
+    pub fn signal(&self) {
+        self.0.generation.fetch_add(1, Ordering::AcqRel);
+        self.0.raised.store(true, Ordering::Release);
+        self.0.waker.wake();
+        let guard = self
+            .0
+            .lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.0.condvar.notify_all();
+        drop(guard);
+    }
+
+    /// How many times the signal was raised: unchanged between two reads
+    /// means nothing happened in between.
+    pub fn generation(&self) -> u64 {
+        self.0.generation.load(Ordering::Acquire)
+    }
+
+    /// Take the signal: whether it was raised since the last take.
+    pub fn take(&self) -> bool {
+        self.0.raised.swap(false, Ordering::AcqRel)
+    }
+
+    /// Block until the signal is raised or `timeout` elapses, then take it.
+    /// Returns whether it was raised.
+    pub fn wait(&self, timeout: Duration) -> bool {
+        let deadline = std::time::Instant::now() + timeout;
+        let mut guard = self
+            .0
+            .lock
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        while !self.0.raised.load(Ordering::Acquire) {
+            let now = std::time::Instant::now();
+            if now >= deadline {
+                break;
+            }
+            let (next, _) = self
+                .0
+                .condvar
+                .wait_timeout(guard, deadline - now)
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            guard = next;
+        }
+        drop(guard);
+        self.take()
+    }
+
+    /// Resolve when the signal is raised, taking it.
+    pub fn woken(&self) -> impl Future<Output = ()> + Send + '_ {
+        std::future::poll_fn(move |cx| {
+            if self.take() {
+                return std::task::Poll::Ready(());
+            }
+            self.0.waker.register(cx.waker());
+            if self.take() {
+                std::task::Poll::Ready(())
+            } else {
+                std::task::Poll::Pending
+            }
+        })
     }
 }
 
-/// How many effects `Dispatch` has taken this tick, against
-/// [`ServingPolicy::command_capacity`]: the per-tick intake bound. Reset by
-/// the runner at the start of every tick, and at the start of every pass a
-/// host runs itself (each such pass is that host's tick).
-#[derive(Resource, Debug, Default, Clone, Copy)]
-pub struct Intake(pub usize);
+/// A runner that updates the app whenever [`Wake`] is raised, or every
+/// `idle` at most, until the app asks to exit. Install with
+/// `app.set_runner(woken_runner(..))`; [`BusPlugin`] installs it by default.
+pub fn woken_runner(idle: Duration) -> impl FnOnce(App) -> AppExit {
+    move |mut app: App| {
+        if app.plugins_state() == PluginsState::Ready {
+            app.finish();
+            app.cleanup();
+        }
+        let wake = app.world().resource::<Wake>().clone();
+        loop {
+            app.update();
+            if let Some(exit) = app.should_exit() {
+                return exit;
+            }
+            wake.wait(idle);
+        }
+    }
+}
 
-/// Passes of [`RigSchedule`] one tick may run before the runner stops and
-/// warns: a diagnostic, never a hang.
-pub const QUIESCENCE_CAP: usize = 64;
-
-/// The bus's configuration: [`install`](Self::install) adds [`RigSchedule`]
-/// with its sets and systems, the counters, the handler table and the
-/// observers to a world. It does not schedule the runner: the host calls
-/// [`run_to_quiescence`] once per tick from the schedule or loop it owns.
+/// The bus: [`RigSchedule`] with its sets and systems after `Update`, the
+/// counters, the handler table, the observers, the [`Wake`] and its runner.
 ///
-/// The task pool: `install` calls `IoTaskPool::get_or_init`, so the bus
-/// works with or without a host that initialises the pools itself (a pool
-/// initialised first wins; otherwise a default pool is made and a later
-/// initialiser finds it in place).
+/// The task pool: `build` calls `IoTaskPool::get_or_init`, so the bus works
+/// with or without a host that initialises the pools itself.
 #[derive(Debug, Clone)]
-pub struct Bus {
+pub struct BusPlugin {
     /// The serving policy: intake per tick, serial keys and bounded delivery.
     /// `stream_capacity` supplies shared queue slots, clamped to at least one;
     /// the single sender has one additional reserved slot.
@@ -86,23 +182,26 @@ pub struct Bus {
     /// Ambiguity detection on the schedule: `Warn` by default; the crate's
     /// tests build with `Error`.
     pub ambiguity: LogLevel,
+    /// How long the default runner waits for a wake before updating anyway.
+    pub idle: Duration,
 }
 
-impl Default for Bus {
+impl Default for BusPlugin {
     fn default() -> Self {
         Self {
             policy: ServingPolicy::default(),
             ambiguity: LogLevel::Warn,
+            idle: Duration::from_millis(100),
         }
     }
 }
 
-impl Bus {
+impl BusPlugin {
     /// The bus under `policy`.
     pub fn with_policy(policy: ServingPolicy) -> Self {
         Self {
             policy,
-            ambiguity: LogLevel::Warn,
+            ..Self::default()
         }
     }
 
@@ -113,8 +212,10 @@ impl Bus {
         self
     }
 
-    /// Install the bus into `world`. Installing twice panics: the schedule
-    /// and its resources exist once per world.
+    /// The world half of the plugin: the resources, observers and
+    /// [`RigSchedule`] in `world`'s `Schedules`. [`Plugin::build`] adds
+    /// this, then places the schedule after `Update` and sets the runner;
+    /// a test that drives `RigSchedule` itself needs only this.
     pub fn install(&self, world: &mut World) {
         assert!(
             !world.contains_resource::<Policy>(),
@@ -124,15 +225,13 @@ impl Bus {
         // A tick takes at least one effect: a zero intake bound would leave
         // every pending effect pending forever with no error, no record and
         // no witness event. rig-agent's driver clamps the same field.
-        world.insert_resource(Policy(rig_core::serve::ServingPolicy {
+        world.insert_resource(Policy(ServingPolicy {
             command_capacity: self.policy.command_capacity.max(1),
             ..self.policy
         }));
+        world.init_resource::<Wake>();
         world.init_resource::<SeqCounter>();
         world.init_resource::<IdCounter>();
-        world.init_resource::<Progress>();
-        world.init_resource::<super::collect::CollectionBudget>();
-        world.init_resource::<Intake>();
         world.init_resource::<DeliveryBatch>();
         world.init_resource::<WorldOutcomeCounter>();
         world.init_non_send::<HandlerTable>();
@@ -176,40 +275,20 @@ impl Bus {
         );
         world.init_resource::<Schedules>();
         world.resource_mut::<Schedules>().insert(schedule);
+        let mut end = Schedule::new(RigEnd);
+        end.add_systems(super::delivery::diagnose_idle_replay);
+        world.resource_mut::<Schedules>().insert(end);
     }
 }
 
-/// The runner: reset the tick's intake, then run [`RigSchedule`] while a
-/// plugin system reports [`Progress`], at most [`QUIESCENCE_CAP`] passes.
-pub fn run_to_quiescence(world: &mut World) {
-    world.resource_mut::<Intake>().0 = 0;
-    {
-        let mut budget = world.resource_mut::<super::collect::CollectionBudget>();
-        budget.in_runner = true;
-        budget.remaining = super::collect::STREAM_WORK_PER_TICK;
+impl Plugin for BusPlugin {
+    fn build(&self, app: &mut App) {
+        self.install(app.world_mut());
+        let mut order = app.world_mut().resource_mut::<MainScheduleOrder>();
+        order.insert_after(Update, RigSchedule);
+        order.insert_after(RigSchedule, RigEnd);
+        app.set_runner(woken_runner(self.idle));
     }
-    for pass in 0..QUIESCENCE_CAP {
-        world.resource_mut::<Progress>().0 = false;
-        world.run_schedule(RigSchedule);
-        super::delivery::diagnose_idle_replay(world);
-        if !world.resource::<Progress>().0
-            || world
-                .resource::<super::collect::CollectionBudget>()
-                .remaining
-                == 0
-        {
-            break;
-        }
-        if pass + 1 == QUIESCENCE_CAP {
-            log::warn!(
-                target: "rig_ecs::bus",
-                "RigSchedule reached the quiescence cap ({QUIESCENCE_CAP}) in one tick; the rest waits for the next"
-            );
-        }
-    }
-    world
-        .resource_mut::<super::collect::CollectionBudget>()
-        .in_runner = false;
 }
 
 #[cfg(test)]

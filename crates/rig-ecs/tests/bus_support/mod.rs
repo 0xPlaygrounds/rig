@@ -11,7 +11,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     completion::{
@@ -23,7 +23,7 @@ use rig_core::{
     serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
-use rig_ecs::bus::{Bus, EffectOutcome, PendingEffect, run_to_quiescence};
+use rig_ecs::bus::{BusPlugin, EffectOutcome, PendingEffect};
 
 /// A hang is a failure, never a wait.
 pub const GUARD: Duration = Duration::from_secs(10);
@@ -231,10 +231,7 @@ pub fn streaming() -> EffectKind {
 /// error level, the runner in `Update`.
 pub fn app_with(policy: ServingPolicy) -> App {
     let mut app = App::new();
-    Bus::with_policy(policy)
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(BusPlugin::with_policy(policy).ambiguity_detection(LogLevel::Error));
     app.finish();
     app.cleanup();
     app

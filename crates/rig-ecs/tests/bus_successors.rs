@@ -41,7 +41,7 @@ fn reopen_while_a_driver_is_alive_is_refused() {
     // Nothing to refuse: running the schedule again with an effect in
     // flight is another pass, and the effect stays exactly where it was.
     for _ in 0..5 {
-        rig_ecs::bus::run_to_quiescence(app.world_mut());
+        app.update();
         assert!(app.world().get::<InFlight>(effect).is_some());
     }
     counters.hold.release();

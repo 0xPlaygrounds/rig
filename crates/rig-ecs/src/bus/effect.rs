@@ -205,8 +205,13 @@ pub struct Streaming {
 }
 
 impl Streaming {
-    /// Drive one owned stream on the pool with bounded delivery to Collect.
-    pub fn spawn(mut stream: StreamEvents, capacity: usize) -> (Self, Task<()>) {
+    /// Drive one owned stream on the pool with bounded delivery to Collect;
+    /// every delivered item raises `wake`.
+    pub fn spawn(
+        mut stream: StreamEvents,
+        capacity: usize,
+        wake: super::plugin::Wake,
+    ) -> (Self, Task<()>) {
         use futures::{SinkExt, StreamExt};
         let (mut sender, events) = futures::channel::mpsc::channel(capacity.max(1));
         let task = bevy_tasks::IoTaskPool::get().spawn(async move {
@@ -214,7 +219,9 @@ impl Streaming {
                 if sender.send(item).await.is_err() {
                     return;
                 }
+                wake.signal();
             }
+            wake.signal();
         });
         (
             Self {

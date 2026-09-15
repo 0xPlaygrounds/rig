@@ -57,7 +57,6 @@ pub fn discover_streamed_invalid_calls(
     bound: Query<&Bound>,
     access: Query<&ToolAccess>,
     invalid: Query<(&ChildOf, &InvalidCall, Option<&Resolution>)>,
-    mut progress: ResMut<Progress>,
 ) {
     for (parent, stream) in &effects {
         let turn = parent.parent();
@@ -107,7 +106,6 @@ pub fn discover_streamed_invalid_calls(
             .skip(outputs.stream_validated)
         {
             outputs.stream_validated = index + 1;
-            progress.mark();
             let (id, name, full) = match event {
                 StreamEvent::BlockDelta {
                     id,

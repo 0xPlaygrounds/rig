@@ -13,7 +13,7 @@ use super::{
         EffectOutcome, Executions, InFlight, Issued, Publishing, Serving, Streamed, Streaming,
         ToolOutputs, WorldOutcome,
     },
-    plugin::Progress,
+    plugin::Wake,
     record::{DeliveryBatch, Observed, Recording},
     witness::{SeenOutcome, Subjects, Witnessing, bus_emitter, fingerprint},
 };
@@ -22,28 +22,16 @@ use rig_core::observe::{Action, Emitter, OutcomeSummary, Reason, Stage};
 /// How many trailing stream events a truncation observation keeps.
 pub const TRUNCATION_TAIL: usize = 8;
 
-/// Maximum live streaming queue checks across a host tick.
+/// Maximum live streaming queue checks in one pass.
 pub const STREAM_WORK_PER_TICK: usize = 4096;
 const STREAM_ITEMS_PER_EFFECT: usize = 64;
 
-/// Streaming delivery allowance shared by all quiescence passes in one host tick.
-/// The sequence cursor rotates service when the allowance runs out.
-#[derive(Resource)]
-pub struct CollectionBudget {
-    /// Queue checks left in the current allowance.
-    pub remaining: usize,
-    /// Whether collection belongs to the shared quiescence loop.
-    pub in_runner: bool,
+/// The sequence cursor where the last pass ran out of its allowance:
+/// service rotates from it so a pass that exhausts the allowance does not
+/// starve the effects after it.
+#[derive(Default)]
+pub struct StreamCursor {
     last: Option<super::Seq>,
-}
-impl Default for CollectionBudget {
-    fn default() -> Self {
-        Self {
-            remaining: STREAM_WORK_PER_TICK,
-            in_runner: false,
-            last: None,
-        }
-    }
 }
 
 /// Marker for a library collector's outcome insertion. Removed by settlement;
@@ -59,7 +47,6 @@ pub type WorldAnswersReady = (With<InFlight>, Without<EffectOutcome>);
 pub fn collect_world(
     mut commands: Commands,
     ready: Query<(Entity, &WorldOutcome), WorldAnswersReady>,
-    mut progress: ResMut<Progress>,
 ) {
     let mut ready: Vec<_> = ready.iter().collect();
     ready.sort_by_key(|(_, outcome)| outcome.order());
@@ -69,7 +56,6 @@ pub fn collect_world(
             .insert(CollectedOutcome)
             .insert(EffectOutcome(outcome.outcome.clone()))
             .remove::<WorldOutcome>();
-        progress.mark();
     }
 }
 
@@ -81,8 +67,8 @@ pub fn collect_tasks(
     mut commands: Commands,
     serving: Query<(Entity, &Serving, Option<&Publishing>), With<InFlight>>,
     policy: Res<super::Policy>,
+    wake: Res<Wake>,
     mut executions: NonSendMut<Executions>,
-    mut progress: ResMut<Progress>,
 ) {
     for (entity, _, publishing) in &serving {
         let Some(task) = executions.tasks.get_mut(&entity) else {
@@ -105,10 +91,10 @@ pub fn collect_tasks(
                 entity_commands
                     .insert(CollectedOutcome)
                     .insert(EffectOutcome(outcome));
-                progress.mark();
             }
             Reply::Stream(stream) => {
-                let (streaming, task) = Streaming::spawn(stream, policy.0.stream_capacity);
+                let (streaming, task) =
+                    Streaming::spawn(stream, policy.0.stream_capacity, wake.clone());
                 executions.streams.insert(entity, task);
                 entity_commands.insert(streaming);
             }
@@ -131,18 +117,18 @@ pub fn collect_streams(
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
     batch: Res<DeliveryBatch>,
-    mut progress: ResMut<Progress>,
-    mut budget: ResMut<CollectionBudget>,
+    mut cursor: Local<StreamCursor>,
     mut order: Local<Vec<(super::Seq, Entity)>>,
 ) {
+    let mut remaining = STREAM_WORK_PER_TICK;
     order.clear();
     order.extend(streaming.iter().map(|(entity, seq, ..)| (*seq, entity)));
     order.sort_unstable_by_key(|(seq, _)| *seq);
-    let start = budget
+    let start = cursor
         .last
         .map_or(0, |last| order.partition_point(|(seq, _)| *seq <= last));
     for &(seq, entity) in order.iter().cycle().skip(start).take(order.len()) {
-        if budget.remaining == 0 {
+        if remaining == 0 {
             break;
         }
         let Ok((_, _, Issued(id), mut streaming, mut streamed, publishing)) =
@@ -156,10 +142,10 @@ pub fn collect_streams(
             .map_or(0, |state| state.events.len() + state.errors.len());
         let mut items = Vec::new();
         for _ in 0..STREAM_ITEMS_PER_EFFECT {
-            if budget.remaining == 0 {
+            if remaining == 0 {
                 break;
             }
-            budget.remaining -= 1;
+            remaining -= 1;
             let polled = match streaming.events.try_recv() {
                 Ok(item) => Poll::Ready(Some(item)),
                 Err(futures::channel::mpsc::TryRecvError::Empty) => Poll::Pending,
@@ -179,7 +165,6 @@ pub fn collect_streams(
                             && let Some(outcome) = streaming.fold.observe(&item)
                         {
                             streamed.outcome = Some(outcome);
-                            progress.mark();
                         }
                         if let Ok(event) = item {
                             if let StreamEvent::BlockDelta {
@@ -269,7 +254,6 @@ pub fn collect_streams(
                     .insert(CollectedOutcome)
                     .insert(EffectOutcome(outcome));
             });
-            progress.mark();
             break;
         }
         if !items.is_empty() {
@@ -289,11 +273,11 @@ pub fn collect_streams(
                 rig_core::effect::DeliveryKind::Stream { items: delivered },
             );
         }
-        if budget.remaining == 0 {
-            // Advance the cursor only when a tick exhausts its allowance. Empty
+        if remaining == 0 {
+            // Advance the cursor only when a pass exhausts its allowance. Empty
             // setup polls must not reorder a later ready batch; complete passes
-            // retain the previous cursor so partial ticks share service fairly.
-            budget.last = Some(seq);
+            // retain the previous cursor so partial passes share service fairly.
+            cursor.last = Some(seq);
         }
     }
 }
@@ -331,7 +315,6 @@ pub fn settle(
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
     subjects: Subjects,
-    mut progress: ResMut<Progress>,
 ) {
     for (entity, &Issued(id), outcome, observed, outputs) in &landed {
         // A layered handler: the record holds what the innermost handler
@@ -400,7 +383,6 @@ pub fn settle(
         commands
             .entity(entity)
             .remove::<(InFlight, Observed, super::record::ReplacedBy)>();
-        progress.mark();
     }
 }
 

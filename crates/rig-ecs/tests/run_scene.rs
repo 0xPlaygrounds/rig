@@ -11,7 +11,7 @@ use crate::run_support;
 use rig_core::serve::Dispatch;
 use std::time::Instant;
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{effect::HandlerKey, serve::ServingPolicy};
 use rig_ecs::{
@@ -22,10 +22,10 @@ use rig_ecs::{
         scene::{RunScene, WorldScene, load_world, save_world},
     },
     bus::{
-        Bus, EffectLogResource, Handlers, IdCounter, InFlight, Issued, PendingEffect, Replay,
-        RigSchedule, run_to_quiescence,
+        EffectLogResource, Handlers, IdCounter, InFlight, Issued, PendingEffect, Replay,
+        RigSchedule,
     },
-    systems::{RunCommands, install_agent},
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use run_support::{GUARD, NeverAnswers};
@@ -41,11 +41,10 @@ fn golden(name: &str) -> EffectLog {
 
 fn world_with(log: &EffectLog) -> (App, Entity) {
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(
+        rig_ecs::RigPlugin::with_policy(ServingPolicy::default())
+            .ambiguity_detection(LogLevel::Error),
+    );
     app.finish();
     app.cleanup();
     let key = HandlerKey::from("golden/model:default");

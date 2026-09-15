@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
@@ -24,8 +24,8 @@ use rig_ecs::{
         Output, Owner, Preamble, Settled, Temperature, ToolChoiceSpec, UsesModel, Utterance,
         content::parts::read_message,
     },
-    bus::{Bus, Handlers, PendingEffect, run_to_quiescence},
-    systems::install_agent,
+    bus::{BusPlugin, Handlers, PendingEffect},
+    systems::AgentPlugin,
 };
 
 pub const GUARD: Duration = Duration::from_secs(10);
@@ -117,11 +117,10 @@ impl Serve for NeverCalled {
 /// error level, the runner in `Update`.
 pub fn app() -> App {
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(
+        rig_ecs::RigPlugin::with_policy(ServingPolicy::default())
+            .ambiguity_detection(LogLevel::Error),
+    );
     app.finish();
     app.cleanup();
     app
@@ -389,8 +388,8 @@ pub fn ended(app: &mut App, run: Entity, what: &str) {
 /// handler under `model`, and one agent over it.
 pub fn open_model_world() -> (World, Entity) {
     let mut world = World::new();
-    Bus::with_policy(ServingPolicy::default()).install(&mut world);
-    install_agent(&mut world);
+    BusPlugin::with_policy(ServingPolicy::default()).install(&mut world);
+    AgentPlugin::install(&mut world);
     let model = Handlers::with(&mut world, |handlers| {
         handlers.register_open(
             "model",

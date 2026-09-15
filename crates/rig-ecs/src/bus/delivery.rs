@@ -17,7 +17,6 @@ use super::{
         EffectOutcome, Executions, IdCounter, InFlight, Issued, PendingEffect, Publishing,
         Reserved, Serving, Streamed, Streaming, ToolOutputs,
     },
-    plugin::Progress,
     record::{DeliveryBatch, Observed, Recording},
 };
 
@@ -39,6 +38,9 @@ pub struct ReplayDelivery {
     policy_visible: bool,
     waiting_for: Option<(EffectId, u64)>,
     refusals: rig_effect_log::ReplayRefusals,
+    /// The wake generation the last diagnosis saw: a pass that raised it
+    /// was busy, and a busy pass is never diagnosed.
+    seen: u64,
 }
 
 fn invalid(message: impl Into<String>) -> ErrorReport {
@@ -243,6 +245,7 @@ impl ReplayDelivery {
             policy_visible: required,
             waiting_for: None,
             refusals: rig_effect_log::ReplayRefusals::default(),
+            seen: 0,
         }))
     }
 }
@@ -272,6 +275,7 @@ impl Buffered {
         executions: &mut Executions,
         remaining: Option<&mut usize>,
         capacity: usize,
+        wake: super::plugin::Wake,
     ) {
         if let Self::Waiting { streamed } = self {
             let Some(task) = executions.tasks.get_mut(&entity) else {
@@ -293,7 +297,7 @@ impl Buffered {
                         Some(&items) => cancelled_prefix(stream, items),
                         None => stream,
                     };
-                    let (streaming, task) = Streaming::spawn(stream, capacity);
+                    let (streaming, task) = Streaming::spawn(stream, capacity, wake);
                     executions.streams.insert(entity, task);
                     *self = Self::Stream {
                         streaming,
@@ -400,7 +404,8 @@ pub fn collect_replayed(world: &mut World) {
             }
             if let Some(mut buffered) = world.entity_mut(*entity).take::<Buffered>() {
                 let capacity = world.resource::<super::plugin::Policy>().0.stream_capacity;
-                buffered.poll(*entity, &mut world.non_send_mut::<Executions>(), replay.cancelled_items.get_mut(id), capacity);
+                let wake = world.resource::<super::plugin::Wake>().clone();
+                buffered.poll(*entity, &mut world.non_send_mut::<Executions>(), replay.cancelled_items.get_mut(id), capacity, wake);
                 world.entity_mut(*entity).insert(buffered);
             }
         }
@@ -455,7 +460,6 @@ pub fn collect_replayed(world: &mut World) {
             deliveries.push(move |world: &mut World| {
                 deliver_outcome(world, entity);
             });
-            world.resource_mut::<Progress>().mark();
         }
         let Some(first) = replay.pending.front() else {
             return;
@@ -489,10 +493,10 @@ pub fn collect_replayed(world: &mut World) {
                 if step.id.as_u64() < world.resource::<IdCounter>().0 {
                     continue;
                 }
-                // Intake is bounded per Update, not per quiescence pass.
-                // Pending unreserved effects may mint this id next Update;
-                // a Held effect may also await the host's release.
-                if queued || world.resource::<Progress>().0 {
+                // Intake is bounded per update. Pending unreserved effects
+                // may mint this id next update; a Held effect may also await
+                // the host's release.
+                if queued {
                     return;
                 }
                 // Continuations may run after Collect. Diagnose a missing
@@ -569,7 +573,6 @@ pub fn collect_replayed(world: &mut World) {
         }
         replay.pending.drain(..steps.len());
         replay.waiting_for = None;
-        world.resource_mut::<Progress>().mark();
     });
     // Live collection updates every accepted stream in the batch before its
     // queued delivery/outcome observers run. Replay must do the same: an A
@@ -577,13 +580,23 @@ pub fn collect_replayed(world: &mut World) {
     deliveries.apply(world);
 }
 
-/// Diagnose absent requests and unreproduced cancellations after every policy
-/// set has run. Called by the bus runner before it stops at quiescence.
+/// Diagnose absent requests and unreproduced cancellations, after the pass
+/// ([`RigEnd`](super::RigEnd)), and only when the pass was idle: a pass in which something raised [`Wake`](super::Wake) — a task
+/// landed, a delivery arrived, a policy said it is still deliberating — is
+/// given its follow-up pass first.
 pub fn diagnose_idle_replay(world: &mut World) {
-    if world.resource::<Progress>().0 || world.contains_resource::<ReplayFailure>() {
+    if world.contains_resource::<ReplayFailure>() {
         return;
     }
+    let generation = world.resource::<super::Wake>().generation();
     let mut effects = world.query::<(Option<&Issued>, Option<&Reserved>, Option<&EffectOutcome>)>();
+    let Some(mut replay) = world.get_resource_mut::<ReplayDelivery>() else {
+        return;
+    };
+    if replay.seen != generation {
+        replay.seen = generation;
+        return;
+    }
     let Some(replay) = world.get_resource::<ReplayDelivery>() else {
         return;
     };
@@ -632,7 +645,6 @@ fn fail(world: &mut World, report: ErrorReport) {
         .query_filtered::<Entity, With<Buffered>>()
         .iter(world)
         .collect();
-    let changed = !entities.is_empty() || !world.contains_resource::<ReplayFailure>();
     for entity in entities {
         world
             .entity_mut(entity)
@@ -640,9 +652,6 @@ fn fail(world: &mut World, report: ErrorReport) {
             .insert(EffectOutcome(Err(report.clone())));
     }
     world.insert_resource(ReplayFailure(report));
-    if changed {
-        world.resource_mut::<Progress>().mark();
-    }
 }
 
 fn deliver_stream(
@@ -667,7 +676,6 @@ fn deliver_stream(
     };
     let recording = world.get_resource::<Recording>().cloned();
     let observed = world.get::<Observed>(entity).is_some();
-    let mut progress = false;
     let mut delivery = None;
     if let Some(mut streamed) = world.get_mut::<Streamed>(entity) {
         let start = streamed.events.len() + streamed.errors.len();
@@ -690,7 +698,6 @@ fn deliver_stream(
                 && let Some(outcome) = streaming.fold.observe(&item)
             {
                 streamed.outcome = Some(outcome);
-                progress = true;
             }
             if let Ok(event) = item {
                 if let StreamEvent::BlockDelta {
@@ -721,9 +728,6 @@ fn deliver_stream(
             id,
             DeliveryKind::Stream { items: count },
         );
-    }
-    if progress {
-        world.resource_mut::<Progress>().mark();
     }
     if let Some(delivery) = delivery {
         deliveries.push(move |world: &mut World| world.trigger(delivery));

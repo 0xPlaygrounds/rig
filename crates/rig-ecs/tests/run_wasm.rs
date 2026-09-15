@@ -15,8 +15,8 @@ use rig_ecs::{
         AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
         OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{Bus, EffectLogResource, Handlers, IdCounter, run_to_quiescence},
-    systems::{RunCommands, install_agent},
+    bus::{BusPlugin, EffectLogResource, Handlers, IdCounter},
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use wasm_bindgen_test::wasm_bindgen_test;
@@ -30,10 +30,10 @@ fn app(log: &EffectLog) -> (App, Entity) {
     bevy_tasks::ComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     bevy_tasks::AsyncComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    install_agent(app.world_mut());
+    app.add_plugins(
+        rig_ecs::RigPlugin::with_policy(ServingPolicy::default())
+            .ambiguity_detection(LogLevel::Error),
+    );
     app.finish();
     app.cleanup();
     app.world_mut().resource_mut::<IdCounter>().0 = 1;

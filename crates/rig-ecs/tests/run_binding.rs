@@ -552,7 +552,7 @@ fn secrets_never_leave_the_resolver() {
 /// A bus-and-agent world: what a scene saves from and loads into.
 fn world_app() -> bevy_app::App {
     let mut app = bus_support::app();
-    rig_ecs::systems::install_agent(app.world_mut());
+    rig_ecs::systems::AgentPlugin::install(app.world_mut());
     app
 }
 

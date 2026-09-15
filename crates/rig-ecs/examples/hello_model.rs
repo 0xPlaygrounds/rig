@@ -13,7 +13,7 @@
     reason = "an example: user code, thirty lines, a mock behind it"
 )]
 
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Startup, Update};
+use bevy_app::{App, AppExit, Startup};
 use bevy_ecs::prelude::*;
 use rig_core::serve::Dispatch;
 use rig_core::{
@@ -24,18 +24,18 @@ use rig_core::{
     message::AssistantContent,
     serve::{Serve, ServingPolicy},
 };
-use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect, run_to_quiescence};
+use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect};
 
 // ---- the user's program: the next thirty lines ----
 
 fn main() {
     let mut app = App::new();
-    rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
-    app.add_plugins(ScheduleRunnerPlugin::default())
-        .add_systems(Update, run_to_quiescence)
-        .add_systems(Startup, (register_the_model, ask).chain())
-        .add_observer(print_the_answer)
-        .run();
+    app.add_plugins(rig_ecs::bus::BusPlugin::with_policy(
+        ServingPolicy::default(),
+    ))
+    .add_systems(Startup, (register_the_model, ask).chain())
+    .add_observer(print_the_answer)
+    .run();
 }
 
 fn register_the_model(mut handlers: Handlers) {

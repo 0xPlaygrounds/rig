@@ -5,11 +5,9 @@
 //! [`Preamble`] and its [`Grant`]s — to the bound handlers the definitions
 //! name, in file order — the tick the asset is loaded, once (the marker
 //! [`Applied`] says so — a later change to the asset is not re-applied).
-//! The systems run in `Update` in [`AssetsSet`]; the host orders its
-//! `run_to_quiescence` after that set so a run spawned the tick an asset
-//! loads folds with it. This is the one module that needs `bevy_app`
-//! (`bevy_asset` is built on it): the host adds `bevy_asset::AssetPlugin`
-//! first, then [`AssetsPlugin`].
+//! The systems run in `Update` in [`AssetsSet`], before `RigSchedule`, so
+//! a run spawned the tick an asset loads folds with it. The host adds
+//! `bevy_asset::AssetPlugin` first, then [`AssetsPlugin`].
 
 use std::marker::PhantomData;
 
@@ -172,8 +170,7 @@ pub fn grant_tools(
     }
 }
 
-/// The set the applying systems run in, in `Update`: the host runs
-/// `run_to_quiescence` after it.
+/// The set the applying systems run in, in `Update` (before `RigSchedule`).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetsSet;
 
@@ -186,7 +183,7 @@ impl Plugin for AssetsPlugin {
     fn build(&self, app: &mut App) {
         assert!(
             app.world().contains_resource::<OrderCounter>(),
-            "AssetsPlugin needs install_agent first: its grants take the agent's order counter"
+            "AssetsPlugin needs AgentPlugin first: its grants take the agent's order counter"
         );
         app.init_asset::<PromptAsset>()
             .register_asset_loader(PromptLoader)

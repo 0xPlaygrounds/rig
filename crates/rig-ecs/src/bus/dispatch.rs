@@ -20,7 +20,7 @@ use super::{
         Reserved, Scope, Seq, Serving, Streamed, ToolInputs,
     },
     handlers::{Bound, HandlerTable, Served},
-    plugin::{Intake, Policy, Progress},
+    plugin::{Policy, Wake},
     record::Recording,
     witness::{DispatchWitness, Refused, bus_emitter},
 };
@@ -70,6 +70,7 @@ pub type CandidateView = (
 pub fn dispatch(
     mut commands: Commands,
     policy: Res<Policy>,
+    wake: Res<Wake>,
     table: NonSend<HandlerTable>,
     mut executions: NonSendMut<Executions>,
     bound: Query<(Entity, &Bound)>,
@@ -81,11 +82,10 @@ pub fn dispatch(
     recording: Option<Res<Recording>>,
     witnessing: DispatchWitness,
     mut ids: ResMut<IdCounter>,
-    mut intake: ResMut<Intake>,
-    mut progress: ResMut<Progress>,
 ) {
     let mut candidates: Vec<_> = pending.iter().collect();
     candidates.sort_by_key(|(_, seq, _, _, _, _)| **seq);
+    let mut intake = 0usize;
     let DispatchWitness { witness, subjects } = witnessing;
 
     let policy = policy.0;
@@ -102,7 +102,7 @@ pub fn dispatch(
     for (entity, _, effect, reserved, inputs, operation) in candidates {
         // Clamped at the read as well as at install: a host may replace the
         // resource, and a tick still takes at least one effect.
-        if intake.0 >= policy.command_capacity.max(1) {
+        if intake >= policy.command_capacity.max(1) {
             return;
         }
         let key = &effect.key;
@@ -123,7 +123,6 @@ pub fn dispatch(
                 commands
                     .entity(entity)
                     .insert((Refused, EffectOutcome(Err(reentrant(key)))));
-                progress.mark();
             }
             continue;
         }
@@ -150,7 +149,6 @@ pub fn dispatch(
             commands
                 .entity(entity)
                 .insert((Refused, EffectOutcome(Err(handler_unavailable(key)))));
-            progress.mark();
             continue;
         };
 
@@ -172,7 +170,6 @@ pub fn dispatch(
             commands
                 .entity(entity)
                 .insert((Refused, EffectOutcome(Err(report))));
-            progress.mark();
             continue;
         };
         ids.0 = ids.0.max(next_id);
@@ -233,12 +230,15 @@ pub fn dispatch(
                         .map(|witness| ((**witness).clone(), subject.clone())),
                 }));
                 let streaming = effect.is_stream();
-
+                let wake = wake.clone();
                 let task = bevy_tasks::IoTaskPool::get().spawn(async move {
                     let reply = handler.handle(kind, dispatch).await;
-                    if !streaming {
-                        return Reply::Outcome(reply.into_outcome().await);
-                    }
+                    let reply = if streaming {
+                        reply
+                    } else {
+                        Reply::Outcome(reply.into_outcome().await)
+                    };
+                    wake.signal();
                     reply
                 });
                 executions.tasks.insert(entity, task);
@@ -250,7 +250,6 @@ pub fn dispatch(
             Served::World(world) => {
                 if let Err(report) = (world.ask)(&mut entity_commands, &effect.kind) {
                     entity_commands.insert(EffectOutcome(Err(report)));
-                    progress.mark();
                     continue;
                 }
                 if let Some(recording) = &recording {
@@ -265,8 +264,7 @@ pub fn dispatch(
         if serial {
             busy.insert(key.clone());
         }
-        intake.0 += 1;
-        progress.mark();
+        intake += 1;
     }
 }
 

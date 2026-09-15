@@ -41,9 +41,7 @@ use rig_core::{
     serve::{Dispatch, Reply, Serve, ServingPolicy},
     streaming::StreamFinal,
 };
-use rig_ecs::bus::{
-    Bus, EffectOutcome, Handlers, InFlight, PendingEffect, Streamed, run_to_quiescence,
-};
+use rig_ecs::bus::{Bus, EffectOutcome, Handlers, InFlight, PendingEffect, Streamed};
 use wasm_bindgen_test::wasm_bindgen_test;
 
 /// A `!Send` handler, honestly: an `Rc` counter, as a browser provider
@@ -123,9 +121,9 @@ fn request() -> CompletionRequest {
 
 fn app() -> App {
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
+    app.add_plugins(
+        BusPlugin::with_policy(ServingPolicy::default()).ambiguity_detection(LogLevel::Error),
+    );
     app.finish();
     app.cleanup();
     app
@@ -288,7 +286,7 @@ async fn local_streams_drop_on_marker_removal_scheduled_despawn_replacement_and_
         })) as rig_core::streaming::StreamEvents
     };
     let mut world = World::new();
-    Bus::default().install(&mut world);
+    BusPlugin::default().install(&mut world);
     async fn dropped(drops: &Cell<usize>, expected: usize) {
         for _ in 0..1000 {
             if drops.get() == expected {

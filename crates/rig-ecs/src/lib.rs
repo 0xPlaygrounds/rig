@@ -52,3 +52,35 @@ pub mod prelude;
 pub mod reflect;
 pub mod replay;
 pub mod systems;
+
+/// The whole runtime as one plugin: the bus ([`bus::BusPlugin`]) and the
+/// agent systems ([`systems::AgentPlugin`]) in one `RigSchedule` after
+/// `Update`, woken by their tasks. `App::new().add_plugins(RigPlugin::default())`
+/// is a host; `app.update()` is a tick.
+#[derive(Debug, Clone, Default)]
+pub struct RigPlugin {
+    /// The bus's configuration: the serving policy, the ambiguity level.
+    pub bus: bus::BusPlugin,
+}
+
+impl RigPlugin {
+    /// The runtime under `policy`.
+    pub fn with_policy(policy: rig_core::serve::ServingPolicy) -> Self {
+        Self {
+            bus: bus::BusPlugin::with_policy(policy),
+        }
+    }
+
+    /// Build the schedule with ambiguity detection at `level`.
+    #[must_use = "the setting applies to the returned value"]
+    pub fn ambiguity_detection(mut self, level: bevy_ecs::schedule::LogLevel) -> Self {
+        self.bus = self.bus.ambiguity_detection(level);
+        self
+    }
+}
+
+impl bevy_app::Plugin for RigPlugin {
+    fn build(&self, app: &mut bevy_app::App) {
+        app.add_plugins((self.bus.clone(), systems::AgentPlugin));
+    }
+}
