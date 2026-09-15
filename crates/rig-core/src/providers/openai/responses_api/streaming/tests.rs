@@ -2295,6 +2295,33 @@ async fn response_completed_chunk_populates_final_usage() {
     assert_eq!(usage.total_tokens, 15);
 }
 
+/// The terminal `response.completed` frame carries usage. An object-shaped
+/// `top_p` echoed on that frame (MiniMax-style endpoints, rig#2483) or a
+/// numeric one buffered under `serde_json/arbitrary_precision` (rig#2493)
+/// must not turn the terminal into a parse error — that both fails the turn
+/// and loses the usage. Contrast `known_terminal_with_malformed_usage_*`:
+/// a defect in a field rig reads is still an error.
+#[tokio::test]
+async fn response_completed_chunk_tolerates_object_shaped_top_p() {
+    let mut response = serde_json::to_value(sample_response(ResponseStatus::Completed))
+        .expect("sample response serializes");
+    response["top_p"] = json!({ "value": 0.95 });
+    response["usage"] = json!({
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "total_tokens": 15
+    });
+    let event = json!({
+        "type": "response.completed",
+        "sequence_number": 1,
+        "response": response,
+    });
+
+    let usage = final_response_from_event(event).await.usage;
+    assert_eq!(usage.input_tokens, 10);
+    assert_eq!(usage.total_tokens, 15);
+}
+
 #[tokio::test]
 async fn response_completed_chunk_populates_reasoning_metadata_and_context() {
     let response = sample_response(ResponseStatus::Completed);

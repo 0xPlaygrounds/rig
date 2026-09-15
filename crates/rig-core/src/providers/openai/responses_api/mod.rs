@@ -1754,6 +1754,17 @@ struct CompletionResponseWireRef<'a> {
     additional_parameters: &'a AdditionalParameters,
 }
 
+/// The wire shape of a Responses API response body.
+///
+/// Everything past the typed fields is response *metadata* echoed by the
+/// provider (`top_p`, `service_tier`, `store`, …). It is captured as raw JSON
+/// and projected into [`AdditionalParameters`] leniently, because one optional
+/// metadata field disagreeing with its Rust type must never discard a whole
+/// response: OpenAI-compatible endpoints echo `top_p` as an object, and with
+/// `serde_json/arbitrary_precision` enabled anywhere in the dependency graph a
+/// `#[serde(flatten)]` into a typed `f64` rejects even `0.95`, because the
+/// flatten buffer skips the numeric coercions the direct path performs. A
+/// `serde_json::Value` accepts every shape, so the decode cannot fail here.
 #[derive(Deserialize)]
 struct CompletionResponseWire {
     id: String,
@@ -1773,7 +1784,7 @@ struct CompletionResponseWire {
     #[serde(default)]
     tools: Vec<ResponsesToolDefinition>,
     #[serde(flatten)]
-    additional_parameters: AdditionalParameters,
+    metadata: Map<String, Value>,
 }
 
 impl Serialize for CompletionResponse {
@@ -1860,7 +1871,7 @@ impl<'de> Deserialize<'de> for CompletionResponse {
             usage: response.usage,
             output: response.output,
             tools: response.tools,
-            additional_parameters: response.additional_parameters,
+            additional_parameters: AdditionalParameters::from_response_metadata(response.metadata),
         })
     }
 }
@@ -1930,6 +1941,30 @@ where
 }
 
 impl AdditionalParameters {
+    /// Project echoed response metadata into the request-shaped parameters.
+    ///
+    /// Each key is decoded on its own; a key whose value does not fit its
+    /// field is dropped rather than failing the response. A non-numeric
+    /// `top_p` from a compatible endpoint therefore reads back as `None`.
+    fn from_response_metadata(metadata: Map<String, Value>) -> Self {
+        let mut accepted = Map::with_capacity(metadata.len());
+        for (key, value) in metadata {
+            let probe = Value::Object(Map::from_iter([(key.clone(), value.clone())]));
+            if serde_json::from_value::<Self>(probe).is_ok() {
+                accepted.insert(key, value);
+            } else {
+                tracing::debug!(
+                    target: "rig::providers::openai",
+                    field = %key,
+                    "ignoring response metadata field that does not match its expected type"
+                );
+            }
+        }
+        // Every remaining key was individually accepted, so this cannot fail;
+        // `unwrap_or_default` keeps the projection total without a panic path.
+        serde_json::from_value(Value::Object(accepted)).unwrap_or_default()
+    }
+
     pub fn to_json(self) -> serde_json::Value {
         serde_json::to_value(self).unwrap_or_else(|_| serde_json::Value::Object(Map::new()))
     }

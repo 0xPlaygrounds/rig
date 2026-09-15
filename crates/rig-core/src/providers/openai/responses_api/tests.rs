@@ -1100,6 +1100,116 @@ fn completion_response_preserves_unknown_service_tier() {
     assert_eq!(service_tier, "provider_experimental");
 }
 
+/// A response whose echoed `top_p` is object-shaped, as MiniMax-style
+/// Responses endpoints emit it, carrying a valid tool call (rig#2483).
+fn response_with_object_top_p() -> Value {
+    json!({
+        "id": "resp_123",
+        "object": "response",
+        "created_at": 0,
+        "status": "completed",
+        "model": "MiniMax-M2",
+        "top_p": { "value": 0.95 },
+        "service_tier": "default",
+        "output": [{
+            "type": "function_call",
+            "id": "fc_1",
+            "call_id": "call_1",
+            "name": "get_weather",
+            "arguments": "{\"location\":\"Paris\"}",
+            "status": "completed"
+        }],
+        "usage": {
+            "input_tokens": 10,
+            "output_tokens": 5,
+            "total_tokens": 15
+        }
+    })
+}
+
+/// One optional metadata field disagreeing with its Rust type must never
+/// discard the response: the tool call and usage survive, `top_p` reads
+/// back as `None`, and sibling metadata still decodes (rig#2483).
+#[test]
+fn completion_response_tolerates_object_shaped_top_p() {
+    let response: CompletionResponse = serde_json::from_value(response_with_object_top_p())
+        .expect("an object-shaped top_p must not fail the response");
+
+    assert_eq!(response.additional_parameters.top_p, None);
+    assert!(matches!(
+        response.additional_parameters.service_tier,
+        Some(OpenAIServiceTier::Default)
+    ));
+    assert!(
+        matches!(response.output.first(), Some(Output::FunctionCall(call)) if call.name == "get_weather"),
+        "the tool call must survive metadata decode failures: {:?}",
+        response.output
+    );
+    assert_eq!(response.usage.map(|usage| usage.total_tokens), Some(15));
+}
+
+/// Numeric `top_p` still decodes — including under
+/// `serde_json/arbitrary_precision`, where a `#[serde(flatten)]` into `f64`
+/// used to reject it because buffered numbers arrive as an internal map
+/// (rig#2493). Run this module with and without that feature.
+#[test]
+fn completion_response_decodes_numeric_top_p() {
+    let mut body = response_with_object_top_p();
+    body["top_p"] = json!(0.95);
+    let response: CompletionResponse =
+        serde_json::from_str(&body.to_string()).expect("numeric top_p must decode");
+
+    assert_eq!(response.additional_parameters.top_p, Some(0.95));
+    assert!(matches!(
+        response.output.first(),
+        Some(Output::FunctionCall(_))
+    ));
+}
+
+/// The metadata projection is per key: a bad `top_p` does not take
+/// `service_tier` or `store` down with it, and vice versa.
+#[test]
+fn completion_response_drops_only_the_mistyped_metadata_key() {
+    let mut body = response_with_object_top_p();
+    body["store"] = json!("not-a-bool");
+    body["top_p"] = json!(0.5);
+    body["prompt_cache_key"] = json!("cache-1");
+    let response: CompletionResponse =
+        serde_json::from_value(body).expect("a mistyped store must not fail the response");
+
+    assert_eq!(response.additional_parameters.store, None);
+    assert_eq!(response.additional_parameters.top_p, Some(0.5));
+    assert_eq!(
+        response.additional_parameters.prompt_cache_key.as_deref(),
+        Some("cache-1")
+    );
+}
+
+/// The serializer still emits the echoed metadata it decoded, so a well-formed
+/// OpenAI body round-trips on every field the wire serializer writes.
+#[test]
+fn completion_response_round_trips_echoed_metadata() {
+    let mut body = response_with_object_top_p();
+    body["top_p"] = json!(1.0);
+    body["store"] = json!(true);
+    body["metadata"] = json!({ "k": "v" });
+    let response: CompletionResponse =
+        serde_json::from_value(body.clone()).expect("response should deserialize");
+    let serialized = serde_json::to_value(&response).expect("response should serialize");
+
+    for key in [
+        "top_p",
+        "store",
+        "metadata",
+        "service_tier",
+        "usage",
+        "output",
+        "model",
+    ] {
+        assert_eq!(serialized[key], body[key], "field {key} must round-trip");
+    }
+}
+
 #[test]
 fn responses_request_keeps_documents_after_lifted_system_messages() {
     let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "Prompt")
