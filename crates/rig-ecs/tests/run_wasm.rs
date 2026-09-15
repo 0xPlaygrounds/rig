@@ -5,12 +5,7 @@
 //! `cargo check`.
 
 #![cfg(target_arch = "wasm32")]
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
+#![allow(clippy::expect_used, clippy::panic)]
 
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};

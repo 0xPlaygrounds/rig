@@ -6,12 +6,7 @@
 //! |---|---|
 //! | a loaded prompt is the preamble; loaded definitions are grants in file order, unserved names skipped; the run sees both | `a_prompt_and_tool_definitions_become_the_preamble_and_the_grants` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 
 mod run_support;
 

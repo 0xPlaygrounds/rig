@@ -4,8 +4,7 @@
         clippy::expect_used,
         clippy::indexing_slicing,
         clippy::panic,
-        clippy::unwrap_used,
-        clippy::unreachable
+        clippy::unwrap_used
     )
 )]
 //! Workspace maintenance tasks for rig.

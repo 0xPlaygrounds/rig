@@ -3,6 +3,7 @@
 //! [`HandlerTable`], keyed by that entity. The registry is a query over
 //! `Bound`; registration spawns, deregistration despawns.
 
+use bevy_reflect::Reflect;
 use std::{
     any::TypeId,
     collections::{HashMap, HashSet},
@@ -26,14 +27,14 @@ use super::effect::{Answer, Asked, WorldEffect};
 /// What a handler entity is bound to: its key and its descriptor. The serde
 /// twin of the handler; what a scene saves and what a typed key is checked
 /// against. One per handler entity; a key is bound to at most one entity.
-#[derive(Component, Debug, Clone, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[derive(Component, Debug, Clone, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
 pub struct Bound {
     /// The key the handler serves.
-    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::HandlerKeyReflect))]
+    #[reflect(remote = crate::bus::reflect::HandlerKeyReflect)]
     pub key: HandlerKey,
     /// What it is: the descriptor, with `key` as its key.
-    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::HandlerDescriptorReflect))]
+    #[reflect(remote = crate::bus::reflect::HandlerDescriptorReflect)]
     pub descriptor: HandlerDescriptor,
 }
 
@@ -247,7 +248,6 @@ pub struct Handlers<'w, 's> {
 }
 
 impl Handlers<'_, '_> {
-    #[cfg(feature = "replay")]
     /// Install or clear the world's validated replay delivery plan.
     pub fn replay_delivery(&mut self, delivery: Option<super::delivery::ReplayDelivery>) {
         self.commands

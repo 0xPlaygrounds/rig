@@ -1,5 +1,4 @@
 //! Migrated completion adapters preserve recorded parser output under direct polling.
-#![allow(clippy::unwrap_used, clippy::panic, clippy::indexing_slicing)]
 use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use rig_core::http_client::{Request, Response, StatusCode};

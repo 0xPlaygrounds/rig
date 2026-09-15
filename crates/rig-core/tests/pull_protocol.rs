@@ -1,10 +1,5 @@
 //! The returned-reply boundary, including recording before suspended verdicts.
-#![allow(
-    clippy::panic,
-    clippy::indexing_slicing,
-    clippy::unwrap_used,
-    clippy::expect_used
-)]
+#![allow(clippy::panic, clippy::indexing_slicing, clippy::unwrap_used)]
 
 use futures::{StreamExt, channel::oneshot, executor::block_on};
 use rig_core::{

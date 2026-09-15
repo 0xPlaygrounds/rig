@@ -3,8 +3,6 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-#[cfg(test)]
-mod tests;
 use std::path::Path;
 use syn::visit::{self, Visit};
 

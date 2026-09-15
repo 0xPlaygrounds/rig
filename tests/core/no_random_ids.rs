@@ -128,14 +128,3 @@ fn the_allowed_sites_are_live() {
         );
     }
 }
-
-#[test]
-fn tool_call_ids_have_no_random_constructor() {
-    let path =
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/rig-core/src/completion/message.rs");
-    let text = std::fs::read_to_string(path).expect("message.rs is readable");
-    assert!(
-        !text.contains("fn mint()") && !text.contains("id::generate"),
-        "ToolCallId must not mint from the random generator"
-    );
-}

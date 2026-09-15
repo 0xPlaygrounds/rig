@@ -4,7 +4,7 @@
 //! so the server side runs on its own tokio runtime thread while the client
 //! side is driven entirely by `futures::executor::block_on`.
 
-#![allow(clippy::expect_used, clippy::indexing_slicing)]
+#![allow(clippy::expect_used)]
 
 use bytes::Bytes;
 use futures::StreamExt;

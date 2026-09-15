@@ -99,7 +99,6 @@
 
 pub mod binding;
 pub mod collect;
-#[cfg(feature = "replay")]
 pub mod delivery;
 pub mod dispatch;
 pub mod effect;
@@ -107,20 +106,18 @@ pub mod handlers;
 pub mod hold;
 pub mod plugin;
 pub mod record;
-#[cfg(feature = "reflect")]
 pub mod reflect;
+pub mod replay;
 pub mod scene;
 pub mod stream_delivery;
 pub mod witness;
-
-#[cfg(feature = "replay")]
-pub mod replay;
 
 pub use binding::{
     CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport, Materializer,
     ProviderBinding, ProviderKind, Secret, materialize, materialize_bindings,
 };
 pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
+pub use delivery::{ReplayDelivery, ReplayFailure};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{
     Answer, Asked, EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
@@ -137,15 +134,11 @@ pub use plugin::{
 pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
 };
+pub use replay::{EffectLogResource, Replay};
 pub use scene::{Scene, SceneEffect};
 pub use stream_delivery::StreamItemsDelivered;
 pub use witness::{
     AdapterOperation, BUS_EMITTER, Despawning, SubjectWalk, Subjects, Witnessing, bus_emitter,
 };
-
-#[cfg(feature = "replay")]
-pub use delivery::{ReplayDelivery, ReplayFailure};
-#[cfg(feature = "replay")]
-pub use replay::{EffectLogResource, Replay};
 
 pub use rig_core::serve::ServingPolicy;

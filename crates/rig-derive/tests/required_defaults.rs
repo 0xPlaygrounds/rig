@@ -3,13 +3,7 @@
 //! `required(...)` overrides it, and that the advertised schema and the
 //! generated deserializer always agree.
 
-#![allow(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::unwrap_used,
-    clippy::unreachable
-)]
+#![allow(clippy::indexing_slicing, clippy::unwrap_used)]
 
 use rig_derive::rig_tool;
 
