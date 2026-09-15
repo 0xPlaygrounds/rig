@@ -15,9 +15,16 @@
 //! configured for the AWS SDK and a region with access to the selected Bedrock
 //! model.
 //!
+//! [`anthropic`] is the exception to the sentence above: it is not the Bedrock
+//! Runtime API but an AWS-fronted endpoint that speaks Anthropic's own
+//! `/v1/messages` dialect and authenticates with SigV4. It lives here because
+//! the signing needs this crate's AWS dependencies, which have no place in
+//! rig-core.
+//!
 //! The root `rig` facade re-exports this crate as `rig::bedrock` when the
 //! `bedrock` feature is enabled.
 
+pub mod anthropic;
 pub mod client;
 pub mod completion;
 pub mod embedding;
