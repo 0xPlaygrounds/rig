@@ -85,6 +85,9 @@ impl bevy_app::Plugin for RigPlugin {
         if !app.is_plugin_added::<bevy_time::TimePlugin>() {
             app.add_plugins(bevy_time::TimePlugin);
         }
+        if !app.is_plugin_added::<bevy_diagnostic::DiagnosticsPlugin>() {
+            app.add_plugins(bevy_diagnostic::DiagnosticsPlugin);
+        }
         app.add_plugins((self.bus.clone(), systems::AgentPlugin));
         checkpoint::register_types(app.world_mut());
     }

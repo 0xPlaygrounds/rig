@@ -65,6 +65,7 @@ use crate::{
 };
 
 pub mod backoff;
+pub mod diagnostics;
 mod stream_invalid;
 pub mod witness;
 pub use stream_invalid::discover_streamed_invalid_calls;
@@ -349,6 +350,13 @@ pub struct AgentPlugin;
 impl bevy_app::Plugin for AgentPlugin {
     fn build(&self, app: &mut bevy_app::App) {
         Self::install(app.world_mut());
+        if app
+            .world()
+            .contains_resource::<bevy_diagnostic::DiagnosticsStore>()
+        {
+            diagnostics::register(app);
+            app.add_systems(RigSchedule, diagnostics::measure.in_set(RigSet::Settle));
+        }
     }
 }
 

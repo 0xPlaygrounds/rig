@@ -310,3 +310,28 @@ fn despawning_the_effect_in_patch_fails_the_run_cancelled() {
         "despawned before dispatch: no record"
     );
 }
+
+/// The runtime's diagnostics are `bevy_diagnostic`'s: a run in flight is a
+/// measurement `LogDiagnosticsPlugin` would print.
+#[test]
+fn the_runtime_measures_itself_into_bevy_diagnostics() {
+    use bevy_diagnostic::DiagnosticsStore;
+    use rig_ecs::systems::diagnostics::{ASSEMBLIES, RUNS_LIVE};
+    let mut app = app();
+    let (agent, _) = capturing_agent(&mut app, "t/model:m", "m", "hello");
+    let run = app.world_mut().spawn_run(agent, &[], "hi", false, None);
+    app.update();
+    let store = app.world().resource::<DiagnosticsStore>();
+    assert_eq!(store.get(&ASSEMBLIES).and_then(|d| d.value()), Some(1.0));
+    // The scripted model answers within the pass: the run's one live
+    // measurement is in the history, its ending the latest value.
+    ended(&mut app, run, "settled");
+    let store = app.world().resource::<DiagnosticsStore>();
+    let live = store.get(&RUNS_LIVE).expect("registered");
+    assert_eq!(live.value(), Some(0.0));
+    assert!(
+        live.values().any(|value| *value == 1.0),
+        "{:?}",
+        live.values().collect::<Vec<_>>()
+    );
+}
