@@ -1,11 +1,6 @@
 //! Tests for `#[derive(ContextValue)]`.
 
-#![allow(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::unwrap_used
-)]
+#![allow(clippy::indexing_slicing, clippy::unwrap_used)]
 
 use rig_core::tool::{ContextValue, ToolContext};
 

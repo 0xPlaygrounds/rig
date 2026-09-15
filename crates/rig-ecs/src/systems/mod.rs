@@ -29,6 +29,7 @@ use crate::agent::content::{
         spawn_deferred, spawn_deferred_with, write_message,
     },
 };
+use bevy_reflect::Reflect;
 
 use crate::agent::content::parts::{EditTarget, RequestPartEdit};
 use bevy_ecs::prelude::*;
@@ -198,18 +199,18 @@ pub type RunPhase = (Has<AwaitingModel>, Has<ResolvingTools>, Has<Failed>);
 pub type TurnState = (&'static ChildOf, Has<Materialised>, Has<Batch>);
 
 /// A fresh turn: spawned by `Advance`, not yet folded by `Assemble`.
-#[derive(Component, Debug, Clone, Copy, Default)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[derive(Component, Debug, Clone, Copy, Default, Reflect)]
+#[reflect(Component)]
 pub struct Fresh;
 
 /// The output mode the turn was folded under, pinned.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
+#[reflect(Component)]
 pub struct Folded(pub OutputKind);
 
 /// A turn `Materialise` has read.
-#[derive(Component, Debug, Clone, Copy, Default)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[derive(Component, Debug, Clone, Copy, Default, Reflect)]
+#[reflect(Component)]
 pub struct Materialised;
 
 /// Install the agent runtime into `world`: the bus must be installed first
@@ -2276,7 +2277,6 @@ pub fn materialise(
                     && provider_retried.0 < budget
                 {
                     let attempt = provider_retried.0 + 1;
-                    commands.entity(turn).insert(Materialised);
                     commands.entity(run).phase::<AwaitingModel>((
                         ProviderRetried(attempt),
                         ProviderRetrying,

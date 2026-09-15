@@ -1,5 +1,6 @@
 //! Binary payloads shared by content hash. Source spelling belongs to each use.
 
+use bevy_reflect::Reflect;
 use std::collections::{BTreeMap, BTreeSet};
 
 use base64::{
@@ -13,8 +14,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 /// SHA-256 of the decoded payload bytes, independent of source and media type.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Reflect,
+)]
 #[serde(try_from = "String", into = "String")]
 pub struct BinaryId(pub [u8; 32]);
 
@@ -67,8 +69,7 @@ pub enum BinaryError {
 }
 
 /// Representation at a particular use of a shared binary payload.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 pub enum BinaryEncoding {
     /// A raw byte vector in the transport DTO.
     Raw,
@@ -84,8 +85,7 @@ pub enum BinaryEncoding {
 
 /// A part's source. URLs, file IDs, string data and unknown sources remain data;
 /// only raw and base64 binary payloads refer to the store.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 pub enum PartSource {
     /// External URL or URI; never fetched by scene loading.
     Url(String),

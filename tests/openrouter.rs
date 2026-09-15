@@ -2,8 +2,7 @@
     clippy::expect_used,
     clippy::indexing_slicing,
     clippy::panic,
-    clippy::unwrap_used,
-    clippy::unreachable
+    clippy::unwrap_used
 )]
 
 use rig_test_support::ecs_agent;

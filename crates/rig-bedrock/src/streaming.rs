@@ -478,7 +478,7 @@ impl CompletionModel {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic)]
+#[allow(clippy::expect_used)]
 mod tests;
 
 #[cfg(test)]

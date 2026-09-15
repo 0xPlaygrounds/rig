@@ -18,6 +18,7 @@
 //! lives only inside the built client.
 
 use bevy_ecs::prelude::*;
+use bevy_reflect::Reflect;
 use rig_core::{
     client::{CompletionClient, Provider},
     effect::{HandlerDescriptor, HandlerKey},
@@ -31,8 +32,7 @@ use serde::{Deserialize, Serialize};
 use super::handlers::{Bound, HandlerTable, Handlers};
 
 /// Which rig-core provider client a binding builds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     /// `rig_core::providers::anthropic` (the Messages API).
@@ -70,8 +70,7 @@ impl std::fmt::Display for ProviderKind {
 /// name, a vault key id, a label the host's resolver knows. Never the
 /// secret: the reference is saved verbatim in scenes and printed verbatim
 /// in diagnostics, so whatever it names must be safe to print.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect))]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect)]
 #[serde(transparent)]
 pub struct CredentialRef(pub String);
 
@@ -131,11 +130,11 @@ impl std::fmt::Debug for Secret {
 /// and a load spawns exactly that — the key resolves for the scene's links
 /// as any bound key does, and nothing is served until the host
 /// materializes.
-#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
 pub struct ProviderBinding {
     /// The key the built handler serves (`Bound.key` once materialized).
-    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::HandlerKeyReflect))]
+    #[reflect(remote = crate::bus::reflect::HandlerKeyReflect)]
     pub key: HandlerKey,
     /// Which provider client.
     pub kind: ProviderKind,
@@ -161,7 +160,7 @@ pub struct ProviderBinding {
     /// | `anthropic` | `anthropic_version: string`, `anthropic_betas: [string]` |
     /// | `openai_responses` | `system_instructions_as_messages: bool` |
     /// | `openai_chat`, `gemini`, `deepseek` | none |
-    #[cfg_attr(feature = "reflect", reflect(remote = crate::bus::reflect::ExtraParamsReflect))]
+    #[reflect(remote = crate::bus::reflect::ExtraParamsReflect)]
     pub extra_params: Option<serde_json::Value>,
 }
 

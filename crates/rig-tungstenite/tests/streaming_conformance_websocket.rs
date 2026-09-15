@@ -21,8 +21,6 @@
 //! MIGRATING.md, #2258).
 
 #![cfg(not(target_family = "wasm"))]
-#![allow(clippy::expect_used)]
-
 use futures::{SinkExt, StreamExt};
 use rig_core::client::CompletionClient as _;
 use rig_core::completion::{CompletionError, CompletionModel as _};

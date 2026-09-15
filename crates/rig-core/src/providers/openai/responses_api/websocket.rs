@@ -1007,5 +1007,5 @@ const _: fn() = || {
 };
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::panic, clippy::unwrap_used)]
+#[allow(clippy::expect_used, clippy::panic)]
 mod tests;

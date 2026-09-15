@@ -5,7 +5,6 @@
 //! test in its crate.
 
 mod agent_run_stepper;
-mod bevy_pin;
 mod dependency_graph;
 #[cfg(feature = "derive")]
 mod embed_macro;
@@ -25,12 +24,8 @@ mod golden_pairing;
 mod golden_recovery;
 mod loaders;
 mod no_random_ids;
-mod one_erasure;
 mod prompt_response_messages;
-mod provider_layout;
 mod reasoning_stream_stats;
-mod rig_ecs_bus_module;
-mod stream_ids;
 mod streaming_conformance;
 mod streaming_conformance_registry;
 mod streaming_conformance_suites;

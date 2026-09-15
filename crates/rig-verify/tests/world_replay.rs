@@ -19,12 +19,7 @@
 //! interpreter can replay without rig-agent still replays here. One row
 //! per golden, counted.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
+#![allow(clippy::expect_used, clippy::panic)]
 
 use std::time::{Duration, Instant};
 

@@ -6,6 +6,7 @@
 //! run continues. Saving a scene preserves holds, but does not persist host tools
 //! or external side effects.
 
+use bevy_reflect::Reflect;
 use std::collections::BTreeMap;
 
 use bevy_ecs::prelude::*;
@@ -15,41 +16,41 @@ use super::{Failed, Run, Settled};
 
 /// A completed tool batch on its existing turn entity. The number is the run's
 /// model-turn cursor, including earlier non-tool turns, not a batch count.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
 pub struct ToolTurnCommit {
     /// Model turn whose complete results became history.
     pub turn: usize,
 }
 
 /// The assistant utterance committed for this tool-bearing turn.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = AssistantForTurns)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[reflect(Component)]
 pub struct TurnAssistant(pub Entity);
 
 /// Turns whose assistant utterance is this entity.
-#[derive(Component, Debug, Default)]
+#[derive(Component, Debug, Default, Reflect)]
 #[relationship_target(relationship = TurnAssistant)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[reflect(Component)]
 pub struct AssistantForTurns(Vec<Entity>);
 
 /// The single ordered user utterance containing the committed tool results.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = ResultsForTurns)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[reflect(Component)]
 pub struct TurnResults(pub Entity);
 
 /// Turns whose tool-result utterance is this entity.
-#[derive(Component, Debug, Default)]
+#[derive(Component, Debug, Default, Reflect)]
 #[relationship_target(relationship = TurnResults)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[reflect(Component)]
 pub struct ResultsForTurns(Vec<Entity>);
 
 /// Armed checkpoint holds on a run, indexed by host owner name. Each value is
 /// the earliest committed model-turn number at which that owner blocks advance.
-#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "reflect", derive(bevy_reflect::Reflect), reflect(Component))]
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
 pub struct ToolTurnHolds(BTreeMap<String, usize>);
 
 impl ToolTurnHolds {

@@ -159,7 +159,6 @@ impl Bus {
         );
         schedule.add_systems(dispatch.in_set(BusSet::Dispatch));
         schedule.add_systems(begin_delivery_pass.before(BusSet::Gate));
-        #[cfg(feature = "replay")]
         schedule.add_systems(
             super::delivery::collect_replayed
                 .in_set(BusSet::Collect)
@@ -192,7 +191,6 @@ pub fn run_to_quiescence(world: &mut World) {
     for pass in 0..QUIESCENCE_CAP {
         world.resource_mut::<Progress>().0 = false;
         world.run_schedule(RigSchedule);
-        #[cfg(feature = "replay")]
         super::delivery::diagnose_idle_replay(world);
         if !world.resource::<Progress>().0
             || world

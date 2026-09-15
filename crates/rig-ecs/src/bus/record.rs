@@ -456,5 +456,5 @@ pub fn record_bound(
     }
 }
 
-#[cfg(all(test, feature = "replay"))]
+#[cfg(test)]
 mod tests;

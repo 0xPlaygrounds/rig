@@ -164,7 +164,6 @@ macro_rules! graph_components {
     };
 }
 
-#[cfg(feature = "reflect")]
 pub(crate) use graph_components;
 
 /// Every single-entity relationship the graph persists, by wire name, in the
@@ -180,7 +179,6 @@ macro_rules! graph_relations {
     };
 }
 
-#[cfg(feature = "reflect")]
 pub(crate) use graph_relations;
 
 macro_rules! relate {

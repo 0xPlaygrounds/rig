@@ -2,12 +2,7 @@
 //! names its CONTRACT row; the goldens are read from `rig-verify`'s
 //! fixtures, never restated.
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 
 use rig_core::{
     completion::message::{Message, ToolChoice, UserContent},

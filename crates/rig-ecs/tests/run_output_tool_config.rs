@@ -310,8 +310,6 @@ fn scene_restores_custom_configuration_in_a_fresh_world() {
         "Extract this data."
     );
 }
-
-#[cfg(feature = "replay")]
 #[test]
 fn replay_identity_includes_each_effective_output_tool_setting() {
     let mut app = app();

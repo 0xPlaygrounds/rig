@@ -88,7 +88,6 @@ fn ready_delivery_is_bounded_and_deltas_do_not_spin_quiescence() {
 }
 
 #[test]
-#[cfg(feature = "replay")]
 fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
     use rig_core::{effect::EffectKind, serve::Origin};
     let mut world = world();

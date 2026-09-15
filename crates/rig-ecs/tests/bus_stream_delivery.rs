@@ -111,8 +111,6 @@ fn independent_consumers_preserve_interleaved_errors_without_a_recorder() {
     );
     assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_err());
 }
-
-#[cfg(feature = "replay")]
 #[test]
 fn policy_replay_preserves_notification_batches_and_scene_load_emits_none() {
     use rig_ecs::bus::{EffectLogResource, Handlers, Replay, Scene};
@@ -317,8 +315,6 @@ fn burst_delivery_is_bounded_and_does_not_starve_another_effect() {
         assert!(batches.lock().unwrap()[&effect].len() > 1);
     }
 }
-
-#[cfg(feature = "replay")]
 #[test]
 fn live_visibility_is_independent_of_recorder_event_retention() {
     use rig_ecs::bus::EffectLogResource;
@@ -531,8 +527,6 @@ fn retried_streams_have_distinct_delivery_identities_and_identical_requests() {
         vec!["partial", "done"]
     );
 }
-
-#[cfg(feature = "replay")]
 #[test]
 fn replay_retains_both_accepted_batches_when_one_observer_removes_the_other_effect() {
     use futures::StreamExt;

@@ -1,11 +1,3 @@
-#![allow(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::unwrap_used,
-    clippy::unreachable
-)]
-
 use rig::client::DefaultTransportBuilder as _;
 use rig::client::EmbeddingsClient;
 use rig::postgres::PostgresVectorStore;

@@ -1,10 +1,4 @@
-#![allow(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::unwrap_used,
-    clippy::unreachable
-)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 #[path = "common/cassette_safety.rs"]
 mod cassette_safety;

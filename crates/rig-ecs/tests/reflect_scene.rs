@@ -8,17 +8,12 @@
 //! | a world and the world loaded from its serde scene reflect to the same scene | `a_world_and_its_loaded_scene_reflect_alike` |
 //! | the reflected scene names relationships by index: the run's `RunOf` is the agent's index | `entity_references_are_scene_indexes` |
 
-#![allow(
-    clippy::expect_used,
-    clippy::unwrap_used,
-    clippy::panic,
-    clippy::indexing_slicing
-)]
+#![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
 
 mod run_support;
 
 use bevy_ecs::{prelude::*, reflect::AppTypeRegistry};
-use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
+use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
 use rig_core::message::AssistantContent;
 use rig_ecs::{
     agent::{
@@ -119,7 +114,7 @@ fn entity_references_are_scene_indexes() {
     );
 }
 
-#[derive(Clone, Component, bevy_reflect::Reflect, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Component, Reflect, serde::Serialize, serde::Deserialize)]
 #[reflect(opaque)]
 #[reflect(Component, Serialize, Deserialize)]
 #[serde(transparent)]

@@ -1,10 +1,4 @@
-#![allow(
-    clippy::expect_used,
-    clippy::indexing_slicing,
-    clippy::panic,
-    clippy::unwrap_used,
-    clippy::unreachable
-)]
+#![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 // Unconditional, both of them: the cassette safety guard parses this file
 // structurally and fails if either `mod` is missing or `#[cfg]`-gated.

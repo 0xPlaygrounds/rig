@@ -10,7 +10,7 @@
 //! (the CLI at the workspace lock file's `wasm-bindgen` version).
 
 #![cfg(target_arch = "wasm32")]
-#![allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+#![allow(clippy::expect_used)]
 
 use std::{
     cell::Cell,

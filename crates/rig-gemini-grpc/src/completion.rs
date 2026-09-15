@@ -817,5 +817,5 @@ fn json_type_to_proto_type(t: &str) -> proto::Type {
 }
 
 #[cfg(test)]
-#[allow(clippy::expect_used, clippy::unwrap_used, clippy::panic)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests;
