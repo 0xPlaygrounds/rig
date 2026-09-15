@@ -1,6 +1,7 @@
 use super::*;
-use crate::error::ErrorReport;
+use crate::error::{ErrorDetail, ErrorKind, ErrorReport};
 use crate::message::AdditionalParams;
+use crate::message::ToolCallId;
 use crate::streaming::{MintKind, non_empty_id};
 
 /// Test-side key syntax: legacy minted renderings decode to minted
@@ -774,14 +775,50 @@ fn drop_mode_drops_partial_arguments_and_nameless_calls() {
     assert!(!accumulator.saw_tool_call());
 }
 
+/// rig#2447: the wire promised a complete block, so malformed input is an
+/// error — but a *routable* one. The report carries the exact accumulated
+/// text, the parser's reason, and the same durable id the call would have
+/// had, so an agent can address it like a valid call.
 #[test]
-fn error_mode_surfaces_malformed_input_as_an_error() {
+fn error_mode_surfaces_malformed_input_as_a_typed_error() {
     let mut accumulator = BlockAccumulator::new();
     tool_name_delta(&mut accumulator, "call_1", "get_weather");
     tool_args_delta(&mut accumulator, "call_1", "{\"location\": not-json");
     let err = tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Error))
         .expect_err("malformed complete input must error");
+    assert_eq!(err.kind, ErrorKind::Response);
     assert!(err.to_string().contains("get_weather"));
+
+    let Some(ErrorDetail::MalformedToolInput(detail)) = err.detail else {
+        panic!("malformed input must carry a typed detail");
+    };
+    assert_eq!(detail.name, "get_weather");
+    assert_eq!(detail.raw, "{\"location\": not-json");
+    assert!(!detail.error.is_empty());
+    assert_eq!(detail.id, ToolCallId::new("call_1").expect("wire id"));
+    assert_eq!(
+        detail.provider.as_ref().map(|p| p.call_id.as_str()),
+        Some("call_1")
+    );
+
+    // The entity finalized: a repeated end must not resurrect it.
+    let again = tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Error))
+        .expect("a repeated end for a finished call is a no-op");
+    assert!(again.is_none());
+}
+
+/// The detail survives serde unchanged — a recorded run replays the same
+/// diagnostic a live run produced.
+#[test]
+fn malformed_input_detail_round_trips_through_serde() {
+    let mut accumulator = BlockAccumulator::new();
+    tool_name_delta(&mut accumulator, "call_1", "get_weather");
+    tool_args_delta(&mut accumulator, "call_1", "{\"a\": \x01 \"b\"");
+    let err = tool_end(&mut accumulator, "call_1", end(UnparseableToolInput::Error))
+        .expect_err("malformed complete input must error");
+    let json = serde_json::to_string(&err).expect("report serializes");
+    let back: ErrorReport = serde_json::from_str(&json).expect("report deserializes");
+    assert_eq!(back, err);
 }
 
 #[test]

@@ -992,38 +992,53 @@ impl TurnSource for StreamingTurnSource {
             }
 
             'turn: while let Some(item) = stream.next().await {
-                let item = match item {
-                    Ok(item) => item,
-                    Err(err) => {
-                        yield Err(err.into());
-                        return;
-                    }
-                };
-                // Only *content* after the terminal record is a defect:
-                // block bookkeeping (a late message-id start, a text block
-                // closing) is not.
-                let visible_content = !matches!(
-                    &item,
-                    StreamEvent::BlockStart { .. } | StreamEvent::BlockEnd { block: None, .. }
-                );
-                if provider_final_seen && visible_content {
-                    yield Err(CompletionError::ResponseError(
-                        "provider stream emitted visible assistant content after its final response"
-                            .to_string(),
-                    )
-                    .into());
-                    return;
-                }
-                let mut events: VecDeque<StreamedTurnEvent> = match assembler.ingest(&item) {
-                    Ok(events) => events.into(),
-                    Err(err) => {
-                        yield Err(err.into());
-                        return;
-                    }
-                };
+                // A provider stream's `Err` item is normally fatal. One
+                // shape is not: the model closed a tool call with input that
+                // is not JSON (rig#2447). That is the model's mistake, and
+                // the same recovery the run offers for an unknown tool name
+                // applies — so it is routed into that seam with the raw text
+                // and the parser's reason, and `Fail` reproduces the error
+                // that used to end the run here. Every other error stays
+                // fatal.
                 // At most one event per ingested item forwards the item itself;
                 // moving it out of the slot avoids a clone per streamed delta.
-                let mut item_slot = Some(item);
+                let (mut item_slot, mut events): (Option<StreamEvent>, VecDeque<StreamedTurnEvent>) =
+                    match item {
+                        Ok(item) => {
+                            // Only *content* after the terminal record is a
+                            // defect: block bookkeeping (a late message-id
+                            // start, a text block closing) is not.
+                            let visible_content = !matches!(
+                                &item,
+                                StreamEvent::BlockStart { .. }
+                                    | StreamEvent::BlockEnd { block: None, .. }
+                            );
+                            if provider_final_seen && visible_content {
+                                yield Err(CompletionError::ResponseError(
+                                    "provider stream emitted visible assistant content after its final response"
+                                        .to_string(),
+                                )
+                                .into());
+                                return;
+                            }
+                            match assembler.ingest(&item) {
+                                Ok(events) => (Some(item), events.into()),
+                                Err(err) => {
+                                    yield Err(err.into());
+                                    return;
+                                }
+                            }
+                        }
+                        Err(err) => match &err.detail {
+                            Some(rig_core::error::ErrorDetail::MalformedToolInput(detail)) => {
+                                (None, assembler.surface_malformed_input(detail).into())
+                            }
+                            _ => {
+                                yield Err(err.into());
+                                return;
+                            }
+                        },
+                    };
                 while let Some(event) = events.pop_front() {
                     match event {
                         StreamedTurnEvent::EmitIngested => {

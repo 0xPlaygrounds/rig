@@ -26,10 +26,10 @@ mod loaders;
 mod no_random_ids;
 mod prompt_response_messages;
 mod reasoning_stream_stats;
+#[cfg(feature = "derive")]
+mod rig_tool_facade;
 mod streaming_conformance;
 mod streaming_conformance_registry;
 mod streaming_conformance_suites;
-#[cfg(feature = "derive")]
-mod rig_tool_facade;
 
 mod pull_parser;

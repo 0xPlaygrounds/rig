@@ -96,7 +96,9 @@ pub mod policy;
 pub mod response;
 pub mod streamed;
 
-pub use policy::{InvalidToolCallAction, InvalidToolCallContext, RetryRequest};
+pub use policy::{
+    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, RetryRequest,
+};
 pub use response::{CompletionCall, MemoryAppend, PromptError, PromptResponse};
 use rig_core::completion::message::turn_delivered_no_answer;
 use rig_core::json_utils;
@@ -136,6 +138,7 @@ struct InvalidToolCallDiagnostic<'a> {
     executable_tool_names: &'a BTreeSet<String>,
     allowed_tool_names: &'a BTreeSet<String>,
     history: &'a [Message],
+    reason: &'a InvalidToolCallReason,
 }
 
 impl InvalidToolCallDiagnostic<'_> {
@@ -148,13 +151,37 @@ impl InvalidToolCallDiagnostic<'_> {
         )
     }
 
+    /// The fail-fast error for the call as rejected: an unknown name is
+    /// `UnknownToolCall`; malformed arguments reproduce the provider-side
+    /// report that would have ended the run before rig#2447, so a `Fail`
+    /// resolution is byte-for-byte what a consumer saw previously.
     fn unknown_current(&self) -> PromptError {
-        self.unknown(self.tool_call.function.name.clone())
+        match self.reason {
+            InvalidToolCallReason::UnknownTool => {
+                self.unknown(self.tool_call.function.name.clone())
+            }
+            InvalidToolCallReason::MalformedArguments { error } => {
+                PromptError::Report(malformed_tool_input_report(self.tool_call, error))
+            }
+        }
     }
 
     fn cancelled(&self, reason: String) -> PromptError {
         PromptError::prompt_cancelled(self.history.to_vec(), reason)
     }
+}
+
+/// The report the provider stream raised for malformed tool input,
+/// rebuilt from the diagnostic call so `Fail` and a rejected `Repair`
+/// surface the same error a pre-#2447 run did.
+fn malformed_tool_input_report(tool_call: &ToolCall, error: &str) -> rig_core::error::ErrorReport {
+    rig_core::error::ErrorReport::new(
+        rig_core::error::ErrorKind::Response,
+        format!(
+            "tool call `{}` arrived with malformed JSON input: {error}",
+            tool_call.function.name
+        ),
+    )
 }
 
 enum ValidatedInvalidToolCallAction {
@@ -977,6 +1004,7 @@ impl AgentRun {
             tool_choice: self.tool_choice.clone(),
             chat_history: self.diagnostic_history(resolving),
             is_streaming: false,
+            reason: InvalidToolCallReason::UnknownTool,
         })
     }
 
@@ -1395,13 +1423,22 @@ impl AgentRun {
                     Ok(ValidatedInvalidToolCallAction::Retry { feedback })
                 }
             }
-            InvalidToolCallAction::Repair { tool_name } => {
-                if diagnostic.allowed_tool_names.contains(&tool_name) {
-                    Ok(ValidatedInvalidToolCallAction::Repair { tool_name })
-                } else {
-                    Err(diagnostic.unknown(tool_name))
+            InvalidToolCallAction::Repair { tool_name } => match diagnostic.reason {
+                // Repair replaces a *name*; it cannot rewrite argument
+                // bytes, so a repair of malformed input would dispatch a
+                // tool with arguments the model never produced. Fail closed
+                // with the same report `Fail` gives.
+                InvalidToolCallReason::MalformedArguments { .. } => {
+                    Err(diagnostic.unknown_current())
                 }
-            }
+                InvalidToolCallReason::UnknownTool => {
+                    if diagnostic.allowed_tool_names.contains(&tool_name) {
+                        Ok(ValidatedInvalidToolCallAction::Repair { tool_name })
+                    } else {
+                        Err(diagnostic.unknown(tool_name))
+                    }
+                }
+            },
             InvalidToolCallAction::Stop { reason } => Err(diagnostic.cancelled(reason)),
             InvalidToolCallAction::Skip { reason } => {
                 if matches!(self.tool_choice, Some(ToolChoice::None)) {
@@ -1454,6 +1491,7 @@ impl AgentRun {
                 tool_call: &tool_call,
                 executable_tool_names: &resolving.executable_tool_names,
                 allowed_tool_names: &resolving.allowed_tool_names,
+                reason: &InvalidToolCallReason::UnknownTool,
                 history: &diagnostic_history,
             },
         )?;
@@ -1738,6 +1776,7 @@ impl AgentRun {
             chat_history: self
                 .streamed_diagnostic_history(partial, Some(invalid.tool_call.clone())),
             is_streaming: true,
+            reason: invalid.reason.clone(),
         }
     }
 
@@ -1768,6 +1807,7 @@ impl AgentRun {
                 tool_call: &invalid.tool_call,
                 executable_tool_names: &invalid.executable_tool_names,
                 allowed_tool_names: &invalid.allowed_tool_names,
+                reason: &invalid.reason,
                 history: &diagnostic_history,
             },
         )?;

@@ -53,6 +53,7 @@ mod cassette {
     mod error_identity_edge;
     mod image;
     mod lifecycle_matrix;
+    mod malformed_tool_args_matrix;
     mod messages_behaviors;
     mod messages_sessions;
     mod messages_strict_tools;
