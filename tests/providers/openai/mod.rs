@@ -80,6 +80,7 @@ mod cassette {
     mod request_hook;
     mod response_identity;
     mod response_identity_edge;
+    mod response_metadata_matrix;
     mod response_retry;
     mod response_schema;
     mod responses_behaviors;
