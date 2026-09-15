@@ -29,8 +29,8 @@ use rig_core::{
 use rig_ecs::{
     agent::{
         Context, Conversation, DocumentId, DocumentText, Failed, Failure, Grant, MessageParts,
-        Order, Remembered, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult,
-        Settled, Utterance,
+        Remembered, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult,
+        Settled,
     },
     bus::{EffectOutcome, PendingEffect},
     replay::required_row,
@@ -184,23 +184,15 @@ fn ran(app: &mut bevy_app::App, run: Entity, what: &str) {
 }
 
 fn utterances(world: &mut World, run: Entity) -> Vec<(bool, MessageParts)> {
-    let mut found: Vec<(Order, bool, MessageParts)> = world
-        .query_filtered::<(&ChildOf, &Order, Has<Remembered>, Entity), With<Utterance>>()
-        .iter(world)
-        .filter(|(child_of, ..)| child_of.parent() == run)
-        .map(|(_, order, remembered, entity)| {
+    utterances_of(world, run)
+        .into_iter()
+        .map(|entity| {
             (
-                *order,
-                remembered,
+                world.get::<Remembered>(entity).is_some(),
                 rig_ecs::agent::content::parts::read_message(world, entity)
                     .expect("valid memory graph"),
             )
         })
-        .collect();
-    found.sort_by_key(|(order, ..)| *order);
-    found
-        .into_iter()
-        .map(|(_, remembered, parts)| (remembered, parts))
         .collect()
 }
 
@@ -376,16 +368,15 @@ fn memory_retrieval_attaches_documents_and_tools() {
             DocumentText("static".to_owned()),
         ))
         .id();
-    world.spawn((Context(static_document), Order(0), ChildOf(agent)));
-    world.spawn((Grant(add), Order(1), ChildOf(agent)));
-    world.spawn((Grant(subtract), Retrievable, Order(2), ChildOf(agent)));
+    world.spawn((Context(static_document), ChildOf(agent)));
+    world.spawn((Grant(add), ChildOf(agent)));
+    world.spawn((Grant(subtract), Retrievable, ChildOf(agent)));
     world.spawn((
         Retrieves(index),
         Retrieval {
             samples: 2,
             what: RetrievalKind::Documents,
         },
-        Order(3),
         ChildOf(agent),
     ));
     world.spawn((
@@ -394,7 +385,6 @@ fn memory_retrieval_attaches_documents_and_tools() {
             samples: 1,
             what: RetrievalKind::Tools,
         },
-        Order(4),
         ChildOf(agent),
     ));
     let run = world.spawn_run(agent, &[], "subtract one from three", false, None);
@@ -501,30 +491,11 @@ impl Serve for Subtractor {
 
 #[test]
 fn unavailable_retrieval_preserves_static_context_and_tool_grants() {
-    for ordered in [true, false] {
-        check_static_retrieval_fallback(ordered);
-    }
-}
-
-fn check_static_retrieval_fallback(ordered: bool) {
     let mut app = app();
     let (agent, requests) = capturing_agent(&mut app, MODEL, MODEL, "ok");
     let add = register(&mut app, ADD, Adder::new(ADD));
     let subtract = register(&mut app, SUB, Subtractor);
-    let unavailable = if ordered {
-        app.world_mut().spawn_empty().id()
-    } else {
-        register(
-            &mut app,
-            INDEX,
-            Index {
-                key: INDEX,
-                queries: Arc::new(Mutex::new(Vec::new())),
-                documents: vec![],
-                ids: vec![],
-            },
-        )
-    };
+    let unavailable = app.world_mut().spawn_empty().id();
     let world = app.world_mut();
     let document = world
         .spawn((
@@ -532,10 +503,10 @@ fn check_static_retrieval_fallback(ordered: bool) {
             DocumentText("static context".into()),
         ))
         .id();
-    world.spawn((Context(document), Order(0), ChildOf(agent)));
-    world.spawn((Grant(add), Order(1), ChildOf(agent)));
-    world.spawn((Grant(subtract), Retrievable, Order(2), ChildOf(agent)));
-    let mut link = world.spawn((
+    world.spawn((Context(document), ChildOf(agent)));
+    world.spawn((Grant(add), ChildOf(agent)));
+    world.spawn((Grant(subtract), Retrievable, ChildOf(agent)));
+    world.spawn((
         Retrieves(unavailable),
         Retrieval {
             samples: 1,
@@ -543,9 +514,6 @@ fn check_static_retrieval_fallback(ordered: bool) {
         },
         ChildOf(agent),
     ));
-    if ordered {
-        link.insert(Order(3));
-    }
     let run = world.spawn_run(agent, &[], "hello", false, None);
     ran(&mut app, run, "run without an available retrieval handler");
     let requests = requests.lock().unwrap();

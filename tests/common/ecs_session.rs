@@ -5,10 +5,7 @@ use crate::ecs_agent::EcsAgent;
 use anyhow::{Result, anyhow};
 use bevy_ecs::prelude::*;
 use rig::message::Message;
-use rig_ecs::{
-    agent::{Order, Utterance},
-    systems::RunCommands,
-};
+use rig_ecs::{agent::Utterance, systems::RunCommands};
 
 pub(crate) struct SessionResult {
     pub output: String,
@@ -52,12 +49,13 @@ pub(crate) async fn run_session(
     let mut history: Vec<_> = ecs
         .app
         .world_mut()
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(ecs.app.world())
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| {
+        .filter(|(_, parent)| parent.parent() == run)
+        .map(|(entity, _)| {
             (
-                order.0,
+                crate::ecs_agent::sibling_index(ecs.app.world(), entity)
+                    .expect("a child of the run"),
                 rig_ecs::agent::content::parts::read_message(ecs.app.world(), entity)
                     .expect("valid content graph")
                     .to_message(),

@@ -1702,6 +1702,7 @@ dependencies = [
  "bevy_time",
  "const-fnv1a-hash",
  "log",
+ "serde",
 ]
 
 [[package]]
@@ -1866,7 +1867,10 @@ dependencies = [
  "bevy_app",
  "bevy_ecs",
  "bevy_platform",
+ "bevy_reflect",
+ "crossbeam-channel",
  "log",
+ "serde",
 ]
 
 [[package]]
@@ -10596,10 +10600,12 @@ dependencies = [
  "base64 0.22.1",
  "bevy_app",
  "bevy_asset",
+ "bevy_diagnostic",
  "bevy_ecs",
  "bevy_platform",
  "bevy_reflect",
  "bevy_tasks",
+ "bevy_time",
  "futures",
  "log",
  "rig-core",

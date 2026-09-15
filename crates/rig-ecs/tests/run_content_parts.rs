@@ -2,7 +2,7 @@
 use bevy_ecs::prelude::*;
 use rig_core::message::*;
 use rig_ecs::agent::content::{binary::*, parts::*};
-use rig_ecs::agent::{MessageParts, Order, Utterance};
+use rig_ecs::agent::{MessageParts, Role, Utterance};
 
 fn world(parts: MessageParts) -> (World, Entity) {
     let mut world = World::new();
@@ -121,17 +121,12 @@ fn part_edits_do_not_change_siblings_and_order_is_semantic() {
     let second = *children.get(1).unwrap();
     world.get_mut::<TextPart>(first).unwrap().0.text = "edited".into();
     assert_eq!(world.get::<TextPart>(second).unwrap().0.text, "second");
-    world.entity_mut(first).insert(Order(5));
+    world.entity_mut(entity).insert_children(0, &[second]);
     assert_eq!(
         read_message(&world, entity).unwrap(),
         MessageParts::User {
             content: vec![UserContent::text("second"), UserContent::text("edited")]
         }
-    );
-    world.entity_mut(second).insert(Order(5));
-    assert_eq!(
-        read_message(&world, entity),
-        Err(ContentError::DuplicateOrder)
     );
 }
 
@@ -152,7 +147,7 @@ fn missing_conflicting_or_wrong_role_components_are_rejected() {
     assert_eq!(read_message(&world, entity), Err(ContentError::Shape));
     world.entity_mut(child).remove::<TextPart>();
     assert_eq!(read_message(&world, entity), Err(ContentError::Shape));
-    world.entity_mut(child).remove::<Order>();
+    world.entity_mut(entity).remove::<Role>();
     assert_eq!(read_message(&world, entity), Err(ContentError::Missing));
 }
 
@@ -253,5 +248,75 @@ fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
     assert_eq!(
         request.chat_history,
         vec![rig_core::message::Message::user("hello")]
+    );
+}
+
+/// Two runs read in one `Materialise` pass: the first's model answers an
+/// image the graph refuses (an invalid base64 body), the second's a text.
+/// The first ends `Failed(Content)`; the second is read in the same pass
+/// and settles on its answer — one run's content error is that run's.
+#[test]
+fn a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass() {
+    use crate::run_support::open_model_world;
+    use rig_core::{
+        completion::{CompletionResponse, Usage},
+        effect::{EffectKind, Outcome},
+    };
+    use rig_ecs::{
+        agent::{Failed, Failure, RunResult, Settled},
+        bus::{EffectOutcome, PendingEffect, RigSchedule},
+        systems::RunCommands,
+    };
+    let (mut world, agent) = open_model_world();
+    let first = world.spawn_run(agent, &[], "first", false, None);
+    let second = world.spawn_run(agent, &[], "second", false, None);
+    world.run_schedule(RigSchedule);
+    let effect_of = |world: &mut World, run: Entity| -> Entity {
+        let turns: Vec<Entity> = world.get::<Children>(run).unwrap().iter().collect();
+        world
+            .query::<(Entity, &PendingEffect, &ChildOf)>()
+            .iter(world)
+            .find(|(_, effect, parent)| {
+                matches!(effect.kind, EffectKind::Completion { .. })
+                    && turns.contains(&parent.parent())
+            })
+            .map(|(effect, _, _)| effect)
+            .expect("a folded completion")
+    };
+    let answer = |choice: Vec<AssistantContent>| {
+        EffectOutcome(Ok(Outcome::Completion(CompletionResponse::new(
+            choice,
+            Usage::new(),
+            "model",
+        ))))
+    };
+    let refused = AssistantContent::Image(Image {
+        data: DocumentSourceKind::Base64("invalid!".into()),
+        ..Default::default()
+    });
+    let first_effect = effect_of(&mut world, first);
+    let second_effect = effect_of(&mut world, second);
+    world
+        .entity_mut(first_effect)
+        .insert(answer(vec![AssistantContent::text("look"), refused]));
+    world
+        .entity_mut(second_effect)
+        .insert(answer(vec![AssistantContent::text("fine")]));
+    world.run_schedule(RigSchedule);
+    assert_eq!(
+        world.get::<Failed>(first),
+        Some(&Failed(Failure::Content(ContentError::Binary(
+            BinaryError::Base64
+        ))))
+    );
+    assert!(
+        world.get::<Settled>(second).is_some(),
+        "read in the same pass"
+    );
+    assert_eq!(
+        world
+            .get::<RunResult>(second)
+            .map(|result| result.0.as_str()),
+        Some("fine")
     );
 }

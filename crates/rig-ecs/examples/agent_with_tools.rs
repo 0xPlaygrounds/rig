@@ -17,7 +17,7 @@ mod support;
 use bevy_app::Startup;
 use bevy_ecs::prelude::*;
 use rig_core::message::AssistantContent;
-use rig_ecs::{agent::Order, bus::Handlers, prelude::*, systems::RunCommands};
+use rig_ecs::{bus::Handlers, prelude::*, systems::RunCommands};
 
 const PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. \
      You must use the provided tools before answering.";
@@ -40,8 +40,8 @@ fn ask(mut handlers: Handlers, mut commands: Commands) {
     let tools = vec![support::add(), support::subtract()];
     let (model, tools) = support::register(&mut handlers, model, tools);
     let agent = support::agent(&mut commands, model, PREAMBLE, 2);
-    for (order, tool) in tools.into_iter().enumerate() {
-        commands.spawn((Grant(tool), Order(order as u64), ChildOf(agent)));
+    for tool in tools {
+        commands.spawn((Grant(tool), ChildOf(agent)));
     }
     commands.queue(move |world: &mut World| {
         world.spawn_run(agent, &[], "Calculate 2 - 5.", false, None);

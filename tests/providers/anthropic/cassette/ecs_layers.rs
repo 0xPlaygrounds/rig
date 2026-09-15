@@ -23,9 +23,7 @@ use rig::{
     },
 };
 use rig_ecs::{
-    agent::{
-        Conversation, Grant, Order, PolicyVersion, Remembered, Remembers, Temperature, ToolCallSlot,
-    },
+    agent::{Conversation, Grant, PolicyVersion, Remembered, Remembers, Temperature, ToolCallSlot},
     bus::{BusSet, EffectOutcome, Handlers, Issued, PendingEffect, RigSchedule},
     systems::{Fresh, RigSet},
 };
@@ -56,9 +54,7 @@ fn layered_agent(
     })
     .expect("bus")
     .expect("fresh layered tool");
-    ecs.app
-        .world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(ecs.agent)));
+    ecs.app.world_mut().spawn((Grant(tool), ChildOf(ecs.agent)));
     ecs
 }
 async fn run_tool(ecs: &mut EcsAgent) -> rig::effect_log::EffectLog {
@@ -94,20 +90,25 @@ fn patch_args(mut tools: UnissuedTools) {
 struct HistoryChecks(usize);
 fn check_history(
     fresh: Query<&ChildOf, Added<Fresh>>,
-    remembered: Query<(&ChildOf, &Order, Entity), With<Remembered>>,
+    remembered: Query<(), With<Remembered>>,
+    children: Query<&Children>,
     content: rig_ecs::agent::content::parts::ContentGraph,
     mut checks: ResMut<HistoryChecks>,
 ) {
     for turn in &fresh {
-        let mut history: Vec<_> = remembered
-            .iter()
-            .filter(|(parent, _, _)| parent.parent() == turn.parent())
-            .collect();
-        history.sort_by_key(|(_, order, _)| order.0);
+        let history: Vec<Entity> = children
+            .get(turn.parent())
+            .map(|children| {
+                children
+                    .iter()
+                    .filter(|child| remembered.contains(*child))
+                    .collect()
+            })
+            .unwrap_or_default();
         assert_eq!(
             history
                 .iter()
-                .map(|(_, _, entity)| content
+                .map(|entity| content
                     .message(*entity)
                     .expect("valid remembered graph")
                     .to_message())

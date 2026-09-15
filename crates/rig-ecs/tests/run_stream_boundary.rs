@@ -30,7 +30,7 @@ use rig_core::{
     streaming::{BlockClose, StreamFinal, ToolCallEnd},
 };
 use rig_ecs::{
-    agent::{Grant, MessageParts, Order, Resolution, RunResult, Settled, Usage},
+    agent::{Grant, MessageParts, Resolution, RunResult, Settled, Usage},
     bus::RigSchedule,
     systems::RigSet,
 };
@@ -172,8 +172,7 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
     let peak = Arc::clone(&adder.peak);
     let tool = register(&mut app, "boundary/add", adder);
     let agent = spawn_agent(app.world_mut(), "boundary", model);
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     let run = app.world_mut().spawn_run(agent, &[], "add", true, Some(2));
     tick_until(&mut app, "skip before EOF", |world| {
         world.resource::<RepairCount>().0 == 1
@@ -271,8 +270,7 @@ fn early_repair_survives_raw_block_completion_and_provider_identity() {
     let peak = Arc::clone(&adder.peak);
     let tool = register(&mut app, "boundary/add", adder);
     let agent = spawn_agent(app.world_mut(), "boundary", model);
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     let run = app.world_mut().spawn_run(agent, &[], "add", true, Some(2));
     tick_until(&mut app, "repair before EOF", |world| {
         world.resource::<RepairCount>().0 == 1

@@ -5,11 +5,9 @@
 //! [`Preamble`] and its [`Grant`]s — to the bound handlers the definitions
 //! name, in file order — the tick the asset is loaded, once (the marker
 //! [`Applied`] says so — a later change to the asset is not re-applied).
-//! The systems run in `Update` in [`AssetsSet`]; the host orders its
-//! `run_to_quiescence` after that set so a run spawned the tick an asset
-//! loads folds with it. This is the one module that needs `bevy_app`
-//! (`bevy_asset` is built on it): the host adds `bevy_asset::AssetPlugin`
-//! first, then [`AssetsPlugin`].
+//! The systems run in `Update` in [`AssetsSet`], before `RigSchedule`, so
+//! a run spawned the tick an asset loads folds with it. The host adds
+//! `bevy_asset::AssetPlugin` first, then [`AssetsPlugin`].
 
 use std::marker::PhantomData;
 
@@ -20,9 +18,8 @@ use bevy_reflect::TypePath;
 use rig_core::{completion::ToolDefinition, effect::FamilyDescriptor};
 
 use crate::{
-    agent::{Grant, OrderCounter, Preamble},
+    agent::{Grant, Preamble, RunCounter},
     bus::Bound,
-    systems::next_order_in,
 };
 
 /// A prompt file's text — the asset, not the run's `agent::Prompt` (the
@@ -129,15 +126,15 @@ pub fn apply_prompts(
 }
 
 /// Loaded [`ToolDefinitions`] on an agent become its [`Grant`]s: one per
-/// definition, in file order, to the bound handler whose descriptor is
-/// the tool of that name. A definition no handler serves is no grant
-/// (logged): a definition names a tool, the handler is what runs it.
+/// definition, spawned in file order (the agent's sibling order), to the
+/// bound handler whose descriptor is the tool of that name. A definition
+/// no handler serves is no grant (logged): a definition names a tool, the
+/// handler is what runs it.
 pub fn grant_tools(
     mut commands: Commands,
     definitions: Res<Assets<ToolDefinitions>>,
     agents: Query<(Entity, &ToolsHandle), Without<Applied<ToolDefinitions>>>,
     bound: Query<(Entity, &Bound)>,
-    mut orders: ResMut<OrderCounter>,
 ) {
     for (agent, handle) in &agents {
         let Some(definitions) = definitions.get(&handle.0) else {
@@ -158,7 +155,7 @@ pub fn grant_tools(
                 });
             match tool {
                 Some(tool) => {
-                    commands.spawn((Grant(tool), next_order_in(&mut orders), ChildOf(agent)));
+                    commands.spawn((Grant(tool), ChildOf(agent)));
                 }
                 None => log::warn!(
                     "a tool definition no handler serves: not granted: {}",
@@ -172,8 +169,7 @@ pub fn grant_tools(
     }
 }
 
-/// The set the applying systems run in, in `Update`: the host runs
-/// `run_to_quiescence` after it.
+/// The set the applying systems run in, in `Update` (before `RigSchedule`).
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct AssetsSet;
 
@@ -185,8 +181,8 @@ pub struct AssetsPlugin;
 impl Plugin for AssetsPlugin {
     fn build(&self, app: &mut App) {
         assert!(
-            app.world().contains_resource::<OrderCounter>(),
-            "AssetsPlugin needs install_agent first: its grants take the agent's order counter"
+            app.world().contains_resource::<RunCounter>(),
+            "AssetsPlugin needs AgentPlugin first: its grants and preambles are the agent's"
         );
         app.init_asset::<PromptAsset>()
             .register_asset_loader(PromptLoader)

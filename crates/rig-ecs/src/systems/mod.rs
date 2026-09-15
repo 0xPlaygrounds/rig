@@ -1,19 +1,20 @@
 //! The agent's systems: one per named set of [`RigSet`], in the bus
-//! module's `RigSchedule`, run to quiescence by its runner.
+//! module's `RigSchedule`, run once per pass by its runner.
 //!
 //! | set | true before | written during |
 //! |---|---|---|
-//! | `Advance` (first) | a `Ready` run has no phase | `open_runs`: the `Prompt` becomes the last utterance; the run is `Assembling`, or `LoadingMemory` with its `Load` effect |
+//! | `Advance` (first) | a `Ready` run has no phase | `open_runs`: the `Prompt` becomes the last utterance; the run is `RunPhase::Assembling`, or `LoadingMemory` with its `Load` effect |
 //! | `Advance` | a `Ready` run in `Assembling` has no fresh turn | a turn is spawned `ChildOf` the run with its adverts and attachments, or the run fails `MaxTurns` |
 //! | `Select` | a run may lack a model of its own | the agent's `UsesModel` is copied to the run |
-//! | `Assemble` | a fresh turn's graph is complete | the fold spawns the turn's effect; the run is `AwaitingModel` |
+//! | `Assemble` | a fresh turn's graph is complete | `gather_turn`: the graph as [`AssemblyInputs`] on the turn (the settings resolved, the history after edits and limits via the cache, the attachments, the allowed adverts, the output mode and the output tool's name minted, the `ToolAccess` snapshot), or the retrievals, or a failure; `fold_turn`: the fold spawns the turn's effect and the run is `AwaitingModel` |
 //! | `Patch` | the folded effect is a `PendingEffect` | a user system may rewrite it (the second steering slot) |
-//! | `Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to `ToolPolicy.concurrency` |
+//! | `Release` | a turn's tool batch is out | `release_batch` un-holds the next calls up to `ToolPolicy.concurrency`; before it, after `Patch`, `backoff::hold_retries` holds a retry's completion under `Backoff` until the world's clock releases it |
 //! | *the bus's `Gate`, `Dispatch`, `Collect`, `Judge`* | | |
-//! | `Fold` | the effect may have streamed or landed | `Outputs` on the turn, per tick |
+//! | `Fold` | the effect may have streamed or landed | `Outputs` on the turn, per pass; `discover_streamed_invalid_calls` |
 //! | `Judge` | the turn's outputs are complete | a user system may rewrite them, or an `EffectOutcome` of a tool child |
-//! | `Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: the results as one user utterance, or a failure; `materialise`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, a provider retry (`ProviderRetried`, `ProviderRetrying`, `Assembling`), or a failure |
-//! | `Settle` | a run settled or failed this pass | nothing yet (observers fire on `Settled`/`Failed`) |
+//! | `Materialise` | a complete turn is unread, or its batch has landed | `land_memory` (the conversation loaded); `resolve_invalid_defaults`; `land_batch`: the results as one user utterance, or a failure; `record_usage`: the completion's usage into the run's `Usage`; `judge_invalid_calls`: the pending invalid calls' verdict — a failure, an abandoned turn, or the turn's content edited; `read_turn`: `Materialised`, a provider retry (`ProviderRetried`, `ProviderRetrying`, `Assembling`) or a failure, an invalid call awaiting its resolution, or [`TurnRead`] on the turn; `materialise_assistant`: the assistant utterance, or a retry's feedback and another turn, or the empty answer; `materialise_batch`: the tool batch and `ResolvingTools`; `materialise_reprompt`: a reprompt and another turn; `materialise_answer`: the answer and `Settled`. A content failure ends that run only |
+//! | `Checkpoint` | committed graph writes are visible | nothing: the host's slot to inspect or save before the next advance |
+//! | `Settle` | a run settled or failed this pass | `append_memory`; `diagnostics::measure` when the app has a `DiagnosticsStore`; observers fire on `Settled`/`Failed` |
 //!
 //! The first steering slot is any system before `Assemble`: it edits the
 //! graph (utterances, documents, grants, settings).
@@ -32,7 +33,10 @@ use crate::agent::content::{
 use bevy_reflect::Reflect;
 
 use crate::agent::content::parts::{EditTarget, RequestPartEdit};
-use bevy_ecs::prelude::*;
+use bevy_ecs::{
+    prelude::*,
+    query::{QueryData, QueryFilter},
+};
 use rig_core::{
     completion::message::{
         AssistantContent, ToolChoice, ToolResultContent, UserContent, canonical_streamed_choice,
@@ -44,24 +48,25 @@ use rig_core::{
 
 use crate::{
     agent::{
-        AdditionalParams, Advert, Assembling, Attachment, AwaitingModel, Batch, Cancelled, Context,
-        Conversation, Cursor, DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps, DocumentText,
-        Failed, Failure, Grant, InvalidCall, InvalidCalls, InvalidRetries, LoadingMemory,
-        MaxTokens, MaxTurns, MemoryAppendScheduled, MessageParts, Order, OrderCounter, Output,
-        OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs, Preamble, Prompt,
-        ProviderRetried, ProviderRetries, ProviderRetrying, Remembered, Remembering, Remembers,
-        Reprompt, RequestPatch, Resolution, ResolvingTools, Retrievable, Retrieval, RetrievalKind,
-        Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunResult, RunSeq, Settled,
-        StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec, ToolContextSpec,
-        ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
+        AdditionalParams, Advert, Attachment, Batch, Cancelled, Context, Conversation, Cursor,
+        DEFAULT_PROVIDER_RETRIES, DocumentId, DocumentProps, DocumentText, Failed, Failure, Grant,
+        InvalidCall, InvalidCalls, InvalidRetries, MaxTokens, MaxTurns, MemoryAppendScheduled,
+        MessageParts, Output, OutputKind, OutputRetries, OutputToolConfig, OutputToolName, Outputs,
+        Preamble, Prompt, ProviderRetried, ProviderRetries, ProviderRetrying, Remembered,
+        Remembering, Remembers, Reprompt, RequestPatch, Resolution, Retrievable, Retrieval,
+        RetrievalKind, Retrieves, Retrieving, Retry, Run, RunCounter, RunOf, RunPhase, RunResult,
+        RunSeq, Settled, StreamRequested, Temperature, ToolAccess, ToolCallSlot, ToolChoiceSpec,
+        ToolContextSpec, ToolPolicy, Turn, Unhandled, Usage, UsesModel, Utterance,
     },
     bus::{
-        Bound, BusSet, EffectOutcome, Issued, PendingEffect, Progress, RigSchedule, Scope,
+        Bound, BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule, ServedBy,
         Streamed as BusStreamed, ToolInputs,
     },
     policy::{self, RequestGraph},
 };
 
+pub mod backoff;
+pub mod diagnostics;
 mod stream_invalid;
 pub mod witness;
 pub use stream_invalid::discover_streamed_invalid_calls;
@@ -91,40 +96,84 @@ pub enum RigSet {
     Settle,
 }
 
-/// A run that wants a turn: `Ready`, `Assembling`, not failed.
-pub type Wanting = (With<Assembling>, With<crate::agent::Ready>, Without<Failed>);
+/// A run that may want a turn: `Ready`, phased, not failed (`Assembling`
+/// is read off the phase).
+#[derive(QueryFilter)]
+pub struct Wanting {
+    phased: With<RunPhase>,
+    ready: With<crate::agent::Ready>,
+    live: Without<Failed>,
+}
 /// A `Ready` run that has neither a phase nor an ending: `open_runs` opens it.
-pub type Unopened = (
-    With<Run>,
-    With<crate::agent::Ready>,
-    Without<Failed>,
-    Without<Settled>,
-    Without<Assembling>,
-    Without<LoadingMemory>,
-    Without<AwaitingModel>,
-    Without<ResolvingTools>,
-);
+#[derive(QueryFilter)]
+pub struct Unopened {
+    run: With<Run>,
+    ready: With<crate::agent::Ready>,
+    not_failed: Without<Failed>,
+    not_settled: Without<Settled>,
+    phaseless: Without<RunPhase>,
+}
 /// A run with no model of its own yet.
-pub type Unselected = (With<Run>, Without<UsesModel>);
-/// What `Fold` reads of an effect.
-pub type EffectView = (
-    &'static ChildOf,
-    Option<&'static BusStreamed>,
-    Option<&'static EffectOutcome>,
-);
+#[derive(QueryFilter)]
+pub struct Unselected {
+    run: With<Run>,
+    unselected: Without<UsesModel>,
+}
+/// A run that has not failed.
+#[derive(QueryFilter)]
+pub struct LiveRun {
+    run: With<Run>,
+    live: Without<Failed>,
+}
+/// What `Fold` reads of an effect: its turn, its stream so far, its
+/// outcome once landed.
+#[derive(QueryData)]
+pub struct EffectView {
+    /// The turn the effect is `ChildOf`.
+    pub turn_of: &'static ChildOf,
+    /// The stream so far, for a streamed effect.
+    pub streamed: Option<&'static BusStreamed>,
+    /// The outcome, once landed.
+    pub outcome: Option<&'static EffectOutcome>,
+}
+/// What `Materialise` reads of a landed completion effect: its turn, its
+/// outcome, its stream if it streamed.
+#[derive(QueryData)]
+pub struct LandedEffect {
+    /// The turn the effect is `ChildOf`.
+    pub turn_of: &'static ChildOf,
+    /// The outcome.
+    pub outcome: &'static EffectOutcome,
+    /// The stream, for a streamed effect.
+    pub streamed: Option<&'static BusStreamed>,
+}
 /// An invalid call nothing resolved.
-pub type Unresolved = (With<InvalidCall>, Without<Resolution>);
+#[derive(QueryFilter)]
+pub struct Unresolved {
+    invalid: With<InvalidCall>,
+    unresolved: Without<Resolution>,
+}
 /// A turn `Materialise` has not read.
-pub type Unread = (With<Turn>, Without<Materialised>);
-/// What `assemble` reads of a run.
-pub type AssemblingView = (
-    &'static RunOf,
-    &'static RunSeq,
-    &'static StreamRequested,
-    Option<&'static UsesModel>,
-    &'static OutputToolName,
-);
-/// The request settings `assemble` resolves, the run's over the agent's.
+#[derive(QueryFilter)]
+pub struct Unread {
+    turn: With<Turn>,
+    unread: Without<Materialised>,
+}
+/// What `gather_turn` reads of a run.
+#[derive(QueryData)]
+pub struct AssemblingRun {
+    /// The agent.
+    pub run_of: &'static RunOf,
+    /// The run's order among runs.
+    pub seq: &'static RunSeq,
+    /// Whether the run streams.
+    pub stream: &'static StreamRequested,
+    /// The run's model, once selected.
+    pub model: Option<&'static UsesModel>,
+    /// The output tool's name, once minted.
+    pub minted: &'static OutputToolName,
+}
+/// The request settings `gather_turn` resolves, the run's over the agent's.
 #[derive(bevy_ecs::system::SystemParam)]
 pub struct Settings<'w, 's> {
     /// The preamble.
@@ -146,57 +195,57 @@ pub struct Settings<'w, 's> {
     /// The request-time size policy for tool-result text.
     pub tool_result_limits: Query<'w, 's, &'static ToolResultLimit>,
 }
-/// What `assemble` reads of a fresh turn: its run, its patch, whether it
-/// is retrieving.
-pub type FreshView = (
-    Entity,
-    &'static ChildOf,
-    Option<&'static RequestPatch>,
-    Has<Retrieving>,
-);
-/// A fresh turn whose retrievals are out.
-pub type RetrievingTurn = (With<Fresh>, With<Retrieving>);
-/// A remembering run whose persisted finalization has not scheduled an append.
-pub type NeedsMemoryAppend = (
-    With<Settled>,
-    With<Remembering>,
-    Without<MemoryAppendScheduled>,
-);
-/// A completion effect: any effect of a turn that is not a retrieval.
-pub type NotRetrieval = (With<PendingEffect>, Without<Retrieval>);
-/// What `materialise` reads besides the graph: the tool choice and access
-/// settings, the provider-retry budget, and the witness a retry is told
-/// to. Grouped: a system takes at most sixteen parameters.
-#[derive(bevy_ecs::system::SystemParam)]
-pub struct MaterialiseReads<'w, 's> {
-    /// The tool choice, the run's over the agent's.
-    pub choices: Query<'w, 's, &'static ToolChoiceSpec>,
-    /// The tool access spec.
-    pub access: Query<'w, 's, &'static ToolAccess>,
-    /// The provider-retry budget, the run's over the agent's.
-    pub provider_retries: Query<'w, 's, &'static ProviderRetries>,
-    /// Subjects for the witness.
-    pub subjects: crate::bus::Subjects<'w, 's>,
-    /// The witness, if the world has one.
-    pub witness: Option<Res<'w, crate::bus::Witnessing>>,
+/// What `gather_turn` reads of a fresh turn: its run, its patch, whether
+/// it is retrieving.
+#[derive(QueryData)]
+pub struct FreshTurn {
+    /// The turn.
+    pub entity: Entity,
+    /// The run the turn is `ChildOf`.
+    pub turn_of: &'static ChildOf,
+    /// The turn's request patch, if a system wrote one.
+    pub patch: Option<&'static RequestPatch>,
+    /// Whether the turn retrieves before it folds.
+    pub retrieving: Has<Retrieving>,
 }
-
-/// What `materialise` reads of a run awaiting its model.
-pub type AwaitingView = (
-    &'static RunOf,
-    &'static Cursor,
-    &'static OutputRetries,
-    &'static InvalidRetries,
-    &'static OutputToolName,
-    &'static Usage,
-    &'static ProviderRetried,
-);
-/// What the cancel observer reads of a run: awaiting its model, resolving
-/// its tools, already ended.
-pub type RunPhase = (Has<AwaitingModel>, Has<ResolvingTools>, Has<Failed>);
+/// A fresh turn whose retrievals are out.
+#[derive(QueryFilter)]
+pub struct RetrievingTurn {
+    fresh: With<Fresh>,
+    retrieving: With<Retrieving>,
+}
+/// A remembering run whose persisted finalization has not scheduled an append.
+#[derive(QueryFilter)]
+pub struct NeedsMemoryAppend {
+    settled: With<Settled>,
+    remembering: With<Remembering>,
+    unscheduled: Without<MemoryAppendScheduled>,
+}
+/// A completion effect: any effect of a turn that is not a retrieval.
+#[derive(QueryFilter)]
+pub struct NotRetrieval {
+    effect: With<PendingEffect>,
+    completion: Without<Retrieval>,
+}
+/// What the cancel observer reads of a run: its phase, whether ended.
+#[derive(QueryData)]
+pub struct RunState {
+    /// The phase, while the run has one.
+    pub phase: Option<&'static RunPhase>,
+    /// Whether the run failed.
+    pub failed: Has<Failed>,
+}
 /// What the cancel observer reads of a turn: its run, whether it was
 /// read, whether its batch is out.
-pub type TurnState = (&'static ChildOf, Has<Materialised>, Has<Batch>);
+#[derive(QueryData)]
+pub struct TurnState {
+    /// The run the turn is `ChildOf`.
+    pub run_of: &'static ChildOf,
+    /// Whether `Materialise` read the turn.
+    pub materialised: Has<Materialised>,
+    /// Whether the turn's batch is out.
+    pub batched: Has<Batch>,
+}
 
 /// A fresh turn: spawned by `Advance`, not yet folded by `Assemble`.
 #[derive(Component, Debug, Clone, Copy, Default, Reflect)]
@@ -213,15 +262,118 @@ pub struct Folded(pub OutputKind);
 #[reflect(Component)]
 pub struct Materialised;
 
-/// Install the agent runtime into `world`: the bus must be installed first
-/// (it owns the schedule); this adds the sets, the counters, the observers
-/// and the systems.
-pub fn install_agent(world: &mut World) {
+/// A tool a turn may call: its name, its handler key, and its handler
+/// entity — `None` when the run's `ToolAccess.executable` named it rather
+/// than an advert (the bus routes the key).
+#[derive(Debug, Clone)]
+pub struct GrantedTool {
+    /// The tool's name, as the model calls it.
+    pub name: String,
+    /// The handler key the call dispatches to.
+    pub key: rig_core::effect::HandlerKey,
+    /// The advertised handler entity, when an advert granted the tool.
+    pub handler: Option<Entity>,
+}
+
+/// What `read_turn` read of a complete turn, for the rest of
+/// `Materialise`'s chain: the turn's content (after the judge's and the
+/// invalid resolutions' edits), the provider's message id, the tools it
+/// may call, and — once `materialise_assistant` spawned it — its
+/// assistant utterance. Lives one pass: the step that ends the turn's
+/// reading (an ending, a reprompt, the batch, a content failure) removes
+/// it, and the chain's last system removes any left.
+#[derive(Component, Debug, Clone)]
+pub struct TurnRead {
+    /// The provider's message id, when the answer carried one.
+    pub message_id: Option<String>,
+    /// The turn's parts as read.
+    pub content: Vec<AssistantContent>,
+    /// The tools the turn may call, in advertisement order.
+    pub granted: Vec<GrantedTool>,
+    /// The assistant utterance, once spawned.
+    pub assistant: Option<Entity>,
+}
+
+impl TurnRead {
+    /// The turn's tool calls, in order.
+    fn calls(&self) -> impl Iterator<Item = &rig_core::completion::message::ToolCall> {
+        self.content.iter().filter_map(|part| match part {
+            AssistantContent::ToolCall(call) => Some(call),
+            AssistantContent::Text(_)
+            | AssistantContent::Reasoning(_)
+            | AssistantContent::Image(_) => None,
+        })
+    }
+}
+
+/// What `gather_turn` gathered of a fresh turn's graph, for `fold_turn`:
+/// everything the fold reads, owned, the settings resolved (the patch
+/// over the run's over the agent's), the history after the turn's part
+/// edits and the size policy, the output mode resolved and the output
+/// tool's name minted. Lives one pass: `fold_turn` removes it.
+#[derive(Component, Debug, Clone)]
+pub struct AssemblyInputs {
+    /// The run's bound completion model.
+    pub model: Entity,
+    /// Whether the run streams.
+    pub stream: bool,
+    /// The preamble.
+    pub preamble: Option<String>,
+    /// The utterances in order, as the request sees them.
+    pub utterances: Vec<MessageParts>,
+    /// The documents attached, in order, then the patch's extra context.
+    pub documents: Vec<rig_core::completion::Document>,
+    /// The tool handler entities advertised and allowed, in advert order.
+    pub tools: Vec<Entity>,
+    /// Sampling.
+    pub temperature: Option<f64>,
+    /// The token budget.
+    pub max_tokens: Option<u64>,
+    /// Provider parameters, the patch's merged over the setting's.
+    pub additional_params: Option<serde_json::Value>,
+    /// The tool choice.
+    pub tool_choice: Option<ToolChoice>,
+    /// The output mode, resolved.
+    pub output: OutputKind,
+    /// The output schema, if any.
+    pub schema: Option<serde_json::Value>,
+    /// The output tool's name, when the mode is `Tool`.
+    pub output_tool: Option<String>,
+    /// The output tool's description and preamble behavior.
+    pub output_tool_config: Option<OutputToolConfig>,
+}
+
+/// The agent runtime: the sets, the counters, the observers and the systems,
+/// in the bus's [`RigSchedule`]. Requires [`crate::bus::BusPlugin`] first.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct AgentPlugin;
+
+impl bevy_app::Plugin for AgentPlugin {
+    fn build(&self, app: &mut bevy_app::App) {
+        Self::install(app.world_mut());
+        if app
+            .world()
+            .contains_resource::<bevy_diagnostic::DiagnosticsStore>()
+        {
+            diagnostics::register(app);
+            app.add_systems(RigSchedule, diagnostics::measure.in_set(RigSet::Settle));
+        }
+    }
+}
+
+impl AgentPlugin {
+    /// The world half of the plugin, for a test that drives `RigSchedule`
+    /// itself; the bus must be installed first.
+    pub fn install(world: &mut World) {
+        install_agent(world);
+    }
+}
+
+fn install_agent(world: &mut World) {
     assert!(
         world.contains_resource::<crate::bus::Policy>(),
-        "install_agent needs the bus installed first: it runs in the bus's RigSchedule"
+        "AgentPlugin needs BusPlugin first: it runs in the bus's RigSchedule"
     );
-    world.init_resource::<OrderCounter>();
     world.init_resource::<BinaryAssets>();
     world.init_resource::<RunCounter>();
     world.init_resource::<AssemblyStats>();
@@ -261,7 +413,10 @@ pub fn install_agent(world: &mut World) {
             .after(RigSet::Advance)
             .before(RigSet::Select),
         select.in_set(RigSet::Select),
-        assemble.in_set(RigSet::Assemble),
+        (gather_turn, fold_turn).chain().in_set(RigSet::Assemble),
+        backoff::hold_retries
+            .after(RigSet::Patch)
+            .before(RigSet::Release),
         release_batch.in_set(RigSet::Release),
         (fold, discover_streamed_invalid_calls)
             .chain()
@@ -270,7 +425,13 @@ pub fn install_agent(world: &mut World) {
             land_memory,
             resolve_invalid_defaults,
             land_batch,
-            materialise,
+            record_usage,
+            judge_invalid_calls,
+            read_turn,
+            materialise_assistant,
+            materialise_batch,
+            materialise_reprompt,
+            materialise_answer,
         )
             .chain()
             .in_set(RigSet::Materialise),
@@ -278,89 +439,29 @@ pub fn install_agent(world: &mut World) {
     ));
 }
 
-/// Replace the run's phase marker: `remove::<P>()` then insert what comes
-/// next, as every phase change in this module does.
+/// The run's phase changes: the next phase, or an ending in its place.
 trait PhaseCommands {
-    fn phase<P: Component>(&mut self, next: impl Bundle) -> &mut Self;
+    fn phase(&mut self, next: RunPhase) -> &mut Self;
+    fn end(&mut self, ending: impl Bundle) -> &mut Self;
 }
 
 impl PhaseCommands for bevy_ecs::system::EntityCommands<'_> {
-    fn phase<P: Component>(&mut self, next: impl Bundle) -> &mut Self {
-        self.remove::<P>().insert(next)
+    fn phase(&mut self, next: RunPhase) -> &mut Self {
+        self.insert(next)
+    }
+    fn end(&mut self, ending: impl Bundle) -> &mut Self {
+        self.remove::<RunPhase>().insert(ending)
     }
 }
 
+/// A content error ends the run `Failed(Content)`: the per-run boundary of
+/// every system that writes the graph — the run that failed ends, and the
+/// system goes on to the next run.
 fn fail_content(commands: &mut Commands, run: Entity, error: ContentError) {
     commands
         .entity(run)
-        .remove::<(
-            Assembling,
-            AwaitingModel,
-            LoadingMemory,
-            ResolvingTools,
-            Settled,
-        )>()
+        .remove::<(RunPhase, Settled)>()
         .insert(Failed(Failure::Content(error)));
-}
-
-macro_rules! content_or_fail {
-    ($result:expr, $commands:expr, $run:expr, $progress:expr) => {
-        match $result {
-            Ok(value) => value,
-            Err(error) => {
-                fail_content($commands, $run, error);
-                $progress.mark();
-                return;
-            }
-        }
-    };
-}
-
-/// Spawn `parts` as the run's next utterance, with optional per-part result
-/// statuses. A content failure fails the run and returns from the system, as
-/// [`content_or_fail`] does.
-macro_rules! say {
-    ($commands:expr, $assets:expr, $orders:expr, $progress:expr, $run:expr, $parts:expr) => {
-        content_or_fail!(
-            spawn_deferred(
-                &mut $commands,
-                &mut $assets,
-                $run,
-                $parts,
-                next_order_in(&mut $orders)
-            ),
-            &mut $commands,
-            $run,
-            $progress
-        )
-    };
-    ($commands:expr, $assets:expr, $orders:expr, $progress:expr, $run:expr, $parts:expr, $statuses:expr) => {
-        content_or_fail!(
-            spawn_deferred_with(
-                &mut $commands,
-                &mut $assets,
-                $run,
-                $parts,
-                next_order_in(&mut $orders),
-                $statuses
-            ),
-            &mut $commands,
-            $run,
-            $progress
-        )
-    };
-}
-
-/// Rewrite an utterance already in the graph, failing the run as [`say`] does.
-macro_rules! restate {
-    ($commands:expr, $assets:expr, $progress:expr, $run:expr, $entity:expr, $parts:expr) => {
-        content_or_fail!(
-            replace_deferred(&mut $commands, &mut $assets, $entity, $parts),
-            &mut $commands,
-            $run,
-            $progress
-        )
-    };
 }
 
 /// Why a despawn left a run in the world.
@@ -384,68 +485,6 @@ pub struct RunDespawnRefused {
     pub entity: Entity,
     /// Why.
     pub reason: RunBusy,
-}
-
-/// The components every run is made of: what [`RunCommands::spawn_run`]
-/// spawns, for a host that assembles a run by hand — `world.spawn((RunBundle::new(world, agent, false), Prompt::from("…")))`,
-/// its history utterances `ChildOf` the run in `Order`, an optional
-/// [`MaxTurns`], and last [`Ready`](crate::agent::Ready). [`RunSeq`] is the world's next run
-/// number and [`Scope`] is `{owner}/run#{seq}`, both taken from the world
-/// by [`RunBundle::new`].
-#[derive(Bundle, Debug, Clone)]
-pub struct RunBundle {
-    /// The run marker.
-    pub run: Run,
-    /// The run's agent.
-    pub run_of: RunOf,
-    /// The run's number in the world.
-    pub seq: RunSeq,
-    /// Whether the model is asked for a stream.
-    pub streamed: StreamRequested,
-    /// The turn cursor, at zero.
-    pub cursor: Cursor,
-    /// The output-tool reprompts spent, none.
-    pub output_retries: OutputRetries,
-    /// The invalid-call retries spent, none.
-    pub invalid_retries: crate::agent::InvalidRetries,
-    /// The provider retries spent, none.
-    pub provider_retried: ProviderRetried,
-    /// The output tool's name, unresolved.
-    pub output_tool_name: OutputToolName,
-    /// The usage tally, empty.
-    pub usage: Usage,
-    /// The witness scope: `{owner}/run#{seq}`.
-    pub scope: Scope,
-}
-
-impl RunBundle {
-    /// A fresh run of `agent`: takes the next [`RunSeq`] from the world's
-    /// [`RunCounter`] and the agent's `Owner` for the [`Scope`].
-    pub fn new(world: &mut World, agent: Entity, streamed: bool) -> Self {
-        let seq = {
-            let mut counter = world.resource_mut::<RunCounter>();
-            let seq = counter.0;
-            counter.0 += 1;
-            seq
-        };
-        let owner = world
-            .get::<crate::agent::Owner>(agent)
-            .map(|owner| owner.0.clone())
-            .unwrap_or_default();
-        Self {
-            run: Run,
-            run_of: RunOf(agent),
-            seq: RunSeq(seq),
-            streamed: StreamRequested(streamed),
-            cursor: Cursor::default(),
-            output_retries: OutputRetries::default(),
-            invalid_retries: crate::agent::InvalidRetries::default(),
-            provider_retried: ProviderRetried::default(),
-            output_tool_name: OutputToolName::default(),
-            usage: Usage::default(),
-            scope: Scope(format!("{owner}/run#{seq}")),
-        }
-    }
 }
 
 /// The run entry points, on `Commands` and on `World`. The `Commands`
@@ -584,11 +623,10 @@ fn spawn_run_at(
     if world.get_entity(run).is_err() {
         return;
     }
-    let bundle = RunBundle::new(world, agent, streamed);
     let Ok(mut entity) = world.get_entity_mut(run) else {
         return;
     };
-    entity.insert((bundle, prompt));
+    entity.insert((Run, RunOf(agent), StreamRequested(streamed), prompt));
     if let Some(limit) = max_turns {
         let Ok(mut entity) = world.get_entity_mut(run) else {
             return;
@@ -672,10 +710,7 @@ fn open_run(world: &mut World, run: Entity) {
         || !entity.contains::<crate::agent::Ready>()
         || entity.contains::<Failed>()
         || entity.contains::<Settled>()
-        || entity.contains::<Assembling>()
-        || entity.contains::<LoadingMemory>()
-        || entity.contains::<AwaitingModel>()
-        || entity.contains::<ResolvingTools>()
+        || entity.contains::<RunPhase>()
     {
         return;
     }
@@ -691,7 +726,6 @@ fn open_run(world: &mut World, run: Entity) {
         world
             .entity_mut(run)
             .insert(Failed(Failure::Content(error)));
-        world.resource_mut::<Progress>().mark();
         return;
     }
     // An agent that remembers, and a run given no history: the conversation
@@ -710,7 +744,7 @@ fn open_run(world: &mut World, run: Entity) {
     match memory {
         Some((key, conversation)) => {
             world.entity_mut(run).insert((
-                LoadingMemory,
+                RunPhase::LoadingMemory,
                 Remembering,
                 Conversation(conversation.clone()),
             ));
@@ -727,20 +761,18 @@ fn open_run(world: &mut World, run: Entity) {
             ));
         }
         None => {
-            world.entity_mut(run).insert(Assembling);
+            world.entity_mut(run).insert(RunPhase::Assembling);
         }
     }
-    world.resource_mut::<Progress>().mark();
 }
 
-/// Spawn one utterance `ChildOf` `run`, next in order.
+/// Spawn one utterance `ChildOf` `run`, last among its siblings.
 pub fn spawn_utterance(
     world: &mut World,
     run: Entity,
     parts: MessageParts,
 ) -> Result<Entity, ContentError> {
-    let order = next_order(world);
-    let entity = world.spawn((Utterance, order, ChildOf(run))).id();
+    let entity = world.spawn((Utterance, ChildOf(run))).id();
     if let Err(error) = write_message(world, entity, parts) {
         world.despawn(entity);
         return Err(error);
@@ -748,42 +780,26 @@ pub fn spawn_utterance(
     Ok(entity)
 }
 
-/// The next [`Order`].
-pub(crate) fn next_order(world: &mut World) -> Order {
-    let mut counter = world.resource_mut::<OrderCounter>();
-    let order = Order(counter.0);
-    counter.0 += 1;
-    order
-}
-
-pub(crate) fn next_order_in(counter: &mut OrderCounter) -> Order {
-    let order = Order(counter.0);
-    counter.0 += 1;
-    order
-}
-
 /// A run's effective setting: its own component, else its agent's.
 fn setting<'a, C: Component>(run: Entity, agent: Entity, query: &'a Query<&C>) -> Option<&'a C> {
     query.get(run).ok().or_else(|| query.get(agent).ok())
 }
 
-/// The links of one kind under `owner`, in order.
+/// The links of one kind under `owner`, in sibling (`Children`) order.
 fn links_in_order<'a, L: Component, F: bevy_ecs::query::QueryFilter>(
     owner: Entity,
     children: &Query<&Children>,
-    links: &'a Query<(&L, &Order), F>,
+    links: &'a Query<&L, F>,
 ) -> Vec<&'a L> {
-    let mut found: Vec<(&Order, &L)> = children
+    children
         .get(owner)
         .map(|children| {
             children
                 .iter()
-                .filter_map(|child| links.get(child).ok().map(|(link, order)| (order, link)))
+                .filter_map(|child| links.get(child).ok())
                 .collect()
         })
-        .unwrap_or_default();
-    found.sort_by_key(|(order, _)| **order);
-    found.into_iter().map(|(_, link)| link).collect()
+        .unwrap_or_default()
 }
 
 /// `RigSet::Advance`: a `Ready` run in `Assembling` with no fresh turn gets one —
@@ -797,22 +813,24 @@ fn links_in_order<'a, L: Component, F: bevy_ecs::query::QueryFilter>(
 )]
 pub fn advance(
     mut commands: Commands,
-    runs: Query<(Entity, &RunOf, &Cursor, &RunSeq), Wanting>,
+    runs: Query<(Entity, &RunOf, &Cursor, &RunSeq, &RunPhase), Wanting>,
     fresh: Query<&ChildOf, With<Fresh>>,
     children: Query<&Children>,
-    grants: Query<(&Grant, &Order), Without<Retrievable>>,
-    contexts: Query<(&Context, &Order)>,
+    grants: Query<&Grant, Without<Retrievable>>,
+    contexts: Query<&Context>,
     retrievals: Query<(), With<Retrieves>>,
     max_turns: Query<&MaxTurns>,
     retrying: Query<(), With<ProviderRetrying>>,
+    provider_retried: Query<&ProviderRetried>,
     holds: Query<&ToolTurnHolds>,
     commits: Query<(&ChildOf, &ToolTurnCommit)>,
-    mut orders: ResMut<OrderCounter>,
-    mut progress: ResMut<Progress>,
 ) {
-    let mut runs: Vec<_> = runs.iter().collect();
-    runs.sort_by_key(|(_, _, _, seq)| **seq);
-    for (run, RunOf(agent), cursor, _) in runs {
+    let mut runs: Vec<_> = runs
+        .iter()
+        .filter(|(_, _, _, _, phase)| **phase == RunPhase::Assembling)
+        .collect();
+    runs.sort_by_key(|(_, _, _, seq, _)| **seq);
+    for (run, RunOf(agent), cursor, _, _) in runs {
         if fresh.iter().any(|child_of| child_of.parent() == run) {
             continue;
         }
@@ -823,8 +841,7 @@ pub fn advance(
         if !retrying && cursor.turn >= limit {
             commands
                 .entity(run)
-                .phase::<Assembling>(Failed(Failure::MaxTurns { limit }));
-            progress.mark();
+                .end(Failed(Failure::MaxTurns { limit }));
             continue;
         }
         if holds.get(run).is_ok_and(|holds| {
@@ -834,38 +851,34 @@ pub fn advance(
         }) {
             continue;
         }
-        let turn = commands
-            .spawn((Turn, Fresh, next_order_in(&mut orders), ChildOf(run)))
-            .id();
+        let turn = commands.spawn((Turn, Fresh, ChildOf(run))).id();
         let retrieves = children
             .get(*agent)
             .map(|children| children.iter().any(|child| retrievals.get(child).is_ok()))
             .unwrap_or(false);
         if retrieves {
-            // Retrieval first (CONTRACT §12): `assemble` spawns the effects
+            // Retrieval first (CONTRACT §12): `gather_turn` spawns the effects
             // on its first pass over the turn; the adverts and attachments
             // come with the results (`attach_retrieved`).
             commands.entity(turn).insert(Retrieving);
         } else {
             for Grant(tool) in links_in_order(*agent, &children, &grants) {
-                commands.spawn((Advert(*tool), next_order_in(&mut orders), ChildOf(turn)));
+                commands.spawn((Advert(*tool), ChildOf(turn)));
             }
             for Context(document) in links_in_order(*agent, &children, &contexts) {
-                commands.spawn((
-                    Attachment(*document),
-                    next_order_in(&mut orders),
-                    ChildOf(turn),
-                ));
+                commands.spawn((Attachment(*document), ChildOf(turn)));
             }
         }
         if retrying {
             commands.entity(run).remove::<ProviderRetrying>();
+            commands.entity(turn).insert(backoff::RetryAttempt(
+                provider_retried.get(run).map_or(1, |n| n.0),
+            ));
         } else {
             commands.entity(run).insert(Cursor {
                 turn: cursor.turn + 1,
             });
         }
-        progress.mark();
     }
 }
 
@@ -873,7 +886,7 @@ pub fn advance(
 /// (CONTRACT §12): the retrieved tools first, in result order, then the
 /// static grants; the static attachments, then one document entity per
 /// result (an existing entity with that id reused). Runs after `Advance`
-/// and before `Select`; `assemble` waits for it.
+/// and before `Select`; `gather_turn` waits for it.
 #[allow(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
@@ -884,13 +897,11 @@ pub fn attach_retrieved(
     runs: Query<&RunOf>,
     children: Query<&Children>,
     retrievals: Query<(&PendingEffect, &Retrieval, Option<&EffectOutcome>)>,
-    grants: Query<(&Grant, &Order, Has<Retrievable>)>,
-    contexts: Query<(&Context, &Order)>,
+    grants: Query<(&Grant, Has<Retrievable>)>,
+    contexts: Query<&Context>,
     bound: Query<&Bound>,
-    indexes: Query<&Retrieves, (With<Retrieval>, With<Order>)>,
+    indexes: Query<&Retrieves, With<Retrieval>>,
     documents: Query<(Entity, &DocumentId)>,
-    mut orders: ResMut<OrderCounter>,
-    mut progress: ResMut<Progress>,
 ) {
     for (turn, turn_of) in &turns {
         let run = turn_of.parent();
@@ -947,7 +958,7 @@ pub fn attach_retrieved(
                 | (RetrievalKind::Documents, rig_core::effect::RetrievedDocuments::Ids(_)) => {}
             }
         }
-        let mut links: Vec<(&Grant, &Order, bool)> = children
+        let links: Vec<(&Grant, bool)> = children
             .get(*agent)
             .map(|children| {
                 children
@@ -956,9 +967,8 @@ pub fn attach_retrieved(
                     .collect()
             })
             .unwrap_or_default();
-        links.sort_by_key(|(_, order, _)| **order);
         let tool_named = |name: &str| -> Option<Entity> {
-            links.iter().find_map(|(Grant(tool), _, _)| {
+            links.iter().find_map(|(Grant(tool), _)| {
                 bound
                     .get(*tool)
                     .ok()
@@ -978,20 +988,16 @@ pub fn attach_retrieved(
         };
         for name in &retrieved_tools {
             if let Some(tool) = tool_named(name) {
-                commands.spawn((Advert(tool), next_order_in(&mut orders), ChildOf(turn)));
+                commands.spawn((Advert(tool), ChildOf(turn)));
             }
         }
-        for (Grant(tool), _, retrievable) in &links {
+        for (Grant(tool), retrievable) in &links {
             if !retrievable {
-                commands.spawn((Advert(*tool), next_order_in(&mut orders), ChildOf(turn)));
+                commands.spawn((Advert(*tool), ChildOf(turn)));
             }
         }
         for Context(document) in links_in_order(*agent, &children, &contexts) {
-            commands.spawn((
-                Attachment(*document),
-                next_order_in(&mut orders),
-                ChildOf(turn),
-            ));
+            commands.spawn((Attachment(*document), ChildOf(turn)));
         }
         for (id, text) in retrieved_documents {
             let document = documents
@@ -999,14 +1005,9 @@ pub fn attach_retrieved(
                 .find(|(_, existing)| existing.0 == id)
                 .map(|(entity, _)| entity)
                 .unwrap_or_else(|| commands.spawn((DocumentId(id), DocumentText(text))).id());
-            commands.spawn((
-                Attachment(document),
-                next_order_in(&mut orders),
-                ChildOf(turn),
-            ));
+            commands.spawn((Attachment(document), ChildOf(turn)));
         }
         commands.entity(turn).remove::<Retrieving>();
-        progress.mark();
     }
 }
 
@@ -1014,21 +1015,17 @@ pub fn attach_retrieved(
 /// the loaded messages become utterances before the prompt, each
 /// `Remembered`, and the run is `Assembling`; a failed load fails the run
 /// (CONTRACT §11).
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system pass reads the graph and its memory effect state"
-)]
 pub fn land_memory(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
-    runs: Query<Entity, (With<LoadingMemory>, Without<Failed>)>,
+    runs: Query<(Entity, &RunPhase), Without<Failed>>,
     children: Query<&Children>,
     loads: Query<(&PendingEffect, &EffectOutcome)>,
-    utterances: Query<(Entity, &Order), With<Utterance>>,
-    mut orders: ResMut<OrderCounter>,
-    mut progress: ResMut<Progress>,
 ) {
-    for run in &runs {
+    for (run, _) in runs
+        .iter()
+        .filter(|(_, phase)| **phase == RunPhase::LoadingMemory)
+    {
         let Some(outcome) = children.get(run).ok().and_then(|children| {
             children.iter().find_map(|child| {
                 loads
@@ -1052,51 +1049,53 @@ pub fn land_memory(
         };
         match outcome {
             Ok(Outcome::Memory(rig_core::effect::MemoryOutcome::Loaded { messages })) => {
-                for message in messages {
-                    if let Some(parts) = MessageParts::from_message(message) {
-                        let utterance = say!(commands, assets, orders, progress, run, parts);
-                        commands.entity(utterance).insert(Remembered);
-                    }
+                if let Err(error) = land_loaded(&mut commands, &mut assets, run, messages) {
+                    fail_content(&mut commands, run, error);
                 }
-                // The prompt (and any history given) comes after what was
-                // loaded: its order is re-stamped past the loaded ones.
-                let mut existing: Vec<(Entity, Order)> = children
-                    .get(run)
-                    .map(|children| {
-                        children
-                            .iter()
-                            .filter_map(|child| utterances.get(child).ok())
-                            .map(|(entity, order)| (entity, *order))
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                existing.sort_by_key(|(_, order)| *order);
-                for (entity, _) in existing {
-                    commands.entity(entity).insert(next_order_in(&mut orders));
-                }
-                commands.entity(run).phase::<LoadingMemory>(Assembling);
             }
             Ok(other) => {
-                commands
-                    .entity(run)
-                    .phase::<LoadingMemory>(Failed(Failure::Memory(
-                        rig_core::error::ErrorReport::new(
-                            ErrorKind::Internal,
-                            format!(
-                                "the memory handler answered a load with a {} outcome",
-                                other.family()
-                            ),
+                commands.entity(run).end(Failed(Failure::Memory(
+                    rig_core::error::ErrorReport::new(
+                        ErrorKind::Internal,
+                        format!(
+                            "the memory handler answered a load with a {} outcome",
+                            other.family()
                         ),
-                    )));
+                    ),
+                )));
             }
             Err(report) => {
                 commands
                     .entity(run)
-                    .phase::<LoadingMemory>(Failed(Failure::Memory(report.clone())));
+                    .end(Failed(Failure::Memory(report.clone())));
             }
         }
-        progress.mark();
     }
+}
+
+/// The loaded messages become `run`'s first utterances, each `Remembered`,
+/// and the run is `Assembling`.
+fn land_loaded(
+    commands: &mut Commands,
+    assets: &mut BinaryAssets,
+    run: Entity,
+    messages: &[rig_core::completion::Message],
+) -> Result<(), ContentError> {
+    // The loaded messages go first among the run's children: the prompt
+    // (and any history given) comes after them.
+    let mut loaded = Vec::with_capacity(messages.len());
+    for message in messages {
+        if let Some(parts) = MessageParts::from_message(message) {
+            let utterance = spawn_deferred(commands, assets, run, parts)?;
+            commands.entity(utterance).insert(Remembered);
+            loaded.push(utterance);
+        }
+    }
+    if !loaded.is_empty() {
+        commands.entity(run).insert_children(0, &loaded);
+    }
+    commands.entity(run).phase(RunPhase::Assembling);
+    Ok(())
 }
 
 /// `RigSet::Settle`: a run that loaded its conversation appends what it
@@ -1113,9 +1112,8 @@ pub fn append_memory(
     memories: Query<&Remembers>,
     bound: Query<&Bound>,
     children: Query<&Children>,
-    utterances: Query<(Entity, &Order, Has<Remembered>), With<Utterance>>,
+    utterances: Query<(Entity, Has<Remembered>), With<Utterance>>,
     content: ContentGraph,
-    mut progress: ResMut<Progress>,
 ) {
     for (run, RunOf(agent), Conversation(conversation)) in &settled {
         let Some(key) = memories
@@ -1126,31 +1124,31 @@ pub fn append_memory(
         else {
             continue;
         };
-        let said: Result<Vec<_>, ContentError> = children
+        let said: Result<Vec<MessageParts>, ContentError> = children
             .get(run)
             .map(|children| {
                 children
                     .iter()
                     .filter_map(|child| utterances.get(child).ok())
-                    .filter(|(_, _, remembered)| !*remembered)
-                    .map(|(entity, order, _)| {
-                        content.message(entity).map(|message| (*order, message))
-                    })
+                    .filter(|(_, remembered)| !*remembered)
+                    .map(|(entity, _)| content.message(entity))
                     .collect()
             })
             .unwrap_or_else(|_| Ok(Vec::new()));
-        let mut said = content_or_fail!(said, &mut commands, run, progress);
-        said.sort_by_key(|(order, _)| *order);
+        let said = match said {
+            Ok(said) => said,
+            Err(error) => {
+                fail_content(&mut commands, run, error);
+                continue;
+            }
+        };
         commands.spawn((
             PendingEffect::new(
                 key,
                 EffectKind::Memory {
                     op: rig_core::effect::MemoryOp::Append {
                         conversation: rig_core::id::ConversationId::from(conversation.as_str()),
-                        messages: said
-                            .into_iter()
-                            .map(|(_, parts)| parts.to_message())
-                            .collect(),
+                        messages: said.into_iter().map(|parts| parts.to_message()).collect(),
                     },
                 },
             ),
@@ -1174,342 +1172,360 @@ pub fn select(
     }
 }
 
-/// Ordered request edit links, including malformed links for explicit validation.
-pub type PartEditView = (
-    Entity,
-    &'static ChildOf,
-    Option<&'static Order>,
-    Option<&'static EditTarget>,
-    &'static RequestPartEdit,
-);
+/// A request edit link, including a malformed link for explicit validation;
+/// the links apply in the turn's sibling (`Children`) order.
+#[derive(QueryData)]
+pub struct PartEdit {
+    /// The link entity.
+    pub link: Entity,
+    /// The part the edit targets; a link without one is malformed.
+    pub target: Option<&'static EditTarget>,
+    /// The edit.
+    pub edit: &'static RequestPartEdit,
+}
 
-/// `RigSet::Assemble`: for every fresh turn, in run order, gather the
-/// graph — the run's settings over the agent's, the utterances in order,
-/// the attachments in order, the adverts in order, the model's descriptor
-/// — resolve the output mode, mint the output tool's name once per run,
-/// fold, and spawn the effect `ChildOf` the turn. The run is then
-/// `AwaitingModel`.
-/// An utterance is read from its `CachedMessage` when it holds one and
-/// nothing of it changed since this system last ran (CONTRACT §1); else
-/// it is rendered and the render cached for the next turn. An utterance a
-/// `RequestPartEdit` targets is rendered with the edit, uncached.
-/// A missing selected model or non-completion binding instead terminates the
-/// run with a provider `HandlerUnavailable` report; it never silently waits.
+/// A turn's request part edits, gathered: by target, the links consumed,
+/// the utterances they touch.
+struct PartEdits {
+    edits: std::collections::BTreeMap<Entity, RequestPartEdit>,
+    consumed: Vec<Entity>,
+    edited: std::collections::HashSet<Entity>,
+}
+
+/// The part edits linked to `turn`, in link order. A link without a
+/// target is `Missing`; a target outside `run`, or any edit beside a
+/// patched history (a replacement history has no stable entity identity:
+/// conflicting operations are refused, never silently dropped), is `Shape`.
+fn part_edits_of(
+    turn: Entity,
+    run: Entity,
+    patch: Option<&RequestPatch>,
+    children: &Query<&Children>,
+    part_edits: &Query<PartEdit>,
+    content: &ContentGraph,
+) -> Result<PartEdits, ContentError> {
+    let mut gathered = PartEdits {
+        edits: std::collections::BTreeMap::new(),
+        consumed: Vec::new(),
+        edited: std::collections::HashSet::new(),
+    };
+    let links = children
+        .get(turn)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .filter_map(|link| part_edits.get(link).ok());
+    for PartEditItem { link, target, edit } in links {
+        let target = target.ok_or(ContentError::Missing)?;
+        let utterance = content.target_utterance(target.0)?;
+        gathered.edited.insert(utterance);
+        if !children
+            .get(run)
+            .is_ok_and(|owned| owned.contains(&utterance))
+            || patch.is_some_and(|patch| patch.history.is_some())
+        {
+            return Err(ContentError::Shape);
+        }
+        gathered.edits.insert(target.0, edit.clone());
+        gathered.consumed.push(link);
+    }
+    Ok(gathered)
+}
+
+/// `run`'s utterances in order, as DTOs, under the part edits linked to
+/// `turn` ([`part_edits_of`]): an edited one rendered with its edit
+/// (uncached: the view is verbatim), one with a fresh view read from it,
+/// any other rendered and its render cached for the next turn. With them,
+/// the edit links consumed.
 #[allow(
     clippy::too_many_arguments,
-    reason = "one system, one pass: every parameter is a distinct world access it needs"
+    reason = "one read of the graph: the edits, the cache, its counters, and what stales it"
 )]
-pub fn assemble(
-    mut commands: Commands,
-    fresh: Query<FreshView, With<Fresh>>,
-    runs: Query<AssemblingView, (With<Run>, Without<Failed>)>,
-    children: Query<&Children>,
-    utterances: Query<(Entity, &Order), With<Utterance>>,
-    content: ContentGraph,
-    part_edits: Query<PartEditView>,
-    retrievals: Query<(&Retrieves, &Order, &Retrieval)>,
-    retrieving: Query<(), With<Retrieval>>,
-    adverts: Query<(&Advert, &Order)>,
-    attachments: Query<(&Attachment, &Order)>,
-    documents: Query<(&DocumentId, &DocumentText, Option<&DocumentProps>)>,
-    bound: Query<&Bound>,
-    settings: Settings,
-    cached: Cached,
-    mut progress: ResMut<Progress>,
-) {
-    let Cached {
-        mut cache,
-        mut stats,
-    } = cached;
-    // Every run, fresh turn or none: the changes since the last run are
-    // read once, and the views they stale are dropped.
-    let stale = cache.stale();
-    for utterance in &stale {
-        if cache.holds(*utterance) {
-            commands.entity(*utterance).remove::<CachedMessage>();
-            stats.evictions += 1;
-        }
-    }
-    let assets_generation = cache.assets_generation();
-    let Settings {
-        preambles,
-        temperatures,
-        max_tokens,
-        params,
-        choices,
-        outputs,
-        output_tools,
-        tool_access,
-        tool_result_limits,
-    } = settings;
-    let mut turns: Vec<(Entity, Entity, RunSeq, Option<&RequestPatch>, bool)> = fresh
-        .iter()
-        .filter_map(|(turn, child_of, patch, retrieving)| {
-            let run = child_of.parent();
-            runs.get(run)
-                .ok()
-                .map(|(_, seq, _, _, _)| (turn, run, *seq, patch, retrieving))
-        })
-        .collect();
-    turns.sort_by_key(|(_, _, seq, _, _)| *seq);
-
-    for (turn, run, _, patch, is_retrieving) in turns {
-        let Ok((RunOf(agent), _, StreamRequested(stream), model, minted)) = runs.get(run) else {
-            continue;
-        };
-        let agent = *agent;
-        let model_bound = model.and_then(|UsesModel(model)| bound.get(*model).ok());
-        let Some(model_bound) = model_bound else {
-            commands.entity(run).phase::<Assembling>(Failed(Failure::Provider(
-                rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::HandlerUnavailable,
-                    "the run has no bound completion model; its selected model or its agent's binding was removed"),
-            )));
-            commands.entity(turn).remove::<Fresh>();
-            progress.mark();
-            continue;
-        };
-        let composes = match &model_bound.descriptor.family {
-            FamilyDescriptor::Completion { capabilities, .. } => {
-                capabilities.composes_native_output_with_tools
+fn render_history(
+    commands: &mut Commands,
+    turn: Entity,
+    run: Entity,
+    patch: Option<&RequestPatch>,
+    stale: &std::collections::HashSet<Entity>,
+    children: &Query<&Children>,
+    utterances: &Query<Entity, With<Utterance>>,
+    part_edits: &Query<PartEdit>,
+    content: &ContentGraph,
+    cached: &mut Cached,
+) -> Result<(Vec<MessageParts>, Vec<Entity>), ContentError> {
+    let edits = part_edits_of(turn, run, patch, children, part_edits, content)?;
+    let assets_generation = cached.cache.assets_generation();
+    let history = children
+        .get(run)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .filter_map(|child| utterances.get(child).ok())
+        .map(|entity| {
+            if edits.edited.contains(&entity) {
+                cached.stats.renders += 1;
+                content.message_with(entity, &edits.edits)
+            } else if let Some(view) = cached.cache.view(entity, stale) {
+                cached.stats.hits += 1;
+                Ok(view.clone())
+            } else {
+                cached.stats.renders += 1;
+                content.message(entity).inspect(|parts| {
+                    commands
+                        .entity(entity)
+                        .insert(CachedMessage::new(parts.clone(), assets_generation));
+                })
             }
-            FamilyDescriptor::Tool { .. }
+        })
+        .collect::<Result<_, _>>()?;
+    Ok((history, edits.consumed))
+}
+
+/// The first pass over a retrieving turn (CONTRACT §12): one `Retrieve`
+/// effect per index of the agent (`indexes`, in link order), `ChildOf`
+/// the turn; the fold waits for `attach_retrieved`.
+fn spawn_retrievals<'a>(
+    commands: &mut Commands,
+    turn: Entity,
+    history: &[MessageParts],
+    indexes: impl Iterator<Item = (&'a Retrieves, &'a Retrieval)>,
+    bound: &Query<&Bound>,
+) {
+    let query = policy::retrieval_query(history);
+    for (Retrieves(index), retrieval) in indexes {
+        let Ok(index) = bound.get(*index) else {
+            continue;
+        };
+        let request = rig_core::vector_store::request::VectorSearchRequest::builder()
+            .query(query.clone())
+            .samples(retrieval.samples)
+            .build()
+            .map_filter(rig_core::vector_store::request::Filter::interpret);
+        let query = match retrieval.what {
+            RetrievalKind::Documents => rig_core::effect::RetrieveQuery::TopN { req: request },
+            RetrievalKind::Tools => rig_core::effect::RetrieveQuery::TopNIds { req: request },
+        };
+        commands.spawn((
+            PendingEffect::new(index.key.clone(), EffectKind::Retrieve { query }),
+            *retrieval,
+            ChildOf(turn),
+        ));
+    }
+}
+
+/// The tools `turn` advertises that the patch allows, in advert order, as
+/// handler entities with their bindings. An advert the patch's
+/// `active_tools` excludes is despawned: the request and the executable
+/// grant set must agree, so materialisation, invalid-call repair and scene
+/// continuation see the same surface.
+fn allowed_tools<'a>(
+    commands: &mut Commands,
+    turn: Entity,
+    patch: Option<&RequestPatch>,
+    children: &Query<&Children>,
+    adverts: &Query<&Advert>,
+    bound: &'a Query<&Bound>,
+) -> Vec<(Entity, &'a Bound)> {
+    children
+        .get(turn)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .filter_map(|link| {
+            let Advert(tool) = adverts.get(link).ok()?;
+            Some((link, *tool, bound.get(*tool).ok()?))
+        })
+        .filter_map(|(link, tool, bound)| {
+            let allowed = match (
+                patch.and_then(|p| p.active_tools.as_ref()),
+                &bound.descriptor.family,
+            ) {
+                (Some(allowed), FamilyDescriptor::Tool { name, .. }) => allowed.contains(name),
+                (Some(_), FamilyDescriptor::Completion { .. })
+                | (Some(_), FamilyDescriptor::Embed { .. })
+                | (Some(_), FamilyDescriptor::Rerank { .. })
+                | (Some(_), FamilyDescriptor::Memory { .. })
+                | (Some(_), FamilyDescriptor::Retrieve { .. })
+                | (Some(_), FamilyDescriptor::Custom { .. })
+                | (None, _) => true,
+            };
+            if allowed {
+                Some((tool, bound))
+            } else {
+                commands.entity(link).despawn();
+                None
+            }
+        })
+        .collect()
+}
+
+/// The run's bound completion model, or why the run cannot fold: no
+/// selected model, no binding, or a binding that does not serve
+/// completions (a provider `HandlerUnavailable` report: the run never
+/// silently waits).
+fn completion_model(
+    model: Option<&UsesModel>,
+    bound: &Query<&Bound>,
+) -> Result<(Entity, bool), Failure> {
+    let unavailable = |message: String| {
+        Failure::Provider(rig_core::error::ErrorReport::new(
+            rig_core::error::ErrorKind::HandlerUnavailable,
+            message,
+        ))
+    };
+    let Some((model, model_bound)) =
+        model.and_then(|UsesModel(model)| bound.get(*model).ok().map(|bound| (*model, bound)))
+    else {
+        return Err(unavailable(
+            "the run has no bound completion model; its selected model or its agent's binding was removed".to_owned(),
+        ));
+    };
+    match &model_bound.descriptor.family {
+        FamilyDescriptor::Completion { capabilities, .. } => {
+            Ok((model, capabilities.composes_native_output_with_tools))
+        }
+        FamilyDescriptor::Tool { .. }
+        | FamilyDescriptor::Embed { .. }
+        | FamilyDescriptor::Rerank { .. }
+        | FamilyDescriptor::Memory { .. }
+        | FamilyDescriptor::Retrieve { .. }
+        | FamilyDescriptor::Custom { .. } => Err(unavailable(format!(
+            "selected model `{}` does not serve completions",
+            model_bound.key
+        ))),
+    }
+}
+
+/// The output mode of a turn, resolved, with the output tool's name: a
+/// committed name (minted on an earlier turn) stays the mode whatever this
+/// turn's choice says (CONTRACT §9.3); a reserved name with a schema is
+/// `Tool`; else the policy decides from the mode, the schema, the tools,
+/// the choice and the model's capabilities. `Err(name)` is a collision:
+/// the output tool's name is also a granted tool's.
+fn resolve_output_tool(
+    minted: &OutputToolName,
+    reserved_name: Option<&str>,
+    output: &Output,
+    tool_choice: Option<&ToolChoice>,
+    tools: &[(Entity, &Bound)],
+    access: &ToolAccess,
+    composes: bool,
+) -> Result<(OutputKind, String), String> {
+    let granted_names: Vec<&str> = tools
+        .iter()
+        .filter_map(|(_, bound)| match &bound.descriptor.family {
+            FamilyDescriptor::Tool { name, .. } => Some(name.as_str()),
+            FamilyDescriptor::Completion { .. }
             | FamilyDescriptor::Embed { .. }
             | FamilyDescriptor::Rerank { .. }
             | FamilyDescriptor::Memory { .. }
             | FamilyDescriptor::Retrieve { .. }
-            | FamilyDescriptor::Custom { .. } => {
-                commands
-                    .entity(run)
-                    .phase::<Assembling>(Failed(Failure::Provider(
-                        rig_core::error::ErrorReport::new(
-                            rig_core::error::ErrorKind::HandlerUnavailable,
-                            format!(
-                                "selected model `{}` does not serve completions",
-                                model_bound.key
-                            ),
-                        ),
-                    )));
-                commands.entity(turn).remove::<Fresh>();
-                progress.mark();
-                continue;
-            }
-        };
-
-        let requested: Result<_, ContentError> = (|| {
-            let mut links: Vec<_> = part_edits
+            | FamilyDescriptor::Custom { .. } => None,
+        })
+        .collect();
+    let occupied_names: Vec<&str> = granted_names
+        .iter()
+        .copied()
+        .chain(
+            access
+                .executable
                 .iter()
-                .filter(|(_, parent, _, _, _)| parent.parent() == turn)
-                .collect();
-            if links
-                .iter()
-                .any(|(_, _, order, target, _)| order.is_none() || target.is_none())
-            {
-                return Err(ContentError::Missing);
-            }
-            links.sort_by_key(|(_, _, order, _, _)| order.copied());
-            if links
-                .windows(2)
-                .any(|pair| pair.first().map(|x| x.2) == pair.get(1).map(|x| x.2))
-            {
-                return Err(ContentError::DuplicateOrder);
-            }
-            let mut edits = std::collections::BTreeMap::new();
-            let mut consumed = Vec::new();
-            let mut edited = std::collections::HashSet::new();
-            for (link, _, _, target, edit) in links {
-                let target = target.ok_or(ContentError::Missing)?;
-                let utterance = content.target_utterance(target.0)?;
-                edited.insert(utterance);
-                if !children
-                    .get(run)
-                    .is_ok_and(|owned| owned.contains(&utterance))
-                {
-                    return Err(ContentError::Shape);
-                }
-                // A replacement history has no stable entity identity. Reject
-                // conflicting operations instead of silently dropping an edit.
-                if patch.is_some_and(|patch| patch.history.is_some()) {
-                    return Err(ContentError::Shape);
-                }
-                edits.insert(target.0, edit.clone());
-                consumed.push(link);
-            }
-            Ok((edits, consumed, edited))
-        })();
-        let (edits, consumed_edits, edited) =
-            content_or_fail!(requested, &mut commands, run, progress);
+                .flat_map(|executable| executable.keys().map(String::as_str)),
+        )
+        .collect();
+    let output_tool = minted
+        .0
+        .clone()
+        .or_else(|| reserved_name.map(str::to_owned))
+        .unwrap_or_else(|| policy::output_tool_name(&occupied_names));
+    let callable = policy::output_tool_callable(tool_choice, &output_tool);
+    let resolved = if minted.0.is_some() || (reserved_name.is_some() && output.schema.is_some()) {
+        OutputKind::Tool
+    } else {
+        policy::resolve_output(
+            output.mode,
+            output.schema.is_some(),
+            granted_names.len(),
+            callable,
+            composes,
+        )
+    };
+    if resolved == OutputKind::Tool && occupied_names.contains(&output_tool.as_str()) {
+        // A reserved or already minted name must not also advertise a
+        // granted tool: refuse the ambiguous request before dispatch.
+        return Err(output_tool);
+    }
+    Ok((resolved, output_tool))
+}
 
-        let history: Result<Vec<(Order, std::borrow::Cow<'_, MessageParts>)>, ContentError> =
-            children
-                .get(run)
-                .map(|children| {
-                    children
-                        .iter()
-                        .filter_map(|child| utterances.get(child).ok())
-                        .map(|(entity, order)| {
-                            let parts = if edited.contains(&entity) {
-                                // The turn's edit: rendered with it, kept
-                                // out of the cache (the view is verbatim).
-                                stats.renders += 1;
-                                content
-                                    .message_with(entity, &edits)
-                                    .map(std::borrow::Cow::Owned)
-                            } else if let Some(view) = cache.view(entity, &stale) {
-                                stats.hits += 1;
-                                Ok(std::borrow::Cow::Borrowed(view))
-                            } else {
-                                stats.renders += 1;
-                                content.message(entity).map(|parts| {
-                                    commands.entity(entity).insert(CachedMessage::new(
-                                        parts.clone(),
-                                        assets_generation,
-                                    ));
-                                    std::borrow::Cow::Owned(parts)
-                                })
-                            };
-                            parts.map(|parts| (*order, parts))
-                        })
-                        .collect()
-                })
-                .unwrap_or_else(|_| Ok(Vec::new()));
-        let mut history = content_or_fail!(history, &mut commands, run, progress);
-        history.sort_by_key(|(order, _)| *order);
-
-        if is_retrieving {
-            // The first pass over a retrieving turn (CONTRACT §12): one
-            // `Retrieve` effect per index, in link order, `ChildOf` the
-            // turn; the fold waits for `attach_retrieved`.
-            let spawned = children
-                .get(turn)
-                .map(|children| children.iter().any(|child| retrieving.get(child).is_ok()))
-                .unwrap_or(false);
-            if spawned {
-                continue;
-            }
-            let query = policy::retrieval_query(
-                &history
-                    .iter()
-                    .map(|(_, parts)| parts.as_ref().clone())
-                    .collect::<Vec<_>>(),
-            );
-            let mut indexes: Vec<(&Retrieves, &Order, &Retrieval)> = children
-                .get(agent)
-                .map(|children| {
-                    children
-                        .iter()
-                        .filter_map(|child| retrievals.get(child).ok())
-                        .collect()
-                })
-                .unwrap_or_default();
-            indexes.sort_by_key(|(_, order, _)| **order);
-            let mut spawned = 0usize;
-            for (Retrieves(index), _, retrieval) in indexes {
-                let Ok(index) = bound.get(*index) else {
-                    continue;
-                };
-                spawned += 1;
-                let request = rig_core::vector_store::request::VectorSearchRequest::builder()
-                    .query(query.clone())
-                    .samples(retrieval.samples)
-                    .build()
-                    .map_filter(rig_core::vector_store::request::Filter::interpret);
-                let query = match retrieval.what {
-                    RetrievalKind::Documents => {
-                        rig_core::effect::RetrieveQuery::TopN { req: request }
-                    }
-                    RetrievalKind::Tools => {
-                        rig_core::effect::RetrieveQuery::TopNIds { req: request }
-                    }
-                };
-                commands.spawn((
-                    PendingEffect::new(index.key.clone(), EffectKind::Retrieve { query }),
-                    *retrieval,
-                    ChildOf(turn),
-                ));
-            }
-            // If every index disappeared since attachment ran, leave the
-            // marker for the next attachment pass to restore static links.
-            if spawned > 0 {
-                progress.mark();
-            }
-            continue;
-        }
-
-        // The size policy (CONTRACT §8.1): the request's tool-result text,
-        // after the part edits `message_with` applied and before the fold;
-        // the graph keeps the full text.
-        if let Some(limit) = setting(run, agent, &tool_result_limits) {
-            for (_, parts) in &mut history {
-                if policy::tool_results_exceed(parts, limit) {
-                    policy::limit_tool_results(parts.to_mut(), limit);
-                }
-            }
-        }
-
-        // The turn's patch (CONTRACT §9.3), folded in as `prepare_request`
-        // folded a completion-call hook's.
-        let mut tool_links: Vec<_> = children
-            .get(turn)
-            .into_iter()
-            .flat_map(|children| children.iter())
-            .filter_map(|link| {
-                let (Advert(tool), order) = adverts.get(link).ok()?;
-                Some((*order, link, bound.get(*tool).ok()?))
-            })
-            .collect();
-        tool_links.sort_by_key(|(order, _, _)| *order);
-        let tools: Vec<&Bound> = tool_links
-            .into_iter()
-            .filter_map(|(_, link, bound)| {
-                let allowed = match (
-                    patch.and_then(|p| p.active_tools.as_ref()),
-                    &bound.descriptor.family,
-                ) {
-                    (Some(allowed), FamilyDescriptor::Tool { name, .. }) => allowed.contains(name),
-                    (Some(_), FamilyDescriptor::Completion { .. })
-                    | (Some(_), FamilyDescriptor::Embed { .. })
-                    | (Some(_), FamilyDescriptor::Rerank { .. })
-                    | (Some(_), FamilyDescriptor::Memory { .. })
-                    | (Some(_), FamilyDescriptor::Retrieve { .. })
-                    | (Some(_), FamilyDescriptor::Custom { .. })
-                    | (None, _) => true,
-                };
-                if allowed {
-                    Some(bound)
-                } else {
-                    // The request and executable grant set must agree. Keep
-                    // that decision on the turn so materialisation, invalid
-                    // call repair and scene continuation see the same surface.
-                    commands.entity(link).despawn();
-                    None
-                }
-            })
-            .collect();
-        let mut attached: Vec<rig_core::completion::Document> =
-            links_in_order(turn, &children, &attachments)
+/// The documents attached to `turn`, in link order, then the patch's
+/// extra context.
+fn attached_documents(
+    turn: Entity,
+    patch: Option<&RequestPatch>,
+    children: &Query<&Children>,
+    attachments: &Query<&Attachment>,
+    documents: &Query<(&DocumentId, &DocumentText, Option<&DocumentProps>)>,
+) -> Vec<rig_core::completion::Document> {
+    links_in_order(turn, children, attachments)
+        .into_iter()
+        .filter_map(|Attachment(document)| documents.get(*document).ok())
+        .map(|(id, text, props)| rig_core::completion::Document {
+            id: id.0.clone(),
+            text: text.0.clone(),
+            additional_props: props.map(|props| props.0.clone()).unwrap_or_default(),
+        })
+        .chain(
+            patch
                 .into_iter()
-                .filter_map(|Attachment(document)| documents.get(*document).ok())
-                .map(|(id, text, props)| rig_core::completion::Document {
-                    id: id.0.clone(),
-                    text: text.0.clone(),
-                    additional_props: props.map(|props| props.0.clone()).unwrap_or_default(),
-                })
-                .collect();
-        if let Some(patch) = patch {
-            attached.extend(patch.extra_context.iter().cloned());
-        }
-        // A patched history replaces the prior utterances; the prompt — the
-        // run's last utterance — is still what the turn asks.
-        let patched_history: Option<Vec<MessageParts>> =
-            patch.and_then(|p| p.history.as_ref()).map(|messages| {
-                messages
-                    .iter()
-                    .cloned()
-                    .chain(history.last().map(|(_, parts)| parts.as_ref().clone()))
-                    .collect()
-            });
-        let merged_params: Option<serde_json::Value> = match (
-            setting(run, agent, &params).and_then(|p| p.0.clone()),
+                .flat_map(|patch| patch.extra_context.iter().cloned()),
+        )
+        .collect()
+}
+
+/// The run's `ToolAccess` (else the agent's, else none) completed for the
+/// turn: `executable` defaults to the advertised tools by name, `allowed`
+/// to every executable name.
+fn tool_access_for(
+    run: Entity,
+    agent: Entity,
+    tools: &[(Entity, &Bound)],
+    tool_access: &Query<&ToolAccess>,
+) -> ToolAccess {
+    let mut access = setting(run, agent, tool_access)
+        .cloned()
+        .unwrap_or_default();
+    let executable = access.executable.get_or_insert_with(|| {
+        tools
+            .iter()
+            .filter_map(|(_, bound)| match &bound.descriptor.family {
+                FamilyDescriptor::Tool { name, .. } => Some((name.clone(), bound.key.clone())),
+                _ => None,
+            })
+            .collect()
+    });
+    if access.allowed.is_none() {
+        access.allowed = Some(executable.keys().cloned().collect());
+    }
+    access
+}
+
+/// The request settings of one turn, resolved: the patch's over the
+/// run's over the agent's.
+struct Resolved {
+    preamble: Option<String>,
+    temperature: Option<f64>,
+    max_tokens: Option<u64>,
+    additional_params: Option<serde_json::Value>,
+    tool_choice: Option<ToolChoice>,
+    output: Output,
+    output_tool_config: Option<OutputToolConfig>,
+}
+
+impl Settings<'_, '_> {
+    /// The settings for `run`'s turn under `patch` (CONTRACT §9.3): the
+    /// patch's field where it has one (an object `additional_params`
+    /// merges over the setting's), else the run's, else the agent's.
+    fn resolve(&self, run: Entity, agent: Entity, patch: Option<&RequestPatch>) -> Resolved {
+        let additional_params = match (
+            setting(run, agent, &self.params).and_then(|p| p.0.clone()),
             patch.and_then(|p| p.additional_params.clone()),
         ) {
             (Some(base), Some(patched)) if base.is_object() && patched.is_object() => {
@@ -1517,147 +1533,298 @@ pub fn assemble(
             }
             (base, patched) => patched.or(base),
         };
-
-        let preamble = patch
-            .and_then(|p| p.preamble.as_deref())
-            .or_else(|| setting(run, agent, &preambles).and_then(|preamble| preamble.0.as_deref()));
-        let temperature = patch
-            .and_then(|p| p.temperature)
-            .or_else(|| setting(run, agent, &temperatures).and_then(|t| t.0));
-        let max_tokens = patch
-            .and_then(|p| p.max_tokens)
-            .or_else(|| setting(run, agent, &max_tokens).and_then(|m| m.0));
-        let additional_params = merged_params.as_ref();
-        let tool_choice = patch
-            .and_then(|p| p.tool_choice.as_ref())
-            .or_else(|| setting(run, agent, &choices).and_then(|c| c.0.as_ref()));
-        let output = setting(run, agent, &outputs).cloned().unwrap_or_default();
-        let output_tool_config = setting(run, agent, &output_tools);
-        let reserved_name = output_tool_config.and_then(|config| config.name.as_deref());
-
-        let mut access = setting(run, agent, &tool_access)
-            .cloned()
-            .unwrap_or_default();
-        let executable = access.executable.get_or_insert_with(|| {
-            tools
-                .iter()
-                .filter_map(|bound| match &bound.descriptor.family {
-                    FamilyDescriptor::Tool { name, .. } => Some((name.clone(), bound.key.clone())),
-                    _ => None,
-                })
-                .collect()
-        });
-        if access.allowed.is_none() {
-            access.allowed = Some(executable.keys().cloned().collect());
+        Resolved {
+            preamble: patch
+                .and_then(|p| p.preamble.clone())
+                .or_else(|| setting(run, agent, &self.preambles).and_then(|p| p.0.clone())),
+            temperature: patch
+                .and_then(|p| p.temperature)
+                .or_else(|| setting(run, agent, &self.temperatures).and_then(|t| t.0)),
+            max_tokens: patch
+                .and_then(|p| p.max_tokens)
+                .or_else(|| setting(run, agent, &self.max_tokens).and_then(|m| m.0)),
+            additional_params,
+            tool_choice: patch
+                .and_then(|p| p.tool_choice.clone())
+                .or_else(|| setting(run, agent, &self.choices).and_then(|c| c.0.clone())),
+            output: setting(run, agent, &self.outputs)
+                .cloned()
+                .unwrap_or_default(),
+            output_tool_config: setting(run, agent, &self.output_tools).cloned(),
         }
+    }
+}
 
-        let granted_names: Vec<&str> = tools
-            .iter()
-            .filter_map(|bound| match &bound.descriptor.family {
-                FamilyDescriptor::Tool { name, .. } => Some(name.as_str()),
-                FamilyDescriptor::Completion { .. }
-                | FamilyDescriptor::Embed { .. }
-                | FamilyDescriptor::Rerank { .. }
-                | FamilyDescriptor::Memory { .. }
-                | FamilyDescriptor::Retrieve { .. }
-                | FamilyDescriptor::Custom { .. } => None,
-            })
-            .collect();
-        let occupied_names: Vec<&str> = granted_names
-            .iter()
-            .copied()
-            .chain(executable.keys().map(String::as_str))
-            .collect();
-        let output_tool = minted
-            .0
-            .clone()
-            .or_else(|| reserved_name.map(str::to_owned))
-            .unwrap_or_else(|| policy::output_tool_name(&occupied_names));
-        let callable = policy::output_tool_callable(tool_choice, &output_tool);
-        // A committed output tool (minted on an earlier turn) stays the
-        // mode whatever this turn's choice says (CONTRACT §9.3).
-        let resolved = if minted.0.is_some() || (reserved_name.is_some() && output.schema.is_some())
-        {
-            OutputKind::Tool
-        } else {
-            policy::resolve_output(
-                output.mode,
-                output.schema.is_some(),
-                granted_names.len(),
-                callable,
-                composes,
-            )
+/// `RigSet::Assemble`, first: for every fresh turn, in run order, gather
+/// the graph — the run's settings over the agent's, the utterances in
+/// order (after the turn's part edits and the size policy), the
+/// attachments in order, the adverts the patch allows in order, the
+/// model — resolve the output mode, mint the output tool's name once per
+/// run, and leave it all on the turn as [`AssemblyInputs`] for `fold_turn`,
+/// with the run's `ToolAccess` snapshot on the turn.
+/// An utterance is read from its `CachedMessage` when it holds one and
+/// nothing of it changed since this system last ran (CONTRACT §1); else
+/// it is rendered and the render cached for the next turn. An utterance a
+/// `RequestPartEdit` targets is rendered with the edit, uncached.
+/// A retrieving turn instead gets its `Retrieve` effects on its first pass
+/// (CONTRACT §12). A missing selected model or non-completion binding
+/// terminates the run with a provider `HandlerUnavailable` report; it
+/// never silently waits. An output tool named like a granted tool fails
+/// the run `OutputToolCollision`; a content error fails it `Content`.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one system, one pass: every parameter is a distinct world access it needs"
+)]
+pub fn gather_turn(
+    mut commands: Commands,
+    fresh: Query<FreshTurn, With<Fresh>>,
+    runs: Query<AssemblingRun, LiveRun>,
+    children: Query<&Children>,
+    utterances: Query<Entity, With<Utterance>>,
+    content: ContentGraph,
+    part_edits: Query<PartEdit>,
+    retrievals: Query<(&Retrieves, &Retrieval)>,
+    retrieving: Query<(), With<Retrieval>>,
+    adverts: Query<&Advert>,
+    attachments: Query<&Attachment>,
+    documents: Query<(&DocumentId, &DocumentText, Option<&DocumentProps>)>,
+    bound: Query<&Bound>,
+    settings: Settings,
+    mut cached: Cached,
+) {
+    // Every run, fresh turn or none: the changes since the last run are
+    // read once, and the views they stale are dropped.
+    let stale = cached.cache.stale();
+    for utterance in &stale {
+        if cached.cache.holds(*utterance) {
+            commands.entity(*utterance).remove::<CachedMessage>();
+            cached.stats.evictions += 1;
+        }
+    }
+    let mut turns: Vec<_> = fresh
+        .iter()
+        .filter_map(|turn| {
+            let run = turn.turn_of.parent();
+            runs.get(run).ok().map(|view| (view.seq.0, turn, run))
+        })
+        .collect();
+    turns.sort_by_key(|(seq, _, _)| *seq);
+    for (_, turn, run) in turns {
+        let Ok(view) = runs.get(run) else {
+            continue;
         };
-        if resolved == OutputKind::Tool && occupied_names.contains(&output_tool.as_str()) {
-            // A reserved or already minted name must not also advertise a
-            // granted tool: refuse the ambiguous request before dispatch.
-            commands.entity(turn).remove::<Fresh>();
-            commands
-                .entity(run)
-                .phase::<Assembling>(Failed(Failure::OutputToolCollision {
-                    name: output_tool.clone(),
-                }));
-            progress.mark();
+        let agent = view.run_of.0;
+        let (model, composes) = match completion_model(view.model, &bound) {
+            Ok(model) => model,
+            Err(failure) => {
+                commands.entity(run).end(Failed(failure));
+                commands.entity(turn.entity).remove::<Fresh>();
+                continue;
+            }
+        };
+        let patch = turn.patch;
+        let rendered = render_history(
+            &mut commands,
+            turn.entity,
+            run,
+            patch,
+            &stale,
+            &children,
+            &utterances,
+            &part_edits,
+            &content,
+            &mut cached,
+        );
+        let (mut history, consumed_edits) = match rendered {
+            Ok(rendered) => rendered,
+            Err(error) => {
+                fail_content(&mut commands, run, error);
+                continue;
+            }
+        };
+        if turn.retrieving {
+            // A turn whose retrievals are already out gets nothing more.
+            let spawned = children
+                .get(turn.entity)
+                .is_ok_and(|children| children.iter().any(|child| retrieving.get(child).is_ok()));
+            if !spawned {
+                let indexes = children
+                    .get(agent)
+                    .into_iter()
+                    .flat_map(|children| children.iter())
+                    .filter_map(|child| retrievals.get(child).ok());
+                spawn_retrievals(&mut commands, turn.entity, &history, indexes, &bound);
+            }
             continue;
         }
-        if resolved == OutputKind::Tool && minted.0.is_none() {
+        // The size policy (CONTRACT §8.1): the request's tool-result text,
+        // after the part edits `message_with` applied and before the fold;
+        // the graph keeps the full text.
+        if let Some(limit) = setting(run, agent, &settings.tool_result_limits) {
+            for parts in &mut history {
+                if policy::tool_results_exceed(parts, limit) {
+                    policy::limit_tool_results(parts, limit);
+                }
+            }
+        }
+        // The turn's patch (CONTRACT §9.3), folded in as `prepare_request`
+        // folded a completion-call hook's.
+        let tools = allowed_tools(
+            &mut commands,
+            turn.entity,
+            patch,
+            &children,
+            &adverts,
+            &bound,
+        );
+        let attached = attached_documents(turn.entity, patch, &children, &attachments, &documents);
+        // A patched history replaces the prior utterances; the prompt — the
+        // run's last utterance — is still what the turn asks.
+        if let Some(patched) = patch.and_then(|p| p.history.as_ref()) {
+            let prompt = history.pop();
+            history = patched.iter().cloned().chain(prompt).collect();
+        }
+        let resolved = settings.resolve(run, agent, patch);
+        let reserved_name = resolved
+            .output_tool_config
+            .as_ref()
+            .and_then(|config| config.name.as_deref());
+        let access = tool_access_for(run, agent, &tools, &settings.tool_access);
+        let (mode, output_tool) = match resolve_output_tool(
+            view.minted,
+            reserved_name,
+            &resolved.output,
+            resolved.tool_choice.as_ref(),
+            &tools,
+            &access,
+            composes,
+        ) {
+            Ok(mode) => mode,
+            Err(name) => {
+                commands.entity(turn.entity).remove::<Fresh>();
+                commands
+                    .entity(run)
+                    .end(Failed(Failure::OutputToolCollision { name }));
+                continue;
+            }
+        };
+        if mode == OutputKind::Tool && view.minted.0.is_none() {
             commands
                 .entity(run)
                 .insert(OutputToolName(Some(output_tool.clone())));
         }
-
-        let graph = RequestGraph {
+        for link in consumed_edits {
+            commands.entity(link).despawn();
+        }
+        let Resolved {
             preamble,
-            utterances: match &patched_history {
-                Some(patched) => patched.iter().collect(),
-                None => history.iter().map(|(_, parts)| parts.as_ref()).collect(),
-            },
-            documents: attached,
-            tools: tools.iter().map(|bound| &bound.descriptor).collect(),
             temperature,
             max_tokens,
             additional_params,
             tool_choice,
-            output: resolved,
-            schema: output.schema.as_ref(),
-            output_tool: (resolved == OutputKind::Tool).then_some(output_tool.as_str()),
+            output,
             output_tool_config,
+        } = resolved;
+        commands.entity(turn.entity).insert((
+            access,
+            AssemblyInputs {
+                model,
+                stream: view.stream.0,
+                preamble,
+                utterances: history,
+                documents: attached,
+                tools: tools.into_iter().map(|(tool, _)| tool).collect(),
+                temperature,
+                max_tokens,
+                additional_params,
+                tool_choice,
+                output: mode,
+                schema: output.schema,
+                output_tool: (mode == OutputKind::Tool).then_some(output_tool),
+                output_tool_config,
+            },
+        ));
+    }
+}
+
+/// `RigSet::Assemble`, after `gather_turn`: every fresh turn with its
+/// [`AssemblyInputs`], in run order, is folded — `policy::fold_request`
+/// over what was gathered — and the effect spawned `ChildOf` the turn,
+/// served by the run's model. The turn is `Folded` under its output mode
+/// with empty `Outputs` and materialises under the gathered `ToolAccess`;
+/// its inputs, `Fresh` and `RequestPatch` come off; the run is
+/// `AwaitingModel`.
+pub fn fold_turn(
+    mut commands: Commands,
+    mut turns: Query<(Entity, &ChildOf, &mut AssemblyInputs), With<Fresh>>,
+    runs: Query<&RunSeq, LiveRun>,
+    bound: Query<&Bound>,
+    mut stats: ResMut<AssemblyStats>,
+) {
+    let mut turns: Vec<_> = turns
+        .iter_mut()
+        .filter_map(|(turn, turn_of, inputs)| {
+            let run = turn_of.parent();
+            runs.get(run).ok().map(|seq| (seq.0, turn, run, inputs))
+        })
+        .collect();
+    turns.sort_by_key(|(seq, _, _, _)| *seq);
+    for (_, turn, run, mut inputs) in turns {
+        let Ok(model) = bound.get(inputs.model) else {
+            continue;
+        };
+        let documents = std::mem::take(&mut inputs.documents);
+        let graph = RequestGraph {
+            preamble: inputs.preamble.as_deref(),
+            utterances: inputs.utterances.iter().collect(),
+            documents,
+            tools: inputs
+                .tools
+                .iter()
+                .filter_map(|tool| bound.get(*tool).ok())
+                .map(|bound| &bound.descriptor)
+                .collect(),
+            temperature: inputs.temperature,
+            max_tokens: inputs.max_tokens,
+            additional_params: inputs.additional_params.as_ref(),
+            tool_choice: inputs.tool_choice.as_ref(),
+            output: inputs.output,
+            schema: inputs.schema.as_ref(),
+            output_tool: inputs.output_tool.as_deref(),
+            output_tool_config: inputs.output_tool_config.as_ref(),
         };
         let request = policy::fold_request(&graph);
         stats.assemblies += 1;
-        for link in consumed_edits {
-            commands.entity(link).despawn();
-        }
-        commands.entity(turn).insert(access);
         commands.spawn((
             PendingEffect::new(
-                model_bound.key.clone(),
+                model.key.clone(),
                 EffectKind::Completion {
                     request,
-                    stream: *stream,
+                    stream: inputs.stream,
                 },
             ),
+            ServedBy(inputs.model),
             ChildOf(turn),
         ));
         commands
             .entity(turn)
-            .remove::<(Fresh, RequestPatch)>()
-            .insert((Folded(resolved), Outputs::default()));
-        commands.entity(run).phase::<Assembling>(AwaitingModel);
-        progress.mark();
+            .remove::<(AssemblyInputs, Fresh, RequestPatch)>()
+            .insert((Folded(inputs.output), Outputs::default()));
+        commands.entity(run).phase(RunPhase::AwaitingModel);
     }
 }
 
 /// `RigSet::Fold`: the turn's outputs from its effect — the text so far
 /// while it streams (`Changed<Outputs>` is the delta signal), the folded
 /// answer when it lands.
-pub fn fold(
-    effects: Query<EffectView, NotRetrieval>,
-    mut turns: Query<&mut Outputs, With<Turn>>,
-    mut progress: ResMut<Progress>,
-) {
-    for (child_of, streamed, outcome) in &effects {
-        let Ok(mut outputs) = turns.get_mut(child_of.parent()) else {
+pub fn fold(effects: Query<EffectView, NotRetrieval>, mut turns: Query<&mut Outputs, With<Turn>>) {
+    for EffectViewItem {
+        turn_of,
+        streamed,
+        outcome,
+    } in &effects
+    {
+        let Ok(mut outputs) = turns.get_mut(turn_of.parent()) else {
             continue;
         };
         if outputs.done {
@@ -1677,11 +1844,9 @@ pub fn fold(
                 };
                 outputs.message_id = response.message_id.clone();
                 outputs.done = true;
-                progress.mark();
             }
             Some(EffectOutcome(Ok(_))) | Some(EffectOutcome(Err(_))) => {
                 outputs.done = true;
-                progress.mark();
             }
             None => {
                 if let Some(streamed) = streamed
@@ -1723,15 +1888,22 @@ pub fn resolve_invalid_defaults(
     }
 }
 
-/// What `Fold` reads of a tool child of a turn: which call it is, whether
-/// it was issued, its outcome, whether the batch's own hold is on it.
-pub type ToolChildView = (
-    Entity,
-    &'static ToolCallSlot,
-    Option<&'static Issued>,
-    Option<&'static EffectOutcome>,
-    Has<BatchHeld>,
-);
+/// What the batch's systems read of a tool child of a turn: which call it
+/// is, whether it was issued, its outcome, whether the batch's own hold
+/// is on it.
+#[derive(QueryData)]
+pub struct ToolChild {
+    /// The effect entity.
+    pub entity: Entity,
+    /// Which call of the batch it is.
+    pub slot: &'static ToolCallSlot,
+    /// Whether the bus issued it.
+    pub issued: Has<Issued>,
+    /// The outcome, once landed.
+    pub outcome: Option<&'static EffectOutcome>,
+    /// Whether the batch's own hold is on it.
+    pub batch_held: Has<BatchHeld>,
+}
 
 /// The runtime's own hold on a tool child beyond the run's concurrency,
 /// placed beside `Held` at spawn and lifted by `release_batch` in call
@@ -1739,7 +1911,8 @@ pub type ToolChildView = (
 /// `Gate` policy's `Held` is not the runtime's to lift, so a call a policy
 /// holds stays held until that policy releases it, and a call the batch
 /// holds is released by the batch alone.
-#[derive(Component, Debug, Default, Clone, Copy)]
+#[derive(Component, Debug, Default, Clone, Copy, Reflect)]
+#[reflect(Component)]
 pub struct BatchHeld;
 
 /// The batch's marker and its ownership go with the hold. A host may
@@ -1763,35 +1936,19 @@ pub fn batch_marker_follows_the_hold(
     });
 }
 
-/// One tool child of a batch: the entity, the slot, whether issued, the
-/// outcome, whether the batch holds it.
-type BatchChild<'a> = (
-    Entity,
-    &'a ToolCallSlot,
-    bool,
-    Option<&'a EffectOutcome>,
-    bool,
-);
-
 /// The tool children of `turn`, by call index.
 fn batch_children<'a>(
     turn: Entity,
     children: &Query<&Children>,
-    tools: &'a Query<ToolChildView>,
-) -> Vec<BatchChild<'a>> {
+    tools: &'a Query<ToolChild>,
+) -> Vec<ToolChildItem<'a, 'a>> {
     let mut found: Vec<_> = children
         .get(turn)
-        .map(|children| {
-            children
-                .iter()
-                .filter_map(|child| tools.get(child).ok())
-                .map(|(entity, slot, issued, outcome, batch_held)| {
-                    (entity, slot, issued.is_some(), outcome, batch_held)
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    found.sort_by_key(|(_, slot, _, _, _)| slot.index);
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .filter_map(|child| tools.get(child).ok())
+        .collect();
+    found.sort_by_key(|child| child.slot.index);
     found
 }
 
@@ -1809,7 +1966,7 @@ pub fn release_batch(
     runs: Query<&RunOf>,
     policies: Query<&ToolPolicy>,
     children: Query<&Children>,
-    tools: Query<ToolChildView>,
+    tools: Query<ToolChild>,
 ) {
     for (turn, turn_of) in &turns {
         let run = turn_of.parent();
@@ -1820,8 +1977,10 @@ pub fn release_batch(
             .map_or(1, |policy| policy.concurrency)
             .max(1);
         let batch = batch_children(turn, &children, &tools);
-        if batch.iter().any(|(_, _, _, outcome, _)| {
-            outcome.is_some_and(|o| policy::tool_failure(&o.0).is_some())
+        if batch.iter().any(|child| {
+            child
+                .outcome
+                .is_some_and(|o| policy::tool_failure(&o.0).is_some())
         }) {
             continue;
         }
@@ -1829,15 +1988,15 @@ pub fn release_batch(
         // or waiting on a policy's own hold: a slot is a slot.
         let active = batch
             .iter()
-            .filter(|(_, _, _, outcome, batch_held)| !*batch_held && outcome.is_none())
+            .filter(|child| !child.batch_held && child.outcome.is_none())
             .count();
         let mut free = concurrency.saturating_sub(active);
-        for (entity, _, issued, _, batch_held) in &batch {
+        for child in &batch {
             if free == 0 {
                 break;
             }
-            if *batch_held && !issued {
-                let entity = *entity;
+            if child.batch_held && !child.issued {
+                let entity = child.entity;
                 commands.queue(move |world: &mut World| {
                     if let Ok(mut effect) = world.get_entity_mut(entity) {
                         effect.remove::<BatchHeld>();
@@ -1852,7 +2011,7 @@ pub fn release_batch(
     }
 }
 
-/// `RigSet::Materialise`, before `materialise`: a turn whose batch has
+/// `RigSet::Materialise`, before `record_usage`: a turn whose batch has
 /// landed becomes graph — one user utterance of the results in call order
 /// (CONTRACT §8.1), and the run is `Assembling` again; or, when a landed
 /// outcome is one the run fails on and every started call has landed, the
@@ -1867,26 +2026,26 @@ pub fn land_batch(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
     turns: Query<(Entity, &ChildOf, &Batch, &Outputs)>,
-    runs: Query<(&OutputToolName, &RunSeq, &Cursor), With<ResolvingTools>>,
+    runs: Query<(&OutputToolName, &RunSeq, &Cursor, &RunPhase)>,
     children: Query<&Children>,
-    tools: Query<ToolChildView>,
-    mut orders: ResMut<OrderCounter>,
-    mut progress: ResMut<Progress>,
+    tools: Query<ToolChild>,
 ) {
     let mut turns: Vec<_> = turns.iter().collect();
-    turns.sort_by_key(|(_, turn_of, _, _)| runs.get(turn_of.parent()).map(|(_, seq, _)| *seq).ok());
+    turns.sort_by_key(|(_, turn_of, _, _)| {
+        runs.get(turn_of.parent()).map(|(_, seq, _, _)| *seq).ok()
+    });
     for (turn, turn_of, batch, outs) in turns {
         let run = turn_of.parent();
-        let Ok((minted, _, cursor)) = runs.get(run) else {
+        let Ok((minted, _, cursor, &RunPhase::ResolvingTools)) = runs.get(run) else {
             continue;
         };
         let calls = batch_children(turn, &children, &tools);
         let failure = calls
             .iter()
-            .find_map(|(_, _, _, outcome, _)| outcome.and_then(|o| policy::tool_failure(&o.0)));
+            .find_map(|child| child.outcome.and_then(|o| policy::tool_failure(&o.0)));
         let started_landed = calls
             .iter()
-            .all(|(_, _, issued, outcome, _)| !*issued || outcome.is_some());
+            .all(|child| !child.issued || child.outcome.is_some());
         if let Some(failure) = failure {
             if !started_landed {
                 continue;
@@ -1894,28 +2053,25 @@ pub fn land_batch(
             // The ending first, so the despawns' observer finds the run
             // ended with this failure and leaves it.
             commands.entity(turn).remove::<Batch>();
-            commands
-                .entity(run)
-                .phase::<ResolvingTools>(Failed(failure));
-            for (entity, _, issued, outcome, _) in &calls {
-                if !*issued && outcome.is_none() {
-                    commands.entity(*entity).despawn();
+            commands.entity(run).end(Failed(failure));
+            for child in &calls {
+                if !child.issued && child.outcome.is_none() {
+                    commands.entity(child.entity).despawn();
                 }
             }
-            progress.mark();
             continue;
         }
-        if calls.len() < batch.calls || calls.iter().any(|(_, _, _, outcome, _)| outcome.is_none())
-        {
+        if calls.len() < batch.calls || calls.iter().any(|child| child.outcome.is_none()) {
             continue;
         }
         let mut parts = Vec::with_capacity(calls.len());
         let mut statuses = Vec::with_capacity(calls.len());
         let mut failed = None;
-        for (_, slot, _, outcome, _) in &calls {
-            let Some(EffectOutcome(outcome)) = outcome else {
+        for child in &calls {
+            let Some(EffectOutcome(outcome)) = child.outcome else {
                 continue;
             };
+            let slot = child.slot;
             match policy::tool_result_part(
                 slot.id.clone(),
                 slot.provider.clone(),
@@ -1934,14 +2090,18 @@ pub fn land_batch(
         }
         commands.entity(turn).remove::<Batch>();
         if let Some(failure) = failed {
-            commands
-                .entity(run)
-                .phase::<ResolvingTools>(Failed(failure));
-            progress.mark();
+            commands.entity(run).end(Failed(failure));
             continue;
         }
         let results = MessageParts::User { content: parts };
-        let results_entity = say!(commands, assets, orders, progress, run, results, statuses);
+        let results_entity =
+            match spawn_deferred_with(&mut commands, &mut assets, run, results, statuses) {
+                Ok(results) => results,
+                Err(error) => {
+                    fail_content(&mut commands, run, error);
+                    continue;
+                }
+            };
         commands.entity(turn).insert((
             ToolTurnCommit { turn: cursor.turn },
             TurnResults(results_entity),
@@ -1959,12 +2119,10 @@ pub fn land_batch(
         });
         match output_call {
             Some(arguments) => {
-                commands
-                    .entity(run)
-                    .phase::<ResolvingTools>((RunResult(arguments), Settled));
+                commands.entity(run).end((RunResult(arguments), Settled));
             }
             None => {
-                commands.entity(run).phase::<ResolvingTools>(Assembling);
+                commands.entity(run).phase(RunPhase::Assembling);
             }
         }
         commands.queue(move |world: &mut World| {
@@ -1979,7 +2137,6 @@ pub fn land_batch(
                 world.trigger(ToolTurnCommitted { run, turn });
             }
         });
-        progress.mark();
     }
 }
 
@@ -2016,301 +2173,452 @@ fn invalid_verdict(pending: &[(Entity, InvalidCall, Resolution)]) -> InvalidVerd
     InvalidVerdict::Edit
 }
 
-/// `RigSet::Materialise`: a complete, unread turn becomes graph — the
-/// assistant utterance (unless the turn is empty), the answer and
-/// `Settled`, a reprompt and another turn, an invalid call awaiting its
-/// resolution, the tool batch (one effect per call to a granted tool,
-/// `ChildOf` the turn; the run is `ResolvingTools`), or `Failed`.
+/// The landed completion effect of `turn`, if any.
+fn landed_effect<'a>(
+    turn: Entity,
+    effects: &'a Query<LandedEffect, NotRetrieval>,
+) -> Option<LandedEffectItem<'a, 'a>> {
+    effects
+        .iter()
+        .find(|effect| effect.turn_of.parent() == turn)
+}
+
+/// The tools `turn` may call: the run's `ToolAccess.executable` when the
+/// turn was folded under one, else the tools it advertised, by name, with
+/// their keys and their handler entities.
+fn granted_tools(
+    turn: Entity,
+    children: &Query<&Children>,
+    adverts: &Query<&Advert>,
+    bound: &Query<&Bound>,
+    access: Option<&ToolAccess>,
+) -> Vec<GrantedTool> {
+    if let Some(executable) = access.and_then(|access| access.executable.as_ref()) {
+        return executable
+            .iter()
+            .map(|(name, key)| GrantedTool {
+                name: name.clone(),
+                key: key.clone(),
+                handler: None,
+            })
+            .collect();
+    }
+    links_in_order(turn, children, adverts)
+        .into_iter()
+        .filter_map(|Advert(tool)| bound.get(*tool).ok().map(|bound| (*tool, bound)))
+        .filter_map(|(tool, bound)| match &bound.descriptor.family {
+            FamilyDescriptor::Tool { name, .. } => Some(GrantedTool {
+                name: name.clone(),
+                key: bound.key.clone(),
+                handler: Some(tool),
+            }),
+            FamilyDescriptor::Completion { .. }
+            | FamilyDescriptor::Embed { .. }
+            | FamilyDescriptor::Rerank { .. }
+            | FamilyDescriptor::Memory { .. }
+            | FamilyDescriptor::Retrieve { .. }
+            | FamilyDescriptor::Custom { .. } => None,
+        })
+        .collect()
+}
+
+/// `RigSet::Materialise`, after `land_batch`: an unread turn whose
+/// completion landed has the response's usage counted into its run's
+/// `Usage`, once — before any deferred invalid-call decision consumes the
+/// turn, so an early decision that outlives the stream still counts the
+/// response that actually completed.
+pub fn record_usage(
+    mut commands: Commands,
+    mut turns: Query<(Entity, &ChildOf, &mut Outputs), Unread>,
+    effects: Query<LandedEffect, NotRetrieval>,
+    runs: Query<(&Usage, &RunPhase)>,
+) {
+    for (turn, turn_of, mut outs) in &mut turns {
+        if outs.usage_recorded {
+            continue;
+        }
+        let run = turn_of.parent();
+        let Ok((usage, &RunPhase::AwaitingModel)) = runs.get(run) else {
+            continue;
+        };
+        let Some(EffectOutcome(Ok(Outcome::Completion(response)))) =
+            landed_effect(turn, &effects).map(|effect| effect.outcome)
+        else {
+            continue;
+        };
+        commands.entity(run).insert(Usage(usage.0 + response.usage));
+        outs.usage_recorded = true;
+    }
+}
+
+/// The pending invalid calls of `turn`, each with its resolution, a
+/// streamed call's id resolved to the block's final identity once the
+/// stream landed.
+fn pending_invalid_calls(
+    turn: Entity,
+    invalid_calls: &Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
+    stream: Option<&BusStreamed>,
+) -> Vec<(Entity, InvalidCall, Resolution)> {
+    invalid_calls
+        .iter()
+        .filter(|(_, child_of, _, _)| child_of.parent() == turn)
+        .map(|(entity, _, call, resolution)| {
+            let mut call = call.clone();
+            if let Some(offset) = call.stream_offset
+                && let Some(stream) = stream
+                && let Some(id) = stream_invalid::completed_call_id(&stream.events, offset)
+            {
+                call.id = id;
+            }
+            (entity, call, resolution.clone())
+        })
+        .collect()
+}
+
+/// The turn's content after its invalid calls' edits: repairs rename their
+/// call; ignores drop theirs. What is left is the turn.
+fn edited_content(
+    content: &[AssistantContent],
+    pending: &[(Entity, InvalidCall, Resolution)],
+) -> Vec<AssistantContent> {
+    let mut content = content.to_vec();
+    for (_, call, resolution) in pending {
+        match resolution {
+            Resolution::Repair { to } => {
+                for part in &mut content {
+                    if let AssistantContent::ToolCall(tool_call) = part
+                        && tool_call.id == call.id
+                    {
+                        tool_call.function.name = to.clone();
+                    }
+                }
+            }
+            Resolution::Ignore => {
+                content.retain(|part| match part {
+                    AssistantContent::ToolCall(tool_call) => tool_call.id != call.id,
+                    AssistantContent::Text(_)
+                    | AssistantContent::Reasoning(_)
+                    | AssistantContent::Image(_) => true,
+                });
+            }
+            Resolution::Fail | Resolution::Retry { .. } | Resolution::Skip { .. } => {}
+        }
+    }
+    content
+}
+
+/// An invalid call's `Fail`: the delivered prefix (if any) becomes history,
+/// the turn is read, and the run fails `UnknownToolCall`.
+fn fail_unknown_call(
+    commands: &mut Commands,
+    assets: &mut BinaryAssets,
+    run: Entity,
+    turn: Entity,
+    outs: &Outputs,
+    call: InvalidCall,
+) -> Result<(), ContentError> {
+    commands.entity(turn).insert(Materialised);
+    if !call.prefix.is_empty() {
+        let assistant = MessageParts::Assistant {
+            id: outs.message_id.clone(),
+            content: call.prefix.clone(),
+        };
+        spawn_deferred(commands, assets, run, assistant)?;
+    }
+    commands
+        .entity(run)
+        .end(Failed(Failure::UnknownToolCall { name: call.name }));
+    Ok(())
+}
+
+/// An invalid call's `Retry` or `Skip`: the turn up to the call becomes
+/// history (a streamed turn is abandoned where the call surfaced), then
+/// one user utterance answering the call and its peers with the feedback,
+/// every result `Skipped`; the turn is read and the run wants another
+/// (a retry spends one of `InvalidRetries`).
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one transition: what it reads of the turn, the run and the stream"
+)]
+fn abandon_turn(
+    commands: &mut Commands,
+    assets: &mut BinaryAssets,
+    run: Entity,
+    turn: Entity,
+    outs: &Outputs,
+    events: Option<&[rig_core::streaming::StreamEvent]>,
+    allowed_names: &[String],
+    call: &InvalidCall,
+    feedback: &str,
+    retries: Option<InvalidRetries>,
+) -> Result<(), ContentError> {
+    commands.entity(turn).insert(Materialised);
+    let (content, diagnostic_id) =
+        if let Some(AssistantContent::ToolCall(diagnostic)) = call.prefix.last() {
+            (call.prefix.clone(), diagnostic.id.clone())
+        } else {
+            policy::partial_turn_at(&outs.content, events, &call.id, allowed_names)
+        };
+    let assistant = MessageParts::Assistant {
+        id: outs.message_id.clone(),
+        content: content.clone(),
+    };
+    spawn_deferred(commands, assets, run, assistant)?;
+    let results = policy::invalid_peer_results(&content, &diagnostic_id, feedback);
+    let skipped = match &results {
+        MessageParts::User { content } => vec![ToolResultStatus::Skipped; content.len()],
+        MessageParts::Assistant { .. } => Vec::new(),
+    };
+    spawn_deferred_with(commands, assets, run, results, skipped)?;
+    let mut run_commands = commands.entity(run);
+    run_commands.insert(RunPhase::Assembling);
+    if let Some(retries) = retries {
+        run_commands.insert(retries);
+    }
+    Ok(())
+}
+
+/// `RigSet::Materialise`, after `record_usage`: an unread turn's pending
+/// invalid calls (each with its resolution, `resolve_invalid_defaults`
+/// having written the default) are judged by `invalid_verdict`'s
+/// precedence — a `Fail` (or a `Retry` past `InvalidCalls.retries`, or a
+/// `Skip` under `ToolChoice::None`) fails the run `UnknownToolCall` at
+/// once, even mid-stream; a `Retry` or `Skip` waits for the stream's end,
+/// then abandons the turn where the call surfaced and the run wants
+/// another; repairs and ignores wait for the end and for every delivered
+/// name to be judged, then edit the turn's `Outputs` and the turn goes on
+/// to `read_turn`. The judged calls are despawned.
 #[allow(
     clippy::too_many_arguments,
     reason = "one system, one pass: every parameter is a distinct world access it needs"
 )]
-pub fn materialise(
+pub fn judge_invalid_calls(
     mut commands: Commands,
-    mut turns: Query<(Entity, &ChildOf, &mut Outputs, &Folded, Option<&Retry>), Unread>,
-    effects: Query<(&ChildOf, &EffectOutcome, Option<&BusStreamed>), NotRetrieval>,
-    runs: Query<(AwaitingView, &RunSeq), With<AwaitingModel>>,
-    children: Query<&Children>,
-    adverts: Query<(&Advert, &Order)>,
-    bound: Query<&Bound>,
-    outputs: Query<&Output>,
-    max_turns: Query<&MaxTurns>,
-    policies: Query<&InvalidCalls>,
-    reads: MaterialiseReads,
-    tool_policies: Query<&ToolPolicy>,
-    contexts: Query<&ToolContextSpec>,
+    mut assets: ResMut<BinaryAssets>,
+    mut turns: Query<(Entity, &ChildOf, &mut Outputs), Unread>,
+    effects: Query<LandedEffect, NotRetrieval>,
+    runs: Query<(&RunOf, &RunSeq, &InvalidRetries, &OutputToolName, &RunPhase)>,
     invalid_calls: Query<(Entity, &ChildOf, &InvalidCall, &Resolution)>,
-    (mut assets, mut orders): (ResMut<BinaryAssets>, ResMut<OrderCounter>),
-    mut progress: ResMut<Progress>,
+    children: Query<&Children>,
+    adverts: Query<&Advert>,
+    bound: Query<&Bound>,
+    access: Query<&ToolAccess>,
+    choices: Query<&ToolChoiceSpec>,
+    policies: Query<&InvalidCalls>,
 ) {
-    let MaterialiseReads {
-        choices,
-        access,
-        provider_retries,
-        subjects,
-        witness,
-    } = reads;
-    let mut turns: Vec<_> = turns.iter_mut().collect();
-    turns.sort_by_key(|(_, turn_of, _, _, _)| runs.get(turn_of.parent()).map(|(_, seq)| *seq).ok());
-    for (turn, turn_of, mut outs, Folded(mode), retry) in turns {
-        let run = turn_of.parent();
-        let Ok((
-            (RunOf(agent), cursor, retries, invalid_retries, minted, usage, provider_retried),
-            _,
-        )) = runs.get(run)
+    let mut turns: Vec<_> = turns
+        .iter_mut()
+        .filter_map(|(turn, turn_of, outs)| {
+            let run = turn_of.parent();
+            runs.get(run)
+                .ok()
+                .map(|(_, seq, ..)| (*seq, turn, run, outs))
+        })
+        .collect();
+    turns.sort_by_key(|(seq, ..)| *seq);
+    for (_, turn, run, mut outs) in turns {
+        let Ok((RunOf(agent), _, invalid_retries, minted, &RunPhase::AwaitingModel)) =
+            runs.get(run)
         else {
             continue;
         };
         let agent = *agent;
-        let tool_choice = setting(run, agent, &choices).and_then(|c| c.0.clone());
-
-        // The tools this turn advertised, by name, with their keys.
-        let mut granted: Vec<(String, rig_core::effect::HandlerKey)> =
-            links_in_order(turn, &children, &adverts)
-                .into_iter()
-                .filter_map(|Advert(tool)| bound.get(*tool).ok())
-                .filter_map(|bound| match &bound.descriptor.family {
-                    FamilyDescriptor::Tool { name, .. } => Some((name.clone(), bound.key.clone())),
-                    FamilyDescriptor::Completion { .. }
-                    | FamilyDescriptor::Embed { .. }
-                    | FamilyDescriptor::Rerank { .. }
-                    | FamilyDescriptor::Memory { .. }
-                    | FamilyDescriptor::Retrieve { .. }
-                    | FamilyDescriptor::Custom { .. } => None,
-                })
-                .collect();
-        let access = access.get(turn).ok();
-        if let Some(executable) = access.and_then(|access| access.executable.as_ref()) {
-            granted = executable
-                .iter()
-                .map(|(name, key)| (name.clone(), key.clone()))
-                .collect();
-        }
-        let output_tool = minted.0.as_deref();
-
-        // An early decision can outlive the stream. Count the actual completed
-        // response once, before consuming a deferred skip/repair decision.
-        if !outs.usage_recorded
-            && let Some((_, EffectOutcome(Ok(Outcome::Completion(response))), _)) = effects
-                .iter()
-                .find(|(parent, _, _)| parent.parent() == turn)
-        {
-            commands.entity(run).insert(Usage(usage.0 + response.usage));
-            outs.usage_recorded = true;
-        }
-
-        // Pending invalid calls of this turn: consumed first.
-        let pending: Vec<(Entity, InvalidCall, Resolution)> = invalid_calls
-            .iter()
-            .filter(|(_, child_of, _, _)| child_of.parent() == turn)
-            .map(|(entity, _, call, resolution)| {
-                let mut call = call.clone();
-                if let Some(offset) = call.stream_offset
-                    && let Some((_, _, Some(stream))) = effects
-                        .iter()
-                        .find(|(parent, _, _)| parent.parent() == turn)
-                    && let Some(id) = stream_invalid::completed_call_id(&stream.events, offset)
-                {
-                    call.id = id;
-                }
-                (entity, call, resolution.clone())
-            })
-            .collect();
-        if !pending.is_empty() {
-            let budget = setting(run, agent, &policies).map_or(0, |p| p.retries);
-            let verdict = match invalid_verdict(&pending) {
-                InvalidVerdict::Retry(call, _) if invalid_retries.0 >= budget => {
-                    InvalidVerdict::Fail(call)
-                }
-                InvalidVerdict::Skip(call, _) if matches!(tool_choice, Some(ToolChoice::None)) => {
-                    InvalidVerdict::Fail(call)
-                }
-                verdict => verdict,
-            };
-            // Effective failure (including an exhausted retry) is immediate.
-            // Keep edits until final folding and real usage arrive.
-            if !outs.done && !matches!(verdict, InvalidVerdict::Fail(_)) {
-                continue;
-            }
-            // EOF can arrive with more name events than this pass judged.
-            // Retain earlier edits while discovery visits that delivered tail,
-            // so the next decision sees the repaired/ignored prefix in order.
-            if matches!(verdict, InvalidVerdict::Edit)
-                && effects.iter().any(|(parent, _, stream)| {
-                    parent.parent() == turn
-                        && stream.is_some_and(|stream| {
-                            outs.stream_validated < stream_invalid::validation_len(stream)
-                        })
-                })
-            {
-                continue;
-            }
-            for (entity, _, _) in &pending {
-                commands.entity(*entity).despawn();
-            }
-            match verdict {
-                InvalidVerdict::Fail(call) => {
-                    if !call.prefix.is_empty() {
-                        let assistant = MessageParts::Assistant {
-                            id: outs.message_id.clone(),
-                            content: call.prefix.clone(),
-                        };
-                        say!(commands, assets, orders, progress, run, assistant);
-                    }
-                    commands.entity(turn).insert(Materialised);
-                    commands
-                        .entity(run)
-                        .phase::<AwaitingModel>(Failed(Failure::UnknownToolCall {
-                            name: call.name,
-                        }));
-                    progress.mark();
-                    continue;
-                }
-                InvalidVerdict::Retry(call, feedback) | InvalidVerdict::Skip(call, feedback) => {
-                    let retried = matches!(invalid_verdict(&pending), InvalidVerdict::Retry(..));
-                    // A streamed turn is abandoned where the call surfaced.
-                    let events = effects
-                        .iter()
-                        .find(|(child_of, _, _)| child_of.parent() == turn)
-                        .and_then(|(_, _, streamed)| streamed)
-                        .map(|streamed| streamed.events.as_slice());
-                    let allowed_names: Vec<String> = granted
-                        .iter()
-                        .map(|(name, _)| name.clone())
-                        .chain(output_tool.map(str::to_owned))
-                        .collect();
-                    let (content, diagnostic_id) =
-                        if let Some(AssistantContent::ToolCall(diagnostic)) = call.prefix.last() {
-                            (call.prefix.clone(), diagnostic.id.clone())
-                        } else {
-                            policy::partial_turn_at(&outs.content, events, &call.id, &allowed_names)
-                        };
-                    let assistant = MessageParts::Assistant {
-                        id: outs.message_id.clone(),
-                        content: content.clone(),
-                    };
-                    say!(commands, assets, orders, progress, run, assistant);
-                    let results = policy::invalid_peer_results(&content, &diagnostic_id, &feedback);
-                    let skipped = match &results {
-                        MessageParts::User { content } => {
-                            vec![ToolResultStatus::Skipped; content.len()]
-                        }
-                        MessageParts::Assistant { .. } => Vec::new(),
-                    };
-                    say!(commands, assets, orders, progress, run, results, skipped);
-                    commands.entity(turn).insert(Materialised);
-                    let mut run_commands = commands.entity(run);
-                    run_commands.remove::<AwaitingModel>().insert(Assembling);
-                    if retried {
-                        run_commands.insert(InvalidRetries(invalid_retries.0 + 1));
-                    }
-                    progress.mark();
-                    continue;
-                }
-                InvalidVerdict::Edit => {
-                    // Repairs rename their call; ignores drop theirs. What is
-                    // left is the turn.
-                    let mut content = outs.content.clone();
-                    for (_, call, resolution) in &pending {
-                        match resolution {
-                            Resolution::Repair { to } => {
-                                for part in &mut content {
-                                    if let AssistantContent::ToolCall(tool_call) = part
-                                        && tool_call.id == call.id
-                                    {
-                                        tool_call.function.name = to.clone();
-                                    }
-                                }
-                            }
-                            Resolution::Ignore => {
-                                content.retain(|part| match part {
-                                    AssistantContent::ToolCall(tool_call) => {
-                                        tool_call.id != call.id
-                                    }
-                                    AssistantContent::Text(_)
-                                    | AssistantContent::Reasoning(_)
-                                    | AssistantContent::Image(_) => true,
-                                });
-                            }
-                            Resolution::Fail
-                            | Resolution::Retry { .. }
-                            | Resolution::Skip { .. } => {}
-                        }
-                    }
-                    outs.content = content;
-                }
-            }
-        }
-
-        if !outs.done {
+        let stream = landed_effect(turn, &effects).and_then(|effect| effect.streamed);
+        let pending = pending_invalid_calls(turn, &invalid_calls, stream);
+        if pending.is_empty() {
             continue;
         }
-        let Some((_, EffectOutcome(outcome), _)) = effects
-            .iter()
-            .find(|(child_of, _, _)| child_of.parent() == turn)
+        let budget = setting(run, agent, &policies).map_or(0, |p| p.retries);
+        let tool_choice = setting(run, agent, &choices).and_then(|c| c.0.as_ref());
+        let verdict = match invalid_verdict(&pending) {
+            InvalidVerdict::Retry(call, _) if invalid_retries.0 >= budget => {
+                InvalidVerdict::Fail(call)
+            }
+            InvalidVerdict::Skip(call, _) if matches!(tool_choice, Some(ToolChoice::None)) => {
+                InvalidVerdict::Fail(call)
+            }
+            verdict => verdict,
+        };
+        // Effective failure (including an exhausted retry) is immediate.
+        // Keep edits until final folding and real usage arrive.
+        if !outs.done && !matches!(verdict, InvalidVerdict::Fail(_)) {
+            continue;
+        }
+        // EOF can arrive with more name events than this pass judged.
+        // Retain earlier edits while discovery visits that delivered tail,
+        // so the next decision sees the repaired/ignored prefix in order.
+        if matches!(verdict, InvalidVerdict::Edit)
+            && stream.is_some_and(|stream| {
+                outs.stream_validated < stream_invalid::validation_len(stream)
+            })
+        {
+            continue;
+        }
+        for (entity, _, _) in &pending {
+            commands.entity(*entity).despawn();
+        }
+        let judged = match verdict {
+            InvalidVerdict::Fail(call) => {
+                fail_unknown_call(&mut commands, &mut assets, run, turn, &outs, call)
+            }
+            InvalidVerdict::Retry(call, feedback) | InvalidVerdict::Skip(call, feedback) => {
+                let retries = matches!(invalid_verdict(&pending), InvalidVerdict::Retry(..))
+                    .then(|| InvalidRetries(invalid_retries.0 + 1));
+                let granted =
+                    granted_tools(turn, &children, &adverts, &bound, access.get(turn).ok());
+                let allowed_names: Vec<String> = granted
+                    .into_iter()
+                    .map(|tool| tool.name)
+                    .chain(minted.0.clone())
+                    .collect();
+                abandon_turn(
+                    &mut commands,
+                    &mut assets,
+                    run,
+                    turn,
+                    &outs,
+                    stream.map(|stream| stream.events.as_slice()),
+                    &allowed_names,
+                    &call,
+                    &feedback,
+                    retries,
+                )
+            }
+            InvalidVerdict::Edit => {
+                outs.content = edited_content(&outs.content, &pending);
+                Ok(())
+            }
+        };
+        if let Err(error) = judged {
+            fail_content(&mut commands, run, error);
+        }
+    }
+}
+
+/// A completion the provider failed: a retryable failure with budget left
+/// re-issues the same request over the same history (CONTRACT §5) — the
+/// lost turn is read and leaves nothing; the run wants a turn again,
+/// marked so `Advance` does not count it, and the witness is told — else
+/// the run fails `Provider` (or `Cancelled`, for a cancelled dispatch).
+fn provider_failed(
+    commands: &mut Commands,
+    run: Entity,
+    report: &rig_core::error::ErrorReport,
+    budget: usize,
+    retried: usize,
+    witness: Option<(&crate::bus::Witnessing, &crate::bus::Subjects)>,
+) {
+    if report.kind != ErrorKind::Cancelled && report.retryable && retried < budget {
+        let attempt = retried + 1;
+        commands.entity(run).insert((
+            ProviderRetried(attempt),
+            ProviderRetrying,
+            RunPhase::Assembling,
+        ));
+        if let Some((witness, subjects)) = witness {
+            witness::observe_provider_retry(
+                witness,
+                subjects.of_scope(run),
+                attempt,
+                budget,
+                report,
+            );
+        }
+        return;
+    }
+    let failure = if report.kind == ErrorKind::Cancelled {
+        Failure::Cancelled(report.clone())
+    } else {
+        Failure::Provider(report.clone())
+    };
+    commands.entity(run).end(Failed(failure));
+}
+
+/// `RigSet::Materialise`, after `judge_invalid_calls`: a complete, unread
+/// turn with no invalid call pending is read (`Materialised`). A
+/// non-completion answer fails the run `Unsupported`; a provider failure
+/// is a provider retry (`ProviderRetried`, `ProviderRetrying`,
+/// `Assembling`) or `Failed`; an answerless turn the provider cut short is
+/// a lost turn, not an empty answer (rig#2322; CONTRACT §4): the run fails
+/// as a response error naming the finish reason. A call to a tool neither
+/// granted nor the output tool becomes an `InvalidCall` entity `ChildOf`
+/// the turn awaiting its resolution, and the turn stays unread. Else the
+/// turn's content, the response's message id and the tools it may call
+/// go on the turn as [`TurnRead`] for the rest of the chain.
+#[allow(
+    clippy::too_many_arguments,
+    reason = "one system, one pass: every parameter is a distinct world access it needs"
+)]
+pub fn read_turn(
+    mut commands: Commands,
+    turns: Query<(Entity, &ChildOf, &Outputs), Unread>,
+    effects: Query<LandedEffect, NotRetrieval>,
+    runs: Query<(
+        &RunOf,
+        &RunSeq,
+        &ProviderRetried,
+        &OutputToolName,
+        &RunPhase,
+    )>,
+    pending: Query<&ChildOf, With<InvalidCall>>,
+    children: Query<&Children>,
+    adverts: Query<&Advert>,
+    bound: Query<&Bound>,
+    access: Query<&ToolAccess>,
+    provider_retries: Query<&ProviderRetries>,
+    subjects: crate::bus::Subjects,
+    witness: Option<Res<crate::bus::Witnessing>>,
+) {
+    let mut turns: Vec<_> = turns
+        .iter()
+        .filter_map(|(turn, turn_of, outs)| {
+            let run = turn_of.parent();
+            runs.get(run)
+                .ok()
+                .map(|(_, seq, ..)| (*seq, turn, run, outs))
+        })
+        .collect();
+    turns.sort_by_key(|(seq, ..)| *seq);
+    for (_, turn, run, outs) in turns {
+        let Ok((RunOf(agent), _, provider_retried, minted, &RunPhase::AwaitingModel)) =
+            runs.get(run)
         else {
             continue;
         };
+        if !outs.done || pending.iter().any(|child_of| child_of.parent() == turn) {
+            continue;
+        }
+        let Some(effect) = landed_effect(turn, &effects) else {
+            continue;
+        };
         commands.entity(turn).insert(Materialised);
-
-        let response = match outcome {
+        let response = match &effect.outcome.0 {
             Ok(Outcome::Completion(response)) => response,
             Ok(other) => {
                 commands
                     .entity(run)
-                    .phase::<AwaitingModel>(Failed(Failure::Unsupported(format!(
+                    .end(Failed(Failure::Unsupported(format!(
                         "a {} answer to a completion",
                         other.family()
                     ))));
-                progress.mark();
                 continue;
             }
             Err(report) => {
-                // A retryable provider failure with budget left re-issues
-                // the same request over the same history (CONTRACT §5):
-                // the lost turn is read and leaves nothing; the run wants
-                // a turn again, marked so `Advance` does not count it.
-                let budget = setting(run, agent, &provider_retries)
+                let budget = setting(run, *agent, &provider_retries)
                     .map_or(DEFAULT_PROVIDER_RETRIES, |retries| retries.0);
-                if report.kind != ErrorKind::Cancelled
-                    && report.retryable
-                    && provider_retried.0 < budget
-                {
-                    let attempt = provider_retried.0 + 1;
-                    commands.entity(run).phase::<AwaitingModel>((
-                        ProviderRetried(attempt),
-                        ProviderRetrying,
-                        Assembling,
-                    ));
-                    if let Some(witness) = witness.as_deref() {
-                        witness::observe_provider_retry(
-                            witness,
-                            subjects.of_scope(run),
-                            attempt,
-                            budget,
-                            report,
-                        );
-                    }
-                    progress.mark();
-                    continue;
-                }
-                let failure = if report.kind == ErrorKind::Cancelled {
-                    Failure::Cancelled(report.clone())
-                } else {
-                    Failure::Provider(report.clone())
-                };
-                commands.entity(run).phase::<AwaitingModel>(Failed(failure));
-                progress.mark();
+                let witness = witness.as_deref().map(|witness| (witness, &subjects));
+                provider_failed(
+                    &mut commands,
+                    run,
+                    report,
+                    budget,
+                    provider_retried.0,
+                    witness,
+                );
                 continue;
             }
         };
-        let content = outs.content.clone();
-
-        // An answerless turn the provider cut short is a lost turn, not an
-        // empty answer (rig#2322; rig-agent's rule, CONTRACT §4): the run
-        // fails as a response error naming the finish reason. A turn that
-        // delivered text or a call, however it stopped, is read as usual.
-        if turn_delivered_no_answer(&content)
+        if turn_delivered_no_answer(&outs.content)
             && let Some(reason) = response
                 .finish_reason()
                 .filter(|reason| reason.truncated_output())
@@ -2318,62 +2626,28 @@ pub fn materialise(
             let report = rig_core::error::ErrorReport::from(
                 &rig_core::completion::CompletionError::ResponseError(reason.no_answer_message()),
             );
-            commands
-                .entity(run)
-                .phase::<AwaitingModel>(Failed(Failure::Provider(report)));
-            progress.mark();
+            commands.entity(run).end(Failed(Failure::Provider(report)));
             continue;
         }
-
-        // An empty turn is not history, and answers nothing. A retry
-        // written on it (CONTRACT §9.4) still asks again: the feedback
-        // becomes history, the empty turn does not, and another turn
-        // begins; without one, the run settles on the empty answer.
-        if policy::turn_is_empty(&content) {
-            if let Some(Retry { feedback }) = retry {
-                commands.entity(turn).remove::<Retry>();
-                if let Some(feedback) = feedback {
-                    let user = MessageParts::User {
-                        content: vec![UserContent::text(feedback)],
-                    };
-                    say!(commands, assets, orders, progress, run, user);
-                }
-                commands.entity(run).phase::<AwaitingModel>(Assembling);
-                progress.mark();
-                continue;
-            }
-            commands
-                .entity(run)
-                .phase::<AwaitingModel>((RunResult(String::new()), Settled));
-            progress.mark();
-            continue;
-        }
-
-        let schema = setting(run, agent, &outputs).and_then(|output| output.schema.clone());
-        let limit = setting(run, agent, &max_turns).map_or(1, |limit| limit.0);
-
-        let calls: Vec<&rig_core::completion::message::ToolCall> = content
-            .iter()
-            .filter_map(|part| match part {
-                AssistantContent::ToolCall(call) => Some(call),
-                AssistantContent::Text(_)
-                | AssistantContent::Reasoning(_)
-                | AssistantContent::Image(_) => None,
-            })
-            .collect();
-
+        let access = access.get(turn).ok();
+        let granted = granted_tools(turn, &children, &adverts, &bound, access);
+        let allowed = access.and_then(|access| access.allowed.as_ref());
+        let read = TurnRead {
+            message_id: response.message_id.clone(),
+            content: outs.content.clone(),
+            granted,
+            assistant: None,
+        };
         // Invalid calls: tools neither granted nor the output tool. They
         // become entities awaiting a resolution; the turn stays unread
         // until then.
-        let invalid: Vec<&rig_core::completion::message::ToolCall> = calls
-            .iter()
-            .copied()
+        let invalid: Vec<_> = read
+            .calls()
             .filter(|call| {
-                (!granted.iter().any(|(name, _)| *name == call.function.name)
-                    || access
-                        .and_then(|access| access.allowed.as_ref())
-                        .is_some_and(|allowed| !allowed.contains(&call.function.name)))
-                    && output_tool != Some(call.function.name.as_str())
+                let name = call.function.name.as_str();
+                (!read.granted.iter().any(|tool| tool.name == name)
+                    || allowed.is_some_and(|allowed| !allowed.contains(name)))
+                    && minted.0.as_deref() != Some(name)
             })
             .collect();
         if !invalid.is_empty() {
@@ -2390,218 +2664,345 @@ pub fn materialise(
                     ChildOf(turn),
                 ));
             }
-            progress.mark();
             continue;
         }
+        commands.entity(turn).insert(read);
+    }
+}
 
-        // A retry written on the turn (CONTRACT §9.4): tool-free turns only.
-        if let Some(Retry { feedback }) = retry {
-            commands.entity(turn).remove::<Retry>();
-            if !calls.is_empty() {
-                commands
-                    .entity(run)
-                    .phase::<AwaitingModel>(Failed(Failure::Unsupported(
-                        "a retry of a tool-bearing turn: steer the tool calls instead".to_owned(),
-                    )));
-                progress.mark();
-                continue;
-            }
-            if let Some(feedback) = feedback {
-                let assistant = MessageParts::Assistant {
-                    id: response.message_id.clone(),
-                    content: content.clone(),
-                };
-                say!(commands, assets, orders, progress, run, assistant);
-                let user = MessageParts::User {
-                    content: vec![UserContent::text(feedback)],
-                };
-                say!(commands, assets, orders, progress, run, user);
-            }
-            commands.entity(run).phase::<AwaitingModel>(Assembling);
-            progress.mark();
-            continue;
-        }
-
-        // The assistant turn is history.
-        let assistant = MessageParts::Assistant {
-            id: response.message_id.clone(),
-            content: content.clone(),
+/// The read turn becomes history: an empty turn is not history and answers
+/// nothing — a `Retry` written on it (CONTRACT §9.4) still asks again (the
+/// feedback becomes history, the empty turn does not, another turn begins);
+/// without one the run settles on the empty answer. A `Retry` on a turn
+/// with calls is refused (`Failed(Unsupported)`: steer the calls instead);
+/// one on a text turn makes the turn and the feedback history and asks
+/// again. Else the assistant utterance is spawned and noted on the
+/// `TurnRead`. Every ending takes the `TurnRead` off.
+fn say_assistant(
+    commands: &mut Commands,
+    assets: &mut BinaryAssets,
+    run: Entity,
+    turn: Entity,
+    read: &mut TurnRead,
+    retry: Option<&Retry>,
+) -> Result<(), ContentError> {
+    let feedback_utterance = |commands: &mut Commands, assets: &mut BinaryAssets, feedback| {
+        let user = MessageParts::User {
+            content: vec![UserContent::text(feedback)],
         };
-        let assistant_entity = say!(commands, assets, orders, progress, run, assistant);
-
-        // Calls to granted tools: the batch, one effect per call `ChildOf`
-        // the turn, in call order, held beyond the concurrency.
-        let batch: Vec<(
-            usize,
-            &rig_core::completion::message::ToolCall,
-            rig_core::effect::HandlerKey,
-        )> = calls
-            .iter()
-            .filter_map(|call| {
-                granted
-                    .iter()
-                    .find(|(name, _)| *name == call.function.name)
-                    .map(|(_, key)| (*call, key.clone()))
-            })
-            .enumerate()
-            .map(|(index, (call, key))| (index, call, key))
-            .collect();
-        if !batch.is_empty() {
-            let concurrency = setting(run, agent, &tool_policies)
-                .map_or(1, |policy| policy.concurrency)
-                .max(1);
-            let inputs = setting(run, agent, &contexts)
-                .map(|spec| spec.0.for_dispatch())
-                .unwrap_or_default();
-            let count = batch.len();
-            for (index, call, key) in batch {
-                let mut effect = commands.spawn((
-                    PendingEffect::new(
-                        key,
-                        EffectKind::ToolCall {
-                            name: call.function.name.clone(),
-                            args: call.function.arguments.to_string(),
-                        },
-                    ),
-                    ToolInputs(inputs.clone()),
-                    ToolCallSlot {
-                        index,
-                        id: call.id.clone(),
-                        provider: call.provider.clone(),
-                        name: call.function.name.clone(),
-                    },
-                    ChildOf(turn),
-                ));
-                if index >= concurrency {
-                    effect.insert(BatchHeld);
-                    let entity = effect.id();
-                    commands.queue(move |world: &mut World| {
-                        // Refused only when the effect settled or dispatched
-                        // between the spawn and this command: then the batch
-                        // bound no longer applies to it.
-                        let _ = crate::bus::acquire_hold(
-                            world,
-                            entity,
-                            rig_core::observe::Emitter::versioned(
-                                "rig-ecs/batch",
-                                env!("CARGO_PKG_VERSION"),
-                            ),
-                        );
-                    });
+        spawn_deferred(commands, assets, run, user).map(drop)
+    };
+    if policy::turn_is_empty(&read.content) {
+        commands.entity(turn).remove::<(Retry, TurnRead)>();
+        match retry {
+            Some(Retry { feedback }) => {
+                if let Some(feedback) = feedback {
+                    feedback_utterance(commands, assets, feedback)?;
                 }
+                commands.entity(run).phase(RunPhase::Assembling);
             }
-            commands
-                .entity(turn)
-                .insert((Batch { calls: count }, TurnAssistant(assistant_entity)));
-            commands.entity(run).phase::<AwaitingModel>(ResolvingTools);
-            progress.mark();
-            continue;
-        }
-
-        match (*mode, output_tool) {
-            (OutputKind::Tool, Some(name)) => {
-                let output_call = calls.iter().find(|call| call.function.name == name);
-                let can_reprompt = retries.0 < 1 && cursor.turn < limit;
-                match output_call {
-                    Some(call) => {
-                        let missing = schema
-                            .as_ref()
-                            .map(|schema| {
-                                policy::missing_required_fields(schema, &call.function.arguments)
-                            })
-                            .unwrap_or_default();
-                        if missing.is_empty() || !can_reprompt {
-                            // Match rig-agent's reusable history: the record
-                            // retains the output call, but its committed answer
-                            // is JSON text with all reasoning preserved.
-                            let output = call.function.arguments.to_string();
-                            let mut final_content: Vec<_> = content
-                                .iter()
-                                .filter(|part| !matches!(part, AssistantContent::ToolCall(_)))
-                                .cloned()
-                                .collect();
-                            final_content.push(AssistantContent::text(output.clone()));
-                            restate!(
-                                commands,
-                                assets,
-                                progress,
-                                run,
-                                assistant_entity,
-                                MessageParts::Assistant {
-                                    id: response.message_id.clone(),
-                                    content: final_content
-                                }
-                            );
-                            commands
-                                .entity(run)
-                                .phase::<AwaitingModel>((RunResult(output), Settled));
-                        } else {
-                            let feedback = policy::reprompt_missing_fields(name, &missing);
-                            let reprompt = MessageParts::User {
-                                content: vec![UserContent::ToolResult(
-                                    rig_core::completion::message::ToolResult {
-                                        call: call.id.clone(),
-                                        provider: call.provider.clone(),
-                                        name: name.to_owned(),
-                                        content: vec![ToolResultContent::text(feedback)],
-                                    },
-                                )],
-                            };
-                            commands
-                                .entity(turn)
-                                .insert(Reprompt(reprompt.to_message()));
-                            say!(
-                                commands,
-                                assets,
-                                orders,
-                                progress,
-                                run,
-                                reprompt,
-                                vec![ToolResultStatus::Skipped]
-                            );
-                            commands
-                                .entity(run)
-                                .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));
-                        }
-                    }
-                    // A text that already is the structured output settles the
-                    // run (CONTRACT §4); one that is not is reprompted while
-                    // the budget lasts.
-                    None if can_reprompt
-                        && !policy::text_satisfies_schema(
-                            schema.as_ref(),
-                            &policy::answer_text(&content),
-                        ) =>
-                    {
-                        let reprompt = MessageParts::User {
-                            content: vec![UserContent::text(policy::text::reprompt_text_answer(
-                                name,
-                            ))],
-                        };
-                        commands
-                            .entity(turn)
-                            .insert(Reprompt(reprompt.to_message()));
-                        say!(commands, assets, orders, progress, run, reprompt);
-                        commands
-                            .entity(run)
-                            .phase::<AwaitingModel>((OutputRetries(retries.0 + 1), Assembling));
-                    }
-                    None => {
-                        commands.entity(run).phase::<AwaitingModel>((
-                            RunResult(policy::answer_text(&content)),
-                            Settled,
-                        ));
-                    }
-                }
-            }
-            (OutputKind::Tool, None)
-            | (OutputKind::Auto | OutputKind::Native | OutputKind::Prompted, _) => {
+            None => {
                 commands
                     .entity(run)
-                    .phase::<AwaitingModel>((RunResult(policy::answer_text(&content)), Settled));
+                    .end((RunResult(String::new()), Settled));
             }
         }
-        progress.mark();
+        return Ok(());
+    }
+    let assistant = MessageParts::Assistant {
+        id: read.message_id.clone(),
+        content: read.content.clone(),
+    };
+    if let Some(Retry { feedback }) = retry {
+        commands.entity(turn).remove::<(Retry, TurnRead)>();
+        if read.calls().next().is_some() {
+            commands.entity(run).end(Failed(Failure::Unsupported(
+                "a retry of a tool-bearing turn: steer the tool calls instead".to_owned(),
+            )));
+            return Ok(());
+        }
+        if let Some(feedback) = feedback {
+            spawn_deferred(commands, assets, run, assistant)?;
+            feedback_utterance(commands, assets, feedback)?;
+        }
+        commands.entity(run).phase(RunPhase::Assembling);
+        return Ok(());
+    }
+    read.assistant = Some(spawn_deferred(commands, assets, run, assistant)?);
+    Ok(())
+}
+
+/// `RigSet::Materialise`, after `read_turn`: every read turn, in run
+/// order, becomes history as `say_assistant` says — the assistant
+/// utterance (unless the turn is empty), or a retry's feedback and another
+/// turn, or the run settled on an empty answer. A content error fails that
+/// run `Content`; the others go on.
+pub fn materialise_assistant(
+    mut commands: Commands,
+    mut assets: ResMut<BinaryAssets>,
+    mut turns: Query<(Entity, &ChildOf, &mut TurnRead, Option<&Retry>)>,
+    runs: Query<&RunSeq>,
+) {
+    let mut turns: Vec<_> = turns
+        .iter_mut()
+        .filter_map(|(turn, turn_of, read, retry)| {
+            let run = turn_of.parent();
+            runs.get(run).ok().map(|seq| (*seq, turn, run, read, retry))
+        })
+        .collect();
+    turns.sort_by_key(|(seq, ..)| *seq);
+    for (_, turn, run, mut read, retry) in turns {
+        if let Err(error) = say_assistant(&mut commands, &mut assets, run, turn, &mut read, retry) {
+            fail_content(&mut commands, run, error);
+            commands.entity(turn).remove::<TurnRead>();
+        }
+    }
+}
+
+/// `RigSet::Materialise`, after `materialise_assistant`: a read turn that
+/// calls granted tools gets its batch — one effect per call `ChildOf` the
+/// turn, in call order, with the run's `ToolContextSpec` inputs and the
+/// advert's handler when one granted the tool, held (`BatchHeld`, the
+/// `rig-ecs/batch` owner) beyond `ToolPolicy.concurrency` — the turn is
+/// `Batch` with its `TurnAssistant`, the run `ResolvingTools`, and the
+/// `TurnRead` comes off.
+pub fn materialise_batch(
+    mut commands: Commands,
+    turns: Query<(Entity, &ChildOf, &TurnRead)>,
+    runs: Query<(&RunOf, &RunSeq)>,
+    tool_policies: Query<&ToolPolicy>,
+    contexts: Query<&ToolContextSpec>,
+) {
+    let mut turns: Vec<_> = turns
+        .iter()
+        .filter_map(|(turn, turn_of, read)| {
+            let run = turn_of.parent();
+            runs.get(run)
+                .ok()
+                .map(|(RunOf(agent), seq)| (*seq, turn, run, *agent, read))
+        })
+        .collect();
+    turns.sort_by_key(|(seq, ..)| *seq);
+    for (_, turn, run, agent, read) in turns {
+        let batch: Vec<_> = read
+            .calls()
+            .filter_map(|call| {
+                read.granted
+                    .iter()
+                    .find(|tool| tool.name == call.function.name)
+                    .map(|tool| (call, tool))
+            })
+            .collect();
+        let (Some(assistant), false) = (read.assistant, batch.is_empty()) else {
+            continue;
+        };
+        let concurrency = setting(run, agent, &tool_policies)
+            .map_or(1, |policy| policy.concurrency)
+            .max(1);
+        let inputs = setting(run, agent, &contexts)
+            .map(|spec| spec.0.for_dispatch())
+            .unwrap_or_default();
+        let count = batch.len();
+        for (index, (call, tool)) in batch.into_iter().enumerate() {
+            let mut effect = commands.spawn((
+                PendingEffect::new(
+                    tool.key.clone(),
+                    EffectKind::ToolCall {
+                        name: call.function.name.clone(),
+                        args: call.function.arguments.to_string(),
+                    },
+                ),
+                ToolInputs(inputs.clone()),
+                ToolCallSlot {
+                    index,
+                    id: call.id.clone(),
+                    provider: call.provider.clone(),
+                    name: call.function.name.clone(),
+                },
+                ChildOf(turn),
+            ));
+            if let Some(handler) = tool.handler {
+                effect.insert(ServedBy(handler));
+            }
+            if index >= concurrency {
+                effect.insert(BatchHeld);
+                let entity = effect.id();
+                commands.queue(move |world: &mut World| {
+                    // Refused only when the effect settled or dispatched
+                    // between the spawn and this command: then the batch
+                    // bound no longer applies to it.
+                    let _ = crate::bus::acquire_hold(
+                        world,
+                        entity,
+                        rig_core::observe::Emitter::versioned(
+                            "rig-ecs/batch",
+                            env!("CARGO_PKG_VERSION"),
+                        ),
+                    );
+                });
+            }
+        }
+        commands
+            .entity(turn)
+            .remove::<TurnRead>()
+            .insert((Batch { calls: count }, TurnAssistant(assistant)));
+        commands.entity(run).phase(RunPhase::ResolvingTools);
+    }
+}
+
+/// The reprompt a read turn in `Tool` mode earns while the budget lasts
+/// (one `OutputRetries`, under `MaxTurns`): an output-tool call missing
+/// required fields is answered with a `Skipped` result naming them; a text
+/// where the tool was due, unless it already is the structured output
+/// (CONTRACT §4), is asked for the tool. `None` when the turn earns no
+/// reprompt: `materialise_answer` settles it.
+fn reprompt_for(
+    read: &TurnRead,
+    name: &str,
+    schema: Option<&serde_json::Value>,
+) -> Option<(MessageParts, Vec<ToolResultStatus>)> {
+    match read.calls().find(|call| call.function.name == name) {
+        Some(call) => {
+            let missing = schema
+                .map(|schema| policy::missing_required_fields(schema, &call.function.arguments))
+                .unwrap_or_default();
+            if missing.is_empty() {
+                return None;
+            }
+            let feedback = policy::reprompt_missing_fields(name, &missing);
+            let reprompt = MessageParts::User {
+                content: vec![UserContent::ToolResult(
+                    rig_core::completion::message::ToolResult {
+                        call: call.id.clone(),
+                        provider: call.provider.clone(),
+                        name: name.to_owned(),
+                        content: vec![ToolResultContent::text(feedback)],
+                    },
+                )],
+            };
+            Some((reprompt, vec![ToolResultStatus::Skipped]))
+        }
+        None => {
+            if policy::text_satisfies_schema(schema, &policy::answer_text(&read.content)) {
+                return None;
+            }
+            let reprompt = MessageParts::User {
+                content: vec![UserContent::text(policy::text::reprompt_text_answer(name))],
+            };
+            Some((reprompt, Vec::new()))
+        }
+    }
+}
+
+/// `RigSet::Materialise`, after `materialise_batch`: a read turn without
+/// a batch, in `Tool` mode, that earns a reprompt (`reprompt_for`) gets
+/// it — the reprompt on the turn as `Reprompt` and in history as a user
+/// utterance, `OutputRetries` spent, the run `Assembling` again, the
+/// `TurnRead` off. Past the budget the turn is an answer, whatever it
+/// says: `materialise_answer` settles it.
+pub fn materialise_reprompt(
+    mut commands: Commands,
+    mut assets: ResMut<BinaryAssets>,
+    turns: Query<(Entity, &ChildOf, &TurnRead, &Folded)>,
+    runs: Query<(&RunOf, &RunSeq, &Cursor, &OutputRetries, &OutputToolName)>,
+    outputs: Query<&Output>,
+    max_turns: Query<&MaxTurns>,
+) {
+    let mut turns: Vec<_> = turns
+        .iter()
+        .filter(|(_, _, _, Folded(mode))| *mode == OutputKind::Tool)
+        .filter_map(|(turn, turn_of, read, _)| {
+            let run = turn_of.parent();
+            runs.get(run)
+                .ok()
+                .map(|(_, seq, ..)| (*seq, turn, run, read))
+        })
+        .collect();
+    turns.sort_by_key(|(seq, ..)| *seq);
+    for (_, turn, run, read) in turns {
+        let Ok((RunOf(agent), _, cursor, retries, OutputToolName(Some(name)))) = runs.get(run)
+        else {
+            continue;
+        };
+        let agent = *agent;
+        let limit = setting(run, agent, &max_turns).map_or(1, |limit| limit.0);
+        if retries.0 >= 1 || cursor.turn >= limit {
+            continue;
+        }
+        let schema = setting(run, agent, &outputs).and_then(|output| output.schema.as_ref());
+        let Some((reprompt, statuses)) = reprompt_for(read, name, schema) else {
+            continue;
+        };
+        commands
+            .entity(turn)
+            .remove::<TurnRead>()
+            .insert(Reprompt(reprompt.to_message()));
+        match spawn_deferred_with(&mut commands, &mut assets, run, reprompt, statuses) {
+            Ok(_) => {
+                commands
+                    .entity(run)
+                    .end((OutputRetries(retries.0 + 1), RunPhase::Assembling));
+            }
+            Err(error) => fail_content(&mut commands, run, error),
+        }
+    }
+}
+
+/// `RigSet::Materialise`, last: every read turn still in the chain is an
+/// answer, and the run settles on it — in `Tool` mode with the output
+/// tool called, its arguments (the assistant utterance restated as
+/// rig-agent's reusable history: the reasoning kept, the call replaced by
+/// its JSON text, while the record retains the call); else the turn's
+/// text. The `TurnRead` comes off: nothing of the chain outlives the pass.
+pub fn materialise_answer(
+    mut commands: Commands,
+    mut assets: ResMut<BinaryAssets>,
+    turns: Query<(Entity, &ChildOf, &TurnRead, &Folded)>,
+    runs: Query<(&RunSeq, &OutputToolName)>,
+) {
+    let mut turns: Vec<_> = turns
+        .iter()
+        .filter_map(|(turn, turn_of, read, folded)| {
+            let run = turn_of.parent();
+            runs.get(run)
+                .ok()
+                .map(|(seq, minted)| (*seq, turn, run, read, folded, minted))
+        })
+        .collect();
+    turns.sort_by_key(|(seq, ..)| *seq);
+    for (_, turn, run, read, Folded(mode), minted) in turns {
+        commands.entity(turn).remove::<TurnRead>();
+        let output_call = match (mode, minted.0.as_deref(), read.assistant) {
+            (OutputKind::Tool, Some(name), Some(assistant)) => read
+                .calls()
+                .find(|call| call.function.name == name)
+                .map(|call| (assistant, call)),
+            _ => None,
+        };
+        let Some((assistant, call)) = output_call else {
+            commands
+                .entity(run)
+                .end((RunResult(policy::answer_text(&read.content)), Settled));
+            continue;
+        };
+        let output = call.function.arguments.to_string();
+        let mut final_content: Vec<_> = read
+            .content
+            .iter()
+            .filter(|part| !matches!(part, AssistantContent::ToolCall(_)))
+            .cloned()
+            .collect();
+        final_content.push(AssistantContent::text(output.clone()));
+        let restated = MessageParts::Assistant {
+            id: read.message_id.clone(),
+            content: final_content,
+        };
+        match replace_deferred(&mut commands, &mut assets, assistant, restated) {
+            Ok(()) => {
+                commands.entity(run).end((RunResult(output), Settled));
+            }
+            Err(error) => fail_content(&mut commands, run, error),
+        }
     }
 }
 
@@ -2612,7 +3013,7 @@ pub fn effect_cancelled(
     removed: On<bevy_ecs::lifecycle::Remove, PendingEffect>,
     effects: Query<(&ChildOf, Has<ToolCallSlot>), With<PendingEffect>>,
     turns: Query<TurnState, With<Turn>>,
-    runs: Query<RunPhase, With<Run>>,
+    runs: Query<RunState, With<Run>>,
     mut commands: Commands,
 ) {
     let effect = removed.event().entity;
@@ -2620,11 +3021,16 @@ pub fn effect_cancelled(
         return;
     };
     let turn = turn_of.parent();
-    let Ok((run_of, materialised, batched)) = turns.get(turn) else {
+    let Ok(TurnStateItem {
+        run_of,
+        materialised,
+        batched,
+    }) = turns.get(turn)
+    else {
         return;
     };
     let run = run_of.parent();
-    let Ok((awaiting, resolving, failed)) = runs.get(run) else {
+    let Ok(RunStateItem { phase, failed }) = runs.get(run) else {
         return;
     };
     // A run already ended keeps its ending: `run_cancelled` writes the
@@ -2633,14 +3039,14 @@ pub fn effect_cancelled(
         return;
     }
     let cancelled = Failed(Failure::Cancelled(rig_core::serve::cancelled()));
-    if is_tool_call && batched && resolving {
+    if is_tool_call && batched && phase == Some(&RunPhase::ResolvingTools) {
         // A tool child despawned while its batch was out: the run ends
         // here, the batch with it.
         commands.entity(turn).remove::<Batch>();
-        commands.entity(run).phase::<ResolvingTools>(cancelled);
-    } else if !is_tool_call && !materialised && awaiting {
+        commands.entity(run).end(cancelled);
+    } else if !is_tool_call && !materialised && phase == Some(&RunPhase::AwaitingModel) {
         commands.entity(turn).insert(Materialised);
-        commands.entity(run).phase::<AwaitingModel>(cancelled);
+        commands.entity(run).end(cancelled);
     }
 }
 
@@ -2697,7 +3103,7 @@ pub fn run_cancelled(
     // finds the run ended with this reason and leaves it.
     commands
         .entity(run)
-        .remove::<(Assembling, AwaitingModel, ResolvingTools, LoadingMemory)>()
+        .remove::<RunPhase>()
         .insert(Failed(Failure::Cancelled(
             rig_core::error::ErrorReport::new(ErrorKind::Cancelled, reason.clone()),
         )));

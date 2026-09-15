@@ -6,7 +6,7 @@ use crate::run_support;
 use bevy_ecs::prelude::*;
 use rig_core::{effect::HandlerKey, message::AssistantContent};
 use rig_ecs::{
-    agent::{Failed, Failure, Grant, Order, ToolAccess, Turn},
+    agent::{Failed, Failure, Grant, ToolAccess, Turn},
     systems::RunCommands,
 };
 use run_support::*;
@@ -27,8 +27,7 @@ fn empty_permission_set_denies_an_advertised_executable_tool() {
     let peak = tool.peak.clone();
     let tool = register(&mut app, "adder", tool);
     let agent = spawn_agent(app.world_mut(), "test", model);
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     app.world_mut().entity_mut(agent).insert(ToolAccess {
         allowed: Some(BTreeSet::new()),
         ..Default::default()
@@ -178,9 +177,9 @@ fn unadvertised_execution_binding_cannot_impersonate_output_tool() {
 
 #[test]
 fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
-    use rig_ecs::agent::{
-        Outputs, Run,
-        scene::{load_world, save_world},
+    use rig_ecs::{
+        agent::{Outputs, Run},
+        checkpoint::{Checkpoint, load_world, save_world},
     };
     let mut first = app();
     let (model, _) = Capturing::new("model", "unused");
@@ -198,7 +197,6 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
     };
     first.world_mut().spawn((
         Turn,
-        Order(99),
         access.clone(),
         Outputs {
             stream_validated: 4,
@@ -212,14 +210,13 @@ fn turn_snapshot_and_old_execution_dependency_survive_fresh_world() {
         ..Default::default()
     });
     let row = rig_ecs::replay::required_row(first.world_mut(), run);
-    let scene = save_world(first.world_mut()).expect("save graph");
-    let scene =
-        serde_json::from_slice(&serde_json::to_vec(&scene).expect("encode")).expect("decode");
+    let checkpoint = save_world(first.world_mut()).expect("save graph");
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().expect("encode")).expect("decode");
     drop(first);
     let mut restored = app();
     let (model, _) = Capturing::new("model", "unused");
     register(&mut restored, "model", model);
-    load_world(&scene, restored.world_mut()).expect("restore graph");
+    load_world(&checkpoint, restored.world_mut()).expect("restore graph");
     let run = restored
         .world_mut()
         .query_filtered::<Entity, With<Run>>()

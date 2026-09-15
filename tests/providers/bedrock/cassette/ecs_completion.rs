@@ -48,7 +48,6 @@ async fn completion_with_context_smoke() {
             .id();
         ecs.app.world_mut().spawn((
             rig_ecs::agent::Context(document),
-            rig_ecs::agent::Order(0),
             bevy_ecs::prelude::ChildOf(ecs.agent),
         ));
         let document = ecs
@@ -61,7 +60,6 @@ async fn completion_with_context_smoke() {
             .id();
         ecs.app.world_mut().spawn((
             rig_ecs::agent::Context(document),
-            rig_ecs::agent::Order(1),
             bevy_ecs::prelude::ChildOf(ecs.agent),
         ));
         let document = ecs
@@ -74,7 +72,6 @@ async fn completion_with_context_smoke() {
             .id();
         ecs.app.world_mut().spawn((
             rig_ecs::agent::Context(document),
-            rig_ecs::agent::Order(2),
             bevy_ecs::prelude::ChildOf(ecs.agent),
         ));
         let response = ecs.prompt(CONTEXT_PROMPT, false).await;

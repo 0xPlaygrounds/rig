@@ -173,6 +173,8 @@ bevy_ecs = { version = "0.19.1", default-features = false, features = ["std", "m
 bevy_app = { version = "0.19.1", default-features = false, features = ["std"] }
 bevy_reflect = { version = "0.19.1", default-features = false, features = ["std"] }
 bevy_asset = { version = "0.19.1", default-features = false }
+bevy_time = { version = "0.19.1", default-features = false, features = ["std", "bevy_reflect"] }
+bevy_diagnostic = { version = "0.19.1", default-features = false, features = ["std"] }
 futures-timer = "3"
 glob = "0.3"
 google-cloud-auth = "1"

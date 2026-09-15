@@ -13,7 +13,7 @@
 use rig_core::serve::Dispatch;
 use std::sync::Mutex;
 
-use bevy_app::{App, AppExit, ScheduleRunnerPlugin, Update};
+use bevy_app::{App, AppExit};
 use bevy_ecs::prelude::*;
 use rig_core::{
     completion::{CompletionResponse, ModelRef, ProviderCapabilities, Usage},
@@ -29,8 +29,7 @@ use rig_ecs::{
         AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
         Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{Handlers, run_to_quiescence},
-    systems::install_agent,
+    bus::Handlers,
 };
 
 pub const MODEL: &str = "demo/model:default";
@@ -217,14 +216,11 @@ pub fn send_email() -> Tool {
     }
 }
 
-/// An app with the bus and the agent installed and the runner in
-/// `Update`; an example adds its own exit.
+/// An app with the runtime installed, woken by its tasks; an example adds
+/// its own exit.
 pub fn app() -> App {
     let mut app = App::new();
-    app.add_plugins(ScheduleRunnerPlugin::default());
-    rig_ecs::bus::Bus::with_policy(ServingPolicy::default()).install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(rig_ecs::RigPlugin::with_policy(ServingPolicy::default()));
     app.add_observer(exit_when_failed);
     app
 }

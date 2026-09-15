@@ -60,16 +60,16 @@ const GRAPHS: &[Graph] = &[
     ),
     ("rig-effect-log", "", LOG_LEAF, "rig-core"),
     ("rig-effect-log", "--all-features", LOG_LEAF, ""),
-    // rig-ecs is the bus in a Bevy `World`: on the Bevy side exactly `bevy_ecs`,
-    // `bevy_tasks` and — reflection being unconditional — `bevy_reflect`. The
-    // bus installs into a `World` and the host owns the loop, so `bevy_app` is
-    // absent by default and joins only with `assets` — rig-ecs's one feature —
-    // which `bevy_asset` is built on, and nothing else joins either way.
+    // rig-ecs is a `bevy_app` plugin over `bevy_ecs` and `bevy_tasks`, with
+    // reflection (`bevy_reflect`, the checkpoint), the clock (`bevy_time`,
+    // backoff) and diagnostics (`bevy_diagnostic`) unconditional. `bevy_asset`
+    // joins only with `assets` — rig-ecs's one feature — and nothing else
+    // joins either way: never the `bevy` facade, no runtime, no transport.
     (
         "rig-ecs",
         "",
-        "rig-agent rig-rmcp rmcp bevy tokio reqwest bevy_app bevy_asset",
-        "rig-core rig-effect-log bevy_ecs bevy_tasks bevy_reflect",
+        "rig-agent rig-rmcp rmcp bevy tokio reqwest bevy_asset",
+        "rig-core rig-effect-log bevy_ecs bevy_tasks bevy_reflect bevy_app bevy_time bevy_diagnostic",
     ),
     (
         "rig-ecs",

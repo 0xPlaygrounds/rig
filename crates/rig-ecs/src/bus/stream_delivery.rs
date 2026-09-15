@@ -16,7 +16,7 @@ use rig_core::{effect::EffectId, error::ErrorReport, streaming::StreamEvent};
 /// observer must return promptly; expensive work belongs outside its callback.
 /// Independent observers do not drain each other's items. Late or re-enabled
 /// observers receive only future batches: hydrate from existing `Streamed`
-/// state before continuing the world. Scene loading never emits this event.
+/// state before continuing the world. A checkpoint load never emits this event.
 /// No observer ordering is promised. An observer may remove the owning graph;
 /// the payload and id remain readable, but entity queries must handle absence.
 /// Removing a sibling effect never suppresses that sibling's already accepted

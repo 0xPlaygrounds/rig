@@ -9,11 +9,9 @@ use rig_core::{
     serve::{Dispatch, Serve},
 };
 use rig_ecs::{
-    agent::{
-        Failed, Grant, Order, Output, OutputKind, PolicyVersion, Settled, Temperature,
-        scene::RunScene,
-    },
+    agent::{Failed, Grant, Output, OutputKind, PolicyVersion, Settled, Temperature},
     bus::{Bound, EffectLogResource, EffectOutcome, Handlers, PendingEffect, Replay},
+    checkpoint::{Checkpoint, load_world, save_world},
     replay::{check_replayable, stamp_run},
     systems::RunCommands,
 };
@@ -46,7 +44,7 @@ fn program(world: &mut World, model: Entity, tool: Entity) -> Entity {
         mode: OutputKind::Auto,
         schema: Some(serde_json::json!({"type": "object", "properties": {"a": {"type": "integer"}}, "required": ["a"]})),
     }));
-    world.spawn((Grant(tool), Order(0), ChildOf(agent)));
+    world.spawn((Grant(tool), ChildOf(agent)));
     agent
 }
 
@@ -57,6 +55,13 @@ fn bound(world: &mut World, key: &str) -> Entity {
         .find(|(_, bound)| bound.key == HandlerKey::from(key))
         .unwrap()
         .0
+}
+
+/// Edit an immutable `Bound`: take it, change it, put it back.
+fn rebind(world: &mut World, entity: Entity, edit: impl FnOnce(&mut Bound)) {
+    let mut bound = world.entity_mut(entity).take::<Bound>().unwrap();
+    edit(&mut bound);
+    world.entity_mut(entity).insert(bound);
 }
 
 #[test]
@@ -117,19 +122,14 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
             capabilities: ProviderCapabilities::default(),
         },
     ] {
-        replay
-            .world_mut()
-            .get_mut::<Bound>(model)
-            .unwrap()
-            .descriptor
-            .family = family;
+        rebind(replay.world_mut(), model, |bound| {
+            bound.descriptor.family = family
+        });
         assert!(check_replayable(replay.world_mut(), run, &log).is_err());
     }
-    replay
-        .world_mut()
-        .get_mut::<Bound>(model)
-        .unwrap()
-        .descriptor = original;
+    rebind(replay.world_mut(), model, |bound| {
+        bound.descriptor = original
+    });
     replay
         .world_mut()
         .entity_mut(run)
@@ -142,42 +142,28 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
         .insert(PolicyVersion("changed".into()));
     assert!(check_replayable(replay.world_mut(), run, &log).is_err());
     replay.world_mut().entity_mut(run).remove::<PolicyVersion>();
-    replay
-        .world_mut()
-        .get_mut::<Bound>(model)
-        .unwrap()
-        .descriptor
-        .layers
-        .push("different-layer".into());
+    rebind(replay.world_mut(), model, |bound| {
+        bound.descriptor.layers.push("different-layer".into())
+    });
     assert!(check_replayable(replay.world_mut(), run, &log).is_err());
-    replay
-        .world_mut()
-        .get_mut::<Bound>(model)
-        .unwrap()
-        .descriptor
-        .layers
-        .clear();
+    rebind(replay.world_mut(), model, |bound| {
+        bound.descriptor.layers.clear()
+    });
     let tool_descriptor = replay
         .world()
         .get::<Bound>(tool)
         .unwrap()
         .descriptor
         .clone();
-    if let FamilyDescriptor::Tool { parameters, .. } = &mut replay
-        .world_mut()
-        .get_mut::<Bound>(tool)
-        .unwrap()
-        .descriptor
-        .family
-    {
-        *parameters = serde_json::json!({"type": "object", "required": ["new_argument"]});
-    }
+    rebind(replay.world_mut(), tool, |bound| {
+        if let FamilyDescriptor::Tool { parameters, .. } = &mut bound.descriptor.family {
+            *parameters = serde_json::json!({"type": "object", "required": ["new_argument"]});
+        }
+    });
     assert!(check_replayable(replay.world_mut(), run, &log).is_err());
-    replay
-        .world_mut()
-        .get_mut::<Bound>(tool)
-        .unwrap()
-        .descriptor = tool_descriptor;
+    rebind(replay.world_mut(), tool, |bound| {
+        bound.descriptor = tool_descriptor
+    });
     check_replayable(replay.world_mut(), run, &log).unwrap();
     tick_until(&mut replay, "replay terminal", |world| {
         world.get::<Settled>(run).is_some() || world.get::<Failed>(run).is_some()
@@ -185,16 +171,15 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     assert!(replay.world().get::<Failed>(run).is_none());
     assert!(replay.world().get::<Settled>(run).is_some());
 
-    let scene = RunScene::save(live.world_mut()).unwrap();
-    let scene: RunScene = serde_json::from_str(&serde_json::to_string(&scene).unwrap()).unwrap();
+    let checkpoint = save_world(live.world_mut()).unwrap();
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
     let mut restored = app();
     Handlers::with(restored.world_mut(), |handlers| {
         Replay::default().register(handlers, &log)
     })
     .unwrap()
     .unwrap();
-    scene
-        .load(restored.world_mut())
+    load_world(&checkpoint, restored.world_mut())
         .expect("all scope dependencies were reconstructed");
     let unexpected = restored
         .world_mut()

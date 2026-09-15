@@ -529,19 +529,24 @@ fn hold_lifecycle_observers_preserve_owners_and_fact_order() {
 
 #[test]
 fn restored_hold_is_unknown_until_the_host_reevaluates_it() {
-    use rig_ecs::bus::{HoldOwners, acquire_hold, release_hold, scene::Scene};
+    use rig_ecs::{
+        bus::{HoldOwners, acquire_hold, release_hold},
+        checkpoint::load_world,
+    };
     let mut original = app();
     let effect = original
         .world_mut()
         .spawn(PendingEffect::new("model", completion()))
         .id();
     original.world_mut().entity_mut(effect).insert(Held);
-    let scene = Scene::save(original.world_mut());
+    let saved = checkpoint(&mut original);
     let mut restored = app();
     let log = witnessed(&mut restored);
     let counters = Arc::new(Counters::default());
     register(&mut restored, "model", MockModel::new(&counters));
-    let effect = scene.load(restored.world_mut()).unwrap()[0];
+    let effect = load_world(&saved, restored.world_mut())
+        .unwrap()
+        .with::<PendingEffect>(restored.world())[0];
     tick(&mut restored, 2);
     assert!(restored.world().get::<Held>(effect).is_some());
     assert!(restored.world().get::<HoldOwners>(effect).is_none());

@@ -6,8 +6,8 @@
 //! |---|---|---|
 //! | `reopen_while_a_driver_is_alive_is_refused` | the reopen race | there is no driver to race: another pass while effects are in flight is just a pass |
 //! | `pendings_and_streams_created_while_closed_stay_closed_after_reopen` | no resurrection across a restart | an effect answered `HandlerUnavailable` stays answered once its key is bound |
-//! | `a_rebind_before_registration_fails_at_first_dispatch_not_at_bind` | `Handle::rebind` before the handler | a scene loaded before its handlers are bound fails at the first pass, by key, never at load |
-//! | `a_rebind_of_the_wrong_family_panics_at_the_hosts_line` | the family assertion at rebind | `Scene::first_gap` names the key whose bound family differs |
+//! | `a_rebind_before_registration_fails_at_first_dispatch_not_at_bind` | `Handle::rebind` before the handler | a checkpoint loaded before its handlers are bound fails at the first pass, by key, never at load |
+//! | `a_rebind_of_the_wrong_family_panics_at_the_hosts_line` | the family assertion at rebind | a checkpoint whose key is bound here to another family is refused as data, before anything is spawned |
 //! | `the_inbox_names_every_dispatch_that_ended_since_the_last_drain` | the completion inbox | `Added<EffectOutcome>` names every effect that ended since the system last ran |
 //! | `the_inbox_is_bounded_and_counts_what_it_dropped` | the inbox's bound and drop count | nothing is dropped: a system that skips passes still sees every outcome |
 //!
@@ -21,11 +21,11 @@ use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
 use bus_support::*;
-use rig_core::{
-    effect::{EffectFamily, FamilyDescriptor, HandlerDescriptor, HandlerKey},
-    error::ErrorKind,
+use rig_core::error::ErrorKind;
+use rig_ecs::{
+    bus::{Bound, BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule},
+    checkpoint::load_world,
 };
-use rig_ecs::bus::{BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule, Scene};
 
 #[test]
 fn reopen_while_a_driver_is_alive_is_refused() {
@@ -41,7 +41,7 @@ fn reopen_while_a_driver_is_alive_is_refused() {
     // Nothing to refuse: running the schedule again with an effect in
     // flight is another pass, and the effect stays exactly where it was.
     for _ in 0..5 {
-        rig_ecs::bus::run_to_quiescence(app.world_mut());
+        app.update();
         assert!(app.world().get::<InFlight>(effect).is_some());
     }
     counters.hold.release();
@@ -96,44 +96,24 @@ fn pendings_and_streams_created_while_closed_stay_closed_after_reopen() {
 #[test]
 fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
     let counters = Arc::new(Counters::default());
+    // What a checkpoint stored: the bound key, and one effect never taken.
+    let (mut live, _, _) = served();
+    live.world_mut()
+        .spawn(PendingEffect::new("model", completion()));
+    let saved = checkpoint(&mut live);
+    drop(live);
     let mut app = app();
-    // What a scene stored: the descriptor, and one effect, no handler yet.
-    let scene = Scene {
-        next_id: None,
-        handlers: vec![HandlerDescriptor {
-            key: HandlerKey::from("model"),
-            family: FamilyDescriptor::Completion {
-                model: "gpt".into(),
-                capabilities: Default::default(),
-            },
-            layers: Vec::new(),
-        }],
-        effects: vec![rig_ecs::bus::SceneEffect {
-            streamed: None,
-            seq: rig_ecs::bus::Seq(0),
-            key: HandlerKey::from("model"),
-            kind: completion(),
-            id: None,
-            outcome: None,
-            parent: None,
-            parent_ref: None,
-            scope: None,
-            held: false,
-            hold_owners: None,
-            tool_inputs: None,
-            tool_outputs: None,
-        }],
-    };
-    let loaded = scene.load(app.world_mut()).unwrap();
-    assert_eq!(loaded.len(), 1, "the load succeeds with nothing bound");
+    let loaded = load_world(&saved, app.world_mut()).unwrap();
+    let effects = loaded.with::<PendingEffect>(app.world());
+    assert_eq!(effects.len(), 1, "the load succeeds with nothing bound");
     assert!(
-        app.world().get::<EffectOutcome>(loaded[0]).is_none(),
+        app.world().get::<EffectOutcome>(effects[0]).is_none(),
         "not failed at load"
     );
     app.update();
     let outcome = app
         .world()
-        .get::<EffectOutcome>(loaded[0])
+        .get::<EffectOutcome>(effects[0])
         .expect("answered");
     assert_eq!(
         outcome.0.as_ref().expect_err("nothing serves it").kind,
@@ -141,36 +121,31 @@ fn a_rebind_before_registration_fails_at_first_dispatch_not_at_bind() {
         "failed at the first pass, by key"
     );
     // Bound afterwards, a fresh effect on the same key works: the
-    // descriptor a scene keeps is a claim about the key, not a binding.
-    register(&mut app, "model", MockModel::new(&counters));
+    // descriptor a checkpoint keeps is a claim about the key, not a
+    // binding — and the handler takes the entity the checkpoint bound.
+    let handler = register(&mut app, "model", MockModel::new(&counters));
+    assert_eq!(loaded.with::<Bound>(app.world()), vec![handler]);
     answered(&mut app, "served");
 }
 
 #[test]
 fn a_rebind_of_the_wrong_family_panics_at_the_hosts_line() {
     let (mut app, _, _) = served();
-    let stored = HandlerDescriptor {
-        key: HandlerKey::from("model"),
-        family: FamilyDescriptor::Tool {
+    let mut live = bus_support::app();
+    register(
+        &mut live,
+        "model",
+        crate::run_support::NeverCalled {
             name: "add".to_owned(),
-            description: "adds".to_owned(),
-            parameters: serde_json::json!({"type": "object"}),
-            embedding: None,
         },
-        layers: Vec::new(),
-    };
-    let scene = Scene {
-        next_id: None,
-        handlers: vec![stored],
-        effects: Vec::new(),
-    };
-    let bound = rig_ecs::bus::Handlers::with(app.world_mut(), |handlers| handlers.descriptors())
-        .expect("a bus");
-    // No panic anywhere: the gap is data, named at the host's line by the
-    // host's own check.
-    let gap = scene.first_gap(&bound).expect("the family differs");
-    assert_eq!(gap.key, HandlerKey::from("model"));
-    assert_eq!(gap.family.family(), EffectFamily::Tool);
+    );
+    let saved = checkpoint(&mut live);
+    let before = app.world().entities().len();
+    // No panic anywhere: the gap is data, refused at the host's line.
+    let error = load_world(&saved, app.world_mut()).expect_err("the family differs");
+    assert_eq!(error.kind, ErrorKind::Request);
+    assert!(error.message.contains("model"), "{error:?}");
+    assert_eq!(app.world().entities().len(), before, "nothing spawned");
 }
 
 #[derive(Resource, Default)]

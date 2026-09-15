@@ -42,7 +42,7 @@ use rig_core::streaming::Delta;
 
 use rig_core::streaming::StreamEvent;
 
-use rig_ecs::agent::{Order, Utterance};
+use rig_ecs::agent::Utterance;
 use rig_ecs::bus::{StreamItemsDelivered, Subjects, Witnessing};
 use serde::{Deserialize, Serialize};
 
@@ -327,12 +327,12 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
 
 pub(crate) fn assistant_history(world: &mut World, run: Entity) -> Vec<Message> {
     let mut rows: Vec<_> = world
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(world)
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| {
+        .filter(|(_, parent)| parent.parent() == run)
+        .map(|(entity, _)| {
             (
-                order.0,
+                crate::ecs_agent::sibling_index(world, entity).expect("a child of the run"),
                 rig_ecs::agent::content::parts::read_message(world, entity)
                     .expect("valid content graph")
                     .to_message(),

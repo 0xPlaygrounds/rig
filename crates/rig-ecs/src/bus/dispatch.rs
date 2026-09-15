@@ -16,11 +16,11 @@ use rig_core::{
 
 use super::{
     effect::{
-        EffectOutcome, Executions, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing,
-        Reserved, Scope, Seq, Serving, Streamed, ToolInputs,
+        EffectOutcome, Held, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved,
+        Scope, Seq, Streamed, Tasks, ToolInputs,
     },
-    handlers::{Bound, HandlerTable, Served},
-    plugin::{Intake, Policy, Progress},
+    handlers::{HandlerIndex, Registry, Served, ServedBy, Serves},
+    plugin::{Policy, Wake},
     record::Recording,
     witness::{DispatchWitness, Refused, bus_emitter},
 };
@@ -44,6 +44,7 @@ pub type CandidateView = (
     Option<&'static Reserved>,
     Option<&'static ToolInputs>,
     Option<&'static super::AdapterOperation>,
+    Option<&'static ServedBy>,
 );
 
 /// The dispatch system. In one pass, in ascending [`Seq`]:
@@ -58,8 +59,8 @@ pub type CandidateView = (
 /// - otherwise issues the id ([`Reserved`] or minted), opens the record
 ///   (`parent` from the nearest issued ancestor, `scope` from the nearest
 ///   [`Scope`]; a tool call's [`ToolInputs`] and a [`Publishing`] slot on
-///   dispatch context), and starts one initial task in [`Executions`], with
-///   a [`Serving`] marker and an empty [`Streamed`] for a streaming consumer;
+///   dispatch context), and starts one initial task, owned by the entity
+///   as [`Serving`](super::Serving), with an empty [`Streamed`] for a streaming consumer;
 ///   for a handler that is a system, puts
 ///   the effect on the entity as `Asked<E>` (an open key adds nothing: the
 ///   entity is the question); then marks it [`InFlight`].
@@ -70,9 +71,12 @@ pub type CandidateView = (
 pub fn dispatch(
     mut commands: Commands,
     policy: Res<Policy>,
-    table: NonSend<HandlerTable>,
-    mut executions: NonSendMut<Executions>,
-    bound: Query<(Entity, &Bound)>,
+    wake: Res<Wake>,
+    index: Res<HandlerIndex>,
+    registry: Registry,
+    mut tasks: Tasks,
+    serves: Query<&Serves>,
+    served_by: Query<&ServedBy>,
     pending: Query<CandidateView, Candidate>,
     in_flight: Query<&InFlight>,
     parents: Query<&ChildOf>,
@@ -81,11 +85,10 @@ pub fn dispatch(
     recording: Option<Res<Recording>>,
     witnessing: DispatchWitness,
     mut ids: ResMut<IdCounter>,
-    mut intake: ResMut<Intake>,
-    mut progress: ResMut<Progress>,
 ) {
     let mut candidates: Vec<_> = pending.iter().collect();
-    candidates.sort_by_key(|(_, seq, _, _, _, _)| **seq);
+    candidates.sort_by_key(|(_, seq, ..)| **seq);
+    let mut intake = 0usize;
     let DispatchWitness { witness, subjects } = witnessing;
 
     let policy = policy.0;
@@ -93,21 +96,28 @@ pub fn dispatch(
     // Ids issued in this pass: `Issued` lands when the commands apply, and a
     // child taken in the same pass as its parent must still name it.
     let mut issued_now: HashMap<Entity, EffectId> = HashMap::new();
-    let mut busy: HashSet<HandlerKey> = if serial {
-        in_flight.iter().map(|flight| flight.key.clone()).collect()
-    } else {
-        HashSet::new()
-    };
+    // Handler entities taken this pass: their `Serves` cannot see it yet.
+    let mut busy_now: HashSet<Entity> = HashSet::new();
 
-    for (entity, _, effect, reserved, inputs, operation) in candidates {
+    for (entity, _, effect, reserved, inputs, operation, resolved) in candidates {
         // Clamped at the read as well as at install: a host may replace the
         // resource, and a tick still takes at least one effect.
-        if intake.0 >= policy.command_capacity.max(1) {
+        if intake >= policy.command_capacity.max(1) {
             return;
         }
         let key = &effect.key;
-        if serial && busy.contains(key) {
-            if ancestor_in_flight_on(entity, key, &parents, &in_flight) {
+        let handler = resolved
+            .map(|ServedBy(handler)| *handler)
+            .or_else(|| index.entity(key));
+        let served = handler.and_then(|handler| registry.served(handler));
+        if let Some(handler) = handler
+            && serial
+            && (busy_now.contains(&handler)
+                || serves
+                    .get(handler)
+                    .is_ok_and(|serves| serves.iter().any(|effect| in_flight.contains(effect))))
+        {
+            if ancestor_served_by(entity, handler, &parents, &in_flight, &served_by) {
                 if let Some(witness) = &witness {
                     let mut subject = subjects.of(entity);
                     subject.parent = nearest_issued(entity, &parents, &issued, &issued_now);
@@ -123,14 +133,9 @@ pub fn dispatch(
                 commands
                     .entity(entity)
                     .insert((Refused, EffectOutcome(Err(reentrant(key)))));
-                progress.mark();
             }
             continue;
         }
-        let served = bound
-            .iter()
-            .find(|(_, bound)| &bound.key == key)
-            .and_then(|(handler, _)| table.served(handler));
         let Some(served) = served else {
             if let Some(witness) = &witness {
                 let mut subject = subjects.of(entity);
@@ -150,7 +155,6 @@ pub fn dispatch(
             commands
                 .entity(entity)
                 .insert((Refused, EffectOutcome(Err(handler_unavailable(key)))));
-            progress.mark();
             continue;
         };
 
@@ -172,7 +176,6 @@ pub fn dispatch(
             commands
                 .entity(entity)
                 .insert((Refused, EffectOutcome(Err(report))));
-            progress.mark();
             continue;
         };
         ids.0 = ids.0.max(next_id);
@@ -233,16 +236,18 @@ pub fn dispatch(
                         .map(|witness| ((**witness).clone(), subject.clone())),
                 }));
                 let streaming = effect.is_stream();
-
+                let wake = wake.clone();
                 let task = bevy_tasks::IoTaskPool::get().spawn(async move {
                     let reply = handler.handle(kind, dispatch).await;
-                    if !streaming {
-                        return Reply::Outcome(reply.into_outcome().await);
-                    }
+                    let reply = if streaming {
+                        reply
+                    } else {
+                        Reply::Outcome(reply.into_outcome().await)
+                    };
+                    wake.signal();
                     reply
                 });
-                executions.tasks.insert(entity, task);
-                entity_commands.insert(Serving);
+                entity_commands.insert(tasks.serving(entity, task));
                 if effect.is_stream() {
                     entity_commands.insert(Streamed::default());
                 }
@@ -250,7 +255,6 @@ pub fn dispatch(
             Served::World(world) => {
                 if let Err(report) = (world.ask)(&mut entity_commands, &effect.kind) {
                     entity_commands.insert(EffectOutcome(Err(report)));
-                    progress.mark();
                     continue;
                 }
                 if let Some(recording) = &recording {
@@ -261,28 +265,32 @@ pub fn dispatch(
         entity_commands
             .insert((Issued(id), InFlight { key: key.clone() }))
             .remove::<Reserved>();
-        issued_now.insert(entity, id);
-        if serial {
-            busy.insert(key.clone());
+        if let Some(handler) = handler {
+            if resolved.is_none() {
+                entity_commands.insert(ServedBy(handler));
+            }
+            busy_now.insert(handler);
         }
-        intake.0 += 1;
-        progress.mark();
+        issued_now.insert(entity, id);
+        intake += 1;
     }
 }
 
-/// Whether an ancestor of `entity` is in flight on `key`.
-fn ancestor_in_flight_on(
+/// Whether an ancestor of `entity` is in flight on `handler`.
+fn ancestor_served_by(
     entity: Entity,
-    key: &HandlerKey,
+    handler: Entity,
     parents: &Query<&ChildOf>,
     in_flight: &Query<&InFlight>,
+    served_by: &Query<&ServedBy>,
 ) -> bool {
     let mut current = entity;
     while let Ok(parent) = parents.get(current) {
         current = parent.parent();
-        if in_flight
-            .get(current)
-            .is_ok_and(|flight| &flight.key == key)
+        if in_flight.contains(current)
+            && served_by
+                .get(current)
+                .is_ok_and(|ServedBy(serving)| *serving == handler)
         {
             return true;
         }

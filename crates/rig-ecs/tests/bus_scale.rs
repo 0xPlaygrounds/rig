@@ -21,7 +21,7 @@ use bevy_ecs::prelude::*;
 use bus_support::*;
 use rig_core::serve::ServingPolicy;
 use rig_ecs::bus::{
-    BusSet, EffectLogResource, EffectOutcome, InFlight, PendingEffect, Progress, RigSchedule, Seq,
+    BusSet, EffectLogResource, EffectOutcome, InFlight, PendingEffect, RigSchedule, Seq,
 };
 use rig_effect_log::EffectLogRecorder;
 
@@ -143,30 +143,26 @@ fn ten_thousand_effects_in_flight_cost_one_bounded_tick() {
     });
 }
 
-/// A system that always reports progress: the cap must end the tick.
-fn always_progress(mut progress: ResMut<Progress>, mut passes: ResMut<Passes>) {
-    progress.mark();
+/// A system in `RigSchedule` counts its runs.
+fn count_passes(mut passes: ResMut<Passes>) {
     passes.0 += 1;
 }
 
 #[derive(Resource, Default)]
 struct Passes(usize);
 
+/// One app update runs `RigSchedule` exactly once, whatever the systems in
+/// it do: nothing loops the schedule inside a tick.
 #[test]
-fn the_quiescence_cap_ends_the_tick() {
+fn one_update_is_one_pass() {
     let mut app = app();
     app.init_resource::<Passes>();
     app.world_mut()
         .resource_mut::<bevy_ecs::schedule::Schedules>()
-        .add_systems(RigSchedule, always_progress.after(BusSet::Judge));
-    let start = Instant::now();
+        .add_systems(RigSchedule, count_passes.after(BusSet::Judge));
     app.update();
-    assert!(start.elapsed() < GUARD);
-    assert_eq!(
-        app.world().resource::<Passes>().0,
-        rig_ecs::bus::QUIESCENCE_CAP,
-        "exactly the cap's passes, then the tick ends"
-    );
+    app.update();
+    assert_eq!(app.world().resource::<Passes>().0, 2);
 }
 
 #[test]

@@ -112,8 +112,11 @@ fn independent_consumers_preserve_interleaved_errors_without_a_recorder() {
     assert!(app.world().get::<EffectOutcome>(effect).unwrap().0.is_err());
 }
 #[test]
-fn policy_replay_preserves_notification_batches_and_scene_load_emits_none() {
-    use rig_ecs::bus::{EffectLogResource, Handlers, Replay, Scene};
+fn policy_replay_preserves_notification_batches_and_checkpoint_load_emits_none() {
+    use rig_ecs::{
+        bus::{EffectLogResource, Handlers, Replay},
+        checkpoint::load_world,
+    };
     use rig_effect_log::EffectLogRecorder;
     let mut live = bus_support::app();
     let recorder = EffectLogRecorder::keeping_stream_events();
@@ -132,13 +135,11 @@ fn policy_replay_preserves_notification_batches_and_scene_load_emits_none() {
         world.get::<EffectOutcome>(effect).is_some()
     });
     assert_eq!(*original.lock().unwrap(), *replayed.lock().unwrap());
-    let scene = Scene::save(replay.world_mut());
-    let encoded = serde_json::to_string(&scene).unwrap();
+    let saved = bus_support::checkpoint(&mut replay);
     drop(replay);
     let mut restored = bus_support::app();
     let restored_trace = observe(&mut restored);
-    let scene: Scene = serde_json::from_str(&encoded).unwrap();
-    scene.load(restored.world_mut()).unwrap();
+    load_world(&saved, restored.world_mut()).unwrap();
     restored.update();
     assert!(restored_trace.lock().unwrap().is_empty());
     assert_eq!(

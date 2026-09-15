@@ -12,7 +12,7 @@
 
 use std::time::{Duration, Instant};
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
@@ -22,16 +22,13 @@ use rig_core::{
 use rig_ecs::{
     agent::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentText, Failed,
-        Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Order, Output, OutputKind,
-        Owner, Preamble, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult,
-        Settled, Temperature, ToolChoiceSpec, ToolPolicy, Unhandled as WorldUnhandled, UsesModel,
+        Failure, Grant, InvalidCalls, MaxTokens, MaxTurns, MessageParts, Output, OutputKind, Owner,
+        Preamble, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult, Settled,
+        Temperature, ToolChoiceSpec, ToolPolicy, Unhandled as WorldUnhandled, UsesModel,
     },
-    bus::{
-        Bus, EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect,
-        run_to_quiescence,
-    },
+    bus::{EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect},
     replay::stamp_legacy_builder_header,
-    systems::{RunCommands, install_agent},
+    systems::RunCommands,
 };
 use rig_effect_log::{EffectLogRecorder, EffectLogReplayer, RequestCheck};
 
@@ -73,14 +70,13 @@ pub fn open(program: &Program, log: &rig_effect_log::EffectLog, check: RequestCh
             .build()
     });
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy {
-        command_capacity: 1_000,
-        ..policy
-    })
-    .ambiguity_detection(LogLevel::Error)
-    .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(
+        rig_ecs::RigPlugin::with_policy(ServingPolicy {
+            command_capacity: 1_000,
+            ..policy
+        })
+        .ambiguity_detection(LogLevel::Error),
+    );
     app.finish();
     app.cleanup();
     let world = app.world_mut();
@@ -431,7 +427,6 @@ pub fn spawn_agent(
             UsesModel(model),
         ))
         .id();
-    let mut order = 0u64;
     for (n, text) in program.context.iter().enumerate() {
         let document = world
             .spawn((
@@ -439,8 +434,7 @@ pub fn spawn_agent(
                 DocumentText((*text).to_owned()),
             ))
             .id();
-        world.spawn((Context(document), Order(order), ChildOf(agent)));
-        order += 1;
+        world.spawn((Context(document), ChildOf(agent)));
     }
     let log = golden(program.fixture);
     let mut tools: Vec<&HandlerKey> = log
@@ -464,11 +458,10 @@ pub fn spawn_agent(
             .and_then(|tail| tail.rsplit_once('#'))
             .map(|(name, _)| name)
             .expect("a tool key names its tool");
-        let mut grant = world.spawn((Grant(tool), Order(order), ChildOf(agent)));
+        let mut grant = world.spawn((Grant(tool), ChildOf(agent)));
         if program.retrievable.contains(&name) {
             grant.insert(Retrievable);
         }
-        order += 1;
     }
     // The indexes, in the producer's order: the context index first, then
     // the tool index (`dynamic_context` before `retrieved_tools`).
@@ -490,10 +483,8 @@ pub fn spawn_agent(
                 samples: samples as u64,
                 what: RetrievalKind::Documents,
             },
-            Order(order),
             ChildOf(agent),
         ));
-        order += 1;
     }
     if let Some(samples) = program.retrieved_tools {
         let index = handler(HandlerKey::from(format!(
@@ -507,10 +498,8 @@ pub fn spawn_agent(
                 samples: samples as u64,
                 what: RetrievalKind::Tools,
             },
-            Order(order),
             ChildOf(agent),
         ));
-        order += 1;
     }
     if let Some(conversation) = program.conversation {
         let memory = handler(HandlerKey::from(format!("{}/memory", program.owner)))
@@ -526,10 +515,8 @@ pub fn spawn_agent(
             .find(|(bound, _)| *bound == key)
             .map(|(_, entity)| *entity)
             .expect("the golden serves the route");
-        world.spawn((rig_ecs::agent::Route(route), Order(order), ChildOf(agent)));
-        order += 1;
+        world.spawn((rig_ecs::agent::Route(route), ChildOf(agent)));
     }
-    world.resource_mut::<rig_ecs::agent::OrderCounter>().0 = order;
     agent
 }
 

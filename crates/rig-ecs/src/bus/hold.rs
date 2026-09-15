@@ -3,6 +3,7 @@
 use std::collections::{BTreeMap, VecDeque};
 
 use bevy_ecs::prelude::*;
+use bevy_reflect::{ReflectDeserialize, ReflectSerialize};
 use rig_core::observe::Emitter;
 use serde::{Deserialize, Serialize};
 
@@ -11,7 +12,8 @@ use super::{EffectOutcome, Held, Issued};
 /// Active hold owners, keyed by stable emitter name. Distinct policies must
 /// use distinct names; reacquiring the same name is idempotent.
 /// Mutate through [`acquire_hold`] and [`release_hold`], not by replacing Held.
-#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+#[derive(Component, Debug, Clone, Serialize, Deserialize, bevy_reflect::Reflect)]
+#[reflect(opaque, Component, Debug, Serialize, Deserialize)]
 pub struct HoldOwners(BTreeMap<String, Emitter>);
 
 impl HoldOwners {

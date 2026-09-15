@@ -16,8 +16,7 @@ use rig::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, DefaultMaxTurns, Failure, Order, RunResult, Settled, ToolChoiceSpec, Turn,
-        Utterance,
+        Cancelled, DefaultMaxTurns, Failure, RunResult, Settled, ToolChoiceSpec, Turn, Utterance,
     },
     bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::RunCommands,
@@ -230,7 +229,7 @@ fn completed_turns(ecs: &mut EcsAgent, run: Entity) -> Vec<CompletedTurn> {
                 "successful turn propagates every stream item error"
             );
             Some(CompletedTurn {
-                order: world.get::<Order>(turn).expect("turn order").0,
+                order: crate::ecs_agent::sibling_index(world, turn).expect("turn order") as u64,
                 request: request.clone(),
                 usage: response.usage,
                 text: stream.text.clone(),
@@ -382,12 +381,13 @@ fn history(ecs: &mut EcsAgent, run: Entity) -> Vec<Message> {
     let mut messages: Vec<_> = ecs
         .app
         .world_mut()
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
+        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
         .iter(ecs.app.world())
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| {
+        .filter(|(_, parent)| parent.parent() == run)
+        .map(|(entity, _)| {
             (
-                order.0,
+                crate::ecs_agent::sibling_index(ecs.app.world(), entity)
+                    .expect("a child of the run"),
                 rig_ecs::agent::content::parts::read_message(ecs.app.world(), entity)
                     .expect("valid content graph")
                     .to_message(),

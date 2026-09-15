@@ -13,8 +13,8 @@
 //! | Steering (§9) | [`Cancelled`] on a run; [`Retry`] and [`RequestPatch`] on a turn; [`Resolution`] on an invalid call; `UsesModel` on a run |
 //! | Model, Tool | the bus module's handler entities (`Bound`) |
 //! | Document | [`DocumentId`], [`DocumentText`], [`DocumentProps`]; attached to a turn by an [`Attachment`] link entity |
-//! | Utterance | [`Utterance`] + [`Role`] + ordered [`content::parts::ContentPart`] child entities, [`Order`]; `ChildOf` the run |
-//! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a phase marker ([`Assembling`], [`AwaitingModel`], [`ResolvingTools`], [`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings ([`ToolPolicy`], [`ToolContextSpec`] among them) |
+//! | Utterance | [`Utterance`] + [`Role`] + ordered [`content::parts::ContentPart`] child entities; `ChildOf` the run, in sibling (`Children`) order |
+//! | Run | [`Run`] + [`RunOf`] → agent; [`RunSeq`]; a [`RunPhase`] or an ending ([`Settled`], [`Failed`]); [`Cursor`]; [`RunResult`]; [`Usage`]; retries; [`OutputToolName`]; the run's own overrides of the agent's settings ([`ToolPolicy`], [`ToolContextSpec`] among them) |
 //! | Turn | [`Turn`], `ChildOf` the run; [`Advert`] link entities → the tools it advertised; [`Attachment`] link entities → the documents it carried; [`Outputs`]; [`Reprompt`]; [`Batch`] while its tool calls are out |
 //! | Effect | the bus module's, `ChildOf` the turn: the completion, then one per tool call ([`ToolCallSlot`] names which) |
 //! | Invalid call | [`InvalidCall`] + [`Resolution`], `ChildOf` the turn |
@@ -22,7 +22,6 @@
 pub mod checkpoint;
 pub mod content;
 pub mod reflect;
-pub mod scene;
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::{Reflect, ReflectDeserialize, ReflectSerialize};
@@ -152,6 +151,19 @@ pub struct ProviderRetries(pub usize);
 /// The provider-retry budget of a run that declares none.
 pub const DEFAULT_PROVIDER_RETRIES: usize = 3;
 
+/// How long a provider retry waits before its completion is re-issued:
+/// `base × 2^(attempt-1)`, at most `max`, on the world's clock (bevy_time's
+/// `Time`: a host that pauses `Time<Virtual>` holds every backoff). On the
+/// agent or the run; without one, a retry is re-issued at once.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[reflect(Component)]
+pub struct Backoff {
+    /// The first retry's delay.
+    pub base: std::time::Duration,
+    /// The longest delay any retry waits.
+    pub max: std::time::Duration,
+}
+
 /// What to do with a tool call the program does not advertise when no
 /// system resolved it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect)]
@@ -275,13 +287,6 @@ pub struct Remembering;
 #[reflect(Component)]
 pub struct MemoryAppendScheduled;
 
-/// The run's memory load is out; its first turn waits for it.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
-#[reflect(Component)]
-pub struct LoadingMemory;
-
 /// A retrieval the agent makes before every turn: a link entity, `ChildOf`
 /// the agent, naming the index handler entity, with [`Retrieval`] saying
 /// what for (CONTRACT §12).
@@ -345,7 +350,7 @@ pub struct Route(pub Entity);
 pub struct RoutedTo(Vec<Entity>);
 
 /// A grant: a link entity, `ChildOf` the agent, naming one tool the agent
-/// advertises. Advertisement order is [`Order`].
+/// advertises. Advertisement order is the agent's sibling (`Children`) order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = Grants)]
 #[reflect(Component)]
@@ -378,7 +383,7 @@ pub struct ToolAccess {
 pub struct Grants(Vec<Entity>);
 
 /// A context link: a link entity, `ChildOf` the agent, naming one document
-/// every turn carries as static context, in [`Order`].
+/// every turn carries as static context, in sibling (`Children`) order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = ContextOf)]
 #[reflect(Component)]
@@ -389,32 +394,6 @@ pub struct Context(pub Entity);
 #[relationship_target(relationship = Context)]
 #[reflect(Component)]
 pub struct ContextOf(Vec<Entity>);
-
-/// The order of a link, an utterance or a turn among its siblings: the
-/// agent modules' own counter ([`OrderCounter`]), never the bus module's
-/// `Seq`, which is reserved for effects.
-#[derive(
-    Component,
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Reflect,
-)]
-#[reflect(Component)]
-pub struct Order(pub u64);
-
-/// The world's one order counter for [`Order`].
-#[derive(Resource, Debug, Default, Reflect)]
-#[reflect(Resource)]
-pub struct OrderCounter(pub u64);
 
 // ---------------------------------------------------------------------------
 // Documents: entities of their own, shared by attachment.
@@ -435,7 +414,7 @@ pub struct DocumentText(pub String);
 pub struct DocumentProps(pub std::collections::HashMap<String, String>);
 
 /// An attachment: a link entity, `ChildOf` a turn, naming one document the
-/// turn's request carries, in [`Order`].
+/// turn's request carries, in sibling (`Children`) order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = AttachedTo)]
 #[reflect(Component)]
@@ -451,7 +430,7 @@ pub struct AttachedTo(Vec<Entity>);
 // Utterances: the conversation, one entity per message, `ChildOf` the run.
 
 /// An utterance: one message of the conversation, `ChildOf` its run, in
-/// [`Order`]. Its parts are content components.
+/// sibling (`Children`) order. Its parts are content components.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -531,8 +510,8 @@ impl MessageParts {
 /// (`RunCommands::spawn_run` puts it there; a host assembling a run by
 /// hand does the same), consumed when the run opens: the pass after
 /// [`Ready`] is on the run, `systems::open_runs` spawns it as the run's
-/// last utterance and takes the component off. A scene saved before then
-/// carries it (§13).
+/// last utterance and takes the component off. A checkpoint saved before
+/// then carries it (§13).
 #[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component, opaque, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Prompt(pub Vec<UserContent>);
@@ -543,7 +522,7 @@ pub struct Prompt(pub Vec<UserContent>);
 /// that populates a run by hand inserts it last. `systems::open_runs`
 /// gives a `Ready` run its first phase, and `Advance` takes only `Ready`
 /// runs: a run without it is never assembled, however complete. Kept for
-/// the life of the run; a scene saves and restores it (§13).
+/// the life of the run; a checkpoint saves and restores it (§13).
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -577,12 +556,51 @@ impl From<Vec<UserContent>> for Prompt {
 // ---------------------------------------------------------------------------
 // Runs and turns.
 
-/// A run: one prompt through the agent to an answer or a failure.
+/// A run: one prompt through the agent to an answer or a failure. Requires
+/// what every run carries — its cursor, tallies, output-tool name and usage
+/// at their defaults — and stamps its [`RunSeq`] from the world's
+/// [`RunCounter`], its [`crate::bus::Scope`] (`{owner}/run#{seq}`, from
+/// its [`RunOf`] agent's [`Owner`]) and a `Name` of the same text, as it
+/// is added.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
+#[require(
+    Cursor,
+    OutputRetries,
+    InvalidRetries,
+    ProviderRetried,
+    OutputToolName,
+    Usage,
+    StreamRequested
+)]
+#[component(on_add = stamp_run)]
 #[reflect(Component)]
 pub struct Run;
+
+fn stamp_run(
+    mut world: bevy_ecs::world::DeferredWorld<'_>,
+    context: bevy_ecs::lifecycle::HookContext,
+) {
+    let entity = context.entity;
+    // A world without the counter (a checkpoint's scratch world) stamps
+    // nothing: the loaded run carries its own `RunSeq`.
+    if world.get::<RunSeq>(entity).is_none()
+        && let Some(mut counter) = world.get_resource_mut::<RunCounter>()
+    {
+        let seq = counter.0;
+        counter.0 += 1;
+        let owner = world
+            .get::<RunOf>(entity)
+            .and_then(|run_of| world.get::<Owner>(run_of.0))
+            .map(|owner| owner.0.clone())
+            .unwrap_or_default();
+        world
+            .commands()
+            .entity(entity)
+            .insert((RunSeq(seq), crate::bus::Scope(format!("{owner}/run#{seq}"))));
+    }
+}
 
 /// The run's agent.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
@@ -645,27 +663,25 @@ pub struct Cursor {
     pub turn: usize,
 }
 
-/// The run wants a turn: `Advance` spawns one and `Assemble` folds it.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
+/// Where a run is between its opening and its ending, one component,
+/// replaced by insert (immutable: `On<Insert, RunPhase>` sees every
+/// change). A `Ready` run without one has not opened; a run with an ending
+/// ([`Settled`], [`Failed`]) has none.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[component(immutable)]
+#[serde(rename_all = "snake_case")]
 #[reflect(Component)]
-pub struct Assembling;
-
-/// The run's current turn has an effect in flight.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
-#[reflect(Component)]
-pub struct AwaitingModel;
-
-/// The run's current turn has its tool batch out: one effect per call,
-/// `ChildOf` the turn; the run goes on when every one has landed.
-#[derive(
-    Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
-)]
-#[reflect(Component)]
-pub struct ResolvingTools;
+pub enum RunPhase {
+    /// The run's memory load is out; its first turn waits for it.
+    LoadingMemory,
+    /// The run wants a turn: `Advance` spawns one and `Assemble` folds it.
+    Assembling,
+    /// The run's current turn has an effect in flight.
+    AwaitingModel,
+    /// The run's current turn has its tool batch out: one effect per call,
+    /// `ChildOf` the turn; the run goes on when every one has landed.
+    ResolvingTools,
+}
 
 /// A turn whose batch is out: how many calls it holds. Removed when the
 /// batch lands and the results are history.
@@ -794,7 +810,7 @@ pub struct ProviderRetrying;
 #[reflect(Component)]
 pub struct OutputToolName(pub Option<String>);
 
-/// A turn: one model call of a run, `ChildOf` the run, in [`Order`].
+/// A turn: one model call of a run, `ChildOf` the run, in sibling (`Children`) order.
 #[derive(
     Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Reflect,
 )]
@@ -802,7 +818,7 @@ pub struct OutputToolName(pub Option<String>);
 pub struct Turn;
 
 /// An advert: a link entity, `ChildOf` a turn, naming one tool the turn's
-/// request advertised, in [`Order`].
+/// request advertised, in sibling (`Children`) order.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Reflect)]
 #[relationship(relationship_target = AdvertisedOn)]
 #[reflect(Component)]
@@ -838,8 +854,8 @@ pub struct Outputs {
 /// A stop, written by any system at any moment: the run ends
 /// `Failed(Cancelled)` with this reason, its effects never issued are
 /// despawned (no record), the ones in flight left to their handler
-/// (CONTRACT §9.1). Serde: a scene saved between the write and the read
-/// restores the decision.
+/// (CONTRACT §9.1). Serde: a checkpoint saved between the write and the
+/// read restores the decision.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct Cancelled(pub String);
@@ -981,7 +997,7 @@ pub enum Resolution {
 }
 
 // Every state component is serde and entity-free: relationships are the
-// only holders of an `Entity`, and a scene remaps them.
+// only holders of an `Entity`, and a checkpoint remaps them.
 const _: () = {
     const fn assert_serde<T: Serialize + serde::de::DeserializeOwned>() {}
     assert_serde::<Owner>();

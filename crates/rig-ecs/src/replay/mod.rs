@@ -8,7 +8,7 @@ use rig_effect_log::{EffectLogRecorder, stable_hash};
 use crate::{
     agent::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentProps,
-        DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Order, Output, OutputKind,
+        DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Output, OutputKind,
         OutputToolConfig, PolicyVersion, Preamble, Remembers, Retrievable, Retrieval, Retrieves,
         Route, RunOf, StreamRequested, Temperature, ToolChoiceSpec, ToolPolicy, UsesModel,
     },
@@ -40,15 +40,12 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
         .get::<DefaultMaxTurns>(agent)
         .and_then(|d| d.0)
         .unwrap_or(1);
-    let mut context: Vec<(Order, serde_json::Value)> = Vec::new();
+    let mut context: Vec<serde_json::Value> = Vec::new();
     if let Some(children) = world.get::<Children>(agent) {
         let links: Vec<Entity> = children.iter().collect();
         for child in links {
-            if let (Some(Context(document)), Some(order)) =
-                (world.get::<Context>(child), world.get::<Order>(child))
-            {
+            if let Some(Context(document)) = world.get::<Context>(child) {
                 let document = *document;
-                let order = *order;
                 let id = world.get::<DocumentId>(document).map(|d| d.0.clone());
                 let text = world.get::<DocumentText>(document).map(|d| d.0.clone());
                 let props = world
@@ -62,12 +59,11 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
                     for (key, value) in props {
                         json.insert(key, serde_json::Value::String(value));
                     }
-                    context.push((order, serde_json::Value::Object(json)));
+                    context.push(serde_json::Value::Object(json));
                 }
             }
         }
     }
-    context.sort_by_key(|(order, _)| *order);
     let output_mode = match output.mode {
         OutputKind::Auto => "Auto",
         OutputKind::Native => "Native",
@@ -76,7 +72,7 @@ fn builder_spec_json(world: &mut World, agent: Entity) -> serde_json::Value {
     };
     serde_json::json!({
         "preamble": preamble,
-        "static_context": context.into_iter().map(|(_, document)| document).collect::<Vec<_>>(),
+        "static_context": context,
         "additional_params": additional_params,
         "max_tokens": max_tokens,
         "temperature": temperature,
@@ -201,14 +197,12 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
                     .map(|bound| &bound.descriptor)
             ),
         );
-        let mut links: Vec<_> = world
+        let links: Vec<Entity> = world
             .get::<Children>(agent)
             .into_iter()
             .flat_map(|children| children.iter())
-            .filter_map(|link| world.get::<Order>(link).map(|order| (*order, link)))
             .collect();
-        links.sort_by_key(|(order, _)| *order);
-        let dependencies: Vec<_> = links.into_iter().filter_map(|(_, link)| {
+        let dependencies: Vec<_> = links.into_iter().filter_map(|link| {
             if let Some(Grant(tool)) = world.get::<Grant>(link) {
                 Some(serde_json::json!({"tool": world.get::<Bound>(*tool).map(|b| &b.descriptor), "retrievable": world.get::<Retrievable>(link).is_some()}))
             } else if let Some(Retrieves(index)) = world.get::<Retrieves>(link) {

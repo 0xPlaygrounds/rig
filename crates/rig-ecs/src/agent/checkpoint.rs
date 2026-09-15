@@ -3,7 +3,7 @@
 //! A hold is armed before the desired tool turn. It only prevents advancement
 //! after a real batch commit, never dispatch of the batch being awaited. Owners
 //! release their own named hold; all remaining owners must release before the
-//! run continues. Saving a scene preserves holds, but does not persist host tools
+//! run continues. A checkpoint preserves holds, but does not persist host tools
 //! or external side effects.
 
 use bevy_reflect::Reflect;
@@ -66,7 +66,7 @@ impl ToolTurnHolds {
 }
 
 /// A live batch commit notification, emitted after deferred graph writes and
-/// phase changes are visible. Scene loading does not emit this event. Inspect
+/// phase changes are visible. A checkpoint load does not emit this event. Inspect
 /// ToolTurnCommit for durable state; do not treat component insertion on load
 /// as a notification that tools ran again. A terminal observer that removes
 /// the owning graph before delivery suppresses this live event.
@@ -147,4 +147,64 @@ pub fn release_tool_turn_hold(
         world.entity_mut(run).remove::<ToolTurnHolds>();
     }
     Ok(removed)
+}
+
+/// The invariants a loaded tool-turn checkpoint holds on `entity`: a hold
+/// on a run with named owners and non-zero turns; a commit or its links on
+/// a turn of a run, naming utterances of that run in their roles; a commit
+/// with both links, no batch out, and a turn the run's cursor has reached.
+pub(crate) fn validate(world: &World, entity: Entity) -> Result<(), rig_core::error::ErrorReport> {
+    use super::{Batch, Cursor, Role, Turn, Utterance};
+    let refused = |message: &str| {
+        rig_core::error::ErrorReport::new(rig_core::error::ErrorKind::Request, message)
+    };
+    if let Some(holds) = world.get::<ToolTurnHolds>(entity)
+        && (world.get::<Run>(entity).is_none()
+            || holds
+                .owners()
+                .any(|(owner, turn)| owner.is_empty() || turn == 0))
+    {
+        return Err(refused("invalid tool-turn hold"));
+    }
+    let assistant = world.get::<TurnAssistant>(entity);
+    let results = world.get::<TurnResults>(entity);
+    let commit = world.get::<ToolTurnCommit>(entity);
+    if assistant.is_none() && results.is_none() && commit.is_none() {
+        return Ok(());
+    }
+    let run = world
+        .get::<ChildOf>(entity)
+        .map(ChildOf::parent)
+        .filter(|run| world.get::<Run>(*run).is_some())
+        .ok_or_else(|| refused("tool-turn link has no run"))?;
+    if world.get::<Turn>(entity).is_none() {
+        return Err(refused("tool-turn link is not on a turn"));
+    }
+    for (target, role) in [
+        (assistant.map(|link| link.0), Role::Assistant),
+        (results.map(|link| link.0), Role::User),
+    ] {
+        if let Some(target) = target
+            && (world.get::<ChildOf>(target).map(ChildOf::parent) != Some(run)
+                || world.get::<Utterance>(target).is_none()
+                || world.get::<Role>(target) != Some(&role))
+        {
+            return Err(refused("tool-turn utterance has invalid ownership or role"));
+        }
+    }
+    if let Some(commit) = commit {
+        if commit.turn == 0
+            || assistant.is_none()
+            || results.is_none()
+            || world.get::<Batch>(entity).is_some()
+            || world
+                .get::<Cursor>(run)
+                .is_none_or(|cursor| commit.turn > cursor.turn)
+        {
+            return Err(refused("invalid committed tool turn"));
+        }
+    } else if results.is_some() {
+        return Err(refused("tool results have no commit"));
+    }
+    Ok(())
 }

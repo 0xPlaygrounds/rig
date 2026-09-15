@@ -2,10 +2,11 @@
 
 Rig's effect bus and agent runtime in a Bevy `World`. Effects and handlers are
 entities; systems dispatch work and publish outcomes; relationships carry causal
-and conversation structure. The host owns the schedule and calls
-`run_to_quiescence` on each tick. Handler tasks and application systems retain
-their own execution costs; bounded collection does not make arbitrary user work
-nonblocking.
+and conversation structure. `App::new().add_plugins(rig_ecs::RigPlugin::default())`
+is a host; `app.update()` is one pass of `RigSchedule`, and the default runner
+updates when a task raises `bus::Wake`. Handler tasks and application systems
+retain their own execution costs; bounded collection does not make arbitrary
+user work nonblocking.
 
 The bus uses `bevy_ecs` and `bevy_tasks`. Agent components, request assembly,
 steering and replay build on that bus. See [CONTRACT.md](CONTRACT.md) for detailed
@@ -14,16 +15,18 @@ for the scope of cross-runtime regression tests.
 
 ## The run as a graph
 
-`agent::scene::WorldScene` saves the library's supported graph/effect state,
-not arbitrary world state. Install `agent::scene::SceneExtensions` in both
-worlds to register application components under stable, versioned names.
-Registered serde components on saved graph entities round-trip with those
-entities; a saved but unregistered name is rejected on load. Component payloads
-must be entity-independent and their serde implementations pure and
-deterministic. Embedded entity IDs are not remapped. Resources, custom effect
-components, extra entities, system-local state and live tasks remain host-owned.
-Bind handlers and install registrations before loading; install application
-insertion observers afterward to avoid reacting to partially restored state.
+`rig_ecs::checkpoint::save_world` takes the world as reflected data: every
+entity with a registered reflected component, components by type path, an
+`Entity` in a component as that entity's checkpoint index, parents before
+children in `Children` order. A host's own components travel with the entities
+they sit on once the host registers the type with `#[reflect(Component)]` in
+the world's `AppTypeRegistry`; an unregistered type path is refused on load.
+In-flight state (`Serving`, `Streaming`, `Handler`, cache views) is not
+reflected and never saved; relationship targets are rebuilt by their sources'
+hooks. Resources, system-local state and live tasks remain host-owned. Bind
+handlers before loading (a checkpoint handler bound to a key the world serves
+merges into the world's, which wins); install application insertion observers
+afterward to avoid reacting to partially restored state.
 
 `replay::stamp_run` captures supported effective configuration, including
 run-over-agent overrides. `check_replayable` checks the requested run's exact
@@ -51,23 +54,23 @@ binding reports its key and wrong family. An outstanding tool can finish
 before the next assembly detects the missing model. This differs from
 cancelling an in-flight operation.
 
-The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in `Order`, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that walks the graph at `RigSet::Assemble` and writes the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-verify/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
+The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that `fold_turn` calls at `RigSet::Assemble` over what `gather_turn` walked, writing the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-verify/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
 
 | Entity | Components |
 |---|---|
 | Agent | `Owner`, `Preamble`, `Temperature`, `MaxTokens`, `AdditionalParams`, `ToolChoiceSpec`, `Output { mode, schema }`, `OutputToolConfig`, `MaxTurns`, `DefaultMaxTurns`, `InvalidCalls`; `UsesModel` → the model's handler entity; `Grant` link entities → tool handler entities; `Context` link entities → documents |
 | Document | `DocumentId`, `DocumentText`, `DocumentProps`; attached to a turn by an `Attachment` link |
-| Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim), `Order`; `ChildOf` the run |
-| Run | `Run`, `RunOf` → agent, `RunSeq`, `StreamRequested`, `Cursor`, a phase (`Assembling`, `AwaitingModel`, `Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope` |
-| Turn | `Turn`, `ChildOf` the run, `Order`; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
+| Utterance | `Utterance`, `Role`, `Parts` (the message's parts, verbatim); `ChildOf` the run, in sibling (`Children`) order |
+| Run | `Run`, `RunOf` → agent, `RunSeq`, `StreamRequested`, `Cursor`, a `RunPhase` (`LoadingMemory`, `Assembling`, `AwaitingModel`, `ResolvingTools`) or an ending (`Settled`, `Failed(Failure)`), `RunResult`, `Usage`, `OutputRetries`, `OutputToolName`, the run's own overrides of the agent's settings, the bus's `Scope`, a `Name` |
+| Turn | `Turn`, `ChildOf` the run; `Advert` links → the tools it advertised; `Attachment` links → its documents; `Outputs` (per tick for a stream); `Reprompt`; `Batch` while its tool calls are out; `systems::{Fresh, Folded, Materialised}` |
 | Effect | the bus module's, `ChildOf` the turn: the completion, then one per call to a granted tool (`ToolCallSlot` says which call; the bus's `ToolInputs` carries the run's `ToolContextSpec`) — the batch is the turn's children, `ToolPolicy { concurrency }` on the run or the agent says how many fly at once |
 | Invalid call | `InvalidCall` + `Resolution`, `ChildOf` the turn |
-| the scene | `agent::scene::RunScene` beside the bus's `Scene` |
+| the checkpoint | `rig_ecs::checkpoint::{save_world, load_world}`: the whole world, graph and effects alike |
 
 `OutputToolConfig` optionally sets the output tool's reserved name, description,
 and preamble augmentation. A run's component overrides the agent's. With a
 schema, an explicit name commits tool output; a conflicting granted tool fails
-before dispatch. Once minted, the name remains fixed for the run. Scene saves
+before dispatch. Once minted, the name remains fixed for the run. Checkpoints
 and replay identity retain this configuration.
 
 The agent's sets, around the bus's:
@@ -76,20 +79,23 @@ The agent's sets, around the bus's:
 |---|---|---|
 | `RigSet::Advance` | a run in `Assembling` has no fresh turn | a turn with its adverts and attachments, or `Failed(MaxTurns)` |
 | `RigSet::Select` | a run may lack a model of its own | the agent's `UsesModel`, copied — a routing system before it gives the run another |
-| `RigSet::Assemble` | a fresh turn's graph is complete | the fold spawns the effect; the run is `AwaitingModel` |
+| `RigSet::Assemble` | a fresh turn's graph is complete | `gather_turn` leaves the graph on the turn as `AssemblyInputs`; `fold_turn` folds it and spawns the effect; the run is `AwaitingModel` |
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
 | `RigSet::Release` | a turn's tool batch is out | `release_batch` releases its `rig-ecs/batch` owner up to the concurrency, in call order. Policies use `bus::acquire_hold` and `bus::release_hold` with distinct stable emitter names; `Held` remains until every owner releases. A pre-existing bare `Held` is retained as an independent unknown owner. |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |
 | `RigSet::Fold` | the effect may have streamed or landed | `Outputs` on the turn |
 | `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them, or a tool child's `EffectOutcome` |
-| `RigSet::Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: one user utterance of the results in call order (CONTRACT §8), or a failure; `materialise`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, or a failure |
-| `RigSet::Settle` | a run settled or failed | observers on `Settled` / `Failed` |
+| `RigSet::Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: one user utterance of the results in call order (CONTRACT §8), or a failure; then the chain `record_usage`, `judge_invalid_calls`, `read_turn`, `materialise_assistant`, `materialise_batch`, `materialise_reprompt`, `materialise_answer`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, or a failure (CONTRACT §4) |
+| `RigSet::Checkpoint` | committed graph writes are visible | the host's slot to inspect or save before the next advance |
+| `RigSet::Settle` | a run settled or failed | `append_memory` (a remembering run's append); `diagnostics::measure` when a `DiagnosticsStore` exists; observers on `Settled` / `Failed` |
+
+`systems::diagnostics` publishes `bevy_diagnostic` paths — `EFFECTS_IN_FLIGHT`, `EFFECTS_PENDING`, `RUNS_LIVE`, `ASSEMBLIES`, `RENDERS`, `CACHE_HITS` — one measurement per pass, when the app has a `DiagnosticsStore` (`RigPlugin` adds `DiagnosticsPlugin` and `TimePlugin` if absent).
 
 `tests/tool_batch.rs` pins the batch: two calls are two children dispatched in call order and one utterance of results; `ToolPolicy` sets how many fly at once; a `Judge` system's replacement reaches history while the record keeps the answer; a `Gate` denial is a skipped result and no record; a despawned child fails the run `Cancelled`; a system's `Resolution::{Repair, Retry}` renames or retries an invalid call (`Skip` and `Ignore` likewise). The corpus's nesting cases run through a key the world serves (`Handlers::register_open`), the `lookup` tool answered by a system that spawns its child `ChildOf` the call.
 
 A run leaves its graph — turns, utterances, adverts, attachments, the settled effects and a stream's fold — in the world until the host takes it out: `RunCommands::despawn_run` (on `World`, or queued on `Commands`) despawns an ended run whole and refuses one still running (`tests/run_lifetime.rs`). A host that runs for long despawns the runs it is done reading; the world keeps nothing of a run by itself. The bus takes at least one effect per tick whatever `command_capacity` says.
 
-The first steering slot is any system before `Assemble`: it edits the graph. `tests/run_graph.rs` pins the wins: an utterance despawned leaves the next request; one document entity feeds two runs; a grant link advertises a tool and its removal un-advertises it; a model swapped on the run changes the next key; a `Patch` system's rewrite reaches the handler and the record; a system before `Assemble` rewrites an utterance. `tests/run_scene.rs` pins that the graph is the state: a run saved mid-turn resumes in a fresh world to the same second request.
+The first steering slot is any system before `Assemble`: it edits the graph. `tests/run_graph.rs` pins the wins: an utterance despawned leaves the next request; one document entity feeds two runs; a grant link advertises a tool and its removal un-advertises it; a model swapped on the run changes the next key; a `Patch` system's rewrite reaches the handler and the record; a system before `Assemble` rewrites an utterance. `tests/run_scene.rs` pins that the graph is the state: a run checkpointed mid-turn resumes in a fresh world to the same second request.
 
 ## Steering with systems
 
@@ -127,17 +133,19 @@ queue. Native parsing, writer work and streamed verdicts run on pool threads;
 browser `!Send` work uses Bevy’s web executor and cannot preempt synchronous work
 on the browser thread. Keep ticking to collect ready delivery and settle effects.
 
-Collect drains at most 64 items per effect per pass, sharing 4,096 queue checks
-across all quiescence passes in one host tick. It rotates through dispatch order
-when that allowance runs out. Deltas alone do not keep quiescence running. These
-limits bound streaming delivery work, not CPU time, payload bytes, or the cost
-of user systems. A direct `RigSchedule` invocation gets one fresh allowance.
+Collect drains at most 64 items per effect per pass, sharing
+`STREAM_WORK_PER_TICK` (4,096) queue checks across the pass. It rotates through
+dispatch order when that allowance runs out, resuming after the last served
+`Seq` next pass. These limits bound streaming delivery work, not CPU time,
+payload bytes, or the cost of user systems. Every pass gets a fresh allowance.
 
 `stream_capacity` supplies the queue's shared slots, clamped to at least one;
 the single sender has one additional reserved slot. The worker awaits each send
-before polling again. The writer's own bridge is separate. Task handles remain
-in effect-owned storage. Removing `InFlight`, despawning or dropping the world
-cancels those tasks, including a worker parked on a full queue. An active native
+before polling again. The writer's own bridge is separate. The task is a
+component on the effect: `Serving(Task<Reply>)` or `Streaming { task, .. }` on
+native, the same names with the task in the non-send `Executions` table on
+wasm. Dropping the component — removing `InFlight`, despawning, dropping the
+world — cancels the task, including a worker parked on a full queue. An active native
 poll can finish before cancellation drops its future; closed recordings reject
 its late observations. Handler replacement leaves already-owned work intact.
 Streaming serial slots last through EOF and layer work after `Final`.
@@ -153,31 +161,31 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 |---|---|
 | a dispatch | `commands.spawn(PendingEffect { key, kind })`; `PendingEffect::{new, typed, custom}` |
 | dispatch order | `Seq`, stamped on add from `SeqCounter` (global, reserved) |
-| the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a scene's or a log's id |
-| taken, in flight | `InFlight { key }` plus `Serving` (initial task) or `Streaming { fold }`; `Executions` owns tasks and streams |
+| the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a checkpoint's or a log's id |
+| taken, in flight | `InFlight { key }` plus `Serving` (initial task) or `Streaming { task, events, fold, delivered }`, the task a field of the component (a row in the non-send `Executions` on wasm; `Tasks` is the `SystemParam` over both); `ServedBy(Entity)` → the handler entity (its `Serves` the inverse) |
 | a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by submitting `WorldOutcome` |
 | the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, errors, text, outcome }`, with every error and its item position retained independently of recording |
+| the record closed | `Landed { entity, id }`, an entity event `settle` triggers on the effect; it bubbles up `ChildOf` (effect → turn → run → agent), `original_event_target()` the effect |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
 | a tool call's context (beside the effect) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's `Dispatch` context; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
-| a handler | an entity with `Bound { key, descriptor }`; the erased handler in the `NonSend` `HandlerTable` |
+| a handler | an entity with `Bound { key, descriptor }` (immutable: every change is an insert) and a `Name`; the erased handler as `Handler(Served)` on the same entity (in the `NonSend` `HandlerTable` on wasm); `HandlerIndex` (key → entity), kept exact by `Bound`'s hooks |
 | the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |
-| interception | user systems in `BusSet::Gate` (patch, deny, hold) and `BusSet::Judge` (replace) |
-| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` under `replay`; for every task-served handler, `Dispatch` installs a recording observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
-| a scene | `Scene::{save, load, first_gap}` |
+| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` (an `EffectLogRecorder` installed as both); for every task-served handler, `Dispatch` installs a recording observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
+| a checkpoint | `rig_ecs::checkpoint::{save_world, load_world}` |
 | replay | `Replay::{register, load}`, by id |
 | the policy | `Policy(ServingPolicy)`: intake per tick and serial keys; `stream_capacity` bounds driver delivery queues |
 
 ## The schedule
 
-`Bus::install` adds `RigSchedule` with four sets in order to a `World`; the host runs it to quiescence by calling `run_to_quiescence` once per tick from the schedule or loop it owns (while a bus system marks `Progress`, at most `QUIESCENCE_CAP` passes). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; it does not require an `App`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
+`bus::BusPlugin` adds `RigSchedule` with four sets in order, places it after `Update` (`MainScheduleOrder::insert_after`) and `RigEnd` after it, and sets `woken_runner(idle)` as the app's runner: the schedule runs **once per `app.update()`**, and the runner updates when `Wake` is raised or every `idle` at most. Every task the bus spawns raises `Wake` as it finishes or delivers; a host system that needs another pass (a policy still deliberating) raises `wake.signal()`. `RigEnd` holds only `diagnose_idle_replay`, which runs when the pass raised nothing (`Wake::generation` unchanged). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; `BusPlugin::install(&mut World)` is the world half, for a test that drives `RigSchedule` itself with `world.run_schedule(RigSchedule)`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
 
 | set | true before | written during |
 |---|---|---|
 | `Gate` | pending effects are as spawned | a user system patches a `PendingEffect`, denies one (`EffectOutcome(Err(..))`), or holds one (`Held`) |
-| `Dispatch` | every un-held, un-answered `PendingEffect` is a candidate | the plugin takes them in `Seq` order up to the tick's intake: `Issued`, `InFlight`, `Serving`/`Streaming`/`Asked`; a record opens |
+| `Dispatch` | every un-held, un-answered `PendingEffect` is a candidate | the plugin takes them in `Seq` order up to the pass's intake: `Issued`, `InFlight`, `ServedBy`, `Serving`/`Streaming`/`Asked`; a record opens |
 | `Collect` | handlers may have finished or streamed | the plugin writes `Streamed`, `EffectOutcome`; the record closes (`settle`); `InFlight` goes |
 | `Judge` | this pass's outcomes have landed and are recorded | a user system may rewrite an `EffectOutcome` before anything after `Judge` reads it |
 
@@ -185,7 +193,7 @@ Decisions are program, never record: the record is what the handler answered, ta
 
 ## Serial serving and re-entrancy
 
-Under `ServingPolicy::serial_per_handler`, `Dispatch` takes a key only when nothing is `InFlight` on it. An effect whose ancestor (up `ChildOf`) is in flight on its own key could only wait for itself: it is refused before any dispatch with a `Request` report and no record.
+Under `ServingPolicy::serial_per_handler`, `Dispatch` takes a key only when nothing is `InFlight` on it — a query over the handler's `Serves`. An effect whose ancestor (up `ChildOf`) is in flight on its own key could only wait for itself: it is refused before any dispatch with a `Request` report and no record.
 
 ## Handlers that are systems
 
@@ -194,7 +202,7 @@ Under `ServingPolicy::serial_per_handler`, `Dispatch` takes a key only when noth
 ## Regression tests and supported boundaries
 
 The tests under [tests](tests) exercise dispatch, cancellation, bounded intake,
-streaming, registry replacement, world-served handlers, scenes, replay and WASM.
+streaming, registry replacement, world-served handlers, checkpoints, replay and WASM.
 `bus_scale` covers large pending sets; `bus_world` covers Gate/Judge and nesting;
 `bus_scene` covers save/load; `run_identity` covers scoped replay checks.
 The producer-owned corpus in `rig-verify` separately exercises the interpreters.
@@ -202,8 +210,8 @@ Passing those tests establishes their specific assertions, not arbitrary
 application scheduling or whole-program equivalence.
 
 World-served handlers answer unary effects; custom world streaming is unsupported.
-Scenes contain supported library state and registered extensions; hosts save
-other state explicitly. Nondeterministic operations belong in host handlers.
+Checkpoints hold every registered reflected component; hosts save resources
+and other state explicitly. Nondeterministic operations belong in host handlers.
 
 ## The witness: decisions beside the record
 
@@ -240,7 +248,7 @@ applications own their comparison and aggregation rules. Optional host-clock
 stamps are diagnostic data. No run, handler or provider interval is calculated.
 `crates/rig-ecs/tests/bus_witness.rs` and `run_witness.rs` cover the emitted facts.
 
-World scenes preserve named hold owners and the batch scheduling marker together.
+Checkpoints preserve named hold owners and the batch scheduling marker together.
 A restored batch releases only its own hold; independent policy holds remain in
 force. Bare `Held` barriers remain unknown holds and require host reevaluation.
 Observation enablement does not affect hold ownership or checkpoint correctness.
@@ -274,7 +282,7 @@ in-flight `EffectOutcome` records a `header.delivery_limitations` diagnostic
 and causes policy replay to refuse the log. Gate denials and Judge replacements
 retain their existing roles. A world answer submitted after Collect is
 published in the following pass. `WorldOutcome` is transient like a ready
-task; collect it before saving a scene to retain the answer.
+task; collect it before saving a checkpoint to retain the answer.
 
 `Replay::default()` supports exchange consumers: it honors available delivery
 batches, but a folded stream supplies only its final answer and recorded
@@ -296,14 +304,14 @@ unsupported: `StreamWriter` does not change which effect families stream.
 
 ## Stream and custom-answer snapshots
 
-`SceneEffect.streamed` preserves completed events, text and terminal fold.
-A completed stream is restored before its answer is inserted and its handler
-is never executed again. The nullable field is required on the wire:
-`null` establishes no saved stream state; omission could conceal a lost prefix.
-`Scene::load` and `load_with` return a result, as does the paired `WorldScene`
-loader. They reject unfinished streams with already-delivered progress before
-spawning entities. There is no generic provider cursor: save before progress
-or after completion. Safe unanswered intents restart under their saved IDs.
+A completed stream's `Streamed` (events, errors, text, terminal fold) is
+checkpoint data like any other component: it is restored before its answer is
+inserted and its handler is never executed again. `load_world` returns a
+result: it validates the whole checkpoint in a scratch world first and rejects
+unfinished streams with already-delivered progress, leaving the destination
+untouched. There is no generic provider cursor: save before progress or after
+completion. Safe unanswered intents restart under their saved IDs (a taken but
+unanswered effect loads as `Reserved(id)`).
 
 Custom outcomes store the user's JSON value in `Outcome::Custom { payload }`.
 Typed strings, scalars, arrays and objects round-trip without changing the
@@ -327,7 +335,7 @@ globally unique), use an idempotent handler, or reconcile ambiguous writes
 before resuming. Despawning or abandoning a world does not roll back writes.
 
 Save only at a schedule boundary after deferred commands have been applied,
-and persist the scene together with its matching log/checkpoint. Inserting
+and persist the checkpoint together with its matching log. Inserting
 components while loading invokes Bevy insertion observers and change
 detection; application observers must not interpret rehydration as a new
 business event. Install such observers after loading or explicitly guard
@@ -337,9 +345,9 @@ them during restoration.
 
 `rig_ecs::prelude` names what a user's systems need and nothing else: the sets (`RigSet`, `BusSet`), the components a user writes (`Cancelled`, `RequestPatch`, `Retry`, `Resolution`, `Held`, `UsesModel`, `Grant`, `Context`, `Remembers`, `Retrieves`) and the components a user reads (`Streamed`, `Outputs`, `EffectOutcome`, `RunResult`, `Settled`, `Failed`, `Usage`).
 
-`reflect` (off by default): every component of the bus and the graph derives `Reflect`, the rig-core values they hold reflect through opaque remote wrappers (`bus::reflect`, `agent::reflect` — serialized as their wire form, so an inspector shows an effect entity's payload as the log would), `reflect::install_reflect` registers them all, and `reflect::ReflectedScene` is the world as reflected data beside the serde scene: canonical (entities ordered by content, an `Entity` in a component as its index in the scene, a relationship target's indexes sorted), so a world and the world its `WorldScene` loads into export the same JSON (`tests/reflect_scene.rs`); every component round-trips through `ReflectSerializer` / `ReflectDeserializer` / `FromReflect` by value (`tests/reflect_roundtrip.rs`). The runtime-only components (`Serving`, `Streaming`, `Publishing`, `Observed`, `Asked`, `Answer`, `Typed`, and the asset handles) reflect nothing. rig-core takes no Bevy dependency.
+Every component of the bus and the graph derives `Reflect`; the rig-core values they hold reflect through opaque remote wrappers (`bus::reflect`, `agent::reflect` — serialized as their wire form, so an inspector shows an effect entity's payload as the log would); `checkpoint::register_types` (`reflect::install_reflect`) registers them all, and `RigPlugin` calls it. The checkpoint is canonical (entities in `Children` order, an `Entity` in a component as its index in the checkpoint), so a world and the world its checkpoint loads into export the same JSON (`tests/reflect_scene.rs`); every component round-trips through `ReflectSerializer` / `ReflectDeserializer` / `FromReflect` by value (`tests/reflect_roundtrip.rs`). The runtime-only components (`Serving`, `Streaming`, `Handler`, `Publishing`, `Observed`, `Asked`, `Answer`, `Typed`, and the asset handles) reflect nothing. rig-core takes no Bevy dependency.
 
-`assets` (off by default; the one feature that takes `bevy_app`, because `bevy_asset` is built on it): `assets::PromptAsset` (a `.md` / `.txt` file) and `assets::ToolDefinitions` (a `.json` array of `{ name, description, parameters }`) are `bevy_asset` assets with loaders; `PromptHandle` / `ToolsHandle` on an agent become its `Preamble` and its `Grant`s — one per definition, in file order, to the bound handler whose descriptor is the tool of that name; a definition nothing serves is not granted — the tick the asset loads, once (`Applied<A>`). `assets::AssetsPlugin` after `bevy_asset::AssetPlugin`, and the host orders `run_to_quiescence` after `assets::AssetsSet`. `tests/assets_prompt.rs`, `examples/prompt_from_assets.rs` (an in-memory source; a directory with the default one).
+`assets` (off by default): `assets::PromptAsset` (a `.md` / `.txt` file) and `assets::ToolDefinitions` (a `.json` array of `{ name, description, parameters }`) are `bevy_asset` assets with loaders; `PromptHandle` / `ToolsHandle` on an agent become its `Preamble` and its `Grant`s — one per definition, in file order, to the bound handler whose descriptor is the tool of that name; a definition nothing serves is not granted — the tick the asset loads, once (`Applied<A>`). `assets::AssetsPlugin` after `bevy_asset::AssetPlugin`; its systems run in `Update` in `assets::AssetsSet`, before `RigSchedule`. `tests/assets_prompt.rs`, `examples/prompt_from_assets.rs` (an in-memory source; a directory with the default one).
 
 ## The examples, side by side
 
@@ -347,7 +355,7 @@ Runnable programs over scripted mocks in `examples/support`: `agent_with_tools` 
 
 ## On wasm
 
-Everything a system holds is `Send + Sync` on every target. The erased handler lives in a `NonSend` resource on every target, one spelling, so a system that registers or dispatches runs on the main thread. `tests/bus_wasm.rs` drives the schedule by hand: `bevy_app`'s runner on the web is frame-scheduled by the browser.
+Everything a system holds is `Send + Sync` on every target. On native the erased handler is a component (`Handler(Served)`) and the task a field of `Serving`/`Streaming`; on wasm both are `!Send`, so they live in the `NonSend` `HandlerTable` and `Executions` behind the same component names, and a system that registers or dispatches runs on the main thread. `tests/bus_wasm.rs` drives the schedule by hand: `bevy_app`'s runner on the web is frame-scheduled by the browser.
 
 Cancellation after an original handler answer has been observed records a
 `DeliveryKind::Cancelled` boundary instead of an outcome delivery. This preserves

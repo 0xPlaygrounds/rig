@@ -31,10 +31,10 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, Conversation, Failed, Failure, InvalidCall, LoadingMemory,
-        MemoryAppendScheduled, MessageParts, Remembered, Remembering, Reprompt, RequestPatch,
-        Resolution, Retrievable, Retrieval, RetrievalKind, Retrieves, Retrieving, Retry, Route,
-        StreamRequested, ToolChoiceSpec, ToolContextSpec, ToolPolicy, Utterance,
+        Cancelled, Conversation, Failed, Failure, InvalidCall, MemoryAppendScheduled, MessageParts,
+        Remembered, Remembering, Reprompt, RequestPatch, Resolution, Retrievable, Retrieval,
+        RetrievalKind, Retrieves, Retrieving, Retry, Route, StreamRequested, ToolChoiceSpec,
+        ToolContextSpec, ToolPolicy, Utterance,
     },
     bus::{EffectOutcome, Held, IdCounter, PendingEffect, Reserved, Streamed},
     systems::RunCommands,
@@ -92,16 +92,8 @@ fn populated() -> bevy_app::App {
             rig_ecs::agent::DocumentText("text".to_owned()),
         ))
         .id();
-    world.spawn((
-        rig_ecs::agent::Context(document),
-        rig_ecs::agent::Order(0),
-        ChildOf(agent),
-    ));
-    world.spawn((
-        rig_ecs::agent::Grant(add),
-        rig_ecs::agent::Order(1),
-        ChildOf(agent),
-    ));
+    world.spawn((rig_ecs::agent::Context(document), ChildOf(agent)));
+    world.spawn((rig_ecs::agent::Grant(add), ChildOf(agent)));
     let run = world.spawn_run(agent, &[], "add one and two", false, None);
     rig_ecs::agent::checkpoint::hold_after_tool_turn(world, run, "reflection", 99)
         .expect("a future hold preserves normal settlement");
@@ -139,30 +131,42 @@ fn populated() -> bevy_app::App {
         },
         Failed(Failure::MaxTurns { limit: 1 }),
     ));
-    app.world_mut().spawn((
-        Held,
-        Reserved(EffectId::from_raw(77)),
-        Conversation("c".to_owned()),
-        Remembered,
-        Remembering,
-        (
-            MemoryAppendScheduled,
-            rig_ecs::agent::PolicyVersion("reflect-test/v1".into()),
-            rig_ecs::bus::ToolOutputs(rig_core::tool::ToolContext::new()),
-        ),
-        LoadingMemory,
-        Retrievable,
-        Retrieving,
-        Retrieval {
-            samples: 2,
-            what: RetrievalKind::Tools,
-        },
-        Retrieves(model),
-        Route(model),
-        rig_ecs::agent::Remembers(model),
-        rig_ecs::agent::Attachment(document),
-        StreamRequested(true),
-    ));
+    let held = app
+        .world_mut()
+        .spawn((
+            Held,
+            Reserved(EffectId::from_raw(77)),
+            Conversation("c".to_owned()),
+            Remembered,
+            Remembering,
+            (
+                rig_ecs::systems::BatchHeld,
+                rig_ecs::agent::RunPhase::LoadingMemory,
+            ),
+            (
+                MemoryAppendScheduled,
+                rig_ecs::agent::PolicyVersion("reflect-test/v1".into()),
+                rig_ecs::bus::ToolOutputs(rig_core::tool::ToolContext::new()),
+            ),
+            Retrievable,
+            Retrieving,
+            Retrieval {
+                samples: 2,
+                what: RetrievalKind::Tools,
+            },
+            Retrieves(model),
+            Route(model),
+            rig_ecs::agent::Remembers(model),
+            rig_ecs::agent::Attachment(document),
+            StreamRequested(true),
+        ))
+        .id();
+    rig_ecs::bus::acquire_hold(
+        app.world_mut(),
+        held,
+        rig_core::observe::Emitter::named("policy/reflect"),
+    )
+    .expect("a named owner");
     let utterance = app
         .world_mut()
         .spawn((
@@ -184,11 +188,9 @@ fn populated() -> bevy_app::App {
             },
             rig_ecs::systems::Fresh,
             rig_ecs::systems::Folded(rig_ecs::agent::OutputKind::Auto),
-            rig_ecs::agent::AwaitingModel,
-            rig_ecs::agent::ResolvingTools,
             rig_ecs::agent::Prompt(vec![rig_core::message::UserContent::text("p")]),
             (
-                rig_ecs::agent::Assembling,
+                rig_ecs::agent::RunPhase::Assembling,
                 rig_ecs::agent::ProviderRetries(2),
                 rig_ecs::agent::ProviderRetrying,
             ),
@@ -247,12 +249,29 @@ fn every_component_round_trips_through_reflection() {
     let world = app.world_mut();
     let registry = world.resource::<AppTypeRegistry>().clone();
     let registry = registry.read();
-    let entities: Vec<Entity> = world.query::<Entity>().iter(world).collect();
+    // The graph's entities: not the resource entities (`Time` and the
+    // like are the app's, registered by their own plugins).
+    let entities: Vec<Entity> = world
+        .query_filtered::<Entity, Without<bevy_ecs::resource::IsResource>>()
+        .iter(world)
+        .collect();
     let mut seen: Vec<&str> = Vec::new();
     let mut relationships: Vec<&str> = Vec::new();
     let mut checked = 0usize;
+    // The crate's components: its own and the hierarchy's, never a
+    // resource (a resource is a component on its resource entity in Bevy).
+    let ours = |registration: &bevy_reflect::TypeRegistration| {
+        let path = registration.type_info().type_path();
+        (path.starts_with("rig_ecs::") || path.starts_with("bevy_ecs::hierarchy::"))
+            && registration
+                .data::<bevy_ecs::reflect::ReflectResource>()
+                .is_none()
+    };
     for (registration, component) in registry.iter_with_data::<ReflectComponent>() {
         let path = registration.type_info().type_path();
+        if !ours(registration) {
+            continue;
+        }
         for entity in &entities {
             let Some(value) = component.reflect(world.entity(*entity)) else {
                 continue;
@@ -297,6 +316,7 @@ fn every_component_round_trips_through_reflection() {
     // Every registered component occurs: the vocabulary is covered.
     let missing: Vec<&str> = registry
         .iter_with_data::<ReflectComponent>()
+        .filter(|(registration, _)| ours(registration))
         .map(|(registration, _)| registration.type_info().type_path())
         .filter(|path| !seen.contains(path))
         .collect();
@@ -332,6 +352,8 @@ fn every_component_round_trips_through_reflection() {
             "rig_ecs::agent::checkpoint::TurnResults",
             "rig_ecs::agent::content::parts::EditTarget",
             "rig_ecs::agent::content::parts::EditedBy",
+            "rig_ecs::bus::handlers::ServedBy",
+            "rig_ecs::bus::handlers::Serves",
         ],
         "exactly the relationships hold an Entity"
     );

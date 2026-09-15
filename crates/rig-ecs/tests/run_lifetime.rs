@@ -6,26 +6,25 @@
 //! | `despawn_run` takes an ended run and its whole graph out of the world; it refuses a run that has not ended | `despawn_run_removes_an_ended_run_and_refuses_a_live_one` |
 use crate::run_support;
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::serve::ServingPolicy;
 use rig_ecs::{
     agent::{Runs, Settled},
-    bus::{Bus, Policy, run_to_quiescence},
-    systems::{RunBusy, RunCommands, install_agent},
+    bus::Policy,
+    systems::{RunBusy, RunCommands},
 };
 use run_support::*;
 
 fn app_with_capacity(command_capacity: usize) -> App {
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy {
-        command_capacity,
-        ..ServingPolicy::default()
-    })
-    .ambiguity_detection(LogLevel::Error)
-    .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(
+        rig_ecs::RigPlugin::with_policy(ServingPolicy {
+            command_capacity,
+            ..ServingPolicy::default()
+        })
+        .ambiguity_detection(LogLevel::Error),
+    );
     app.finish();
     app.cleanup();
     app

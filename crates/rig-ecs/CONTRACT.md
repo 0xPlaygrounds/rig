@@ -14,9 +14,9 @@ explained in [the test guide](../../tests/ecs_parity/README.md).
 |---|---|---|---|
 | `model` | none: always `null`; the model is the handler key the effect is dispatched to (`UsesModel` on the run, else the agent, → the handler entity's `Bound.key`) | — | every golden `/records/0/kind/request/model` |
 | `chat_history[0]` | the effective preamble as `system`, when there is one: the agent's `Preamble` (the run's override first) joined with the output mode's augmentation by `"\n\n"` (§3); no preamble and no augmentation is no system message | first | `anthropic_completion_smoke` `/…/chat_history/0`; `anthropic_request_shape_without_preamble` (no system message); `anthropic_request_shape_append_preamble` (the preamble's own `"\n"` join is the program's, stored already joined) |
-| `chat_history[1..]` | every `Utterance` `ChildOf` the run, in `Order`, reconstructed from its typed content children in sibling `Order`: the prior history the run was spawned with, then the prompt, then — turn by turn — the assistant utterance `Materialise` spawned and the reprompt utterance it added | `Order` ascending | `anthropic_request_shape_prior_history` `/…/chat_history` (system, user, assistant(id null), user); `mock_output_tool_text_reprompt` `/records/1/…/chat_history` (…, assistant text, user reprompt); `mock_output_tool_missing_field_reprompt` `/records/1/…/chat_history` (…, assistant call, user tool result) |
-| `documents` | the turn's `Attachment` links, in `Order`, each to a document entity (`DocumentId`, `DocumentText`, `DocumentProps`) — the agent's `Context` links are attached to every turn by `Advance` | link `Order` | `anthropic_request_shape_static_context` `/…/documents` (`static_doc_0`, `static_doc_1`; no `additional_props` key when empty) |
-| `tools` | the turn's `Advert` links, in `Order`, each to a tool handler entity whose `Bound.descriptor.family` is `Tool { name, description, parameters }` — the agent's `Grant` links, advertised by `Advance`; then the output tool (§3) when the resolved mode is `Tool` | grant `Order`, output tool last | `anthropic_request_shape_tool_choice_none` `/…/tools/0` (`add`, its description and parameters verbatim from the descriptor); `anthropic_output_tool_unary` `/…/tools/0` (`final_result`) |
+| `chat_history[1..]` | every `Utterance` `ChildOf` the run, in sibling (`Children`) order, reconstructed from its typed content children in sibling (`Children`) order: the prior history the run was spawned with, then the prompt, then — turn by turn — the assistant utterance `Materialise` spawned and the reprompt utterance it added | sibling (`Children`) order | `anthropic_request_shape_prior_history` `/…/chat_history` (system, user, assistant(id null), user); `mock_output_tool_text_reprompt` `/records/1/…/chat_history` (…, assistant text, user reprompt); `mock_output_tool_missing_field_reprompt` `/records/1/…/chat_history` (…, assistant call, user tool result) |
+| `documents` | the turn's `Attachment` links, in sibling (`Children`) order, each to a document entity (`DocumentId`, `DocumentText`, `DocumentProps`) — the agent's `Context` links are attached to every turn by `Advance` | link sibling (`Children`) order | `anthropic_request_shape_static_context` `/…/documents` (`static_doc_0`, `static_doc_1`; no `additional_props` key when empty) |
+| `tools` | the turn's `Advert` links, in sibling (`Children`) order, each to a tool handler entity whose `Bound.descriptor.family` is `Tool { name, description, parameters }` — the agent's `Grant` links, advertised by `Advance`; then the output tool (§3) when the resolved mode is `Tool` | grant sibling (`Children`) order, output tool last | `anthropic_request_shape_tool_choice_none` `/…/tools/0` (`add`, its description and parameters verbatim from the descriptor); `anthropic_output_tool_unary` `/…/tools/0` (`final_result`) |
 | `temperature` | `Temperature` (run, else agent) | — | `anthropic_completion_smoke` (`null`), `anthropic_output_tool_unary` (`0.0`) |
 | `max_tokens` | `MaxTokens` | — | `anthropic_request_shape_max_tokens` (`32`) |
 | `tool_choice` | `ToolChoiceSpec`, unchanged (`"none"`, `"required"`, `{"specific":{"function_names":[…]}}`) | — | `anthropic_request_shape_tool_choice_none`; `anthropic_output_tool_choice_required`; `anthropic_output_tool_choice_specific_output` |
@@ -24,18 +24,20 @@ explained in [the test guide](../../tests/ecs_parity/README.md).
 | `output_schema` | `Output.schema` when the resolved mode is `Native`; `null` otherwise | — | `anthropic_request_shape_output_schema_unary` (the schema verbatim, unsorted); `anthropic_output_prompted_unary` (`null`); `anthropic_output_tool_under_none_degrades` (the schema: `Tool` degraded to `Native`) |
 | `stream` (the effect's, beside the request) | the run's `StreamRequested` | — | every `*_streamed` golden |
 
-The fold is the only constructor of a `CompletionRequest` in the crate (`tests/core/rig_ecs_bus_module.rs::the_agent_modules_hold_the_discipline`).
+The fold is the only constructor of a `CompletionRequest` in the crate (`policy::fold_request`; `tests/core/dependency_graph.rs` guards what rig-ecs may depend on).
 
 A run is spawned through `systems::RunCommands` — `spawn_run(agent, history,
 prompt, streamed, max_turns)` on `World` (at once) or on `Commands` (the
 entity reserved, the work queued: the run exists when the commands apply,
 and `Advance` sees it on the first schedule pass after that). Either form
-spawns the `RunBundle` (`Run`, `RunOf`, `RunSeq`, `StreamRequested`,
-`Cursor`, the retry tallies, `OutputToolName`, `Usage`, `Scope`) with the
-`Prompt` component and an optional `MaxTurns`, the history utterances
-`ChildOf` the run in `Order`, then `Ready`, then opens the run. A host
-assembling a run by hand spawns the same bundle and `Prompt`, its
-utterances, and writes `Ready` last. `open_runs` (first in
+spawns the run — `Run` `#[require]`s `Cursor`, `OutputRetries`,
+`InvalidRetries`, `ProviderRetried`, `OutputToolName`, `Usage` and
+`StreamRequested`, and its `on_add` hook stamps `RunSeq`, `Scope` and
+`Name` — with `RunOf`, the `Prompt` component and an optional `MaxTurns`, the
+history utterances `ChildOf` the run in sibling (`Children`) order, then
+`Ready`, then opens the run. A host assembling a run by hand spawns
+`(Run, RunOf(agent), Prompt, ..., Ready)`, its utterances, and writes
+`Ready` last. `open_runs` (first in
 `RigSet::Advance`) opens every `Ready` run that has no phase and no
 ending: the `Prompt` is spawned as the run's last utterance and taken off
 the run, then the first phase — `Assembling`, or `LoadingMemory` with the
@@ -48,11 +50,11 @@ A user utterance's content is the caller's, verbatim: `spawn_run` takes a
 `Prompt` (a user message's parts), and those parts — text and image, in the order given, each
 image's bytes or URL, media type and options unchanged — are what every
 request of the run carries, what memory appends and loads (§11), and what a
-scene saves and restores (§13); the assistant's canonical part order
+checkpoint saves and restores (§13); the assistant's canonical part order
 (`rig_core::message::ordered_assistant_content`) does not apply to user
 content. Pinned by the `*_image_*` goldens
 (`inline_mixed_order`: text, image, text, the same image, text; `inline_tool_unary`:
-the image in the second request and after a scene load; `inline_followup`: the
+the image in the second request and after a checkpoint load; `inline_followup`: the
 image loaded from memory, once, before a text-only prompt).
 
 Content entities live in `agent::content::parts`: `TextPart`, `ImagePart`,
@@ -84,14 +86,14 @@ to its allocation limit. `run_content_binary` and `run_content_parts` cover sour
 all existing content variants, nested JSON/image results, metadata and shared
 asset lifetime.
 
-Cached utterance views: `assemble` keeps the DTO it renders for an utterance
+Cached utterance views: `gather_turn` keeps the DTO it renders for an utterance
 on that utterance as `content::cache::CachedMessage` — the verbatim
 `MessageParts` `read_message` gives, before any request edit or limit — and
 reads it on later turns instead of walking the part subtree again. A view is
-dropped by Bevy change detection, relative to `assemble`'s own last run:
+dropped by Bevy change detection, relative to `gather_turn`'s own last run:
 a change, addition or removal of any component of the utterance (`Role`,
 `MessageId`, `Children`) or of any entity in its part subtree at any depth
-(the typed parts, `Order`, `ChildOf`, a tool result's `Children`), a
+(the typed parts, `ChildOf`, a tool result's `Children` — a sibling reorder is the parent's changed `Children`), a
 `write_message`, a reparenting into or out of it, and an asset collection
 (`collect_binary_assets` / `BinaryAssets::retain`, keyed by the store's
 generation). Removals reach the cache through `RemovedComponents`, which
@@ -103,7 +105,7 @@ runs). A view made by another `ENCODER_VERSION` is a miss. The turn's
 over a fresh render, and an utterance an edit targets is rendered with the
 edit, uncached. The request is unchanged: every folded `chat_history` equals
 a fresh uncached render (`run_message_cache.rs`). Views are runtime state, never
-scene or memory data (§13); `AssemblyStats` counts renders, hits, evictions
+checkpoint or memory data (§13); `AssemblyStats` counts renders, hits, evictions
 and assemblies for measurement.
 
 ## 2. The verbatim strings
@@ -127,7 +129,7 @@ With a schema, a reserved name commits `Tool` mode regardless of the requested
 mode or tool choice. A granted tool using a reserved or already minted name
 causes `Failed(OutputToolCollision)` before provider dispatch. Later configuration
 changes cannot rename an already minted output tool. Without a schema,
-configuration alone does not advertise a tool. Scene persistence and replay
+configuration alone does not advertise a tool. Checkpoints and replay
 identity include all three configuration fields. These contracts are exercised
 by `tests/run_output_tool_config.rs`; the root extractor-usage cassette counterparts
 exercise the original `submit` name, extraction description, and unaugmented
@@ -150,6 +152,21 @@ preamble through real provider adapters.
 `callable`: `None`/`Auto`/`Required` permit; `None` forbids; `Specific` permits iff it names the output tool (`anthropic_output_tool_choice_specific_output`). The mode is pinned on the turn (`systems::Folded`) once folded.
 
 ## 4. Reading the answer (`Materialise`)
+
+The set is a chain, one system per transition, in run (`RunSeq`) order:
+`land_memory` (§11), `resolve_invalid_defaults`, `land_batch` (§8.1),
+`record_usage` (the completion's usage into the run's `Usage`, once),
+`judge_invalid_calls` (§8.2), `read_turn` (`Materialised`; a provider
+retry or failure, §5; an invalid call as an entity; else the turn's content
+and its granted tools on the turn as `systems::TurnRead` for the rest of
+the pass), `materialise_assistant` (the assistant utterance, a `Retry`,
+§9.4, or the empty answer), `materialise_batch` (§8.1),
+`materialise_reprompt` (the two reprompts while the budget lasts),
+`materialise_answer` (the run settles on what is left). A content error
+writing the graph — an image the store refuses, a part subtree that does
+not render — ends that run `Failed(Content)` and no other: the chain goes
+on to the next run in the same pass
+(`run_content_parts::a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass`).
 
 | the turn | what happens | pinned by |
 |---|---|---|
@@ -179,8 +196,8 @@ preamble through real provider adapters.
 | a completion whose outcome is a provider `ErrorReport` with `retryable` set, while `ProviderRetried < ProviderRetries` (the run's, else the agent's, else 3), is re-issued: the lost turn is read (`Materialised`) and leaves no utterance, `ProviderRetried` counts up, the run is `Assembling` under `ProviderRetrying`, and `Advance` spawns the next turn without checking or spending `MaxTurns`; the witness gets `rig-ecs/agent/provider_retry` (attempt, budget, reason) | `tests/run_provider_retry.rs` |
 | a provider's reply becomes an `ErrorReport` through the one funnel (`rig_core::provider_response`): `kind: provider_response`, `http_status` the reply's, `retryable` by the status table (`rig_core::error::retryable_status`), `code` the transport's own when it gave one apart from the body, else the string the body names under `error.code`, `error.status` or `error.type` (`ProviderResponseError::machine_code`), else `None`; the body itself stays on `provider_response.body` | every `ecs_faults` setup cell; `provider_response::tests` |
 | a non-retryable report, a cancellation, or a spent budget ends the run `Failed(Provider)` with that report, as before; no tool is ever re-run by a retry, and the log holds every attempt as its own effect | `tests/run_provider_retry.rs` |
-| time is the host's: the library issues the retry on the next pass; a backoff is a hold a `Gate` system acquires on the re-issued effect and releases when due, so replay needs no clock | `tests/run_provider_retry.rs` (`a_host_hold_is_where_a_backoff_goes...`) |
-| `RunCommands::cancel_run(run, reason)` writes `Cancelled(reason)` (§9.1) — at once on `World`, when the commands apply on `Commands`; a cancel queued behind a `spawn_run` ends the run before its first pass, and no request is ever made; an ended run keeps its ending; a non-run is left alone; a run cancelled before it opened (`Ready` by hand, no pass yet) fails with its unread `Prompt` still on it, and a scene saves that prompt with the failed run | `tests/run_commands.rs` (`a_cancel_queued_behind_the_spawn_ends_the_run_before_it_starts`) |
+| a backoff is a hold on the re-issued effect: with `agent::Backoff { base, max }` on the run (else the agent), `systems::backoff::hold_retries` (after `RigSet::Patch`, before `Release`) holds the retry turn's completion as `rig-ecs/backoff` the pass it is folded and a `bevy_time` delayed command releases it after `base × 2^(attempt-1)` (≤ `max`, `systems::backoff::RetryAttempt(n)` on the retry turn) on the world's clock — a paused `Time<Virtual>` holds it until the host advances the clock, so a replay sees no wall time; without `Backoff` the retry is re-issued on the next pass, and a host `Gate` system may hold it itself | `tests/run_provider_retry.rs` (`a_backoff_on_the_agent_delays_the_retry_on_the_worlds_clock`, `a_host_hold_is_where_a_backoff_goes...`) |
+| `RunCommands::cancel_run(run, reason)` writes `Cancelled(reason)` (§9.1) — at once on `World`, when the commands apply on `Commands`; a cancel queued behind a `spawn_run` ends the run before its first pass, and no request is ever made; an ended run keeps its ending; a non-run is left alone; a run cancelled before it opened (`Ready` by hand, no pass yet) fails with its unread `Prompt` still on it, and a checkpoint saves that prompt with the failed run | `tests/run_commands.rs` (`a_cancel_queued_behind_the_spawn_ends_the_run_before_it_starts`) |
 | `RunCommands::despawn_run(run)` takes an ended run and its whole graph out of the world; refused (`RunBusy::{NotARun, Unsettled, InFlight}`, nothing despawned) while the run has not ended or an effect of it is in flight or unanswered. The `World` form returns the refusal; the `Commands` form triggers `RunDespawnRefused { entity, reason }` on the run when the command applies, `NotARun` on an id an earlier command already despawned. A run despawned before or while `spawn_run` populates it (a host `Add<Run>` observer refusing it) is simply gone: the steps after the despawn do nothing, and no utterance is spawned under it | `tests/run_lifetime.rs`; `tests/run_commands.rs` (`a_queued_despawn_is_refused_by_event_while_the_run_lives`, `a_reserved_run_despawned_before_it_was_populated_is_gone`, `a_second_queued_despawn_of_a_gone_run_is_refused_as_not_a_run`) |
 
 ## 6. The header
@@ -226,7 +243,7 @@ A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool
 | a replaced result | history holds the replacement, the record the handler's answer (a `Judge` rewrite of the child's `EffectOutcome`) | `anthropic_hooks_replace_tool_result` `/records/1/outcome` (`42`) vs `/records/2/…/chat_history/3` (`99`) |
 | a patched call | the record holds the patched arguments, history the model's | `anthropic_hooks_patch_tool_args` `/records/1/kind/args` (`{"x":40,"y":2}`) vs `/records/2/…/chat_history/2` (`{17, 25}`) |
 | the status, as data | beside each `ToolResultPart` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
-| the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `assemble` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
+| the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `gather_turn` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
 
 ### 8.2 Invalid calls beside the batch
 
@@ -254,7 +271,7 @@ empty set denies ordinary tools without changing the provider request. Explicit
 bindings may reference unadvertised handlers. Assembly saves the effective
 snapshot on each turn; changing the run policy affects later turns. That
 snapshot exposes executable and allowed diagnostic sets after a failure and
-survives a scene. Reserved output names cannot collide with execution bindings;
+survives a checkpoint. Reserved output names cannot collide with execution bindings;
 automatically selected output names avoid both bindings and advertisements.
 Replay identity includes explicit run/agent access and handler descriptors;
 required rows also retain dependencies from saved turns after a policy change.
@@ -314,23 +331,23 @@ No hook trait: a user system writes a component at a set boundary and a library 
 
 ### 9.3 The completion call: `RequestPatch` on the turn
 
-`content::parts::RequestPartEdit` adds entity targeting: spawn an ordered link
-`(RequestPartEdit, EditTarget(part), Order, ChildOf(fresh_turn))` before Assemble.
+`content::parts::RequestPartEdit` adds entity targeting: spawn a link
+`(RequestPartEdit, EditTarget(part), ChildOf(fresh_turn))` before Assemble.
 `Text` replaces only a TextPart's text, preserving annotations; `Remove` omits the
 part and its nested result items from this request. Stored history and siblings
-are unchanged. Edits run in sibling Order; the last edit to a target wins, and
-duplicate edit orders fail. A removed parent takes precedence over edits to its
-children. Targets must belong to this run's history. Missing targets or orders,
-wrong types and combination with replacement RequestPatch.history fail before
-model dispatch. Successful folds consume the edit links; scene relationships
-remap them when saved before folding. Gate/Judge systems can query these same
+are unchanged. Edits run in sibling (`Children`) order; the last edit to a
+target wins. A removed parent takes precedence over edits to its children.
+Targets must belong to this run's history. Missing targets, wrong types and
+combination with replacement RequestPatch.history fail before
+model dispatch. Successful folds consume the edit links; a checkpoint
+remaps them when saved before folding. Gate/Judge systems can query these same
 part entities and edit their typed components persistently; those writes affect
 subsequent folds, while an already captured PendingEffect remains a request
 snapshot. Effect denial uses the existing Gate outcome path and does not mutate
 content implicitly. `run_content_edits` covers targeting, ownership and remapping.
 
 
-`agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `assemble` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
+`agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `gather_turn` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
 
 | field | what the fold does | pinned by |
 |---|---|---|
@@ -344,7 +361,7 @@ content implicitly. `run_content_edits` covers targeting, ownership and remappin
 
 ### 9.4 The model turn: `Retry` and a replaced answer
 
-| the hook | the write | what `materialise` does | pinned by |
+| the hook | the write | what `materialise_assistant` does | pinned by |
 |---|---|---|---|
 | `on_model_turn_finished` → `retry_with_feedback(text)` | `agent::Retry { feedback: Some(text) }` on the turn, in `RigSet::Judge` | the turn (unless empty) and a user utterance of the feedback become history; another turn; nothing is committed as an answer; text turns only (a tool-bearing turn is refused, `Failed(Unsupported)`); an empty turn with a retry asks again instead of settling on the empty answer | `anthropic_hooks_demand_done` `/records/1/…/chat_history/2..3`; `steer_hooks::a_retry_written_on_an_empty_turn_asks_again` |
 | `repeat` | `Retry { feedback: None }` | nothing becomes history; another turn | `rig_agent::run::AgentRun::retry_model_turn` docs |
@@ -359,7 +376,7 @@ A `PendingEffect` the system spawns `ChildOf` the run at the hook's moment (its 
 | run start | `On<Add, Run>` observer: before the first completion is folded, so its `Seq` is lower | `anthropic_host_custom_at_start{,_streamed}` (`[Custom, Completion]`), `anthropic_host_custom_twice_{serial,concurrent}` (`[X, X, C]`), `anthropic_hooks_lookup_before_run` (`[Tool, C, Tool, C]`: a tool call `add(1, 2)` on the tool's key), `openai_host_embed_prompt{,_streamed}` / `gemini_breadth_embed_prompt` (`Embed { inputs: Texts([prompt]) }`), `mock_oracle_rerank` (`Rerank { query: prompt, documents }`), `mock_leftovers_five_thousand_events` (two hundred notes) |
 | before a completion | a system on `Added<Fresh>` before `Assemble` (the note's `Seq` precedes the completion's) | `anthropic_host_custom_at_completion_call` (`[X, C]`) |
 | after a tool answered | `On<Add, EffectOutcome>` on a tool child | `anthropic_host_custom_at_outcome{,_streamed}`, `{gemini,openai}_breadth_custom_at_outcome` (`[C, T, X, C]`), `anthropic_oracle_concurrent_notes` (`[C, T, T, X, X, C]`) |
-| settled | `On<Add, Settled>` observer; the world ticks to quiescence after the run ends | `anthropic_host_custom_at_settled` (`[C, X]`), `anthropic_host_custom_start_and_settled` |
+| settled | `On<Add, Settled>` observer; the effect it dispatches is taken on the app's next update | `anthropic_host_custom_at_settled` (`[C, X]`), `anthropic_host_custom_start_and_settled` |
 | a key nothing serves | the system finds no `Bound` for the key and dispatches nothing | `anthropic_host_custom_unserved` (`[C]`) |
 | an effect with no wire form | `PendingEffect::custom` refuses it; nothing is spawned | `mock_leftovers_unserializable_from_hook` (`[C]`) |
 
@@ -413,22 +430,25 @@ bytes. Default replay supports final-answer/exchange consumption and returns
 recorded cancellation errors; policy replay instead requires the same policy
 to cancel the effect without inventing an outcome for it. Missing metadata
 cannot establish policy fidelity; inconsistent metadata or an unreproduced
-cancellation is a diagnostic. Cancellation is checked only after the entire
-`RigSchedule` is quiescent, using the world after deferred policy commands.
-A policy may mark `Progress` while advancing through multiple Judge passes
-before removing the effect; replay must not insert a cancellation outcome
-between those passes. A policy that becomes idle without cancelling is refused.
-Batch identity is not elapsed time.
+cancellation is a diagnostic. A pass is one `RigSchedule` run (one
+`app.update()`); cancellation is checked in `RigEnd`, after the pass and its
+deferred policy commands, and only when the pass was idle: a pass in which
+nothing raised `bus::Wake` (no task landed, no delivery arrived, no system
+signalled). A policy that needs another pass before removing the effect
+raises `wake.signal()` and is given that pass first; replay does not insert a
+cancellation outcome between those passes. A policy that goes idle without
+cancelling is refused. Batch identity is not elapsed time.
 
-A future effect missing at Collect is diagnosed only after the complete
-`RigSchedule` is quiescent. Later continuation systems can advance through
-multiple phases, marking `Progress`, before minting that effect. Queued intake
-and held requests can await another update or host input. A refusal installs
-`ReplayFailure`; subsequent recorded effects also fail instead of falling
-through to ordinary collection and exposing unpaced successful answers.
-Hosts driving `RigSchedule` directly must reset `Progress` before each pass
-and call `bus::delivery::diagnose_idle_replay` after a complete pass reports no
-progress; `run_to_quiescence`, which the host calls once per tick, does this.
+A future effect missing at Collect is diagnosed the same way: after an idle
+pass. Later continuation systems can advance through multiple passes, raising
+`Wake`, before minting that effect. Queued intake and held requests can await
+another update or host input. A refusal installs `ReplayFailure`; subsequent
+recorded effects also fail instead of falling through to ordinary collection
+and exposing unpaced successful answers. `BusPlugin` runs
+`bus::delivery::diagnose_idle_replay` in `RigEnd` (after `RigSchedule` in
+`MainScheduleOrder`) while a `ReplayDelivery` plan is installed; a host
+driving `RigSchedule` by hand runs `RigEnd` after it. The two host systems in
+`tests/bus_delivery.rs` show a policy signalling `Wake` while it deliberates.
 
 Policy observers may use `On<Add, EffectOutcome>` or systems ordered after
 all of `BusSet::Collect`, preserving their relevant live/replay ordering.
@@ -438,7 +458,7 @@ Collect publishes in submission order; submissions after Collect land in the
 next pass. A direct in-flight `EffectOutcome` insertion records a delivery
 limitation and makes policy replay refuse that recording. Gate denials and
 Judge replacements remain supported. World answer inboxes are transient;
-collect them before a scene save to preserve the submitted result.
+collect them before a checkpoint save to preserve the submitted result.
 
 `run_delivery.rs` covers reversed concurrent arrivals and coincident answers
 under different archetypes; `bus_delivery.rs` covers opposite first-visible
@@ -516,7 +536,7 @@ as saved (`Register`):
 | the world holds | `materialize_bindings` |
 |---|---|
 | a binding on an entity nothing serves, no `Bound` | built, `Bound` inserted, served: `materialized` |
-| a binding beside a `Bound` nothing serves (a scene load) | built; the built descriptor must equal the saved one, else `DescriptorDrift`; served: `materialized` |
+| a binding beside a `Bound` nothing serves (a checkpoint load) | built; the built descriptor must equal the saved one, else `DescriptorDrift`; served: `materialized` |
 | a binding beside a `Bound` something serves (a hand-registered handler, an earlier materialization, a replayer) | left alone: `kept` — the existing handler wins, no credential resolved, no transport built |
 | a binding whose key another entity's `Bound` holds — served there (a hand registration made before the binding's own `Bound` was spawned, a replayer) or not, and whether or not the binding carries a `Bound` of its own | left alone: `kept` — the existing handler wins, the binding's own `Bound` untouched |
 | two binding entities with one key | `DuplicateKey` |
@@ -532,45 +552,51 @@ a resolver that maps the reference `cassette` to the cassette's key and a
 factory that hands out the cassette transport, and every cell's request is
 the byte-identical one a hand-registered adapter sent.
 
-## 13. Resume is a scene load; two runs
+## 13. Resume is a checkpoint load; two runs
 
-The graph scene includes typed content children and a `binaries` table in
-content-hash order. Each retained graph payload is written once in that table;
-part sources reference its SHA-256 identity. Loading builds an isolated merged
-asset store under the destination's limits and validates content in a separate
-world before inserting destination graph entities. Hash mismatches, missing
-handles, duplicate asset IDs/orders, invalid content parents and malformed
-part components are refused before destination mutation. Relationships are
-remapped through scene entity indices. `run_content_scene` tests these guarantees
-with populated destination worlds and shared payloads.
+`rig_ecs::checkpoint::Checkpoint` is the world as reflected data:
+`entities` (every entity with a registered reflected component — the graph,
+the effects, the handlers' `Bound`s, a host's own components once the host
+registers the type with `#[reflect(Component)]` in the world's
+`AppTypeRegistry` — parents before children, siblings in `Children` order,
+each component under its type path, an `Entity` in a component as the index
+of that entity in the checkpoint), `counters` (`next_run`, `next_id`) and
+`binaries` (the binary store, every retained payload once per content hash).
+`save_world(&mut World)` takes it; `load_world(&Checkpoint, &mut World)`
+spawns it and returns `Loaded` (the entities by checkpoint index;
+`Loaded::with::<C>` filters them). `Checkpoint::{to_json, from_json}` are the
+wire form. `checkpoint::register_types` registers every component and wrapper
+of the crate; `RigPlugin` calls it.
 
-`WorldScene` JSON uses the required `rig-ecs/world/2` envelope. Its binary table
-also pools copies in captured effect requests, stream logs and extension values.
-References preserve the original base64 spelling or raw-byte representation;
-reserved reference-shaped application objects are escaped and restored exactly.
-In-memory transport DTOs and effect logs retain their existing values. The JSON
-reader rejects duplicate keys and limits nesting to 64, tree nodes to 1,000,000,
-and accounted bytes to 512 MiB, including expanded references. The serializer
-checks the transformed envelope against the reader's limits before succeeding.
-Before DTO validation, loading separately charges every typed binary handle
-against a cumulative 512 MiB expansion budget, including repeated handles. Raw bytes count
-as individual JSON nodes. `WorldScene::from_json` additionally checks input byte
-length before parsing; generic serde input is bounded during tree construction,
-although its deserializer may allocate an individual string before visitation.
-The binary table retains the asset-count and decoded-byte limits from section 1.
-Scenes using the previous envelope must be recreated. `run_content_scene` exercises
-effect-copy pooling, literal escaping and missing references; the wire reader's
-unit tests exercise depth, byte, node and duplicate-key rejection.
+In-flight state (`Serving`, `Streaming`, `Handler`, the cache views) is not
+reflected and never saved; relationship targets (`Children`, `Serves`, …) are
+rebuilt by their sources' hooks at load, in checkpoint order. An unregistered
+host component is simply not saved
+(`run_scene_extensions.rs::unregistered_state_is_outside_the_checkpoint_contract`);
+a saved type path the loading world has not registered is refused
+(`missing_registration_and_invalid_payload_are_refused_before_spawning`).
+Resources, system-local and external state are host-owned.
+
+Loading validates the whole checkpoint in a scratch world first — the binary
+store merged with the destination's under the destination's limits, every
+utterance readable, content parents and part components well formed, request
+edits linking a turn to a part, `Ready` and `Prompt` on runs only, batch holds
+with their barrier, owner and slot — so a refusal leaves the destination
+untouched; `run_content_scene` exercises this with populated destination
+worlds and shared payloads (hash mismatches, missing handles, invalid parents).
+Part sources reference payloads by SHA-256 identity; the store retains the
+asset-count and decoded-byte limits from section 1.
 
 
-The bus scene preserves consumed effect IDs even when their entities have been
-removed. Its optional `next_id` stores allocation history only when surviving
-saved IDs cannot reconstruct it; loading takes the maximum with the destination
-counter. Contradictory counters and an actual saved ID of `u64::MAX` are refused
-before graph/effect spawning. `u64::MAX` as a next-counter means exhausted: no
-fresh ID is minted or recorded, and dispatch returns a request error. Existing
-reserved IDs below that sentinel can still resume. This prevents ID reuse; it
-does not make an unanswered external write safe to repeat.
+A checkpoint preserves consumed effect ids even when their entities have been
+removed: `counters.next_id` is taken as the maximum with the destination's
+`IdCounter`, and every `Reserved` or `Issued` loaded bumps the counter past
+it. `Seq` is re-stamped in saved order after everything already in the
+world. `u64::MAX` as the id counter means exhausted: no fresh id is minted
+or recorded, and dispatch returns a request error; a reserved id of
+`u64::MAX` is refused at dispatch. Existing reserved ids below that sentinel
+still resume. This prevents id reuse; it does not make an unanswered
+external write safe to repeat (`bus_scene.rs`).
 
 `Streamed.errors` retains every error report and its zero-based position among
 all stream items, even after the first terminal outcome and without a recorder
@@ -581,36 +607,35 @@ Policy-visible replay reconstructs the same error observations when the log kept
 the error items. A folded-only log does not acquire omitted error evidence.
 
 Completed stream effects retain `Streamed` events, errors, text and terminal outcome
-through JSON scenes and load without serving again (`bus_scene.rs`). The
-required nullable `SceneEffect.streamed` field distinguishes no state from
-an omitted prefix. Load is fallible: unfinished streams with observed progress
-are refused before the bus or paired graph is spawned. No restart cursor is
-recorded. Unanswered intents with no stream progress may restart under saved
-IDs; this is a cut restriction, not arbitrary mid-flight forking.
+through a checkpoint and load without serving again (`bus_scene.rs`). Load is
+fallible: an unfinished stream with observed progress (events or errors, no
+`EffectOutcome`) is refused in the scratch world, before the destination is
+touched. No restart cursor is recorded. An effect taken but unanswered
+(`InFlight`, `Issued`, no outcome) loads as `Reserved(id)` and `Dispatch`
+re-issues it under its saved id; this is a cut restriction, not arbitrary
+mid-flight forking.
 
-Only supported library state and explicitly registered graph extensions are
-saved. Effect-entity application components, resources, system-local and
-external state are host-owned. Insertion observers/change detection can fire
-on load; install application observers afterward or guard restoration.
+Insertion observers/change detection can fire on load; install application
+observers afterward or guard restoration.
 
-Provider bindings (§12.1) are scene data: `WorldScene.bindings` holds every
-`ProviderBinding` the world carries, by key, each with the descriptor its
-`Bound` held when saved (none for one never materialized). Loading is
-data only — no credential is resolved, no transport built, no client made:
-each binding is spawned as it was, bound under its saved descriptor so the
-graph's links to the key resolve, and left unserved (a dispatch to it is
-`HandlerUnavailable`) until the host calls `materialize_bindings`, which
-must then build the saved descriptor exactly. A key the loading world
-already serves keeps its handler — the binding rides on that entity and a
-later materialization reports it `kept` — so a world over the log's
-replayers loads the same scene unchanged. Refused before any spawn: a key
-bound twice in the scene, a descriptor saved under another key, a served
-key of another family. Pinned by `run_binding.rs`
-(`a_scene_loads_its_bindings_as_data_and_materializes_on_the_hosts_word`,
-`a_scene_load_validates_its_bindings`) and by every world-resume cell
-whose restored world materializes `golden/model:default` from the scene.
+Provider bindings (§12.1) are checkpoint data like any other component: a
+`ProviderBinding` rides on its entity, beside the `Bound` the handler held
+when saved (none for one never materialized). Loading is data only — no
+credential is resolved, no transport built, no client made: the entity is
+spawned as it was, bound under its saved descriptor so the graph's links to
+the key resolve, and left unserved (a dispatch to it is `HandlerUnavailable`)
+until the host calls `materialize_bindings`, which must then build the saved
+descriptor exactly. A checkpoint entity whose `Bound` names a key the loading
+world already serves merges into that entity — the existing handler wins,
+every link to the checkpoint's handler resolves to it, and a later
+materialization reports it `kept` — so a world over the log's replayers loads
+the same checkpoint unchanged; a key served here by another family is
+refused before any spawn. Pinned by `run_binding.rs`
+(`a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word`,
+`a_checkpoint_load_validates_its_bindings`) and by every world-resume cell
+whose restored world materializes `golden/model:default` from the checkpoint.
 
-`Ready` and an unread `Prompt` are scene data (`ready`, `prompt`): a run
+`Ready` and an unread `Prompt` are checkpoint data: a run
 saved before it opened loads unopened — `Ready`, `Prompt`, no phase — and
 opens on the loaded world's first pass; a run saved mid-run loads with its
 `Ready` and its phase and goes on. A run without `Ready` never advances,
@@ -622,7 +647,7 @@ Cached utterance views (§1) are not saved: a loaded utterance holds no
 `CachedMessage`, the first assembly after a load renders every utterance of
 the run from the graph and caches it, and the request it folds is the one
 the saving world would have folded (`run_message_cache.rs`
-`a_loaded_scene_assembles_identical_requests_and_rebuilds_its_views`).
+`a_loaded_checkpoint_assembles_identical_requests_and_rebuilds_its_views`).
 
 
 The live-handler regressions in `tests/memory_resume.rs` cover memory finalization before
@@ -634,12 +659,12 @@ external deduplication or reconciliation is the host's responsibility.
 
 | what | how | pinned by |
 |---|---|---|
-| a run saved after its first tool turn's results (the head), resumed in a fresh world over the log's tail | `agent::scene::save_world` the pass after `land_batch` put the run back in `Assembling` (one schedule pass at a time: an `update` runs to quiescence); a fresh world binds the tail's replayers (positional per key, as the corpus's resumed engine does), `load_world`s the scene, installs its hooks after the load (no run-start observer fires), ticks to the ending: the head's records are the golden's to the cut, the tail's from it, the answer the golden's | every `corpus_resume.rs` row (18) as `world_resumed`; every `corpus_checkpoint.rs` program (14) as `world_payload`, `world_hash`, `world_full_log_refused` |
-| `Checkpoint::state` | the `WorldScene` itself: `Checkpoint<S>` is generic over the driver's state and a world cuts a `Checkpoint<WorldScene>` (the classic engine stores its serialized state in `Checkpoint<serde_json::Value>`); a checkpoint is a cut of the log beside the scene, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs` |
-| a resumed run loads nothing and appends | the loaded utterances are `Remembered` in the scene; the append is the resumed run's (the world keeps its state, the agent driver restores its serialized state) | `anthropic_serving_serial_memory_tools` resumed: `[Load, C, Tool, C, Append]` with the append in the tail |
-| durable execution | the same property as `durable_execution.rs`: nothing of the first world survives but two JSON strings — the head's log and the checkpoint (the scene as its `state`) — and the second world resumes to the same answer and the same tail | every world resume cell round-trips both |
+| a run saved after its first tool turn's results (the head), resumed in a fresh world over the log's tail | `checkpoint::save_world` the pass after `land_batch` put the run back in `Assembling` (one schedule pass per `update`); a fresh world binds the tail's replayers (positional per key, as the corpus's resumed engine does), `load_world`s the checkpoint, installs its hooks after the load (no run-start observer fires), ticks to the ending: the head's records are the golden's to the cut, the tail's from it, the answer the golden's | every `corpus_resume.rs` row (18) as `world_resumed`; every `corpus_checkpoint.rs` program (14) as `world_payload`, `world_hash`, `world_full_log_refused` |
+| the log's `Checkpoint::state` | the world's `Checkpoint` itself: `rig_effect_log::Checkpoint<S>` is generic over the driver's state and a world cuts a `Checkpoint<rig_ecs::checkpoint::Checkpoint>` (the classic engine stores its serialized state in `Checkpoint<serde_json::Value>`); it is a cut of the log beside the world, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs`, `corpus/world_resume.rs` |
+| a resumed run loads nothing and appends | the loaded utterances are `Remembered` in the checkpoint; the append is the resumed run's (the world keeps its state, the agent driver restores its serialized state) | `anthropic_serving_serial_memory_tools` resumed: `[Load, C, Tool, C, Append]` with the append in the tail |
+| durable execution | the same property as `durable_execution.rs`: nothing of the first world survives but two JSON strings — the head's log and the checkpoint (the world as its `state`) — and the second world resumes to the same answer and the same tail | every world resume cell round-trips both |
 | an effect in flight at the cut | saved as intent, re-issued in the second world under its saved id, answered by the tail's replayer there: a note an outcome hook dispatched just before the cut is the tail's first record | `anthropic_host_custom_at_outcome{,_streamed}` resumed |
-| a system that answers an open key (the nesting program's `lookup`) | runs after `Dispatch` and before `Collect`, so `settle` records its answer in the same pass: a scene saved when the run wants its next turn has no open record | `mock_causal_depth_two` checkpointed |
+| a system that answers an open key (the nesting program's `lookup`) | runs after `Dispatch` and before `Collect`, so `settle` records its answer in the same pass: a checkpoint saved when the run wants its next turn has no open record | `mock_causal_depth_two` checkpointed |
 | two runs on one agent | two `spawn_run`s in sequence, the second after the first ended and the world went quiet; the conversation shared through memory (§11) | `anthropic_memory_two_runs`, `openai_breadth_memory_two_runs` |
 
 ## Tool-turn checkpoint boundary
@@ -658,7 +683,7 @@ before its existing settlement; an output-tool-only answer has no batch commit.
 `hold_after_tool_turn(world, run, owner, minimum_turn)` arms a named owner's hold
 on the run. Model turns start at one. It permits the awaited batch to execute,
 then blocks `Advance` once any committed turn reaches that threshold, including
-inside a run-to-quiescence update. Each owner must release its own hold with
+in the pass it lands. Each owner must release its own hold with
 `release_tool_turn_hold`; re-arming cannot move an existing hold later. Unknown
 owner releases are idempotent. Owner names are a host coordination convention,
 not a security boundary. Arming cannot retract a turn already advanced or an
@@ -672,13 +697,13 @@ receive the same event. If an earlier terminal component observer deletes the
 owning graph, the subsequent live notification is suppressed; that observer can
 inspect durable commit state before deleting it. `RigSet::Checkpoint`, after `Materialise` and before
 `Settle`, is the public schedule slot for inspection and checkpoint handling.
-The next pass cannot advance a held run. Scene loading restores durable commit
+The next pass cannot advance a held run. A checkpoint load restores durable commit
 state and relationships and retains every owner hold, but does not trigger this
 live event. Generic `On<Add, ToolTurnCommit>`/change detection can still fire on
 load; applications must use the live event or explicitly account for restoration.
 
-A committed boundary is run-local. The existing whole-world scene restrictions
-still reject unsafe unrelated effects/streams. The scene remaps utterance links
+A committed boundary is run-local. The checkpoint's whole-world validation
+still rejects unsafe unrelated effects/streams. The checkpoint remaps utterance links
 and validates their roles and run ownership before destination mutation. Saving
 and restoring host tools, workspace state and external side effects remains the
 host's responsibility; no exactly-once external-write guarantee is added. A
@@ -712,22 +737,22 @@ readable to the others; entity queries must tolerate absence. An observer that
 removes a sibling effect cannot suppress the sibling's already accepted batch:
 live collection and policy-visible replay both capture every batch accepted in
 a pass, as an owned payload, before any observer runs. Collected items are
-delivered before normal outcome/terminal cleanup in the same quiescence update. Notifications do not mark progress, alter collection limits, or execute
+delivered before normal outcome/terminal cleanup in the same pass. Notifications do not alter collection limits or execute
 tools from incomplete arguments.
 
 Late or re-enabled consumers receive future notifications only. Hydrate from
 durable `Streamed`/committed history while the host is not advancing the world,
-attach or enable observers, then resume updates. Scene loading restores durable
+attach or enable observers, then resume updates. A checkpoint load restores durable
 state and emits no live delivery notification. Existing refusal of unfinished
 streams with observed progress remains unchanged; a held tool-turn checkpoint
 resumes only after host prerequisites are restored and its owner releases it.
-Notification observers, UI state, and queued host work are not scene data.
+Notification observers, UI state, and queued host work are not checkpoint data.
 
 Ordinary live/cassette collection preserves item order, not identical network
 timing or batch grouping. Policy-visible replay emits the recorded delivery
 batches. Both paths update the same durable state and use the same public
 notification. `tests/bus_stream_delivery.rs` exercises independent consumers,
-errors, late hydration, bounded bursts, terminal deletion, and scene/replay
+errors, late hydration, bounded bursts, terminal deletion, and checkpoint/replay
 behavior; provider matrix evidence compares actual items with the independent
 producer logs.
 
@@ -740,16 +765,19 @@ streamed verdicts run on pool threads. Browser `!Send` streams run on the local
 executor selected by the target-specific `bevy_platform/web` feature; synchronous
 source work still occupies the browser thread.
 
-Live Collect performs at most 64 queue checks per effect per invocation, with
-4,096 shared across every quiescence pass in one host tick. Pending ends that
+Live Collect performs at most 64 queue checks per effect per pass, with
+`STREAM_WORK_PER_TICK` (4,096) shared across the pass. Pending ends that
 effect's turn. The next pass resumes after the last served dispatch sequence,
 wrapping once, so a hot early effect cannot permanently exclude later ones.
-Direct host invocations of `RigSchedule` reset the allowance per invocation.
-Deltas do not count as quiescence progress. These are streaming delivery limits,
-not total CPU-time or payload-size guarantees. Hosts must keep ticking to expose
-ready items and settle replies; quiescence is not completion.
+Every pass — one `RigSchedule` run — gets a fresh allowance. Deltas raise
+`Wake` (another update is worth running) but are not completion. These are
+streaming delivery limits, not total CPU-time or payload-size guarantees.
+Hosts must keep updating to expose ready items and settle replies.
 
-`Executions` owns task handles, removed when an effect leaves `InFlight`.
+The task is a component on the effect — `Serving(Task<Reply>)`, `Streaming
+{ task, .. }` — dropped with it; on wasm the `!Send` task sits in the
+non-send `Executions` table under the same component names, removed when an
+effect leaves `InFlight`.
 Task cancellation reaches pending setup, unary folding and full delivery queues.
 An active native poll cannot be interrupted synchronously; observation closes
 atomically with cancellation so a late result cannot mutate the closed record.

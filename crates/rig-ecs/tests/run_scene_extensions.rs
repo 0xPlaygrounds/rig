@@ -1,59 +1,111 @@
-//! Registered application state is durable; omitted state is explicitly host-owned.
-use crate::bus_support;
+//! Registered host state is durable; unregistered state is explicitly
+//! host-owned. A host component reflected and registered with the world's
+//! type registry travels with the entity it sits on, its `Entity` fields
+//! remapped like the crate's own; one the host never registered is not in
+//! the checkpoint, and one the destination never registered is refused.
+use crate::{bus_support, run_support};
 
-use bevy_ecs::prelude::*;
-use rig_ecs::agent::{
-    Owner, Run, RunOf,
-    scene::{SceneExtensions, WorldScene, load_world, save_world},
+use std::any::type_name;
+
+use bevy_ecs::{prelude::*, reflect::AppTypeRegistry};
+use bevy_reflect::Reflect;
+use rig_core::error::ErrorKind;
+use rig_ecs::{
+    agent::{Owner, Run, RunOf, Settled, Turn},
+    checkpoint::{Checkpoint, load_world, save_world},
+    systems::RunCommands,
 };
 use serde::{Deserialize, Serialize};
 
-#[derive(Component, Debug, PartialEq, Serialize, Deserialize)]
+/// A host policy on a run.
+#[derive(Component, Debug, PartialEq, Reflect, Serialize, Deserialize)]
+#[reflect(Component)]
 struct RetryBudget(u32);
+
+/// A host link from a run to the entity it blames: an `Entity` field the
+/// checkpoint remaps.
+#[derive(Component, Debug, PartialEq, Reflect)]
+#[reflect(Component)]
+struct Blames(Entity);
 
 #[derive(Resource)]
 struct HostState(u32);
 
 fn register(world: &mut World) {
-    let mut registry = SceneExtensions::default();
-    registry
-        .register_component::<RetryBudget>("test/retry-budget/v1")
-        .unwrap();
-    world.insert_resource(registry);
+    let registry = world.resource::<AppTypeRegistry>().clone();
+    let mut registry = registry.write();
+    registry.register::<RetryBudget>();
+    registry.register::<Blames>();
 }
 
-fn scene() -> WorldScene {
-    let mut world = World::new();
-    register(&mut world);
-    let agent = world.spawn(Owner("test".into())).id();
-    world.spawn((Run, RunOf(agent), ChildOf(agent), RetryBudget(3)));
-    world.insert_resource(HostState(8));
-    let saved = save_world(&mut world).unwrap();
-    serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap()
+/// The checkpoint through its wire form.
+fn round_trip(checkpoint: &Checkpoint) -> Checkpoint {
+    Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap()
+}
+
+/// A settled run under `t/model:default`, its host policy on the run and
+/// its first utterance, blaming its agent — saved through the wire form.
+fn checkpoint() -> Checkpoint {
+    let mut app = run_support::app();
+    app.register_type::<RetryBudget>();
+    app.register_type::<Blames>();
+    let (agent, _) = run_support::capturing_agent(&mut app, "t/model:default", "t", "ok");
+    let run = app
+        .world_mut()
+        .spawn_run(agent, &[], "hello", false, Some(1));
+    run_support::ended(&mut app, run, "the run");
+    assert!(app.world().get::<Settled>(run).is_some());
+    let utterance = run_support::utterances_of(app.world_mut(), run)[0];
+    app.world_mut()
+        .entity_mut(run)
+        .insert((RetryBudget(3), Blames(agent)));
+    app.world_mut().entity_mut(utterance).insert(RetryBudget(1));
+    app.world_mut().insert_resource(HostState(8));
+    round_trip(&save_world(app.world_mut()).unwrap())
 }
 
 #[test]
-fn custom_policy_roundtrips_on_remapped_graph_with_host_owned_resources() {
-    let saved = scene();
-    let mut world = World::new();
-    register(&mut world);
+fn a_registered_host_component_round_trips_on_the_remapped_graph_with_host_owned_resources() {
+    let saved = checkpoint();
+    let mut app = run_support::app();
+    app.register_type::<RetryBudget>();
+    app.register_type::<Blames>();
+    run_support::capturing_agent(&mut app, "t/model:default", "t", "ok");
     // Ensure the old entity ids cannot accidentally appear to work.
     for _ in 0..10 {
-        world.spawn_empty();
+        app.world_mut().spawn_empty();
     }
-    world.insert_resource(HostState(99));
-    let loaded = load_world(&saved, &mut world).unwrap();
-    let run = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|e| world.get::<Run>(*e).is_some())
-        .unwrap();
+    app.world_mut().insert_resource(HostState(99));
+    let loaded = load_world(&saved, app.world_mut()).unwrap();
+    let world = app.world_mut();
+    let run = loaded.with::<Run>(world)[0];
     assert_eq!(world.get::<RetryBudget>(run), Some(&RetryBudget(3)));
     let agent = world.get::<RunOf>(run).unwrap().0;
-    assert_eq!(world.get::<ChildOf>(run).unwrap().parent(), agent);
-    assert_eq!(world.get::<Owner>(agent).unwrap().0, "test");
-    assert_eq!(world.resource::<HostState>().0, 99);
+    assert!(
+        loaded.with::<Owner>(world).contains(&agent),
+        "the run's agent is the loaded one"
+    );
+    assert_eq!(world.get::<Owner>(agent).unwrap().0, "t");
+    assert_eq!(
+        world.get::<Blames>(run),
+        Some(&Blames(agent)),
+        "the host's entity field names the loaded agent"
+    );
+    let utterance = run_support::utterances_of(world, run)[0];
+    assert_eq!(world.get::<RetryBudget>(utterance), Some(&RetryBudget(1)));
+    let turns: Vec<Entity> = loaded.with::<Turn>(world);
+    assert!(!turns.is_empty());
+    assert!(
+        turns
+            .iter()
+            .all(|turn| world.get::<RetryBudget>(*turn).is_none()),
+        "only the entities that carried the policy carry it"
+    );
+    assert_eq!(
+        world.resource::<HostState>().0,
+        99,
+        "resources are the host's"
+    );
     // A subsequent policy consumes the restored state, not merely its JSON.
     let mut policy = Schedule::default();
     policy.add_systems(|mut budgets: Query<&mut RetryBudget, With<Run>>| {
@@ -61,70 +113,70 @@ fn custom_policy_roundtrips_on_remapped_graph_with_host_owned_resources() {
             budget.0 -= 1;
         }
     });
-    policy.run(&mut world);
+    policy.run(world);
     assert_eq!(world.get::<RetryBudget>(run), Some(&RetryBudget(2)));
 }
 
 #[test]
 fn missing_registration_and_invalid_payload_are_refused_before_spawning() {
-    let saved = scene();
-    let mut world = World::new();
-    let count = world.entities().len();
+    let saved = checkpoint();
+    let mut app = run_support::app();
+    run_support::capturing_agent(&mut app, "t/model:default", "t", "ok");
+    let count = app.world().entities().len();
+    let error = load_world(&saved, app.world_mut()).unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Request);
     assert!(
-        load_world(&saved, &mut world)
-            .unwrap_err()
-            .message
-            .contains("unregistered")
+        error.message.contains(type_name::<RetryBudget>())
+            || error.message.contains(type_name::<Blames>()),
+        "names an unregistered host type: {error:?}"
     );
-    assert_eq!(world.entities().len(), count);
-    register(&mut world);
-    let mut invalid = saved.clone();
-    for components in invalid.extensions.values_mut() {
-        components.insert(
-            "test/retry-budget/v1".into(),
-            serde_json::json!("not a budget"),
-        );
-    }
-    assert!(load_world(&invalid, &mut world).is_err());
-    assert_eq!(world.entities().len(), count);
-    let mut invalid = saved;
-    invalid.extensions.insert(usize::MAX, Default::default());
-    assert!(
-        load_world(&invalid, &mut world)
-            .unwrap_err()
-            .message
-            .contains("index")
-    );
-    assert_eq!(world.entities().len(), count);
-}
-
-#[test]
-fn unregistered_state_is_outside_the_scene_contract() {
-    let mut world = World::new();
-    world.spawn((Owner("test".into()), RetryBudget(5)));
-    let saved = save_world(&mut world).unwrap();
-    assert!(saved.extensions.is_empty());
-    let mut restored = World::new();
-    let loaded = load_world(&saved, &mut restored).unwrap();
-    assert!(restored.get::<RetryBudget>(loaded.graph[0]).is_none());
-}
-
-#[test]
-fn names_must_be_nonempty_and_unique() {
-    let mut registry = SceneExtensions::default();
-    assert!(registry.register_component::<RetryBudget>(" ").is_err());
-    registry
-        .register_component::<RetryBudget>("budget/v1")
+    assert_eq!(app.world().entities().len(), count);
+    register(app.world_mut());
+    let run = saved
+        .entities
+        .iter()
+        .position(|entity| entity.contains_key(type_name::<Run>()))
         .unwrap();
-    assert!(
-        registry
-            .register_component::<RetryBudget>("budget/v1")
-            .is_err()
+    let mut invalid = saved.clone();
+    invalid.entities[run].insert(
+        type_name::<RetryBudget>().to_owned(),
+        serde_json::json!("not a budget"),
     );
+    let error = load_world(&invalid, app.world_mut()).unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
+    assert_eq!(app.world().entities().len(), count);
+    let mut invalid = saved;
+    invalid.entities[run].insert(
+        type_name::<Blames>().to_owned(),
+        serde_json::json!(usize::MAX),
+    );
+    let error = load_world(&invalid, app.world_mut()).unwrap_err();
+    assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
+    assert_eq!(app.world().entities().len(), count);
 }
 
 #[test]
-fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_prefix() {
+fn unregistered_state_is_outside_the_checkpoint_contract() {
+    let mut app = run_support::app();
+    app.world_mut()
+        .spawn((Owner("test".into()), RetryBudget(5)));
+    let saved = save_world(app.world_mut()).unwrap();
+    assert!(
+        !saved
+            .to_json()
+            .unwrap()
+            .contains(type_name::<RetryBudget>()),
+        "an unregistered component is not in the checkpoint"
+    );
+    let mut restored = run_support::app();
+    register(restored.world_mut());
+    let loaded = load_world(&saved, restored.world_mut()).unwrap();
+    let agent = loaded.with::<Owner>(restored.world())[0];
+    assert!(restored.world().get::<RetryBudget>(agent).is_none());
+}
+
+#[test]
+fn a_stream_checkpoint_restores_completed_state_and_refuses_an_unfinished_prefix() {
     use rig_ecs::bus::{EffectOutcome, PendingEffect, Streamed};
     use std::sync::{Arc, atomic::Ordering};
 
@@ -150,7 +202,7 @@ fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_
                 ChildOf(run),
             ))
             .id();
-        bus_support::tick_until(&mut live, "stream scene cut", |world| {
+        bus_support::tick_until(&mut live, "stream checkpoint cut", |world| {
             if completed {
                 world.get::<EffectOutcome>(effect).is_some()
             } else {
@@ -160,9 +212,7 @@ fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_
             }
         });
         let expected = serde_json::to_value(live.world().get::<Streamed>(effect).unwrap()).unwrap();
-        let saved = save_world(live.world_mut()).unwrap();
-        let saved: WorldScene =
-            serde_json::from_str(&serde_json::to_string(&saved).unwrap()).unwrap();
+        let saved = bus_support::checkpoint(&mut live);
         let mut restored = bus_support::app();
         register(restored.world_mut());
         let counters = Arc::new(bus_support::Counters::default());
@@ -175,11 +225,16 @@ fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_
         let loaded = load_world(&saved, restored.world_mut());
         if completed {
             let loaded = loaded.unwrap();
+            let effect = loaded.with::<PendingEffect>(restored.world())[0];
             restored.update();
             assert_eq!(
-                serde_json::to_value(restored.world().get::<Streamed>(loaded.effects[0]).unwrap())
-                    .unwrap(),
+                serde_json::to_value(restored.world().get::<Streamed>(effect).unwrap()).unwrap(),
                 expected
+            );
+            assert_eq!(
+                restored.world().get::<ChildOf>(effect).map(ChildOf::parent),
+                Some(loaded.with::<Run>(restored.world())[0]),
+                "the effect is the loaded run's"
             );
             let budgets: Vec<_> = restored
                 .world_mut()
@@ -190,7 +245,8 @@ fn paired_graph_stream_scene_restores_completed_state_and_refuses_an_unfinished_
             assert_eq!(budgets, [2]);
             assert_eq!(counters.stream_sends.load(Ordering::SeqCst), 0);
         } else {
-            assert!(loaded.unwrap_err().message.contains("unfinished stream"));
+            let error = loaded.unwrap_err();
+            assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
             assert_eq!(restored.world().entities().len(), count);
             assert_eq!(
                 restored

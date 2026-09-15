@@ -10,9 +10,9 @@
 //! | `Retry { feedback }` on a text turn makes the turn and the feedback history, then another turn | `a_retry_with_feedback_asks_again` |
 //! | `Retry { feedback }` on an empty turn makes the feedback history, not the turn, then another turn; without a retry the empty turn settles | `a_retry_written_on_an_empty_turn_asks_again` |
 //! | `UsesModel` written on the run before `Select` routes the turn; `Route` is in the required row | `uses_model_written_before_select_routes_the_turn` |
-//! | a decision written and not yet read survives a scene (§10 of the dissolves doc) | `a_retry_written_before_a_save_is_read_after_the_load` |
-//! | `RequestPatch` on the turn and `Resolution` on the invalid call survive a scene the same way | `a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load` |
-//! | `Cancelled` is read at once; the scene carries it and the ending it made, and the loaded run stays ended when the re-issued effect answers | `a_cancel_written_before_a_save_is_the_ending_after_the_load` |
+//! | a decision written and not yet read survives a checkpoint (§10 of the dissolves doc) | `a_retry_written_before_a_save_is_read_after_the_load` |
+//! | `RequestPatch` on the turn and `Resolution` on the invalid call survive a checkpoint the same way | `a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load` |
+//! | `Cancelled` is read at once; the checkpoint carries it and the ending it made, and the loaded run stays ended when the re-issued effect answers | `a_cancel_written_before_a_save_is_the_ending_after_the_load` |
 
 use crate::run_support;
 
@@ -26,11 +26,11 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, InvalidCall, Order,
-        RequestPatch, Resolution, Retry, Route, RunResult, Settled, UsesModel,
-        scene::{load_world, save_world},
+        Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, InvalidCall, RequestPatch,
+        Resolution, Retry, Route, RunResult, Settled, UsesModel,
     },
     bus::{EffectLogResource, Handlers, PendingEffect, RigSchedule},
+    checkpoint::{Checkpoint, load_world, save_world},
     replay::required_row,
     systems::{Fresh, RigSet, RunCommands},
 };
@@ -147,7 +147,7 @@ fn a_request_patch_is_folded_into_the_turn() {
         ))
         .id();
     app.world_mut()
-        .spawn((rig_ecs::agent::Context(document), Order(0), ChildOf(agent)));
+        .spawn((rig_ecs::agent::Context(document), ChildOf(agent)));
     add_system(
         &mut app,
         patch_the_turn
@@ -293,8 +293,7 @@ fn uses_model_written_before_select_routes_the_turn() {
     let (agent, _) = capturing_agent(&mut app, MODEL, MODEL, "slow");
     let (fast, _) = Capturing::new(FAST, "fast");
     let fast = register(&mut app, FAST, fast);
-    app.world_mut()
-        .spawn((Route(fast), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Route(fast), ChildOf(agent)));
     app.insert_resource(Fast(fast));
     add_system(
         &mut app,
@@ -350,11 +349,11 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
     first.world_mut().entity_mut(turn).insert(Retry {
         feedback: Some("End with DONE.".to_owned()),
     });
-    let scene = save_world(first.world_mut()).expect("serializes");
-    let json = serde_json::to_string(&scene).expect("serde");
+    let checkpoint = save_world(first.world_mut()).expect("serializes");
+    let json = checkpoint.to_json().expect("serde");
     assert!(
         json.contains("End with DONE."),
-        "the decision is scene state"
+        "the decision is checkpoint state"
     );
     drop(first);
 
@@ -362,16 +361,11 @@ fn a_retry_written_before_a_save_is_read_after_the_load() {
     let (model, _) = Capturing::new(MODEL, "again");
     register(&mut app, MODEL, model);
     let loaded = load_world(
-        &serde_json::from_str(&json).expect("serde"),
+        &Checkpoint::from_json(&json).expect("serde"),
         app.world_mut(),
     )
     .expect("loads");
-    let turn = loaded
-        .graph
-        .iter()
-        .copied()
-        .find(|entity| app.world().get::<rig_ecs::agent::Turn>(*entity).is_some())
-        .expect("the turn");
+    let turn = loaded.with::<rig_ecs::agent::Turn>(app.world())[0];
     assert_eq!(
         app.world().get::<Retry>(turn),
         Some(&Retry {
@@ -412,7 +406,7 @@ fn open_run() -> (bevy_app::App, Entity, Entity) {
     (app, run, turn)
 }
 
-/// The scene as JSON, loaded into a fresh world with a capturing model:
+/// The checkpoint as JSON, loaded into a fresh world with a capturing model:
 /// the run, the turn, and the requests the model saw.
 fn reload(
     json: &str,
@@ -425,18 +419,13 @@ fn reload(
     let mut app = app();
     let (model, requests) = Capturing::new(MODEL, "again");
     register(&mut app, MODEL, model);
-    let loaded =
-        load_world(&serde_json::from_str(json).expect("serde"), app.world_mut()).expect("loads");
-    let find = |is: fn(&World, Entity) -> bool| {
-        loaded
-            .graph
-            .iter()
-            .copied()
-            .find(|entity| is(app.world(), *entity))
-            .expect("the entity")
-    };
-    let run = find(|world, entity| world.get::<rig_ecs::agent::Run>(entity).is_some());
-    let turn = find(|world, entity| world.get::<rig_ecs::agent::Turn>(entity).is_some());
+    let loaded = load_world(
+        &Checkpoint::from_json(json).expect("serde"),
+        app.world_mut(),
+    )
+    .expect("loads");
+    let run = loaded.with::<rig_ecs::agent::Run>(app.world())[0];
+    let turn = loaded.with::<rig_ecs::agent::Turn>(app.world())[0];
     (app, run, turn, requests)
 }
 
@@ -465,12 +454,12 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
         resolution.clone(),
         ChildOf(turn),
     ));
-    let scene = save_world(first.world_mut()).expect("serializes");
-    let json = serde_json::to_string(&scene).expect("serde");
+    let checkpoint = save_world(first.world_mut()).expect("serializes");
+    let json = checkpoint.to_json().expect("serde");
     for decision in ["You are a pirate.", "no tool named multiply"] {
         assert!(
             json.contains(decision),
-            "{decision}: the decision is scene state"
+            "{decision}: the decision is checkpoint state"
         );
     }
     drop(first);
@@ -488,7 +477,7 @@ fn a_patch_and_a_resolution_written_before_a_save_are_read_after_the_load() {
 }
 
 #[test]
-fn scene_preserves_invalid_call_identity_namespaces() {
+fn a_checkpoint_preserves_invalid_call_identity_namespaces() {
     use rig_core::message::ToolCallId;
     let generated = ToolCallId::minted(0);
     let explicit = ToolCallId::new(generated.wire_hint()).unwrap();
@@ -506,8 +495,8 @@ fn scene_preserves_invalid_call_identity_namespaces() {
             ChildOf(turn),
         ));
     }
-    let scene = save_world(first.world_mut()).unwrap();
-    let json = serde_json::to_string(&scene).unwrap();
+    let checkpoint = save_world(first.world_mut()).unwrap();
+    let json = checkpoint.to_json().unwrap();
     drop(first);
     let (restored, _, turn, _) = reload(&json);
     let calls: Vec<_> = restored
@@ -527,19 +516,19 @@ fn scene_preserves_invalid_call_identity_namespaces() {
     }
     assert_ne!(calls[0].id, calls[1].id);
 
-    // Scene components are raw JSON: outer decoding succeeds, but loading must
-    // refuse the unsupported identity encoding rather than infer its origin.
-    let mut legacy = scene.clone();
+    // Checkpoint components are reflected JSON: outer decoding succeeds, but
+    // loading must refuse the unsupported identity encoding rather than
+    // infer its origin.
+    let mut legacy = checkpoint.clone();
     let mut changed = 0;
-    for entity in &mut legacy.graph.entities {
-        if let Some(component) = entity.components.get_mut("invalid_call") {
+    for entity in &mut legacy.entities {
+        if let Some(component) = entity.get_mut(std::any::type_name::<InvalidCall>()) {
             component["id"] = serde_json::json!("tool-0");
             changed += 1;
         }
     }
     assert_eq!(changed, 2);
-    let legacy: rig_ecs::agent::scene::WorldScene =
-        serde_json::from_value(serde_json::to_value(legacy).unwrap()).unwrap();
+    let legacy = Checkpoint::from_json(&legacy.to_json().unwrap()).unwrap();
     let mut destination = app();
     register(
         &mut destination,
@@ -548,10 +537,19 @@ fn scene_preserves_invalid_call_identity_namespaces() {
             label: MODEL.into(),
         },
     );
+    let count = destination.world().entities().len();
     let error = load_world(&legacy, destination.world_mut())
         .expect_err("legacy component identities must fail load");
-    assert!(error.message.contains("invalid_call"), "{error:?}");
-    assert!(error.message.contains("invalid type"), "{error:?}");
+    assert_eq!(error.kind, ErrorKind::Request, "{error:?}");
+    assert!(
+        error.message.contains(std::any::type_name::<InvalidCall>()),
+        "{error:?}"
+    );
+    assert_eq!(
+        destination.world().entities().len(),
+        count,
+        "refused before the destination changed"
+    );
 }
 
 #[test]
@@ -628,7 +626,6 @@ fn a_part_patch_is_not_sticky_on_a_judge_retry() {
                         commands.spawn((
                             RequestPartEdit::Text("only first request".into()),
                             EditTarget(target),
-                            Order(0),
                             ChildOf(turn),
                         ));
                     }

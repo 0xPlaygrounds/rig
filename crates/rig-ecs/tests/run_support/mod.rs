@@ -9,7 +9,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use bevy_app::{App, Update};
+use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
@@ -20,12 +20,12 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{
-        AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Order,
-        Output, Owner, Preamble, Settled, Temperature, ToolChoiceSpec, UsesModel, Utterance,
+        AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
+        Owner, Preamble, Settled, Temperature, ToolChoiceSpec, UsesModel, Utterance,
         content::parts::read_message,
     },
-    bus::{Bus, Handlers, PendingEffect, run_to_quiescence},
-    systems::install_agent,
+    bus::{BusPlugin, Handlers, PendingEffect},
+    systems::AgentPlugin,
 };
 
 pub const GUARD: Duration = Duration::from_secs(10);
@@ -117,11 +117,10 @@ impl Serve for NeverCalled {
 /// error level, the runner in `Update`.
 pub fn app() -> App {
     let mut app = App::new();
-    Bus::with_policy(ServingPolicy::default())
-        .ambiguity_detection(LogLevel::Error)
-        .install(app.world_mut());
-    install_agent(app.world_mut());
-    app.add_systems(Update, run_to_quiescence);
+    app.add_plugins(
+        rig_ecs::RigPlugin::with_policy(ServingPolicy::default())
+            .ambiguity_detection(LogLevel::Error),
+    );
     app.finish();
     app.cleanup();
     app
@@ -389,8 +388,9 @@ pub fn ended(app: &mut App, run: Entity, what: &str) {
 /// handler under `model`, and one agent over it.
 pub fn open_model_world() -> (World, Entity) {
     let mut world = World::new();
-    Bus::with_policy(ServingPolicy::default()).install(&mut world);
-    install_agent(&mut world);
+    BusPlugin::with_policy(ServingPolicy::default()).install(&mut world);
+    AgentPlugin::install(&mut world);
+    rig_ecs::checkpoint::register_types(&mut world);
     let model = Handlers::with(&mut world, |handlers| {
         handlers.register_open(
             "model",
@@ -416,16 +416,14 @@ pub fn first_utterance(world: &mut World, run: Entity) -> Entity {
         .0
 }
 
-/// The utterances `ChildOf` `run`, in [`Order`].
+/// The utterances `ChildOf` `run`, in sibling (`Children`) order.
 pub fn utterances_of(world: &mut World, run: Entity) -> Vec<Entity> {
-    let mut utterances: Vec<_> = world
-        .query_filtered::<(Entity, &ChildOf, &Order), With<Utterance>>()
-        .iter(world)
-        .filter(|(_, parent, _)| parent.parent() == run)
-        .map(|(entity, _, order)| (order.0, entity))
-        .collect();
-    utterances.sort();
-    utterances.into_iter().map(|(_, entity)| entity).collect()
+    world
+        .get::<Children>(run)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .filter(|child| world.get::<Utterance>(*child).is_some())
+        .collect()
 }
 
 /// The fresh, uncached render of `run`'s history, as the DTOs the graph
@@ -437,20 +435,25 @@ pub fn graph_messages(world: &mut World, run: Entity) -> Vec<Message> {
         .collect()
 }
 
-/// The completion requests folded under `run`, by turn order.
+/// The completion requests folded under `run`, by turn order (the run's
+/// sibling order).
 pub fn requests(world: &mut World, run: Entity) -> Vec<CompletionRequest> {
+    let turns: Vec<Entity> = world
+        .get::<Children>(run)
+        .into_iter()
+        .flat_map(|children| children.iter())
+        .collect();
     let mut found: Vec<_> = world
         .query::<(&PendingEffect, &ChildOf)>()
         .iter(world)
         .filter_map(|(effect, parent)| match &effect.kind {
             EffectKind::Completion { request, .. } => {
-                let turn = parent.parent();
-                (world.get::<ChildOf>(turn)?.parent() == run)
-                    .then(|| (world.get::<Order>(turn).map(|o| o.0), request.clone()))
+                let position = turns.iter().position(|turn| *turn == parent.parent())?;
+                Some((position, request.clone()))
             }
             _ => None,
         })
         .collect();
-    found.sort_by_key(|(order, _)| *order);
+    found.sort_by_key(|(position, _)| *position);
     found.into_iter().map(|(_, request)| request).collect()
 }

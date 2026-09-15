@@ -345,7 +345,7 @@ async fn static_context_effect_log_is_the_golden_fixture() {
                     .id();
                 ecs.app
                     .world_mut()
-                    .spawn((Context(document), Order(n as u64), ChildOf(ecs.agent)));
+                    .spawn((Context(document), ChildOf(ecs.agent)));
             }
             let history = vec![];
             let run =

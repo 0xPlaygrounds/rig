@@ -14,7 +14,7 @@ use rig_core::{
     tool::{ToolOutput, ToolResult},
 };
 use rig_ecs::{
-    agent::{Failed, Grant, MaxTurns, Order, PolicyVersion, RunResult},
+    agent::{Failed, Grant, MaxTurns, PolicyVersion, RunResult},
     bus::{Bound, EffectLogResource, Handlers, Replay},
     replay::stamp_run,
     systems::RunCommands,
@@ -154,8 +154,7 @@ fn two_run_agent(app: &mut bevy_app::App, model: Entity, tool: Entity) -> Entity
     app.world_mut()
         .entity_mut(agent)
         .insert((MaxTurns(2), PolicyVersion("probe/v1".into())));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     agent
 }
 

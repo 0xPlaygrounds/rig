@@ -101,25 +101,13 @@ impl Recording {
     }
 }
 
-/// The current delivery batch. Advances once per schedule pass, including
-/// passes run directly by a host rather than through the Update runner.
+/// The current delivery batch. Advances once per schedule pass.
 #[derive(Resource, Default)]
 pub struct DeliveryBatch(pub u64);
 
-/// Begin the next pass's observation group. A pass the host runs itself
-/// (outside [`run_to_quiescence`](super::run_to_quiescence)) is that
-/// host's tick: its stream budget and its intake bound start afresh here,
-/// as the runner starts them at the top of each of its ticks.
-pub fn begin_delivery_pass(
-    mut batch: ResMut<DeliveryBatch>,
-    mut budget: ResMut<super::collect::CollectionBudget>,
-    mut intake: ResMut<super::plugin::Intake>,
-) {
+/// Begin the next pass's observation group.
+pub fn begin_delivery_pass(mut batch: ResMut<DeliveryBatch>) {
     batch.0 += 1;
-    if !budget.in_runner {
-        budget.remaining = super::collect::STREAM_WORK_PER_TICK;
-        intake.0 = 0;
-    }
 }
 
 /// Record visibility when the outcome is inserted, not later when a query

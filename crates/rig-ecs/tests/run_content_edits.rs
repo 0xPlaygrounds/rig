@@ -1,4 +1,4 @@
-//! Part-targeted requests retain history and survive scene entity remapping.
+//! Part-targeted requests retain history and survive checkpoint entity remapping.
 use crate::run_support::{first_utterance, open_model_world};
 
 use bevy_ecs::prelude::*;
@@ -7,11 +7,9 @@ use rig_core::{
     message::{Message, UserContent},
 };
 use rig_ecs::{
-    agent::{
-        Failed, MessageParts, Order, RequestPatch, Turn, Utterance, content::parts::*,
-        scene::RunScene,
-    },
+    agent::{Failed, MessageParts, RequestPatch, Turn, Utterance, content::parts::*},
     bus::{PendingEffect, RigSchedule},
+    checkpoint::{Checkpoint, load_world, save_world},
     systems::{Fresh, RunCommands},
 };
 
@@ -33,7 +31,7 @@ fn fixture() -> (World, Entity, Entity, Entity, Entity) {
         .iter()
         .next()
         .unwrap();
-    let turn = world.spawn((Turn, Fresh, Order(100), ChildOf(run))).id();
+    let turn = world.spawn((Turn, Fresh, ChildOf(run))).id();
     (world, run, turn, utterance, target)
 }
 
@@ -41,22 +39,23 @@ fn fixture() -> (World, Entity, Entity, Entity, Entity) {
 fn ordered_edits_change_only_one_request_and_preserve_history() {
     let (mut world, _, turn, utterance, target) = fixture();
     let original = read_message(&world, utterance).unwrap();
-    let early = world
-        .spawn((
-            RequestPartEdit::Text("earlier".into()),
-            EditTarget(target),
-            Order(0),
-            ChildOf(turn),
-        ))
-        .id();
+    // Spawned last, positioned first: sibling order, not spawn order,
+    // decides which edit is the later one.
     let later = world
         .spawn((
             RequestPartEdit::Text("patched".into()),
             EditTarget(target),
-            Order(1),
             ChildOf(turn),
         ))
         .id();
+    let early = world
+        .spawn((
+            RequestPartEdit::Text("earlier".into()),
+            EditTarget(target),
+            ChildOf(turn),
+        ))
+        .id();
+    world.entity_mut(turn).insert_children(0, &[early]);
     world.run_schedule(RigSchedule);
     let request = world
         .query::<&PendingEffect>()
@@ -85,26 +84,16 @@ fn ordered_edits_change_only_one_request_and_preserve_history() {
 }
 
 #[test]
-fn edit_target_is_remapped_with_the_scene() {
+fn edit_target_is_remapped_with_the_checkpoint() {
     let (mut world, _, turn, _, target) = fixture();
-    world.spawn((
-        RequestPartEdit::Remove,
-        EditTarget(target),
-        Order(0),
-        ChildOf(turn),
-    ));
-    let scene = RunScene::save(&mut world).unwrap();
-    let encoded = serde_json::to_vec(&scene).unwrap();
-    let scene: RunScene = serde_json::from_slice(&encoded).unwrap();
-    let loaded = scene.load(&mut world).unwrap();
-    let link = loaded
-        .iter()
-        .copied()
-        .find(|entity| world.get::<RequestPartEdit>(*entity).is_some())
-        .unwrap();
+    world.spawn((RequestPartEdit::Remove, EditTarget(target), ChildOf(turn)));
+    let checkpoint = save_world(&mut world).unwrap();
+    let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
+    let loaded = load_world(&checkpoint, &mut world).unwrap();
+    let link = loaded.with::<RequestPartEdit>(&world)[0];
     let remapped = world.get::<EditTarget>(link).unwrap().0;
     assert_ne!(remapped, target);
-    assert!(loaded.contains(&remapped));
+    assert!(loaded.entities.contains(&remapped));
     assert_eq!(
         world.get::<TextPart>(remapped),
         world.get::<TextPart>(target)
@@ -157,12 +146,7 @@ fn conflicting_history_and_cross_run_targets_fail_before_dispatch() {
             });
             target
         };
-        world.spawn((
-            RequestPartEdit::Remove,
-            EditTarget(target),
-            Order(0),
-            ChildOf(turn),
-        ));
+        world.spawn((RequestPartEdit::Remove, EditTarget(target), ChildOf(turn)));
         world.run_schedule(RigSchedule);
         assert!(world.get::<Failed>(run).is_some());
         assert_eq!(world.query::<&PendingEffect>().iter(&world).count(), 0);
@@ -216,7 +200,6 @@ fn gate_can_deny_a_target_part_without_mutating_history_or_siblings() {
     world.spawn((
         RequestPartEdit::Text("request only".into()),
         EditTarget(target),
-        Order(0),
         ChildOf(turn),
     ));
     world.resource_mut::<Schedules>().add_systems(
@@ -235,9 +218,9 @@ fn gate_can_deny_a_target_part_without_mutating_history_or_siblings() {
 }
 
 #[test]
-fn missing_order_is_rejected_instead_of_silently_ignoring_an_edit() {
-    let (mut world, run, turn, _, target) = fixture();
-    world.spawn((RequestPartEdit::Remove, EditTarget(target), ChildOf(turn)));
+fn missing_target_is_rejected_instead_of_silently_ignoring_an_edit() {
+    let (mut world, run, turn, _, _) = fixture();
+    world.spawn((RequestPartEdit::Remove, ChildOf(turn)));
     world.run_schedule(RigSchedule);
     assert!(world.get::<Failed>(run).is_some());
     assert_eq!(world.query::<&PendingEffect>().iter(&world).count(), 0);
@@ -325,45 +308,30 @@ fn nested_text_edits_preserve_annotations_and_structured_siblings() {
 }
 
 #[test]
-fn duplicate_edit_orders_and_text_edits_on_images_fail_before_dispatch() {
-    for wrong_type in [false, true] {
-        let (mut world, run, turn, utterance, target) = fixture();
-        let target = if wrong_type {
-            write_message(
-                &mut world,
-                utterance,
-                MessageParts::User {
-                    content: vec![UserContent::Image(rig_core::message::Image::default())],
-                },
-            )
-            .unwrap();
-            world
-                .get::<Children>(utterance)
-                .unwrap()
-                .iter()
-                .next()
-                .unwrap()
-        } else {
-            target
-        };
-        let original = read_message(&world, utterance).unwrap();
-        world.spawn((
-            RequestPartEdit::Text("invalid".into()),
-            EditTarget(target),
-            Order(0),
-            ChildOf(turn),
-        ));
-        if !wrong_type {
-            world.spawn((
-                RequestPartEdit::Remove,
-                EditTarget(target),
-                Order(0),
-                ChildOf(turn),
-            ));
-        }
-        world.run_schedule(RigSchedule);
-        assert!(world.get::<Failed>(run).is_some());
-        assert_eq!(world.query::<&PendingEffect>().iter(&world).count(), 0);
-        assert_eq!(read_message(&world, utterance).unwrap(), original);
-    }
+fn text_edits_on_images_fail_before_dispatch() {
+    let (mut world, run, turn, utterance, _) = fixture();
+    write_message(
+        &mut world,
+        utterance,
+        MessageParts::User {
+            content: vec![UserContent::Image(rig_core::message::Image::default())],
+        },
+    )
+    .unwrap();
+    let target = world
+        .get::<Children>(utterance)
+        .unwrap()
+        .iter()
+        .next()
+        .unwrap();
+    let original = read_message(&world, utterance).unwrap();
+    world.spawn((
+        RequestPartEdit::Text("invalid".into()),
+        EditTarget(target),
+        ChildOf(turn),
+    ));
+    world.run_schedule(RigSchedule);
+    assert!(world.get::<Failed>(run).is_some());
+    assert_eq!(world.query::<&PendingEffect>().iter(&world).count(), 0);
+    assert_eq!(read_message(&world, utterance).unwrap(), original);
 }

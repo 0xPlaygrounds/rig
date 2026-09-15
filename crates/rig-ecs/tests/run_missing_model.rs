@@ -30,7 +30,7 @@ impl rig_core::serve::Serve for ParkedAdder {
 
 use rig_core::{effect::HandlerKey, error::ErrorKind};
 use rig_ecs::{
-    agent::{Assembling, Failed, Failure, Settled},
+    agent::{Failed, Failure, RunPhase, Settled},
     bus::{Bound, Handlers, PendingEffect},
     systems::RunCommands,
 };
@@ -56,7 +56,7 @@ fn deregistered_model_before_first_dispatch_fails_without_issuing_an_effect() {
         matches!(&failed.0, Failure::Provider(report) if report.kind == ErrorKind::HandlerUnavailable)
     );
     assert!(app.world().get::<Settled>(run).is_none());
-    assert!(app.world().get::<Assembling>(run).is_none());
+    assert!(app.world().get::<RunPhase>(run).is_none());
     assert_eq!(
         app.world_mut()
             .query::<&PendingEffect>()
@@ -108,7 +108,7 @@ fn selected_model_with_a_non_completion_descriptor_fails_with_its_key() {
 #[test]
 fn deregistered_model_between_turns_fails_after_the_outstanding_tool_finishes() {
     use bevy_ecs::prelude::ChildOf;
-    use rig_ecs::agent::{Grant, MaxTurns, Order};
+    use rig_ecs::agent::{Grant, MaxTurns};
     use std::sync::{Arc, Mutex, atomic::Ordering};
     let mut app = app();
     let (handler, requests) = Scripted::new(
@@ -135,8 +135,7 @@ fn deregistered_model_between_turns_fails_after_the_outstanding_tool_finishes() 
     );
     let agent = spawn_agent(app.world_mut(), "test", model);
     app.world_mut().entity_mut(agent).insert(MaxTurns(2));
-    app.world_mut()
-        .spawn((Grant(tool), Order(0), ChildOf(agent)));
+    app.world_mut().spawn((Grant(tool), ChildOf(agent)));
     let run = app.world_mut().spawn_run(agent, &[], "go", false, None);
     tick_until(&mut app, "tool parked", |_| started.load(Ordering::SeqCst));
     Handlers::with(app.world_mut(), |handlers| {

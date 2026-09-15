@@ -57,14 +57,15 @@ struct ContinuationStarted(u8);
 fn continue_after_collect(
     mut started: ResMut<ContinuationStarted>,
     mut commands: Commands,
-    mut progress: ResMut<rig_ecs::bus::Progress>,
+    wake: Res<rig_ecs::bus::Wake>,
 ) {
     if started.0 == 2 {
         return;
     }
     started.0 += 1;
-    progress.mark();
     if started.0 == 1 {
+        // Still deliberating: the next pass is ours, not a diagnosis.
+        wake.signal();
         return;
     }
     for key in ["a", "b"] {
@@ -76,7 +77,6 @@ fn continue_after_collect(
             },
         ));
     }
-    progress.mark();
 }
 
 #[test]
@@ -818,7 +818,7 @@ fn malformed_delivery_metadata_is_refused_before_handlers_are_registered() {
 
 #[test]
 fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
-    use rig_ecs::bus::{Issued, Scene};
+    use rig_ecs::{bus::Issued, checkpoint::load_world};
     let (log, _) = ordered_live(false);
     let mut first = log.clone();
     first.records.truncate(1);
@@ -842,11 +842,13 @@ fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
         ))
         .id();
     assert!(head.world().get::<Issued>(tail_effect).is_none());
-    let scene = Scene::save(head.world_mut());
+    let saved = bus_support::checkpoint(&mut head);
     for replay_log in [log.clone(), log.tail(1)] {
         let mut restored = bus_support::app();
         replaying(&mut restored, &replay_log);
-        let loaded = scene.load(restored.world_mut()).unwrap();
+        let loaded = load_world(&saved, restored.world_mut()).unwrap();
+        let loaded = loaded.with::<PendingEffect>(restored.world());
+        assert_eq!(loaded.len(), 2);
         bus_support::tick_until(&mut restored, "resumed subset", |world| {
             loaded
                 .iter()
@@ -860,10 +862,12 @@ fn replay_tail_and_restored_subset_do_not_wait_for_already_answered_effects() {
                 .0
                 .is_ok()
         }));
-        assert_eq!(
-            restored.world().get::<Issued>(loaded[1]).unwrap().0,
-            log.records[1].id
-        );
+        let mut ids: Vec<_> = loaded
+            .iter()
+            .map(|entity| restored.world().get::<Issued>(*entity).unwrap().0)
+            .collect();
+        ids.sort();
+        assert_eq!(ids, [log.records[0].id, log.records[1].id]);
     }
 }
 
@@ -973,7 +977,7 @@ fn policy_replay_allows_cancellation_after_multiple_judge_passes() {
             RigSchedule,
             (move |effects: Query<(Entity, &PendingEffect, Option<&EffectOutcome>)>,
                    mut stage: Local<u8>,
-                   mut progress: ResMut<rig_ecs::bus::Progress>,
+                   wake: Res<rig_ecs::bus::Wake>,
                    mut commands: Commands| {
                 if !effects.iter().any(|(_, effect, outcome)| {
                     effect.key == HandlerKey::from("b") && outcome.is_some()
@@ -989,10 +993,10 @@ fn policy_replay_allows_cancellation_after_multiple_judge_passes() {
                     }
                     if *stage < delay {
                         *stage += 1;
-                        progress.mark();
+                        wake.signal();
                     } else {
                         // The idle check must see this deferred removal even
-                        // when the final policy action does not mark Progress.
+                        // when the final policy action raises nothing.
                         commands.entity(entity).despawn();
                     }
                 }
