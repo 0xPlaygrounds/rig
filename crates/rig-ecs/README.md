@@ -51,7 +51,7 @@ binding reports its key and wrong family. An outstanding tool can finish
 before the next assembly detects the missing model. This differs from
 cancelling an in-flight operation.
 
-The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that walks the graph at `RigSet::Assemble` and writes the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-verify/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
+The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that `fold_turn` calls at `RigSet::Assemble` over what `gather_turn` walked, writing the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-verify/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
 
 | Entity | Components |
 |---|---|
@@ -76,13 +76,13 @@ The agent's sets, around the bus's:
 |---|---|---|
 | `RigSet::Advance` | a run in `Assembling` has no fresh turn | a turn with its adverts and attachments, or `Failed(MaxTurns)` |
 | `RigSet::Select` | a run may lack a model of its own | the agent's `UsesModel`, copied — a routing system before it gives the run another |
-| `RigSet::Assemble` | a fresh turn's graph is complete | the fold spawns the effect; the run is `AwaitingModel` |
+| `RigSet::Assemble` | a fresh turn's graph is complete | `gather_turn` leaves the graph on the turn as `AssemblyInputs`; `fold_turn` folds it and spawns the effect; the run is `AwaitingModel` |
 | `RigSet::Patch` | the folded effect is a `PendingEffect` | the second steering slot: a user system rewrites the folded request |
 | `RigSet::Release` | a turn's tool batch is out | `release_batch` releases its `rig-ecs/batch` owner up to the concurrency, in call order. Policies use `bus::acquire_hold` and `bus::release_hold` with distinct stable emitter names; `Held` remains until every owner releases. A pre-existing bare `Held` is retained as an independent unknown owner. |
 | *`BusSet::Gate` … `BusSet::Judge`* | | |
 | `RigSet::Fold` | the effect may have streamed or landed | `Outputs` on the turn |
 | `RigSet::Judge` | the turn's outputs are complete | a user system may rewrite them, or a tool child's `EffectOutcome` |
-| `RigSet::Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: one user utterance of the results in call order (CONTRACT §8), or a failure; `materialise`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, or a failure |
+| `RigSet::Materialise` | a complete turn is unread, or its batch has landed | `land_batch`: one user utterance of the results in call order (CONTRACT §8), or a failure; then the chain `record_usage`, `judge_invalid_calls`, `read_turn`, `materialise_assistant`, `materialise_batch`, `materialise_reprompt`, `materialise_answer`: the assistant utterance, the answer, a reprompt, an invalid call, the tool batch, or a failure (CONTRACT §4) |
 | `RigSet::Settle` | a run settled or failed | observers on `Settled` / `Failed` |
 
 `tests/tool_batch.rs` pins the batch: two calls are two children dispatched in call order and one utterance of results; `ToolPolicy` sets how many fly at once; a `Judge` system's replacement reaches history while the record keeps the answer; a `Gate` denial is a skipped result and no record; a despawned child fails the run `Cancelled`; a system's `Resolution::{Repair, Retry}` renames or retries an invalid call (`Skip` and `Ignore` likewise). The corpus's nesting cases run through a key the world serves (`Handlers::register_open`), the `lookup` tool answered by a system that spawns its child `ChildOf` the call.

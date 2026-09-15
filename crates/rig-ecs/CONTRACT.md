@@ -84,11 +84,11 @@ to its allocation limit. `run_content_binary` and `run_content_parts` cover sour
 all existing content variants, nested JSON/image results, metadata and shared
 asset lifetime.
 
-Cached utterance views: `assemble` keeps the DTO it renders for an utterance
+Cached utterance views: `gather_turn` keeps the DTO it renders for an utterance
 on that utterance as `content::cache::CachedMessage` — the verbatim
 `MessageParts` `read_message` gives, before any request edit or limit — and
 reads it on later turns instead of walking the part subtree again. A view is
-dropped by Bevy change detection, relative to `assemble`'s own last run:
+dropped by Bevy change detection, relative to `gather_turn`'s own last run:
 a change, addition or removal of any component of the utterance (`Role`,
 `MessageId`, `Children`) or of any entity in its part subtree at any depth
 (the typed parts, `ChildOf`, a tool result's `Children` — a sibling reorder is the parent's changed `Children`), a
@@ -150,6 +150,21 @@ preamble through real provider adapters.
 `callable`: `None`/`Auto`/`Required` permit; `None` forbids; `Specific` permits iff it names the output tool (`anthropic_output_tool_choice_specific_output`). The mode is pinned on the turn (`systems::Folded`) once folded.
 
 ## 4. Reading the answer (`Materialise`)
+
+The set is a chain, one system per transition, in run (`RunSeq`) order:
+`land_memory` (§11), `resolve_invalid_defaults`, `land_batch` (§8.1),
+`record_usage` (the completion's usage into the run's `Usage`, once),
+`judge_invalid_calls` (§8.2), `read_turn` (`Materialised`; a provider
+retry or failure, §5; an invalid call as an entity; else the turn's content
+and its granted tools on the turn as `systems::TurnRead` for the rest of
+the pass), `materialise_assistant` (the assistant utterance, a `Retry`,
+§9.4, or the empty answer), `materialise_batch` (§8.1),
+`materialise_reprompt` (the two reprompts while the budget lasts),
+`materialise_answer` (the run settles on what is left). A content error
+writing the graph — an image the store refuses, a part subtree that does
+not render — ends that run `Failed(Content)` and no other: the chain goes
+on to the next run in the same pass
+(`run_content_parts::a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass`).
 
 | the turn | what happens | pinned by |
 |---|---|---|
@@ -226,7 +241,7 @@ A call to a granted tool is an effect entity `ChildOf` the turn; the turn's tool
 | a replaced result | history holds the replacement, the record the handler's answer (a `Judge` rewrite of the child's `EffectOutcome`) | `anthropic_hooks_replace_tool_result` `/records/1/outcome` (`42`) vs `/records/2/…/chat_history/3` (`99`) |
 | a patched call | the record holds the patched arguments, history the model's | `anthropic_hooks_patch_tool_args` `/records/1/kind/args` (`{"x":40,"y":2}`) vs `/records/2/…/chat_history/2` (`{17, 25}`) |
 | the status, as data | beside each `ToolResultPart` the batch lands, a `ToolResultStatus`: `Ok`, `Error` (a `status: error` result; any other `Err` report above), `Refused`, `Skipped` (a `skipped` result; every synthetic result — §8.2 feedback, the invalid-peer notice, an output-tool reprompt), `Denied`, `WrongFamily`. Graph data only: `read_message` and the request are the same whatever the status; a result written from a DTO (`write_message`, a memory load, prior history) has none; a scene saves it (`tool_result_status`) and refuses one off a tool-result part | `tool_result_status.rs`; the goldens above, unchanged |
-| the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `assemble` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
+| the size policy | `ToolResultLimit { max_bytes, marker }` on the run (else the agent; absent is verbatim): `gather_turn` cuts each *text* item of each tool-result part longer than `max_bytes` to its head and tail — together at most `max_bytes`, each on a UTF-8 character boundary (the head floors, the tail start ceils; an odd budget gives the tail the extra byte) — around `marker` with `{omitted}` the omitted byte count (`TOOL_RESULT_LIMIT_MARKER` by default). JSON and image items, assistant and plain user text are never cut. Request shaping (like `RequestPatch`, §9.3): applied to the folded DTOs after the turn's `RequestPartEdit`s (an edited text is what is measured and cut; a removed part is gone) and before the fold; history, the graph, memory and a scene keep the full text (§1, §13); a `RequestPatch.history` replacement is the host's own and not cut; a change between turns affects later turns only; not replay identity (§10) | `tool_result_limit.rs`; `policy::tests::the_tool_result_cut_keeps_at_most_the_limit_on_character_boundaries` |
 
 ### 8.2 Invalid calls beside the batch
 
@@ -330,7 +345,7 @@ snapshot. Effect denial uses the existing Gate outcome path and does not mutate
 content implicitly. `run_content_edits` covers targeting, ownership and remapping.
 
 
-`agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `assemble` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
+`agent::RequestPatch` (the corpus's `rig_agent::agent::RequestPatch` as data: `preamble`, `temperature`, `max_tokens`, `tool_choice`, `active_tools`, `additional_params`, `extra_context`, `history`) inserted on the fresh turn before `Assemble` (a system on `Added<Fresh>`, reading `Cursor.turn` for the turn number); `gather_turn` folds it in as `prepare_request` did. Several hooks patching one turn merge in registration order (`RequestPatch::merge`: `extra_context` appends, object `additional_params` shallow-merge with later keys winning, `active_tools` intersect, scalars and `history` last-writer-wins); a user system that finds a patch on the turn merges over it.
 
 | field | what the fold does | pinned by |
 |---|---|---|
@@ -344,7 +359,7 @@ content implicitly. `run_content_edits` covers targeting, ownership and remappin
 
 ### 9.4 The model turn: `Retry` and a replaced answer
 
-| the hook | the write | what `materialise` does | pinned by |
+| the hook | the write | what `materialise_assistant` does | pinned by |
 |---|---|---|---|
 | `on_model_turn_finished` → `retry_with_feedback(text)` | `agent::Retry { feedback: Some(text) }` on the turn, in `RigSet::Judge` | the turn (unless empty) and a user utterance of the feedback become history; another turn; nothing is committed as an answer; text turns only (a tool-bearing turn is refused, `Failed(Unsupported)`); an empty turn with a retry asks again instead of settling on the empty answer | `anthropic_hooks_demand_done` `/records/1/…/chat_history/2..3`; `steer_hooks::a_retry_written_on_an_empty_turn_asks_again` |
 | `repeat` | `Retry { feedback: None }` | nothing becomes history; another turn | `rig_agent::run::AgentRun::retry_model_turn` docs |
