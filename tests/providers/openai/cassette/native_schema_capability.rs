@@ -16,9 +16,9 @@
 //! which fails before the fix with the model's prose (`"forty two, roughly"`)
 //! reported as the structured answer.
 
+use super::super::support::with_openai_cassette;
 use rig::prelude::*;
 use rig::providers::openai;
-use super::super::support::with_openai_cassette;
 
 #[tokio::test]
 async fn a_provider_that_carries_the_schema_still_asks_natively() {

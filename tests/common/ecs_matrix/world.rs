@@ -1489,10 +1489,18 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
                 "the frame's message: {report:?}"
             );
             assert_eq!(report.http_status, status, "the frame's status: {report:?}");
+            // A frame delivered inside a stream carries no status, so the
+            // provider's own machine code is all it says about itself: an
+            // `overloaded_error` or `server_error` is transient and retried,
+            // anything else is not. A frame that does carry a status is
+            // classified by the status, as before.
+            let expected_retryable = match status {
+                Some(_) => rig_core::error::retryable_status(status),
+                None => code.is_some_and(rig_core::error::transient_provider_code),
+            };
             assert_eq!(
-                report.retryable,
-                rig_core::error::retryable_status(status),
-                "the status table's verdict: {report:?}"
+                report.retryable, expected_retryable,
+                "the retry verdict for this frame: {report:?}"
             );
             let recorded = log.records[0]
                 .outcome

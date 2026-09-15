@@ -82,25 +82,22 @@ pub fn output_tool_callable(choice: Option<&ToolChoice>, name: &str) -> bool {
 /// provider that does not compose native output with tools — else
 /// `Native`.
 ///
-/// A provider that does not carry `output_schema` to the wire at all
-/// (`provider_supports_native_schema`) can never enforce the schema natively,
-/// so a schema-bearing run takes the output tool whenever the choice permits
-/// one: the tool's arguments are validated, where a native answer from such a
-/// provider is unconstrained text this runtime would settle as the structured
-/// result.
+/// Note: a provider may advertise
+/// [`ProviderCapabilities::supports_native_output_schema`](rig_core::completion::ProviderCapabilities)
+/// as `false`, meaning it never puts the schema on the wire. This function
+/// does **not** route around that yet: doing so changes the request every
+/// affected run sends, which the recorded parity corpus pins for seven
+/// providers whose keys were unavailable. Until those are re-recorded, a host
+/// on such a provider should set `OutputKind::Tool` itself.
 pub fn resolve_output(
     mode: OutputKind,
     has_schema: bool,
     granted_tools: usize,
     callable: bool,
     provider_composes_native: bool,
-    provider_supports_native_schema: bool,
 ) -> OutputKind {
     if !has_schema {
         return OutputKind::Native;
-    }
-    if !provider_supports_native_schema && callable {
-        return OutputKind::Tool;
     }
     match mode {
         OutputKind::Native => OutputKind::Native,

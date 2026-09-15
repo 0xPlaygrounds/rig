@@ -14,7 +14,8 @@
           "family": "completion",
           "model": "default",
           "capabilities": {
-            "composes_native_output_with_tools": false
+            "composes_native_output_with_tools": false,
+            "supports_native_output_schema": false
           }
         }
       },
