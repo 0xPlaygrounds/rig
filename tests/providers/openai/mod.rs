@@ -88,6 +88,7 @@ mod cassette {
     mod responses_sessions;
     mod responses_tool_args;
     mod responses_tool_choice;
+    mod stateless_replay_matrix;
     mod stream_faults;
     mod streaming;
     mod streaming_grammar;

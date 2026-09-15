@@ -206,6 +206,11 @@ pub enum InputContent {
     Reasoning(OpenAIReasoning),
     FunctionCall(OutputFunctionCall),
     FunctionCallOutput(ToolResult),
+    /// An opaque compaction item, as returned by `/responses/compact` and
+    /// by a response whose context was compacted. OpenAI documents it as
+    /// pass-back-as-is; every field other than `type` is preserved verbatim
+    /// so a stateless client can replay the compacted window (rig#2269).
+    Compaction(Map<String, Value>),
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -2233,6 +2238,11 @@ pub enum Output {
         encrypted_content: Option<String>,
         status: Option<ToolStatus>,
     },
+    /// An opaque compaction item (`"type": "compaction"`), preserved verbatim
+    /// so it can be sent back as an input item on the next request. Kept
+    /// distinct from [`Output::Unknown`] because OpenAI documents it as a
+    /// must-replay item, and [`InputContent::Compaction`] is its input twin.
+    Compaction(Map<String, Value>),
     /// Catch-all for output item types this version does not model. Holds the
     /// raw item object exactly as it appeared in the provider's `output[]`
     /// array, so hosted-tool payloads survive the typed decode.
@@ -2324,6 +2334,11 @@ impl Serialize for Output {
                 }
                 Ok(value)
             }
+            Output::Compaction(fields) => {
+                let mut map = fields.clone();
+                map.insert("type".to_string(), Value::String("compaction".to_string()));
+                return Value::Object(map).serialize(serializer);
+            }
             Output::Unknown(value) => return value.serialize(serializer),
         };
         value
@@ -2355,6 +2370,13 @@ impl<'de> Deserialize<'de> for Output {
             "reasoning" => serde_json::from_value::<ReasoningFields>(value)
                 .map(Output::from)
                 .map_err(serde::de::Error::custom),
+            "compaction" => {
+                let Value::Object(mut map) = value else {
+                    return Ok(Output::Unknown(value));
+                };
+                map.remove("type");
+                Ok(Output::Compaction(map))
+            }
             _ => Ok(Output::Unknown(value)),
         }
     }
@@ -2363,9 +2385,10 @@ impl<'de> Deserialize<'de> for Output {
 impl From<Output> for Vec<completion::AssistantContent> {
     fn from(value: Output) -> Self {
         let res: Vec<completion::AssistantContent> = match value {
-            Output::Message(OutputMessage { content, .. }) => content
+            Output::Message(OutputMessage { content, phase, .. }) => content
                 .into_iter()
                 .map(completion::AssistantContent::from)
+                .map(|content| stamp_phase(content, phase.as_deref()))
                 .collect(),
             Output::FunctionCall(OutputFunctionCall {
                 id,
@@ -2403,7 +2426,10 @@ impl From<Output> for Vec<completion::AssistantContent> {
                     content: reasoning_content_blocks(summary, content, encrypted_content),
                 },
             )],
-            Output::Unknown(_) => Vec::new(),
+            // A compaction item has no rig-level content seat; it is exposed
+            // on the raw response and the streamed terminal (`output`) for
+            // clients that manage Responses state themselves.
+            Output::Compaction(_) | Output::Unknown(_) => Vec::new(),
         };
 
         res
@@ -2511,6 +2537,11 @@ pub struct OutputMessage {
     pub status: ResponseStatus,
     /// The actual message content
     pub content: Vec<AssistantContent>,
+    /// The generation phase this message belongs to (e.g. `"final_answer"`).
+    /// OpenAI documents that dropping it on a follow-up request degrades
+    /// quality, so it is captured here and re-sent on replay (rig#2269).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub phase: Option<String>,
 }
 
 /// The role of an output message.
@@ -2832,6 +2863,10 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         status: ToolStatus,
+        /// The phase the message was generated in; re-sent because OpenAI
+        /// documents that dropping it degrades follow-up quality (rig#2269).
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        phase: Option<String>,
     },
     #[serde(rename = "assistant", skip_deserializing)]
     AssistantInput {
@@ -2918,8 +2953,11 @@ impl OutputText {
                     // serialize as a *duplicate* JSON key and last-wins
                     // parsers would read history data as the block's text or
                     // tag — ingest can never capture these keys, so dropping
-                    // them loses nothing.
-                    .filter(|(key, _)| key != "text" && key != "type")
+                    // them loses nothing. `phase` is message-level: it is
+                    // lifted onto the assistant item, never onto the block.
+                    .filter(|(key, _)| {
+                        key != "text" && key != "type" && key != OPENAI_RESPONSES_PHASE_KEY
+                    })
                     .collect()
             })
             .unwrap_or_default();
@@ -2971,6 +3009,14 @@ fn assistant_text_replay_message(
     if text.is_empty() && !(own_extras && id.is_some()) {
         return None;
     }
+    // `phase` rides the text block's own-wire extras on ingest; it belongs
+    // to the message, so it is lifted here and filtered from the block.
+    let phase = additional_params
+        .as_ref()
+        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY))
+        .and_then(|extras| extras.get(OPENAI_RESPONSES_PHASE_KEY))
+        .and_then(Value::as_str)
+        .map(str::to_owned);
     match id {
         Some(id) => Some(Message::Assistant {
             content: vec![AssistantContentType::Text(AssistantContent::OutputText(
@@ -2979,6 +3025,7 @@ fn assistant_text_replay_message(
             id,
             name: None,
             status: ToolStatus::Completed,
+            phase,
         }),
         None => {
             if own_extras {
@@ -3003,6 +3050,41 @@ fn assistant_text_replay_message(
 /// streamed turn's history carries no extras under this key (follow-up
 /// work, not a silent drop at replay: nothing was captured).
 pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
+
+/// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the
+/// output message's `phase`. It is message-level on the wire but rides the
+/// text block's extras in rig history (the only own-wire seat), and is
+/// lifted back onto the assistant input item at replay.
+pub(crate) const OPENAI_RESPONSES_PHASE_KEY: &str = "phase";
+
+/// Record an output message's `phase` on a text block's own-wire extras so
+/// the follow-up request can re-send it.
+fn stamp_phase(
+    content: completion::AssistantContent,
+    phase: Option<&str>,
+) -> completion::AssistantContent {
+    let Some(phase) = phase else {
+        return content;
+    };
+    let completion::AssistantContent::Text(mut text) = content else {
+        return content;
+    };
+    let mut extras = text
+        .additional_params
+        .as_ref()
+        .and_then(|params| params.wire_extras(OPENAI_RESPONSES_EXTRAS_KEY))
+        .cloned()
+        .unwrap_or_default();
+    extras.insert(
+        OPENAI_RESPONSES_PHASE_KEY.to_string(),
+        Value::String(phase.to_string()),
+    );
+    text.additional_params = crate::message::AdditionalParams::from_entries(Some((
+        OPENAI_RESPONSES_EXTRAS_KEY,
+        Value::Object(extras),
+    )));
+    completion::AssistantContent::Text(text)
+}
 
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
@@ -3112,5 +3194,7 @@ impl FromStr for UserContent {
     }
 }
 
+#[cfg(test)]
+mod stateless_replay_tests;
 #[cfg(test)]
 mod tests;

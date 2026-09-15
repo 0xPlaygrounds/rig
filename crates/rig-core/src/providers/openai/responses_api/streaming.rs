@@ -767,6 +767,16 @@ impl RawChoiceAccumulator {
             Output::Unknown(value) => {
                 out.unknown(value.into());
             }
+            // A compaction item mid-stream: surfaced raw like an unmodeled
+            // item so a stateless consumer can capture it from the stream.
+            Output::Compaction(fields) => {
+                let mut map = fields;
+                map.insert(
+                    "type".to_string(),
+                    serde_json::Value::String("compaction".to_string()),
+                );
+                out.unknown(serde_json::Value::Object(map).into());
+            }
         }
     }
 
