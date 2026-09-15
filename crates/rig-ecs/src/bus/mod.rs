@@ -12,7 +12,9 @@
 //!   (answered); a stream accumulates in [`Streamed`] on the way. There is
 //!   no future for a host to hold and nothing to probe: readiness is the
 //!   component landing (`Added<EffectOutcome>`, `Changed<Streamed>`, an
-//!   `On<Add, EffectOutcome>` observer).
+//!   `On<Add, EffectOutcome>` observer) and, once the record closed, the
+//!   [`Landed`] entity event bubbling up `ChildOf` to the turn, the run and
+//!   the agent.
 //! - **A handler is an entity.** [`Handlers::register`] spawns one with a
 //!   [`Bound`] component (the key and the descriptor, serde) and puts the
 //!   erased handler in the world's [`HandlerTable`]. The registry is a
@@ -113,7 +115,7 @@ pub use binding::{
     CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport, Materializer,
     ProviderBinding, ProviderKind, Secret, materialize, materialize_bindings,
 };
-pub use collect::{Landed, StreamingView, collect_streams, collect_tasks, settle};
+pub use collect::{Landed, Landing, StreamingView, collect_streams, collect_tasks, settle};
 pub use delivery::{ReplayDelivery, ReplayFailure};
 pub use dispatch::{Candidate, CandidateView, dispatch, handler_unavailable, reentrant};
 pub use effect::{

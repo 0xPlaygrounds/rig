@@ -2,6 +2,7 @@
 
 use bevy_ecs::prelude::*;
 use rig_core::{
+    effect::EffectId,
     serve::{Reply, stream_truncated},
     streaming::{Delta, StreamEvent},
 };
@@ -287,7 +288,7 @@ pub type StreamingView = (
 );
 
 /// An outcome that landed on an effect still in flight.
-pub type Landed = (Added<EffectOutcome>, With<InFlight>);
+pub type Landing = (Added<EffectOutcome>, With<InFlight>);
 
 /// The outcome and durable tool output needed to close a dispatch's record.
 pub type LandedView = (
@@ -304,7 +305,7 @@ pub type LandedView = (
 /// is not re-recorded: decisions are program, never record.
 pub fn settle(
     mut commands: Commands,
-    landed: Query<LandedView, Landed>,
+    landed: Query<LandedView, Landing>,
     replaced: Query<&super::record::ReplacedBy>,
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,
@@ -377,7 +378,27 @@ pub fn settle(
         commands
             .entity(entity)
             .remove::<(InFlight, Observed, super::record::ReplacedBy)>();
+        // The pass's `Judge` runs before an observer of this can read the
+        // outcome it settles on: the trigger is queued, applied at the
+        // set's sync point, after the record closed.
+        commands.trigger(Landed { entity, id });
     }
+}
+
+/// An effect's record closed: its outcome is on the entity, its record is
+/// written. Triggered on the effect and propagated up `ChildOf` — the
+/// turn, the run, the agent — so an observer on any of them sees every
+/// landing beneath it in the same pass it happened; `original_event_target`
+/// is the effect. A `Judge` system that rewrites the outcome runs after
+/// this pass's `Collect`, so an observer here reads what the handler
+/// answered; read `EffectOutcome` again later for the judged value.
+#[derive(EntityEvent, Debug, Clone, Copy)]
+#[entity_event(propagate, auto_propagate)]
+pub struct Landed {
+    /// The effect.
+    pub entity: Entity,
+    /// Its issued id.
+    pub id: EffectId,
 }
 
 #[cfg(test)]

@@ -579,3 +579,34 @@ fn a_tool_calls_context_travels_beside_the_effect_and_its_published_values_land_
     let outcome = serde_json::to_value(&log.records[0].outcome).expect("serde");
     assert!(outcome["Ok"].get("context").is_none(), "{outcome}");
 }
+
+/// `Landed` bubbles up `ChildOf`: an observer on the effect's grandparent
+/// sees the landing, with the effect as the original target, in the pass
+/// the record closed — the outcome already on the entity.
+#[test]
+fn a_landing_bubbles_up_the_hierarchy_to_an_observer_on_the_root() {
+    use rig_ecs::bus::Landed;
+    #[derive(Resource, Default)]
+    struct Seen(Vec<(Entity, Entity, bool)>);
+    let (mut app, _, _) = served();
+    app.init_resource::<Seen>();
+    let root = app.world_mut().spawn_empty().id();
+    let middle = app.world_mut().spawn(ChildOf(root)).id();
+    let effect = app
+        .world_mut()
+        .spawn((PendingEffect::new("model", completion()), ChildOf(middle)))
+        .id();
+    app.world_mut().entity_mut(root).observe(
+        |landed: On<Landed>, outcomes: Query<&EffectOutcome>, mut seen: ResMut<Seen>| {
+            seen.0.push((
+                landed.event_target(),
+                landed.original_event_target(),
+                outcomes.contains(landed.original_event_target()),
+            ));
+        },
+    );
+    tick_until(&mut app, "landed", |world| {
+        !world.resource::<Seen>().0.is_empty()
+    });
+    assert_eq!(app.world().resource::<Seen>().0, vec![(root, effect, true)]);
+}
