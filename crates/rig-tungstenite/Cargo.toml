@@ -15,7 +15,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 workspace = true
 
 [dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = [
   "websocket",
 ] }
 futures = { workspace = true }
@@ -29,7 +29,7 @@ tokio = { workspace = true, features = ["rt", "rt-multi-thread", "macros"] }
 tokio-tungstenite = { workspace = true, features = ["connect", "handshake"] }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = [
   "websocket",
   "test-utils",
 ] }
