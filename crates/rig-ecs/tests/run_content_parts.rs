@@ -223,39 +223,18 @@ fn system_reader_observes_the_same_graph_without_a_message_cache() {
 
 #[test]
 fn new_runtime_stores_parts_as_children_and_folds_the_same_request() {
-    use rig_core::completion::{ModelRef, ProviderCapabilities};
-    use rig_core::effect::{EffectKind, FamilyDescriptor};
-    use rig_core::serve::ServingPolicy;
+    use crate::run_support::{first_utterance, open_model_world};
+    use rig_core::effect::EffectKind;
     use rig_ecs::{
-        agent::{MaxTurns, Owner, UsesModel},
-        bus::{Bus, Handlers, PendingEffect, RigSchedule},
-        systems::{RunCommands, install_agent},
+        agent::MaxTurns,
+        bus::{PendingEffect, RigSchedule},
+        systems::RunCommands,
     };
-    let mut world = World::new();
-    Bus::with_policy(ServingPolicy::default()).install(&mut world);
-    install_agent(&mut world);
-    let model = Handlers::with(&mut world, |handlers| {
-        handlers.register_open(
-            "model",
-            FamilyDescriptor::Completion {
-                model: ModelRef::new("model"),
-                capabilities: ProviderCapabilities::default(),
-            },
-        )
-    })
-    .unwrap()
-    .unwrap();
-    let agent = world
-        .spawn((Owner("owner".into()), UsesModel(model), MaxTurns(1)))
-        .id();
+    let (mut world, agent) = open_model_world();
+    world.entity_mut(agent).insert(MaxTurns(1));
     let run = world.spawn_run(agent, &[], "hello", false, None);
     world.run_schedule(RigSchedule);
-    let utterance = world
-        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
-        .iter(&world)
-        .find(|(_, parent)| parent.parent() == run)
-        .unwrap()
-        .0;
+    let utterance = first_utterance(&mut world, run);
     assert_eq!(
         read_message(&world, utterance).unwrap(),
         MessageParts::User {

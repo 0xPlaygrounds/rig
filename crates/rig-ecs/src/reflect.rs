@@ -27,10 +27,10 @@ use bevy_reflect::{
 pub use crate::{agent::reflect::*, bus::reflect::*};
 
 /// Declare opaque [`reflect_remote`](bevy_reflect::reflect_remote) wrappers
-/// for rig-core types: each reflects as a whole through its serde form, which
-/// is the wire form the log already has. `Debug`, `Clone`, `Serialize` and
-/// `Deserialize` come with every wrapper; anything else listed after the colon
-/// is both derived and reflected.
+/// for the rig-core types this module's components hold: each reflects as a
+/// whole through its serde form, which is the wire form the log already has.
+/// `Debug`, `Clone`, `Serialize` and `Deserialize` come with every wrapper;
+/// anything listed after the colon is both derived and reflected.
 macro_rules! opaque_reflect {
     ($(
         $(#[doc = $doc:literal])*

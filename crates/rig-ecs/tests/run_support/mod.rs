@@ -406,6 +406,16 @@ pub fn open_model_world() -> (World, Entity) {
     (world, agent)
 }
 
+/// The one utterance `ChildOf` `run`.
+pub fn first_utterance(world: &mut World, run: Entity) -> Entity {
+    world
+        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
+        .iter(world)
+        .find(|(_, parent)| parent.parent() == run)
+        .unwrap()
+        .0
+}
+
 /// The utterances `ChildOf` `run`, in [`Order`].
 pub fn utterances_of(world: &mut World, run: Entity) -> Vec<Entity> {
     let mut utterances: Vec<_> = world

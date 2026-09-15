@@ -1,5 +1,5 @@
 //! Part-targeted requests retain history and survive scene entity remapping.
-use crate::run_support::open_model_world;
+use crate::run_support::{first_utterance, open_model_world};
 
 use bevy_ecs::prelude::*;
 use rig_core::{
@@ -18,12 +18,7 @@ use rig_ecs::{
 fn fixture() -> (World, Entity, Entity, Entity, Entity) {
     let (mut world, agent) = open_model_world();
     let run = world.spawn_run(agent, &[], "original", false, None);
-    let utterance = world
-        .query_filtered::<(Entity, &ChildOf), With<Utterance>>()
-        .iter(&world)
-        .find(|(_, parent)| parent.parent() == run)
-        .unwrap()
-        .0;
+    let utterance = first_utterance(&mut world, run);
     write_message(
         &mut world,
         utterance,
