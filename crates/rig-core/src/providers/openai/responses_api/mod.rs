@@ -757,11 +757,10 @@ pub struct ResponsesToolDefinition {
     pub parameters: serde_json::Value,
     /// Whether to use strict mode. Disabled by default; opt in with [`Self::with_strict`]
     /// or [`GenericResponsesCompletionModel::with_strict_tools`].
-    #[serde(
-        default,
-        skip_serializing_if = "crate::json_utils::is_false",
-        deserialize_with = "json_utils::null_or_default"
-    )]
+    ///
+    /// Always serialized: the Responses API treats an omitted `strict` as "attempt strict
+    /// mode", so `false` must reach the wire for non-strict tools to actually be non-strict.
+    #[serde(default, deserialize_with = "json_utils::null_or_default")]
     pub strict: bool,
     /// Tool description.
     #[serde(default, skip_serializing_if = "String::is_empty")]

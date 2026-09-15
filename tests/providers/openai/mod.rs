@@ -92,6 +92,7 @@ mod cassette {
     mod streaming_grammar;
     mod streaming_grammar_chat;
     mod streaming_tools;
+    mod strict_tool_matrix;
     mod structured_output;
     mod transcription_usage_matrix;
     mod truncated_turn_matrix;

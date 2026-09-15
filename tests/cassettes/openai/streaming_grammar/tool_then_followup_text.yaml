@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","model":"gpt-5.6","reasoning":{"effort":"low"},"stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"type":"function"}]}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"Call `lookup_harbor_label` exactly once before answering. After the tool result is available, answer in one short sentence that includes the exact tool output.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You must call the requested tool before writing any normal text. After the tool result is available, do not call any more tools and answer in one short sentence that includes the exact tool output.","model":"gpt-5.6","reasoning":{"effort":"low"},"stream":true,"tools":[{"description":"Return the alpha signal marker.","name":"lookup_harbor_label","parameters":{"properties":{},"required":[],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header:

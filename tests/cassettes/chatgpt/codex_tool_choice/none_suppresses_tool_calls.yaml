@@ -7,7 +7,7 @@ when:
     value: text/event-stream
   - name: content-type
     value: application/json
-  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"What is 2 plus 3? Reply with just the number.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","model":"gpt-5.4","store":false,"stream":true,"tool_choice":"none","tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"type":"function"}]}'
+  body: '{"include":["reasoning.encrypted_content"],"input":[{"content":[{"text":"What is 2 plus 3? Reply with just the number.","type":"input_text"}],"role":"user","type":"message"}],"instructions":"You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user''s question.","model":"gpt-5.4","store":false,"stream":true,"tool_choice":"none","tools":[{"description":"Add x and y together","name":"add","parameters":{"properties":{"x":{"description":"The first number to add","type":"number"},"y":{"description":"The second number to add","type":"number"}},"required":["x","y"],"type":"object"},"strict":false,"type":"function"}]}'
 then:
   status: 200
   header: []
