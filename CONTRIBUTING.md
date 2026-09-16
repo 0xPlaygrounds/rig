@@ -1,10 +1,8 @@
 # Contributing to Rig
 
-Default to minimal relevant local checks, independent review, prompt authorized PR publication, and comprehensive GitHub CI. Broad local verification is not a prerequisite for creating or updating a PR. See [development verification](DEVELOPING.md) for check selection, review, publication, and CI completion.
-
 Thank you for considering contributing to Rig! Here are some guidelines to help you get started.
 
-General guidelines and requested contributions can be found in the [How to Contribute](https://docs.rig.rs/docs/how_to_contribute) section of the documentation.
+General guidelines and requested contributions can be found in the [How to Contribute](https://docs.rig.rs/docs/how_to_contribute) section of the documentation. Repository layout, architecture, and engineering rules are in `AGENTS.md`; verification and publication workflow in [DEVELOPING.md](DEVELOPING.md); test commands in `tests/README.md`.
 
 ## Issues
 Before reporting an issue, please check existing or similar issues that are currently tracked.
@@ -17,123 +15,49 @@ Contributions are always encouraged and welcome. Before creating a pull request,
 
 PRs should be small and focused and should avoid interacting with multiple facets of the library. This may result in a larger PR being split into two or more smaller PRs. Commit messages should follow the [Conventional Commit](https://conventionalcommits.org/en/v1.0.0) format (prefixing with `feat`, `fix`, etc.) as this integrates into our auto-releases via a [release-plz](https://github.com/MarcoIeni/release-plz) Github action.
 
-Do not edit `CHANGELOG.md`, `crates/*/CHANGELOG.md` or `MIGRATING.md` in a pull request; CI fails the PR if you do. Put changelog bullets and migration notes in the PR description under `## Changelog` and `## Migration` (the PR template has both). The repository squash-merges, so those sections become the merge commit body, and the release PR regenerates both files from them via `scripts/release-notes.sh`.
+Do not edit `CHANGELOG.md`, `crates/*/CHANGELOG.md` or `MIGRATING.md` in a pull request; CI fails the PR if you do. Put changelog bullets and migration notes in the PR description under `## Changelog` and `## Migration` (the PR template has both); the release PR regenerates both files from them.
 
 Unless the PR is for something minor (ie a typo), please ensure that an issue has been opened for the feature or work you would like to contribute beforehand. By opening an issue, a discussion can be held beforehand on scoping the work effectively and ensuring that the work is in line with the vision for Rig. Without any linked issues, your PR may be liable to be closed if we (the maintainers) do not feel that your PR is within scope for the library.
 
 It is also highly suggested to comment on issues you're interested in working on. By doing so, it allows others to see that something is being worked on and therefore avoids frustrating situations, such as multiple contributors opening a PR for the same issue. In such a case, any duplicate PRs will be closed unless it is clear that the original contributor is unable to continue the work.
 
-You can link your PR back to a given issue by writing the following in your PR message:
-```md
-Fixes #999
-```
-
-This will then auto-link issue 999 (for example) and will automatically close the issue once the PR has been merged.
+You can link your PR back to a given issue by writing `Fixes #999` in your PR message; this auto-links the issue and closes it once the PR has been merged.
 
 **Working on your first Pull Request?** You can learn how from this *free* series [How to Contribute to an Open Source Project on GitHub](https://kcd.im/pull-request)
 
 ### Code Contribution Guidelines
-Most non-trivial open source projects often have a set of code contribution guidelines that are highly advised to stick to for the easiest path to a merge. Such policies also exist to ensure that the project is able to remain easy to contribute to.
 
-While we will not strictly enforce any guidelines as such because we want to make it as easy as possible to contribute to Rig, we do have three policies that we advise contributors to stick to:
+We will not strictly enforce guidelines because we want to make it as easy as possible to contribute to Rig, but we advise contributors to stick to three policies:
 - Use docstrings on any new public items (structs, enums, methods whether free-standing or associated).
-- Ensure that you use full syntax for trait bounds where possible. This makes the code much easier to read.
-- If your PR adds additional functionality to Rig, it must include relevant tests that pass. Provider behavior changes should usually include cassette-backed regression tests when feasible; user-facing changes should also update examples or documentation as appropriate.
+- Use full syntax for trait bounds where possible. This makes the code much easier to read.
+- If your PR adds functionality, it must include relevant tests that pass. Provider behavior changes should usually include cassette-backed regression tests; user-facing changes should also update examples or documentation as appropriate.
 
-The workspace enforces strict clippy lints, including forbidding `unwrap`, `expect`, `todo`, and `unimplemented` in workspace code. Prefer explicit error types, `?`, and complete edge-case handling.
+The workspace enforces strict clippy lints, including forbidding `unwrap`, `expect`, `todo`, and `unimplemented`. Prefer explicit error types, `?`, and complete edge-case handling. Provider and vector-store implementation requirements are in `AGENTS.md`.
 
 Each PR will be taken on a case-by-case basis.
 
-### Provider implementation checklist
-
-When adding or changing a provider, use this checklist to keep the provider
-integration consistent with Rig's generic client architecture and contributor
-expectations:
-
-- New OpenAI-chat-compatible providers MUST drive completions through
-  `openai::completion::GenericCompletionModel<Ext>` by implementing
-  `OpenAICompatibleProvider` on the provider extension (see `minimax`, `zai`,
-  `groq`, or `deepseek` for the template). Wire-dialect differences belong in
-  the trait's hooks (`completion_path`, `prepare_request`,
-  `finalize_request_body`) — not in a hand-rolled `CompletionModel`, request
-  struct, or `TryFrom<message::Message>` conversion. The same applies to
-  Anthropic-shaped APIs via `AnthropicCompatibleProvider`.
-- `Client<H = BoxedHttpClient>` and `ClientBuilder<H = Missing>` public aliases
-  point at `client::Client<Provider, H>` / `client::ClientBuilder<Provider, H>`.
-- One provider value type implements `Provider` with the correct `BASE_URL`,
-  `VERIFY_PATH`, `ApiKey`, `Config`, and `EnvInput`; `from_env` / `from_val`
-  use the correct environment variables and input type.
-- Each supported capability is a `Has*` impl (`HasCompletion`, `HasEmbeddings`,
-  …) naming the concrete model type; unsupported capabilities are simply not
-  implemented.
-- API-key marker/auth types are explicit, insert the intended headers, and keep
-  credential-bearing debug output redacted.
-- Model constants are added where they are useful and are current with the
-  provider's real API.
-- Requests convert from Rig request types such as `CompletionRequest` without
-  adding fields that the provider API does not support.
-- Responses convert into Rig response types, including token usage and tool or
-  multimodal content where applicable.
-- Streaming is implemented when the provider supports it, and follows existing
-  streaming normalization patterns.
-- Provider error responses preserve status/body details through the relevant Rig
-  error helpers, so callers can inspect provider response details.
-- Non-2xx completion responses surface through the capability error's one
-  funnel, `from_http_response(status, body)` (or `?` on the transport error,
-  which routes through it), stamped with `with_provider_request_id` and
-  `with_response_headers` when the call site has them, so retry/status logic
-  can inspect `provider_response_status()`, the raw provider body, the
-  request id and `Retry-After`. `HttpError` is only a transport failure that
-  produced no provider reply, and never carries a status.
-- `ProviderResponseExt`, telemetry spans, and GenAI fields are populated
-  consistently with nearby providers where applicable.
-- Tests cover the smallest reliable scope: unit tests, cassette-backed provider
-  tests, or ignored live tests when cassette replay is unsuitable.
-- Companion provider crates update the root facade dependency, feature flag,
-  re-export, README, examples, and crate docs as applicable.
-- Examples and documentation use actual feature flags, module paths, model
-  constants, and credential requirements.
-
 ### PRs that will be rejected
-As with every open source repo, not every contribution is within the scope of the repo and as Rig grows, so will the number of potential contributions - which also means defining an absolute list of things that are not within the scope of Rig. This includes but is not limited to:
-- Changes that would force model provider integrations to diverge from the original API (eg attempting to add a field to the OpenAI API that does not actually exist within the OpenAI API for the sake of satisfying another model provider)
-- Lazy workarounds such as `String` error types, scattered `.unwrap()` calls, stubbed error handling, or incomplete edge-case handling
-- TODO comments, placeholder implementations, or `unimplemented!()` in submitted code
-- Missing WASM compatibility where `WasmCompatSend` or `WasmCompatSync` should be used instead of raw `Send` or `Sync`
+Not every contribution is within the scope of the repo. Out of scope includes but is not limited to:
+- Changes that would force model provider integrations to diverge from the original API (eg adding a field to the OpenAI API that does not exist there for the sake of another model provider)
+- Lazy workarounds: `String` error types, scattered `.unwrap()` calls, stubbed error handling, incomplete edge-case handling
+- TODO comments, placeholder implementations, or `unimplemented!()`
+- Raw `Send`/`Sync` where `WasmCompatSend`/`WasmCompatSync` should be used
 - Unclear code that needs comments to explain what it is doing instead of being refactored for readability
 - Major architectural changes, new abstractions, or public API reshaping without prior discussion
-- PRs with arbitrary markdown files. The only markdown files we currently allow are ones that are already traditional convention (DEVELOPING.md, CONTRIBUTIONS.md, ARCHITECTURE.md, ... etc)
-- PRs that are found to be duplicates of other PRs
+- Arbitrary markdown files. The only markdown files we allow are ones that are already traditional convention (DEVELOPING.md, CONTRIBUTING.md, ARCHITECTURE.md, ... etc)
+- Duplicates of other PRs
 
 This will be reviewed on a case by case basis, but generally unjustifiable breaking changes are much more likely to be rejected.
 
-
 ## Project Structure
 
-Rig is split up into multiple crates in a monorepo structure:
+Rig is a monorepo: the root `rig` facade, `crates/rig-core`, and companion `crates/rig-*` crates (see `AGENTS.md` for the full layout). `rig-core` avoids adding many dependencies and only contains simple provider integrations on top of the base abstractions; side crates add first-party behavior with heavier dependencies (for example, `rig-mongodb` depends on `mongodb`).
 
-- `rig`: the root facade crate. It re-exports `rig-core` and exposes companion crates behind feature flags.
-- `crates/rig-core`: foundational abstractions for agents, completion, embeddings, tools, vector stores, providers, telemetry, loaders, memory traits, and test utilities.
-- `crates/rig-derive`: derive macros.
-- `crates/rig-*`: first-party provider, vector-store, memory, and companion integration crates.
-- `examples/*`: workspace example packages.
-- `xtask/`: shared verification planning and source-tree checks. Local planner use is optional; inspect `cargo xtask verify --changed --dry-run` when selection might expand broadly, then choose small explicit checks or CI if it selects the full plan. See `DEVELOPING.md` for the workflow. Its own tests run explicitly in CI.
-- `test-support/service-tests`: unpublished runner for vector-store integrations, separated from provider build dependencies.
-- `tests/*.rs`: root integration test targets.
-- `tests/providers/<provider>/`: provider-specific test modules.
-- `tests/cassettes/<provider>/`: committed HTTP cassette fixtures for replayable provider tests.
-- `tests/integrations/`: external-service and vector-store integration tests.
-
-The main crate `rig-core` avoids adding many new dependencies to keep it lean and only really contains simple provider integrations on top of the base layer of abstractions. Side crates are leveraged to help add important first-party behavior without overburdening the main library with dependencies. For example, `rig-mongodb` contains extra dependencies to be able to interact with `mongodb` as a vector store.
-
-If you are unsure whether a side-crate should live in the main repo, you can spin up a personal repo containing your crate and create an issue in our repo making the case on whether this side-crate should be integrated in the main repo and maintained by the Rig team.
-
+If you are unsure whether a side-crate should live in the main repo, spin up a personal repo containing your crate and create an issue making the case for integrating and maintaining it here.
 
 ## Developing
 
-### Setup
-
-This should be similar to most Rust projects.
+Setup is similar to most Rust projects:
 
 ```bash
 git clone https://github.com/0xplaygrounds/rig
@@ -141,64 +65,11 @@ cd rig
 cargo test
 ```
 
-### Clippy and Fmt
-
-CI enforces both `clippy` and `fmt` for pull requests. Check formatting as applicable locally; the broad commands below are available for deliberate local debugging, not mandatory prepublication checks.
+CI enforces both `clippy` and `fmt`. These broad commands are available for deliberate local debugging, not mandatory prepublication checks:
 
 ```bash
 cargo clippy --all-features --all-targets
 cargo fmt -- --check
 ```
 
-### Tests
-
-Before publication, run the smallest useful local check for changed behavior. For documentation or instructions, review the diff and links/consistency without Rust compilation or workspace tests. Comprehensive tests belong in CI by default. See `tests/README.md` for provider, cassette, live, and integration test commands and `DEVELOPING.md` for CI completion requirements.
-
-Optional broader checks (not a local publication gate):
-
-```bash
-cargo test -p rig
-cargo test -p rig --all-features
-```
-
-Provider-agnostic core tests:
-
-```bash
-cargo test -p rig --test core
-```
-
-External-service integration tests are collected under the `integrations` target and may require feature flags, Docker, credentials, or pre-provisioned services. For example:
-
-```bash
-cargo test -p rig-service-tests --features qdrant --test integrations qdrant -- --nocapture
-cargo test -p rig-service-tests --all-features --test integrations
-```
-
-### Cassette regression tests
-
-Provider behavior changes should include cassette-backed regression tests when feasible. Cassette tests replay committed HTTP interactions and usually do not require provider API keys.
-
-Test code lives under `tests/providers/<provider>/cassette/`; fixtures live under `tests/cassettes/<provider>/...`.
-
-Replay an existing cassette suite with:
-
-```bash
-cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
-```
-
-Record or update fixtures with the relevant provider API key set:
-
-```bash
-RIG_PROVIDER_TEST_MODE=record \
-  cargo test -p rig --all-features --test openai openai::cassette -- --nocapture --test-threads=1
-```
-
-Keep record runs targeted to the provider and test being changed. Review cassette diffs carefully for secrets, bearer tokens, cookies, provider account identifiers, unrelated request/response churn, and unexpected provider behavior. Mention in your PR whether cassettes were replayed, recorded, or not applicable.
-
-Run one cassette test by passing a test-name substring after the test target:
-
-```bash
-cargo test -p rig --all-features --test gemini \
-  streaming_tools_smoke \
-  -- --nocapture --test-threads=1
-```
+Run the smallest useful local check for changed behavior and leave comprehensive testing to CI; see [DEVELOPING.md](DEVELOPING.md). Core, cassette, live, and integration test commands are in `tests/README.md`. Mention in your PR whether cassettes were replayed, recorded, or not applicable.
