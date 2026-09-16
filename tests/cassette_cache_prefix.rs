@@ -767,7 +767,7 @@ determinism_test!(
     openai_responses_request_serialization_is_deterministic,
     "openai/responses",
     |http| {
-        rig::providers::openai::responses_api::wire::ResponsesApi::new("test-key")
+        rig::providers::openai::OpenAI::new("test-key")
             .bind(http.clone())
             .completion(rig::providers::openai::GPT_4O)
     }
@@ -859,12 +859,9 @@ determinism_test!(
 );
 
 determinism_test!(xai_request_serialization_is_deterministic, "xai", |http| {
-    rig::providers::openai::responses_api::wire::ResponsesApi::with_dialect(
-        "test-key",
-        &rig::providers::xai::DIALECT,
-    )
-    .bind(http.clone())
-    .completion(rig::providers::xai::GROK_3_MINI)
+    rig::providers::openai::OpenAI::with_key(&rig::providers::xai::DIALECT, "test-key")
+        .bind(http.clone())
+        .completion(rig::providers::xai::GROK_3_MINI)
 });
 
 determinism_test!(

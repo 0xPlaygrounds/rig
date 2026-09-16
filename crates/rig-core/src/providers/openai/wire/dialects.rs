@@ -1,19 +1,21 @@
 //! One `const` per OpenAI-shaped provider.
 //!
-//! Each constant's fields are taken from that provider's
-//! `OpenAICompatibleProvider` impl and its client, so routing the provider
-//! through [`Chat`](super::Chat) sends the bytes it sends today. Where a
-//! constant departs from [`Quirks::openai`], the field's comment names the
+//! Each constant's fields are what the provider's deleted client and
+//! completion model sent, so routing the provider through
+//! [`Chat`](super::Chat) sends the bytes it sent then. Where a constant
+//! departs from [`Quirks::openai`], the field's comment names the
 //! measurement or the provider error that forced it.
 //!
 //! `mistralrs` has no module on this branch, so it has no constant. The
 //! OpenAI halves of the dual-dialect providers (Z.AI, MiniMax, Moonshot,
 //! Xiaomi MiMo) are here; their Anthropic halves belong to the Anthropic
-//! wire.
+//! wire. The dialects with a module of their own — xAI, ChatGPT, Copilot —
+//! define their constant there and are listed in [`all`] with the rest.
 
 use super::{
     AcceptedWidths, Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks,
-    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, Routing, SpeechBody, TranscriptionBody,
+    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, Route, Routing, SpeechBody,
+    TranscriptionBody,
 };
 
 /// Azure reads its API version from the environment because every Azure
@@ -23,13 +25,6 @@ pub(super) const AZURE_API_VERSION_ENV: &str = "AZURE_API_VERSION";
 /// The `api-version` the Azure client builder defaulted to. Every Azure
 /// route carries one, so a configuration built without reading the
 /// environment still names a version rather than an empty string.
-///
-/// `pub` because `providers::azure` aliases it as its own
-/// `DEFAULT_API_VERSION`, preserving the public spelling callers already
-/// use. The dependency runs provider-data -> wire, which is the safe
-/// direction: this encoder is what actually reads the value, and two
-/// independently-editable copies of the literal would drift silently
-/// against a live endpoint.
 pub const AZURE_DEFAULT_API_VERSION: &str = "2024-10-21";
 
 /// Azure versions its speech endpoint separately from the rest.
@@ -38,7 +33,8 @@ pub(super) const AZURE_AUDIO_API_VERSION_ENV: &str = "AZURE_AUDIO_API_VERSION";
 /// The speech `api-version` the Azure client defaulted to.
 pub(super) const AZURE_DEFAULT_AUDIO_API_VERSION: &str = "2025-04-01-preview";
 
-/// Official OpenAI Chat Completions.
+/// Official OpenAI: the Responses endpoint by default, Chat Completions
+/// beside it.
 pub const OPENAI: Dialect = Dialect {
     name: "openai",
     base_url: "https://api.openai.com/v1",
@@ -46,7 +42,10 @@ pub const OPENAI: Dialect = Dialect {
     base_url_env: Some("OPENAI_BASE_URL"),
     request_id_header: Some("x-request-id"),
     alternate_auth: None,
-    quirks: Quirks::openai(),
+    quirks: Quirks {
+        completion_route: Route::Responses,
+        ..Quirks::openai()
+    },
 };
 
 /// Azure OpenAI: the deployment is in the URL, the API version is a query
@@ -568,61 +567,6 @@ pub const XIAOMIMIMO: Dialect = Dialect {
     },
 };
 
-/// xAI.
-///
-/// xAI's *completion* is a Responses wire (`/v1/responses`), not this one;
-/// this dialect exists because its image and speech endpoints are
-/// OpenAI-shaped and were served by the shared generic models. The
-/// chat-completions path is xAI's own spelling, for a caller that wants it.
-pub const XAI: Dialect = Dialect {
-    name: "xai",
-    // The bare host: every path carries its own `/v1`.
-    base_url: "https://api.x.ai",
-    api_key_env: "XAI_API_KEY",
-    base_url_env: None,
-    request_id_header: None,
-    alternate_auth: None,
-    quirks: Quirks {
-        output_cap: OutputCap::Legacy,
-        completion_path: "/v1/chat/completions",
-        embeddings_path: "/v1/embeddings",
-        models_path: "/v1/models",
-        verify_path: "/v1/api-key",
-        transcription_path: "/v1/audio/transcriptions",
-        image_generation_path: "/v1/images/generations",
-        // xAI spells its text-to-speech endpoint `/v1/tts` and takes a body
-        // of its own.
-        audio_generation_path: "/v1/tts",
-        image_body: ImageBody::Xai,
-        speech_body: SpeechBody::Xai,
-        ..Quirks::openai()
-    },
-};
-
-/// GitHub Copilot's chat-completions route.
-///
-/// Defined so the chat wire is complete; Copilot's own wire is an enum over
-/// this route and the Responses route, and its session-token exchange and
-/// editor headers live there.
-pub const COPILOT_CHAT: Dialect = Dialect {
-    name: "copilot",
-    base_url: "https://api.githubcopilot.com",
-    api_key_env: "GITHUB_COPILOT_API_KEY",
-    base_url_env: Some("GITHUB_COPILOT_API_BASE"),
-    request_id_header: Some("x-request-id"),
-    alternate_auth: None,
-    quirks: Quirks {
-        output_cap: OutputCap::Legacy,
-        // Copilot verifies through its token exchange, not a path.
-        verify_path: "",
-        embedding: EmbeddingQuirks {
-            requires_usage: false,
-            ..EmbeddingQuirks::openai()
-        },
-        ..Quirks::openai()
-    },
-};
-
 /// Every dialect this build knows, for
 /// [`Dialect`]'s [`Deserialize`](serde::Deserialize) lookup.
 ///
@@ -648,8 +592,9 @@ const ALL: &[&Dialect] = &[
     &MINIMAX,
     &MOONSHOT,
     &XIAOMIMIMO,
-    &XAI,
-    &COPILOT_CHAT,
+    &crate::providers::xai::DIALECT,
+    &crate::providers::chatgpt::DIALECT,
+    &crate::providers::copilot::wire::DIALECT,
 ];
 
 /// The dialect named `name`, or `None` when this build has no such provider.

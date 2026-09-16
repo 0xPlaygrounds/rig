@@ -120,7 +120,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(model_name());
+            let model = client.chat(model_name());
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -190,7 +190,7 @@ async fn stream_raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
-            let model = client.completion(model_name());
+            let model = client.chat(model_name());
             let terminal = terminal_of(
                 model
                     .stream(request(&model))

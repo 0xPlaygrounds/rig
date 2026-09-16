@@ -73,67 +73,6 @@ fn raw_completion_choice_retains_logprobs() {
     assert_eq!(response.choices[0].logprobs, Some(logprobs));
 }
 
-/// OpenRouter's usage block is what carries the gateway's own accounting:
-/// a completion count it sometimes omits, its cost, and the cache and
-/// reasoning breakdowns. The conversion below is the only place those reach
-/// rig's normalized [`crate::completion::Usage`].
-#[test]
-fn usage_prefers_reported_completion_tokens() {
-    // Divergent accounting: total != prompt + completion.
-    let usage: Usage = serde_json::from_value(
-        json!({"prompt_tokens": 500, "completion_tokens": 10, "total_tokens": 505}),
-    )
-    .expect("OpenRouter usage should deserialize");
-
-    assert_eq!(
-        crate::completion::Usage::from(&usage).output_tokens,
-        Some(10)
-    );
-}
-
-#[test]
-fn usage_falls_back_when_completion_tokens_missing() {
-    let usage: Usage = serde_json::from_value(json!({"prompt_tokens": 100, "total_tokens": 110}))
-        .expect("a gateway may omit the completion count entirely");
-
-    assert_eq!(
-        crate::completion::Usage::from(&usage).output_tokens,
-        Some(10),
-        "the saturating total - prompt fallback stands in for the omitted field"
-    );
-}
-
-#[test]
-fn usage_maps_cache_token_accounting() {
-    let usage: Usage = serde_json::from_value(json!({
-        "prompt_tokens": 500,
-        "completion_tokens": 10,
-        "total_tokens": 510,
-        "prompt_tokens_details": {"cached_tokens": 400, "cache_write_tokens": 50}
-    }))
-    .expect("OpenRouter usage should deserialize");
-    let converted = crate::completion::Usage::from(&usage);
-
-    assert_eq!(converted.input_tokens, Some(500));
-    assert_eq!(converted.output_tokens, Some(10));
-    assert_eq!(converted.cached_input_tokens, Some(400));
-    assert_eq!(converted.cache_creation_input_tokens, Some(50));
-}
-
-#[test]
-fn usage_cache_tokens_absent_are_unreported() {
-    let usage: Usage = serde_json::from_value(json!({
-        "prompt_tokens": 100,
-        "completion_tokens": 10,
-        "total_tokens": 110
-    }))
-    .expect("OpenRouter usage should deserialize");
-    let converted = crate::completion::Usage::from(&usage);
-
-    assert_eq!(converted.cached_input_tokens, None);
-    assert_eq!(converted.cache_creation_input_tokens, None);
-}
-
 /// A Gemini route answers with `role: "model"` rather than `"assistant"`,
 /// and reports the model it actually served rather than the one requested.
 #[test]
@@ -645,29 +584,6 @@ fn test_provider_preferences_quantizations() {
     let provider = &json["provider"];
 
     assert_eq!(provider["quantizations"], json!(["int8", "fp16"]));
-}
-
-#[test]
-fn test_provider_preferences_convenience_methods() {
-    let prefs = ProviderPreferences::new().zero_data_retention().fastest();
-
-    assert_eq!(prefs.zdr, Some(true));
-    assert_eq!(
-        prefs.sort,
-        Some(ProviderSort::Simple(ProviderSortStrategy::Throughput))
-    );
-
-    let prefs2 = ProviderPreferences::new().cheapest();
-    assert_eq!(
-        prefs2.sort,
-        Some(ProviderSort::Simple(ProviderSortStrategy::Price))
-    );
-
-    let prefs3 = ProviderPreferences::new().lowest_latency();
-    assert_eq!(
-        prefs3.sort,
-        Some(ProviderSort::Simple(ProviderSortStrategy::Latency))
-    );
 }
 
 #[test]

@@ -423,7 +423,7 @@ async fn the_model_listing_is_public_even_on_a_keyed_server() {
         "error_matrix/model_listing_is_public",
         |client| async move {
             let models = client
-                .model_listing()
+                .models()
                 .list_all()
                 .await
                 .expect("`/v1/models` is served without the API-key check");

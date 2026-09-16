@@ -56,6 +56,7 @@ use rig::providers::copilot;
 use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai;
 use rig::providers::openai::responses_api;
+use rig::providers::openai::wire::OpenAiWire;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -228,7 +229,7 @@ async fn chat_raw_round_trips_provider_type() {
         |client| async move {
             let model = client.completion(CHAT_MODEL);
             assert!(
-                matches!(model.wire, CopilotWire::Chat { .. }),
+                matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
             let response = model
@@ -442,7 +443,7 @@ async fn responses_raw_round_trips_provider_type() {
         |client| async move {
             let model = client.completion(RESPONSES_MODEL);
             assert!(
-                matches!(model.wire, CopilotWire::Responses { .. }),
+                matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
             );
             let response = model

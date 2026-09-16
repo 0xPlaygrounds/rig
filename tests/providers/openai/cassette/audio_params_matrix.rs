@@ -79,7 +79,7 @@ async fn default_body_returns_mp3() {
         "audio_params_matrix/default_body_returns_mp3",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .audio_generation(openai::TTS_1)
                 .audio_generation_request()
                 .text(TEXT)
@@ -100,7 +100,7 @@ async fn response_format_wav_changes_the_container() {
         "audio_params_matrix/response_format_wav_changes_the_container",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .audio_generation(openai::TTS_1)
                 .audio_generation_request()
                 .text(TEXT)
@@ -126,7 +126,7 @@ async fn response_format_flac_changes_the_container() {
         "audio_params_matrix/response_format_flac_changes_the_container",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .audio_generation(openai::TTS_1)
                 .audio_generation_request()
                 .text(TEXT)
@@ -151,7 +151,7 @@ async fn instructions_reach_the_tts_model() {
         "audio_params_matrix/instructions_reach_the_tts_model",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .audio_generation("gpt-4o-mini-tts")
                 .audio_generation_request()
                 .text(TEXT)
@@ -179,7 +179,7 @@ async fn completions_client_shares_the_fixed_body() {
         "audio_params_matrix/completions_client_shares_the_fixed_body",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .audio_generation(openai::TTS_1)
                 .audio_generation_request()
                 .text(TEXT)
@@ -202,7 +202,7 @@ async fn additional_params_can_override_voice() {
         "audio_params_matrix/additional_params_can_override_voice",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .audio_generation(openai::TTS_1)
                 .audio_generation_request()
                 .text(TEXT)
@@ -225,7 +225,7 @@ async fn non_object_additional_params_are_a_no_op() {
         "audio_params_matrix/non_object_additional_params_are_a_no_op",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .audio_generation(openai::TTS_1)
                 .audio_generation_request()
                 .text(TEXT)

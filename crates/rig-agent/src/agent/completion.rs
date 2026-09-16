@@ -180,11 +180,11 @@ pub(crate) async fn build_prepared_completion_request(
 /// # Example
 /// ```no_run
 /// use rig_agent::prelude::*;
-/// use rig_core::providers::openai::{self, responses_api::wire::ResponsesApi};
+/// use rig_core::providers::openai::{self, OpenAI};
 /// use rig_reqwest::prelude::*;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = ResponsesApi::from_env()?.bound()?;
+/// let openai = OpenAI::from_env()?.bound()?;
 ///
 /// let comedian_agent = openai
 ///     .agent(openai::GPT_5_2)

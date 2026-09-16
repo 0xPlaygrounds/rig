@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
+use rig::providers::openai::{self, OpenAI};
 use rig::tool::{DynamicTool, ToolOutput};
 use serde::Deserialize;
 use serde_json::json;
@@ -58,7 +58,7 @@ fn runtime_tools() -> Vec<DynamicTool> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = ResponsesApi::from_env()?
+    let agent = OpenAI::from_env()?
         .bound()?
         .agent(openai::GPT_4O)
         .preamble(

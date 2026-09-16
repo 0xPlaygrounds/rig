@@ -5,13 +5,12 @@
 //! configuration a host stores — is [`wire`]; everything here is the data
 //! that travels over it.
 //!
-//! ```ignore
-//! use rig_core::providers::openai::{self, responses_api::wire::ResponsesApi};
-//! // rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
-//! use rig_reqwest::prelude::*;
+//! ```no_run
+//! use rig_core::providers::openai::{self, OpenAI};
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = ResponsesApi::from_env()?.bound()?.completion(openai::GPT_5_2);
+//! // The wire; `.bind(transport)` joins it to a socket.
+//! let model = OpenAI::from_env()?.responses(openai::GPT_5_2);
 //! # let _ = model;
 //! # Ok(())
 //! # }

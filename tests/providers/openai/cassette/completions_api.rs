@@ -23,7 +23,7 @@ async fn completions_api_agent_prompt() {
         "completions_api/completions_api_agent_prompt",
         |client| async move {
             let agent = client
-                .completion(openai::GPT_4O)
+                .chat(openai::GPT_4O)
                 .into_agent_builder()
                 .preamble("You are a helpful assistant.")
                 .build();
@@ -45,7 +45,7 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let model = client.completion(openai::GPT_4O);
+            let model = client.chat(openai::GPT_4O);
             let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
@@ -95,7 +95,8 @@ async fn completions_api_streams_two_tool_calls_before_final_answer() {
         "completions_api/completions_api_streams_two_tool_calls_before_final_answer",
         |client| async move {
             let agent = client
-                .agent(openai::GPT_4O)
+                .chat(openai::GPT_4O)
+                .into_agent_builder()
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .tool(BetaSignal)
@@ -119,7 +120,7 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion(openai::GPT_4O);
+            let model = client.chat(openai::GPT_4O);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
@@ -138,7 +139,7 @@ async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_accepts_null_tool_calls_delta",
         |client| async move {
-            let model = client.completion(openai::GPT_4O);
+            let model = client.chat(openai::GPT_4O);
             let request = model
                 .completion_request("Reply with exactly: cassette null tool calls ok")
                 .build();
@@ -167,7 +168,7 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion(openai::GPT_4O);
+            let model = client.chat(openai::GPT_4O);
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -198,7 +199,8 @@ async fn completions_api_stream_emits_tool_call_before_later_text() {
         "completions_api/completions_api_stream_emits_tool_call_before_later_text",
         |client| async move {
             let agent = client
-                .agent(openai::GPT_4O)
+                .chat(openai::GPT_4O)
+                .into_agent_builder()
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
                 .tool(AlphaSignal)
                 .build();
@@ -224,7 +226,7 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let model = client.completion(openai::GPT_4O);
+            let model = client.chat(openai::GPT_4O);
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

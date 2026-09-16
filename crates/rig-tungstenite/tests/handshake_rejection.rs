@@ -17,7 +17,8 @@
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
 use rig_core::driver::Bound;
-use rig_core::providers::openai::responses_api::wire::{Responses, ResponsesApi};
+use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_tungstenite::DefaultWebSocketClient as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -69,7 +70,7 @@ fn expect_refusal<T>(
 /// The websocket session is opened over a bound wire; its HTTP transport is
 /// never used, so any socket will do.
 fn bound(base_url: &str) -> Bound<Responses, RecordingHttpClient> {
-    let wire = ResponsesApi::new("sk-invalid-key")
+    let wire = OpenAI::new("sk-invalid-key")
         .with_base_url(base_url)
         .responses("gpt-5.4");
     Bound::new(wire, RecordingHttpClient::new("{}"))

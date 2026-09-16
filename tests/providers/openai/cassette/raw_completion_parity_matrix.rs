@@ -58,8 +58,7 @@ use rig::completion::{
 use rig::driver::Bound;
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::wire::Responses;
-use rig::providers::openai::wire::Chat;
+use rig::providers::openai::wire::{Chat, OpenAiWire};
 use serde::Deserialize as _;
 use serde_json::{Value, json};
 
@@ -314,7 +313,7 @@ fn assert_chat_views_agree(
 fn chat_parity_body(sink: Observed, request_for: fn(&Bound<Chat>) -> CompletionRequest) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let model = client.chat.completion(MODEL);
+            let model = client.openai.chat(MODEL);
             let typed = model
                 .completion(request_for(&model))
                 .await
@@ -432,7 +431,7 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     with_openai_cassette(
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
         |client| async move {
-            let model = client.chat.completion(MODEL);
+            let model = client.openai.chat(MODEL);
             let plain = model
                 .completion(text_request(&model))
                 .await
@@ -536,11 +535,11 @@ fn assert_responses_views_agree(
 /// `completion()` side the parity assertions compare against.
 fn responses_parity_body(
     sink: Observed,
-    request_for: fn(&Bound<Responses>) -> CompletionRequest,
+    request_for: fn(&Bound<OpenAiWire>) -> CompletionRequest,
 ) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let model = client.responses.completion(MODEL);
+            let model = client.openai.completion(MODEL);
             let typed = model
                 .completion(request_for(&model))
                 .await

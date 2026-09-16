@@ -81,8 +81,8 @@ enum Route {
 impl Route {
     fn builder(self, client: OpenAiCassette) -> AgentBuilder {
         match self {
-            Route::Chat => client.chat.agent(MODEL),
-            Route::Responses => client.responses.agent(MODEL),
+            Route::Chat => client.openai.chat(MODEL).into_agent_builder(),
+            Route::Responses => client.openai.agent(MODEL),
         }
     }
 
@@ -670,8 +670,9 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
         "raw_capture_agent_matrix/chat_retried_turn_records_retried_attempt_raw",
         |client| async move {
             let response = client
-                .chat
-                .agent(MODEL)
+                .openai
+                .chat(MODEL)
+                .into_agent_builder()
                 .preamble(
                     "Follow this protocol exactly. For the initial request, reply exactly \
                  `RETRY: incomplete draft`. If the latest user message asks you to \

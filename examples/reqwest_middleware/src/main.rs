@@ -1,6 +1,6 @@
 //! Demonstrates supplying a custom reqwest client with retry middleware.
 //! Requires `ANTHROPIC_API_KEY` and the `reqwest-middleware` feature.
-//! Run it to verify the provider client can use your preconfigured HTTP stack.
+//! Run it to verify a wire can be bound to your preconfigured HTTP stack.
 
 use anyhow::{Context, Result};
 use reqwest_middleware::ClientBuilder;

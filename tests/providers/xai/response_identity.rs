@@ -24,7 +24,7 @@ async fn nonstreaming_response_carries_identity() {
     with_xai_cassette(
         "response_identity/nonstreaming_response_carries_identity",
         |client| async move {
-            let model = client.completion(xai::completion::GROK_3_MINI);
+            let model = client.completion(xai::GROK_3_MINI);
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -50,7 +50,7 @@ async fn streaming_terminal_carries_identity() {
     with_xai_cassette(
         "response_identity/streaming_terminal_carries_identity",
         |client| async move {
-            let model = client.completion(xai::completion::GROK_3_MINI);
+            let model = client.completion(xai::GROK_3_MINI);
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
@@ -85,7 +85,7 @@ async fn streamed_agent_run_reports_identity() {
         |client| async move {
             let probe = IdentityProbe::default();
             let agent = client
-                .agent(xai::completion::GROK_3_MINI)
+                .agent(xai::GROK_3_MINI)
                 .preamble("You are a terse assistant.")
                 .add_hook(probe.clone())
                 .build();
@@ -120,7 +120,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
     with_xai_cassette(
         "response_identity/raw_and_normalized_views_agree_on_identity",
         |client| async move {
-            let model = client.completion(xai::completion::GROK_3_MINI);
+            let model = client.completion(xai::GROK_3_MINI);
             let request = model
                 .completion_request("Reply with exactly: two views probe")
                 .build();
@@ -187,7 +187,7 @@ async fn auth_rejection_classifies_with_contract() {
     with_xai_cassette_bogus_key(
         "response_identity/auth_rejection_classifies_with_contract",
         |client| async move {
-            let model = client.completion(xai::completion::GROK_3_MINI);
+            let model = client.completion(xai::GROK_3_MINI);
             let error = model
                 .completion_request("Never authenticated")
                 .send()

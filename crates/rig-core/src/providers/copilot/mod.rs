@@ -21,18 +21,18 @@
 //! `default_headers` beside the model identifiers — rather than one per route.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::copilot;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // An already-exchanged session token, from the environment.
-//! let github = copilot::wire::Copilot::from_env()?.bound()?;
+//! // An already-exchanged session token, from the environment; the wires,
+//! // which `.bind(transport)` joins to a socket.
+//! let github = copilot::wire::Copilot::from_env()?;
 //!
 //! // The model picks the route; the caller does not.
 //! let chat = github.completion(copilot::GPT_4O);
 //! let codex = github.completion(copilot::GPT_5_3_CODEX);
-//! let embeddings = github.embedding(copilot::TEXT_EMBEDDING_3_SMALL, None);
+//! let embeddings = github.embeddings(copilot::TEXT_EMBEDDING_3_SMALL, None);
 //! let catalogue = github.models();
 //! # let _ = (chat, codex, embeddings, catalogue);
 //! # Ok(())
@@ -40,7 +40,7 @@
 //! ```
 //!
 //! Signing in, rather than reading an exchanged token, runs [`auth`] first:
-//! ```ignore
+//! ```no_run
 //! use rig_core::providers::copilot::{auth, wire};
 //!
 //! # async fn run<H: rig_core::http_client::HttpClientExt>(http: H) -> Result<(), Box<dyn std::error::Error>> {

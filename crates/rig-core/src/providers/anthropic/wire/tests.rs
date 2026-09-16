@@ -215,11 +215,11 @@ fn a_gateway_defaults_max_tokens_to_its_one_documented_ceiling() {
     // A gateway documents one ceiling rather than per-model limits, so an
     // unrecognized model still gets a usable default.
     assert_eq!(ZAI.default_max_tokens("some-unknown-model"), Some(4096));
-    // `strict_tool_schemas` is a const field of a const dialect, so the
+    // `strict_tool_schemas` is a const quirk of a const dialect, so the
     // gateway's disagreement with Anthropic is a compile-time fact, not a
     // runtime one.
-    const _: () = assert!(!ZAI.strict_tool_schemas);
-    const _: () = assert!(ANTHROPIC.strict_tool_schemas);
+    const _: () = assert!(!ZAI.quirks.strict_tool_schemas);
+    const _: () = assert!(ANTHROPIC.quirks.strict_tool_schemas);
 }
 
 #[test]

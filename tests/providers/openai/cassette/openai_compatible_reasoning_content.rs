@@ -17,7 +17,7 @@ use futures::FutureExt;
 use rig::completion::Message;
 use rig::driver::Bound;
 use rig::prelude::*;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -63,7 +63,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
 
 async fn with_local_reasoning_content_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(Bound<ResponsesApi>) -> Fut,
+    F: FnOnce(Bound<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let server = LocalReasoningContentServer::start().await;
@@ -74,7 +74,7 @@ where
         &server.base_url(),
     )
     .await;
-    let client = ResponsesApi::new("dummy-openai-compatible-key")
+    let client = OpenAI::new("dummy-openai-compatible-key")
         .with_base_url(cassette.base_url())
         .bound()
         .expect("OpenAI-compatible cassette client should build");

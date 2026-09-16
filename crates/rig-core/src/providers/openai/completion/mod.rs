@@ -9,10 +9,7 @@ use crate::{completion, json_utils, message};
 use serde::{Deserialize, Serialize, Serializer};
 use std::convert::Infallible;
 use std::fmt;
-
 use std::str::FromStr;
-
-pub mod streaming;
 
 /// Serializes user content as a plain string when there's a single text item,
 /// otherwise as an array of content parts.
@@ -1510,6 +1507,16 @@ pub struct PromptTokensDetails {
         skip_serializing_if = "is_zero"
     )]
     pub audio_tokens: usize,
+    /// Tokens written to the cache on this call — a miss that populated it.
+    ///
+    /// Reported by gateways fronting upstreams that bill cache writes
+    /// separately (OpenRouter over Anthropic); OpenAI's own cache writes are
+    /// free and unreported. `Option` rather than absent-as-zero because the
+    /// normalized [`crate::completion::Usage`] distinguishes a counter the
+    /// provider did not send from a reported zero, and most dialects never
+    /// send this one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_write_tokens: Option<usize>,
 }
 
 /// Whether a counter is absent-as-zero, for `skip_serializing_if`.
@@ -1530,10 +1537,17 @@ pub struct Usage {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_tokens: Option<usize>,
     pub total_tokens: usize,
+    // Not aliased to Mistral's singular `prompt_token_details`: Mistral's
+    // embeddings reply carries *both* keys (the singular always `null`), and
+    // an alias makes serde reject the document as a duplicate field.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_tokens_details: Option<PromptTokensDetails>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completion_tokens_details: Option<CompletionTokensDetails>,
+    /// Mistral's top-level cached-prompt count, reported beside (or instead
+    /// of) `prompt_tokens_details.cached_tokens`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_cached_tokens: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub queue_time: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1552,6 +1566,7 @@ impl Usage {
             total_tokens: 0,
             prompt_tokens_details: None,
             completion_tokens_details: None,
+            num_cached_tokens: None,
             queue_time: None,
             prompt_time: None,
             completion_time: None,
@@ -1622,8 +1637,15 @@ impl Usage {
     }
 
     /// Normalize this provider usage payload into rig's [`crate::completion::Usage`].
+    ///
+    /// `cached_input_tokens` prefers `prompt_tokens_details.cached_tokens`
+    /// and falls back to Mistral's top-level `num_cached_tokens`, which some
+    /// Mistral replies report on its own: reading only the OpenAI spelling
+    /// would report no cache hit on a turn that was entirely served from
+    /// cache.
     pub fn to_normalized(&self) -> crate::completion::Usage {
         let input_tokens = self.input_tokens();
+        let details = self.prompt_tokens_details.as_ref();
         crate::completion::Usage {
             input_tokens: Some(input_tokens as u64),
             // Gateways that omit `completion_tokens` still send the total, so
@@ -1634,10 +1656,12 @@ impl Usage {
                     as u64,
             ),
             total_tokens: Some(self.total_tokens as u64),
-            cached_input_tokens: self
-                .prompt_tokens_details
-                .as_ref()
-                .map(|d| d.cached_tokens as u64),
+            cached_input_tokens: details
+                .map(|d| d.cached_tokens as u64)
+                .or(self.num_cached_tokens),
+            cache_creation_input_tokens: details
+                .and_then(|d| d.cache_write_tokens)
+                .map(|tokens| tokens as u64),
             reasoning_tokens: self
                 .completion_tokens_details
                 .as_ref()

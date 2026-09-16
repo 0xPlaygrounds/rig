@@ -26,7 +26,7 @@ async fn strict_tools_opt_in_roundtrip() {
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the API.
             let model = client
-                .responses
+                .openai
                 .completion(openai::GPT_4O)
                 .map_wire(|wire| wire.with_strict_tools());
             let request = model
@@ -79,7 +79,7 @@ async fn incomplete_response_surfaces_partial_output() {
     with_openai_cassette(
         "responses_behaviors/incomplete_response_surfaces_partial_output",
         |client| async move {
-            let model = client.responses.completion(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let request = model
                 .completion_request(
                     "Write a story of at least 150 words about a lighthouse keeper.",
@@ -146,8 +146,8 @@ async fn system_messages_as_input_items_mid_conversation() {
             // mid-conversation system message are sent as `system` input
             // items instead of the top-level `instructions` field.
             let model = client
-                .responses
-                .completion(openai::GPT_4O)
+                .openai
+                .responses(openai::GPT_4O)
                 .map_wire(|wire| wire.with_system_instructions_as_messages());
             let agent = AgentBuilder::new(model)
                 .preamble("You are a concise assistant.")

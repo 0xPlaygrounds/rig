@@ -17,38 +17,34 @@
 //!
 //! Every combination reads `MOONSHOT_API_KEY`.
 //!
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//!
 //! # OpenAI-compatible example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::moonshot;
 //! use rig_core::providers::openai::wire::{MOONSHOT, MOONSHOT_CHINA, OpenAI};
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let kimi = OpenAI::from_env_with(&MOONSHOT)?
-//!     .bound()?
-//!     .completion(moonshot::KIMI_K3);
+//! let kimi = OpenAI::from_env_with(&MOONSHOT)?.chat(moonshot::KIMI_K3);
 //!
 //! // The China entrypoint is the same dialect at `CHINA_API_BASE_URL`.
-//! let china = OpenAI::from_env_with(&MOONSHOT_CHINA)?
-//!     .bound()?
-//!     .completion(moonshot::KIMI_K3);
+//! let china = OpenAI::from_env_with(&MOONSHOT_CHINA)?.chat(moonshot::KIMI_K3);
+//! # let _ = (kimi, china);
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! # Anthropic-compatible example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::anthropic::wire::{Anthropic, MOONSHOT};
 //! use rig_core::providers::moonshot;
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let kimi = Anthropic::from_env_with(MOONSHOT)?
+//! let kimi = Anthropic::from_env_with(&MOONSHOT)?
 //!     .with_base_url(moonshot::CHINA_ANTHROPIC_API_BASE_URL)
-//!     .bound()?
-//!     .completion(moonshot::KIMI_K3);
+//!     .messages(moonshot::KIMI_K3);
+//! # let _ = kimi;
 //! # Ok(())
 //! # }
 //! ```

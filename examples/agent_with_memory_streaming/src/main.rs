@@ -10,7 +10,7 @@ use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingResult};
 use rig::memory::InMemoryConversationMemory;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
+use rig::providers::openai::{self, OpenAI};
 
 async fn collect_final(stream: &mut StreamingResult) -> Result<String> {
     let mut final_response = None;
@@ -26,7 +26,7 @@ async fn collect_final(stream: &mut StreamingResult) -> Result<String> {
 async fn main() -> Result<()> {
     let memory = InMemoryConversationMemory::new();
 
-    let agent = ResponsesApi::from_env()?
+    let agent = OpenAI::from_env()?
         .bound()?
         .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant with persistent memory.")

@@ -19,14 +19,15 @@
 //! # Example
 //! ```no_run
 //! use rig_agent::prelude::*;
-//! use rig_core::providers::openai::{self, responses_api::wire::ResponsesApi};
+//! use rig_core::providers::openai::{self, OpenAI};
 //! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let openai = ResponsesApi::from_env()?.bound()?;
+//! let openai = OpenAI::from_env()?.bound()?;
 //!
 //! // Configure the agent
-//! let agent = openai.agent(openai::GPT_5_2)
+//! let agent = openai
+//!     .agent(openai::GPT_5_2)
 //!     .preamble("System prompt")
 //!     .context("Context document 1")
 //!     .context("Context document 2")
@@ -59,19 +60,17 @@
 //! use rig_reqwest::prelude::*;
 //! use rig_core::{
 //!     embeddings::EmbeddingsBuilder,
-//!     providers::openai::{self, responses_api::wire::ResponsesApi, wire::OpenAI},
+//!     providers::openai::{self, OpenAI},
 //!     vector_store::in_memory_store::InMemoryVectorStore,
 //! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Completions come off the Responses config; embeddings are the same
-//! // OpenAI REST surface whichever completion API you use, so they come off
-//! // the chat-shaped one.
-//! let openai = ResponsesApi::from_env()?.bound()?;
-//! let openai_rest = OpenAI::from_env()?.bound()?;
+//! // One OpenAI config serves both: completions go to the Responses API,
+//! // embeddings to the shared REST surface.
+//! let openai = OpenAI::from_env()?.bound()?;
 //!
 //! // Initialize OpenAI embedding model
-//! let embedding_model = openai_rest.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+//! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //!
 //! // Create vector store, compute embeddings and load them in the store
 //! let mut vector_store = InMemoryVectorStore::default();
@@ -90,7 +89,8 @@
 //! // Create vector store index
 //! let index = vector_store.index(embedding_model);
 //!
-//! let agent = openai.agent(openai::GPT_5_2)
+//! let agent = openai
+//!     .agent(openai::GPT_5_2)
 //!     .preamble("
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.

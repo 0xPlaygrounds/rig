@@ -30,7 +30,7 @@ fn timings_survive_deserialization() {
         .expect("llama.cpp reports timings on every chat completion");
     assert_eq!(timings.cache_n, Some(8));
     assert_eq!(timings.predicted_n, Some(2));
-    assert_eq!(response.predicted_tokens_per_second(), Some(118.3));
+    assert_eq!(timings.predicted_per_second, Some(118.3));
 
     // The OpenAI half is intact beside them: `timings` is an addition to the
     // wire, not a replacement for it.
@@ -66,7 +66,6 @@ fn a_response_without_timings_still_decodes() {
     let response: CompletionResponse = serde_json::from_value(body)
         .unwrap_or_else(|error| panic!("should decode without timings: {error}"));
     assert!(response.timings.is_none());
-    assert!(response.predicted_tokens_per_second().is_none());
     assert_eq!(
         response
             .openai

@@ -142,7 +142,9 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     /// the arms read `bound.wire.model`, `bound.wire.provider.base_url`,
     /// `bound.wire.provider.api_key` and `bound.http` instead of asking a
     /// client for its configuration. Chat and DeepSeek are one wire on two
-    /// dialects, so the dialect's name — not the type — names the kind.
+    /// dialects, so the dialect's name — not the type — names the kind. The
+    /// dialect's default route (`OpenAiWire`) is one of the two concrete
+    /// wires, so it is matched onto the same arms.
     pub(crate) fn binding(&self) -> Option<WireBinding> {
         let model: &dyn std::any::Any = &self.model;
         let key = format!("{OWNER}/model:default");
@@ -168,36 +170,46 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 &bound.http,
             );
         }
-        if let Some(bound) = model.downcast_ref::<Bound<openai::Chat, BoxedHttpClient>>() {
+        let chat = |wire: &openai::Chat, http: &BoxedHttpClient| {
             // One wire on many dialects, and the dialect is what the record's
             // `provider` is: the kind must name the *same* dialect or the
             // materialized model answers under another provider's name. A
             // dialect `ProviderKind` cannot name is undescribable — the
             // harness leaves that wire hand-registered rather than
             // materializing it as some other provider.
-            let kind = match bound.wire.provider.dialect.name {
+            let kind = match wire.provider.dialect.name {
                 "openai" => ProviderKind::OpenAiChat,
                 "deepseek" => ProviderKind::DeepSeek,
-                "venice" => ProviderKind::Venice,
-                "doubleword" => ProviderKind::Doubleword,
                 _ => return None,
             };
-            return describe(
+            describe(
                 kind,
-                &bound.wire.model,
-                &bound.wire.provider.base_url,
-                &bound.wire.provider.api_key,
-                &bound.http,
-            );
+                &wire.model,
+                &wire.provider.base_url,
+                &wire.provider.api_key,
+                http,
+            )
+        };
+        let responses = |wire: &responses::Responses, http: &BoxedHttpClient| {
+            describe(
+                ProviderKind::OpenAiResponses,
+                &wire.model,
+                &wire.provider.base_url,
+                &wire.provider.api_key,
+                http,
+            )
+        };
+        if let Some(bound) = model.downcast_ref::<Bound<openai::Chat, BoxedHttpClient>>() {
+            return chat(&bound.wire, &bound.http);
         }
         if let Some(bound) = model.downcast_ref::<Bound<responses::Responses, BoxedHttpClient>>() {
-            return describe(
-                ProviderKind::OpenAiResponses,
-                &bound.wire.model,
-                &bound.wire.provider.base_url,
-                &bound.wire.provider.api_key,
-                &bound.http,
-            );
+            return responses(&bound.wire, &bound.http);
+        }
+        if let Some(bound) = model.downcast_ref::<Bound<openai::OpenAiWire, BoxedHttpClient>>() {
+            return match &bound.wire {
+                openai::OpenAiWire::Chat(wire) => chat(wire, &bound.http),
+                openai::OpenAiWire::Responses(wire) => responses(wire, &bound.http),
+            };
         }
         if let Some(bound) = model.downcast_ref::<Bound<gemini::GenerateContent, BoxedHttpClient>>()
         {

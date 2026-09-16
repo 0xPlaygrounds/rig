@@ -9,8 +9,9 @@
 //! OpenRouter proxies to an upstream provider and is the one gateway in the
 //! matrix that reports cache *writes* as well as reads
 //! (`prompt_tokens_details.cache_write_tokens`, mapped by the shared chat
-//! usage shape in `crates/rig-core/src/providers/openai/wire/dto.rs`). Routed here to an
-//! OpenAI model, so the underlying cache is OpenAI's 1,024-token automatic one.
+//! usage type in `crates/rig-core/src/providers/openai/completion/mod.rs`).
+//! Routed here to an OpenAI model, so the underlying cache is OpenAI's
+//! 1,024-token automatic one.
 //!
 //! # Recording
 //!

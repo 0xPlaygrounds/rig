@@ -7,7 +7,7 @@ use super::super::support::{with_openai_cassette, with_openai_cassette_bogus_key
 #[tokio::test]
 async fn list_models_smoke() {
     with_openai_cassette("models/list_models_smoke", |client| async move {
-        let models = match client.chat.model_listing().list_all().await {
+        let models = match client.openai.models().list_all().await {
             Ok(models) => models,
             Err(error) => {
                 panic!("listing OpenAI models should succeed\nDisplay: {error}\nDebug: {error:#?}")
@@ -35,8 +35,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .chat
-                .model_listing()
+                .openai
+                .models()
                 .list_all()
                 .await
                 .expect_err("a bogus key must not list models");

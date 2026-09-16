@@ -8,7 +8,7 @@ use rig::providers::ollama::wire::Ollama;
 #[ignore = "requires a local Ollama server"]
 async fn list_models_smoke() {
     let ollama = Ollama::new().bound().expect("transport should build");
-    let models = match ollama.model_listing().list_all().await {
+    let models = match ollama.models().list_all().await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Ollama models should succeed\nDisplay: {error}\nDebug: {error:#?}")

@@ -20,7 +20,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::driver::Bind;
 use rig::http_client::ReqwestClient;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
+use rig::providers::openai::{self, OpenAI};
 use rig::streaming::{Delta, StreamEvent};
 
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
@@ -30,10 +30,10 @@ const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
     // A host holds one erased transport for every provider it talks to: the
-    // bound provider is `Bound<ResponsesApi, BoxedHttpClient>`, so no
+    // bound provider is `Bound<OpenAI, BoxedHttpClient>`, so no
     // transport type reaches this crate's signatures.
     let transport = ReqwestClient::default().boxed();
-    let agent = ResponsesApi::from_env()?
+    let agent = OpenAI::from_env()?
         .bind(transport)
         .agent(openai::GPT_4O)
         .preamble(PREAMBLE)

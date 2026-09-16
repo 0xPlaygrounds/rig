@@ -124,7 +124,7 @@ async fn folded_stream(wire: Responses, body: &str) -> completion::CompletionRes
 }
 
 fn openai() -> Responses {
-    ResponsesApi::new("test-key").responses("gpt-4o")
+    OpenAI::new("test-key").responses("gpt-4o")
 }
 
 // ── the property the model exists for ───────────────────────────────────
@@ -182,7 +182,7 @@ async fn a_unary_tool_turn_and_its_stream_fold_alike() {
 #[tokio::test]
 async fn a_chatgpt_replayed_body_folds_the_same_unary_and_streamed() {
     let sse = cassette_body("chatgpt/codex_tool_args/zero_argument_tool_call_nonstreaming.yaml");
-    let wire = ResponsesApi::with_dialect("test-token", &CHATGPT).responses("gpt-5.4");
+    let wire = OpenAI::with_key(&CHATGPT, "test-token").responses("gpt-5.4");
 
     let buffered = folded_unary(wire.clone(), &sse).await;
     let streamed = folded_stream(wire, &sse).await;
@@ -236,7 +236,7 @@ fn turn(chat_history: Vec<Message>) -> CompletionRequest {
 }
 
 fn chatgpt() -> Responses {
-    ResponsesApi::with_dialect("test-token", &CHATGPT).responses("gpt-5.4")
+    OpenAI::with_key(&CHATGPT, "test-token").responses("gpt-5.4")
 }
 
 #[test]
@@ -420,7 +420,7 @@ async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
 /// xAI's endpoint lives under `/v1` and takes its own input shape.
 #[test]
 fn the_xai_dialect_posts_its_own_request_shape() {
-    let wire = ResponsesApi::with_dialect("test-key", &XAI).responses("grok-4");
+    let wire = OpenAI::with_key(&XAI, "test-key").responses("grok-4");
     let encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
@@ -445,7 +445,7 @@ fn the_xai_dialect_posts_its_own_request_shape() {
 /// that way.
 #[tokio::test]
 async fn an_error_envelope_on_a_success_fails_the_xai_call() {
-    let wire = ResponsesApi::with_dialect("test-key", &XAI).responses("grok-4");
+    let wire = OpenAI::with_key(&XAI, "test-key").responses("grok-4");
     let error = Bound::new(
         wire,
         RecordingHttpClient::new(Bytes::from_static(
@@ -460,47 +460,4 @@ async fn an_error_envelope_on_a_success_fails_the_xai_call() {
         error.to_string().contains("no capacity"),
         "the provider's own message must survive: {error}"
     );
-}
-
-// ── the dialects, as data ───────────────────────────────────────────────
-
-#[test]
-fn a_serialized_wire_carries_no_credential() {
-    let wire = ResponsesApi::new("sk-secret").responses("gpt-5-mini");
-    let json = serde_json::to_string(&wire).expect("a wire serializes");
-    assert!(!json.contains("sk-secret"), "{json}");
-    assert!(json.contains("[redacted]"), "{json}");
-}
-
-/// A dialect is an identity: it round-trips by name, and a name this crate
-/// does not ship is an error rather than a silent default.
-#[test]
-fn a_dialect_round_trips_by_name() {
-    for dialect in [OPENAI, CHATGPT, XAI] {
-        let json = serde_json::to_string(&dialect).expect("a dialect serializes");
-        assert_eq!(json, format!("\"{}\"", dialect.name));
-        assert_eq!(
-            serde_json::from_str::<Dialect>(&json).expect("a dialect round-trips"),
-            dialect
-        );
-    }
-    assert!(serde_json::from_str::<Dialect>("\"gemini\"").is_err());
-}
-
-/// Every dialect reads the variables the client layer read.
-#[test]
-fn each_dialect_names_the_environment_it_always_read() {
-    assert_eq!(OPENAI.api_key_env, "OPENAI_API_KEY");
-    assert_eq!(OPENAI.base_url_env, Some("OPENAI_BASE_URL"));
-
-    let chatgpt = CHATGPT;
-    assert_eq!(chatgpt.api_key_env, "CHATGPT_ACCESS_TOKEN");
-    assert_eq!(chatgpt.base_url_env, Some("CHATGPT_API_BASE"));
-    assert_eq!(
-        chatgpt.quirks.base_url_env_alias,
-        Some("OPENAI_CHATGPT_API_BASE")
-    );
-    assert_eq!(chatgpt.quirks.account_id_env, Some("CHATGPT_ACCOUNT_ID"));
-
-    assert_eq!(XAI.api_key_env, "XAI_API_KEY");
 }

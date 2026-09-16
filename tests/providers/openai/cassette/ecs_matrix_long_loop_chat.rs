@@ -18,7 +18,7 @@ const THINKING: cells::ThinkingWire = cells::ThinkingWire::OpenAiChat;
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: client.chat.completion("gpt-4.1-mini"),
+        model: client.openai.chat("gpt-4.1-mini"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -35,7 +35,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     let client = OpenAI::new(SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
     Wire {
         thinking: THINKING,
-        model: client.completion("gpt-4.1-mini"),
+        model: client.chat("gpt-4.1-mini"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

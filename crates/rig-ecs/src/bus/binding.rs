@@ -54,18 +54,14 @@ pub use rig_core::wire::Secret;
 pub enum ProviderKind {
     /// `anthropic::wire::Anthropic` (the Messages API).
     Anthropic,
-    /// `openai::wire::OpenAI` on its own dialect, over Chat Completions.
+    /// `openai::OpenAI` on its own dialect, over Chat Completions.
     OpenAiChat,
-    /// `openai::responses_api::wire::ResponsesApi`.
+    /// `openai::OpenAI` on its own dialect, over the Responses API.
     OpenAiResponses,
     /// `gemini::Gemini` (GenerateContent).
     Gemini,
-    /// `openai::wire::OpenAI` on its DeepSeek dialect.
+    /// `openai::OpenAI` on its DeepSeek dialect.
     DeepSeek,
-    /// `openai::wire::OpenAI` on its Venice dialect.
-    Venice,
-    /// `openai::wire::OpenAI` on its Doubleword dialect.
-    Doubleword,
 }
 
 impl ProviderKind {
@@ -77,8 +73,6 @@ impl ProviderKind {
             Self::OpenAiResponses => "openai_responses",
             Self::Gemini => "gemini",
             Self::DeepSeek => "deepseek",
-            Self::Venice => "venice",
-            Self::Doubleword => "doubleword",
         }
     }
 }
@@ -157,7 +151,7 @@ pub struct ProviderBinding {
     /// |---|---|
     /// | `anthropic` | `anthropic_version: string`, `anthropic_betas: [string]` |
     /// | `openai_responses` | `system_instructions_as_messages: bool` |
-    /// | `gemini`, and every Chat Completions dialect (`openai_chat`, `deepseek`, `venice`, `doubleword`) | none |
+    /// | `gemini`, and every Chat Completions dialect (`openai_chat`, `deepseek`) | none |
     #[reflect(remote = crate::bus::reflect::ExtraParamsReflect)]
     pub extra_params: Option<serde_json::Value>,
 }
@@ -390,11 +384,7 @@ fn allowed_extra_params(kind: ProviderKind) -> &'static [&'static str] {
     match kind {
         ProviderKind::Anthropic => &["anthropic_version", "anthropic_betas"],
         ProviderKind::OpenAiResponses => &["system_instructions_as_messages"],
-        ProviderKind::OpenAiChat
-        | ProviderKind::Gemini
-        | ProviderKind::DeepSeek
-        | ProviderKind::Venice
-        | ProviderKind::Doubleword => &[],
+        ProviderKind::OpenAiChat | ProviderKind::Gemini | ProviderKind::DeepSeek => &[],
     }
 }
 
@@ -469,18 +459,16 @@ fn build_adapter(
                 label,
                 openai_config(binding, secret, &openai::wire::OPENAI)
                     .bind(transport)
-                    .completion(model),
+                    .chat(model),
             ))
         }
         ProviderKind::OpenAiResponses => {
             let params = extra_object(binding, allowed_extra_params(binding.kind))?;
-            let mut provider = openai::responses_api::wire::ResponsesApi::new(secret.clone());
-            if let Some(base_url) = &binding.base_url {
-                provider = provider.with_base_url(base_url.as_str());
-            }
             // The placement is the wire's option now, not the client's, so
             // `map_wire` is where it goes.
-            let mut bound = provider.bind(transport).completion(model);
+            let mut bound = openai_config(binding, secret, &openai::wire::OPENAI)
+                .bind(transport)
+                .responses(model);
             if let Some(params) = params
                 && let Some(flag) = params.get("system_instructions_as_messages")
             {
@@ -516,24 +504,6 @@ fn build_adapter(
             ErasedHandler::new(CompletionAdapter::new(
                 label,
                 openai_config(binding, secret, &openai::wire::DEEPSEEK)
-                    .bind(transport)
-                    .completion(model),
-            ))
-        }
-        ProviderKind::Venice => {
-            extra_object(binding, allowed_extra_params(binding.kind))?;
-            ErasedHandler::new(CompletionAdapter::new(
-                label,
-                openai_config(binding, secret, &openai::wire::VENICE)
-                    .bind(transport)
-                    .completion(model),
-            ))
-        }
-        ProviderKind::Doubleword => {
-            extra_object(binding, allowed_extra_params(binding.kind))?;
-            ErasedHandler::new(CompletionAdapter::new(
-                label,
-                openai_config(binding, secret, &openai::wire::DOUBLEWORD)
                     .bind(transport)
                     .completion(model),
             ))

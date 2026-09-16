@@ -46,6 +46,17 @@ pub struct Dialect {
     pub base_url_env: Option<&'static str>,
     /// The reply header carrying the provider's transport request id.
     pub request_id_header: Option<&'static str>,
+    /// Everything that is not identity.
+    pub quirks: Quirks,
+}
+
+/// Everything about a dialect that is not its identity.
+///
+/// `#[non_exhaustive]` because the constants live in this crate and a new
+/// quirk must not be a breaking change for a host that stored a wire.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct Quirks {
     /// How `max_tokens` is defaulted when the caller sets none. Anthropic
     /// requires the field, so a wire that cannot supply it fails the request
     /// rather than sending one the API rejects.
@@ -53,6 +64,25 @@ pub struct Dialect {
     /// Whether the provider implements Anthropic's constrained tool schemas.
     /// A gateway that does not leaves Rig-generated tools unchanged.
     pub strict_tool_schemas: bool,
+}
+
+impl Quirks {
+    /// Anthropic's own contract.
+    pub const fn anthropic() -> Self {
+        Self {
+            max_tokens: MaxTokens::ByModel,
+            strict_tool_schemas: true,
+        }
+    }
+
+    /// What a gateway documents: one 4096-token ceiling rather than
+    /// per-model limits, and no promise of constrained tool schemas.
+    pub const fn gateway() -> Self {
+        Self {
+            max_tokens: MaxTokens::Fixed(4096),
+            strict_tool_schemas: false,
+        }
+    }
 }
 
 /// Where a dialect's `max_tokens` default comes from.
@@ -71,8 +101,7 @@ pub const ANTHROPIC: Dialect = Dialect {
     api_key_env: "ANTHROPIC_API_KEY",
     base_url_env: Some("ANTHROPIC_BASE_URL"),
     request_id_header: Some("request-id"),
-    max_tokens: MaxTokens::ByModel,
-    strict_tool_schemas: true,
+    quirks: Quirks::anthropic(),
 };
 
 impl Dialect {
@@ -102,10 +131,8 @@ impl<'de> Deserialize<'de> for Dialect {
 /// A gateway speaking the Messages format.
 ///
 /// The compatible providers share every field but their name, URL and
-/// environment variables: they mirror Anthropic's `request-id` header,
-/// document one 4096-token ceiling rather than per-model limits, and do not
-/// necessarily implement Anthropic's constrained tool schemas — so a
-/// Rig-generated tool is left unchanged.
+/// environment variables: they mirror Anthropic's `request-id` header and
+/// take the [`Quirks::gateway`] contract.
 pub const fn compatible(
     name: &'static str,
     base_url: &'static str,
@@ -118,8 +145,7 @@ pub const fn compatible(
         api_key_env,
         base_url_env,
         request_id_header: Some("request-id"),
-        max_tokens: MaxTokens::Fixed(4096),
-        strict_tool_schemas: false,
+        quirks: Quirks::gateway(),
     }
 }
 
@@ -132,7 +158,7 @@ pub(crate) fn strict_tool_transform(tool: &mut ToolDefinition) {
 impl Dialect {
     /// The `max_tokens` this dialect defaults `model` to.
     pub fn default_max_tokens(&self, model: &str) -> Option<u64> {
-        match self.max_tokens {
+        match self.quirks.max_tokens {
             MaxTokens::ByModel => default_max_tokens_for_model(model),
             MaxTokens::Fixed(tokens) => Some(tokens),
         }
@@ -189,27 +215,27 @@ pub struct Anthropic {
 impl Anthropic {
     /// Anthropic itself, with default settings.
     pub fn new(api_key: impl Into<Secret>) -> Self {
-        Self::with_dialect(api_key, ANTHROPIC)
+        Self::with_dialect(api_key, &ANTHROPIC)
     }
 
     /// A Messages-format provider with default settings.
-    pub fn with_dialect(api_key: impl Into<Secret>, dialect: Dialect) -> Self {
+    pub fn with_dialect(api_key: impl Into<Secret>, dialect: &Dialect) -> Self {
         Self {
             api_key: api_key.into(),
             base_url: dialect.base_url.to_owned(),
             version: super::completion::ANTHROPIC_VERSION_LATEST.to_owned(),
             betas: Vec::new(),
-            dialect,
+            dialect: *dialect,
         }
     }
 
     /// Anthropic from `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL`.
     pub fn from_env() -> Result<Self, EnvError> {
-        Self::from_env_with(ANTHROPIC)
+        Self::from_env_with(&ANTHROPIC)
     }
 
     /// A Messages-format provider from the variables its dialect names.
-    pub fn from_env_with(dialect: Dialect) -> Result<Self, EnvError> {
+    pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
         let mut provider = Self::with_dialect(env::required(dialect.api_key_env)?, dialect);
         if let Some(name) = dialect.base_url_env
             && let Some(base_url) = env::optional(name)?
@@ -488,7 +514,7 @@ impl Messages {
                 automatic_caching_ttl: self.automatic_caching_ttl.clone(),
                 static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
             },
-            (self.strict_tools && self.provider.dialect.strict_tool_schemas)
+            (self.strict_tools && self.provider.dialect.quirks.strict_tool_schemas)
                 .then_some(strict_tool_transform as fn(&mut ToolDefinition)),
         )?;
         let mut body = serde_json::to_value(&typed)?;

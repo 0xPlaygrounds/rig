@@ -18,7 +18,7 @@ async fn context_smoke() {
         let agent = XAI_CONTEXT_DOCS
             .iter()
             .copied()
-            .fold(client.agent(xai::completion::GROK_4), |builder, doc| {
+            .fold(client.agent(xai::GROK_4), |builder, doc| {
                 builder.context(doc)
             })
             .preamble(

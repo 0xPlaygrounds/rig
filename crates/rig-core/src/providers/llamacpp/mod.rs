@@ -36,23 +36,20 @@
 //! set, which is what a server started with `--api-key <key>` requires.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//! ```no_run
 //! use rig_core::providers::llamacpp;
 //! use rig_core::providers::openai::wire::{LLAMACPP, OpenAI};
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // A local server, no credential.
-//! let model = OpenAI::from_env_with(&LLAMACPP)?
-//!     .bound()?
-//!     .completion(llamacpp::LLAMA_CPP);
+//! let model = OpenAI::from_env_with(&LLAMACPP)?.chat(llamacpp::LLAMA_CPP);
 //!
 //! // `llama-server --api-key hunter2`, on another host.
 //! let secured = OpenAI::with_key(&LLAMACPP, "hunter2")
 //!     .with_base_url("http://gpu.local:8080")
-//!     .bound()?
-//!     .completion(llamacpp::LLAMA_CPP);
+//!     .chat(llamacpp::LLAMA_CPP);
 //! # let _ = (model, secured);
 //! # Ok(())
 //! # }

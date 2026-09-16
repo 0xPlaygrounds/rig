@@ -36,7 +36,7 @@ use rig::completion::CompletionModel as _;
 use rig::driver::Bound;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
-use rig::providers::openai::responses_api::wire::Responses;
+use rig::providers::openai::wire::OpenAiWire;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
@@ -48,7 +48,7 @@ const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-type ChatGptModel = Bound<Responses>;
+type ChatGptModel = Bound<OpenAiWire>;
 
 fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()

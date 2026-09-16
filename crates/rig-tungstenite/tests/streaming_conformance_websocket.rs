@@ -24,8 +24,8 @@
 use futures::{SinkExt, StreamExt};
 use rig_core::completion::{CompletionError, CompletionModel as _};
 use rig_core::driver::Bound;
+use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketEvent;
-use rig_core::providers::openai::responses_api::wire::ResponsesApi;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_core::test_utils::streaming_conformance::{
     self as conformance, fixtures::openai_responses,
@@ -184,7 +184,7 @@ fn driver() -> conformance::WireDriver {
 
             // The HTTP transport is never used: a websocket session only
             // borrows the wire for its request mapping.
-            let wire = ResponsesApi::new("test-key")
+            let wire = OpenAI::new("test-key")
                 .with_base_url(format!("http://{address}/v1"))
                 .responses("gpt-5.4");
             let bound = Bound::new(wire, RecordingHttpClient::new("{}"));

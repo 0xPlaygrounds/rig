@@ -31,7 +31,7 @@
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
 use rig::driver::Bound;
 use rig::providers::openai::responses_api;
-use rig::providers::openai::responses_api::wire::Responses;
+use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
 use serde::Deserialize;
 use serde_json::Value;
@@ -44,7 +44,7 @@ const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &Bound<Responses>) -> CompletionRequest {
+fn request(model: &Bound<OpenAiWire>) -> CompletionRequest {
     model.completion_request(PROMPT).build()
 }
 

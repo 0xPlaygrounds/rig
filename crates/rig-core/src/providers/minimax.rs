@@ -15,38 +15,34 @@
 //!
 //! Every combination reads `MINIMAX_API_KEY`.
 //!
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//!
 //! # OpenAI-compatible example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::minimax;
 //! use rig_core::providers::openai::wire::{MINIMAX, MINIMAX_CHINA, OpenAI};
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = OpenAI::from_env_with(&MINIMAX)?
-//!     .bound()?
-//!     .completion(minimax::MINIMAX_M2_7);
+//! let model = OpenAI::from_env_with(&MINIMAX)?.chat(minimax::MINIMAX_M2_7);
 //!
 //! // The China entrypoint is the same dialect at `CHINA_API_BASE_URL`.
-//! let china = OpenAI::from_env_with(&MINIMAX_CHINA)?
-//!     .bound()?
-//!     .completion(minimax::MINIMAX_M2_7);
+//! let china = OpenAI::from_env_with(&MINIMAX_CHINA)?.chat(minimax::MINIMAX_M2_7);
+//! # let _ = (model, china);
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! # Anthropic-compatible example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::anthropic::wire::{Anthropic, MINIMAX};
 //! use rig_core::providers::minimax;
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = Anthropic::from_env_with(MINIMAX)?
+//! let model = Anthropic::from_env_with(&MINIMAX)?
 //!     .with_base_url(minimax::CHINA_ANTHROPIC_API_BASE_URL)
-//!     .bound()?
-//!     .completion(minimax::MINIMAX_M2);
+//!     .messages(minimax::MINIMAX_M2);
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```

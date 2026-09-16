@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::completion::{self, CompletionError};
 use crate::message::{Message as RigMessage, MimeType, ReasoningContent};
-use crate::providers::openai::responses_api::ReasoningSummary;
+use crate::providers::openai::responses_api::{ReasoningSummary, Role};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct CompletionRequest {
@@ -156,14 +156,6 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         encrypted_content: Option<String>,
     },
-}
-
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Role {
-    System,
-    User,
-    Assistant,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

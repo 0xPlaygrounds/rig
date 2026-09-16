@@ -333,7 +333,7 @@ fn json_body(encoded: &Encoded) -> serde_json::Value {
 #[tokio::test]
 async fn the_xai_image_body_and_reply_differ_from_openais() {
     use crate::image_generation::ImageGenerationModel as _;
-    use crate::providers::openai::wire::XAI;
+    use crate::providers::xai::DIALECT as XAI;
 
     let request = || crate::image_generation::ImageGenerationRequest {
         prompt: "a cat".to_owned(),
@@ -387,7 +387,7 @@ async fn the_xai_image_body_and_reply_differ_from_openais() {
 #[cfg(feature = "audio")]
 #[test]
 fn the_xai_speech_body_differs_from_openais() {
-    use crate::providers::openai::wire::XAI;
+    use crate::providers::xai::DIALECT as XAI;
 
     let request = |voice: &str| crate::audio_generation::AudioGenerationRequest {
         text: "hello".to_owned(),

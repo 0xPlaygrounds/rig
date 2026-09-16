@@ -35,7 +35,7 @@ pub(super) fn folded_choice(output: Vec<Output>) -> Vec<completion::AssistantCon
 
 /// The OpenAI Responses wire, for the request-shaping assertions.
 fn openai_wire(model: &str) -> wire::Responses {
-    wire::ResponsesApi::new("dummy-key").responses(model)
+    crate::providers::openai::OpenAI::new("dummy-key").responses(model)
 }
 
 /// The Responses request a wire builds for a Rig request — the one
@@ -2777,7 +2777,7 @@ mod raw_capture {
         assert!(raw.get("provider_request_id").is_none());
         assert_eq!(typed.provider_request_id, None);
 
-        let refolded = wire::fold_body(wire::OPENAI.name, typed)
+        let refolded = wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
             .expect("re-fold the capture")
             .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
         assert_eq!(response.identity(), refolded.identity());

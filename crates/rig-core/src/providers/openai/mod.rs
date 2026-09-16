@@ -1,13 +1,15 @@
-//! OpenAI API client and Rig integration
+//! OpenAI: one configuration, the Responses and Chat Completions wires, and
+//! every OpenAI-shaped dialect.
 //!
 //! # Example
 //! ```no_run
 //! use rig_core::providers::openai;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let provider = openai::wire::OpenAI::from_env()?;
+//! let provider = openai::OpenAI::from_env()?;
 //!
-//! let gpt_5_2 = provider.chat(openai::GPT_5_2);
+//! let gpt_5_2 = provider.responses(openai::GPT_5_2);
+//! let chat = provider.chat(openai::GPT_5_2);
 //! let embeddings = provider.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None);
 //! # Ok(())
 //! # }
@@ -21,9 +23,11 @@ pub mod completion;
 pub mod embedding;
 pub mod responses_api;
 
-/// The OpenAI wires: one chat-completions wire and one `Dialect` constant
-/// per OpenAI-shaped provider.
+/// The OpenAI wires: the configuration, the chat-completions wire and one
+/// `Dialect` constant per OpenAI-shaped provider.
 pub mod wire;
+
+pub use wire::OpenAI;
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
@@ -80,7 +84,6 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
 #[cfg(feature = "audio")]
 pub use audio_generation::{TTS_1, TTS_1_HD};
 
-pub use streaming::*;
 pub use transcription::*;
 
 #[cfg(test)]

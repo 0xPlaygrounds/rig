@@ -11,7 +11,7 @@ use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
 async fn extractor_smoke() {
     with_openai_cassette("extractor/extractor_smoke", |client| async move {
         let extractor = client
-            .responses
+            .openai
             .extractor::<SmokePerson>(openai::GPT_4O)
             .build();
 

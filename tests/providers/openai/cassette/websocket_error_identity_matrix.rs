@@ -102,8 +102,8 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
         "websocket_error_identity_matrix/handshake_rejection_carries_status_body_and_request_id",
         |client| async move {
             let error = client
-                .responses
-                .completion("gpt-4o-mini")
+                .openai
+                .responses("gpt-4o-mini")
                 .responses_websocket()
                 .await
                 .err()
@@ -143,7 +143,7 @@ async fn handshake_rejection_matches_the_http_twin() {
     with_openai_websocket_cassette(
         "websocket_error_identity_matrix/handshake_rejection_matches_the_http_twin",
         |client| async move {
-            let model = client.responses.completion("gpt-4o-mini");
+            let model = client.openai.responses("gpt-4o-mini");
             let websocket_error = model
                 .responses_websocket()
                 .await

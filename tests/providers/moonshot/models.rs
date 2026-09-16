@@ -16,7 +16,7 @@ async fn list_models_smoke() {
         .expect("MOONSHOT_API_KEY should be set")
         .bound()
         .expect("client should build");
-    let models = match client.model_listing().list_all().await {
+    let models = match client.models().list_all().await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Moonshot models should succeed\nDisplay: {error}\nDebug: {error:#?}")

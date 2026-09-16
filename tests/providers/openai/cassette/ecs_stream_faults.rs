@@ -42,7 +42,7 @@ use crate::{
 /// A scripted-transport model: one streaming exchange, then EOF.
 fn scripted_model(
     chunks: Vec<Bytes>,
-) -> Bound<openai::responses_api::wire::Responses, SequencedStreamingHttpClient> {
+) -> Bound<openai::wire::OpenAiWire, SequencedStreamingHttpClient> {
     scripted_client(chunks).completion(GPT_4O)
 }
 
@@ -94,7 +94,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
             |client| async move {
                 let run = native_run(
-                    client.responses.completion(MISSING_MODEL),
+                    client.openai.completion(MISSING_MODEL),
                     "",
                     SETUP_PROMPT,
                     witness,
@@ -354,7 +354,7 @@ async fn despawning_the_stream_at_the_first_delta_records_a_cancel() {
         let runs = &mut runs;
         with_openai_cassette("streaming/streaming_smoke", |client| async move {
             let run = native_run(
-                client.responses.completion(GPT_4O),
+                client.openai.completion(GPT_4O),
                 STREAMING_PREAMBLE,
                 STREAMING_PROMPT,
                 witness,

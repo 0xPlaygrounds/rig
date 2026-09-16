@@ -178,16 +178,15 @@ impl ChatUsage {
 
     /// Normalize this accounting.
     ///
-    /// `cached_input_tokens` falls back to DeepSeek's `prompt_cache_hit_tokens`
-    /// and Mistral's `num_cached_tokens`: both report cache activity outside
-    /// `prompt_tokens_details`, and reading only the OpenAI spelling would
-    /// report no cache hit on a turn that was entirely served from cache.
+    /// `cached_input_tokens` falls back to DeepSeek's `prompt_cache_hit_tokens`,
+    /// which reports cache activity outside `prompt_tokens_details`; reading
+    /// only the OpenAI spelling would report no cache hit on a turn that was
+    /// entirely served from cache. (Mistral's `num_cached_tokens` is a typed
+    /// field of [`Usage`] and handled by its own `to_normalized`.)
     pub fn to_normalized(&self) -> crate::completion::Usage {
         let mut usage = self.openai.to_normalized();
         if usage.cached_input_tokens.is_none() {
-            usage.cached_input_tokens = self
-                .extra_count("prompt_cache_hit_tokens")
-                .or_else(|| self.extra_count("num_cached_tokens"));
+            usage.cached_input_tokens = self.extra_count("prompt_cache_hit_tokens");
         }
         usage
     }

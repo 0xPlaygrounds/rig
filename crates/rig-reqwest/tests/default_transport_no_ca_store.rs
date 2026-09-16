@@ -25,7 +25,7 @@
 #![cfg(all(target_os = "linux", feature = "rustls", not(feature = "native-tls")))]
 
 use rig_core::client::ProviderClientError;
-use rig_core::providers::openai::responses_api::wire::ResponsesApi;
+use rig_core::providers::openai::OpenAI;
 use rig_reqwest::prelude::*;
 
 fn empty_the_ca_store() {
@@ -42,10 +42,10 @@ fn empty_the_ca_store() {
 fn every_default_transport_constructor_reports_a_missing_ca_store() {
     empty_the_ca_store();
 
-    let from_env = ResponsesApi::from_env()
+    let from_env = OpenAI::from_env()
         .expect("reading the environment does not need a transport")
         .bound();
-    let new = ResponsesApi::new("test-key").bound();
+    let new = OpenAI::new("test-key").bound();
 
     for (name, result) in [("from_env", from_env.map(drop)), ("new", new.map(drop))] {
         let outcome = match result {

@@ -72,7 +72,7 @@ fn host_bus(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                 "default",
-                client.responses.completion(MODEL),
+                client.openai.completion(MODEL),
             )),
         )
         .expect("a fresh key");
@@ -90,7 +90,9 @@ fn host_bus(
                 HandlerKey::from(EMBED_KEY),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
                     "host",
-                    client.chat.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+                    client
+                        .openai
+                        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
                 )),
             )
             .expect("a fresh key");
@@ -106,7 +108,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
         "corpus_breadth/output_tool_streamed",
         |client| async move {
             let agent = client
-                .responses
+                .openai
                 .agent(MODEL)
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
@@ -134,7 +136,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
 async fn text_delta_stop_effect_log_is_the_golden_fixture() {
     with_openai_corpus_breadth_cassette("corpus_breadth/text_delta_stop", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(MODEL)
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -176,7 +178,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
         "corpus_breadth/tool_dispatch_cancelled",
         |client| async move {
             let agent = client
-                .responses
+                .openai
                 .agent(MODEL)
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
@@ -248,7 +250,7 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
 async fn prompted_streamed_effect_log_is_the_golden_fixture() {
     with_openai_corpus_breadth_cassette("corpus_breadth/prompted_streamed", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(MODEL)
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -274,7 +276,7 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
 async fn memory_two_runs_effect_log_is_the_golden_fixture() {
     with_openai_corpus_breadth_cassette("corpus_breadth/memory_two_runs", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(MODEL)
             .name("golden")
             .preamble(BASIC_PREAMBLE)

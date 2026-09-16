@@ -19,7 +19,7 @@
 //!
 //! Rig reads the count from `prompt_tokens_details.cached_tokens`, falling back
 //! to the top-level `num_cached_tokens`
-//! (`crates/rig-core/src/providers/mistral/client.rs`, `Usage::cached_tokens`);
+//! (`crates/rig-core/src/providers/openai/completion/mod.rs`, `Usage::to_normalized`);
 //! it is a subset of `prompt_tokens`, so the denominator is `input_tokens`.
 //!
 //! # No agent-loop cell, and why

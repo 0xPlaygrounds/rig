@@ -18,7 +18,7 @@ async fn image_generation_smoke() {
             // credential and base URL so the fixture still replays.
             let model = client
                 .map_wire(|responses| {
-                    openai::wire::OpenAI::with_key(&openai::wire::XAI, responses.api_key)
+                    openai::wire::OpenAI::with_key(&xai::DIALECT, responses.api_key)
                         .with_base_url(responses.base_url)
                 })
                 .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE_PRO);

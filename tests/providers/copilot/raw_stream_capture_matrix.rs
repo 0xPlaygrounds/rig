@@ -54,6 +54,7 @@ use rig::driver::Bound;
 use rig::providers::copilot;
 use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai::responses_api;
+use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
@@ -152,7 +153,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
         |client| async move {
             let model = client.completion(CHAT_MODEL);
             assert!(
-                matches!(model.wire, CopilotWire::Chat { .. }),
+                matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
             let terminal = terminal_of(
@@ -299,7 +300,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
         |client| async move {
             let model = client.completion(RESPONSES_MODEL);
             assert!(
-                matches!(model.wire, CopilotWire::Responses { .. }),
+                matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
             );
             let terminal = terminal_of(

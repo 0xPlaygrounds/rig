@@ -18,7 +18,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
         "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata",
         |client| async move {
             let model = client
-                .completion(DEFAULT_OPENAI_COMPAT_MODEL)
+                .responses(DEFAULT_OPENAI_COMPAT_MODEL)
                 .map_wire(Responses::with_system_instructions_as_messages);
             let request = model
                 .completion_request("Reply with exactly: openrouter responses service tier ok")
@@ -58,7 +58,7 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_agent_prompt_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .completion(DEFAULT_OPENAI_COMPAT_MODEL)
+                .responses(DEFAULT_OPENAI_COMPAT_MODEL)
                 .map_wire(Responses::with_system_instructions_as_messages)
                 .into_agent_builder()
                 .preamble("You are concise. Answer with one short sentence.")
@@ -81,7 +81,7 @@ async fn openai_responses_stream_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_stream_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .completion(DEFAULT_OPENAI_COMPAT_MODEL)
+                .responses(DEFAULT_OPENAI_COMPAT_MODEL)
                 .map_wire(Responses::with_system_instructions_as_messages)
                 .into_agent_builder()
                 .preamble("You are concise. Answer directly.")

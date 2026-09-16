@@ -134,7 +134,7 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
             adapted(
                 OpenAI::with_key(&OPENAI, "test-not-a-key")
                     .bind(http)
-                    .completion("gpt-4o"),
+                    .chat("gpt-4o"),
                 direct,
             )
             .await

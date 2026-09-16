@@ -1,4 +1,4 @@
-//! Groq's model identifiers and reasoning parameters.
+//! Groq's model identifiers.
 //!
 //! Groq is an OpenAI chat-completions dialect, so it has no client and no
 //! models of its own:
@@ -11,27 +11,23 @@
 //! (`/audio/transcriptions`) and the model listing, whose entries carry
 //! Groq's `context_window` and `max_completion_tokens`.
 //!
-//! What remains here is data: the model identifiers, and
-//! [`GroqAdditionalParameters`] for the reasoning options Groq takes in the
-//! request body.
+//! What remains here is data: the model identifiers. Groq's reasoning options
+//! (`reasoning_format`, `include_reasoning`) ride on the request's
+//! `additional_params` as plain JSON.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//! ```no_run
 //! use rig_core::providers::groq;
 //! use rig_core::providers::openai::wire::{GROQ, OpenAI};
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let gpt_oss = OpenAI::from_env_with(&GROQ)?
-//!     .bound()?
-//!     .completion(groq::GPT_OSS_120B);
+//! let gpt_oss = OpenAI::from_env_with(&GROQ)?.chat(groq::GPT_OSS_120B);
+//! # let _ = gpt_oss;
 //! # Ok(())
 //! # }
 //! ```
-
-use serde::{Deserialize, Serialize};
-use serde_json::Map;
 
 // ================================================================
 // Groq Completion API
@@ -60,29 +56,6 @@ pub const MINIMAX_M2_7: &str = "minimaxai/minimax-m2.7";
 pub const COMPOUND: &str = "groq/compound";
 /// The `groq/compound-mini` agentic system (built-in web search and code execution).
 pub const COMPOUND_MINI: &str = "groq/compound-mini";
-
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ReasoningFormat {
-    Parsed,
-    Raw,
-    Hidden,
-}
-
-/// Additional parameters to send to the Groq API. Serialize this into the
-/// request's `additional_params` to set Groq's reasoning options.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
-pub struct GroqAdditionalParameters {
-    /// The reasoning format. See Groq's API docs for more details.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub reasoning_format: Option<ReasoningFormat>,
-    /// Whether or not to include reasoning. See Groq's API docs for more details.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub include_reasoning: Option<bool>,
-    /// Any other properties not included by default on this struct (that you want to send)
-    #[serde(flatten, skip_serializing_if = "Option::is_none")]
-    pub extra: Option<Map<String, serde_json::Value>>,
-}
 
 // ================================================================
 // Groq Transcription API

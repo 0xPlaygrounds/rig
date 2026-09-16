@@ -25,6 +25,12 @@ use std::time::Duration;
 use websocket_script::{Script, session, session_with_timeout, test_client};
 
 /// The terminal body every turn ends on unless a test needs another shape.
+/// The provider's own terminal response object, read back off `raw`: the
+/// session's `completion` folds it, and the document survives verbatim.
+fn raw_response(response: rig_core::completion::CompletionResponse) -> CompletionResponse {
+    serde_json::from_value(response.raw).expect("`raw` is the Responses document")
+}
+
 fn sample_response(status: ResponseStatus) -> CompletionResponse {
     CompletionResponse {
         id: "resp_123".to_string(),
@@ -349,17 +355,21 @@ async fn late_response_done_is_ignored_on_next_turn() {
     let client = test_client();
     let mut session = session(&client, &script);
 
-    let first = session
-        .raw_completion(client.completion_request("first").build())
-        .await
-        .expect("first response should complete");
+    let first = raw_response(
+        session
+            .completion(client.completion_request("first").build())
+            .await
+            .expect("first response should complete"),
+    );
     assert_eq!(first.id, "resp_1");
     assert_eq!(session.previous_response_id(), Some("resp_1"));
 
-    let second = session
-        .raw_completion(client.completion_request("second").build())
-        .await
-        .expect("second response should complete");
+    let second = raw_response(
+        session
+            .completion(client.completion_request("second").build())
+            .await
+            .expect("second response should complete"),
+    );
     assert_eq!(second.id, "resp_2");
     assert_eq!(session.previous_response_id(), Some("resp_2"));
 }
@@ -374,19 +384,23 @@ async fn clearing_previous_response_id_does_not_disable_late_done_filter() {
     let client = test_client();
     let mut session = session(&client, &script);
 
-    let first = session
-        .raw_completion(client.completion_request("first").build())
-        .await
-        .expect("first response should complete");
+    let first = raw_response(
+        session
+            .completion(client.completion_request("first").build())
+            .await
+            .expect("first response should complete"),
+    );
     assert_eq!(first.id, "resp_1");
 
     session.clear_previous_response_id();
     assert_eq!(session.previous_response_id(), None);
 
-    let second = session
-        .raw_completion(client.completion_request("second").build())
-        .await
-        .expect("second response should complete");
+    let second = raw_response(
+        session
+            .completion(client.completion_request("second").build())
+            .await
+            .expect("second response should complete"),
+    );
     assert_eq!(second.id, "resp_2");
 }
 
@@ -413,16 +427,18 @@ async fn failed_turn_keeps_late_done_out_of_next_request() {
     let mut session = session(&client, &script);
 
     let error = session
-        .raw_completion(client.completion_request("first").build())
+        .completion(client.completion_request("first").build())
         .await
         .expect_err("failed response should error");
     assert!(error.to_string().contains("failed response"));
     assert_eq!(session.previous_response_id(), None);
 
-    let second = session
-        .raw_completion(client.completion_request("second").build())
-        .await
-        .expect("second response should complete");
+    let second = raw_response(
+        session
+            .completion(client.completion_request("second").build())
+            .await
+            .expect("second response should complete"),
+    );
     assert_eq!(second.id, "resp_2");
 }
 
@@ -448,17 +464,21 @@ async fn done_first_completed_turn_updates_previous_response_id() {
     let client = test_client();
     let mut session = session(&client, &script);
 
-    let first = session
-        .raw_completion(client.completion_request("first").build())
-        .await
-        .expect("first response should complete");
+    let first = raw_response(
+        session
+            .completion(client.completion_request("first").build())
+            .await
+            .expect("first response should complete"),
+    );
     assert_eq!(first.id, "resp_1");
     assert_eq!(session.previous_response_id(), Some("resp_1"));
 
-    let second = session
-        .raw_completion(client.completion_request("second").build())
-        .await
-        .expect("second response should complete");
+    let second = raw_response(
+        session
+            .completion(client.completion_request("second").build())
+            .await
+            .expect("second response should complete"),
+    );
     assert_eq!(second.id, "resp_2");
     assert_eq!(session.previous_response_id(), Some("resp_2"));
 
@@ -504,16 +524,18 @@ async fn done_first_failed_turn_does_not_chain_next_request() {
     let mut session = session(&client, &script);
 
     let error = session
-        .raw_completion(client.completion_request("first").build())
+        .completion(client.completion_request("first").build())
         .await
         .expect_err("failed response should error");
     assert!(error.to_string().contains("failed response"));
     assert_eq!(session.previous_response_id(), None);
 
-    let second = session
-        .raw_completion(client.completion_request("second").build())
-        .await
-        .expect("second response should complete");
+    let second = raw_response(
+        session
+            .completion(client.completion_request("second").build())
+            .await
+            .expect("second response should complete"),
+    );
     assert_eq!(second.id, "resp_2");
     assert_eq!(session.previous_response_id(), Some("resp_2"));
 
@@ -622,10 +644,12 @@ async fn unknown_event_is_skipped_and_reasoning_metadata_is_preserved() {
     let client = test_client();
     let mut session = session(&client, &script);
 
-    let response = session
-        .raw_completion(client.completion_request("hello").build())
-        .await
-        .expect("response should complete despite unknown event");
+    let response = raw_response(
+        session
+            .completion(client.completion_request("hello").build())
+            .await
+            .expect("response should complete despite unknown event"),
+    );
     assert_eq!(response.id, "resp_after_unknown");
     assert_eq!(response.reasoning_context.as_deref(), Some("all_turns"));
     assert_eq!(response.reasoning_metadata.as_ref(), metadata.as_object());

@@ -93,7 +93,7 @@ async fn run_cell(
 ) -> Result<()> {
     assert_eq!(cell.surface, Surface::Agent);
     let invocations = InvocationLog::default();
-    let mut ecs = EcsAgent::new(client.completion(model_name(cell.model)), PREAMBLE, 1);
+    let mut ecs = EcsAgent::new(client.chat(model_name(cell.model)), PREAMBLE, 1);
     ecs.app.world_mut().entity_mut(ecs.agent).insert((
         MaxTokens(Some(128)),
         AdditionalParams(Some(
@@ -179,7 +179,7 @@ async fn blocking_gpt4o_zero_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/blocking_gpt4o_zero_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -200,7 +200,7 @@ async fn blocking_gpt4o_nested_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/blocking_gpt4o_nested_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -221,7 +221,7 @@ async fn blocking_gpt4o_parallel_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/blocking_gpt4o_parallel_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -242,7 +242,7 @@ async fn blocking_gpt41_zero_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/blocking_gpt41_zero_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -263,7 +263,7 @@ async fn blocking_gpt41_nested_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/blocking_gpt41_nested_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -284,7 +284,7 @@ async fn blocking_gpt41_parallel_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/blocking_gpt41_parallel_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -305,7 +305,7 @@ async fn streaming_gpt4o_zero_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/streaming_gpt4o_zero_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -326,7 +326,7 @@ async fn streaming_gpt4o_nested_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/streaming_gpt4o_nested_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -347,7 +347,7 @@ async fn streaming_gpt4o_parallel_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/streaming_gpt4o_parallel_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -368,7 +368,7 @@ async fn streaming_gpt41_zero_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/streaming_gpt41_zero_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -389,7 +389,7 @@ async fn streaming_gpt41_nested_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/streaming_gpt41_nested_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;
@@ -410,7 +410,7 @@ async fn streaming_gpt41_parallel_agent() -> Result<()> {
         "chat_tool_lifecycle_matrix/streaming_gpt41_parallel_agent",
         {
             let o = Arc::clone(&o);
-            move |x| run_cell(x.chat, c, o)
+            move |x| run_cell(x.openai, c, o)
         },
     )
     .await?;

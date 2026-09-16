@@ -39,7 +39,7 @@ use rig::agent::{
 };
 use rig::message::ToolChoice;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
+use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolContext, ToolErrorKind, ToolExecutionError, ToolResult};
 
 #[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
@@ -335,7 +335,7 @@ async fn main() -> Result<()> {
     };
     println!("Running simulated {operation} path");
 
-    let agent = ResponsesApi::from_env()?
+    let agent = OpenAI::from_env()?
         .bound()?
         .agent(openai::GPT_4O)
         .preamble("Follow the user's requested system_probe operation exactly.")

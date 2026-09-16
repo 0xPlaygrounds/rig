@@ -3,11 +3,14 @@
 //!
 //! Copilot serves *two* completion APIs behind one host, and which one
 //! answers is a property of the model: the Codex-class models take the
-//! Responses request, everything else takes chat completions. Both wire
-//! formats already exist in this crate, so [`CopilotWire`] is an enum over
-//! them — a wire choosing a wire, not a model — and every [`Wire`] method
-//! delegates to the chosen one. The choice itself is made exactly once, in
-//! [`Copilot::completion`], by [`routes_through_responses`].
+//! Responses request, everything else takes chat completions. The shared
+//! [`OpenAiWire`] is already a wire over both routes, so [`CopilotWire`] is
+//! that enum plus the one thing Copilot adds per turn — the conversation
+//! intent — and every [`Wire`] method delegates to it. The choice itself is
+//! made exactly once, in [`Copilot::completion`], by
+//! [`routes_through_responses`]: per model, not per dialect, which is why
+//! Copilot builds the variant itself rather than reading the dialect's
+//! [`completion_route`](Quirks::completion_route).
 //!
 //! What is Copilot's own is the *envelope*: the editor identity every
 //! request carries (`copilot-integration-id`, `editor-version`,
@@ -34,12 +37,14 @@ use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListin
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::completion::Usage;
 use crate::providers::openai::embedding::EncodingFormat;
-use crate::providers::openai::responses_api::{self, SystemInstructionsPlacement};
-use crate::providers::openai::wire as chat_wire;
+use crate::providers::openai::responses_api::SystemInstructionsPlacement;
+use crate::providers::openai::wire::{
+    Dialect, EmbeddingQuirks, OpenAI, OpenAiDecoder, OpenAiWire, OutputCap, Quirks, ResponsesQuirks,
+};
 use crate::telemetry::CompletionOperation;
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, ObservationSink, Output, Secret, Sink,
-    Wire, WireError, WireEvent, WireFrame,
+    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireError,
+    WireEvent, WireFrame,
 };
 
 use super::{CopilotIntent, PROVIDER_NAME};
@@ -61,35 +66,35 @@ const API_KEY_ENV: [&str; 2] = ["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"];
 /// The base-URL override, in order of precedence.
 const BASE_URL_ENV: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
 
-/// Copilot's `/responses` route, as a Responses dialect.
+/// GitHub Copilot, as an OpenAI dialect.
 ///
-/// Everything but the identity is OpenAI's own contract — Copilot relays the
-/// Responses wire verbatim — except where the system preamble goes: this
-/// backend takes `system` messages inside `input` rather than top-level
-/// `instructions`, which is what
+/// Both routes are OpenAI's own contract — Copilot relays the chat and the
+/// Responses wire verbatim, header included — except where the Responses
+/// system preamble goes: this backend takes `system` messages inside
+/// `input` rather than top-level `instructions`, which is what
 /// `tests/cassettes/copilot/routing/codex_models_route_through_responses.yaml`
-/// records.
-pub const DIALECT: responses_api::wire::Dialect = responses_api::wire::Dialect {
+/// records. Copilot verifies through its token exchange, not a path, and
+/// its editor headers and session-token exchange live in this module.
+pub const DIALECT: Dialect = Dialect {
     name: PROVIDER_NAME,
     base_url: super::GITHUB_COPILOT_API_BASE_URL,
     api_key_env: "GITHUB_COPILOT_API_KEY",
     base_url_env: Some("GITHUB_COPILOT_API_BASE"),
-    request_id_header: Some("x-request-id"),
-    quirks: responses_api::wire::Quirks {
-        path: "/responses",
-        system_instructions: SystemInstructionsPlacement::InputSystemMessages,
-        request: responses_api::wire::RequestShape::Responses,
+    request_id_header: REQUEST_ID_HEADER,
+    alternate_auth: None,
+    quirks: Quirks {
+        output_cap: OutputCap::Legacy,
+        verify_path: "",
         base_url_env_alias: Some("COPILOT_BASE_URL"),
-        account_id_env: None,
-        default_instructions: None,
-        instructions_env: None,
-        identity: None,
-        always_streams: false,
-        relaxed_content_type: false,
-        codex_parameter_subset: false,
-        error_envelope_in_success: false,
-        repair_envelope_less_frames: false,
-        native_output_with_tools: true,
+        embedding: EmbeddingQuirks {
+            requires_usage: false,
+            ..EmbeddingQuirks::openai()
+        },
+        responses: ResponsesQuirks {
+            system_instructions: SystemInstructionsPlacement::InputSystemMessages,
+            ..ResponsesQuirks::openai()
+        },
+        ..Quirks::openai()
     },
 };
 
@@ -183,18 +188,18 @@ impl Copilot {
     /// so neither can delegate to the other by accident.
     fn wire_for(&self, model: impl Into<String>) -> CopilotWire {
         let model = model.into();
-        let intent = CopilotIntent::default();
-        if routes_through_responses(&model) {
+        let provider = self.openai();
+        let wire = if routes_through_responses(&model) {
             // Copilot's Responses route wants strict function schemas for
             // reliable tool calls; the chat route keeps strict mode opt-in,
             // exactly as the client layer had it.
-            let wire = self.responses_api().responses(model).with_strict_tools();
-            CopilotWire::Responses { wire, intent }
+            OpenAiWire::Responses(provider.responses(model).with_strict_tools())
         } else {
-            CopilotWire::Chat {
-                wire: self.chat_api().chat(model),
-                intent,
-            }
+            OpenAiWire::Chat(provider.chat(model))
+        };
+        CopilotWire {
+            wire,
+            intent: CopilotIntent::default(),
         }
     }
 
@@ -210,20 +215,14 @@ impl Copilot {
         }
     }
 
-    /// Copilot's chat route, as an OpenAI-shaped configuration.
+    /// Copilot as the shared OpenAI configuration, which both completion
+    /// routes are wires on.
     ///
-    /// Built through the constructors rather than a struct literal, so a
+    /// Built through the constructor rather than a struct literal, so a
     /// field the shared config grows for another dialect takes its own
     /// default here instead of having to be restated.
-    fn chat_api(&self) -> chat_wire::OpenAI {
-        chat_wire::OpenAI::with_key(&chat_wire::COPILOT_CHAT, self.api_key.clone())
-            .with_base_url(self.base_url.clone())
-    }
-
-    /// Copilot's Responses route, as a Responses-format configuration.
-    fn responses_api(&self) -> responses_api::wire::ResponsesApi {
-        responses_api::wire::ResponsesApi::with_dialect(self.api_key.clone(), &DIALECT)
-            .with_base_url(self.base_url.clone())
+    fn openai(&self) -> OpenAI {
+        OpenAI::with_key(&DIALECT, self.api_key.clone()).with_base_url(self.base_url.clone())
     }
 
     /// Resolve `path` against the base URL.
@@ -273,44 +272,32 @@ fn stamp<E: WireError>(
 
 // ── completion ──────────────────────────────────────────────────────────
 
-/// Copilot's completion wire: whichever route this model is served by.
+/// Copilot's completion wire: whichever route this model is served by, plus
+/// the conversation intent the turn declares.
 ///
-/// A wire choosing a wire. Both variants are shared wire types pointed at
-/// Copilot, and every [`Wire`] method dispatches on the variant, so there is
-/// no second request conversion, no second decoder and no second observation
-/// projection for either API.
+/// The route is the shared [`OpenAiWire`] pointed at Copilot, so there is
+/// no second request conversion, no second decoder and no second
+/// observation projection for either API; what this type adds is the
+/// `openai-intent` header and the rest of the editor envelope, stamped onto
+/// the request the delegated wire built.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum CopilotWire {
-    /// The conversational models: `POST /chat/completions`.
-    Chat {
-        /// The shared chat-completions wire, pointed at Copilot.
-        wire: chat_wire::Chat,
-        /// The conversation intent this turn declares (`openai-intent`).
-        intent: CopilotIntent,
-    },
-    /// The Codex-class models: `POST /responses`.
-    Responses {
-        /// The shared Responses wire, pointed at Copilot.
-        wire: responses_api::wire::Responses,
-        /// The conversation intent this turn declares (`openai-intent`).
-        intent: CopilotIntent,
-    },
+pub struct CopilotWire {
+    /// The route's wire, pointed at Copilot.
+    pub wire: OpenAiWire,
+    /// The conversation intent this turn declares (`openai-intent`).
+    pub intent: CopilotIntent,
 }
 
 impl CopilotWire {
     /// The conversation intent this wire declares.
     pub fn intent(&self) -> CopilotIntent {
-        match self {
-            Self::Chat { intent, .. } | Self::Responses { intent, .. } => *intent,
-        }
+        self.intent
     }
 
     /// Declare `intent` in the `openai-intent` header.
-    pub fn with_intent(self, intent: CopilotIntent) -> Self {
-        match self {
-            Self::Chat { wire, .. } => Self::Chat { wire, intent },
-            Self::Responses { wire, .. } => Self::Responses { wire, intent },
-        }
+    pub fn with_intent(mut self, intent: CopilotIntent) -> Self {
+        self.intent = intent;
+        self
     }
 
     /// Declare the generic chat-panel conversation semantics.
@@ -327,62 +314,46 @@ impl CopilotWire {
     ///
     /// The Responses route already asks for it (see
     /// [`Copilot::completion`]), so this is the chat route's opt-in.
-    pub fn with_strict_tools(self) -> Self {
-        match self {
-            Self::Chat { wire, intent } => Self::Chat {
-                wire: wire.with_strict_tools(),
-                intent,
-            },
-            Self::Responses { wire, intent } => Self::Responses {
-                wire: wire.with_strict_tools(),
-                intent,
-            },
-        }
+    pub fn with_strict_tools(mut self) -> Self {
+        self.wire = self.wire.with_strict_tools();
+        self
     }
 
     /// Serialize tool-result content as arrays.
     ///
     /// A chat-completions shape: the Responses request has one content
     /// encoding, so this is a no-op on that route.
-    pub fn with_tool_result_array_content(self) -> Self {
-        match self {
-            Self::Chat { wire, intent } => Self::Chat {
-                wire: wire.with_tool_result_array_content(),
-                intent,
-            },
-            responses @ Self::Responses { .. } => responses,
+    pub fn with_tool_result_array_content(mut self) -> Self {
+        if let OpenAiWire::Chat(wire) = self.wire {
+            self.wire = OpenAiWire::Chat(wire.with_tool_result_array_content());
         }
+        self
     }
 
     /// The credential this wire sends, for the request envelope.
     fn provider(&self) -> Copilot {
-        let (api_key, base_url) = match self {
-            Self::Chat { wire, .. } => (&wire.provider.api_key, &wire.provider.base_url),
-            Self::Responses { wire, .. } => (&wire.provider.api_key, &wire.provider.base_url),
-        };
+        let provider = self.wire.provider();
         Copilot {
-            api_key: api_key.clone(),
-            base_url: base_url.clone(),
+            api_key: provider.api_key.clone(),
+            base_url: provider.base_url.clone(),
         }
     }
 }
 
 impl Wire for CopilotWire {
     type Op = Completion;
-    type Decoder = CopilotDecoder;
+    type Decoder = OpenAiDecoder;
 
     fn name(&self) -> &str {
-        match self {
-            Self::Chat { wire, .. } => wire.name(),
-            Self::Responses { wire, .. } => wire.name(),
-        }
+        self.wire.name()
     }
 
     fn model(&self) -> Option<&str> {
-        match self {
-            Self::Chat { wire, .. } => wire.model(),
-            Self::Responses { wire, .. } => wire.model(),
-        }
+        self.wire.model()
+    }
+
+    fn route(&self) -> Option<&str> {
+        self.wire.route()
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
@@ -390,121 +361,24 @@ impl Wire for CopilotWire {
         // the client layer's `RequestFacts::capture`, for the same reason.
         let initiator = super::request_initiator(&request);
         let has_vision = super::request_has_vision(&request);
-        let intent = self.intent();
-        let mut encoded = match self {
-            Self::Chat { wire, .. } => wire.encode(request, mode)?,
-            Self::Responses { wire, .. } => wire.encode(request, mode)?,
-        };
+        let mut encoded = self.wire.encode(request, mode)?;
         let provider = self.provider();
         for request in &mut encoded.requests {
-            stamp::<CompletionError>(request, &provider, initiator, has_vision, intent)?;
+            stamp::<CompletionError>(request, &provider, initiator, has_vision, self.intent)?;
         }
         Ok(encoded)
     }
 
-    fn decoder(&self) -> CopilotDecoder {
-        match self {
-            Self::Chat { wire, .. } => CopilotDecoder::Chat(wire.decoder()),
-            Self::Responses { wire, .. } => CopilotDecoder::Responses(wire.decoder()),
-        }
+    fn decoder(&self) -> OpenAiDecoder {
+        self.wire.decoder()
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        match self {
-            Self::Chat { wire, .. } => wire.capabilities(),
-            Self::Responses { wire, .. } => wire.capabilities(),
-        }
+        self.wire.capabilities()
     }
 
     fn telemetry(&self, streaming: bool) -> CompletionOperation {
-        match self {
-            Self::Chat { wire, .. } => wire.telemetry(streaming),
-            Self::Responses { wire, .. } => wire.telemetry(streaming),
-        }
-    }
-}
-
-/// One classified frame of whichever Copilot route is answering.
-pub enum CopilotEvent {
-    /// A chat-completions frame.
-    Chat(chat_wire::ChatEvent),
-    /// A Responses frame.
-    Responses(responses_api::streaming::ResponsesEvent),
-}
-
-/// Copilot's completion decoder: the chosen route's decoder.
-pub enum CopilotDecoder {
-    /// The chat-completions state machine.
-    Chat(chat_wire::ChatDecoder),
-    /// The Responses state machine.
-    Responses(responses_api::streaming::ResponsesDecoder),
-}
-
-impl Decoder<Completion> for CopilotDecoder {
-    type Event = CopilotEvent;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        match self {
-            Self::Chat(decoder) => decoder.classify(frame).map(CopilotEvent::Chat),
-            Self::Responses(decoder) => decoder.classify(frame).map(CopilotEvent::Responses),
-        }
-    }
-
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<Completion>) {
-        match (self, event) {
-            (Self::Chat(decoder), CopilotEvent::Chat(event)) => decoder.interpret(event, out),
-            (Self::Responses(decoder), CopilotEvent::Responses(event)) => {
-                decoder.interpret(event, out);
-            }
-            // A decoder is built fresh per reply and only ever sees the
-            // events its own `classify` produced, so the routes cannot
-            // cross; there is nothing for the other route's state machine to
-            // do with a frame it never decoded.
-            (Self::Chat(_), CopilotEvent::Responses(_))
-            | (Self::Responses(_), CopilotEvent::Chat(_)) => {}
-        }
-    }
-
-    fn finish(&mut self, out: &mut Output<Completion>) {
-        match self {
-            Self::Chat(decoder) => decoder.finish(out),
-            Self::Responses(decoder) => decoder.finish(out),
-        }
-    }
-
-    fn flush_before_terminal_error(&mut self, out: &mut Output<Completion>) {
-        match self {
-            Self::Chat(decoder) => decoder.flush_before_terminal_error(out),
-            Self::Responses(decoder) => decoder.flush_before_terminal_error(out),
-        }
-    }
-
-    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
-        match self {
-            Self::Chat(decoder) => decoder.project(payload, sink),
-            Self::Responses(decoder) => decoder.project(payload, sink),
-        }
-    }
-
-    fn continuation(&self) -> Option<http::Request<Body>> {
-        match self {
-            Self::Chat(decoder) => decoder.continuation(),
-            Self::Responses(decoder) => decoder.continuation(),
-        }
-    }
-
-    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        match self {
-            Self::Chat(decoder) => decoder.is_analysis_only(frame),
-            Self::Responses(decoder) => decoder.is_analysis_only(frame),
-        }
-    }
-
-    fn is_finished(&self) -> bool {
-        match self {
-            Self::Chat(decoder) => decoder.is_finished(),
-            Self::Responses(decoder) => decoder.is_finished(),
-        }
+        self.wire.telemetry(streaming)
     }
 }
 

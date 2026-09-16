@@ -176,7 +176,7 @@ async fn permission_control_prompt_example() -> Result<()> {
             let cleanup = FileCleanup::new("blocking")?;
 
             let agent = client
-                .responses
+                .openai
                 .agent(providers::openai::GPT_4O_MINI)
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",
@@ -222,7 +222,7 @@ async fn permission_control_streaming_example() -> Result<()> {
             let cleanup = FileCleanup::new("streaming")?;
 
             let agent = client
-                .responses
+                .openai
                 .agent(providers::openai::GPT_4O_MINI)
                 .preamble(
                     "You are a helpful assistant that can read files using different methods.",

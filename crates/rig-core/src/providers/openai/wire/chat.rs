@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use crate::completion::{CompletionError, CompletionRequest, FinishReason, ProviderCapabilities};
 use crate::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use crate::providers::internal::openai_chat_completions_compatible::{
-    CompatibleFinishReason, CompatibleTerminal, CompatibleToolCallChunk, map_openai_finish_reason,
-    provider_error_envelope, should_evict_distinct_named_tool_call,
+    CompatibleFinishReason, CompatibleTerminal, CompatibleToolCallChunk, map_native_finish_reason,
+    map_openai_finish_reason, provider_error_envelope, should_evict_distinct_named_tool_call,
 };
 use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 use crate::providers::internal::wire::classify_chat_completions_frame;
@@ -676,9 +676,9 @@ fn mistral_content(content: &mut serde_json::Value) -> Result<(), CompletionErro
 
 /// OpenRouter's body rewrites.
 ///
-/// OpenRouter's routing preferences (`ProviderPreferences`) are still built
-/// by `providers::openrouter::completion`'s own request type and must move
-/// here when that module is collapsed onto this dialect.
+/// OpenRouter's routing preferences (`ProviderPreferences`) need no rewrite:
+/// they reach the body through the request's `additional_params` as
+/// `{"provider": …}`.
 fn finalize_openrouter(map: &mut serde_json::Map<String, serde_json::Value>, prompt_caching: bool) {
     if prompt_caching {
         apply_openrouter_prompt_caching(map);
@@ -1639,23 +1639,6 @@ impl Decoder<Completion> for ChatDecoder {
 
     fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
         super::observation::project_chat(payload, sink);
-    }
-}
-
-/// Map a gateway's upstream-native finish reason.
-///
-/// Its vocabulary is the union of its upstreams' — Anthropic's `end_turn`,
-/// Gemini's `STOP`, the OpenAI-compatible spellings — so it is wider than
-/// the normalized one and cannot be read through `map_openai_finish_reason`.
-fn map_native_finish_reason(reason: &str) -> FinishReason {
-    match reason.to_ascii_lowercase().as_str() {
-        "stop" | "end_turn" | "stop_sequence" | "complete" | "completed" => FinishReason::Stop,
-        "length" | "max_tokens" | "max_output_tokens" | "model_length" => FinishReason::Length,
-        "tool_calls" | "function_call" | "tool_use" => FinishReason::ToolCalls,
-        "content_filter" | "safety" | "blocklist" | "prohibited_content" | "spii" => {
-            FinishReason::ContentFilter
-        }
-        other => FinishReason::Other(other.to_owned()),
     }
 }
 

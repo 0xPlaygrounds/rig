@@ -25,7 +25,7 @@ use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext, InvalidT
 use rig::completion::CompletionModel;
 use rig::message::UserContent;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
+use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
 use serde_json::json;
@@ -91,7 +91,7 @@ impl AgentHook for ToolLoggerHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let openai = ResponsesApi::from_env()?.bound()?;
+    let openai = OpenAI::from_env()?.bound()?;
     let model = openai.completion(openai::GPT_4O);
     let agent = rig::agent::AgentBuilder::new(model.clone())
         .preamble("You are a calculator. Always use the provided tools to compute results.")

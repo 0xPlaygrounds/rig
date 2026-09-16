@@ -5,7 +5,7 @@ use rig::{
     message::Message,
     providers::{
         cohere::{self, Cohere},
-        openai::{self, responses_api::wire::ResponsesApi},
+        openai::{self, OpenAI},
     },
 };
 
@@ -20,7 +20,7 @@ impl Debater {
             .with_max_level(tracing::Level::INFO)
             .with_target(false)
             .init();
-        let openai_client = ResponsesApi::from_env()?.bound()?;
+        let openai_client = OpenAI::from_env()?.bound()?;
         let cohere_client = Cohere::from_env()?.bound()?;
 
         Ok(Self {

@@ -5,7 +5,6 @@ use futures::FutureExt;
 use rig::driver::Bound;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
 use rig::providers::openai::wire::OpenAI;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
@@ -22,7 +21,7 @@ pub(super) const SYSTEM_PROMPT: &str =
 /// dialect of its own: it speaks the plain OpenAI format at a base URL the
 /// caller supplies. Both surfaces are therefore the `OPENAI` dialect with an
 /// explicit base URL.
-pub(super) type BoundResponses = Bound<ResponsesApi, BoxedHttpClient>;
+pub(super) type BoundResponses = Bound<OpenAI, BoxedHttpClient>;
 
 /// mistral.rs's chat-completions surface, bound to the bundled transport.
 pub(super) type BoundCompletions = Bound<OpenAI, BoxedHttpClient>;
@@ -49,7 +48,7 @@ async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette,
         &real_base_url,
     )
     .await;
-    let responses = ResponsesApi::new(api_key)
+    let responses = OpenAI::new(api_key)
         .with_base_url(cassette.base_url())
         .bound()
         .expect("mistral.rs Responses transport should build");

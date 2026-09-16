@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi, wire::OpenAI};
+use rig::providers::openai::{self, OpenAI};
 use rig::{
     embeddings::EmbeddingsBuilder,
     tool::{Tool, ToolEmbedding, ToolSet},
@@ -133,12 +133,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Completions go to the Responses API; the embeddings endpoint is the same
-    // OpenAI REST surface either way, so it is served by the chat config.
-    let openai_client = ResponsesApi::from_env()?.bound()?;
-    let embedding_model = OpenAI::from_env()?
-        .bound()?
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    // One OpenAI config serves both: completions go to the Responses API,
+    // embeddings to the shared REST surface.
+    let openai_client = OpenAI::from_env()?.bound()?;
+    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
     let mut toolset = ToolSet::default();
     toolset.add_retrieved_tool(Add)?;
     toolset.add_retrieved_tool(Subtract)?;

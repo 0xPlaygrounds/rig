@@ -15,15 +15,16 @@
 //! (`/v1/batches`) with a JSONL upload.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//! ```no_run
 //! use rig_core::providers::doubleword;
 //! use rig_core::providers::openai::wire::{DOUBLEWORD, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let doubleword = OpenAI::from_env_with(&DOUBLEWORD)?.bound()?;
-//! let chat = doubleword.completion(doubleword::QWEN3_5_9B);
-//! let embedding = doubleword.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
+//! let doubleword = OpenAI::from_env_with(&DOUBLEWORD)?;
+//! let chat = doubleword.chat(doubleword::QWEN3_5_9B);
+//! let embedding = doubleword.embeddings(doubleword::QWEN3_EMBEDDING_8B, None);
 //! # let _ = (chat, embedding);
 //! # Ok(())
 //! # }

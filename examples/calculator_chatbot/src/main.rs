@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi, wire::OpenAI};
+use rig::providers::openai::{self, OpenAI};
 use rig::{
     embeddings::EmbeddingsBuilder,
     tool::{Tool, ToolEmbedding, ToolSet},
@@ -244,8 +244,8 @@ impl ToolEmbedding for Divide {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create the OpenAI Responses provider, bound to the bundled transport
-    let openai_client = ResponsesApi::from_env()?.bound()?;
+    // Create the OpenAI provider, bound to the bundled transport
+    let openai_client = OpenAI::from_env()?.bound()?;
 
     // Create dynamic tools embeddings
     let mut toolset = ToolSet::default();
@@ -253,10 +253,7 @@ async fn main() -> Result<(), anyhow::Error> {
     toolset.add_retrieved_tool(Subtract)?;
     toolset.add_retrieved_tool(Multiply)?;
     toolset.add_retrieved_tool(Divide)?;
-    // Embeddings are the shared OpenAI REST surface, not the Responses API.
-    let embedding_model = OpenAI::from_env()?
-        .bound()?
-        .embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(toolset.schemas()?)?
         .build()

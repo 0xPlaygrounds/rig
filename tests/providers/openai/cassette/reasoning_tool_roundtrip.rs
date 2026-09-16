@@ -17,7 +17,7 @@ async fn streaming() {
     with_openai_cassette("reasoning_tool_roundtrip/streaming", |client| async move {
         let call_count = Arc::new(AtomicUsize::new(0));
         let agent = client
-            .responses
+            .openai
             .agent("gpt-5.2")
             .preamble(reasoning::TOOL_SYSTEM_PROMPT)
             .max_tokens(4096)
@@ -54,7 +54,7 @@ async fn nonstreaming() {
         |client| async move {
             let call_count = Arc::new(AtomicUsize::new(0));
             let agent = client
-                .responses
+                .openai
                 .agent("gpt-5.2")
                 .preamble(reasoning::TOOL_SYSTEM_PROMPT)
                 .max_tokens(4096)

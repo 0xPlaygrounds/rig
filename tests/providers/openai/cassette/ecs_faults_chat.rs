@@ -31,7 +31,7 @@ use crate::stream_faults::{
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.chat.completion(GPT_5_MINI),
+        model: client.openai.chat(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,
@@ -42,7 +42,7 @@ fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static>
 fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.chat.completion("gpt-5-mini-nonexistent-rig-test"),
+        model: client.openai.chat("gpt-5-mini-nonexistent-rig-test"),
         route: None,
         temperature: None,
         additional_params: None,
@@ -96,7 +96,7 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
     let client = OpenAI::new(SCRIPTED_KEY).bind(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.completion(GPT_5_MINI),
+        model: client.chat(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,
@@ -109,7 +109,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
     let client = OpenAI::new(SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.completion(GPT_5_MINI),
+        model: client.chat(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

@@ -16,7 +16,7 @@ use rig_core::driver::Bind;
 use rig_core::observe::{
     Action, AdapterContext, AdapterEvent, AdapterObservation, AdapterUsage, ObservationLog, Subject,
 };
-use rig_core::providers::openai::responses_api::wire::ResponsesApi;
+use rig_core::providers::openai::OpenAI;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 /// One completed unary Responses reply, carrying every count the projection
@@ -48,7 +48,7 @@ const BODY: &str = r#"{
 #[tokio::test]
 async fn a_unary_responses_reply_projects_usage_verdict_and_id() {
     let http = SequencedHttpClient::new(vec![MockHttpResponse::success(BODY)]);
-    let model = ResponsesApi::new("test-key").responses("gpt-4o").bind(http);
+    let model = OpenAI::new("test-key").responses("gpt-4o").bind(http);
 
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "projection");

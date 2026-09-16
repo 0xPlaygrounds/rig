@@ -70,7 +70,7 @@ use super::super::cassette_support::*;
 async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
         let models = client
-            .model_listing()
+            .models()
             .list_all()
             .await
             .expect("listing llama.cpp models should succeed");
@@ -201,21 +201,18 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
 /// to be recorded and maintained.
 ///
 /// The exclusion is recorded rather than assumed: the cell reaches the route
-/// through the plain `ResponsesApi` configuration, which is exactly what a
-/// caller who wants it does today, and pins that it works. So "rig cannot" is
-/// not the reason; "one provider, one wire" is.
+/// through the plain `OpenAI` configuration's Responses wire, which is exactly
+/// what a caller who wants it does today, and pins that it works. So "rig
+/// cannot" is not the reason; "one provider, one wire" is.
 #[tokio::test]
 async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
     use rig::completion::CompletionModel as _;
-    use rig::providers::openai::responses_api::wire::ResponsesApi;
 
     with_llamacpp_bare_openai_cassette("unmapped_surface/responses_api", |client| async move {
-        // The wrapper hands out the chat configuration; the Responses surface
-        // is a *different* configuration over the same socket and the same
+        // The wrapper hands out the plain OpenAI configuration; the Responses
+        // surface is a *different* wire over the same socket and the same
         // base URL, which is the whole shape of the exclusion.
-        let responses = client
-            .map_wire(|chat| ResponsesApi::new("llamacpp-local").with_base_url(chat.base_url));
-        let model = responses.completion(CASSETTE_MODEL);
+        let model = client.responses(CASSETTE_MODEL);
         let response = model
             .completion(
                 model

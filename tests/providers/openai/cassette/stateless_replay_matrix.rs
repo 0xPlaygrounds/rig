@@ -42,7 +42,7 @@ use rig::completion::CompletionModel;
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::{
     CompletionResponse as ProviderResponse, InputItem, Output,
 };
@@ -95,9 +95,7 @@ fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderRes
 }
 
 /// Two blocking turns, threading turn 1's normalized response back as history.
-async fn two_turn_conversation(
-    client: Bound<ResponsesApi>,
-) -> (ProviderResponse, ProviderResponse) {
+async fn two_turn_conversation(client: Bound<OpenAI>) -> (ProviderResponse, ProviderResponse) {
     let model = client.completion(openai::GPT_5_6_SOL);
     let first = model
         .completion(model.completion_request(TURN_ONE).build())
@@ -124,7 +122,7 @@ async fn phase_round_trips_on_follow_up() {
     with_openai_cassette(
         "stateless_replay_matrix/phase_round_trips_on_follow_up",
         |client| async move {
-            let (first, _second) = two_turn_conversation(client.responses).await;
+            let (first, _second) = two_turn_conversation(client.openai).await;
             let phases: Vec<&str> = first
                 .output
                 .iter()
@@ -165,7 +163,7 @@ async fn compaction_item_decodes_on_the_response() {
     with_openai_cassette(
         "stateless_replay_matrix/compaction_item_decodes_on_the_response",
         |client| async move {
-            let model = client.responses.completion(openai::GPT_5_6_SOL);
+            let model = client.openai.completion(openai::GPT_5_6_SOL);
             let response = model
                 .completion(model.completion_request(TURN_ONE).build())
                 .await

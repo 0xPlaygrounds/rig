@@ -19,7 +19,7 @@ use crate::support::{
 async fn completion_smoke_through_boxed_transport() {
     with_openai_boxed_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(openai::GPT_4O)
             .preamble(BASIC_PREAMBLE)
             .build();
@@ -39,7 +39,7 @@ async fn completion_smoke_through_boxed_transport() {
 async fn streaming_smoke_through_boxed_transport() {
     with_openai_boxed_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(openai::GPT_4O)
             .preamble(STREAMING_PREAMBLE)
             .build();

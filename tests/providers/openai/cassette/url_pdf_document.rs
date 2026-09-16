@@ -20,7 +20,7 @@ async fn url_pdf_document_prompt() {
         "url_pdf_document/url_pdf_document_prompt",
         |client| async move {
             let agent = client
-                .responses
+                .openai
                 .agent(openai::GPT_4O)
                 .preamble("You are a helpful assistant that analyzes documents.")
                 .temperature(0.0)

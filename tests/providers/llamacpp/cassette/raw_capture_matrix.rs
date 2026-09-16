@@ -416,11 +416,6 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
         timings.predicted_per_second.is_some_and(|rate| rate > 0.0),
         "tokens-per-second is the accounting this field exists for: {timings:?}"
     );
-    assert_eq!(
-        typed.predicted_tokens_per_second(),
-        timings.predicted_per_second,
-        "the convenience accessor must read the field it documents"
-    );
 
     // `cache_n` and the normalized cached-token count are populated
     // independently by the server; they must agree.

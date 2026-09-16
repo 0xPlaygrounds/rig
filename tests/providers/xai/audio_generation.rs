@@ -14,7 +14,7 @@ use crate::support::{AUDIO_TEXT, assert_nonempty_bytes};
 async fn audio_generation_smoke() {
     // xAI's text-to-speech route is OpenAI-shaped (`/v1/tts`, xAI's own body),
     // so the chat-side configuration is what serves it.
-    let client = openai::wire::OpenAI::from_env_with(&openai::wire::XAI)
+    let client = openai::wire::OpenAI::from_env_with(&xai::DIALECT)
         .expect("XAI_API_KEY")
         .bound()
         .expect("client should build");

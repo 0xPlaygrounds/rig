@@ -124,7 +124,7 @@ async fn non_strict_tool_omits_optional_argument_blocking() {
     with_openai_cassette(
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_blocking",
         |client| async move {
-            let model = client.responses.completion(openai::GPT_4O_MINI);
+            let model = client.openai.completion(openai::GPT_4O_MINI);
             let request = model
                 .completion_request(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -152,7 +152,7 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
     with_openai_cassette(
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_streaming",
         |client| async move {
-            let model = client.responses.completion(openai::GPT_4O_MINI);
+            let model = client.openai.completion(openai::GPT_4O_MINI);
             let request = model
                 .completion_request(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -192,7 +192,7 @@ async fn strict_tools_opt_in_sends_strict_true() {
         "strict_tool_matrix/strict_tools_opt_in_sends_strict_true",
         |client| async move {
             let model = client
-                .responses
+                .openai
                 .completion(openai::GPT_4O_MINI)
                 .map_wire(|wire| wire.with_strict_tools());
             let request = model
@@ -237,7 +237,7 @@ async fn agent_tool_turn_sends_strict_false() {
         "strict_tool_matrix/agent_tool_turn_sends_strict_false",
         |client| async move {
             let agent = client
-                .responses
+                .openai
                 .agent(openai::GPT_4O_MINI)
                 .preamble("You are a calculator. Use the add tool for arithmetic, then answer.")
                 .tool(Adder)

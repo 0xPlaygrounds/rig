@@ -8,7 +8,6 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
 use rig::prelude::*;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
 use rig::providers::openai::wire::OpenAI;
 use rig::providers::openai::{self, FileData, UserContent as OpenAiUserContent};
 use serde::Deserialize;
@@ -188,7 +187,7 @@ fn assert_page_label(response: &str, page_number: u8) {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
-        let client = ResponsesApi::from_env()
+        let client = OpenAI::from_env()
             .expect("config should build from env")
             .bound()
             .expect("transport should build");
@@ -234,7 +233,7 @@ async fn chat_completions_document_file_id_roundtrip_live() {
             .bound()
             .expect("transport should build");
         let agent = client
-            .agent(openai::GPT_5_5)
+            .chat(openai::GPT_5_5).into_agent_builder()
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();

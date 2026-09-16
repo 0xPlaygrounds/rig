@@ -49,7 +49,9 @@ impl AgentHook for PrintOpenAiFields {
             return OutcomeAction::proceed();
         };
         if ctx.is_streaming() {
-            match openai::StreamingCompletionResponse::<openai::Usage>::deserialize(&response.raw) {
+            match openai::wire::StreamingCompletionResponse::<openai::Usage>::deserialize(
+                &response.raw,
+            ) {
                 Ok(terminal) => {
                     let extra = |key: &str| {
                         terminal
@@ -82,10 +84,12 @@ impl AgentHook for PrintOpenAiFields {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // The Chat Completions route, whose response carries `system_fingerprint`.
+    // The Chat Completions route, whose response carries `system_fingerprint`;
+    // OpenAI's default route is the Responses API, so it is named.
     let client = OpenAI::from_env()?.bound()?;
     let agent = client
-        .agent(openai::GPT_5_2)
+        .chat(openai::GPT_5_2)
+        .into_agent_builder()
         .preamble("Answer in one short sentence.")
         .add_hook(PrintOpenAiFields)
         .build();

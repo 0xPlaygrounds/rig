@@ -16,8 +16,9 @@
 
 use rig_core::driver::Bound;
 use rig_core::http_client;
+use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSession;
-use rig_core::providers::openai::responses_api::wire::{Responses, ResponsesApi};
+use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_core::wasm_compat::WasmBoxedFuture;
 use rig_core::ws_client::{BoxedWebSocketConnection, CloseFrame, Frame, WebSocketConnection};
@@ -153,7 +154,7 @@ impl WebSocketConnection for ScriptedConnection {
 /// A bound wire whose HTTP transport is a stub: these tests never send one.
 pub fn test_client() -> TestClient {
     Bound::new(
-        ResponsesApi::new("test-key").responses("gpt-4o"),
+        OpenAI::new("test-key").responses("gpt-4o"),
         RecordingHttpClient::new("{}"),
     )
 }

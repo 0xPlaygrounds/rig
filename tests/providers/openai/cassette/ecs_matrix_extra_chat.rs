@@ -17,8 +17,8 @@ use crate::ecs_matrix::{
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.chat.completion(GPT_5_MINI),
-        route: Some(client.chat.completion(GPT_5_NANO)),
+        model: client.openai.chat(GPT_5_MINI),
+        route: Some(client.openai.chat(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
     }
@@ -47,7 +47,7 @@ async fn error_facts_unary() {
         "error_identity_edge/chat_completions_validation_error_carries_identity",
         |client| async move {
             error_facts(
-                client.chat.completion(GPT_4O),
+                client.openai.chat(GPT_4O),
                 ErrorProbe {
                     prompt: "Never validated",
                     max_tokens: None,
@@ -70,7 +70,7 @@ async fn error_facts_streamed() {
         "corpus_matrix_chat/error_facts_streamed",
         |client| async move {
             error_facts(
-                client.chat.completion("gpt-5-mini-nonexistent-rig-test"),
+                client.openai.chat("gpt-5-mini-nonexistent-rig-test"),
                 ErrorProbe {
                     prompt: "Say hi.",
                     max_tokens: Some(16),

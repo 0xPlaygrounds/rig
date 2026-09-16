@@ -14,37 +14,32 @@
 //!
 //! Both read `ZAI_API_KEY`.
 //!
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//!
 //! # OpenAI-compatible example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::openai::wire::{OpenAI, ZAI, ZAI_CODING};
 //! use rig_core::providers::zai;
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let glm_4_6 = OpenAI::from_env_with(&ZAI)?
-//!     .bound()?
-//!     .completion(zai::GLM_4_6);
+//! let glm_4_6 = OpenAI::from_env_with(&ZAI)?.chat(zai::GLM_4_6);
 //!
 //! // The coding platform is the same dialect at `CODING_API_BASE_URL`.
-//! let coding = OpenAI::from_env_with(&ZAI_CODING)?
-//!     .bound()?
-//!     .completion(zai::GLM_4_6);
+//! let coding = OpenAI::from_env_with(&ZAI_CODING)?.chat(zai::GLM_4_6);
+//! # let _ = (glm_4_6, coding);
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! # Anthropic-compatible example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::anthropic::wire::{Anthropic, ZAI};
 //! use rig_core::providers::zai;
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let glm_4_6 = Anthropic::from_env_with(ZAI)?
-//!     .bound()?
-//!     .completion(zai::GLM_4_6);
+//! let glm_4_6 = Anthropic::from_env_with(&ZAI)?.messages(zai::GLM_4_6);
+//! # let _ = glm_4_6;
 //! # Ok(())
 //! # }
 //! ```

@@ -104,7 +104,7 @@ async fn whisper_reports_duration_usage() {
         "transcription_usage_matrix/whisper_reports_duration_usage",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
@@ -129,7 +129,7 @@ async fn gpt_4o_transcribe_reports_token_usage() {
         "transcription_usage_matrix/gpt_4o_transcribe_reports_token_usage",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .transcription("gpt-4o-transcribe")
                 .transcription_request()
                 .data(audio())
@@ -167,7 +167,7 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
         "transcription_usage_matrix/gpt_4o_mini_transcribe_reports_token_usage",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .transcription("gpt-4o-mini-transcribe")
                 .transcription_request()
                 .data(audio())
@@ -194,7 +194,7 @@ async fn completions_client_reports_duration_usage() {
         "transcription_usage_matrix/completions_client_reports_duration_usage",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
@@ -219,7 +219,7 @@ async fn completions_client_reports_token_usage() {
         "transcription_usage_matrix/completions_client_reports_token_usage",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .transcription("gpt-4o-transcribe")
                 .transcription_request()
                 .data(audio())
@@ -248,7 +248,7 @@ async fn verbose_json_still_reports_duration_usage() {
         "transcription_usage_matrix/verbose_json_still_reports_duration_usage",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
@@ -283,7 +283,7 @@ async fn transcript_still_reaches_the_normalized_response() {
         "transcription_usage_matrix/transcript_still_reaches_the_normalized_response",
         |client| async move {
             let response = client
-                .chat
+                .openai
                 .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
@@ -310,7 +310,7 @@ async fn rejected_request_surfaces_the_provider_body() {
         "transcription_usage_matrix/rejected_request_surfaces_the_provider_body",
         |client| async move {
             let Err(error) = client
-                .chat
+                .openai
                 .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())

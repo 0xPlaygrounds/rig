@@ -76,7 +76,7 @@ async fn request_hook_records_prompt_and_response() -> Result<()> {
         "request_hook/request_hook_records_prompt_and_response",
         |client| async move {
             let agent = client
-                .responses
+                .openai
                 .agent(openai::GPT_4O)
                 .preamble("You are a comedian here to entertain the user using humour and jokes.")
                 .build();

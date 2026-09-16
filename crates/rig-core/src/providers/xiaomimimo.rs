@@ -9,32 +9,29 @@
 //! - the Anthropic Messages wire, as
 //!   [`anthropic::wire::XIAOMIMIMO`](crate::providers::anthropic::wire::XIAOMIMIMO).
 //!
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//!
 //! # OpenAI-compatible example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::openai::wire::{OpenAI, XIAOMIMIMO};
 //! use rig_core::providers::xiaomimimo;
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = OpenAI::from_env_with(&XIAOMIMIMO)?
-//!     .bound()?
-//!     .completion(xiaomimimo::MIMO_V2_5_PRO);
+//! let model = OpenAI::from_env_with(&XIAOMIMIMO)?.chat(xiaomimimo::MIMO_V2_5_PRO);
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! # Anthropic-compatible example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::anthropic::wire::{Anthropic, XIAOMIMIMO};
 //! use rig_core::providers::xiaomimimo;
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = Anthropic::from_env_with(XIAOMIMIMO)?
-//!     .bound()?
-//!     .completion(xiaomimimo::MIMO_V2_5_PRO);
+//! let model = Anthropic::from_env_with(&XIAOMIMIMO)?.messages(xiaomimimo::MIMO_V2_5_PRO);
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```

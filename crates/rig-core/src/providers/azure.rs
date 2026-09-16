@@ -20,39 +20,23 @@
 //! every account.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! ```no_run
 //! use rig_core::providers::azure;
-//! use rig_core::providers::openai::wire::{AZURE, OpenAI};
-//! use rig_reqwest::DefaultTransport;
+//! use rig_core::providers::openai::wire::{AZURE, AZURE_DEFAULT_API_VERSION, OpenAI};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // From `AZURE_API_KEY`/`AZURE_TOKEN`, `AZURE_ENDPOINT` and `AZURE_API_VERSION`.
-//! let gpt4o = OpenAI::from_env_with(&AZURE)?
-//!     .bound()?
-//!     .completion(azure::GPT_4O);
+//! // From `AZURE_API_KEY`/`AZURE_TOKEN`, `AZURE_ENDPOINT` and `AZURE_API_VERSION`;
+//! // the wire, which `.bind(transport)` joins to a socket.
+//! let gpt4o = OpenAI::from_env_with(&AZURE)?.chat(azure::GPT_4O);
 //!
 //! // Or spelled out, with the endpoint and version supplied directly.
 //! let explicit = OpenAI::with_key(&AZURE, "YOUR_API_KEY")
 //!     .with_base_url("https://your-resource-name.openai.azure.com")
-//!     .with_api_version(azure::DEFAULT_API_VERSION)
-//!     .bound()?
-//!     .completion(azure::GPT_4O);
+//!     .with_api_version(AZURE_DEFAULT_API_VERSION)
+//!     .chat(azure::GPT_4O);
 //! # Ok(())
 //! # }
 //! ```
-
-/// The `api-version` the Azure client defaulted to: the GA release every
-/// route below was addressed with before the version became an explicit
-/// input.
-///
-/// The literal is owned by the encoder that reads it
-/// ([`openai::wire::AZURE_DEFAULT_API_VERSION`](crate::providers::openai::wire::AZURE_DEFAULT_API_VERSION)),
-/// and this is the public name callers already use. Provider data reads the
-/// wire and never the other way round, so there is one copy: two
-/// independently editable spellings of an `api-version` would drift silently
-/// against a live endpoint.
-pub const DEFAULT_API_VERSION: &str = crate::providers::openai::wire::AZURE_DEFAULT_API_VERSION;
 
 // ================================================================
 // Azure OpenAI Embedding API

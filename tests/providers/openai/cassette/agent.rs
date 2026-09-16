@@ -10,7 +10,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 async fn completion_smoke() {
     with_openai_cassette("agent/completion_smoke", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(openai::GPT_4O)
             .preamble(BASIC_PREAMBLE)
             .build();

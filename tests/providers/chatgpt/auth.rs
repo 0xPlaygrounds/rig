@@ -5,7 +5,7 @@ use rig::driver::{Bind as _, Bound};
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::chatgpt;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 use rig::rig_reqwest::client::bundled;
 use serde_json::json;
 use std::fs;
@@ -20,10 +20,10 @@ use crate::support::{
 /// the device flow, on `http` — and hand back the provider configuration that
 /// already holds it.
 ///
-/// The exchange is not a wire: `ResponsesApi` stores an access token, so the
+/// The exchange is not a wire: `OpenAI` stores an access token, so the
 /// conversation that produces one runs first, on the transport the completion
 /// then speaks over.
-async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> ResponsesApi {
+async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> OpenAI {
     let context = chatgpt::auth::Authenticator::new(
         chatgpt::auth::AuthSource::OAuth,
         Some(path.to_path_buf()),
@@ -34,7 +34,7 @@ async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> R
     .await
     .expect("ChatGPT OAuth should resolve an access token");
 
-    let mut provider = ResponsesApi::with_dialect(context.access_token, &chatgpt::DIALECT);
+    let mut provider = OpenAI::with_key(&chatgpt::DIALECT, context.access_token);
     if let Some(account_id) = context.account_id {
         provider = provider.with_account_id(account_id);
     }
@@ -48,7 +48,7 @@ async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> R
 }
 
 /// [`oauth_provider_with_auth_file`], bound to a fresh bundled transport.
-async fn oauth_client_with_auth_file(path: &Path) -> Bound<ResponsesApi> {
+async fn oauth_client_with_auth_file(path: &Path) -> Bound<OpenAI> {
     let http = bundled().expect("the bundled transport should build");
     oauth_provider_with_auth_file(path, &http).await.bind(http)
 }

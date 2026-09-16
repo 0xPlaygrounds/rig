@@ -78,18 +78,11 @@ pub enum WebSearchMode {
 /// which is the same merge path every other provider's dialect extras use, so
 /// there is no separate request abstraction to keep in sync:
 ///
-/// ```ignore
-/// use rig_core::completion::CompletionModel;
-/// use rig_core::providers::openai::wire::{OpenAI, VENICE};
-/// use rig_core::providers::venice::{self, VeniceParameters, WebSearchMode};
-/// use rig_reqwest::prelude::*;
+/// ```no_run
+/// use rig_core::completion::CompletionRequestBuilder;
+/// use rig_core::providers::venice::{VeniceParameters, WebSearchMode};
 ///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let model = OpenAI::from_env_with(&VENICE)?
-///     .bound()?
-///     .completion(venice::QWEN3_5_9B);
-/// let request = model
-///     .completion_request("Summarize today's Rust news.")
+/// let request = CompletionRequestBuilder::unbound("Summarize today's Rust news.")
 ///     .additional_params(
 ///         VeniceParameters::new()
 ///             .enable_web_search(WebSearchMode::On)
@@ -97,10 +90,6 @@ pub enum WebSearchMode {
 ///             .into_additional_params(),
 ///     )
 ///     .build();
-/// let response = model.completion(request).await?;
-/// # let _ = response;
-/// # Ok(())
-/// # }
 /// ```
 ///
 /// Every field is optional; omitted fields are left to Venice's own defaults
@@ -275,7 +264,7 @@ pub struct Cost {
 ///
 /// Normalization and telemetry delegate to the OpenAI payload — the wire
 /// shape of `choices`/`usage` is OpenAI's — so the Venice-only blocks are
-/// preserved for `raw_completion` callers without forking the conversion.
+/// read out of `CompletionResponse::raw` without forking the conversion.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     /// The OpenAI-compatible portion of the payload.

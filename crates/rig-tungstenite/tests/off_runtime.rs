@@ -13,8 +13,8 @@
 
 use rig_core::completion::CompletionModel as _;
 use rig_core::driver::Bound;
+use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketExt as _;
-use rig_core::providers::openai::responses_api::wire::ResponsesApi;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_tungstenite::{DefaultWebSocketBuilder as _, DefaultWebSocketClient as _};
 use std::sync::mpsc;
@@ -134,7 +134,7 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
     );
 
     futures::executor::block_on(async move {
-        let wire = ResponsesApi::new("test-key")
+        let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
         let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
@@ -184,7 +184,7 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
     );
 
     futures::executor::block_on(async move {
-        let wire = ResponsesApi::new("test-key")
+        let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
         let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
@@ -247,7 +247,7 @@ fn a_cancelled_read_does_not_lose_the_frame_off_runtime() {
     let base_url = serve_one_turn_after(Duration::from_millis(200), vec![delta]);
 
     futures::executor::block_on(async move {
-        let wire = ResponsesApi::new("test-key")
+        let wire = OpenAI::new("test-key")
             .with_base_url(&base_url)
             .responses("gpt-5.4");
         let bound = Bound::new(wire, RecordingHttpClient::new("{}"));

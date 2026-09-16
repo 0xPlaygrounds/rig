@@ -208,7 +208,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.chat.completion(model_name(cell.model));
+    let model = client.openai.chat(model_name(cell.model));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
             // The raw surface is the same reply: the native chat-completions
@@ -245,9 +245,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
                     } => observation.text.push_str(&text),
                     StreamEvent::Final(record) => {
                         serde_json::from_value::<
-                            openai::completion::streaming::StreamingCompletionResponse<
-                                openai::completion::Usage,
-                            >,
+                            openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
                         >(record.raw.clone())?;
                         observation.saw_terminal = true;
                     }

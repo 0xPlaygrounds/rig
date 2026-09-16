@@ -20,7 +20,7 @@ async fn middleware_phases_observe_a_unary_completion() {
         "lifecycle_matrix/middleware_unary",
         probe.clone(),
         |client| async move {
-            let mut ecs = ecs_lifecycle::agent(client.responses.completion(MODEL), BASIC_PREAMBLE);
+            let mut ecs = ecs_lifecycle::agent(client.openai.completion(MODEL), BASIC_PREAMBLE);
             let response = ecs.prompt(BASIC_PROMPT, false).await;
             assert_nonempty_response(&response);
         },
@@ -38,8 +38,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
         "lifecycle_matrix/middleware_streaming",
         probe.clone(),
         |client| async move {
-            let mut ecs =
-                ecs_lifecycle::agent(client.responses.completion(MODEL), STREAMING_PREAMBLE);
+            let mut ecs = ecs_lifecycle::agent(client.openai.completion(MODEL), STREAMING_PREAMBLE);
             ecs_lifecycle::install(&mut ecs, settle_hook);
             let response = ecs.prompt(STREAMING_PROMPT, true).await;
             let provider_final = ecs_lifecycle::provider_final(&mut ecs);
@@ -64,7 +63,7 @@ async fn run_start_rewrite_reaches_the_provider() {
         "lifecycle_matrix/run_start_rewrite",
         WireProbe::default(),
         |client| async move {
-            let mut ecs = ecs_lifecycle::agent(client.responses.completion(MODEL), BASIC_PREAMBLE);
+            let mut ecs = ecs_lifecycle::agent(client.openai.completion(MODEL), BASIC_PREAMBLE);
             ecs_lifecycle::install(&mut ecs, agent_hook);
             // The original prompt says nothing about pineapples; only the
             // pre-run rewrite can put the marker into the model's reply.
@@ -91,7 +90,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
         WireProbe::default(),
         |client| async move {
             let mut ecs = ecs_lifecycle::agent(
-                client.responses.completion(MODEL),
+                client.openai.completion(MODEL),
                 "You are a calculator. Use the add tool for arithmetic.",
             );
             ecs.tool(Adder);
@@ -125,7 +124,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
         WireProbe::default(),
         |client| async move {
             let mut ecs = ecs_lifecycle::agent(
-                client.responses.completion(MODEL),
+                client.openai.completion(MODEL),
                 "You are a calculator. Use the add tool for arithmetic.",
             );
             ecs.tool(Adder);

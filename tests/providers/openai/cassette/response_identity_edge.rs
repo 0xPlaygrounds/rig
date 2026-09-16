@@ -25,7 +25,7 @@ async fn structured_output_and_identity() {
     with_openai_cassette(
         "response_identity_edge/structured_output_and_identity",
         |client| async move {
-            let model = client.responses.completion(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let schema = schemars::schema_for!(Sum);
             let response = model
                 .completion_request("What is 2 + 3? Respond with the JSON object.")
@@ -50,7 +50,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
     with_openai_cassette(
         "response_identity_edge/previous_response_id_chain_keeps_axes_distinct",
         |client| async move {
-            let model = client.responses.completion(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let first = model
                 .completion_request(
                     "Remember the code word 'heliotrope'. Reply with exactly: noted",
@@ -125,7 +125,7 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
         |client| async move {
             let hook = RetryOnce::default();
             let agent = client
-                .responses
+                .openai
                 .agent(openai::GPT_4O)
                 .preamble("You are a terse assistant.")
                 .add_hook(hook.clone())
@@ -156,7 +156,7 @@ async fn provider_error_response_carries_request_id() {
         "response_identity_edge/provider_error_response_surfaces_cleanly",
         |client| async move {
             let model = client
-                .responses
+                .openai
                 .completion("gpt-nonexistent-model-for-identity-edge");
             let error = model
                 .completion_request("Never answered")
@@ -187,7 +187,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
     with_openai_cassette(
         "response_identity_edge/raw_and_normalized_views_agree_on_identity",
         |client| async move {
-            let model = client.responses.completion(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let request = model
                 .completion_request("Reply with exactly: two views probe")
                 .build();

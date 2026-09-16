@@ -11,16 +11,15 @@
 //! tokens.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//! ```no_run
 //! use rig_core::providers::openai::wire::{OpenAI, PERPLEXITY};
 //! use rig_core::providers::perplexity;
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let sonar = OpenAI::from_env_with(&PERPLEXITY)?
-//!     .bound()?
-//!     .completion(perplexity::SONAR);
+//! let sonar = OpenAI::from_env_with(&PERPLEXITY)?.chat(perplexity::SONAR);
+//! # let _ = sonar;
 //! # Ok(())
 //! # }
 //! ```

@@ -29,7 +29,7 @@
 //! [`Wire`](crate::wire::Wire) per endpoint it speaks. Binding that
 //! configuration to a transport yields a [`Bound`](crate::driver::Bound), and
 //! a capability is a method on it — `completion(model)`, `embedding(model,
-//! ndims)`, `model_listing()` — present exactly when the provider declares the
+//! ndims)`, `models()` — present exactly when the provider declares the
 //! matching wire through [`HasCompletion`](crate::wire::HasCompletion),
 //! [`HasEmbedding`](crate::driver::HasEmbedding) and their siblings.
 //!
@@ -88,34 +88,36 @@
 //!   credential requirements.
 //!
 //! # Example
-//! ```ignore
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model that sends a request.
+//! ```no_run
 //! use rig_core::{
-//!     completion::{AssistantContent, CompletionModel},
+//!     completion::{AssistantContent, CompletionRequestBuilder, CompletionResponse},
 //!     providers::openai::{self, wire::OpenAI},
 //! };
-//! use rig_reqwest::prelude::*;
 //!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Read `OPENAI_API_KEY` into the configuration and bind it to a transport.
-//! let openai = OpenAI::from_env()?.bound()?;
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! // Read `OPENAI_API_KEY` into the configuration and pick a model.
+//! let model = OpenAI::from_env()?.chat(openai::GPT_5_2);
 //!
-//! // A model is a wire plus its socket; send a low-level completion request.
-//! let model = openai.completion(openai::GPT_5_2);
-//! let request = model
-//!     .completion_request("Discuss the fate of Middle Earth.")
+//! // A low-level completion request, ready for `model.completion(request)`.
+//! let request = CompletionRequestBuilder::unbound("Discuss the fate of Middle Earth.")
 //!     .preamble("\
 //!         You are Gandalf the white and you will be conversing with other \
 //!         powerful beings to discuss the fate of Middle Earth.\
 //!     ".to_string())
 //!     .build();
-//! let response = model.completion(request).await?;
-//! for item in response.choice {
-//!     if let AssistantContent::Text(text) = item {
-//!         println!("{}", text.text);
-//!     }
-//! }
+//! # let _ = (model, request);
 //! # Ok(())
 //! # }
+//!
+//! fn print_text(response: CompletionResponse) {
+//!     for item in response.choice {
+//!         if let AssistantContent::Text(text) = item {
+//!             println!("{}", text.text);
+//!         }
+//!     }
+//! }
 //! ```
 pub mod anthropic;
 pub mod azure;

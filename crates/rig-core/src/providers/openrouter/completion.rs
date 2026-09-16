@@ -31,7 +31,10 @@
 use serde::{Deserialize, Serialize};
 
 use crate::completion;
-use crate::providers::internal::openai_chat_completions_compatible::map_openai_finish_reason;
+use crate::providers::internal::openai_chat_completions_compatible::{
+    map_native_finish_reason, map_openai_finish_reason,
+};
+use crate::providers::openai::completion::Message;
 
 // ================================================================
 // OpenRouter Completion API
@@ -569,26 +572,9 @@ impl ProviderPreferences {
         self
     }
 
-    // === Convenience Methods ===
-
-    /// Convenience: Enable Zero Data Retention
-    pub fn zero_data_retention(self) -> Self {
-        self.zdr(true)
-    }
-
-    /// Convenience: Sort by throughput (higher tokens/sec first)
-    pub fn fastest(self) -> Self {
-        self.sort(ProviderSortStrategy::Throughput)
-    }
-
     /// Convenience: Sort by price (cheapest first)
     pub fn cheapest(self) -> Self {
         self.sort(ProviderSortStrategy::Price)
-    }
-
-    /// Convenience: Sort by latency (lower latency first)
-    pub fn lowest_latency(self) -> Self {
-        self.sort(ProviderSortStrategy::Latency)
     }
 
     /// Convert to JSON value for use in additional_params
@@ -649,37 +635,6 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-/// Map an upstream provider's own terminal reason, as forwarded by OpenRouter.
-///
-/// This covers the vocabularies OpenRouter routes to, matched
-/// case-insensitively because they disagree on casing (Gemini screams,
-/// Anthropic does not). Read here only to decide whether a choice was cut off
-/// by `max_tokens` — the truncation that makes a tool call's `arguments`
-/// unparseable — so a truncated call is dropped instead of failing the whole
-/// document. The wire's decoder maps the reason a caller sees.
-fn map_native_finish_reason(reason: &str) -> completion::FinishReason {
-    match reason.to_ascii_lowercase().as_str() {
-        // OpenAI-compatible upstreams, plus Anthropic's `end_turn`/`stop_sequence`
-        // and Gemini's `STOP`.
-        "stop" | "end_turn" | "stop_sequence" | "complete" | "completed" => {
-            completion::FinishReason::Stop
-        }
-        "length" | "max_tokens" | "max_output_tokens" | "model_length" => {
-            completion::FinishReason::Length
-        }
-        "tool_calls" | "function_call" | "tool_use" => completion::FinishReason::ToolCalls,
-        "content_filter" | "safety" | "blocklist" | "prohibited_content" | "spii" => {
-            completion::FinishReason::ContentFilter
-        }
-        _ => completion::FinishReason::Other(reason.to_owned()),
-    }
-}
-
-// OpenRouter shares OpenAI's Chat Completions message model: the response
-// *message* type is the shared OpenAI one, and only the envelope above and
-// the routing preferences are provider-specific.
-pub use crate::providers::openai::completion::Message;
-
 // ================================================================
 // Response Types
 // ================================================================
@@ -693,7 +648,7 @@ pub struct Choice {
     /// Per-token probability metadata returned when `logprobs` is requested.
     ///
     /// Normalized completions intentionally omit provider-native
-    /// probabilities; callers of `raw_completion` retain the complete object.
+    /// probabilities; they stay readable through `CompletionResponse::raw`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logprobs: Option<serde_json::Value>,
 }
@@ -742,51 +697,6 @@ pub struct CompletionTokensDetails {
     /// `completion_tokens`.
     #[serde(default)]
     pub reasoning_tokens: usize,
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
-    }
-}
-
-impl From<&Usage> for crate::completion::Usage {
-    fn from(value: &Usage) -> crate::completion::Usage {
-        let (cached_input, cache_creation) = value
-            .prompt_tokens_details
-            .as_ref()
-            .map(|d| (d.cached_tokens as u64, d.cache_write_tokens as u64))
-            .unzip();
-        crate::completion::Usage {
-            input_tokens: Some(value.prompt_tokens as u64),
-            // Reported completion tokens, falling back to saturating
-            // total - prompt for gateways that omit the field (it
-            // deserializes to 0).
-            output_tokens: Some(if value.completion_tokens > 0 {
-                value.completion_tokens as u64
-            } else {
-                value.total_tokens.saturating_sub(value.prompt_tokens) as u64
-            }),
-            total_tokens: Some(value.total_tokens as u64),
-            cached_input_tokens: cached_input,
-            cache_creation_input_tokens: cache_creation,
-            reasoning_tokens: value
-                .completion_tokens_details
-                .as_ref()
-                .map(|d| d.reasoning_tokens as u64),
-            ..Default::default()
-        }
-    }
-}
-
-impl From<Usage> for crate::completion::Usage {
-    fn from(value: Usage) -> crate::completion::Usage {
-        crate::completion::Usage::from(&value)
-    }
 }
 
 #[cfg(test)]

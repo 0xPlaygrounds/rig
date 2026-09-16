@@ -15,16 +15,18 @@
 //! "model" a speech request names is a language tag such as `EN`.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//! ```no_run
 //! use rig_core::providers::hyperbolic;
 //! use rig_core::providers::openai::wire::{HYPERBOLIC, OpenAI};
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let provider = OpenAI::from_env_with(&HYPERBOLIC)?.bound()?;
-//! let llama_3_1_8b = provider.clone().completion(hyperbolic::LLAMA_3_1_8B);
-//! let sdxl = provider.image_generation(hyperbolic::SDXL_TURBO);
+//! let provider = OpenAI::from_env_with(&HYPERBOLIC)?;
+//! let llama_3_1_8b = provider.chat(hyperbolic::LLAMA_3_1_8B);
+//! // Image generation needs the `image` feature.
+//! # #[cfg(feature = "image")]
+//! let sdxl = provider.images(hyperbolic::SDXL_TURBO);
 //! # Ok(())
 //! # }
 //! ```

@@ -15,7 +15,7 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: client.chat.completion(GPT_5_MINI),
+        model: client.openai.chat(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

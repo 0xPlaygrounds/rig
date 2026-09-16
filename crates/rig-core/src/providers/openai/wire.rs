@@ -1,32 +1,45 @@
-//! The OpenAI wires: one chat-completions wire, N dialects.
+//! The OpenAI wires: one configuration, one chat-completions wire, one
+//! Responses wire, N dialects.
 //!
-//! Every OpenAI-shaped provider in this crate speaks the same three
-//! endpoints with the same bytes; what differs is a base URL, an env var, a
-//! path, a handful of flags, and — for a few of them — one rewrite of the
-//! serialized body. So there is one
-//! [`Chat`](crate::providers::openai::wire::Chat) wire and one
-//! [`ChatDecoder`](crate::providers::openai::wire::ChatDecoder), and a
-//! provider is a [`Dialect`](crate::providers::openai::wire::Dialect)
-//! **const value** ([`OPENAI`](crate::providers::openai::wire::OPENAI),
+//! Every OpenAI-shaped provider in this crate speaks the same endpoints with
+//! the same bytes; what differs is a base URL, an env var, a path, a handful
+//! of flags, and — for a few of them — one rewrite of the serialized body.
+//! So there is one [`OpenAI`] configuration, one
+//! [`Chat`](crate::providers::openai::wire::Chat) wire, one
+//! [`Responses`](crate::providers::openai::responses_api::wire::Responses)
+//! wire, and a provider is a
+//! [`Dialect`](crate::providers::openai::wire::Dialect) **const value**
+//! ([`OPENAI`](crate::providers::openai::wire::OPENAI),
 //! [`GROQ`](crate::providers::openai::wire::GROQ),
-//! [`DEEPSEEK`](crate::providers::openai::wire::DEEPSEEK), …) rather than a
-//! type implementing a trait.
+//! [`xai::DIALECT`](crate::providers::xai::DIALECT), …) rather than a type
+//! implementing a trait. A dialect names which of the two endpoints is its
+//! default under [`Quirks::completion_route`], and a dialect that speaks the
+//! Responses endpoint differently says so under [`Quirks::responses`].
 //!
 //! ```
 //! use rig_core::providers::openai;
 //!
-//! // Official OpenAI.
-//! let openai = openai::wire::OpenAI::new("sk-…");
-//! // The same wire, pointed at Groq.
-//! let groq = openai::wire::OpenAI::new("gsk_…").with_dialect(&openai::wire::GROQ);
+//! // Official OpenAI: its default route is the Responses endpoint …
+//! let openai = openai::OpenAI::new("sk-…");
+//! let default = openai.completion("gpt-5.2");
+//! assert!(matches!(default, openai::wire::OpenAiWire::Responses(_)));
+//! // … and either endpoint can be named.
+//! let responses = openai.responses("gpt-5.2");
+//! let chat = openai.chat("gpt-5.2");
+//! // The same chat wire, pointed at Groq, whose default route is Chat.
+//! let groq = openai::OpenAI::new("gsk_…").with_dialect(&openai::wire::GROQ);
 //! assert_eq!(groq.base_url, "https://api.groq.com/openai/v1");
+//! assert!(matches!(groq.completion("llama"), openai::wire::OpenAiWire::Chat(_)));
 //! ```
 
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{HasEmbedding, HasModelListing, HasRerank, HasTranscription, HasVerify};
+use crate::driver::{Bound, HasEmbedding, HasModelListing, HasRerank, HasTranscription, HasVerify};
 use crate::wire::{HasCompletion, Secret};
+
+use super::responses_api::SystemInstructionsPlacement;
+use super::responses_api::wire::Responses;
 
 mod chat;
 mod dialects;
@@ -36,6 +49,7 @@ mod dialects;
 pub(crate) mod dto;
 mod modality;
 mod observation;
+mod route;
 
 pub use chat::{Chat, ChatDecoder, ChatEvent};
 pub use dialects::*;
@@ -45,6 +59,7 @@ pub use modality::{
     ModelsDecoder, ModelsReply, Rerank, RerankDecoder, RerankReply, RerankResultEntry, RerankUsage,
     Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
 };
+pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiWire, Route};
 
 #[cfg(feature = "image")]
 pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};
@@ -472,6 +487,101 @@ impl EmbeddingQuirks {
     }
 }
 
+/// Which request body a dialect's Responses endpoint accepts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum RequestShape {
+    /// OpenAI's own Responses request.
+    Responses,
+    /// xAI's input shape, whose types live with that provider.
+    Xai,
+}
+
+/// The caller identity a gateway requires on every request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Identity {
+    /// The `originator` header's default value.
+    pub originator: &'static str,
+    /// The environment variable overriding `originator`.
+    pub originator_env: &'static str,
+    /// The environment variable overriding `user-agent`.
+    pub user_agent_env: &'static str,
+    /// Whether every request carries a fresh `session_id` header.
+    pub session_ids: bool,
+}
+
+/// The identity a gateway requires on every request, resolved.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CallerIdentity {
+    /// The `originator` header.
+    pub originator: String,
+    /// The `user-agent` header.
+    pub user_agent: String,
+}
+
+/// The user agent a gateway that asks for one is told: the crate, the host,
+/// and who is calling.
+fn default_user_agent(originator: &str) -> String {
+    format!(
+        "rig/{} ({} {}; {originator})",
+        env!("CARGO_PKG_VERSION"),
+        std::env::consts::OS,
+        std::env::consts::ARCH,
+    )
+}
+
+/// The behaviours a dialect's Responses endpoint varies in.
+///
+/// Every field has a caller: each is something a recorded cassette shows one
+/// of the Responses dialects (OpenAI, ChatGPT, xAI, Copilot) doing and the
+/// others not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ResponsesQuirks {
+    /// The endpoint path, appended to the base URL.
+    pub path: &'static str,
+    /// Where Rig's system instructions go in the request.
+    pub system_instructions: SystemInstructionsPlacement,
+    /// Which request body this gateway accepts.
+    pub request: RequestShape,
+    /// The gateway answers with an event stream whether or not a stream was
+    /// asked for, so a unary call reads a replayed SSE body.
+    pub always_streams: bool,
+    /// The gateway's streamed reply may name no content type at all.
+    pub relaxed_content_type: bool,
+    /// The gateway accepts only the codex parameter subset: no sampling
+    /// controls, no storage, no metadata, no structured output.
+    pub codex_parameter_subset: bool,
+    /// The gateway answers a success with its error envelope as the whole
+    /// body, and publishes a finished tool call at `output_item.done`. The
+    /// stream's own `error` event is not this: that is protocol on every
+    /// dialect and the decoder always reads it.
+    pub error_envelope_in_success: bool,
+    /// The gateway's replayed frames may omit their envelope bookkeeping
+    /// (`sequence_number`, `output_index`, …), which the typed decode
+    /// salvages. Off elsewhere: on a gateway whose frames do carry
+    /// envelopes, an envelope-less frame is a defect worth surfacing.
+    pub repair_envelope_less_frames: bool,
+    /// Native structured output composes with tool calls.
+    pub native_output_with_tools: bool,
+}
+
+impl ResponsesQuirks {
+    /// OpenAI's own Responses contract.
+    pub const fn openai() -> Self {
+        Self {
+            path: "/responses",
+            system_instructions: SystemInstructionsPlacement::Instructions,
+            request: RequestShape::Responses,
+            always_streams: false,
+            relaxed_content_type: false,
+            codex_parameter_subset: false,
+            error_envelope_in_success: false,
+            repair_envelope_less_frames: false,
+            native_output_with_tools: true,
+        }
+    }
+}
+
 /// Everything about a dialect that is not its identity: paths, capability
 /// flags, and the one body rewrite it needs.
 ///
@@ -484,6 +594,11 @@ pub struct Quirks {
     pub auth: Auth,
     /// How the dialect addresses a model.
     pub routing: Routing,
+    /// Which completion endpoint [`OpenAI::completion`] builds: the
+    /// dialect's flagship. Chat Completions is the one endpoint every
+    /// dialect serves, so it is the baseline; OpenAI itself, xAI and ChatGPT
+    /// serve `/responses` as their primary API and say so.
+    pub completion_route: Route,
     /// The chat-completions path, relative to the base URL.
     pub completion_path: &'static str,
     /// The embeddings path.
@@ -581,15 +696,34 @@ pub struct Quirks {
     pub embedding: EmbeddingQuirks,
     /// What the rerank endpoint accepts.
     pub rerank: RerankQuirks,
+    /// A second environment variable naming the base URL, kept because the
+    /// provider documents both spellings.
+    pub base_url_env_alias: Option<&'static str>,
+    /// The environment variable naming the account a credential belongs to,
+    /// sent as `ChatGPT-Account-Id`.
+    pub account_id_env: Option<&'static str>,
+    /// Instructions this gateway expects every turn to carry, merged ahead
+    /// of the caller's preamble.
+    pub default_instructions: Option<&'static str>,
+    /// The environment variable overriding [`Self::default_instructions`].
+    pub instructions_env: Option<&'static str>,
+    /// The caller identity this gateway requires on every request.
+    pub identity: Option<Identity>,
+    /// What the Responses endpoint accepts.
+    pub responses: ResponsesQuirks,
 }
 
 impl Quirks {
     /// OpenAI's own contract, which every dialect starts from and overrides
-    /// only where it was measured to differ.
+    /// only where it was measured to differ — except the completion route,
+    /// whose baseline is the endpoint every dialect serves rather than
+    /// OpenAI's own flagship, so that a compatible gateway added with
+    /// `..Quirks::openai()` cannot inherit a `/responses` it never served.
     pub const fn openai() -> Self {
         Self {
             auth: Auth::Bearer,
             routing: Routing::Path,
+            completion_route: Route::Chat,
             completion_path: "/chat/completions",
             embeddings_path: "/embeddings",
             models_path: "/models",
@@ -618,6 +752,12 @@ impl Quirks {
             image_body: ImageBody::OpenAi,
             speech_body: SpeechBody::OpenAi,
             transcription_body: TranscriptionBody::Multipart,
+            base_url_env_alias: None,
+            account_id_env: None,
+            default_instructions: None,
+            instructions_env: None,
+            identity: None,
+            responses: ResponsesQuirks::openai(),
         }
     }
 }
@@ -676,7 +816,11 @@ impl<'de> Deserialize<'de> for Dialect {
 /// An OpenAI-shaped provider's configuration: plain data, key redacted.
 ///
 /// Holds no transport and no type parameter, so a host can store one. Pair
-/// it with a socket through [`Bound`](crate::driver::Bound) to get a model.
+/// it with a socket through [`Bound`](crate::driver::Bound) to get a model:
+/// [`completion`](Self::completion) for the dialect's default endpoint,
+/// [`responses`](Self::responses) for the Responses endpoint,
+/// [`chat`](Self::chat) for Chat Completions, and one constructor per
+/// modality endpoint.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct OpenAI {
     /// The credential. Never serialized (see [`Secret`]).
@@ -704,6 +848,17 @@ pub struct OpenAI {
     /// every other dialect, which routes nothing.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sub_route: Option<SubRoute>,
+    /// The account the credential belongs to, when the gateway asks which
+    /// (`ChatGPT-Account-Id`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account_id: Option<String>,
+    /// Instructions merged ahead of every Responses turn's preamble, when
+    /// the gateway expects some.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    /// The caller identity, when the gateway requires one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub identity: Option<CallerIdentity>,
 }
 
 impl OpenAI {
@@ -712,8 +867,10 @@ impl OpenAI {
         Self::with_key(&OPENAI, api_key)
     }
 
-    /// `dialect` with `api_key`, at the dialect's default base URL.
+    /// `dialect` with `api_key`, at the dialect's default base URL and with
+    /// the instructions and caller identity its gateway expects, if any.
     pub fn with_key(dialect: &Dialect, api_key: impl Into<Secret>) -> Self {
+        let quirks = &dialect.quirks;
         Self {
             api_key: api_key.into(),
             base_url: dialect.base_url.to_owned(),
@@ -721,13 +878,19 @@ impl OpenAI {
             // Azure carries an `api-version` on every route, and formatting
             // an empty one would silently address an unversioned endpoint.
             // This is the version its deleted client builder defaulted to.
-            api_version: match dialect.quirks.routing {
+            api_version: match quirks.routing {
                 Routing::AzureDeployment => Some(dialects::AZURE_DEFAULT_API_VERSION.to_owned()),
                 Routing::Path => None,
             },
             audio_api_version: None,
-            auth: dialect.quirks.auth,
+            auth: quirks.auth,
             sub_route: None,
+            account_id: None,
+            instructions: quirks.default_instructions.map(str::to_owned),
+            identity: quirks.identity.map(|identity| CallerIdentity {
+                originator: identity.originator.to_owned(),
+                user_agent: default_user_agent(identity.originator),
+            }),
         }
     }
 
@@ -754,12 +917,15 @@ impl OpenAI {
         Self::from_env_with(&OPENAI)
     }
 
-    /// `dialect` from its own `api_key_env` and `base_url_env`.
+    /// `dialect` from its own `api_key_env` and `base_url_env` (or the
+    /// alias its quirks name), plus whatever else its gateway reads: the
+    /// account id, the default instructions and the caller identity.
     ///
     /// Azure additionally reads `AZURE_API_VERSION`, because every Azure
     /// route carries it and there is no default that would not silently
     /// address the wrong API.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
+        let quirks = &dialect.quirks;
         // A dialect that accepts two credentials prefers its primary one and
         // falls back to the alternative *with that alternative's header*;
         // Azure's account key and Entra token are not interchangeable
@@ -768,7 +934,7 @@ impl OpenAI {
         // configured the second to look in the wrong place.
         let (api_key, auth) = match dialect.alternate_auth {
             Some(alternative) => match env::optional(dialect.api_key_env)? {
-                Some(api_key) => (api_key, dialect.quirks.auth),
+                Some(api_key) => (api_key, quirks.auth),
                 None => match env::optional(alternative.api_key_env)? {
                     Some(api_key) => (api_key, alternative.auth),
                     None => {
@@ -782,41 +948,56 @@ impl OpenAI {
                     }
                 },
             },
-            None => (env::required(dialect.api_key_env)?, dialect.quirks.auth),
+            None => (env::required(dialect.api_key_env)?, quirks.auth),
         };
-        let base_url = match dialect.base_url_env {
-            Some(name) => env::optional(name)?,
-            None => None,
-        };
+        let mut provider = Self::with_key(dialect, api_key);
+        provider.auth = auth;
+        for name in [dialect.base_url_env, quirks.base_url_env_alias]
+            .into_iter()
+            .flatten()
+        {
+            if let Some(base_url) = env::optional(name)? {
+                provider.base_url = base_url;
+                break;
+            }
+        }
         // Azure carries an `api-version` on every route and versions its
         // speech endpoint separately, so both are read here rather than
         // defaulted to a version that would silently address another API.
-        let (api_version, audio_api_version) = match dialect.quirks.routing {
-            Routing::AzureDeployment => (
-                Some(env::required(dialects::AZURE_API_VERSION_ENV)?),
-                env::optional(dialects::AZURE_AUDIO_API_VERSION_ENV)?
-                    .or_else(|| Some(dialects::AZURE_DEFAULT_AUDIO_API_VERSION.to_owned())),
-            ),
-            Routing::Path => (None, None),
-        };
-        Ok(Self {
-            api_key: api_key.into(),
-            base_url: base_url.unwrap_or_else(|| dialect.base_url.to_owned()),
-            dialect: *dialect,
-            api_version,
-            audio_api_version,
-            auth,
-            sub_route: None,
-        })
+        if let Routing::AzureDeployment = quirks.routing {
+            provider.api_version = Some(env::required(dialects::AZURE_API_VERSION_ENV)?);
+            provider.audio_api_version = env::optional(dialects::AZURE_AUDIO_API_VERSION_ENV)?
+                .or_else(|| Some(dialects::AZURE_DEFAULT_AUDIO_API_VERSION.to_owned()));
+        }
+        if let Some(name) = quirks.account_id_env {
+            provider.account_id = env::optional(name)?;
+        }
+        if let Some(name) = quirks.instructions_env
+            && let Some(instructions) = env::optional(name)?
+            && !instructions.trim().is_empty()
+        {
+            provider.instructions = Some(instructions);
+        }
+        if let (Some(identity), Some(resolved)) = (quirks.identity, provider.identity.as_mut()) {
+            if let Some(originator) =
+                env::optional(identity.originator_env)?.filter(|value| !value.is_empty())
+            {
+                resolved.originator = originator;
+                resolved.user_agent = default_user_agent(&resolved.originator);
+            }
+            if let Some(user_agent) =
+                env::optional(identity.user_agent_env)?.filter(|value| !value.is_empty())
+            {
+                resolved.user_agent = user_agent;
+            }
+        }
+        Ok(provider)
     }
 
-    /// Point this configuration at another dialect, taking that dialect's
-    /// default base URL.
-    pub fn with_dialect(mut self, dialect: &Dialect) -> Self {
-        self.base_url = dialect.base_url.to_owned();
-        self.auth = dialect.quirks.auth;
-        self.dialect = *dialect;
-        self
+    /// Point this configuration at another dialect: the same credential,
+    /// with everything else at that dialect's defaults.
+    pub fn with_dialect(self, dialect: &Dialect) -> Self {
+        Self::with_key(dialect, self.api_key)
     }
 
     /// Route through a Hugging Face sub-provider.
@@ -847,6 +1028,30 @@ impl OpenAI {
     pub fn with_audio_api_version(mut self, api_version: impl Into<String>) -> Self {
         self.audio_api_version = Some(api_version.into());
         self
+    }
+
+    /// Name the account the credential belongs to (`ChatGPT-Account-Id`).
+    pub fn with_account_id(mut self, account_id: impl Into<String>) -> Self {
+        self.account_id = Some(account_id.into());
+        self
+    }
+
+    /// Merge these instructions ahead of every Responses turn's preamble.
+    pub fn with_instructions(mut self, instructions: impl Into<String>) -> Self {
+        self.instructions = Some(instructions.into());
+        self
+    }
+
+    /// The completion wire for `model` on the dialect's default route
+    /// ([`Quirks::completion_route`]): Responses for OpenAI, xAI and
+    /// ChatGPT, Chat Completions for every compatible gateway.
+    pub fn completion(&self, model: impl Into<String>) -> OpenAiWire {
+        OpenAiWire::new(self.clone(), model)
+    }
+
+    /// The Responses wire for `model`: `POST /responses`.
+    pub fn responses(&self, model: impl Into<String>) -> Responses {
+        Responses::new(self.clone(), model)
     }
 
     /// The chat-completions wire for `model`.
@@ -992,11 +1197,27 @@ impl OpenAI {
     }
 }
 
+/// The completion wire a bound `OpenAI` builds without being asked which:
+/// the dialect's flagship route. Either endpoint is asked for by name,
+/// `.chat(model)` or `.responses(model)`.
 impl HasCompletion for OpenAI {
-    type Wire = Chat;
+    type Wire = OpenAiWire;
 
-    fn completion(&self, model: impl Into<String>) -> Chat {
-        self.chat(model)
+    fn completion(&self, model: impl Into<String>) -> OpenAiWire {
+        self.completion(model)
+    }
+}
+
+/// The two completion endpoints, on a bound configuration.
+impl<H: Clone> Bound<OpenAI, H> {
+    /// The chat-completions wire for `model`, on this socket.
+    pub fn chat(&self, model: impl Into<String>) -> Bound<Chat, H> {
+        Bound::new(self.wire.chat(model), self.http.clone())
+    }
+
+    /// The Responses wire for `model`, on this socket.
+    pub fn responses(&self, model: impl Into<String>) -> Bound<Responses, H> {
+        Bound::new(self.wire.responses(model), self.http.clone())
     }
 }
 

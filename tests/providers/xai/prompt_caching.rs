@@ -32,7 +32,7 @@
 //! ```
 
 use rig::prelude::*;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 use rig::providers::xai;
 
 use crate::cache_conformance::{
@@ -96,7 +96,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 #[tokio::test]
 #[ignore = "requires XAI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = ResponsesApi::from_env_with(&xai::DIALECT)
+    let client = OpenAI::from_env_with(&xai::DIALECT)
         .expect("XAI_API_KEY")
         .bound()
         .expect("client should build");

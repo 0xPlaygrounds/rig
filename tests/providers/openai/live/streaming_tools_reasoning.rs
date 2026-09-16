@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 use rig::{completion::Message, prelude::*};
 use rig_agent::test_utils::MockExampleTool;
 
@@ -7,7 +7,7 @@ use rig_agent::test_utils::MockExampleTool;
 #[ignore = "requires OPENAI_API_KEY environment variable"]
 async fn test_openai_streaming_tools_reasoning() {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY env var should exist");
-    let client = ResponsesApi::new(api_key)
+    let client = OpenAI::new(api_key)
         .bound()
         .expect("Failed to build client");
     let agent = client

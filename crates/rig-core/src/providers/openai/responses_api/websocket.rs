@@ -14,9 +14,10 @@
 
 use crate::completion::{self, CompletionError};
 use crate::driver::{Bound, WireDriver};
+use crate::driver::{TriagedFrame, triage_frame};
 use crate::http_client::{self, NoBody};
 use crate::operation::Completion;
-use crate::providers::internal::adapter::{TriagedFrame, WireFrame, triage_frame};
+use crate::providers::internal::adapter::WireFrame;
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, ResponseChunk, ResponseChunkKind, ResponsesDecoder, StreamingCompletionChunk,
     classify_responses_frame,
@@ -43,7 +44,7 @@ const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 /// HTTP twin through the dialect — the websocket upgrade is answered by the
 /// same service and reports the same id.
 const REQUEST_ID_HEADER: Option<&'static str> =
-    crate::providers::openai::responses_api::wire::OPENAI.request_id_header;
+    crate::providers::openai::wire::OPENAI.request_id_header;
 
 /// Options for a `response.create` message sent over OpenAI WebSocket mode.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -384,8 +385,8 @@ impl ResponsesWebSocketSession {
         // The session takes a raw `CompletionRequest`, bypassing the builder's
         // `send`/`stream` — so this is a direct-to-model surface and validates
         // here, per `validate_message_content`'s own contract. Every session
-        // entry point (`send`, `warmup`, `completion`, `raw_completion`)
-        // funnels through this method.
+        // entry point (`send`, `warmup`, `completion`) funnels through this
+        // method.
         completion_request.validate_message_content()?;
 
         let payload = ResponsesWebSocketClientEvent {
@@ -483,10 +484,7 @@ impl ResponsesWebSocketSession {
     }
 
     /// Sends a completion turn and collects the final OpenAI response,
-    /// normalized.
-    ///
-    /// Use [`ResponsesWebSocketSession::raw_completion`] when the provider's own
-    /// wire response is needed.
+    /// normalized; its `raw` is the provider's own terminal response object.
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
@@ -503,19 +501,6 @@ impl ResponsesWebSocketSession {
             return super::wire::fold_body(&provider, response);
         }
         Ok(folded)
-    }
-
-    /// Sends a completion turn and returns the provider's own wire response.
-    ///
-    /// Shares the send/receive path with
-    /// [`ResponsesWebSocketSession::completion`], which calls it and then
-    /// applies the provider-local mapping — one websocket turn either way.
-    pub async fn raw_completion(
-        &mut self,
-        completion_request: crate::completion::CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        self.send(completion_request).await?;
-        self.wait_for_completed_response().await
     }
 
     /// Closes the websocket connection.
@@ -578,8 +563,8 @@ impl ResponsesWebSocketSession {
     /// Only the *live* SSE surface can do better, and only because it is a
     /// `Stream`: it yields the partial items first and the `Err` as a later
     /// element. This session exposes a unary surface —
-    /// [`completion()`](Self::completion) / [`raw_completion()`](Self::raw_completion)
-    /// return one `Result<CompletionResponse, _>` — and a unary return type
+    /// [`completion()`](Self::completion) returns one
+    /// `Result<CompletionResponse, _>` — and a unary return type
     /// cannot express partial-content-plus-error without inventing a second
     /// channel. Keeping the failed turn's fragments would mean returning a
     /// `CompletionResponse` that never completed, which is the exact

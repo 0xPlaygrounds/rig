@@ -44,7 +44,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Create the Chat Completions provider
     let agent = OpenAI::from_env()?
         .bound()?
-        .agent(openai::GPT_4O)
+        .chat(openai::GPT_4O)
+        .into_agent_builder()
         .preamble("You are a helpful assistant")
         .build();
 

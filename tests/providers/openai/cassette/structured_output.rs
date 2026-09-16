@@ -3,7 +3,7 @@
 use rig::agent::OutputMode;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 use rig::test_utils::RecordingHttpClient;
 use rig_agent::test_utils::decode_structured_output;
 use schemars::JsonSchema;
@@ -74,7 +74,7 @@ async fn structured_output_smoke() {
         "structured_output/structured_output_smoke",
         |client| async move {
             let agent = client
-                .responses
+                .openai
                 .agent(openai::GPT_4O)
                 .output_schema::<SmokeStructuredOutput>()
                 .output_mode(OutputMode::Native)
@@ -95,7 +95,7 @@ async fn structured_output_smoke() {
 #[tokio::test]
 async fn classic_tool_mode_maps_through_openai_responses() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
-    let client = ResponsesApi::new("test-key").bind(http.clone());
+    let client = OpenAI::new("test-key").bind(http.clone());
     let agent = client
         .agent(openai::GPT_4O)
         .output_schema::<SmokeStructuredOutput>()
@@ -129,7 +129,7 @@ async fn prompt_typed_and_output_schema() {
         "structured_output/prompt_typed_and_output_schema",
         |client| async move {
             let agent = client
-                .responses
+                .openai
                 .agent(openai::GPT_4O)
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",
@@ -154,7 +154,7 @@ async fn prompt_typed_and_output_schema() {
             );
 
             let agent_with_schema = client
-                .responses
+                .openai
                 .agent(openai::GPT_4O)
                 .preamble(
                     "You are a helpful weather assistant. Respond with realistic weather data.",

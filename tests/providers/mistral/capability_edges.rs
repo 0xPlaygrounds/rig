@@ -71,7 +71,7 @@ async fn list_models_keeps_description_and_context_length() -> Result<()> {
     with_mistral_capability_cassette(
         "capability_edges/list_models_keeps_description_and_context_length",
         |client| async move {
-            let models = client.model_listing().list_all().await?;
+            let models = client.models().list_all().await?;
             assert_listing_carries_mistrals_fields(&models.data);
             Ok::<_, anyhow::Error>(())
         },

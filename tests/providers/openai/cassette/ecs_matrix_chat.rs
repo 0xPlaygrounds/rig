@@ -15,8 +15,8 @@ use crate::ecs_matrix::{Wire, cells, world::run_world};
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client.chat.completion(GPT_5_MINI),
-        route: Some(client.chat.completion(GPT_5_NANO)),
+        model: client.openai.chat(GPT_5_MINI),
+        route: Some(client.openai.chat(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
     }
@@ -221,7 +221,7 @@ crate::matrix::case_matrix! {
 fn reasoning_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: client.chat.completion(rig::providers::openai::GPT_5_MINI),
+        model: client.openai.chat(rig::providers::openai::GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

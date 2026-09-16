@@ -14,7 +14,7 @@ use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::openai::GPT_4O;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
 
@@ -69,10 +69,8 @@ pub(super) fn tool_call_prefix_frames() -> Vec<String> {
 
 /// A client over a transport that answers one streaming request with
 /// `chunks`, then EOF.
-pub(super) fn scripted_client(
-    chunks: Vec<Bytes>,
-) -> Bound<ResponsesApi, SequencedStreamingHttpClient> {
-    ResponsesApi::new(SCRIPTED_KEY).bind(scripted(chunks))
+pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Bound<OpenAI, SequencedStreamingHttpClient> {
+    OpenAI::new(SCRIPTED_KEY).bind(scripted(chunks))
 }
 
 /// The model refuses the request before any frame: the run fails with the
@@ -85,7 +83,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             let agent = client
-                .responses
+                .openai
                 .agent(MISSING_MODEL)
                 .max_tokens(SETUP_MAX_TOKENS)
                 .record_effects_with_events()
@@ -243,7 +241,7 @@ async fn error_event_after_content_fails_with_the_provider_error() {
 async fn dropping_the_stream_at_the_first_delta_records_a_cancel() {
     with_openai_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(GPT_4O)
             .preamble(STREAMING_PREAMBLE)
             .record_effects_with_events()

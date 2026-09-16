@@ -129,7 +129,7 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.chat.completion(model_name(cell.model));
+    let model = client.openai.chat(model_name(cell.model));
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -165,9 +165,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // on `StreamFinal::raw`; decode it to prove the shape, then read
             // the serialized form the way the old raw surface did.
             let terminal = serde_json::from_value::<
-                openai::completion::streaming::StreamingCompletionResponse<
-                    openai::completion::Usage,
-                >,
+                openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
             >(terminal.raw)?;
             let serialized = serde_json::to_value(terminal)?;
             Observation {

@@ -111,14 +111,5 @@ pub struct CompletionResponse {
     pub timings: Option<Timings>,
 }
 
-impl CompletionResponse {
-    /// Generation throughput in tokens per second, when the server reported it.
-    pub fn predicted_tokens_per_second(&self) -> Option<f64> {
-        self.timings
-            .as_ref()
-            .and_then(|timings| timings.predicted_per_second)
-    }
-}
-
 #[cfg(test)]
 mod tests;

@@ -4,7 +4,7 @@ use axum::http;
 use rig::completion::{CompletionError, CompletionModel};
 use rig::driver::Bound;
 use rig::providers::chatgpt;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 
 use super::super::support::with_chatgpt_cassette;
 
@@ -25,7 +25,7 @@ async fn nonstreaming_unauthorized_preserves_status_and_body() {
 }
 
 async fn assert_nonstreaming_http_error(
-    client: Bound<ResponsesApi>,
+    client: Bound<OpenAI>,
     expected_status: http::StatusCode,
     expected_message: &str,
 ) {

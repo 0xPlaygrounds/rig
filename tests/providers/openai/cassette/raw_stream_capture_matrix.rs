@@ -61,8 +61,7 @@ use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefi
 use rig::driver::Bound;
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::wire::Responses;
-use rig::providers::openai::wire::Chat;
+use rig::providers::openai::wire::{Chat, OpenAiWire};
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize as _;
 use serde_json::{Value, json};
@@ -162,7 +161,7 @@ fn chat_body_with(
 ) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let model = client.chat.completion(MODEL);
+            let model = client.openai.chat(MODEL);
             let stream = model
                 .stream(build(&model))
                 .await
@@ -181,11 +180,11 @@ fn chat_body(sink: Observed) -> Body {
 fn responses_body_with(
     sink: Observed,
     model_name: &'static str,
-    build: impl FnOnce(&Bound<Responses>) -> CompletionRequest + 'static,
+    build: impl FnOnce(&Bound<OpenAiWire>) -> CompletionRequest + 'static,
 ) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let model = client.responses.completion(model_name);
+            let model = client.openai.completion(model_name);
             let stream = model
                 .stream(build(&model))
                 .await

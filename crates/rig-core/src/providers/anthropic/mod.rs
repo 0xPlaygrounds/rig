@@ -1,4 +1,4 @@
-//! Anthropic API client and Rig integration
+//! Anthropic as data: one config, its wires, and every Messages-format dialect.
 //!
 //! # Example
 //! ```no_run
@@ -21,4 +21,6 @@ mod observation;
 pub mod streaming;
 pub mod wire;
 
-pub use wire::{ANTHROPIC, Anthropic, Dialect, MaxTokens, Messages, Models, Verify, compatible};
+pub use wire::{
+    ANTHROPIC, Anthropic, Dialect, MaxTokens, Messages, Models, Quirks, Verify, compatible,
+};

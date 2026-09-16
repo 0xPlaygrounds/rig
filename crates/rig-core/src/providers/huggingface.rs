@@ -20,22 +20,22 @@
 //! What lives here is the model identifiers.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//! ```no_run
 //! use rig_core::providers::huggingface;
 //! use rig_core::providers::openai::wire::{HUGGINGFACE, OpenAI, SubRoute};
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let router = OpenAI::from_env_with(&HUGGINGFACE)?.bound()?;
-//! let chat = router.completion(huggingface::GEMMA_2);
-//! let transcription = router.transcription(huggingface::WHISPER_LARGE_V3);
+//! let router = OpenAI::from_env_with(&HUGGINGFACE)?;
+//! let chat = router.chat(huggingface::GEMMA_2);
+//! let transcription = router.transcriptions(huggingface::WHISPER_LARGE_V3);
 //!
 //! // Routed to a different backend, which addresses models by a
 //! // fully-qualified id.
 //! let fireworks = OpenAI::from_env_with(&HUGGINGFACE)?
 //!     .with_sub_route(SubRoute::Fireworks)
-//!     .bound()?
-//!     .completion(huggingface::META_LLAMA_3_1);
+//!     .chat(huggingface::META_LLAMA_3_1);
 //! # let _ = (chat, transcription, fireworks);
 //! # Ok(())
 //! # }

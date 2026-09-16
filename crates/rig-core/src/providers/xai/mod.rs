@@ -1,22 +1,21 @@
-//! xAI's model identifiers, its Responses dialect, and its own request shape.
+//! xAI's model identifiers, its dialect, and its own request shape.
 //!
-//! xAI speaks the Responses API, so it has no client and no completion model
+//! xAI speaks the OpenAI wires, so it has no client and no completion model
 //! of its own: [`DIALECT`] carries the base URL, the `XAI_API_KEY` variable,
-//! the `x-request-id` header and the quirks below. The one thing xAI does not
-//! share is its request input shape, selected by [`RequestShape::Xai`] and
-//! built by this crate's internal `api` module.
+//! the `x-request-id` header and the quirks below — its completion is the
+//! Responses endpoint at `/v1/responses`, and its image and speech endpoints
+//! are OpenAI-shaped under `/v1`. The one thing xAI does not share is its
+//! Responses input shape, selected by [`RequestShape::Xai`] and built by
+//! this crate's internal `api` module.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
-//! use rig_core::providers::openai::responses_api::wire::ResponsesApi;
+//! ```no_run
+//! use rig_core::providers::openai::OpenAI;
 //! use rig_core::providers::xai;
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let grok = ResponsesApi::from_env_with(&xai::DIALECT)?
-//!     .bound()?
-//!     .completion(xai::GROK_3);
+//! // The wire; `.bind(transport)` joins it to a socket.
+//! let grok = OpenAI::from_env_with(&xai::DIALECT)?.completion(xai::GROK_3);
 //! # let _ = grok;
 //! # Ok(())
 //! # }
@@ -25,17 +24,13 @@
 pub(crate) mod api;
 #[cfg(feature = "audio")]
 pub mod audio_generation;
-pub mod completion;
 #[cfg(feature = "image")]
 pub mod image_generation;
 
 #[cfg(feature = "audio")]
 pub use audio_generation::TTS_1;
-pub use completion::CompletionResponse;
 #[cfg(feature = "image")]
-pub use image_generation::{
-    GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO, ImageGenerationData, ImageGenerationResponse,
-};
+pub use image_generation::{GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO};
 
 /// xAI completion models.
 pub const GROK_2_1212: &str = "grok-2-1212";
@@ -48,15 +43,19 @@ pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
 pub const GROK_4: &str = "grok-4-0709";
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
-use crate::providers::openai::responses_api::wire::{Dialect, Quirks, RequestShape};
+use crate::providers::openai::wire::{
+    Dialect, ImageBody, OutputCap, Quirks, RequestShape, ResponsesQuirks, Route, SpeechBody,
+};
 
-/// xAI, as a Responses dialect.
+/// xAI, as an OpenAI dialect.
 ///
-/// Every field is what this gateway does differently: its endpoint lives
-/// under `/v1`, it takes its own input shape ([`RequestShape::Xai`]), it rejects
-/// top-level `instructions` so system messages stay in `input`, it answers
-/// a 200 with its error envelope, it publishes a finished function call at
-/// its `output_item.done` rather than at the terminal, and its native
+/// Every field is what this gateway does differently. Its endpoints live
+/// under `/v1` on a bare host; its text-to-speech endpoint is `/v1/tts` and
+/// takes a body of its own, as does its image endpoint. Its Responses
+/// endpoint takes its own input shape ([`RequestShape::Xai`]), rejects
+/// top-level `instructions` so system messages stay in `input`, answers a
+/// 200 with its error envelope, publishes a finished function call at its
+/// `output_item.done` rather than at the terminal, and its native
 /// structured output does not compose with tool calls.
 pub const DIALECT: Dialect = Dialect {
     name: "xai",
@@ -64,20 +63,27 @@ pub const DIALECT: Dialect = Dialect {
     api_key_env: "XAI_API_KEY",
     base_url_env: None,
     request_id_header: Some("x-request-id"),
+    alternate_auth: None,
     quirks: Quirks {
-        path: "/v1/responses",
-        system_instructions: SystemInstructionsPlacement::InputSystemMessages,
-        request: RequestShape::Xai,
-        base_url_env_alias: None,
-        account_id_env: None,
-        default_instructions: None,
-        instructions_env: None,
-        identity: None,
-        always_streams: false,
-        relaxed_content_type: false,
-        codex_parameter_subset: false,
-        error_envelope_in_success: true,
-        repair_envelope_less_frames: false,
-        native_output_with_tools: false,
+        completion_route: Route::Responses,
+        output_cap: OutputCap::Legacy,
+        completion_path: "/v1/chat/completions",
+        embeddings_path: "/v1/embeddings",
+        models_path: "/v1/models",
+        verify_path: "/v1/api-key",
+        transcription_path: "/v1/audio/transcriptions",
+        image_generation_path: "/v1/images/generations",
+        audio_generation_path: "/v1/tts",
+        image_body: ImageBody::Xai,
+        speech_body: SpeechBody::Xai,
+        responses: ResponsesQuirks {
+            path: "/v1/responses",
+            system_instructions: SystemInstructionsPlacement::InputSystemMessages,
+            request: RequestShape::Xai,
+            error_envelope_in_success: true,
+            native_output_with_tools: false,
+            ..ResponsesQuirks::openai()
+        },
+        ..Quirks::openai()
     },
 };

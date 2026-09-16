@@ -1,7 +1,7 @@
 use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
+use rig::providers::openai::{self, OpenAI};
 use rig::{
     agent::{Agent, AgentBuilder},
     completion::Message,
@@ -72,7 +72,7 @@ impl Tool for TranslatorTool {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = ResponsesApi::from_env()?.bound()?;
+    let openai_client = OpenAI::from_env()?.bound()?;
     let model = openai_client.completion(openai::GPT_4O);
 
     let translator_agent = AgentBuilder::new(model.clone())

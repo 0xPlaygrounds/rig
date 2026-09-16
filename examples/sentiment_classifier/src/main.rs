@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
+use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -24,10 +24,8 @@ struct DocumentSentiment {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let extractor = ResponsesApi::from_env()?
-        .bound()?
-        .extractor::<DocumentSentiment>(openai::GPT_4)
-        .build();
+    let client = OpenAI::from_env()?.bound()?;
+    let extractor = client.extractor::<DocumentSentiment>(openai::GPT_4).build();
 
     let sentiment = extractor.extract("I am happy").await?.output;
 

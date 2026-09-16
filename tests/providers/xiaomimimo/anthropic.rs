@@ -9,7 +9,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires XIAOMIMIMO_API_KEY"]
 async fn anthropic_compatible_completion_smoke() {
-    let response = Anthropic::from_env_with(anthropic_wire::XIAOMIMIMO)
+    let response = Anthropic::from_env_with(&anthropic_wire::XIAOMIMIMO)
         .expect("XIAOMIMIMO_API_KEY should be set")
         .bound()
         .expect("client should build")

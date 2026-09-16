@@ -53,13 +53,13 @@ mod xai {
         conformance::WireDriver::new("xai", |chunks| {
             Box::pin(async move {
                 let model = rig_core::driver::Bind::bind(
-                    rig_core::providers::openai::responses_api::wire::ResponsesApi::with_dialect(
-                        "test-key",
+                    rig_core::providers::openai::OpenAI::with_key(
                         &rig_core::providers::xai::DIALECT,
+                        "test-key",
                     ),
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                 )
-                .completion(rig_core::providers::xai::completion::GROK_4);
+                .completion(rig_core::providers::xai::GROK_4);
                 let request = model.completion_request("hello").build();
                 let stream = rig_core::completion::CompletionModel::stream(&model, request).await?;
                 Ok(conformance::fixtures::drain(stream).await)
@@ -134,9 +134,9 @@ mod chatgpt {
         conformance::WireDriver::new("chatgpt", |chunks| {
             Box::pin(async move {
                 let model = rig_core::driver::Bind::bind(
-                    rig_core::providers::openai::responses_api::wire::ResponsesApi::with_dialect(
-                        "test-token",
+                    rig_core::providers::openai::OpenAI::with_key(
                         &rig_core::providers::chatgpt::DIALECT,
+                        "test-token",
                     )
                     .with_account_id("account-id"),
                     SequencedStreamingHttpClient::new(byte_chunks(chunks)?),

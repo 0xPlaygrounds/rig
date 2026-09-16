@@ -33,7 +33,7 @@ async fn embeds_over_host(client: OpenAiCassette, streamed: bool) -> rig::effect
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                 "default",
-                client.responses.completion(openai::GPT_4O),
+                client.openai.completion(openai::GPT_4O),
             )),
         )
         .expect("a fresh key");
@@ -42,7 +42,9 @@ async fn embeds_over_host(client: OpenAiCassette, streamed: bool) -> rig::effect
             HandlerKey::from(EMBED_KEY),
             rig::serve::ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
                 "host",
-                client.chat.embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
+                client
+                    .openai
+                    .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
             )),
         )
         .expect("a fresh key");

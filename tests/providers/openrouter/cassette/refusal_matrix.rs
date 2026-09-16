@@ -80,6 +80,7 @@
 use rig::completion::CompletionModel;
 use rig::message::Message;
 use rig::prelude::*;
+use rig::providers::openai::completion::Message as OpenAiMessage;
 use rig::providers::openrouter;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -229,7 +230,7 @@ async fn blocking_raw_and_normalized_agree() {
                 .choices
                 .first()
                 .and_then(|choice| match &choice.message {
-                    openrouter::Message::Assistant { refusal, .. } => refusal.clone(),
+                    OpenAiMessage::Assistant { refusal, .. } => refusal.clone(),
                     _ => None,
                 })
                 .expect("the recorded turn must carry a top-level refusal");

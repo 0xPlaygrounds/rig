@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
+use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -23,7 +23,7 @@ const SECOND_INPUT: &str = "Jane Smith is a data scientist.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = ResponsesApi::from_env()?.bound()?;
+    let client = OpenAI::from_env()?.bound()?;
     let extractor = client.extractor::<Person>(openai::GPT_4).build();
 
     let person = extractor.extract(FIRST_INPUT).await?.output;

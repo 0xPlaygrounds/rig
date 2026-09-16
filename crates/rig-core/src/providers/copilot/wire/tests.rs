@@ -95,7 +95,7 @@ fn the_model_chooses_the_route() {
         "GPT-6-CODEX-PREVIEW",
     ] {
         assert!(
-            matches!(copilot.completion(model), CopilotWire::Responses { .. }),
+            matches!(copilot.completion(model).wire, OpenAiWire::Responses(_)),
             "{model} is served by /responses"
         );
     }
@@ -106,7 +106,7 @@ fn the_model_chooses_the_route() {
         super::super::O3_MINI,
     ] {
         assert!(
-            matches!(copilot.completion(model), CopilotWire::Chat { .. }),
+            matches!(copilot.completion(model).wire, OpenAiWire::Chat(_)),
             "{model} is served by /chat/completions"
         );
     }

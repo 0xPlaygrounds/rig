@@ -418,7 +418,7 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     let request = completion_request_with_tools(vec![generic_tool("lookup")], None);
     let encoded = crate::providers::anthropic::wire::Anthropic::with_dialect(
         "k",
-        crate::providers::anthropic::wire::ZAI,
+        &crate::providers::anthropic::wire::ZAI,
     )
     .messages("some-model")
     .with_strict_tools()

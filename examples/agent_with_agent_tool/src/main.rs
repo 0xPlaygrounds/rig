@@ -1,6 +1,6 @@
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::OpenAI;
 use rig::{providers, tool::Tool};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -104,7 +104,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Bind the OpenAI Responses API to the default transport
-    let openai_client = ResponsesApi::from_env()?.bound()?;
+    let openai_client = OpenAI::from_env()?.bound()?;
 
     // Create agent with a single context prompt and two tools
     let calculator_agent = openai_client

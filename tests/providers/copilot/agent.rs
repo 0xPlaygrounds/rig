@@ -29,7 +29,7 @@ async fn all_models_completion_smoke() {
     let client = live_client().await;
 
     let models = client
-        .model_listing()
+        .models()
         .list_all()
         .await
         .expect("listing Copilot models should succeed");

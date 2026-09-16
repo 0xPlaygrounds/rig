@@ -24,7 +24,7 @@ pub(crate) fn coding_client() -> Bound<OpenAI> {
 }
 
 pub(crate) fn anthropic_client() -> Bound<Anthropic> {
-    Anthropic::with_dialect(api_key(), anthropic_wire::ZAI)
+    Anthropic::with_dialect(api_key(), &anthropic_wire::ZAI)
         .bound()
         .expect("Z.AI Anthropic-compatible client should build")
 }

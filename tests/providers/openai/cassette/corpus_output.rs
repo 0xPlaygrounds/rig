@@ -34,7 +34,7 @@ fn tool_names(log: &rig::effect_log::EffectLog) -> Vec<String> {
 async fn tool_unary_effect_log_is_the_golden_fixture() {
     with_openai_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(openai::GPT_4O)
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -60,7 +60,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
     with_openai_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
         let agent = client
-            .responses
+            .openai
             .agent(openai::GPT_4O)
             .name("golden")
             .preamble(BASIC_PREAMBLE)

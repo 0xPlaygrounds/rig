@@ -100,7 +100,7 @@ async fn unlisted_model_generates_without_response_format() {
     with_openai_image_params_cassette(
         "image_params_matrix/unlisted_model_generates_without_response_format",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let response = model
                 .image_generation_request()
@@ -129,7 +129,7 @@ async fn allowlisted_model_still_generates() {
     with_openai_image_params_cassette(
         "image_params_matrix/allowlisted_model_still_generates",
         |client| async move {
-            let model = client.chat.image_generation(openai::GPT_IMAGE_1);
+            let model = client.openai.image_generation(openai::GPT_IMAGE_1);
 
             let response = model
                 .image_generation_request()
@@ -156,7 +156,7 @@ async fn retired_model_reaches_model_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/retired_model_reaches_model_validation",
         |client| async move {
-            let model = client.chat.image_generation(openai::DALL_E_3);
+            let model = client.openai.image_generation(openai::DALL_E_3);
 
             let error = model
                 .image_generation_request()
@@ -190,7 +190,7 @@ async fn additional_params_quality_reaches_the_api() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_quality_reaches_the_api",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let response = model
                 .image_generation_request()
@@ -218,7 +218,7 @@ async fn additional_params_output_format_reaches_the_api() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_output_format_reaches_the_api",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let response = model
                 .image_generation_request()
@@ -240,8 +240,8 @@ async fn additional_params_output_format_reaches_the_api() {
 }
 
 /// Image generation is one REST route whichever completion API the caller
-/// reaches it through: `ResponsesApi` has no image surface of its own, and the
-/// marker-type swap that used to reach `/images/generations` from the chat
+/// reaches it through: the Responses wire has no image surface of its own, and
+/// the marker-type swap that used to reach `/images/generations` from the chat
 /// client is gone. This cell holds the fixture proving that route builds the
 /// fixed body.
 #[tokio::test]
@@ -251,7 +251,7 @@ async fn completions_client_shares_the_fixed_body() {
     with_openai_image_params_cassette(
         "image_params_matrix/completions_client_shares_the_fixed_body",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let response = model
                 .image_generation_request()
@@ -279,7 +279,7 @@ async fn additional_params_invalid_background_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_background_is_rejected",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
                 .image_generation_request()
@@ -307,7 +307,7 @@ async fn additional_params_invalid_output_format_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_output_format_is_rejected",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
                 .image_generation_request()
@@ -334,7 +334,7 @@ async fn additional_params_invalid_quality_is_rejected() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_invalid_quality_is_rejected",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
                 .image_generation_request()
@@ -362,7 +362,7 @@ async fn additional_params_override_size() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_size",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
                 .image_generation_request()
@@ -389,7 +389,7 @@ async fn additional_params_override_model() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_model",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
                 .image_generation_request()
@@ -416,7 +416,7 @@ async fn additional_params_override_prompt() {
     with_openai_image_params_cassette(
         "image_params_matrix/additional_params_override_prompt",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
                 .image_generation_request()
@@ -446,7 +446,7 @@ async fn caller_can_reinstate_response_format() {
     with_openai_image_params_cassette(
         "image_params_matrix/caller_can_reinstate_response_format",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
                 .image_generation_request()
@@ -475,7 +475,7 @@ async fn unlisted_dated_snapshot_reaches_its_own_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/unlisted_dated_snapshot_reaches_its_own_validation",
         |client| async move {
-            let model = client.chat.image_generation("gpt-image-2-2026-04-21");
+            let model = client.openai.image_generation("gpt-image-2-2026-04-21");
 
             let error = model
                 .image_generation_request()
@@ -506,7 +506,7 @@ async fn chatgpt_image_latest_reaches_its_own_validation() {
     with_openai_image_params_cassette(
         "image_params_matrix/chatgpt_image_latest_reaches_its_own_validation",
         |client| async move {
-            let model = client.chat.image_generation("chatgpt-image-latest");
+            let model = client.openai.image_generation("chatgpt-image-latest");
 
             let error = model
                 .image_generation_request()
@@ -543,7 +543,9 @@ async fn response_format_is_rejected_before_the_model_is_looked_at() {
     with_openai_image_params_cassette(
         "image_params_matrix/response_format_is_rejected_before_the_model_is_looked_at",
         |client| async move {
-            let model = client.chat.image_generation("rig-nonexistent-image-model");
+            let model = client
+                .openai
+                .image_generation("rig-nonexistent-image-model");
 
             let error = model
                 .image_generation_request()
@@ -576,7 +578,7 @@ async fn non_object_additional_params_are_a_no_op() {
     with_openai_image_params_cassette(
         "image_params_matrix/non_object_additional_params_are_a_no_op",
         |client| async move {
-            let model = client.chat.image_generation(UNLISTED_MODEL);
+            let model = client.openai.image_generation(UNLISTED_MODEL);
 
             let error = model
                 .image_generation_request()

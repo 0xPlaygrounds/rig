@@ -6,17 +6,14 @@
 //! subscription token exchange, in [`auth`].
 //!
 //! # Example
-//! ```ignore
+//! ```no_run
 //! use rig_core::providers::chatgpt;
-//! use rig_core::providers::openai::responses_api::wire::ResponsesApi;
-//! // rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
-//! use rig_reqwest::prelude::*;
+//! use rig_core::providers::openai::OpenAI;
 //!
 //! # fn example() -> Result<(), Box<dyn std::error::Error>> {
-//! // From `CHATGPT_ACCESS_TOKEN`, plus the variables the dialect names.
-//! let model = ResponsesApi::from_env_with(&chatgpt::DIALECT)?
-//!     .bound()?
-//!     .completion(chatgpt::GPT_5_3_CODEX);
+//! // From `CHATGPT_ACCESS_TOKEN`, plus the variables the dialect names; the
+//! // wire, which `.bind(transport)` joins to a socket.
+//! let model = OpenAI::from_env_with(&chatgpt::DIALECT)?.completion(chatgpt::GPT_5_3_CODEX);
 //! # let _ = model;
 //! # Ok(())
 //! # }
@@ -24,12 +21,14 @@
 //!
 //! A subscription login rather than a pre-exchanged token runs [`auth`] first —
 //! the exchange is not a wire — and hands the resolved token to
-//! [`ResponsesApi::with_dialect`](crate::providers::openai::responses_api::wire::ResponsesApi::with_dialect).
+//! [`OpenAI::with_key`](crate::providers::openai::OpenAI::with_key).
 
 pub mod auth;
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
-use crate::providers::openai::responses_api::wire::{Dialect, Identity, Quirks, RequestShape};
+use crate::providers::openai::wire::{
+    Dialect, Identity, Quirks, RequestShape, ResponsesQuirks, Route,
+};
 
 const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_ORIGINATOR: &str = "rig";
@@ -65,10 +64,9 @@ pub const DIALECT: Dialect = Dialect {
     api_key_env: "CHATGPT_ACCESS_TOKEN",
     base_url_env: Some("CHATGPT_API_BASE"),
     request_id_header: Some("x-request-id"),
+    alternate_auth: None,
     quirks: Quirks {
-        path: "/responses",
-        system_instructions: SystemInstructionsPlacement::AllInstructions,
-        request: RequestShape::Responses,
+        completion_route: Route::Responses,
         base_url_env_alias: Some("OPENAI_CHATGPT_API_BASE"),
         account_id_env: Some("CHATGPT_ACCOUNT_ID"),
         default_instructions: Some(DEFAULT_INSTRUCTIONS),
@@ -79,12 +77,16 @@ pub const DIALECT: Dialect = Dialect {
             user_agent_env: "CHATGPT_USER_AGENT",
             session_ids: true,
         }),
-        always_streams: true,
-        relaxed_content_type: true,
-        codex_parameter_subset: true,
-        error_envelope_in_success: false,
-        repair_envelope_less_frames: true,
-        native_output_with_tools: true,
+        responses: ResponsesQuirks {
+            system_instructions: SystemInstructionsPlacement::AllInstructions,
+            request: RequestShape::Responses,
+            always_streams: true,
+            relaxed_content_type: true,
+            codex_parameter_subset: true,
+            repair_envelope_less_frames: true,
+            ..ResponsesQuirks::openai()
+        },
+        ..Quirks::openai()
     },
 };
 

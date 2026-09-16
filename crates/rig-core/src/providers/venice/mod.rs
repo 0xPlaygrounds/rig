@@ -26,37 +26,26 @@
 //! rig operation and are deliberately not modeled here.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//! ```no_run
 //! use rig_core::providers::openai::wire::{OpenAI, VENICE};
 //! use rig_core::providers::venice;
-//! use rig_reqwest::DefaultTransport;
 //!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! // From `VENICE_API_KEY` (and optionally `VENICE_BASE_URL`).
-//! let model = OpenAI::from_env_with(&VENICE)?
-//!     .bound()?
-//!     .completion(venice::QWEN3_5_9B);
-//! let request = model.completion_request("What is Rig?").build();
-//! let response = model.completion(request).await?;
-//! # let _ = response;
+//! let model = OpenAI::from_env_with(&VENICE)?.chat(venice::QWEN3_5_9B);
+//! # let _ = model;
 //! # Ok(())
 //! # }
 //! ```
 //!
 //! # Venice-specific request parameters
-//! ```ignore
-//! use rig_core::prelude::*;
-//! use rig_core::providers::openai::wire::{OpenAI, VENICE};
+//! ```no_run
+//! use rig_core::completion::{CompletionRequestBuilder, CompletionResponse};
 //! use rig_core::providers::venice;
-//! use rig_reqwest::DefaultTransport;
 //!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let model = OpenAI::from_env_with(&VENICE)?
-//!     .bound()?
-//!     .completion(venice::QWEN3_5_9B);
-//! let request = model
-//!     .completion_request("What shipped in Rust this month?")
+//! let request = CompletionRequestBuilder::unbound("What shipped in Rust this month?")
 //!     .additional_params(
 //!         venice::VeniceParameters::new()
 //!             .enable_web_search(venice::WebSearchMode::Auto)
@@ -68,13 +57,13 @@
 //! // The reply's `raw` is Venice's own document, so its blocks — including
 //! // the citations web search returns — read back through
 //! // `venice::CompletionResponse`.
-//! let response = model.completion(request).await?;
-//! let venice: venice::CompletionResponse = serde_json::from_value(response.raw)?;
-//! for citation in venice.web_search_citations() {
-//!     println!("{} — {}", citation.title, citation.url);
+//! fn citations(response: CompletionResponse) -> serde_json::Result<()> {
+//!     let venice: venice::CompletionResponse = serde_json::from_value(response.raw)?;
+//!     for citation in venice.web_search_citations() {
+//!         println!("{} — {}", citation.title, citation.url);
+//!     }
+//!     Ok(())
 //! }
-//! # Ok(())
-//! # }
 //! ```
 
 /// Venice's API root, and the default base URL of

@@ -1,22 +1,26 @@
-//! The OpenAI Responses endpoint as data: one config struct, one wire, N
-//! dialects.
+//! The OpenAI Responses endpoint as data: one wire on the shared
+//! [`OpenAI`] configuration, N dialects.
 //!
-//! [`Responses`] is the wire; [`ResponsesApi`] is the shared configuration a
-//! host stores. A gateway that speaks this format differs from OpenAI by
-//! *data* — its name, base URL and environment variables, which request
-//! shape it accepts, whether it answers every request with an event stream,
-//! whether a 200 can carry its error envelope — so it is a [`Dialect`]
-//! constant, never a type or a trait.
+//! [`Responses`] is the wire; [`OpenAI`] is the configuration a host stores,
+//! and [`OpenAI::responses`] builds this wire from it. A gateway that speaks
+//! this format differs from OpenAI by *data* — which request shape it
+//! accepts, whether it answers every request with an event stream, whether
+//! a 200 can carry its error envelope — so it is the
+//! [`responses`](crate::providers::openai::wire::Quirks::responses) field of
+//! a [`Dialect`](crate::providers::openai::wire::Dialect) constant, never a
+//! type or a trait.
 //!
-//! Dialects: [`OPENAI`] here, [`chatgpt::DIALECT`](crate::providers::chatgpt::DIALECT)
-//! and [`xai::DIALECT`](crate::providers::xai::DIALECT) with their providers.
+//! Dialects: [`OPENAI`](crate::providers::openai::wire::OPENAI),
+//! [`chatgpt::DIALECT`](crate::providers::chatgpt::DIALECT),
+//! [`xai::DIALECT`](crate::providers::xai::DIALECT) and
+//! [`copilot::wire::DIALECT`](crate::providers::copilot::wire::DIALECT).
 
-use crate::client::env::{self, EnvError};
 use crate::completion::{self, CompletionError, ProviderCapabilities};
 use crate::operation::Completion;
+use crate::providers::openai::wire::{OpenAI, RequestShape};
 use crate::wire::{
-    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing,
-    HasCompletion, Mode, ObservationSink, Secret, Wire,
+    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing, Mode,
+    ObservationSink, Wire,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -26,298 +30,11 @@ use super::{
     SystemInstructionsPlacement,
 };
 
-/// How a Responses-format provider differs from OpenAI: data only.
-///
-/// Serialized by `name` and deserialized by looking that name up in
-/// [`Dialect::by_name`]: a dialect is an *identity*, not a payload, so a
-/// host storing a wire cannot reconstitute one with somebody else's base
-/// URL. An unknown name is an error rather than a silent default.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Dialect {
-    /// The provider descriptor name, as records and telemetry spell it.
-    pub name: &'static str,
-    /// The default base URL.
-    pub base_url: &'static str,
-    /// The environment variable carrying the credential.
-    pub api_key_env: &'static str,
-    /// The environment variable overriding the base URL, when the provider
-    /// documents one.
-    pub base_url_env: Option<&'static str>,
-    /// The reply header carrying the provider's transport request id.
-    pub request_id_header: Option<&'static str>,
-    /// What this gateway does differently.
-    pub quirks: Quirks,
-}
-
-/// The behaviours a Responses-format gateway varies in.
-///
-/// Every field has a caller: each is something a recorded cassette shows one
-/// of the three dialects doing and the others not.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[non_exhaustive]
-pub struct Quirks {
-    /// The endpoint path, appended to the base URL.
-    pub path: &'static str,
-    /// Where Rig's system instructions go in the request.
-    pub system_instructions: SystemInstructionsPlacement,
-    /// Which request body this gateway accepts.
-    pub request: RequestShape,
-    /// A second environment variable naming the base URL, kept because the
-    /// provider documents both spellings.
-    pub base_url_env_alias: Option<&'static str>,
-    /// The environment variable naming the account a credential belongs to,
-    /// sent as `ChatGPT-Account-Id`.
-    pub account_id_env: Option<&'static str>,
-    /// Instructions this gateway expects every turn to carry, merged ahead
-    /// of the caller's preamble.
-    pub default_instructions: Option<&'static str>,
-    /// The environment variable overriding [`Self::default_instructions`].
-    pub instructions_env: Option<&'static str>,
-    /// The caller identity this gateway requires on every request.
-    pub identity: Option<Identity>,
-    /// The gateway answers with an event stream whether or not a stream was
-    /// asked for, so a unary call reads a replayed SSE body.
-    pub always_streams: bool,
-    /// The gateway's streamed reply may name no content type at all.
-    pub relaxed_content_type: bool,
-    /// The gateway accepts only the codex parameter subset: no sampling
-    /// controls, no storage, no metadata, no structured output.
-    pub codex_parameter_subset: bool,
-    /// The gateway answers a success with its error envelope as the whole
-    /// body, and publishes a finished tool call at `output_item.done`. The
-    /// stream's own `error` event is not this: that is protocol on every
-    /// dialect and the decoder always reads it.
-    pub error_envelope_in_success: bool,
-    /// The gateway's replayed frames may omit their envelope bookkeeping
-    /// (`sequence_number`, `output_index`, …), which the typed decode
-    /// salvages. Off elsewhere: on a gateway whose frames do carry
-    /// envelopes, an envelope-less frame is a defect worth surfacing.
-    pub repair_envelope_less_frames: bool,
-    /// Native structured output composes with tool calls.
-    pub native_output_with_tools: bool,
-}
-
-/// Which request body a dialect accepts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RequestShape {
-    /// OpenAI's own Responses request.
-    Responses,
-    /// xAI's input shape, whose types live with that provider.
-    Xai,
-}
-
-/// The caller identity a gateway requires on every request.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Identity {
-    /// The `originator` header's default value.
-    pub originator: &'static str,
-    /// The environment variable overriding `originator`.
-    pub originator_env: &'static str,
-    /// The environment variable overriding `user-agent`.
-    pub user_agent_env: &'static str,
-    /// Whether every request carries a fresh `session_id` header.
-    pub session_ids: bool,
-}
-
-/// OpenAI itself.
-pub const OPENAI: Dialect = Dialect {
-    name: "openai",
-    base_url: "https://api.openai.com/v1",
-    api_key_env: "OPENAI_API_KEY",
-    base_url_env: Some("OPENAI_BASE_URL"),
-    request_id_header: Some("x-request-id"),
-    quirks: Quirks {
-        path: "/responses",
-        system_instructions: SystemInstructionsPlacement::Instructions,
-        request: RequestShape::Responses,
-        base_url_env_alias: None,
-        account_id_env: None,
-        default_instructions: None,
-        instructions_env: None,
-        identity: None,
-        always_streams: false,
-        relaxed_content_type: false,
-        codex_parameter_subset: false,
-        error_envelope_in_success: false,
-        repair_envelope_less_frames: false,
-        native_output_with_tools: true,
-    },
-};
-
-impl Dialect {
-    /// The dialect this crate ships under `name`.
-    pub fn by_name(name: &str) -> Option<Self> {
-        [
-            OPENAI,
-            crate::providers::chatgpt::DIALECT,
-            crate::providers::xai::DIALECT,
-        ]
-        .into_iter()
-        .find(|dialect| dialect.name == name)
-    }
-}
-
-impl Serialize for Dialect {
-    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_str(self.name)
-    }
-}
-
-impl<'de> Deserialize<'de> for Dialect {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        let name = String::deserialize(deserializer)?;
-        Self::by_name(&name).ok_or_else(|| {
-            serde::de::Error::custom(format!("`{name}` is not a Responses-format provider"))
-        })
-    }
-}
-
-/// The user agent a gateway that asks for one is told: the crate, the host,
-/// and who is calling.
-pub(crate) fn default_user_agent(originator: &str) -> String {
-    format!(
-        "rig/{} ({} {}; {originator})",
-        env!("CARGO_PKG_VERSION"),
-        std::env::consts::OS,
-        std::env::consts::ARCH,
-    )
-}
-
-/// The identity a gateway requires on every request, resolved.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CallerIdentity {
-    /// The `originator` header.
-    pub originator: String,
-    /// The `user-agent` header.
-    pub user_agent: String,
-}
-
-/// The shared configuration of a Responses-format provider.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ResponsesApi {
-    /// The credential, sent as `Authorization: Bearer`.
-    pub api_key: Secret,
-    /// The API root the endpoint path is appended to.
-    pub base_url: String,
-    /// The account the credential belongs to, when the gateway asks which
-    /// (`ChatGPT-Account-Id`).
-    pub account_id: Option<String>,
-    /// Instructions merged ahead of every turn's preamble, when the gateway
-    /// expects some.
-    pub instructions: Option<String>,
-    /// The caller identity, when the gateway requires one.
-    pub identity: Option<CallerIdentity>,
-    /// Which Responses-format provider this is.
-    pub dialect: Dialect,
-}
-
-impl ResponsesApi {
-    /// OpenAI itself, with default settings.
-    pub fn new(api_key: impl Into<Secret>) -> Self {
-        Self::with_dialect(api_key, &OPENAI)
-    }
-
-    /// A Responses-format provider with its dialect's default settings.
-    pub fn with_dialect(api_key: impl Into<Secret>, dialect: &Dialect) -> Self {
-        Self {
-            api_key: api_key.into(),
-            base_url: dialect.base_url.to_owned(),
-            account_id: None,
-            instructions: dialect.quirks.default_instructions.map(str::to_owned),
-            identity: dialect.quirks.identity.map(|identity| CallerIdentity {
-                originator: identity.originator.to_owned(),
-                user_agent: default_user_agent(identity.originator),
-            }),
-            dialect: *dialect,
-        }
-    }
-
-    /// OpenAI from `OPENAI_API_KEY` and `OPENAI_BASE_URL`.
-    pub fn from_env() -> Result<Self, EnvError> {
-        Self::from_env_with(&OPENAI)
-    }
-
-    /// A Responses-format provider from the variables its dialect names.
-    pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
-        let mut provider = Self::with_dialect(env::required(dialect.api_key_env)?, dialect);
-        let quirks = &dialect.quirks;
-        for name in [dialect.base_url_env, quirks.base_url_env_alias]
-            .into_iter()
-            .flatten()
-        {
-            if let Some(base_url) = env::optional(name)? {
-                provider.base_url = base_url;
-                break;
-            }
-        }
-        if let Some(name) = quirks.account_id_env {
-            provider.account_id = env::optional(name)?;
-        }
-        if let Some(name) = quirks.instructions_env
-            && let Some(instructions) = env::optional(name)?
-            && !instructions.trim().is_empty()
-        {
-            provider.instructions = Some(instructions);
-        }
-        if let (Some(identity), Some(resolved)) = (quirks.identity, provider.identity.as_mut()) {
-            if let Some(originator) =
-                env::optional(identity.originator_env)?.filter(|value| !value.is_empty())
-            {
-                resolved.originator = originator;
-                resolved.user_agent = default_user_agent(&resolved.originator);
-            }
-            if let Some(user_agent) =
-                env::optional(identity.user_agent_env)?.filter(|value| !value.is_empty())
-            {
-                resolved.user_agent = user_agent;
-            }
-        }
-        Ok(provider)
-    }
-
-    /// Point the wire at another API root.
-    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = base_url.into();
-        self
-    }
-
-    /// Name the account the credential belongs to.
-    pub fn with_account_id(mut self, account_id: impl Into<String>) -> Self {
-        self.account_id = Some(account_id.into());
-        self
-    }
-
-    /// Merge these instructions ahead of every turn's preamble.
-    pub fn with_instructions(mut self, instructions: impl Into<String>) -> Self {
-        self.instructions = Some(instructions.into());
-        self
-    }
-
-    /// The Responses wire for `model`.
-    pub fn responses(&self, model: impl Into<String>) -> Responses {
-        Responses {
-            system_instructions: self.dialect.quirks.system_instructions,
-            provider: self.clone(),
-            model: model.into(),
-            tools: Vec::new(),
-            strict_tools: false,
-        }
-    }
-}
-
-impl HasCompletion for ResponsesApi {
-    type Wire = Responses;
-
-    fn completion(&self, model: impl Into<String>) -> Responses {
-        self.responses(model)
-    }
-}
-
 /// The Responses wire: `POST /responses`, SSE when streamed.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Responses {
     /// The provider this wire speaks to.
-    pub provider: ResponsesApi,
+    pub provider: OpenAI,
     /// The model to address.
     pub model: String,
     /// Tools added to every request from this wire.
@@ -330,6 +47,18 @@ pub struct Responses {
 }
 
 impl Responses {
+    /// The Responses wire for `model` on `provider`, with the dialect's
+    /// defaults.
+    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+        Self {
+            system_instructions: provider.dialect.quirks.responses.system_instructions,
+            provider,
+            model: model.into(),
+            tools: Vec::new(),
+            strict_tools: false,
+        }
+    }
+
     /// Sanitize function schemas for strict mode and send `strict: true`.
     pub fn with_strict_tools(mut self) -> Self {
         self.strict_tools = true;
@@ -404,7 +133,7 @@ impl Responses {
         request: completion::CompletionRequest,
         streaming: bool,
     ) -> Result<CompletionRequest, CompletionError> {
-        let quirks = &self.provider.dialect.quirks;
+        let quirks = &self.provider.dialect.quirks.responses;
         let mut request = CompletionRequest::try_from(ResponsesRequestParams {
             model: self.model.clone(),
             request,
@@ -479,7 +208,7 @@ impl Wire for Responses {
     }
 
     fn route(&self) -> Option<&str> {
-        Some(self.provider.dialect.quirks.path)
+        Some(self.provider.dialect.quirks.responses.path)
     }
 
     fn encode(
@@ -487,7 +216,7 @@ impl Wire for Responses {
         request: completion::CompletionRequest,
         mode: Mode,
     ) -> Result<Encoded, CompletionError> {
-        let quirks = &self.provider.dialect.quirks;
+        let quirks = &self.provider.dialect.quirks.responses;
         // A gateway that only ever answers with an event stream is asked for
         // one whatever the caller wanted: the reply is framed the same way
         // either way, and the driver folds it.
@@ -546,7 +275,7 @@ impl Wire for Responses {
     }
 
     fn decoder(&self) -> ResponsesDecoder {
-        let quirks = &self.provider.dialect.quirks;
+        let quirks = &self.provider.dialect.quirks.responses;
         let options = if quirks.error_envelope_in_success {
             // The same gateway that answers 200 with an envelope publishes a
             // finished call at its `output_item.done`.
@@ -567,7 +296,11 @@ impl Wire for Responses {
         // structured output composes with tool calls (issue #1928) — except
         // on a gateway that says otherwise.
         ProviderCapabilities::default().with_native_output_tool_composition(
-            self.provider.dialect.quirks.native_output_with_tools,
+            self.provider
+                .dialect
+                .quirks
+                .responses
+                .native_output_with_tools,
         )
     }
 }

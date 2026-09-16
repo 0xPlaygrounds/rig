@@ -133,9 +133,7 @@ pub struct CompletionResponse {
 
 /// In-depth details on prompt tokens.
 ///
-/// Mirrors Mistral's `PromptTokensDetails` schema. The Mistral API also exposes
-/// the same shape under the singular field name `prompt_token_details`; the
-/// `Usage` field accepts either form via `serde(alias = ...)`.
+/// Mirrors Mistral's `PromptTokensDetails` schema.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct PromptTokensDetails {
     /// Number of tokens served from the prompt cache.
@@ -163,9 +161,9 @@ pub struct Usage {
     ///
     /// Although the generated `UsageInfo` reference currently omits this
     /// field, the live chat-completions wire includes values such as
-    /// `"standard"` in both blocking responses and terminal stream chunks.
-    /// Keeping it here prevents the provider-native `raw_completion` and
-    /// `raw_stream` surfaces from silently discarding that wire metadata.
+    /// `"standard"` in both blocking responses and terminal stream chunks,
+    /// and a caller typing `CompletionResponse::raw` as this document should
+    /// not lose it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub service_tier: Option<String>,
     /// Duration in seconds of audio tokens in the prompt (audio-input models only).
@@ -176,71 +174,13 @@ pub struct Usage {
     /// `prompt_tokens_details.cached_tokens`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub num_cached_tokens: Option<u64>,
-    /// In-depth breakdown of prompt token usage (currently only cached tokens).
-    #[serde(
-        default,
-        alias = "prompt_token_details",
-        skip_serializing_if = "Option::is_none"
-    )]
-    pub prompt_tokens_details: Option<PromptTokensDetails>,
-}
-
-impl Usage {
-    /// Returns the number of cached prompt tokens, preferring the structured
-    /// `prompt_tokens_details.cached_tokens` field and falling back to the
-    /// top-level `num_cached_tokens`. `None` when neither is present.
-    pub fn cached_tokens(&self) -> Option<u64> {
-        self.prompt_tokens_details
-            .as_ref()
-            .map(|d| d.cached_tokens)
-            .or(self.num_cached_tokens)
-    }
-
-    /// Tokens charged for audio in the prompt. 0 for every non-audio turn.
-    pub fn audio_tokens(&self) -> u64 {
-        self.prompt_tokens_details
-            .as_ref()
-            .map_or(0, |details| details.audio_tokens)
-    }
-
-    /// Every token charged against the prompt.
+    /// In-depth breakdown of prompt token usage.
     ///
-    /// Mistral reports audio outside `prompt_tokens`: a Voxtral turn answering
-    /// a 375-audio-token clip reports `prompt_tokens: 6`, `audio_tokens: 375`,
-    /// `completion_tokens: 2` and `total_tokens: 383`. Counting only
-    /// `prompt_tokens` as input leaves `input + output` short of `total` by the
-    /// whole audio payload.
-    pub fn input_tokens(&self) -> u64 {
-        self.prompt_tokens as u64 + self.audio_tokens()
-    }
-}
-
-impl From<&Usage> for crate::completion::Usage {
-    fn from(usage: &Usage) -> Self {
-        Self {
-            input_tokens: Some(usage.input_tokens()),
-            output_tokens: Some(usage.completion_tokens as u64),
-            total_tokens: Some(usage.total_tokens as u64),
-            cached_input_tokens: usage.cached_tokens(),
-            ..Default::default()
-        }
-    }
-}
-
-impl From<Usage> for crate::completion::Usage {
-    fn from(usage: Usage) -> Self {
-        Self::from(&usage)
-    }
-}
-
-impl std::fmt::Display for Usage {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "Prompt tokens: {} Total tokens: {}",
-            self.prompt_tokens, self.total_tokens
-        )
-    }
+    /// Not aliased to the singular `prompt_token_details` Mistral's
+    /// embeddings reply also carries (always `null`, beside this key): serde
+    /// would reject that document as a duplicate field.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_details: Option<PromptTokensDetails>,
 }
 
 #[cfg(test)]

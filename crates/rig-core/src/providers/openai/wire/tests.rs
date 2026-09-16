@@ -55,13 +55,75 @@ fn a_serialized_configuration_carries_no_key_material() {
     assert!(json.contains("[redacted]"), "{json}");
 
     // And neither does a wire built from it, which is what a host actually
-    // stores.
+    // stores — on either completion endpoint.
     let chat = serde_json::to_string(&OpenAI::new("sk-secret").chat("gpt-5.2"))
         .expect("the wire serializes");
     assert!(!chat.contains("sk-secret"), "the key leaked: {chat}");
+    let responses = serde_json::to_string(&OpenAI::new("sk-secret").responses("gpt-5.2"))
+        .expect("the wire serializes");
+    assert!(
+        !responses.contains("sk-secret"),
+        "the key leaked: {responses}"
+    );
 
     // `Debug` is the other way a key escapes — into a log line.
     assert!(!format!("{:?}", OpenAI::new("sk-secret")).contains("sk-secret"));
+}
+
+/// The gateway-specific fields of the one configuration — the account, the
+/// instructions, the caller identity a Responses gateway asks for — travel
+/// with it: a stored ChatGPT wire loads back as the same wire, minus the
+/// credential.
+#[test]
+fn a_gateway_configuration_round_trips_without_its_credential() {
+    let chatgpt = crate::providers::chatgpt::DIALECT;
+    let config = OpenAI::with_key(&chatgpt, "tok-secret").with_account_id("acct-1");
+    assert_eq!(
+        config.instructions.as_deref(),
+        chatgpt.quirks.default_instructions
+    );
+    assert!(config.identity.is_some());
+
+    let json = serde_json::to_string(&config).expect("serializes");
+    assert!(!json.contains("tok-secret"), "the token leaked: {json}");
+    let restored: OpenAI = serde_json::from_str(&json).expect("deserializes");
+    assert_eq!(restored.dialect, chatgpt);
+    assert_eq!(restored.account_id.as_deref(), Some("acct-1"));
+    assert_eq!(restored.instructions, config.instructions);
+    assert_eq!(restored.identity, config.identity);
+
+    let wire = config.responses("gpt-5.4");
+    let restored: super::super::responses_api::wire::Responses =
+        serde_json::from_str(&serde_json::to_string(&wire).expect("serializes"))
+            .expect("deserializes");
+    assert_eq!(restored.system_instructions, wire.system_instructions);
+    assert_eq!(restored.provider.dialect, chatgpt);
+}
+
+/// The default completion wire is the dialect's flagship route, and it is
+/// data like the two wires it chooses between: it stores without the
+/// credential and loads back onto the same route.
+#[test]
+fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
+    use crate::wire::Wire as _;
+    let openai = OpenAI::new("sk-secret").completion("gpt-5.2");
+    let groq = OpenAI::with_key(&GROQ, "gsk-secret").completion("llama-3.3-70b-versatile");
+    assert!(matches!(openai, OpenAiWire::Responses(_)), "{openai:?}");
+    assert!(matches!(groq, OpenAiWire::Chat(_)), "{groq:?}");
+    assert_eq!(openai.route(), Some("/responses"));
+    assert_eq!(groq.route(), Some("/chat/completions"));
+
+    for (wire, secret) in [(openai, "sk-secret"), (groq, "gsk-secret")] {
+        let json = serde_json::to_string(&wire).expect("the wire serializes");
+        assert!(!json.contains(secret), "the key leaked: {json}");
+        let restored: OpenAiWire = serde_json::from_str(&json).expect("the wire deserializes");
+        assert_eq!(restored.model(), wire.model());
+        assert_eq!(restored.provider().dialect, wire.provider().dialect);
+        assert_eq!(
+            std::mem::discriminant(&restored),
+            std::mem::discriminant(&wire)
+        );
+    }
 }
 
 /// A dialect is an identity, so its wire format is its name.
@@ -367,7 +429,7 @@ fn every_dialects_listing_and_verify_urls_match_the_recorded_paths() {
         ),
         (&PERPLEXITY, "https://api.perplexity.ai/models", None),
         (
-            &XAI,
+            &crate::providers::xai::DIALECT,
             "https://api.x.ai/v1/models",
             Some("https://api.x.ai/v1/api-key"),
         ),

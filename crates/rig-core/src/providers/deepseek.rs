@@ -20,16 +20,15 @@
 //! spelling.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//! ```no_run
 //! use rig_core::providers::deepseek;
 //! use rig_core::providers::openai::wire::{DEEPSEEK, OpenAI};
-//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let deepseek_chat = OpenAI::from_env_with(&DEEPSEEK)?
-//!     .bound()?
-//!     .completion(deepseek::DEEPSEEK_V4_FLASH);
+//! let deepseek_chat = OpenAI::from_env_with(&DEEPSEEK)?.chat(deepseek::DEEPSEEK_V4_FLASH);
+//! # let _ = deepseek_chat;
 //! # Ok(())
 //! # }
 //! ```

@@ -2,8 +2,8 @@
 
 use rig::completion::CompletionModel;
 use rig::prelude::*;
+use rig::providers::openai::OpenAI;
 use rig::providers::openai::responses_api::CompletionResponse as ProviderResponse;
-use rig::providers::openai::responses_api::wire::ResponsesApi;
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
@@ -13,7 +13,7 @@ use futures::FutureExt;
 
 async fn with_openai_vllm_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(Bound<ResponsesApi>) -> Fut,
+    F: FnOnce(Bound<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let base_url =
@@ -25,7 +25,7 @@ where
         &base_url,
     )
     .await;
-    let client = ResponsesApi::new("dummy-vllm-key")
+    let client = OpenAI::new("dummy-vllm-key")
         .with_base_url(cassette.base_url())
         .bound()
         .expect("vLLM OpenAI-compatible client should build");

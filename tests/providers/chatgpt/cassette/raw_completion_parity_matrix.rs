@@ -50,7 +50,7 @@ use rig::driver::Bound;
 use rig::message::AssistantContent;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
-use rig::providers::openai::responses_api::wire::Responses;
+use rig::providers::openai::wire::OpenAiWire;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -74,7 +74,7 @@ fn weather_tool() -> ToolDefinition {
     }
 }
 
-type ChatGptModel = Bound<Responses>;
+type ChatGptModel = Bound<OpenAiWire>;
 
 fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()

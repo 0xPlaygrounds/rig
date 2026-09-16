@@ -16,14 +16,16 @@
 //! reports. That is why this module declares no constants.
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::prelude::*;
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model, and `models()` on that `Bound`
+//! lists the catalogue.
+//! ```no_run
 //! use rig_core::providers::openai::wire::{MIRA, OpenAI};
-//! use rig_reqwest::DefaultTransport;
 //!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let provider = OpenAI::from_env_with(&MIRA)?.bound()?;
-//! let models = provider.model_listing().list_all().await?;
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let provider = OpenAI::from_env_with(&MIRA)?;
+//! let models = provider.models();
+//! # let _ = models;
 //! # Ok(())
 //! # }
 //! ```
