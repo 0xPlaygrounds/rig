@@ -21,7 +21,8 @@ fn decode_image(encoded: &str) -> Vec<u8> {
 #[tokio::test]
 async fn embed_texts_smoke() {
     with_cohere_cassette("embeddings/embed_texts_smoke", |client| async move {
-        let model = client.embedding(cohere::EMBED_V4, None)
+        let model = client
+            .embedding(cohere::EMBED_V4, None)
             .map_wire(|wire| wire.with_input_type("search_document"));
         assert_eq!(model.ndims(), 1536);
 
@@ -38,7 +39,8 @@ async fn embed_texts_smoke() {
 #[tokio::test]
 async fn embed_search_query_smoke() {
     with_cohere_cassette("embeddings/embed_search_query_smoke", |client| async move {
-        let model = client.embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
+        let model = client
+            .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
             .map_wire(|wire| wire.with_input_type("search_query"));
         assert_eq!(model.ndims(), 384);
 
@@ -57,8 +59,9 @@ async fn embed_classification_smoke() {
     with_cohere_cassette(
         "embeddings/embed_classification_smoke",
         |client| async move {
-            let model = client.embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
-            .map_wire(|wire| wire.with_input_type("classification"));
+            let model = client
+                .embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
+                .map_wire(|wire| wire.with_input_type("classification"));
             assert_eq!(model.ndims(), 384);
 
             let embeddings = model
@@ -109,8 +112,7 @@ async fn embed_images_preserves_batch_order() {
             // carries its own `meta.billed_units.images`, the only route to an
             // image count: `Usage` is token-denominated and has no slot for it.
             let raw: Vec<cohere::embeddings::ImageEmbeddingResponse> =
-                serde_json::from_value(response.raw.clone())
-                    .expect("raw is the per-image array");
+                serde_json::from_value(response.raw.clone()).expect("raw is the per-image array");
             assert_eq!(raw.len(), 2, "one answer per input image: {raw:?}");
             for page in &raw {
                 assert_eq!(

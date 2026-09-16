@@ -15,8 +15,7 @@ use bevy_ecs::prelude::*;
 use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::{
-    effect::EffectFamily, error::ErrorKind,
-    providers::anthropic::completion::CLAUDE_SONNET_4_6,
+    effect::EffectFamily, error::ErrorKind, providers::anthropic::completion::CLAUDE_SONNET_4_6,
 };
 use rig_ecs::{
     agent::{AdditionalParams, Failed, Failure, PolicyVersion, RunResult, Settled, Temperature},
@@ -44,12 +43,7 @@ enum Streamed {
     Essay,
     Note,
 }
-fn agent(
-    client: &Bound<Anthropic>,
-    ending: Ending,
-    preamble: &str,
-    streamed: bool,
-) -> EcsAgent {
+fn agent(client: &Bound<Anthropic>, ending: Ending, preamble: &str, streamed: bool) -> EcsAgent {
     let model = client.completion(CLAUDE_SONNET_4_6);
     // Backpressure after the real first delta lets the native policy cancel
     // before transport scheduling can publish additional chunks.

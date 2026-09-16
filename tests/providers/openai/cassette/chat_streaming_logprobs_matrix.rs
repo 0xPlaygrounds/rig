@@ -142,8 +142,7 @@ async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservatio
             // `CompletionResponse::raw`; decode it to read the same fields the
             // old raw surface exposed directly.
             let response = model.completion(request).await?;
-            let raw: openai::completion::CompletionResponse =
-                serde_json::from_value(response.raw)?;
+            let raw: openai::completion::CompletionResponse = serde_json::from_value(response.raw)?;
             let choice = raw
                 .choices
                 .first()

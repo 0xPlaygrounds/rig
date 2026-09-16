@@ -20,16 +20,12 @@ use crate::providers::openai::completion::{
     self as unary, AssistantContent, Message, ToolChoice, assistant_refusal_fallback,
     is_openai_reasoning_model, request_body,
 };
-use crate::streaming::{
-    BlockId, Delta, MintKind, StreamEvent, ToolCallEnd, UnparseableToolInput,
-};
+use crate::streaming::{BlockId, Delta, MintKind, StreamEvent, ToolCallEnd, UnparseableToolInput};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
 };
 
-use super::dto::{
-    ChatFrame, ChatUsage, StreamingCompletionResponse, delta_text,
-};
+use super::dto::{ChatFrame, ChatUsage, StreamingCompletionResponse, delta_text};
 use super::{BodyRewrite, OpenAI, OutputCap, Routing};
 
 /// The chat-completions wire: a provider configuration, a model, and the
@@ -332,7 +328,10 @@ fn finalize_deepseek(map: &mut serde_json::Map<String, serde_json::Value>) {
                 // and never told anyone the attachment was gone.
                 unary::flatten_text_content_parts(content, separator, true);
             } else if is_assistant {
-                message.insert("content".to_owned(), serde_json::Value::String(String::new()));
+                message.insert(
+                    "content".to_owned(),
+                    serde_json::Value::String(String::new()),
+                );
             }
 
             if is_assistant
@@ -340,7 +339,9 @@ fn finalize_deepseek(map: &mut serde_json::Map<String, serde_json::Value>) {
             {
                 for tool_call in tool_calls {
                     if let Some(tool_call) = tool_call.as_object_mut() {
-                        tool_call.entry("index").or_insert_with(|| serde_json::json!(0));
+                        tool_call
+                            .entry("index")
+                            .or_insert_with(|| serde_json::json!(0));
                     }
                 }
             }
@@ -367,7 +368,9 @@ fn finalize_deepseek(map: &mut serde_json::Map<String, serde_json::Value>) {
 /// and its assistant-message schema.
 ///
 /// Its multimodal content mapping is [`mistral_content`].
-fn finalize_mistral(map: &mut serde_json::Map<String, serde_json::Value>) -> Result<(), CompletionError> {
+fn finalize_mistral(
+    map: &mut serde_json::Map<String, serde_json::Value>,
+) -> Result<(), CompletionError> {
     // Mistral spells the "must call some tool" mode `any`, not `required`.
     if let Some(tool_choice) = map.get_mut("tool_choice")
         && tool_choice.as_str() == Some("required")
@@ -431,10 +434,15 @@ fn finalize_mistral(map: &mut serde_json::Map<String, serde_json::Value>) -> Res
 
         if is_assistant {
             if !message.contains_key("content") {
-                message.insert("content".to_owned(), serde_json::Value::String(String::new()));
+                message.insert(
+                    "content".to_owned(),
+                    serde_json::Value::String(String::new()),
+                );
             }
             // `prefix` is part of Mistral's assistant message schema.
-            message.entry("prefix").or_insert(serde_json::Value::Bool(false));
+            message
+                .entry("prefix")
+                .or_insert(serde_json::Value::Bool(false));
             // Mistral rejects unknown assistant fields; hidden reasoning
             // cannot be echoed back.
             message.remove("reasoning_content");
@@ -468,7 +476,10 @@ const MISTRAL_REFUSAL: &str = "refusal";
 fn mistral_part_text(part: &serde_json::Value) -> Option<&str> {
     part.get(MISTRAL_TEXT)
         .and_then(serde_json::Value::as_str)
-        .or_else(|| part.get(MISTRAL_REFUSAL).and_then(serde_json::Value::as_str))
+        .or_else(|| {
+            part.get(MISTRAL_REFUSAL)
+                .and_then(serde_json::Value::as_str)
+        })
 }
 
 /// Whether a part is purely textual, and so belongs in the plain-string form.
@@ -1308,10 +1319,8 @@ impl ChatDecoder {
             // calling the same tool three times without ids folded to one
             // call — the streamed path mints per call through the same
             // namespace, so the unary body does too.
-            let key = crate::streaming::non_empty_id(call.id.clone()).map_or_else(
-                || self.open_tool_calls.minted_ids().mint(),
-                BlockId::wire,
-            );
+            let key = crate::streaming::non_empty_id(call.id.clone())
+                .map_or_else(|| self.open_tool_calls.minted_ids().mint(), BlockId::wire);
             tool_events.push(StreamEvent::BlockEnd {
                 id: key,
                 end: crate::streaming::BlockClose::ToolCall(
@@ -1435,9 +1444,7 @@ impl Decoder<Completion> for ChatDecoder {
             WireEvent::Known(frame) => self.is_budget_cut_tool_turn(frame),
             WireEvent::Unknown { .. } => false,
         };
-        if may_be_budget_cut
-            && let Some(frame) = self.body_without_calls_cut_by_the_budget(&data)
-        {
+        if may_be_budget_cut && let Some(frame) = self.body_without_calls_cut_by_the_budget(&data) {
             return WireEvent::Known(ChatEvent::Whole(frame));
         }
         classified.map(|frame| {
@@ -1483,8 +1490,10 @@ impl Decoder<Completion> for ChatDecoder {
     fn finish(&mut self, out: &mut Output<Completion>) {
         // Tool calls the provider fully delivered are content, so a truncated
         // reply still flushes them. Partial calls drop in the accumulator.
-        let output_length_truncation =
-            matches!(self.final_finish_reason.as_ref(), Some(FinishReason::Length));
+        let output_length_truncation = matches!(
+            self.final_finish_reason.as_ref(),
+            Some(FinishReason::Length)
+        );
         for slot in self.open_tool_calls.drain_ordered() {
             if output_length_truncation && !slot.has_substantive_arguments() {
                 tracing::debug!(
@@ -1593,10 +1602,11 @@ fn detail_reasoning(
     // accumulates under `Minted { Reasoning, 0 }`, and a whole block under
     // that same key would restate — i.e. replace — the open text part.
     let provider_id = id.and_then(crate::streaming::non_empty_id);
-    let key = provider_id.as_ref().map_or(
-        BlockId::minted(MintKind::EncryptedReasoning, 0),
-        |id| BlockId::wire(id.as_str()),
-    );
+    let key = provider_id
+        .as_ref()
+        .map_or(BlockId::minted(MintKind::EncryptedReasoning, 0), |id| {
+            BlockId::wire(id.as_str())
+        });
     Some((
         key,
         provider_id,

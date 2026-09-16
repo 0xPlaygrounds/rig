@@ -44,8 +44,7 @@ use serde_json::{Value, json};
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
 use super::support::{
-    BoundGroq, assert_matches_recorded_token, recorded_response_headers,
-    with_groq_cassette_result,
+    BoundGroq, assert_matches_recorded_token, recorded_response_headers, with_groq_cassette_result,
 };
 
 const PROVIDER: &str = "groq";
@@ -178,10 +177,9 @@ fn observed(sink: &Observed) -> CompletionResponse {
 async fn raw_is_the_verbatim_response_body() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
     let sink = Observed::default();
-    with_groq_cassette_result(
-        "raw_capture_matrix/raw_round_trips_openai_type",
-        |client| run(client, sink.clone()),
-    )
+    with_groq_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_round_trips_openai_type should replay from its cassette");
     let response = observed(&sink);
@@ -250,10 +248,9 @@ async fn raw_is_the_verbatim_response_body() {
 async fn raw_exposes_queue_time() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_queue_time";
     let sink = Observed::default();
-    with_groq_cassette_result(
-        "raw_capture_matrix/raw_exposes_queue_time",
-        |client| run(client, sink.clone()),
-    )
+    with_groq_cassette_result("raw_capture_matrix/raw_exposes_queue_time", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_exposes_queue_time should replay from its cassette");
     let response = observed(&sink);

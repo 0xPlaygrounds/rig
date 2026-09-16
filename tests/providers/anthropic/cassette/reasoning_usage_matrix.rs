@@ -102,8 +102,8 @@ use futures::StreamExt;
 use rig::completion::{CompletionModel, CompletionRequest, ToolDefinition, Usage};
 use rig::driver::Bound;
 use rig::prelude::*;
-use rig::providers::anthropic::wire::Messages;
 use rig::providers::anthropic;
+use rig::providers::anthropic::wire::Messages;
 use rig::streaming::StreamEvent;
 use serde_json::json;
 

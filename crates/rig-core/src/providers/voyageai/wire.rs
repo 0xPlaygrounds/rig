@@ -7,9 +7,7 @@
 use crate::client::env::{self, EnvError};
 use crate::driver::{HasEmbedding, HasRerank};
 use crate::embeddings::{Embedding as Vector, EmbeddingError};
-use crate::operation::{
-    Embedding, EmbeddingCapabilities, Rerank as RerankOp, RerankRequest,
-};
+use crate::operation::{Embedding, EmbeddingCapabilities, Rerank as RerankOp, RerankRequest};
 use crate::rerank::{RerankError, RerankResponse, RerankResult};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,

@@ -139,10 +139,7 @@ async fn assert_uncapped_turn(client: Bound<Anthropic>, model_id: &str) {
     assert_contains_any_case_insensitive(&text, &["ok"]);
 }
 
-async fn assert_mid_conversation_system_turn(
-    client: Bound<Anthropic>,
-    model_id: &str,
-) {
+async fn assert_mid_conversation_system_turn(client: Bound<Anthropic>, model_id: &str) {
     let model = client.completion(model_id);
     let request = model
         .completion_request(SKY_PROMPT)

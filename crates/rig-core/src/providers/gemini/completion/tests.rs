@@ -2064,9 +2064,7 @@ async fn an_inline_data_part_survives_as_a_raw_content_block() {
             message::AssistantContent::Text(text) => text
                 .additional_params
                 .as_ref()
-                .and_then(|params| {
-                    params.get(crate::providers::gemini::GEMINI_RAW_CONTENT_KEY)
-                })
+                .and_then(|params| params.get(crate::providers::gemini::GEMINI_RAW_CONTENT_KEY))
                 .cloned(),
             _ => None,
         })

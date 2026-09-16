@@ -48,9 +48,9 @@ use rig::completion::{
 };
 use rig::driver::Bound;
 use rig::message::ToolChoice;
+use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
-use rig::providers::anthropic;
 use rig::streaming::{StreamEvent, StreamFinal};
 use rig::tool::Tool;
 use serde::Deserialize;

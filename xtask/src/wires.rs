@@ -41,6 +41,10 @@ use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct, Type};
 ///
 /// Credential exchange is the third, matched by path in
 /// [`is_credential_exchange`] because every provider has one.
+///
+/// These surfaces are exempt from the transport rule as well as the
+/// `async` ones: a session holds the socket it is a session over, which is
+/// exactly what distinguishes it from a wire.
 const SESSION_EXCEPTIONS: &[&str] = &[
     "openai/responses_api/websocket.rs",
     "gemini/cached_content.rs",
@@ -188,7 +192,7 @@ impl<'ast> Visit<'ast> for Wires {
 
     fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
         for parameter in item.generics.type_params() {
-            if parameter.ident == "H" || parameter.ident == "T" {
+            if parameter.ident == "H" && !self.session {
                 self.report(&format!(
                     "`struct {}<{}>` — a wire holds no transport",
                     item.ident, parameter.ident
@@ -200,7 +204,7 @@ impl<'ast> Visit<'ast> for Wires {
 
     fn visit_item_enum(&mut self, item: &'ast ItemEnum) {
         for parameter in item.generics.type_params() {
-            if parameter.ident == "H" || parameter.ident == "T" {
+            if parameter.ident == "H" && !self.session {
                 self.report(&format!(
                     "`enum {}<{}>` — a wire holds no transport",
                     item.ident, parameter.ident

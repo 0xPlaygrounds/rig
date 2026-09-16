@@ -266,10 +266,13 @@ const MODELS_BODY: &str = r#"{"models":[{"name":"all-minilm:latest","model":"all
 
 #[tokio::test]
 async fn the_model_listing_reads_every_installed_model() {
-    let models = Bound::new(Ollama::new().models(), RecordingHttpClient::new(MODELS_BODY))
-        .list_all()
-        .await
-        .expect("the recorded reply decodes");
+    let models = Bound::new(
+        Ollama::new().models(),
+        RecordingHttpClient::new(MODELS_BODY),
+    )
+    .list_all()
+    .await
+    .expect("the recorded reply decodes");
 
     assert_eq!(
         models

@@ -10,7 +10,10 @@ use crate::support::{Adder, Subtract, assert_mentions_expected_number};
 async fn tool_prompt_across_subproviders() {
     let cases = [
         ("deepseek-ai/DeepSeek-V3", SubRoute::Together),
-        ("meta-llama/Meta-Llama-3.1-8B-Instruct", SubRoute::HFInference),
+        (
+            "meta-llama/Meta-Llama-3.1-8B-Instruct",
+            SubRoute::HFInference,
+        ),
         ("Meta-Llama-3.1-8B-Instruct", SubRoute::SambaNova),
     ];
 

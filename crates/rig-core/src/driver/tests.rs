@@ -148,11 +148,7 @@ impl Wire for Echo {
         Some("echo-1")
     }
 
-    fn encode(
-        &self,
-        request: CompletionRequest,
-        _mode: Mode,
-    ) -> Result<Encoded, CompletionError> {
+    fn encode(&self, request: CompletionRequest, _mode: Mode) -> Result<Encoded, CompletionError> {
         let body = serde_json::to_vec(&serde_json::json!({
             "messages": request.chat_history.len(),
         }))?;

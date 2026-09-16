@@ -35,9 +35,7 @@
 //! harness replays interactions in order.
 
 use rig::completion::{CompletionModel as _, FinishReason};
-use rig::providers::cohere::completion::{
-    CompletionResponse, FinishReason as CohereFinishReason,
-};
+use rig::providers::cohere::completion::{CompletionResponse, FinishReason as CohereFinishReason};
 use serde::Deserialize;
 use serde_json::Value;
 

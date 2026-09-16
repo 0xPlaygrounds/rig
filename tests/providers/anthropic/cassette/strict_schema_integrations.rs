@@ -321,9 +321,13 @@ async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_automatic_caching().with_static_prefix_cache_ttl(
-                    rig::providers::anthropic::completion::CacheTtl::OneHour,
-                ).with_strict_tools());
+                .map_wire(|wire| {
+                    wire.with_automatic_caching()
+                        .with_static_prefix_cache_ttl(
+                            rig::providers::anthropic::completion::CacheTtl::OneHour,
+                        )
+                        .with_strict_tools()
+                });
             // The preamble must clear the model's minimum cacheable prompt
             // length or the API silently skips caching and the recorded
             // counters prove nothing.

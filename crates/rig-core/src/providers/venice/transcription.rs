@@ -15,4 +15,3 @@ pub const PARAKEET_TDT_0_6B_V3: &str = "nvidia/parakeet-tdt-0.6b-v3";
 pub const SCRIBE_V2: &str = "elevenlabs/scribe-v2";
 /// `fal-ai/wizper`
 pub const WIZPER: &str = "fal-ai/wizper";
-

@@ -1,6 +1,5 @@
 //! ChatGPT reasoning roundtrip tests.
 
-
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 

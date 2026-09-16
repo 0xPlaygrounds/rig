@@ -344,7 +344,11 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
             let choice = reply.choices.first().expect("the turn must carry a choice");
 
             assert_eq!(response.provider, COPILOT_PROVIDER);
-            assert_eq!(response.model.as_deref(), Some(reply.model.as_str()), "model");
+            assert_eq!(
+                response.model.as_deref(),
+                Some(reply.model.as_str()),
+                "model"
+            );
             assert_eq!(
                 response.response_id.as_deref(),
                 Some(reply.id.as_str()),
@@ -544,7 +548,11 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
             let usage = reply.usage.as_ref().expect("the turn must report usage");
 
             assert_eq!(response.provider, COPILOT_PROVIDER);
-            assert_eq!(response.model.as_deref(), Some(reply.model.as_str()), "model");
+            assert_eq!(
+                response.model.as_deref(),
+                Some(reply.model.as_str()),
+                "model"
+            );
             assert_eq!(
                 response.response_id.as_deref(),
                 Some(reply.id.as_str()),

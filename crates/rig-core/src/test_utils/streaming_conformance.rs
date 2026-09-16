@@ -2412,9 +2412,7 @@ pub mod fixtures {
                         crate::providers::gemini::Gemini::new("test-key"),
                         SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                     )
-                    .completion(
-                        crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
-                    );
+                    .completion(crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05);
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })

@@ -13,9 +13,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 /// is a bound wire.
 pub(super) type BoundPerplexity = Bound<OpenAI, BoxedHttpClient>;
 
-async fn perplexity_cassette(
-    spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, BoundPerplexity) {
+async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundPerplexity) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "perplexity",

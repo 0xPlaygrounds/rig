@@ -353,10 +353,7 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
 
 /// An `Append` that fails: the record holds the error and the run ends
 /// in its answer regardless.
-async fn append_fails(
-    client: Bound<Anthropic>,
-    streamed: bool,
-) -> rig::effect_log::EffectLog {
+async fn append_fails(client: Bound<Anthropic>, streamed: bool) -> rig::effect_log::EffectLog {
     let builder = client
         .agent(CLAUDE_SONNET_4_6)
         .name("golden")

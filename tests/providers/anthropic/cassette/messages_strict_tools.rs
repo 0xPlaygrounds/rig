@@ -6,8 +6,8 @@
 use rig::completion::{CompletionModel, ToolDefinition};
 use rig::driver::Bound;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic;
+use rig::providers::anthropic::wire::Anthropic;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;

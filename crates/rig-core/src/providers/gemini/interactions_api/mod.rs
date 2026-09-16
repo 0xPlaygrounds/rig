@@ -91,9 +91,15 @@ impl crate::wire::Wire for Interactions {
             &body,
         );
         let (path, framing) = if streaming {
-            ("/v1beta/interactions?alt=sse", crate::http_client::framing::Framing::Sse)
+            (
+                "/v1beta/interactions?alt=sse",
+                crate::http_client::framing::Framing::Sse,
+            )
         } else {
-            ("/v1beta/interactions", crate::http_client::framing::Framing::Whole)
+            (
+                "/v1beta/interactions",
+                crate::http_client::framing::Framing::Whole,
+            )
         };
         let request = http::Request::post(self.provider.interactions_uri(path))
             .header("Content-Type", "application/json")

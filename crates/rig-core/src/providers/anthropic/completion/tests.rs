@@ -1,12 +1,12 @@
 use super::*;
-use crate::message::EMPTY_RESPONSE_ERROR;
-use serde_json::json;
-use serde_path_to_error::deserialize;
 use crate::driver::WireDriver;
+use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::operation::Completion;
 use crate::providers::anthropic::wire::Anthropic;
 use crate::providers::internal::adapter::WireFrame;
 use crate::wire::{Fold, Operation, Wire};
+use serde_json::json;
+use serde_path_to_error::deserialize;
 
 /// The one-turn request every reply below is folded against.
 fn hello_request() -> CompletionRequest {
@@ -424,11 +424,7 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     .with_strict_tools()
     .encode(request, Mode::Unary)
     .expect("the request encodes");
-    let crate::wire::Body::Bytes(body) = encoded
-        .requests
-        .first()
-        .expect("one request")
-        .body()
+    let crate::wire::Body::Bytes(body) = encoded.requests.first().expect("one request").body()
     else {
         panic!("the Messages endpoint takes JSON")
     };
@@ -505,7 +501,10 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             automatic_caching_ttl: None,
             static_prefix_cache_ttl: None,
         },
-        Some(crate::providers::anthropic::wire::strict_tool_transform as fn(&mut crate::providers::anthropic::completion::ToolDefinition)),
+        Some(
+            crate::providers::anthropic::wire::strict_tool_transform
+                as fn(&mut crate::providers::anthropic::completion::ToolDefinition),
+        ),
     )
     .unwrap();
 
@@ -3507,10 +3506,7 @@ async fn completion_2xx_error_envelope_preserves_status_and_body() {
 
     assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(error.provider_response_body(), Some(body));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::OK)
-    );
+    assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
 }
 
 #[tokio::test]

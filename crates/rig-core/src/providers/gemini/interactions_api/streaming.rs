@@ -1,19 +1,19 @@
 use serde::{Deserialize, Serialize};
 
+use super::PROVIDER_NAME;
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
     Step, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
     ThoughtSummaryDelta, map_interaction_status,
 };
-use super::PROVIDER_NAME;
 use crate::providers::gemini::streaming::shared_parts;
 use crate::providers::internal::chunk_lifecycle::ChunkParts;
 use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 
+use crate::operation::Completion;
 use crate::providers::internal::adapter::WireFrame;
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
-use crate::operation::Completion;
 use crate::wire::{Decoder, Output};
 use serde_json::{Map, Value};
 

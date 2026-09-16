@@ -80,9 +80,10 @@ fn raw_completion_choice_retains_logprobs() {
 #[test]
 fn usage_prefers_reported_completion_tokens() {
     // Divergent accounting: total != prompt + completion.
-    let usage: Usage =
-        serde_json::from_value(json!({"prompt_tokens": 500, "completion_tokens": 10, "total_tokens": 505}))
-            .expect("OpenRouter usage should deserialize");
+    let usage: Usage = serde_json::from_value(
+        json!({"prompt_tokens": 500, "completion_tokens": 10, "total_tokens": 505}),
+    )
+    .expect("OpenRouter usage should deserialize");
 
     assert_eq!(
         crate::completion::Usage::from(&usage).output_tokens,
@@ -92,9 +93,8 @@ fn usage_prefers_reported_completion_tokens() {
 
 #[test]
 fn usage_falls_back_when_completion_tokens_missing() {
-    let usage: Usage =
-        serde_json::from_value(json!({"prompt_tokens": 100, "total_tokens": 110}))
-            .expect("a gateway may omit the completion count entirely");
+    let usage: Usage = serde_json::from_value(json!({"prompt_tokens": 100, "total_tokens": 110}))
+        .expect("a gateway may omit the completion count entirely");
 
     assert_eq!(
         crate::completion::Usage::from(&usage).output_tokens,

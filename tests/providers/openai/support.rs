@@ -460,11 +460,7 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
         "https://api.openai.com/v1",
     )
     .await;
-    let openai = OpenAiCassette::new(
-        "sk-invalid-edge-matrix-key",
-        cassette.base_url(),
-        bundled(),
-    );
+    let openai = OpenAiCassette::new("sk-invalid-edge-matrix-key", cassette.base_url(), bundled());
     let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

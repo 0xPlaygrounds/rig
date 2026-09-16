@@ -581,7 +581,8 @@ impl MessagesDecoder {
     /// or server tool use.
     fn interpret_whole_message(&mut self, message: MessageStart, out: &mut AdapterOutput) {
         self.input_tokens = message.usage.input_tokens;
-        self.cache_creation.clone_from(&message.usage.cache_creation);
+        self.cache_creation
+            .clone_from(&message.usage.cache_creation);
         self.message_id = Some(message.id);
         self.response_model = Some(message.model);
 
@@ -631,9 +632,9 @@ impl MessagesDecoder {
             // that have one. Everything else is carried by the block's
             // start frame alone.
             let delta = match &content {
-                Content::Text { text, .. } if !text.is_empty() => Some(ContentDelta::TextDelta {
-                    text: text.clone(),
-                }),
+                Content::Text { text, .. } if !text.is_empty() => {
+                    Some(ContentDelta::TextDelta { text: text.clone() })
+                }
                 Content::ToolUse { input, .. } => Some(ContentDelta::InputJsonDelta {
                     partial_json: input.to_string(),
                 }),

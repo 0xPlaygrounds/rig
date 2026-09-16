@@ -10,9 +10,7 @@ use rig::agent::AgentBuilder;
 use rig::completion::{CompletionModel, FinishReason, Message};
 use rig::message::AssistantContent;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::{
-    CompletionResponse as ResponsesReply, ResponseStatus,
-};
+use rig::providers::openai::responses_api::{CompletionResponse as ResponsesReply, ResponseStatus};
 use rig::tool::Tool;
 use serde::Deserialize;
 

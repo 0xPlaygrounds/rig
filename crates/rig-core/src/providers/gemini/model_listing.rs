@@ -2,7 +2,7 @@ use crate::{
     client::VerifyError,
     model::{Model, ModelList, ModelListingError},
     operation::{ModelListing, Verify},
-    providers::internal::{with_query_pairs, wire::classify_marker_keyed_frame},
+    providers::internal::{wire::classify_marker_keyed_frame, with_query_pairs},
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
 };
 use serde::{Deserialize, Serialize};
@@ -102,10 +102,7 @@ struct ListingPage {
     next_cursor: Option<String>,
 }
 
-fn parse_models_page(
-    body: &[u8],
-    path: &str,
-) -> Result<ListingPage, ModelListingError> {
+fn parse_models_page(body: &[u8], path: &str) -> Result<ListingPage, ModelListingError> {
     let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
         ModelListingError::parse_error_with_context("Gemini", path, &error, body)
     })?;

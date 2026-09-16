@@ -29,8 +29,11 @@ async fn responses_agent_loop_keeps_hitting_across_tool_turns() {
     super::super::support::with_openai_prompt_caching_cassette(
         "prompt_caching/responses_agent_loop",
         |client| async move {
-            let mut ecs =
-                EcsAgent::new(client.responses.completion(CACHE_MODEL), &probe().preamble, 1);
+            let mut ecs = EcsAgent::new(
+                client.responses.completion(CACHE_MODEL),
+                &probe().preamble,
+                1,
+            );
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)

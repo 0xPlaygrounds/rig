@@ -1,9 +1,9 @@
 use super::*;
 use crate::http_client::{HeaderMap, StatusCode};
+use crate::providers::openai::responses_api::wire::ResponsesApi;
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ResponseError, ResponseObject, ResponsesUsage,
 };
-use crate::providers::openai::responses_api::wire::ResponsesApi;
 use crate::ws_client::CloseFrame;
 use serde_json::json;
 
@@ -257,8 +257,8 @@ fn warmup_options_serialize_generate_false() {
 /// headers, on the websocket scheme.
 #[test]
 fn websocket_request_targets_the_responses_endpoint_with_the_wires_headers() {
-    let request = websocket_request(&test_wire("https://api.openai.com/v1"))
-        .expect("request should build");
+    let request =
+        websocket_request(&test_wire("https://api.openai.com/v1")).expect("request should build");
 
     assert_eq!(request.uri(), "wss://api.openai.com/v1/responses");
     assert_eq!(

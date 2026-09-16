@@ -35,9 +35,7 @@
 //! literals keep the names they were recorded under; the cell names describe
 //! what the cells now assert.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
 use rig::providers::openai::wire::OPENROUTER;
 use rig::providers::openrouter;
 use serde::Deserialize as _;

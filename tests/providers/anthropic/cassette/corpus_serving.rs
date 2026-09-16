@@ -312,10 +312,7 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
 /// The same tool-call program over a host's bus: the host registers the
 /// model under the agent's key, drives the bus and records; the agent
 /// stamps the log, whose header names no bus policy (the host's).
-async fn over_host_bus(
-    client: Bound<Anthropic>,
-    streamed: bool,
-) -> rig::effect_log::EffectLog {
+async fn over_host_bus(client: Bound<Anthropic>, streamed: bool) -> rig::effect_log::EffectLog {
     let (dispatcher, registrar, mut driver) = rig::bus::Bus::channel();
     let model_key = HandlerKey::from("golden/model:default");
     driver

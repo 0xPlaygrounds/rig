@@ -12,8 +12,7 @@ use bevy_ecs::{prelude::*, system::RunSystemOnce};
 use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::{
-    effect::EffectFamily, providers::anthropic::completion::CLAUDE_SONNET_4_6,
-    serve::ServingPolicy,
+    effect::EffectFamily, providers::anthropic::completion::CLAUDE_SONNET_4_6, serve::ServingPolicy,
 };
 use rig_ecs::{
     agent::{PolicyVersion, Temperature},

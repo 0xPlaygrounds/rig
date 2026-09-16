@@ -371,11 +371,7 @@ async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
     }
 }
 
-async fn run_cell(
-    client: BoundOpenRouter,
-    cell: Cell,
-    observed: SharedObservation,
-) -> Result<()> {
+async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
         Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,

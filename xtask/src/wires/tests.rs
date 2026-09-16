@@ -50,8 +50,20 @@ fn a_transport_type_parameter_is_rejected() {
             .first()
             .is_some_and(|report| report.contains("a wire holds no transport"))
     );
+    // An ordinary generic is not a transport. `WireEvent<T>` and a
+    // provider's own `EmbedReply<T>` are the reply shapes a classifier
+    // returns; flagging them would make the check punish parametric data
+    // rather than held sockets.
     let found = offenders("openai/wire.rs", "pub enum Either<T> { One(T) }");
-    assert_eq!(found.len(), 1);
+    assert!(found.is_empty());
+
+    // A session holds the socket it is a session over, which is what makes
+    // it not a wire; the named exceptions are exempt from this rule too.
+    let found = offenders(
+        "gemini/cached_content.rs",
+        "pub struct CachedContents<H> { http: H }",
+    );
+    assert!(found.is_empty());
 }
 
 #[test]

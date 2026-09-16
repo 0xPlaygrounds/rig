@@ -317,6 +317,13 @@ pub struct RawChoiceAccumulator {
     /// Deltas without an `item_id` (ChatGPT's envelope-less replays) extend
     /// the open block, or open a boundary-minted one in the output helper.
     current_text_item: Option<String>,
+    /// The message items whose visible text a delta already delivered, and
+    /// whether any fragment arrived that could not be attributed to one.
+    /// The terminal restates the whole turn's output, so its message text
+    /// is published only where no delta delivered it: this pair is the fact
+    /// `merge_terminal_body_text` reads to decide that.
+    delta_text_items: std::collections::HashSet<String>,
+    unattributed_text_delta: bool,
 }
 
 /// The assistant message ID (`msg_...`) a terminal response object carries,
@@ -352,6 +359,8 @@ impl RawChoiceAccumulator {
                 ),
             pending_call_ids: std::collections::HashMap::new(),
             current_text_item: None,
+            delta_text_items: std::collections::HashSet::new(),
+            unattributed_text_delta: false,
         }
     }
 
@@ -363,6 +372,83 @@ impl RawChoiceAccumulator {
         {
             self.current_text_item = Some(item_id.to_string());
             out.text_start(BlockId::wire(item_id.to_string()), None);
+        }
+    }
+
+    /// Record that a delta delivered the visible text of a message item.
+    ///
+    /// A fragment the wire did not attribute extends whichever text block
+    /// is open, so it is credited to that item; with no block open there is
+    /// nothing to attribute it to and the fact is recorded turn-wide.
+    fn note_text_delta(&mut self, item_id: Option<&str>) {
+        match item_id
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+            .or_else(|| self.current_text_item.clone())
+        {
+            Some(id) => {
+                self.delta_text_items.insert(id);
+            }
+            None => self.unattributed_text_delta = true,
+        }
+    }
+
+    /// Whether a delta already delivered the visible text of `item_id`.
+    ///
+    /// An unattributable fragment counts for every item: its text is
+    /// already in the choice and nothing on the wire says which item the
+    /// terminal restates, so the merge withholds rather than risk stating
+    /// one turn's text twice.
+    fn delta_delivered_text(&self, item_id: &str) -> bool {
+        self.unattributed_text_delta || self.delta_text_items.contains(item_id)
+    }
+
+    /// Publish one message item's visible text as the deltas that built it,
+    /// recording what it delivered so a terminal restating the same item
+    /// merges nothing.
+    fn publish_message_text(&mut self, message: &super::OutputMessage, out: &mut AdapterOutput) {
+        // The stream opens the item's text block on its first delta and
+        // sends one delta per content part; a part's own-wire extras ride
+        // the block's metadata, where the accumulator merges them into the
+        // one block the item published.
+        self.start_text_item(Some(&message.id), out);
+        if !message.content.is_empty() {
+            self.note_text_delta(Some(&message.id));
+        }
+        for content in message.content.iter().cloned() {
+            let mut text = super::text_block(content);
+            super::stamp_phase(&mut text, message.phase.as_deref());
+            out.text(text.text);
+            if let Some(additional_params) = text.additional_params {
+                out.text_meta(additional_params);
+            }
+        }
+    }
+
+    /// Merge the terminal body's own message text into the choice.
+    ///
+    /// The terminal restates the whole turn, so **its content is published
+    /// only where no delta delivered it** — the same principle
+    /// `reasoning_from_done_item`'s `None` implements for a restated
+    /// reasoning part. A gateway answering a unary call with a replayed
+    /// event stream can state a message's text *only* here (no
+    /// `output_text.delta`, no `output_item.done` for it), and that text is
+    /// the turn's answer; a gateway that streamed the text first restates
+    /// it, and the restatement must add nothing. An empty restatement says
+    /// nothing at the boundary either.
+    ///
+    /// Dialect-independent on purpose: a body-only terminal is a shape any
+    /// Responses dialect can send, and every dialect's conformance suite
+    /// runs it.
+    fn merge_terminal_body_text(&mut self, response: &CompletionResponse, out: &mut AdapterOutput) {
+        for item in &response.output {
+            let Output::Message(message) = item else {
+                continue;
+            };
+            if message.content.is_empty() || self.delta_delivered_text(&message.id) {
+                continue;
+            }
+            self.publish_message_text(message, out);
         }
     }
 
@@ -461,6 +547,7 @@ impl RawChoiceAccumulator {
             ItemChunkKind::OutputTextDelta(DeltaTextChunk { delta, .. })
             | ItemChunkKind::RefusalDelta(DeltaTextChunk { delta, .. }) => {
                 self.start_text_item(outer_item_id.as_deref(), out);
+                self.note_text_delta(outer_item_id.as_deref());
                 out.text(delta);
             }
             // Summary and raw-reasoning deltas differ only in which wire
@@ -509,6 +596,7 @@ impl RawChoiceAccumulator {
         kind: ResponseChunkKind,
         response: CompletionResponse,
         raw_event_data: &str,
+        out: &mut AdapterOutput,
     ) -> Result<(), CompletionError> {
         match kind {
             // `response.incomplete` is a genuine terminal (e.g. hitting
@@ -517,6 +605,12 @@ impl RawChoiceAccumulator {
             // downstream, matching the unary path's `map_finish_reason`.
             ResponseChunkKind::ResponseCompleted | ResponseChunkKind::ResponseIncomplete => {
                 self.saw_terminal = true;
+                // The terminal restates the whole turn, so the message text
+                // no delta delivered is published here: a gateway that
+                // states its answer only in the terminal body still lands
+                // it in the choice, and one that streamed the text first
+                // does not state it twice.
+                self.merge_terminal_body_text(&response, out);
                 // The provider proved the turn ended, so a slot still open
                 // here lost only its `output_item.done` frame — the same
                 // terminal-drain the sibling adapters ship (Interactions at
@@ -777,19 +871,7 @@ impl RawChoiceAccumulator {
         for (output_index, item) in response.output.iter().cloned().enumerate() {
             let output_index = output_index as u64;
             if let Output::Message(message) = &item {
-                // The stream opens the item's text block on its first delta
-                // and sends one delta per content part; a part's own-wire
-                // extras ride the block's metadata, where the accumulator
-                // merges them into the one block the item published.
-                self.start_text_item(Some(&message.id), out);
-                for content in message.content.iter().cloned() {
-                    let mut text = super::text_block(content);
-                    super::stamp_phase(&mut text, message.phase.as_deref());
-                    out.text(text.text);
-                    if let Some(additional_params) = text.additional_params {
-                        out.text_meta(additional_params);
-                    }
-                }
+                self.publish_message_text(message, out);
             }
             // Published where the item appears rather than buffered to the
             // terminal: the body states every item in order, and the
@@ -810,11 +892,10 @@ impl RawChoiceAccumulator {
         };
         // The raw body is read only for a `response.failed` error payload,
         // which neither of those kinds is.
-        if let Err(error) = self.record_response_chunk(kind, response, "") {
+        if let Err(error) = self.record_response_chunk(kind, response, "", out) {
             out.error(error);
         }
     }
-
 
     /// Flush the buffered fully-delivered tool calls without finishing the
     /// stream. The errored-terminal path flushes these before the error and
@@ -969,9 +1050,8 @@ const WHOLE_BODY_MARKERS: &[&str] = &["object", "output", "status", "error"];
 /// the turn's `response.*`/item events — but it is the protocol's in-band
 /// failure on every dialect, so it must never be skipped as unmodeled.
 fn is_error_event(data: &str) -> bool {
-    serde_json::from_str::<serde_json::Value>(data).is_ok_and(|value| {
-        value.get("type").and_then(serde_json::Value::as_str) == Some("error")
-    })
+    serde_json::from_str::<serde_json::Value>(data)
+        .is_ok_and(|value| value.get("type").and_then(serde_json::Value::as_str) == Some("error"))
 }
 
 /// The error envelope a success body can carry instead of a response. The
@@ -1120,9 +1200,9 @@ impl ResponsesDecoder {
                     span.record("gen_ai.response.id", response.id.as_str());
                     span.record("gen_ai.response.model", response.model.as_str());
                 }
-                if let Err(error) = self
-                    .accumulator
-                    .record_response_chunk(kind, response, &raw)
+                if let Err(error) =
+                    self.accumulator
+                        .record_response_chunk(kind, response, &raw, out)
                 {
                     // `response.failed`: fully-delivered tool calls flush
                     // before the terminal error, which ends the reply with

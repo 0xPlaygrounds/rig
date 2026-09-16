@@ -849,8 +849,9 @@ async fn response_incomplete_chunk_is_a_successful_terminal_with_mapped_finish_r
     });
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&[text_delta, incomplete]),
-        }).await;
+        sse_bytes: sse_bytes_from_json_events(&[text_delta, incomplete]),
+    })
+    .await;
 
     let mut text = String::new();
     let mut final_response = None;
@@ -907,8 +908,9 @@ async fn multi_block_reasoning_done_item_yields_one_part() {
     });
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&[reasoning_done, completed]),
-        }).await;
+        sse_bytes: sse_bytes_from_json_events(&[reasoning_done, completed]),
+    })
+    .await;
 
     let mut completed_reasoning = Vec::new();
     while let Some(item) = stream.next().await {
@@ -982,8 +984,9 @@ async fn response_failed_flushes_delivered_tool_calls_before_the_error() {
     });
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&[tool_call_done, failed]),
-        }).await;
+        sse_bytes: sse_bytes_from_json_events(&[tool_call_done, failed]),
+    })
+    .await;
 
     // The flushed call (its block start and its completed end) precedes
     // the terminal error.
@@ -1105,8 +1108,9 @@ async fn unknown_event_type_is_skipped_and_stream_completes() {
     });
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&[unknown, completed]),
-        }).await;
+        sse_bytes: sse_bytes_from_json_events(&[unknown, completed]),
+    })
+    .await;
 
     let mut saw_final = false;
     while let Some(item) = stream.next().await {
@@ -1167,14 +1171,15 @@ async fn refusal_content_part_frames_are_no_ops_and_refusal_text_streams() {
     });
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&[
-                part_added,
-                refusal_delta,
-                part_done,
-                reasoning_part,
-                completed,
-            ]),
-        }).await;
+        sse_bytes: sse_bytes_from_json_events(&[
+            part_added,
+            refusal_delta,
+            part_done,
+            reasoning_part,
+            completed,
+        ]),
+    })
+    .await;
 
     let mut texts = Vec::new();
     let mut saw_final = false;
@@ -1219,8 +1224,9 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
     ];
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&deltas),
-        }).await;
+        sse_bytes: sse_bytes_from_json_events(&deltas),
+    })
+    .await;
 
     let mut texts = Vec::new();
     let mut saw_terminal = false;
@@ -1258,8 +1264,9 @@ async fn streaming_error_event_preserves_full_payload_in_live_loop() {
     });
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&[payload]),
-        }).await;
+        sse_bytes: sse_bytes_from_json_events(&[payload]),
+    })
+    .await;
 
     let err = stream
         .next()
@@ -2114,6 +2121,102 @@ data: {completed}
     );
 }
 
+/// One `message` output item, as a terminal response body states it.
+fn message_output_item(
+    id: &str,
+    text: &str,
+) -> crate::providers::openai::responses_api::Output {
+    serde_json::from_value(json!({
+        "type": "message",
+        "id": id,
+        "role": "assistant",
+        "status": "completed",
+        "content": [{ "type": "output_text", "annotations": [], "text": text }],
+    }))
+    .expect("output message should deserialize")
+}
+
+/// The visible text parts of a folded choice, in order.
+fn choice_text_parts(response: &crate::completion::CompletionResponse) -> Vec<String> {
+    response
+        .choice
+        .iter()
+        .filter_map(|content| match content {
+            crate::completion::AssistantContent::Text(text) => Some(text.text.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The terminal restates the whole turn, and its message text IS the turn's
+/// answer when nothing else stated it: a gateway that answers a unary call
+/// with a replayed event stream can deliver a message only inside
+/// `response.completed`'s `output` — no `output_text.delta`, no
+/// `output_item.done` for it — so dropping that text loses the reply
+/// entirely.
+///
+/// Driven on the plain `openai` provider: a body-only terminal is a shape
+/// any Responses dialect can send, so the merge is no dialect's quirk.
+#[test]
+fn terminal_body_message_text_merges_when_no_delta_delivered_it() {
+    let mut raw_response = sample_response(ResponseStatus::Completed);
+    raw_response.output = vec![message_output_item("msg_body_1", "from body")];
+    let completed = json!({
+        "type": "response.completed",
+        "sequence_number": 1,
+        "response": raw_response,
+    });
+    let body = format!("data: {completed}\n");
+
+    let events = stream_events_from_sse_body("openai", &body, None)
+        .expect("a body-only terminal must decode");
+    let response =
+        folded_stream_events("openai", events, &raw_response).expect("the fold should not error");
+
+    assert_eq!(
+        choice_text_parts(&response),
+        ["from body"],
+        "text stated only in the terminal body must reach the choice once"
+    );
+    assert_eq!(response.message_id.as_deref(), Some("msg_body_1"));
+}
+
+/// The other half of that boundary: a terminal restating text the deltas
+/// already delivered adds nothing. The merge publishes the terminal's
+/// content only where no delta delivered it, so an ungated merge — or one
+/// keyed on a slot the delta never opened — would state one turn's answer
+/// twice.
+#[test]
+fn terminal_body_message_text_restating_a_delta_is_not_duplicated() {
+    let text_delta = json!({
+        "type": "response.output_text.delta",
+        "item_id": "msg_body_1",
+        "output_index": 0,
+        "content_index": 0,
+        "sequence_number": 1,
+        "delta": "from body",
+    });
+    let mut raw_response = sample_response(ResponseStatus::Completed);
+    raw_response.output = vec![message_output_item("msg_body_1", "from body")];
+    let completed = json!({
+        "type": "response.completed",
+        "sequence_number": 2,
+        "response": raw_response,
+    });
+    let body = format!("data: {text_delta}\ndata: {completed}\n");
+
+    let events = stream_events_from_sse_body("openai", &body, None)
+        .expect("a restating terminal must decode");
+    let response =
+        folded_stream_events("openai", events, &raw_response).expect("the fold should not error");
+
+    assert_eq!(
+        choice_text_parts(&response),
+        ["from body"],
+        "the terminal's restatement must not duplicate the delta-built text"
+    );
+}
+
 #[test]
 fn streaming_error_event_preserves_full_payload() {
     let payload = r#"{"type":"error","error":{"message":"boom","code":"server_error","type":"server_error"}}"#;
@@ -2296,8 +2399,9 @@ async fn terminal_record_reports_tool_calls_when_the_stream_called_a_tool() {
     });
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: sse_bytes_from_json_events(&[tool_call_done, completed]),
-        }).await;
+        sse_bytes: sse_bytes_from_json_events(&[tool_call_done, completed]),
+    })
+    .await;
 
     let mut final_response = None;
     while let Some(item) = stream.next().await {
@@ -2396,16 +2500,17 @@ async fn done_sentinel_is_ignored_without_debug_parse_noise() {
     let _guard = tracing::subscriber::set_default(subscriber);
 
     let mut stream = responses_stream(MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(format!(
-                "data: {}\n\ndata: [DONE]\n\n",
-                serde_json::to_string(&json!({
-                    "type": "response.completed",
-                    "sequence_number": 1,
-                    "response": response,
-                }))
-                .expect("response event should serialize")
-            )),
-        }).await;
+        sse_bytes: bytes::Bytes::from(format!(
+            "data: {}\n\ndata: [DONE]\n\n",
+            serde_json::to_string(&json!({
+                "type": "response.completed",
+                "sequence_number": 1,
+                "response": response,
+            }))
+            .expect("response event should serialize")
+        )),
+    })
+    .await;
 
     let mut final_usage = None;
     while let Some(item) = stream.next().await {

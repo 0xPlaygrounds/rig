@@ -154,8 +154,8 @@ async fn stream_raw_reads_back_as_terminal_type() {
     // The streamed terminal's `raw` is the decoder's own record serialized
     // (`emit_terminal` builds it with `serde_json::to_value`), not socket
     // bytes — so the round trip back through the same type is exact.
-    let typed = OpenRouterTerminal::deserialize(raw)
-        .expect("raw is the shared chat terminal record");
+    let typed =
+        OpenRouterTerminal::deserialize(raw).expect("raw is the shared chat terminal record");
     assert_eq!(
         serde_json::to_value(&typed).expect("the terminal record serializes"),
         *raw,

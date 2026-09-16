@@ -40,10 +40,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-async fn over_host(
-    client: Bound<Anthropic>,
-    host: Host,
-) -> rig::effect_log::EffectLog {
+async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::effect_log::EffectLog {
     let config = ServingPolicy {
         serial_per_handler: host.serial,
         ..ServingPolicy::default()

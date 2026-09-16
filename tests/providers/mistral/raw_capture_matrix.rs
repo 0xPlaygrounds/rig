@@ -297,11 +297,15 @@ async fn normalized_fields_match_raw_renormalized() {
     // reads that back, and every provider-native field it exposes must be
     // the normalized response's. There is one decoder and one mapping now,
     // so this pins that mapping instead of comparing it with a second one.
-    let typed = mistral::CompletionResponse::deserialize(&response.raw)
-        .expect("raw is Mistral's own type");
+    let typed =
+        mistral::CompletionResponse::deserialize(&response.raw).expect("raw is Mistral's own type");
     assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
     assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(typed.choices.len(), 1, "the recorded turn has one candidate");
+    assert_eq!(
+        typed.choices.len(),
+        1,
+        "the recorded turn has one candidate"
+    );
     let typed_choice = &typed.choices[0];
     assert_eq!(
         Some(typed_choice.finish_reason.as_str()),

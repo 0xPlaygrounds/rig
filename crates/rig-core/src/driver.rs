@@ -24,22 +24,22 @@ use crate::observe::{AdapterContext, AdapterEnding, AdapterErrorBoundary, Adapte
 use crate::providers::internal::wire::WireEvent;
 use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{
-    Body, Decoder, Encoded, Error, Event, Fold, Mode, Operation, Reply, Request, Response, Sink, Wire,
-    WireError, WireFrame,
+    Body, Decoder, Encoded, Error, Event, Fold, Mode, Operation, Reply, Request, Response, Sink,
+    Wire, WireError, WireFrame,
 };
 
 mod bound;
 mod consumers;
 
 pub use bound::{Bind, Bound};
-pub use consumers::{
-    CompletionProvider, HasCompletion, HasEmbedding, HasImageEmbedding, HasModelListing, HasRerank, HasTranscription,
-    HasVerify, Socket,
-};
 #[cfg(feature = "audio")]
 pub use consumers::HasAudioGeneration;
 #[cfg(feature = "image")]
 pub use consumers::HasImageGeneration;
+pub use consumers::{
+    CompletionProvider, HasCompletion, HasEmbedding, HasImageEmbedding, HasModelListing, HasRerank,
+    HasTranscription, HasVerify, Socket,
+};
 
 /// The frame-triage policy table, in one place for every operation:
 ///

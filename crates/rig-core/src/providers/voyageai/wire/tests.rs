@@ -114,7 +114,10 @@ async fn a_rerank_reply_keeps_the_provider_order_and_the_indices_it_named() {
         voyage().rerank("rerank-2.5"),
         RecordingHttpClient::new(RERANK_BODY),
     )
-    .rerank("which is best?", vec!["worse".to_owned(), "better".to_owned()])
+    .rerank(
+        "which is best?",
+        vec!["worse".to_owned(), "better".to_owned()],
+    )
     .await
     .expect("the reply decodes");
 

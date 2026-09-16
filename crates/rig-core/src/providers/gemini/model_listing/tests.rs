@@ -228,7 +228,11 @@ fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
 
     assert_eq!(
         listed,
-        vec!["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
+        vec![
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash-lite"
+        ],
     );
     assert!(
         second.continuation().is_none(),

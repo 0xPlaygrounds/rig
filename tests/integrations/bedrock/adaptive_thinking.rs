@@ -24,7 +24,7 @@ fn adaptive_thinking_params() -> serde_json::Value {
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
     let model = client()
-        .completion_model(anthropic_adaptive_model())
+        .completion(anthropic_adaptive_model())
         .with_prompt_caching();
     let agent = AgentBuilder::new(model)
         .preamble(
@@ -48,7 +48,7 @@ async fn adaptive_thinking_prompt_caching_tool_roundtrip_regression() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock Anthropic adaptive-thinking model access"]
 async fn streaming_emits_signature_only_adaptive_reasoning_regression() {
-    let model = client().completion_model(anthropic_signature_only_model());
+    let model = client().completion(anthropic_signature_only_model());
     let request = model
         .completion_request("What is 2 + 2? Answer with only the number.")
         .max_tokens(2048)

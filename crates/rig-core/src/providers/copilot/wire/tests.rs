@@ -122,7 +122,10 @@ fn both_routes_carry_copilots_editor_envelope() {
             copilot.completion(super::super::GPT_4O),
             "/chat/completions",
         ),
-        (copilot.completion(super::super::GPT_5_3_CODEX), "/responses"),
+        (
+            copilot.completion(super::super::GPT_5_3_CODEX),
+            "/responses",
+        ),
     ] {
         let request = encoded(&wire);
         assert_eq!(
@@ -202,7 +205,8 @@ async fn the_chat_route_folds_its_recorded_turn() {
 
     assert_eq!(response.provider, PROVIDER_NAME);
     assert!(
-        text_of(&response).is_some_and(|text| text.contains("Rust is a systems programming language")),
+        text_of(&response)
+            .is_some_and(|text| text.contains("Rust is a systems programming language")),
         "{:?}",
         response.choice
     );

@@ -113,7 +113,9 @@ pub(super) async fn with_mistralrs_completions_cassette<F, Fut>(
     Fut: Future<Output = ()>,
 {
     let (cassette, completions) = mistralrs_completions_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(completions)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(completions))
+        .catch_unwind()
+        .await;
     cassette.finish_after_test(result).await;
 }
 

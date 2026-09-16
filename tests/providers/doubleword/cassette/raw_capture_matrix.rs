@@ -169,10 +169,9 @@ const UNMODELLED_USAGE: [&str; 3] = [
 async fn raw_round_trips_openai_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
     let sink = Observed::default();
-    with_doubleword_cassette_result(
-        "raw_capture_matrix/raw_round_trips_openai_type",
-        |client| run(client, sink.clone()),
-    )
+    with_doubleword_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_round_trips_openai_type should replay from its cassette");
     let response = observed(&sink);

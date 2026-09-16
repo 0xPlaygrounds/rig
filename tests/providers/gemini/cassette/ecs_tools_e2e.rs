@@ -164,11 +164,10 @@ async fn string_output_sent_verbatim_and_struct_output_serialized_as_json() {
     with_gemini_cassette(
         "agent_tools/string_output_verbatim_struct_output_json",
         |client| async move {
-            let report = tool_output_serialization(
-                client.completion(gemini::completion::GEMINI_2_5_FLASH),
-            )
-            .await
-            .expect("tool-output serialization conformance scenario should succeed");
+            let report =
+                tool_output_serialization(client.completion(gemini::completion::GEMINI_2_5_FLASH))
+                    .await
+                    .expect("tool-output serialization conformance scenario should succeed");
             eprintln!("[gemini] {report:?}");
         },
     )

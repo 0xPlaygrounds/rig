@@ -281,7 +281,10 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     // The normalized terminal keeps the hit count (as cached input) and has
     // no slot for the miss count: `to_normalized` is where exactly half of
     // the split crosses over.
-    assert_eq!(usage.to_normalized().cached_input_tokens, Some(recorded_hit));
+    assert_eq!(
+        usage.to_normalized().cached_input_tokens,
+        Some(recorded_hit)
+    );
     assert_eq!(terminal.usage.cached_input_tokens, Some(recorded_hit));
     let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
     assert!(

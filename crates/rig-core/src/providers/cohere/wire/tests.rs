@@ -1,10 +1,11 @@
 use super::*;
 use crate::completion::CompletionModel as _;
-use crate::embeddings::{EmbeddingModel as _, ImageEmbeddingModel as _};
 use crate::driver::Bound;
+use crate::embeddings::{EmbeddingModel as _, ImageEmbeddingModel as _};
 use crate::message::AssistantContent;
-use crate::test_utils::{MockHttpResponse, MockStreamingClient, RecordingHttpClient,
-    SequencedHttpClient};
+use crate::test_utils::{
+    MockHttpResponse, MockStreamingClient, RecordingHttpClient, SequencedHttpClient,
+};
 use futures::StreamExt;
 
 /// The recorded request of `tests/cassettes/cohere/agent/
@@ -68,7 +69,10 @@ fn recorded_request() -> CompletionRequest {
 
 fn body_of(encoded: &Encoded) -> serde_json::Value {
     let [request] = encoded.requests.as_slice() else {
-        panic!("expected exactly one request, got {}", encoded.requests.len());
+        panic!(
+            "expected exactly one request, got {}",
+            encoded.requests.len()
+        );
     };
     match request.body() {
         Body::Bytes(bytes) => serde_json::from_slice(bytes).expect("the body is JSON"),
@@ -146,8 +150,8 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
     );
     assert_eq!(unary.framing, Framing::Whole);
 
-    let mut expected = serde_json::from_str::<serde_json::Value>(RECORDED_REQUEST)
-        .expect("the fixture is JSON");
+    let mut expected =
+        serde_json::from_str::<serde_json::Value>(RECORDED_REQUEST).expect("the fixture is JSON");
     expected["stream"] = serde_json::Value::Bool(true);
     assert_eq!(body_of(&streamed), expected);
     assert_eq!(streamed.framing, Framing::Sse);
@@ -206,7 +210,9 @@ fn an_embedding_wire_reports_the_models_published_width() {
     let wire = cohere().embeddings("embed-english-light-v3.0", None);
     assert_eq!(wire.capabilities(), EmbeddingCapabilities::new(96, 384));
     assert_eq!(
-        cohere().embeddings("embed-english-light-v3.0", Some(64)).ndims,
+        cohere()
+            .embeddings("embed-english-light-v3.0", Some(64))
+            .ndims,
         64,
         "a width the caller named wins over the model's table"
     );
@@ -242,7 +248,11 @@ fn an_image_batch_encodes_one_request_per_image_in_input_order() {
         })
         .collect::<Vec<_>>();
     assert_eq!(images.len(), 2);
-    assert!(images.iter().all(|url| url.starts_with("data:image/png;base64,")));
+    assert!(
+        images
+            .iter()
+            .all(|url| url.starts_with("data:image/png;base64,"))
+    );
     assert_ne!(images[0], images[1], "each request carries its own image");
 }
 

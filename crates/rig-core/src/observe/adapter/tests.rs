@@ -41,8 +41,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
 #[tokio::test]
 async fn streamed_body_failure_preserves_boundary_through_provider_error_conversion() {
     use crate::{
-        completion::CompletionModel as _, driver::Bind,
-        test_utils::SequencedStreamingHttpClient,
+        completion::CompletionModel as _, driver::Bind, test_utils::SequencedStreamingHttpClient,
     };
     use futures::StreamExt;
     let mut baseline = None;
@@ -212,9 +211,7 @@ fn context_is_not_part_of_serialized_completion_requests() {
 
 #[tokio::test]
 async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_request() {
-    use crate::{
-        completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient};
     let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
     let http = RecordingHttpClient::new(body);
     let model = crate::providers::gemini::Gemini::new("synthetic-secret-key")
@@ -302,9 +299,7 @@ fn exhausted_identity_never_wraps_or_reuses_an_attempt() {
 
 #[tokio::test]
 async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies() {
-    use crate::{
-        completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient};
     let http = RecordingHttpClient::with_error(
         http::StatusCode::TOO_MANY_REQUESTS,
         r#"{"error":{"message":"synthetic-sensitive-body"},"usageMetadata":{"promptTokenCount":3}}"#,
@@ -551,9 +546,7 @@ async fn dropping_stream_pending_on_connection_or_body_closes_once() {
 }
 
 async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe::ObservationTrace {
-    use crate::{
-        completion::CompletionModel as _, driver::Bind, test_utils::MockStreamingClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::MockStreamingClient};
     use futures::StreamExt;
     let model = crate::providers::gemini::Gemini::new("test-key")
         .bind(MockStreamingClient {
@@ -735,9 +728,7 @@ async fn provider_terminal_does_not_hide_partial_transport_eof() {
 
 #[tokio::test]
 async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
-    use crate::{
-        completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient};
     for (metadata, expected) in [
         (
             serde_json::json!({"promptTokenCount": 7, "totalTokenCount": 9}),
@@ -841,8 +832,7 @@ async fn streamed_usage_snapshots_keep_missing_counts_and_failed_attempt_usage()
 #[tokio::test]
 async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
     use crate::{
-        completion::CompletionModel as _, driver::Bind,
-        test_utils::HttpErrorStreamingClient,
+        completion::CompletionModel as _, driver::Bind, test_utils::HttpErrorStreamingClient,
     };
     use futures::StreamExt;
     let model = crate::providers::gemini::Gemini::new("synthetic-sensitive-body")
@@ -883,9 +873,7 @@ async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
 
 #[tokio::test]
 async fn provider_metadata_and_headers_are_scrubbed_before_observation() {
-    use crate::{
-        completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient};
     let secret = "synthetic-credential-12345";
     let body = serde_json::json!({
         "candidates": [{"finishReason": "MAX_TOKENS", "finishMessage": secret}],

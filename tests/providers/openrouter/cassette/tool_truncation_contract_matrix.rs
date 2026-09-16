@@ -49,9 +49,7 @@ use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::{
-    BoundOpenRouter, with_openrouter_tool_truncation_cassette_result,
-};
+use super::super::support::{BoundOpenRouter, with_openrouter_tool_truncation_cassette_result};
 
 const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
 const PROMPT: &str = "The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.";
@@ -284,11 +282,7 @@ async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
     }
 }
 
-async fn run_cell(
-    client: BoundOpenRouter,
-    cell: Cell,
-    observed: SharedObservation,
-) -> Result<()> {
+async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
         Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,

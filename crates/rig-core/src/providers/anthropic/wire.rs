@@ -137,7 +137,6 @@ impl Dialect {
             MaxTokens::Fixed(tokens) => Some(tokens),
         }
     }
-
 }
 
 /// Z.AI's Anthropic-format endpoint.
@@ -578,10 +577,7 @@ impl Wire for Models {
     }
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ModelListingError> {
-        Ok(Encoded::new(
-            self.models_request(None)?,
-            Framing::Whole,
-        ))
+        Ok(Encoded::new(self.models_request(None)?, Framing::Whole))
     }
 
     fn decoder(&self) -> Self::Decoder {
@@ -594,15 +590,15 @@ impl Wire for Models {
 
 impl Models {
     /// One page's request, after `cursor` when the previous page named one.
-    fn models_request(&self, cursor: Option<&str>) -> Result<http::Request<Body>, ModelListingError> {
+    fn models_request(
+        &self,
+        cursor: Option<&str>,
+    ) -> Result<http::Request<Body>, ModelListingError> {
         let uri = match cursor {
             Some(cursor) => format!(
                 "{}{}",
                 self.provider.base_url,
-                crate::providers::internal::with_query_pairs(
-                    "/v1/models",
-                    &[("after_id", cursor)],
-                )
+                crate::providers::internal::with_query_pairs("/v1/models", &[("after_id", cursor)],)
             ),
             None => format!("{}/v1/models", self.provider.base_url),
         };

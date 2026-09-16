@@ -6,12 +6,11 @@
 //! One `completion(req)` yields both views of one reply: the normalized
 //! [`CompletionResponse`](rig::completion::CompletionResponse), and
 //! [`raw`](rig::completion::CompletionResponse::raw) — the route's own reply
-//! body, verbatim, which reads back into that route's own response type and
-//! converts forward through
-//! [`NormalizeCompletionResponse`](rig::completion::NormalizeCompletionResponse).
-//! Raw and normalized must agree on `identity()`, `finish_reason()`, `model`
-//! and `usage`, because the normalized view is a projection of that exact
-//! body.
+//! body, verbatim, which reads back into that route's own response type.
+//! The two must agree on `identity()`, `finish_reason()`, `model` and
+//! `usage`, because the normalized view is a projection of that exact body,
+//! produced by the one decoder — there is no second mapping to compare it
+//! against any more.
 //!
 //! Copilot relays two request shapes, so `raw` has two shapes — the shared
 //! [`openai::CompletionResponse`] on the chat-completions route, the
@@ -48,10 +47,10 @@ use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
 };
 use rig::driver::Bound;
-use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::copilot;
-use rig::providers::openai::responses_api;
+use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai;
+use rig::providers::openai::responses_api;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -163,7 +162,10 @@ fn recorded_json_bodies(scenario: &str) -> Vec<Value> {
 /// provider sent says what the fold reported.
 fn assert_chat_parity(typed: &openai::CompletionResponse, folded: &RigCompletionResponse) {
     assert_eq!(Some(typed.model.as_str()), folded.model.as_deref());
-    assert_eq!(Some(typed.id.as_str()), folded.identity().response_id.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        folded.identity().response_id.as_deref()
+    );
     assert_eq!(folded.provider, COPILOT_PROVIDER);
     assert_eq!(folded.finish_reason(), Some(FinishReason::Stop));
     let usage = typed.usage.as_ref().expect("the reply reports usage");
@@ -183,7 +185,10 @@ fn assert_responses_parity(
     folded: &RigCompletionResponse,
 ) {
     assert_eq!(Some(typed.model.as_str()), folded.model.as_deref());
-    assert_eq!(Some(typed.id.as_str()), folded.identity().response_id.as_deref());
+    assert_eq!(
+        Some(typed.id.as_str()),
+        folded.identity().response_id.as_deref()
+    );
     assert_eq!(folded.provider, COPILOT_PROVIDER);
     assert_eq!(folded.finish_reason(), Some(FinishReason::Stop));
 }

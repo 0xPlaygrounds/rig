@@ -12,10 +12,10 @@
 use crate::TungsteniteClient;
 use rig_core::completion::CompletionError;
 use rig_core::driver::Bound;
-use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::providers::openai::responses_api::websocket::{
     ResponsesWebSocketExt, ResponsesWebSocketSession, ResponsesWebSocketSessionBuilder,
 };
+use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 /// Open a provider websocket session over the bundled backend.

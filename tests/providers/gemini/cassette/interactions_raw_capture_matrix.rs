@@ -38,9 +38,7 @@
 //! the interaction `id` is normalized into `response_id` *and* scrubbed into
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
-use rig::completion::{
-    CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason,
-};
+use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
 use rig::driver::Bound;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus, Interactions};

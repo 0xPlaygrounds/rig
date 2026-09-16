@@ -1217,9 +1217,7 @@ fn probe() -> CompletionRequest {
 
 /// The block kinds a folded turn carries, and the signature on its
 /// reasoning block: the shape two transports must agree on.
-fn shape(
-    response: &crate::completion::CompletionResponse,
-) -> (Vec<&'static str>, Option<String>) {
+fn shape(response: &crate::completion::CompletionResponse) -> (Vec<&'static str>, Option<String>) {
     let kinds = response
         .choice
         .iter()
@@ -1344,8 +1342,7 @@ fn the_mode_chooses_the_query_and_the_framing_and_the_key_is_a_header() {
         crate::wire::Body::Bytes(bytes) => bytes.clone(),
         crate::wire::Body::Multipart(_) => panic!("interactions posts JSON"),
     };
-    let body: serde_json::Value =
-        serde_json::from_slice(&body).expect("the request body is JSON");
+    let body: serde_json::Value = serde_json::from_slice(&body).expect("the request body is JSON");
     assert_eq!(body.get("stream"), Some(&json!(true)));
 }
 
@@ -1412,10 +1409,7 @@ fn one_interaction_is_polled_unary_and_resumed_streamed() {
         .interaction_resumed("v1_REDACTED_1", None)
         .encode(probe(), Mode::Streaming)
         .expect("the resume request encodes");
-    assert_eq!(
-        sole(&from_start).uri().query(),
-        Some("stream=true&alt=sse")
-    );
+    assert_eq!(sole(&from_start).uri().query(), Some("stream=true&alt=sse"));
 }
 
 /// The poll's reply is the whole interaction resource, so it decodes
@@ -1444,5 +1438,9 @@ async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
     let interaction: Interaction =
         serde_json::from_value(response.raw.clone()).expect("`raw` is the interaction document");
     assert_eq!(interaction.id, "v1_REDACTED_1");
-    assert!(interaction.is_terminal(), "status: {:?}", interaction.status);
+    assert!(
+        interaction.is_terminal(),
+        "status: {:?}",
+        interaction.status
+    );
 }

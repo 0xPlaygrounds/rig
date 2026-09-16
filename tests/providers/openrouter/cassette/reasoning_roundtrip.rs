@@ -1,6 +1,5 @@
 //! Cassette-backed OpenRouter reasoning roundtrip tests.
 
-
 use crate::reasoning::{self, ReasoningRoundtripAgent};
 
 use super::super::support::with_openrouter_cassette;

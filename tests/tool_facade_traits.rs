@@ -141,7 +141,6 @@ fn completion_client_single_import_surface() {
 #[test]
 fn completion_provider_explicit_facade_import_surface() {
     use rig::client::AgentProviderExt;
-    use rig::wire::HasCompletion as _;
     use rig_reqwest::client::DefaultTransport;
 
     #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
@@ -155,7 +154,7 @@ fn completion_provider_explicit_facade_import_surface() {
     )
     .bound() // DefaultTransport
     .expect("the bundled transport builds");
-    let _model = bound.completion("gpt-4o"); // Bound::completion via HasCompletion
+    let _model = bound.completion("gpt-4o"); // Bound::completion
     let _agent = bound.agent("gpt-4o").build(); // AgentProviderExt
     let _extractor = bound.extractor::<Extracted>("gpt-4o").build(); // AgentProviderExt
 }

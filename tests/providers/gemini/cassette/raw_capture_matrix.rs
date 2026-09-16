@@ -415,9 +415,7 @@ async fn raw_exposes_forced_function_call() {
                 .into_iter()
                 .flat_map(|content| content.parts.iter())
                 .filter_map(|part| match &part.part {
-                    PartKind::FunctionCall(call) => {
-                        Some((call.name.clone(), call.args.clone()))
-                    }
+                    PartKind::FunctionCall(call) => Some((call.name.clone(), call.args.clone())),
                     _ => None,
                 })
                 .collect();

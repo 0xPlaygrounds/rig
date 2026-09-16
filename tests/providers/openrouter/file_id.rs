@@ -24,9 +24,10 @@ const MODEL: &str = "openai/gpt-4o-mini";
 /// The key is a real credential-free config: `encode` never touches a socket,
 /// so the bytes are reachable with no cassette and no network.
 fn encoded_body(message: Message) -> Result<Value, CompletionError> {
-    let encoded = OpenAI::with_key(&OPENROUTER, "k")
-        .chat(MODEL)
-        .encode(CompletionRequestBuilder::unbound(message).build(), Mode::Unary)?;
+    let encoded = OpenAI::with_key(&OPENROUTER, "k").chat(MODEL).encode(
+        CompletionRequestBuilder::unbound(message).build(),
+        Mode::Unary,
+    )?;
     Ok(sole_body(encoded))
 }
 

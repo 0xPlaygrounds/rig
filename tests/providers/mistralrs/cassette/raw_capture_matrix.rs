@@ -290,10 +290,7 @@ async fn normalized_fields_equal_raw_renormalized() {
                 Some(usage.prompt_tokens as u64),
                 response.usage.input_tokens
             );
-            assert_eq!(
-                Some(usage.total_tokens as u64),
-                response.usage.total_tokens
-            );
+            assert_eq!(Some(usage.total_tokens as u64), response.usage.total_tokens);
             assert!(!response.choice.is_empty());
 
             *sink.lock().expect("capture mutex") = Some(response);

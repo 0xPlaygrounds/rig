@@ -37,8 +37,8 @@ pub use dialects::*;
 pub use dto::{ChatChoice, ChatFrame, ChatUsage, FinishReason, StreamingCompletionResponse};
 pub use modality::{
     EmbeddingDatum, Embeddings, EmbeddingsDecoder, EmbeddingsReply, ModelEntry, Models,
-    ModelsDecoder, ModelsReply, Rerank, RerankDecoder, RerankReply, RerankResultEntry,
-    RerankUsage, Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
+    ModelsDecoder, ModelsReply, Rerank, RerankDecoder, RerankReply, RerankResultEntry, RerankUsage,
+    Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
 };
 
 #[cfg(feature = "image")]
@@ -679,9 +679,7 @@ impl OpenAI {
             // an empty one would silently address an unversioned endpoint.
             // This is the version its deleted client builder defaulted to.
             api_version: match dialect.quirks.routing {
-                Routing::AzureDeployment => {
-                    Some(dialects::AZURE_DEFAULT_API_VERSION.to_owned())
-                }
+                Routing::AzureDeployment => Some(dialects::AZURE_DEFAULT_API_VERSION.to_owned()),
                 Routing::Path => None,
             },
             audio_api_version: None,

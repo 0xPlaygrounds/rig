@@ -156,8 +156,7 @@ fn assert_raw_is_the_reply_document(
         "{context}: raw carries the provider's usage block unchanged"
     );
     assert_eq!(
-        raw["choices"][0]["message"]["content"],
-        body["choices"][0]["message"]["content"],
+        raw["choices"][0]["message"]["content"], body["choices"][0]["message"]["content"],
         "{context}: and the answer it reported"
     );
     assert_matches_recorded_token(
@@ -195,7 +194,11 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
         .take()
         .expect("the cell should observe both turns");
     let interactions = recorded_json(SCENARIO);
-    assert_eq!(interactions.len(), 2, "the cell records a turn and its twin");
+    assert_eq!(
+        interactions.len(),
+        2,
+        "the cell records a turn and its twin"
+    );
     assert_eq!(
         interactions[0].0, interactions[1].0,
         "`encode` is deterministic, so both turns must send the same request bytes"

@@ -71,9 +71,9 @@ use rig::completion::CompletionModel as _;
 use rig::completion::{CompletionRequest, FinishReason, ToolDefinition};
 use rig::driver::Bound;
 use rig::prelude::*;
+use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
 use rig::providers::anthropic::wire::Messages;
-use rig::providers::anthropic;
 use rig::streaming::StreamEvent;
 use serde::Deserialize;
 use serde_json::json;
@@ -766,8 +766,7 @@ async fn blocking_end_turn_control() {
         "stop_sequence_terminal_matrix/blocking_end_turn_control",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let raw =
-                provider_response(&model, request(&model, LIST_PROMPT, &["zulu"], 64)).await;
+            let raw = provider_response(&model, request(&model, LIST_PROMPT, &["zulu"], 64)).await;
             assert_eq!(raw.stop_reason.as_deref(), Some("end_turn"));
             assert_eq!(raw.stop_sequence, None);
         },
@@ -786,8 +785,7 @@ async fn blocking_max_tokens_control() {
         "stop_sequence_terminal_matrix/blocking_max_tokens_control",
         |client| async move {
             let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let raw =
-                provider_response(&model, request(&model, LIST_PROMPT, &["zulu"], 3)).await;
+            let raw = provider_response(&model, request(&model, LIST_PROMPT, &["zulu"], 3)).await;
             assert_eq!(raw.stop_reason.as_deref(), Some("max_tokens"));
             assert_eq!(raw.stop_sequence, None);
         },

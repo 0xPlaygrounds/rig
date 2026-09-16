@@ -16,4 +16,3 @@ fn test_transcription_response_without_usage() {
     assert_eq!(resp.text, "Hello world");
     assert!(resp.usage.is_none());
 }
-

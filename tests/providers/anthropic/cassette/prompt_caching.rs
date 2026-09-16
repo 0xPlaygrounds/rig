@@ -8,10 +8,10 @@ use rig::completion::{
 use rig::driver::Bound;
 use rig::message::ToolChoice;
 use rig::prelude::*;
+use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CacheTtl;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
-use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent};
 use serde::Deserialize;
 use serde_json::json;

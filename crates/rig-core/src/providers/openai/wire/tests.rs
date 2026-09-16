@@ -169,7 +169,12 @@ fn a_dialect_without_a_verify_endpoint_refuses_to_invent_one() {
             .encode((), Mode::Unary)
             .is_err()
     );
-    assert!(OpenAI::new("k").verify_wire().encode((), Mode::Unary).is_ok());
+    assert!(
+        OpenAI::new("k")
+            .verify_wire()
+            .encode((), Mode::Unary)
+            .is_ok()
+    );
 }
 
 /// Azure accepts an account key *or* an Entra bearer token, and they are not
@@ -237,7 +242,11 @@ fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
     let default = OpenAI::with_key(&HUGGINGFACE, "hf");
     assert_eq!(
         default
-            .modality_uri("transcription", "/audio/transcriptions", "openai/whisper-large-v3")
+            .modality_uri(
+                "transcription",
+                "/audio/transcriptions",
+                "openai/whisper-large-v3"
+            )
             .expect("hf-inference serves transcription"),
         "https://router.huggingface.co/openai/whisper-large-v3"
     );
@@ -246,7 +255,10 @@ fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
     let error = routed
         .modality_uri("transcription", "/audio/transcriptions", "whisper")
         .expect_err("only hf-inference serves transcription");
-    assert_eq!(error, "transcription endpoint is not supported yet for together");
+    assert_eq!(
+        error,
+        "transcription endpoint is not supported yet for together"
+    );
     assert!(
         routed
             .modality_uri("image generation", "/images/generations", "sd")
@@ -354,7 +366,11 @@ fn every_dialects_listing_and_verify_urls_match_the_recorded_paths() {
             Some("https://api.together.xyz/models"),
         ),
         (&PERPLEXITY, "https://api.perplexity.ai/models", None),
-        (&XAI, "https://api.x.ai/v1/models", Some("https://api.x.ai/v1/api-key")),
+        (
+            &XAI,
+            "https://api.x.ai/v1/models",
+            Some("https://api.x.ai/v1/api-key"),
+        ),
     ];
 
     for (dialect, models, verify) in expected {
@@ -398,7 +414,10 @@ fn llamacpp_serves_its_operational_routes_unversioned() {
         provider.uri("/chat/completions", None),
         "http://localhost:8080/v1/chat/completions"
     );
-    assert_eq!(provider.uri("/rerank", None), "http://localhost:8080/v1/rerank");
+    assert_eq!(
+        provider.uri("/rerank", None),
+        "http://localhost:8080/v1/rerank"
+    );
     // And no other dialect has any.
     for dialect in all() {
         if dialect.name != "llamacpp" {

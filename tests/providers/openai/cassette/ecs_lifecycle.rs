@@ -20,8 +20,7 @@ async fn middleware_phases_observe_a_unary_completion() {
         "lifecycle_matrix/middleware_unary",
         probe.clone(),
         |client| async move {
-            let mut ecs =
-                ecs_lifecycle::agent(client.responses.completion(MODEL), BASIC_PREAMBLE);
+            let mut ecs = ecs_lifecycle::agent(client.responses.completion(MODEL), BASIC_PREAMBLE);
             let response = ecs.prompt(BASIC_PROMPT, false).await;
             assert_nonempty_response(&response);
         },
@@ -65,8 +64,7 @@ async fn run_start_rewrite_reaches_the_provider() {
         "lifecycle_matrix/run_start_rewrite",
         WireProbe::default(),
         |client| async move {
-            let mut ecs =
-                ecs_lifecycle::agent(client.responses.completion(MODEL), BASIC_PREAMBLE);
+            let mut ecs = ecs_lifecycle::agent(client.responses.completion(MODEL), BASIC_PREAMBLE);
             ecs_lifecycle::install(&mut ecs, agent_hook);
             // The original prompt says nothing about pineapples; only the
             // pre-run rewrite can put the marker into the model's reply.

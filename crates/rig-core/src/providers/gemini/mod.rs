@@ -106,10 +106,7 @@ impl Gemini {
         let trimmed = path.trim_start_matches('/');
         let separator = if trimmed.contains('?') { "&" } else { "?" };
         let base = self.base_url.trim_end_matches('/');
-        format!(
-            "{base}/{trimmed}{separator}key={}",
-            self.api_key.expose()
-        )
+        format!("{base}/{trimmed}{separator}key={}", self.api_key.expose())
     }
 
     /// The URI for an Interactions-family `path`. No key: that family

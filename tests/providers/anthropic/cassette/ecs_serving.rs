@@ -41,11 +41,7 @@ fn route_after_first(
     }
 }
 fn routed_agent(client: &rig::driver::Bound<Anthropic>, selected: bool) -> EcsAgent {
-    let mut ecs = EcsAgent::for_golden(
-        client.completion(CLAUDE_SONNET_4_6),
-        TOOLS_PREAMBLE,
-        false,
-    );
+    let mut ecs = EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
     ecs.app
         .world_mut()
         .entity_mut(ecs.agent)

@@ -217,10 +217,9 @@ async fn raw_reads_back_as_openrouter_type() {
 async fn raw_exposes_routed_provider() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_routed_provider";
     let sink = Observed::default();
-    with_openrouter_cassette_result(
-        "raw_capture_matrix/raw_exposes_routed_provider",
-        |client| run(client, sink.clone()),
-    )
+    with_openrouter_cassette_result("raw_capture_matrix/raw_exposes_routed_provider", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_exposes_routed_provider should replay from its cassette");
     let response = observed(&sink);

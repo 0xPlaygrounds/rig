@@ -183,7 +183,10 @@ fn the_mode_decides_the_reply_framing() {
         Framing::Whole
     );
     assert_eq!(
-        wire().encode(request, Mode::Streaming).expect("encodes").framing,
+        wire()
+            .encode(request, Mode::Streaming)
+            .expect("encodes")
+            .framing,
         Framing::Sse
     );
 }
@@ -451,7 +454,9 @@ async fn a_unary_reply_with_reasoning_folds_like_the_stream_of_the_same_turn() {
 
     // Reasoning first, then the visible text — one emitter, one order.
     let reasoning_text = |choice: &[AssistantContent]| match choice.first() {
-        Some(AssistantContent::Reasoning(Reasoning { content, .. })) => Some(format!("{content:?}")),
+        Some(AssistantContent::Reasoning(Reasoning { content, .. })) => {
+            Some(format!("{content:?}"))
+        }
         _ => None,
     };
     assert!(
@@ -536,9 +541,7 @@ async fn a_dialect_that_streams_a_message_per_chunk_is_still_streaming() {
         "\"usage\":{\"prompt_tokens\":7,\"completion_tokens\":1,\"total_tokens\":8}}\n\n",
     );
 
-    let wire = OpenAI::new("pplx")
-        .with_dialect(&PERPLEXITY)
-        .chat("sonar");
+    let wire = OpenAI::new("pplx").with_dialect(&PERPLEXITY).chat("sonar");
     let mut response = Bound::new(
         wire,
         MockStreamingClient {
@@ -779,12 +782,19 @@ async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
         ("length", FinishReason::Length),
         ("content_filter", FinishReason::ContentFilter),
     ] {
-        let response = Bound::new(wire(), RecordingHttpClient::new(empty_turn_body(Some(reason))))
-            .completion(prompt("ask"))
-            .await
-            .unwrap_or_else(|error| panic!("`{reason}` is a cut-short turn, not a defect: {error}"));
+        let response = Bound::new(
+            wire(),
+            RecordingHttpClient::new(empty_turn_body(Some(reason))),
+        )
+        .completion(prompt("ask"))
+        .await
+        .unwrap_or_else(|error| panic!("`{reason}` is a cut-short turn, not a defect: {error}"));
 
-        assert!(response.choice.is_empty(), "{reason}: {:?}", response.choice);
+        assert!(
+            response.choice.is_empty(),
+            "{reason}: {:?}",
+            response.choice
+        );
         assert_eq!(response.finish_reason(), Some(expected), "{reason}");
         // Raising would have thrown these away, which is the whole reason
         // the cut-short turn is kept.
@@ -805,7 +815,12 @@ async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
 /// stop-sequence cell records.
 #[tokio::test]
 async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
-    for reason in [Some("stop"), Some("tool_calls"), Some("bespoke_reason"), None] {
+    for reason in [
+        Some("stop"),
+        Some("tool_calls"),
+        Some("bespoke_reason"),
+        None,
+    ] {
         let folded = Bound::new(wire(), RecordingHttpClient::new(empty_turn_body(reason)))
             .completion(prompt("ask"))
             .await;

@@ -166,10 +166,9 @@ fn observed(sink: &Observed) -> CompletionResponse {
 async fn raw_round_trips_venice_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_venice_type";
     let sink = Observed::default();
-    with_venice_cassette_result(
-        "raw_capture_matrix/raw_round_trips_venice_type",
-        |client| run(client, sink.clone()),
-    )
+    with_venice_cassette_result("raw_capture_matrix/raw_round_trips_venice_type", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_round_trips_venice_type should replay from its cassette");
     let response = observed(&sink);

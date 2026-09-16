@@ -54,10 +54,10 @@ use rig::completion::{
 };
 use rig::driver::Bound;
 use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
+use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{CompletionResponse, Content};
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
-use rig::providers::anthropic;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -474,7 +474,10 @@ async fn normalized_fields_match_raw_renormalized() {
     );
     assert_eq!(Some(typed.model.as_str()), observed.model.as_deref());
     assert_eq!(Some(typed.usage.input_tokens), observed.usage.input_tokens);
-    assert_eq!(Some(typed.usage.output_tokens), observed.usage.output_tokens);
+    assert_eq!(
+        Some(typed.usage.output_tokens),
+        observed.usage.output_tokens
+    );
     let provider_text: String = typed
         .content
         .iter()

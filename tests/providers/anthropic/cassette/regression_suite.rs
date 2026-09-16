@@ -9,8 +9,8 @@
 use rig::completion::FinishReason;
 use rig::driver::Bound;
 use rig::prelude::*;
-use rig::providers::anthropic::wire::Messages;
 use rig::providers::anthropic;
+use rig::providers::anthropic::wire::Messages;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{

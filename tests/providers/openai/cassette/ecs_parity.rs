@@ -18,8 +18,11 @@ use crate::{
 #[tokio::test]
 async fn completion_smoke() {
     with_openai_cassette("agent/completion_smoke", |client| async move {
-        let mut ecs =
-            EcsAgent::new(client.responses.completion(openai::GPT_4O), BASIC_PREAMBLE, 1);
+        let mut ecs = EcsAgent::new(
+            client.responses.completion(openai::GPT_4O),
+            BASIC_PREAMBLE,
+            1,
+        );
         assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
     })
     .await;

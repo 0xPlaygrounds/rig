@@ -136,8 +136,8 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
         1,
         "{scenario}: the scenario must record exactly one interaction"
     );
-    let request: serde_json::Value = serde_json::from_str(&interactions[0].0)
-        .expect("the recorded request body should be JSON");
+    let request: serde_json::Value =
+        serde_json::from_str(&interactions[0].0).expect("the recorded request body should be JSON");
     assert_eq!(
         request.get("store"),
         Some(&serde_json::Value::Bool(false)),

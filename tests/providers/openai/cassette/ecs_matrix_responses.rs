@@ -283,7 +283,9 @@ async fn causal_completion_streamed() {
 fn reasoning_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.responses.completion(rig::providers::openai::GPT_5_MINI),
+        model: client
+            .responses
+            .completion(rig::providers::openai::GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

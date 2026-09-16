@@ -11,7 +11,9 @@ use crate::image_generation::{
 };
 use crate::operation::ImageGeneration;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
-use crate::wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame};
+use crate::wire::{
+    Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
+};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::Value;

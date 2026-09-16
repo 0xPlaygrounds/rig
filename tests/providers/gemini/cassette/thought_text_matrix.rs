@@ -441,11 +441,7 @@ struct TextResponseCell {
     thoughts_expected: bool,
 }
 
-async fn text_response_body(
-    client: BoundGemini,
-    scenario: &'static str,
-    cell: TextResponseCell,
-) {
+async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: TextResponseCell) {
     let TextResponseCell {
         model_id,
         prompt,

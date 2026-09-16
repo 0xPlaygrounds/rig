@@ -29,12 +29,12 @@ use futures::{Stream, StreamExt};
 use super::wire::WireEvent;
 use crate::completion::CompletionError;
 use crate::operation::Completion;
-use crate::wire::Decoder;
 use crate::streaming::{
     BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal, StreamingResult,
     SyntheticIds, ToolCallEnd, UnknownPayload,
 };
 use crate::wasm_compat::WasmCompatSend;
+use crate::wire::Decoder;
 
 /// One transport frame, after framing but before decoding.
 ///

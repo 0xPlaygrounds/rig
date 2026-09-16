@@ -1,6 +1,7 @@
 use super::super::completion::{
-    AnthropicCompletionRequest, AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent,
-    apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control,
+    AnthropicCompletionRequest, AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl,
+    Message, SystemContent, apply_prompt_cache_control, build_tool_definitions,
+    resolve_top_level_cache_control,
 };
 use super::*;
 use crate::completion::CompletionRequest;
@@ -1834,16 +1835,16 @@ mod terminal_emission {
         // A transport failure injected into the byte stream after some
         // content must be forwarded (via `from_stream_transport`) and must
         // not be papered over with a synthesized terminal record.
-        let bound = Anthropic::new("test-key")
-            .messages(CLAUDE_SONNET_4_6)
-            .bind(SequencedStreamingHttpClient::new(vec![
+        let bound = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6).bind(
+            SequencedStreamingHttpClient::new(vec![
                 Ok(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA])),
                 Err(crate::http_client::Error::non_success_with_details(
                     http::StatusCode::BAD_GATEWAY,
                     http::HeaderMap::new(),
                     "connection reset".to_string(),
                 )),
-            ]));
+            ]),
+        );
         let request = bound.completion_request("hello").build();
         let mut stream = crate::completion::CompletionModel::stream(&bound, request)
             .await
@@ -1915,11 +1916,12 @@ mod terminal_emission {
     #[tokio::test]
     async fn streamed_error_envelope_preserves_the_verbatim_body() {
         const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
-        let bound = Anthropic::new("test-key")
-            .messages(CLAUDE_SONNET_4_6)
-            .bind(MockStreamingClient {
-                sse_bytes: sse(&[MESSAGE_START, ENVELOPE]),
-            });
+        let bound =
+            Anthropic::new("test-key")
+                .messages(CLAUDE_SONNET_4_6)
+                .bind(MockStreamingClient {
+                    sse_bytes: sse(&[MESSAGE_START, ENVELOPE]),
+                });
         let request = bound.completion_request("hello").build();
         let mut stream = crate::completion::CompletionModel::stream(&bound, request)
             .await
@@ -2056,11 +2058,12 @@ mod terminal_emission {
     async fn terminal_raw_round_trips_into_the_terminal_type() {
         const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
 
-        let bound = Anthropic::new("test-key")
-            .messages(CLAUDE_SONNET_4_6)
-            .bind(MockStreamingClient {
-                sse_bytes: sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA]),
-            });
+        let bound =
+            Anthropic::new("test-key")
+                .messages(CLAUDE_SONNET_4_6)
+                .bind(MockStreamingClient {
+                    sse_bytes: sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA]),
+                });
         let request = bound.completion_request("hello").build();
         let mut stream = crate::completion::CompletionModel::stream(&bound, request)
             .await

@@ -1,7 +1,7 @@
 //! Anthropic model listing smoke test.
 
-use rig::model::ModelLister;
 use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};
+use rig::model::ModelLister;
 
 #[tokio::test]
 async fn list_models_smoke() {
@@ -53,7 +53,12 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
             };
 
             assert_eq!(*status_code, 401, "unexpected status: {error:#?}");
-            for expected in ["provider=Anthropic", "path=/v1/models", "status=401"] {
+            // `provider=` carries the wire's stable descriptor name, which is
+            // the same lowercase token `CompletionResponse::provider` reports
+            // and telemetry records. The deleted client layer decorated this
+            // message with its own capitalised display name instead, so there
+            // were two spellings of one provider's identity; there is now one.
+            for expected in ["provider=anthropic", "path=/v1/models", "status=401"] {
                 assert!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

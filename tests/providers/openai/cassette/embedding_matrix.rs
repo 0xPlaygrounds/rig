@@ -44,7 +44,10 @@ fn assert_raw_agrees_with_normalized(response: &EmbeddingResponse) {
         assert_eq!(datum.embedding.len(), embedding.vec.len());
     }
     let usage = reply.usage.expect("OpenAI reports embedding usage");
-    assert_eq!(response.usage.input_tokens, Some(usage.prompt_tokens as u64));
+    assert_eq!(
+        response.usage.input_tokens,
+        Some(usage.prompt_tokens as u64)
+    );
     assert_eq!(response.usage.total_tokens, Some(usage.total_tokens as u64));
 }
 
@@ -137,7 +140,9 @@ async fn single_text_convenience() {
 async fn dimensions_request() {
     with_openai_cassette("embedding_matrix/dimensions_request", |client| async move {
         let ndims = 512;
-        let model = client.chat.embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(ndims));
+        let model = client
+            .chat
+            .embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(ndims));
         let response = model
             .embed_texts_response(inputs())
             .await

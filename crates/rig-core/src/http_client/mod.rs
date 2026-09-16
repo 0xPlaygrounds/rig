@@ -142,8 +142,7 @@ pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
 
 /// The body of a streaming response: the transport's own chunks, boxed.
-pub type BoxedStream =
-    std::pin::Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>>;
+pub type BoxedStream = std::pin::Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>>;
 
 pub type StreamingResponse = Response<BoxedStream>;
 

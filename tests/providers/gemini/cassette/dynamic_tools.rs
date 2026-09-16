@@ -8,8 +8,8 @@
 //! turns.
 
 use rig::completion::Message;
-use rig::embeddings::EmbeddingsBuilder;
 use rig::driver::{Bound, Socket};
+use rig::embeddings::EmbeddingsBuilder;
 use rig::prelude::*;
 use rig::providers::gemini::{self, Gemini};
 use rig::tool::ToolSet;

@@ -30,18 +30,18 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 use self::gemini_api_types::tool_parameters_to_schema;
 use crate::completion::{self, CompletionError, CompletionRequest};
 use crate::message::{self, MimeType, Reasoning};
+use crate::operation::Completion;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
 use crate::telemetry::CompletionOperation;
+use crate::wire::{Body, Encoded, Framing, Mode, Wire};
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
     GenerationConfig, Part, PartKind, Role, Tool, map_finish_reason,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use crate::operation::Completion;
-use crate::wire::{Body, Encoded, Framing, Mode, Wire};
 
 // =================================================================
 // Rig Implementation Types

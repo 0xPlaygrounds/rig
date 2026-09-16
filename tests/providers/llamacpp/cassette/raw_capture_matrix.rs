@@ -59,8 +59,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_capture_matrix -- --test-threads=1`
 
 use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse as RigCompletionResponse,
-    FinishReason,
+    CompletionModel, CompletionRequest, CompletionResponse as RigCompletionResponse, FinishReason,
 };
 use rig::message::AssistantContent;
 use rig::providers::{llamacpp, openai};
@@ -252,10 +251,9 @@ async fn raw_reads_back_as_the_provider_type() {
 async fn raw_exposes_envelope_fields() {
     let scenario = "raw_capture_matrix/raw_exposes_envelope_fields";
     let sink = Observed::default();
-    with_llamacpp_cassette(
-        "raw_capture_matrix/raw_exposes_envelope_fields",
-        |client| run(client, sink.clone()),
-    )
+    with_llamacpp_cassette("raw_capture_matrix/raw_exposes_envelope_fields", |client| {
+        run(client, sink.clone())
+    })
     .await;
     let response = observed(&sink);
 

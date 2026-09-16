@@ -15,9 +15,7 @@ const DOUBLEWORD_BASE_URL: &str = "https://api.doubleword.ai/v1";
 /// is a bound wire.
 pub(super) type BoundDoubleword = Bound<OpenAI, BoxedHttpClient>;
 
-async fn doubleword_cassette(
-    spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, BoundDoubleword) {
+async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDoubleword) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "doubleword",

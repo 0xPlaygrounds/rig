@@ -195,10 +195,7 @@ async fn raw_and_normalized_views_agree_on_identity() {
                 .completion(request)
                 .await
                 .expect("completion should succeed");
-            assert_transport_request_id(
-                response.provider_request_id.as_deref(),
-                "normalized view",
-            );
+            assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");
 
             let reply = ResponsesReply::deserialize(&response.raw)
                 .expect("`raw` is the serialized responses_api::CompletionResponse");

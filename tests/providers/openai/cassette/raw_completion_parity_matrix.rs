@@ -311,10 +311,7 @@ fn assert_chat_views_agree(
 /// interactions. The first call's reply is read both ways (the provider's own
 /// type out of `raw`, and the normalized response); the second call's
 /// response is the side the parity assertions compare against.
-fn chat_parity_body(
-    sink: Observed,
-    request_for: fn(&Bound<Chat>) -> CompletionRequest,
-) -> Body {
+fn chat_parity_body(sink: Observed, request_for: fn(&Bound<Chat>) -> CompletionRequest) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
             let model = client.chat.completion(MODEL);

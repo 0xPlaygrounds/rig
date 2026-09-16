@@ -154,7 +154,8 @@ impl AgentHook for PermissionHook {
 async fn permission_control_prompt_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = live_client().await
+    let agent = live_client()
+        .await
         .agent(LIVE_MODEL)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)
@@ -188,7 +189,8 @@ async fn permission_control_prompt_example() -> Result<()> {
 async fn permission_control_streaming_example() -> Result<()> {
     let _cleanup = FileCleanup::new()?;
 
-    let agent = live_client().await
+    let agent = live_client()
+        .await
         .agent(LIVE_MODEL)
         .preamble("You are a helpful assistant that can read files using different methods.")
         .tool(ReadFileHead)

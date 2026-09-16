@@ -62,9 +62,9 @@
 use rig::completion::{CompletionModel as _, FinishReason, ToolDefinition};
 use rig::driver::Bound;
 use rig::prelude::*;
+use rig::providers::anthropic;
 use rig::providers::anthropic::completion::CompletionResponse;
 use rig::providers::anthropic::wire::Messages;
-use rig::providers::anthropic;
 use serde::Deserialize;
 use serde_json::json;
 

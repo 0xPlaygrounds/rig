@@ -1,11 +1,11 @@
-use rig::client::DefaultTransportBuilder as _;
+use rig::client::DefaultTransport as _;
 use serde_json::json;
 
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
 use rig::lancedb::{LanceDbVectorIndex, SearchParams};
 use rig::{
-    client::{AgentModelExt, EmbeddingsClient},
+    client::AgentModelExt,
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
     prelude::*,
     providers::openai,
@@ -105,14 +105,13 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
+    let openai_client = openai::wire::OpenAI::new("TEST")
+        .with_base_url(server.base_url())
+        .bound()
         .unwrap();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Initialize LanceDB locally.
     let store = assert_fs::TempDir::new().unwrap();
@@ -318,14 +317,13 @@ async fn agent_with_dynamic_context_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
+    let openai_client = openai::wire::OpenAI::new("TEST")
+        .with_base_url(server.base_url())
+        .bound()
         .unwrap();
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Initialize LanceDB locally.
     let store = assert_fs::TempDir::new().unwrap();
@@ -389,8 +387,7 @@ async fn agent_with_dynamic_context_test() {
 
     // Build RAG agent with dynamic context.
     let agent = openai_client
-        .completion_model(openai::GPT_4O)
-        .completions_api()
+        .completion(openai::GPT_4O)
         .into_agent_builder()
         .dynamic_context(top_k, vector_store_index)
         .build();

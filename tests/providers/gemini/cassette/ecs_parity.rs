@@ -1,10 +1,10 @@
 //! Provider-adapter execution through native ECS, using the original agent
 //! fixtures. The original tests remain independent baseline executions.
 
+use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,
 };
-use rig::providers::gemini;
 use rig_ecs::{
     agent::{AdditionalParams, MaxTokens, Temperature},
     bus::Streamed,

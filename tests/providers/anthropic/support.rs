@@ -14,9 +14,7 @@ pub(super) struct AnthropicFilesCassette {
     pub(super) api_key: String,
 }
 
-async fn anthropic_cassette(
-    spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, Bound<Anthropic>) {
+async fn anthropic_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<Anthropic>) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "anthropic",

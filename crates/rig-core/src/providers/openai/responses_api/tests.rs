@@ -930,16 +930,17 @@ fn responses_request_conversion_keeps_tools_non_strict_by_default() {
 
 #[test]
 fn responses_wire_strict_tools_opt_in_sanitizes_all_function_tools() {
-    let wire = openai_wire("gpt-4o-mini")
-        .with_strict_tools()
-        .with_tool(completion::ToolDefinition {
-            name: "lookup".to_string(),
-            description: "Look something up".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {"q": {"type": "string"}}
-            }),
-        });
+    let wire =
+        openai_wire("gpt-4o-mini")
+            .with_strict_tools()
+            .with_tool(completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Look something up".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {"q": {"type": "string"}}
+                }),
+            });
 
     let mut request = weather_tool_request();
     request.additional_params = Some(json!({
@@ -1426,8 +1427,8 @@ fn completion_response_accepts_reasoning_only_response() {
     }))
     .expect("reasoning-only response should deserialize");
 
-    let completion: completion::CompletionResponse = wire::fold_body("openai", response)
-        .expect("reasoning-only response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("openai", response).expect("reasoning-only response should convert");
     let items = completion.choice.iter().collect::<Vec<_>>();
 
     assert_eq!(items.len(), 1);
@@ -2752,11 +2753,7 @@ mod raw_capture {
         headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
         let model = Bound::new(
             openai_wire("gpt-4o-mini"),
-            RecordingHttpClient::with_error_response_headers(
-                http::StatusCode::OK,
-                BODY,
-                headers,
-            ),
+            RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers),
         );
 
         let response = model

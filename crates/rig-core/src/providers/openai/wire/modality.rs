@@ -12,7 +12,6 @@ use crate::audio_generation::AudioGenerationError;
 use crate::client::VerifyError;
 use crate::embeddings::{self, EmbeddingError};
 use crate::model::{Model, ModelList, ModelListingError};
-use crate::rerank::RerankError;
 use crate::operation::{
     Embedding, EmbeddingCapabilities, ModelListing, Rerank as RerankOp, Transcription,
     Verify as VerifyOp,
@@ -20,6 +19,7 @@ use crate::operation::{
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::completion::Usage;
 use crate::providers::openai::embedding::{EncodingFormat, model_dimensions_from_identifier};
+use crate::rerank::RerankError;
 use crate::transcription::{TranscriptionError, TranscriptionRequest};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
@@ -210,7 +210,10 @@ impl Embeddings {
         // At a documented model's native width, send nothing: that width is
         // what the model emits unasked, so the field would only restate the
         // default and the vector is identical either way.
-        if self.model_width().is_some_and(|width| width.default == Some(ndims)) {
+        if self
+            .model_width()
+            .is_some_and(|width| width.default == Some(ndims))
+        {
             return None;
         }
         Some((field, ndims))
@@ -451,15 +454,18 @@ impl Wire for Transcriptions {
         request: TranscriptionRequest,
         _mode: Mode,
     ) -> Result<Encoded, TranscriptionError> {
-        use crate::http_client::multipart::Part;
         use crate::http_client::MultipartForm;
+        use crate::http_client::multipart::Part;
 
         let mut form = MultipartForm::new();
         // Azure addresses a deployment in the URL and sends no model field;
         // every other dialect names the model in the form. Field order
         // matches the order these endpoints were built by hand, so recorded
         // requests stay byte-comparable.
-        if !matches!(self.provider.dialect.quirks.routing, Routing::AzureDeployment) {
+        if !matches!(
+            self.provider.dialect.quirks.routing,
+            Routing::AzureDeployment
+        ) {
             form = form.text("model", self.model.clone());
         }
         form = form.part(Part::bytes("file", request.data).filename(request.filename));
@@ -641,8 +647,8 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
         event: Self::Event,
         out: &mut Output<crate::operation::ImageGeneration>,
     ) {
-        use base64::Engine;
         use crate::image_generation::{ImageGenerationError, ImageGenerationResponse};
+        use base64::Engine;
 
         let reply = match event {
             // The image is already the payload, and the reply is not a
@@ -1139,10 +1145,13 @@ impl Decoder<RerankOp> for RerankDecoder {
             .collect();
         // A server that omits `model` still produced a ranking; `None` is the
         // honest report.
-        out.push(Ok(crate::rerank::RerankResponse::new(results, self.provider)
-            .with_optional_model(event.model)
-            .with_usage(usage)
-            .with_raw(raw)));
+        out.push(Ok(crate::rerank::RerankResponse::new(
+            results,
+            self.provider,
+        )
+        .with_optional_model(event.model)
+        .with_usage(usage)
+        .with_raw(raw)));
     }
 }
 

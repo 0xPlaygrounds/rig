@@ -68,9 +68,9 @@ use rig_core::providers::openai::responses_api::wire as responses;
 use rig_core::providers::openai::wire as openai;
 use rig_core::wire::Secret;
 
-use rig_ecs::bus::{ProviderBinding, ProviderKind};
 use cells::Cell;
 use corpus::Program;
+use rig_ecs::bus::{ProviderBinding, ProviderKind};
 
 /// The owner every producer names itself: the golden's keys are
 /// `golden/model:default`, `golden/tool:<name>#<n>`, `golden/memory`.

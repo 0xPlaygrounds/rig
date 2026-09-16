@@ -127,7 +127,7 @@ async fn drain_openai_responses_websocket_events(
                         | ResponseChunkKind::ResponseIncomplete
                 );
                 if let Err(error) =
-                    accumulator.record_response_chunk(chunk.kind, chunk.response, "")
+                    accumulator.record_response_chunk(chunk.kind, chunk.response, "", &mut out)
                 {
                     accumulator.flush_tool_calls(&mut out);
                     out.error(error);

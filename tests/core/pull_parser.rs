@@ -4,9 +4,7 @@ use futures::{Stream, StreamExt};
 use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
     completion::CompletionModel,
-    http_client::{
-        self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse,
-    },
+    http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
     prelude::*,
     providers::{
         anthropic::wire::Anthropic,

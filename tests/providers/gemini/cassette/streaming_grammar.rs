@@ -746,8 +746,7 @@ async fn interactions_requires_action_roundtrip() {
             // document `raw` carries verbatim — the interaction resource is
             // the reply, and the fold is the other view of it.
             let interaction: interactions_api::Interaction =
-                serde_json::from_value(raw.raw.clone())
-                    .expect("`raw` is the interaction resource");
+                serde_json::from_value(raw.raw.clone()).expect("`raw` is the interaction resource");
             assert!(
                 matches!(
                     interaction.status,

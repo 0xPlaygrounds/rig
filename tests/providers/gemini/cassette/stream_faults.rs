@@ -52,9 +52,7 @@ pub(super) fn gemini_sse(frames: &[&str]) -> Bytes {
 
 /// A client over a transport that answers one streaming request with
 /// `chunks`, then EOF.
-pub(super) fn scripted_client(
-    chunks: Vec<Bytes>,
-) -> Bound<Gemini, SequencedStreamingHttpClient> {
+pub(super) fn scripted_client(chunks: Vec<Bytes>) -> Bound<Gemini, SequencedStreamingHttpClient> {
     Gemini::new(SCRIPTED_KEY).bind(scripted(chunks))
 }
 

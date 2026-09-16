@@ -171,7 +171,11 @@ fn assert_matches_own_wire(response: &RigCompletionResponse, terminal: &Value) {
                 Some(from_wire.id.as_str()),
                 "response id"
             );
-            assert_eq!(identity.message_id, wire_message_id(&from_wire), "message id");
+            assert_eq!(
+                identity.message_id,
+                wire_message_id(&from_wire),
+                "message id"
+            );
         }
         // Live, the fixture holds placeholders; the shape claim is that the
         // fold populated the same identity axes the wire populated.

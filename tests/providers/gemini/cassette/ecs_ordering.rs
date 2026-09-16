@@ -9,10 +9,10 @@ use crate::{
         assert_tool_call_precedes_later_text,
     },
 };
+use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
 };
-use rig::providers::gemini;
 use rig_ecs::agent::AdditionalParams;
 
 #[tokio::test]

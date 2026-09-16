@@ -23,9 +23,7 @@ pub(super) type BoundOpenRouter = Bound<OpenAI, BoxedHttpClient>;
 /// the point of those cells is that rig's Responses wire drives it unchanged.
 pub(super) type BoundOpenRouterResponses = Bound<ResponsesApi, BoxedHttpClient>;
 
-async fn openrouter_cassette(
-    spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, BoundOpenRouter) {
+async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundOpenRouter) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "openrouter",

@@ -39,9 +39,7 @@
 //! so it proves nothing about `raw` on its own.
 
 use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
-use rig::providers::cohere::completion::{
-    CompletionResponse, FinishReason as CohereFinishReason,
-};
+use rig::providers::cohere::completion::{CompletionResponse, FinishReason as CohereFinishReason};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};

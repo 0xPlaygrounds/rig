@@ -10,9 +10,7 @@ use serde_json::json;
 use std::fs;
 use std::path::Path;
 
-use crate::copilot::{
-    LIVE_MODEL, authorize, copilot_api_key, copilot_github_access_token,
-};
+use crate::copilot::{LIVE_MODEL, authorize, copilot_api_key, copilot_github_access_token};
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 fn required_copilot_api_key() -> String {

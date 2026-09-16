@@ -60,8 +60,8 @@ use rig::agent::{
 use rig::completion::PromptError;
 use rig::driver::Bound;
 use rig::prelude::*;
-use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::streaming::StreamedUserContent;
 use serde_json::Value;
 

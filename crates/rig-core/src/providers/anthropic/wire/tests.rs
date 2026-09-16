@@ -40,7 +40,9 @@ fn wire() -> Messages {
 fn request() -> CompletionRequest {
     CompletionRequest {
         model: None,
-        chat_history: vec![crate::message::Message::user("Reply with exactly: parity probe")],
+        chat_history: vec![crate::message::Message::user(
+            "Reply with exactly: parity probe",
+        )],
         documents: Vec::new(),
         tools: Vec::new(),
         temperature: None,
@@ -148,7 +150,10 @@ fn the_request_carries_the_key_version_and_endpoint() {
     let request = encoded.requests.first().expect("one request");
     assert_eq!(request.uri().path(), "/v1/messages");
     assert_eq!(
-        request.headers().get("x-api-key").and_then(|v| v.to_str().ok()),
+        request
+            .headers()
+            .get("x-api-key")
+            .and_then(|v| v.to_str().ok()),
         Some("sk-test")
     );
     assert_eq!(
@@ -210,8 +215,11 @@ fn a_gateway_defaults_max_tokens_to_its_one_documented_ceiling() {
     // A gateway documents one ceiling rather than per-model limits, so an
     // unrecognized model still gets a usable default.
     assert_eq!(ZAI.default_max_tokens("some-unknown-model"), Some(4096));
-    assert!(!ZAI.strict_tool_schemas);
-    assert!(ANTHROPIC.strict_tool_schemas);
+    // `strict_tool_schemas` is a const field of a const dialect, so the
+    // gateway's disagreement with Anthropic is a compile-time fact, not a
+    // runtime one.
+    const _: () = assert!(!ZAI.strict_tool_schemas);
+    const _: () = assert!(ANTHROPIC.strict_tool_schemas);
 }
 
 #[test]

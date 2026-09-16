@@ -620,11 +620,12 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
                     .collect(),
             })
             .collect();
-        out.push(Ok(
-            embeddings::EmbeddingResponse::new(embeddings, PROVIDER_NAME)
-                .with_optional_model(event.model)
-                .with_usage(usage),
-        ));
+        out.push(Ok(embeddings::EmbeddingResponse::new(
+            embeddings,
+            PROVIDER_NAME,
+        )
+        .with_optional_model(event.model)
+        .with_usage(usage)));
     }
 }
 
@@ -666,11 +667,10 @@ impl Wire for Embeddings {
             object.insert("user".to_owned(), serde_json::json!(user));
         }
 
-        let mut request =
-            http::Request::post(self.provider.uri(EMBEDDINGS_PATH))
-                .header(http::header::CONTENT_TYPE, "application/json")
-                .body(Body::Bytes(serde_json::to_vec(&body)?))
-                .map_err(|error| EmbeddingError::ResponseError(error.to_string()))?;
+        let mut request = http::Request::post(self.provider.uri(EMBEDDINGS_PATH))
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(Body::Bytes(serde_json::to_vec(&body)?))
+            .map_err(|error| EmbeddingError::ResponseError(error.to_string()))?;
         // The modality routes are not a conversation: the client layer sent
         // them the panel intent and a `user` initiator, and that is what the
         // recorded traffic carries.

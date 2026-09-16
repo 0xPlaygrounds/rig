@@ -126,11 +126,17 @@ fn evicts(existing: (&str, &str), incoming: &CompatibleToolCallChunk) -> bool {
 #[test]
 fn a_second_call_at_one_index_is_told_apart_by_id_and_opening_shape() {
     assert!(
-        evicts(("call_a", "get_weather"), &fragment(Some("call_b"), Some("get_time"), None)),
+        evicts(
+            ("call_a", "get_weather"),
+            &fragment(Some("call_b"), Some("get_time"), None)
+        ),
         "a new id under a different name is a different call"
     );
     assert!(
-        evicts(("call_a", "get_weather"), &fragment(Some("call_b"), Some("get_weather"), None)),
+        evicts(
+            ("call_a", "get_weather"),
+            &fragment(Some("call_b"), Some("get_weather"), None)
+        ),
         "a new id re-announcing the same name with no arguments opens a second call"
     );
     assert!(
@@ -141,11 +147,17 @@ fn a_second_call_at_one_index_is_told_apart_by_id_and_opening_shape() {
         "a same-named fragment carrying arguments continues the open call"
     );
     assert!(
-        !evicts(("call_a", "get_weather"), &fragment(Some("call_a"), Some("get_time"), None)),
+        !evicts(
+            ("call_a", "get_weather"),
+            &fragment(Some("call_a"), Some("get_time"), None)
+        ),
         "the same id is the same call, whatever the name says"
     );
     assert!(
-        !evicts(("call_a", "get_weather"), &fragment(None, Some("get_time"), None)),
+        !evicts(
+            ("call_a", "get_weather"),
+            &fragment(None, Some("get_time"), None)
+        ),
         "an id-less fragment carries no evidence of a second call"
     );
     assert!(

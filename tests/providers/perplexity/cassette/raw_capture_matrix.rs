@@ -161,7 +161,10 @@ fn observed(sink: &Observed) -> CompletionResponse {
 async fn raw_is_the_verbatim_response_body() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
     let sink = Observed::default();
-    with_perplexity_cassette("raw_capture_matrix/raw_round_trips_openai_type", |client| run(client, sink.clone())).await;
+    with_perplexity_cassette("raw_capture_matrix/raw_round_trips_openai_type", |client| {
+        run(client, sink.clone())
+    })
+    .await;
     let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
@@ -192,7 +195,10 @@ async fn raw_is_the_verbatim_response_body() {
             "raw should carry the provider's `{key}` unchanged"
         );
     }
-    assert_eq!(Some(raw["id"].as_str()), Some(response.response_id.as_deref()));
+    assert_eq!(
+        Some(raw["id"].as_str()),
+        Some(response.response_id.as_deref())
+    );
 }
 
 // ================================================================
@@ -203,7 +209,11 @@ async fn raw_is_the_verbatim_response_body() {
 async fn raw_exposes_object_and_citations() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object_not_citations";
     let sink = Observed::default();
-    with_perplexity_cassette("raw_capture_matrix/raw_exposes_object_not_citations", |client| run(client, sink.clone())).await;
+    with_perplexity_cassette(
+        "raw_capture_matrix/raw_exposes_object_not_citations",
+        |client| run(client, sink.clone()),
+    )
+    .await;
     let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
@@ -244,7 +254,11 @@ async fn raw_exposes_object_and_citations() {
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
     let sink = Observed::default();
-    with_perplexity_cassette("raw_capture_matrix/normalized_fields_match_raw_renormalized", |client| run(client, sink.clone())).await;
+    with_perplexity_cassette(
+        "raw_capture_matrix/normalized_fields_match_raw_renormalized",
+        |client| run(client, sink.clone()),
+    )
+    .await;
     let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);

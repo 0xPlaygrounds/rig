@@ -597,8 +597,8 @@ fn an_unknown_conversational_endpoint_is_a_finding_not_a_skip() {
 // `serde_json` is deterministic, which was never in doubt.
 
 use rig::completion::{CompletionModel as _, CompletionRequest, ToolDefinition};
-use rig::prelude::*;
 use rig::message::{Message, UserContent};
+use rig::prelude::*;
 use rig_core::test_utils::RecordingHttpClient;
 
 /// How many times each provider's request is serialized before the bytes are

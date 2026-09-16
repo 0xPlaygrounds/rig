@@ -51,12 +51,10 @@ async fn caching_and_identity_share_the_wire_blocking() {
     with_anthropic_cassette(
         "response_identity_edge/caching_and_identity_share_the_wire_blocking",
         |client| async move {
-            let model = client
-                .completion(CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_prompt_caching()
-                        .with_static_prefix_cache_ttl(CacheTtl::OneHour)
-                });
+            let model = client.completion(CLAUDE_SONNET_4_6).map_wire(|wire| {
+                wire.with_prompt_caching()
+                    .with_static_prefix_cache_ttl(CacheTtl::OneHour)
+            });
             let send = |model: Bound<Messages>| async move {
                 model
                     .completion(
@@ -110,12 +108,10 @@ async fn caching_and_identity_share_the_wire_streaming() {
     with_anthropic_cassette(
         "response_identity_edge/caching_and_identity_share_the_wire_streaming",
         |client| async move {
-            let model = client
-                .completion(CLAUDE_SONNET_4_6)
-                .map_wire(|wire| {
-                    wire.with_prompt_caching()
-                        .with_static_prefix_cache_ttl(CacheTtl::OneHour)
-                });
+            let model = client.completion(CLAUDE_SONNET_4_6).map_wire(|wire| {
+                wire.with_prompt_caching()
+                    .with_static_prefix_cache_ttl(CacheTtl::OneHour)
+            });
             let send = |model: Bound<Messages>| async move {
                 let mut stream = model
                     .completion_request("Reply with exactly: stream edge probe")

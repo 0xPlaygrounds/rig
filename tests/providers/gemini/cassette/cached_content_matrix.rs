@@ -50,13 +50,12 @@
 //! ```
 
 use rig::prelude::*;
-use rig::providers::gemini::{self, Gemini};
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
+use rig::providers::gemini::{self, Gemini};
 use std::time::Duration;
 
 use super::super::support::{
-    BoundGemini,
-    always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
+    BoundGemini, always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
     assert_recorded_response_contains, with_gemini_prompt_caching_cassette,
 };
 

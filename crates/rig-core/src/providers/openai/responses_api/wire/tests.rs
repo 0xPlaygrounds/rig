@@ -7,9 +7,9 @@
 use super::*;
 use crate::completion::{CompletionModel, CompletionRequest};
 use crate::driver::Bound;
+use crate::message::{self, Message};
 use crate::providers::chatgpt::DIALECT as CHATGPT;
 use crate::providers::xai::DIALECT as XAI;
-use crate::message::{self, Message};
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::{Body, Mode};
 use bytes::Bytes;
@@ -182,8 +182,7 @@ async fn a_unary_tool_turn_and_its_stream_fold_alike() {
 #[tokio::test]
 async fn a_chatgpt_replayed_body_folds_the_same_unary_and_streamed() {
     let sse = cassette_body("chatgpt/codex_tool_args/zero_argument_tool_call_nonstreaming.yaml");
-    let wire = ResponsesApi::with_dialect("test-token", &CHATGPT)
-        .responses("gpt-5.4");
+    let wire = ResponsesApi::with_dialect("test-token", &CHATGPT).responses("gpt-5.4");
 
     let buffered = folded_unary(wire.clone(), &sse).await;
     let streamed = folded_stream(wire, &sse).await;
@@ -303,7 +302,10 @@ fn the_chatgpt_dialect_sends_only_the_codex_parameter_subset() {
 fn the_chatgpt_dialect_merges_its_instructions_ahead_of_the_callers() {
     let body = encoded_body_of(
         &chatgpt(),
-        turn(vec![Message::system("Respond tersely."), Message::user("say hi")]),
+        turn(vec![
+            Message::system("Respond tersely."),
+            Message::user("say hi"),
+        ]),
         Mode::Unary,
     );
 
@@ -474,11 +476,7 @@ fn a_serialized_wire_carries_no_credential() {
 /// does not ship is an error rather than a silent default.
 #[test]
 fn a_dialect_round_trips_by_name() {
-    for dialect in [
-        OPENAI,
-        CHATGPT,
-        XAI,
-    ] {
+    for dialect in [OPENAI, CHATGPT, XAI] {
         let json = serde_json::to_string(&dialect).expect("a dialect serializes");
         assert_eq!(json, format!("\"{}\"", dialect.name));
         assert_eq!(

@@ -194,7 +194,10 @@ fn openai_responses_reasoning_output_preserves_encrypted_content() {
     assert_eq!(id, "rs_out_1");
     assert_eq!(encrypted_content.as_deref(), Some("cipher_blob"));
     assert_eq!(
-        summary.iter().map(ReasoningSummary::text).collect::<Vec<_>>(),
+        summary
+            .iter()
+            .map(ReasoningSummary::text)
+            .collect::<Vec<_>>(),
         ["summary text"]
     );
 }

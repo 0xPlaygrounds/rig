@@ -8,7 +8,9 @@
 
 use serde::Deserialize;
 
-use crate::wire::{AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationSink};
+use crate::wire::{
+    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, ObservationSink,
+};
 
 /// A counter the provider may send as a number, a string, or `null`.
 fn count<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<u64>, D::Error> {

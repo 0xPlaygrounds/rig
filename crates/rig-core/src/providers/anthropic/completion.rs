@@ -2323,8 +2323,7 @@ impl AnthropicCompletionRequest {
             automatic_caching_ttl.as_ref(),
             &mut additional_params_payload,
         )?;
-        let mut tools =
-            build_tool_definitions(req.tools, &mut additional_params_payload, strict)?;
+        let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload, strict)?;
 
         // System prompt in array format for cache_control support
         let mut system = history_system;

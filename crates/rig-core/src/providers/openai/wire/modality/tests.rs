@@ -3,9 +3,9 @@
 use super::super::tests::{recorded, recorded_json};
 use super::*;
 use crate::driver::Bound;
+use crate::embeddings::EmbeddingError;
 use crate::embeddings::EmbeddingModel as _;
 use crate::model::ModelLister as _;
-use crate::embeddings::EmbeddingError;
 use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
 use crate::providers::mistral::embedding::{CODESTRAL_EMBED, MISTRAL_EMBED};
 use crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002;
@@ -28,7 +28,10 @@ fn documents() -> Vec<String> {
 /// can supply them.
 #[tokio::test]
 async fn a_recorded_embedding_reply_zips_onto_the_requests_inputs() {
-    let reply = recorded("then", "embedding_matrix/normalized_response_is_complete.yaml");
+    let reply = recorded(
+        "then",
+        "embedding_matrix/normalized_response_is_complete.yaml",
+    );
     let wire = OpenAI::new("sk-test").embeddings("text-embedding-3-small", None);
     let bound = Bound::new(wire, RecordingHttpClient::new(reply));
 
@@ -123,7 +126,10 @@ fn an_unstated_width_resolves_from_the_model_table() {
     assert_eq!(width("some-compatible-embedder", None), None);
     // And OpenAI's legacy Ada model rejects the field outright.
     assert_eq!(
-        width(crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002, None),
+        width(
+            crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002,
+            None
+        ),
         None
     );
 }
@@ -187,13 +193,7 @@ fn the_dialect_decides_the_width_field() {
          `ndims()` describing vectors it never returned"
     );
     // OpenAI's legacy Ada model rejects the field outright.
-    assert_eq!(
-        width_field(
-            &OPENAI,
-            TEXT_EMBEDDING_ADA_002
-        ),
-        None
-    );
+    assert_eq!(width_field(&OPENAI, TEXT_EMBEDDING_ADA_002), None);
 }
 
 /// Azure addresses a deployment in the URL and therefore sends no `model`.
@@ -250,10 +250,13 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
 #[tokio::test]
 async fn a_recorded_model_listing_decodes() {
     let reply = recorded("then", "models/list_models_smoke.yaml");
-    let models = Bound::new(OpenAI::new("sk-test").models(), RecordingHttpClient::new(reply))
-        .list_all()
-        .await
-        .expect("the recorded catalogue decodes");
+    let models = Bound::new(
+        OpenAI::new("sk-test").models(),
+        RecordingHttpClient::new(reply),
+    )
+    .list_all()
+    .await
+    .expect("the recorded catalogue decodes");
     assert!(!models.is_empty(), "the catalogue is not empty");
     assert!(
         models.iter().all(|model| !model.id.is_empty()),
@@ -464,7 +467,10 @@ fn azure_speech_carries_its_own_api_version() {
         panic!("one request")
     };
     assert!(
-        request.uri().to_string().ends_with("?api-version=2024-10-21"),
+        request
+            .uri()
+            .to_string()
+            .ends_with("?api-version=2024-10-21"),
         "{}",
         request.uri()
     );
@@ -506,7 +512,12 @@ async fn a_recorded_rerank_reply_folds_its_ranking() {
     assert_eq!(response.usage.input_tokens, Some(37));
     assert_eq!(response.usage.total_tokens, Some(37));
     // llama.cpp never echoes the document text on this path.
-    assert!(response.results.iter().all(|result| result.document.is_none()));
+    assert!(
+        response
+            .results
+            .iter()
+            .all(|result| result.document.is_none())
+    );
 }
 
 /// The text-embeddings-inference shape the same llama.cpp handler switches to
@@ -593,7 +604,10 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
     assert_eq!(body["model_name"], "SDXL1.0-base");
     assert_eq!(body["width"], 1024);
     assert_eq!(body["height"], 768);
-    assert!(body.get("model").is_none(), "the key is `model_name`: {body}");
+    assert!(
+        body.get("model").is_none(),
+        "the key is `model_name`: {body}"
+    );
     assert!(body.get("size").is_none(), "the size is two fields: {body}");
 
     // And the reply is keyed `images[].image`, not `data[].b64_json`.
@@ -640,7 +654,10 @@ fn the_huggingface_image_body_is_the_routers_own_shape() {
     assert_eq!(body["inputs"], "a cat");
     assert_eq!(body["parameters"]["width"], 1024);
     assert_eq!(body["parameters"]["height"], 768);
-    assert!(body.get("prompt").is_none(), "the prompt is `inputs`: {body}");
+    assert!(
+        body.get("prompt").is_none(),
+        "the prompt is `inputs`: {body}"
+    );
     assert!(body.get("model").is_none(), "the model is the path: {body}");
     assert!(body.get("size").is_none(), "the size is nested: {body}");
     assert!(
@@ -764,7 +781,8 @@ fn azure_always_carries_an_api_version() {
 fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
     let unasked = OpenAI::with_key(&DOUBLEWORD, "k").embeddings(QWEN3_EMBEDDING_8B, None);
     assert_eq!(
-        unasked.capabilities().ndims, 4_096,
+        unasked.capabilities().ndims,
+        4_096,
         "the dialect's table is the only place this model's width is written down"
     );
 
@@ -816,8 +834,7 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
         OpenAI::with_key(dialect, "k")
             .embeddings(model, Some(ndims))
             .encode(documents(), Mode::Unary)
-            .err()
-            .expect("a width the dialect cannot honour must not reach the wire")
+            .expect_err("a width the dialect cannot honour must not reach the wire")
     }
 
     // The two Doubleword refusals read differently, and both texts are the
@@ -853,7 +870,8 @@ fn an_unhonourable_width_is_refused_before_the_request_is_built() {
     // rig polices only the range it has a table for. For a model the dialect
     // does not document, the caller's width is the only width there is: it
     // goes out unvalidated and the provider decides.
-    let unknown = OpenAI::with_key(&DOUBLEWORD, "k").embeddings("Qwen/Qwen4-Unreleased", Some(8_192));
+    let unknown =
+        OpenAI::with_key(&DOUBLEWORD, "k").embeddings("Qwen/Qwen4-Unreleased", Some(8_192));
     assert_eq!(unknown.capabilities().ndims, 8_192);
     let encoded = unknown
         .encode(documents(), Mode::Unary)

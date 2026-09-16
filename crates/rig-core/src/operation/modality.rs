@@ -374,10 +374,7 @@ impl Fold<Embedding> for Embedded {
         Ok(())
     }
 
-    fn finish(
-        self,
-        reply: Reply,
-    ) -> Result<crate::embeddings::EmbeddingResponse, EmbeddingError> {
+    fn finish(self, reply: Reply) -> Result<crate::embeddings::EmbeddingResponse, EmbeddingError> {
         let (embeddings, metadata, usage) = self.zipped()?;
         let mut response = crate::embeddings::EmbeddingResponse {
             embeddings,

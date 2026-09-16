@@ -10,9 +10,7 @@ use rig::completion::CompletionModel;
 use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
 
-fn wire(
-    client: &Bound<Anthropic>,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
         model: client.completion("claude-haiku-4-5-20251001"),

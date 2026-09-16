@@ -21,6 +21,4 @@ mod observation;
 pub mod streaming;
 pub mod wire;
 
-pub use wire::{
-    ANTHROPIC, Anthropic, Dialect, MaxTokens, Messages, Models, Verify, compatible,
-};
+pub use wire::{ANTHROPIC, Anthropic, Dialect, MaxTokens, Messages, Models, Verify, compatible};

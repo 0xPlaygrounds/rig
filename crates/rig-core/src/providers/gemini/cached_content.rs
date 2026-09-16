@@ -432,14 +432,15 @@ where
     ) -> Result<CachedContent, CachedContentError> {
         request.validate()?;
         let body = serde_json::to_vec(&request)?;
-        let http = http_client::Request::post(self.provider.uri(CACHED_CONTENTS_PATH)).body(body)?;
+        let http =
+            http_client::Request::post(self.provider.uri(CACHED_CONTENTS_PATH)).body(body)?;
         send_json(&self.http, http, None).await
     }
 
     /// Fetch one cached content by handle.
     pub async fn get(&self, name: &str) -> Result<CachedContent, CachedContentError> {
-        let http = http_client::Request::get(self.provider.uri(&resource_path(name)?))
-            .body(Vec::new())?;
+        let http =
+            http_client::Request::get(self.provider.uri(&resource_path(name)?)).body(Vec::new())?;
         send_json(&self.http, http, Some(name)).await
     }
 

@@ -50,7 +50,9 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 
 /// `think: false` keeps qwen3's reasoning trace out of the recording; the
 /// durations this matrix reads are reported either way.
-fn request(model: &(impl rig::completion::CompletionModel + Clone)) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl rig::completion::CompletionModel + Clone),
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .max_tokens(64)
@@ -249,9 +251,9 @@ async fn normalized_fields_equal_raw_renormalized() {
             let expected = match typed.done_reason.as_deref() {
                 Some("stop") => rig::completion::FinishReason::Stop,
                 Some("length") => rig::completion::FinishReason::Length,
-                other => panic!(
-                    "the recorded turn should stop naturally or hit the cap, got {other:?}"
-                ),
+                other => {
+                    panic!("the recorded turn should stop naturally or hit the cap, got {other:?}")
+                }
             };
             assert_eq!(
                 response.finish_reason(),
@@ -261,7 +263,10 @@ async fn normalized_fields_equal_raw_renormalized() {
             assert_eq!(typed.prompt_eval_count, response.usage.input_tokens);
             assert_eq!(typed.eval_count, response.usage.output_tokens);
             assert_eq!(
-                typed.prompt_eval_count.zip(typed.eval_count).map(|(i, o)| i + o),
+                typed
+                    .prompt_eval_count
+                    .zip(typed.eval_count)
+                    .map(|(i, o)| i + o),
                 response.usage.total_tokens,
                 "Ollama reports no total; the decoder derives it from both counts"
             );
@@ -292,7 +297,9 @@ async fn normalized_fields_equal_raw_renormalized() {
     assert_eq!(from_wire.prompt_eval_count, response.usage.input_tokens);
     assert_eq!(from_wire.eval_count, response.usage.output_tokens);
     assert_eq!(
-        normalized_without_raw(response).get("finish_reason").cloned(),
+        normalized_without_raw(response)
+            .get("finish_reason")
+            .cloned(),
         from_wire
             .done_reason
             .as_deref()

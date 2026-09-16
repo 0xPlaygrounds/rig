@@ -108,9 +108,11 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
         |client| async move {
             let model = client
                 .completion(anthropic::completion::CLAUDE_SONNET_4_6)
-                .map_wire(|wire| wire.with_automatic_caching().with_static_prefix_cache_ttl(
-                    rig::providers::anthropic::completion::CacheTtl::OneHour,
-                ));
+                .map_wire(|wire| {
+                    wire.with_automatic_caching().with_static_prefix_cache_ttl(
+                        rig::providers::anthropic::completion::CacheTtl::OneHour,
+                    )
+                });
 
             // The preamble must clear the model's minimum cacheable prompt
             // length or the API silently skips caching and the recorded

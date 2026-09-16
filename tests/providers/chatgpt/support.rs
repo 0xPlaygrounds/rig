@@ -21,12 +21,13 @@ async fn chatgpt_cassette_with_default_instructions(
         "https://chatgpt.com/backend-api/codex",
     )
     .await;
-    let client = ResponsesApi::with_dialect(cassette.api_key("CHATGPT_ACCESS_TOKEN"), &chatgpt::DIALECT)
-    .with_account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
-    .with_base_url(cassette.base_url())
-    .with_instructions(default_instructions)
-    .bound()
-    .expect("transport should build");
+    let client =
+        ResponsesApi::with_dialect(cassette.api_key("CHATGPT_ACCESS_TOKEN"), &chatgpt::DIALECT)
+            .with_account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
+            .with_base_url(cassette.base_url())
+            .with_instructions(default_instructions)
+            .bound()
+            .expect("transport should build");
 
     (cassette, client)
 }

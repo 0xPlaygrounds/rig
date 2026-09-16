@@ -332,9 +332,7 @@ async fn pagination_percent_encodes_the_cursor() {
 // (`tests/providers/gemini/support.rs`, which asserts the literal
 // `DELETE /v1beta/cachedContents/leaky`) match on.
 
-fn bound_caches(
-    http: SequencedHttpClient,
-) -> super::CachedContents<SequencedHttpClient> {
+fn bound_caches(http: SequencedHttpClient) -> super::CachedContents<SequencedHttpClient> {
     crate::driver::Bound::new(crate::providers::gemini::Gemini::new("test-key"), http)
         .cached_contents()
 }
@@ -394,7 +392,9 @@ async fn the_bound_cache_follows_the_listing_cursor() {
         .await
         .expect("both pages decode");
     assert_eq!(
-        all.iter().map(|cache| cache.name.as_str()).collect::<Vec<_>>(),
+        all.iter()
+            .map(|cache| cache.name.as_str())
+            .collect::<Vec<_>>(),
         vec!["cachedContents/one", "cachedContents/two"]
     );
 

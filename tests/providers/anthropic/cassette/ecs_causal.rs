@@ -29,10 +29,7 @@ struct Host {
     serial: bool,
     streamed: bool,
 }
-async fn over_host(
-    client: Bound<Anthropic>,
-    host: Host,
-) -> rig::effect_log::EffectLog {
+async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
         client.completion(CLAUDE_SONNET_4_6),
         TOOLS_PREAMBLE,

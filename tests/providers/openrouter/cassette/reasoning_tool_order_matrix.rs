@@ -165,9 +165,7 @@ fn request(
 async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedChoice) -> Result<()> {
     let model = client.completion(MODEL);
     let choice = match cell.transport {
-        Transport::Blocking => {
-            model.completion(request(&model, cell)).await?.choice
-        }
+        Transport::Blocking => model.completion(request(&model, cell)).await?.choice,
         Transport::Streaming => {
             let raw = model.stream(request(&model, cell)).await?;
             let mut stream = raw;

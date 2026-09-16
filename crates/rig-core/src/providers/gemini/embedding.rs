@@ -5,12 +5,12 @@
 
 use serde_json::json;
 
+use crate::embeddings::{self, EmbeddingError};
 use crate::operation::EmbeddingCapabilities;
 use crate::providers::internal::wire::classify_marker_keyed_frame;
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
-use crate::embeddings::{self, EmbeddingError};
 
 /// `gemini-embedding-001` embedding model (3072 dimensions by default)
 pub const EMBEDDING_001: &str = "gemini-embedding-001";
