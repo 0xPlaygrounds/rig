@@ -28,7 +28,6 @@
 use anyhow::Result;
 use rig::completion::CompletionModel;
 use rig::model::ModelLister;
-use rig::prelude::*;
 use rig::providers::groq;
 
 use super::support::{BoundGroq, with_groq_cassette_result};

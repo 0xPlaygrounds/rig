@@ -66,7 +66,6 @@ use rig::completion::{
 };
 use rig::driver::Bound;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::wire::Responses;
 use rig::providers::openai::wire::Chat;

@@ -13,7 +13,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` reads back as the Responses `StreamingCompletionResponse`, whose fields are the capture's; the normalized terminal reproduces the recorded `response.completed` event and `x-request-id` header | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` reads back as the Responses `StreamingCompletionResponse` and re-serializes equal, and that type's fields are the capture's; the normalized terminal reproduces the recorded `response.completed` event and `x-request-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_status` | terminal-only field | `raw.status` and `raw.usage.output_tokens` equal the recorded `response.completed` event's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -142,8 +142,16 @@ async fn stream_raw_round_trips_terminal_type() {
             let raw = &terminal.raw;
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw is the Responses streaming terminal");
-            // The terminal record is what `raw` carries, so the typed view's
+            // A streamed terminal has no single reply document behind it, so
+            // unlike `CompletionResponse::raw` this capture IS the native
+            // record serialized (`terminal_record`) — the round trip back
+            // through it must therefore be exact, and the typed view's
             // fields are the capture's fields.
+            assert_eq!(
+                serde_json::to_value(&typed).expect("typed serializes"),
+                *raw,
+                "the captured value is the typed terminal serialized, nothing more"
+            );
             assert_eq!(
                 typed.status,
                 Some(responses_api::ResponseStatus::Completed),

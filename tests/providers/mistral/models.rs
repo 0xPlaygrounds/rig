@@ -66,7 +66,9 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
             };
 
             anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
-            for expected in ["provider=Mistral", "path=/v1/models", "status=401"] {
+            // `provider=` is the wire's descriptor name — the same `mistral`
+            // every normalized response reports, not a display label.
+            for expected in ["provider=mistral", "path=/v1/models", "status=401"] {
                 anyhow::ensure!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

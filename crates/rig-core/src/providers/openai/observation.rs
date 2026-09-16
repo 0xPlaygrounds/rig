@@ -1,24 +1,15 @@
-//! Chat Completions and Responses metadata projected before normalization
-//! can discard it: the verdict, the model, the response id, the usage and
-//! any error envelope, on the unary reply and on every stream frame.
+//! Responses metadata projected before normalization can discard it: the
+//! verdict, the model, the response id, the usage and any error envelope, on
+//! the unary reply and on every stream frame.
+//!
+//! The Chat Completions projector lives beside its wire, in
+//! [`wire::observation`](super::wire).
 
 use crate::observe::{
     AdapterAttempt, AdapterContext, AdapterErrorEnvelope, AdapterEvent, AdapterUsage,
     AdapterVerdict, PayloadObserver,
 };
 use serde::Deserialize;
-
-/// Attach `context` to a Chat Completions request, with the chat projector.
-pub(crate) fn attach_chat<B>(
-    context: AdapterContext,
-    request: &mut http::Request<B>,
-    route: &'static str,
-) {
-    context.attach(request, route);
-    request
-        .extensions_mut()
-        .insert(PayloadObserver(chat_payload));
-}
 
 /// Attach `context` to a Responses request, with the Responses projector.
 pub(crate) fn attach_responses<B>(
@@ -67,76 +58,6 @@ fn envelope(attempt: &mut AdapterAttempt, error: Envelope) {
             message: error.message.map(|value| attempt.text(&value)),
         },
     });
-}
-
-// Chat Completions: one object for the unary reply and each stream chunk.
-// Every field is optional: a chunk carries a delta, the last chunk (or the
-// reply) carries the usage, and `[DONE]` is not JSON at all.
-#[derive(Deserialize)]
-struct ChatUsage {
-    #[serde(default, deserialize_with = "count")]
-    prompt_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "count")]
-    completion_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "count")]
-    total_tokens: Option<u64>,
-    #[serde(default)]
-    prompt_tokens_details: Option<TokenDetails>,
-    #[serde(default)]
-    completion_tokens_details: Option<TokenDetails>,
-}
-
-#[derive(Default, Deserialize)]
-struct ChatChoice {
-    finish_reason: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct ChatPayload {
-    id: Option<String>,
-    model: Option<String>,
-    usage: Option<ChatUsage>,
-    #[serde(default)]
-    choices: Vec<ChatChoice>,
-    error: Option<Envelope>,
-}
-
-fn chat_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
-    let Ok(payload) = serde_json::from_slice::<ChatPayload>(bytes) else {
-        return;
-    };
-    if let Some(usage) = payload.usage {
-        attempt.emit(AdapterEvent::Usage {
-            usage: AdapterUsage {
-                input_tokens: usage.prompt_tokens,
-                output_tokens: usage.completion_tokens,
-                total_tokens: usage.total_tokens,
-                cached_input_tokens: usage.prompt_tokens_details.and_then(|d| d.cached_tokens),
-                reasoning_tokens: usage
-                    .completion_tokens_details
-                    .and_then(|d| d.reasoning_tokens),
-                tool_input_tokens: None,
-            },
-        });
-    }
-    // Every chunk names the model; only the chunk that carries the finish
-    // reason is a verdict, so the model rides with it rather than on each
-    // delta. The id still lands on the terminal verdict or the closure.
-    let choice = payload.choices.into_iter().next().unwrap_or_default();
-    let verdict = match choice.finish_reason {
-        Some(reason) => AdapterVerdict {
-            finish_reason: Some(attempt.text(&reason)),
-            block_reason: None,
-            detail: None,
-            model: payload.model.map(|v| attempt.text(&v)),
-        },
-        None => AdapterVerdict::default(),
-    };
-    let response_id = payload.id.map(|v| attempt.text(&v));
-    attempt.provider(verdict, response_id);
-    if let Some(error) = payload.error {
-        envelope(attempt, error);
-    }
 }
 
 // Responses: the unary reply is the response object; a stream event wraps
@@ -242,6 +163,3 @@ fn responses_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
         envelope(attempt, error);
     }
 }
-
-#[cfg(test)]
-mod tests;

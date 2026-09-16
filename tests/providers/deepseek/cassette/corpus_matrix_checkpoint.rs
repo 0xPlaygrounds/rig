@@ -4,7 +4,6 @@
 use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {

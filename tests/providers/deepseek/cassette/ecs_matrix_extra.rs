@@ -6,7 +6,6 @@
 //! literals and the wire's models.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{

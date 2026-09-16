@@ -1,245 +1,37 @@
-//! Groq API client and Rig integration
+//! Groq's model identifiers and reasoning parameters.
+//!
+//! Groq is an OpenAI chat-completions dialect, so it has no client and no
+//! models of its own:
+//! [`openai::wire::GROQ`](crate::providers::openai::wire::GROQ) carries the
+//! base URL, the `GROQ_API_KEY` variable, the `x-request-id` header Groq
+//! reports its transport request id on, and the one rewrite Groq needs —
+//! folding its compound-system native tools from `additional_params.tools`
+//! into `compound_custom.enabled_tools` so they do not clobber the
+//! function-tool array. The same dialect serves transcription
+//! (`/audio/transcriptions`) and the model listing, whose entries carry
+//! Groq's `context_window` and `max_completion_tokens`.
+//!
+//! What remains here is data: the model identifiers, and
+//! [`GroqAdditionalParameters`] for the reasoning options Groq takes in the
+//! request body.
 //!
 //! # Example
 //! ```ignore
-//! use rig_core::{client::CompletionClient, providers::groq};
+//! use rig_core::prelude::*;
+//! use rig_core::providers::groq;
+//! use rig_core::providers::openai::wire::{GROQ, OpenAI};
+//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = groq::Client::new("YOUR_API_KEY")?;
-//!
-//! let gpt_oss = client.completion_model(groq::GPT_OSS_120B);
+//! let gpt_oss = OpenAI::from_env_with(&GROQ)?
+//!     .bound()?
+//!     .completion(groq::GPT_OSS_120B);
 //! # Ok(())
 //! # }
 //! ```
+
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-
-use super::openai;
-use crate::client::{
-    self, BearerAuth, HasCompletion, HasModelListing, HasTranscription, ModelTransport, Provider,
-    ProviderClientResult,
-};
-use crate::completion::CompletionError;
-use crate::http_client::{self, HttpClientExt};
-use crate::providers::internal::transcription::OpenAiTranscriptionClient;
-
-// ================================================================
-// Main Groq Client
-// ================================================================
-const GROQ_API_BASE_URL: &str = "https://api.groq.com/openai/v1";
-
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Groq;
-type GroqApiKey = BearerAuth;
-
-impl Provider for Groq {
-    const NAME: &'static str = "groq";
-    const BASE_URL: &'static str = GROQ_API_BASE_URL;
-    const VERIFY_PATH: &'static str = "/models";
-    type ApiKey = GroqApiKey;
-    type Config = ();
-    type EnvInput = String;
-
-    fn build(_: (), _: &GroqApiKey) -> http_client::Result<Self> {
-        Ok(Groq)
-    }
-
-    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
-        Client::from_env_api_key("GROQ_API_KEY", None, http)
-    }
-
-    fn from_val<H: HttpClientExt>(input: String, http: H) -> ProviderClientResult<Client<H>> {
-        Client::new_with(input, http)
-    }
-}
-
-impl HasCompletion for Groq {
-    type Model<H>
-        = CompletionModel<H>
-    where
-        H: ModelTransport;
-
-    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
-        CompletionModel::new(client.clone(), model)
-    }
-}
-
-impl HasTranscription for Groq {
-    type Model<H>
-        = TranscriptionModel<H>
-    where
-        H: ModelTransport;
-
-    fn transcription_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
-        TranscriptionModel::new(client.clone(), model)
-    }
-}
-
-impl HasModelListing for Groq {
-    type Lister<H>
-        = GroqModelLister<H>
-    where
-        H: ModelTransport;
-
-    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
-        GroqModelLister::new(client.clone())
-    }
-}
-
-impl openai::completion::OpenAICompatibleProvider for Groq {
-    const PROVIDER_NAME: &'static str = "groq";
-
-    /// Groq reports its transport request id on the same `x-request-id`
-    /// header OpenAI uses (verified live; see the recorded
-    /// `response_identity_edge` fixture, where the header arrives scrubbed).
-    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
-
-    type StreamingUsage = openai::Usage;
-
-    const EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS: bool = true;
-
-    type Response = openai::CompletionResponse;
-
-    fn prepare_request(
-        &self,
-        request: &mut openai::completion::CompletionRequest,
-    ) -> Result<(), CompletionError> {
-        // Groq's provider-native tools (`browser_search`, `code_interpreter`,
-        // ...) arrive via `additional_params.tools`. Left in place they would
-        // clobber the function-tool array on serialization, so fold them into
-        // `compound_custom.enabled_tools` (deduplicated by tool type).
-        let Some(map) = request
-            .additional_params
-            .as_mut()
-            .and_then(Value::as_object_mut)
-        else {
-            return Ok(());
-        };
-        let Some(raw_tools) = map.remove("tools") else {
-            return Ok(());
-        };
-        let native_tools = serde_json::from_value::<Vec<Value>>(raw_tools).map_err(|err| {
-            CompletionError::RequestError(
-                format!("Invalid Groq `additional_params.tools` payload: {err}").into(),
-            )
-        })?;
-        apply_native_tools_to_additional_params(map, native_tools);
-
-        Ok(())
-    }
-}
-
-/// A Groq listing entry.
-///
-/// Groq reports its context window and output ceiling on every entry, and
-/// [`Model`](crate::model::Model) has fields for both — `max_output_tokens`
-/// exists precisely because rig used to drop a provider-reported output
-/// ceiling on the floor (rig#2322). The shared `ListModelEntry` decodes
-/// neither (Groq spells them `context_window` / `max_completion_tokens`, and
-/// the spellings differ across providers), so Groq keeps its own DTO rather
-/// than losing them.
-#[derive(Debug, serde::Deserialize)]
-struct GroqModelEntry {
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    created: Option<u64>,
-    #[serde(default)]
-    owned_by: Option<String>,
-    #[serde(default)]
-    context_window: Option<u32>,
-    #[serde(default)]
-    max_completion_tokens: Option<u32>,
-}
-
-impl From<GroqModelEntry> for crate::model::Model {
-    fn from(value: GroqModelEntry) -> Self {
-        let mut model = crate::model::Model::from_id(value.id);
-        model.name = value.name;
-        model.created_at = value.created;
-        model.owned_by = value.owned_by;
-        model.context_length = value.context_window;
-        model.max_output_tokens = value.max_completion_tokens;
-        model
-    }
-}
-
-crate::providers::internal::model_listing::impl_model_lister!(
-    /// [`ModelLister`](crate::client::ModelLister) implementation for the Groq
-    /// API (`GET /models`), the same path [`Groq::VERIFY_PATH`] already
-    /// uses.
-    GroqModelLister,
-    Client<H>,
-    GroqModelEntry,
-    "Groq",
-    "/models"
-);
-
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Groq, H>;
-pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Groq, H>;
-
-/// Groq completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<Groq, H>;
-
-/// Groq's provider-native terminal streaming record: the value carried by the
-/// final item of the stream returned by `CompletionModel::raw_stream`. Shared
-/// with the OpenAI Chat Completions path, usage payload included.
-pub type StreamingCompletionResponse = openai::StreamingCompletionResponse;
-
-#[cfg(test)]
-use crate::providers::openai::client::ApiResponse;
-
-fn apply_native_tools_to_additional_params(
-    extra: &mut Map<String, Value>,
-    native_tools: Vec<Value>,
-) {
-    if native_tools.is_empty() {
-        return;
-    }
-
-    let mut compound_custom = match extra.remove("compound_custom") {
-        Some(Value::Object(map)) => map,
-        _ => Map::new(),
-    };
-
-    let mut enabled_tools = match compound_custom.remove("enabled_tools") {
-        Some(Value::Array(values)) => values,
-        _ => Vec::new(),
-    };
-
-    for native_tool in native_tools {
-        let already_enabled = enabled_tools
-            .iter()
-            .any(|existing| native_tools_match(existing, &native_tool));
-        if !already_enabled {
-            enabled_tools.push(native_tool);
-        }
-    }
-
-    compound_custom.insert("enabled_tools".to_string(), Value::Array(enabled_tools));
-    extra.insert(
-        "compound_custom".to_string(),
-        Value::Object(compound_custom),
-    );
-}
-
-fn native_tools_match(lhs: &Value, rhs: &Value) -> bool {
-    if let (Some(lhs_type), Some(rhs_type)) = (native_tool_kind(lhs), native_tool_kind(rhs)) {
-        return lhs_type == rhs_type;
-    }
-
-    lhs == rhs
-}
-
-fn native_tool_kind(value: &Value) -> Option<&str> {
-    match value {
-        Value::String(kind) => Some(kind),
-        Value::Object(map) => map.get("type").and_then(Value::as_str),
-        _ => None,
-    }
-}
+use serde_json::Map;
 
 // ================================================================
 // Groq Completion API
@@ -300,26 +92,3 @@ pub struct GroqAdditionalParameters {
 pub const WHISPER_LARGE_V3: &str = "whisper-large-v3";
 /// The `whisper-large-v3-turbo` transcription model.
 pub const WHISPER_LARGE_V3_TURBO: &str = "whisper-large-v3-turbo";
-
-/// Groq transcription model using the shared OpenAI-style implementation.
-pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
-    crate::providers::internal::transcription::OpenAiTranscriptionModel<Client<T>>;
-
-impl<T> OpenAiTranscriptionClient for Client<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    const MODEL_IN_FORM: bool = true;
-    const PROVIDER_NAME: &'static str = "groq";
-    const REQUEST_ID_HEADER: Option<&'static str> = Some("x-request-id");
-
-    fn transcription_request(
-        &self,
-        _model: &str,
-    ) -> crate::http_client::Result<crate::http_client::Builder> {
-        self.post("/audio/transcriptions")
-    }
-}
-
-#[cfg(test)]
-mod tests;

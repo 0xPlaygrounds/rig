@@ -1897,12 +1897,14 @@ pub mod fixtures {
         fn driver() -> WireDriver {
             WireDriver::new("openai", |chunks| {
                 Box::pin(async move {
-                    let client = crate::providers::openai::Client::builder()
-                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                        .api_key("test-key")
-                        .build()?
-                        .completions_api();
-                    let model = client.completion_model("gpt-4o");
+                    let model = crate::driver::Bind::bind(
+                        crate::providers::openai::wire::OpenAI::with_key(
+                            &crate::providers::openai::wire::OPENAI,
+                            "test-key",
+                        ),
+                        SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                    )
+                    .completion("gpt-4o");
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })
@@ -2005,11 +2007,13 @@ pub mod fixtures {
         pub fn driver() -> WireDriver {
             WireDriver::new("openai", |chunks| {
                 Box::pin(async move {
-                    let client = crate::providers::openai::Client::builder()
-                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                        .api_key("test-key")
-                        .build()?;
-                    let model = client.completion_model("gpt-5.4");
+                    let model = crate::driver::Bind::bind(
+                        crate::providers::openai::responses_api::wire::ResponsesApi::new(
+                            "test-key",
+                        ),
+                        SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                    )
+                    .completion("gpt-5.4");
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })
@@ -2260,14 +2264,15 @@ pub mod fixtures {
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
-                    let client = crate::providers::chatgpt::Client::builder()
-                        .api_key(crate::providers::chatgpt::ChatGPTAuth::AccessToken {
-                            access_token: "test-token".to_string(),
-                            account_id: Some("account-id".to_string()),
-                        })
-                        .http_client(crate::test_utils::RecordingHttpClient::new(body))
-                        .build()?;
-                    let model = client.completion_model("gpt-5.4");
+                    let model = crate::driver::Bind::bind(
+                        crate::providers::openai::responses_api::wire::ResponsesApi::with_dialect(
+                            "test-token",
+                            crate::providers::chatgpt::DIALECT,
+                        )
+                        .with_account_id("account-id"),
+                        crate::test_utils::RecordingHttpClient::new(body),
+                    )
+                    .completion("gpt-5.4");
                     let request = model.completion_request("hello").build();
                     let response = model.completion(request).await?;
                     Ok(response.choice)
@@ -2404,11 +2409,11 @@ pub mod fixtures {
         fn driver() -> WireDriver {
             WireDriver::new("gemini", |chunks| {
                 Box::pin(async move {
-                    let client = crate::providers::gemini::Client::builder()
-                        .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                        .build()?;
-                    let model = client.completion_model(
+                    let model = crate::driver::Bind::bind(
+                        crate::providers::gemini::Gemini::new("test-key"),
+                        SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                    )
+                    .completion(
                         crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05,
                     );
                     let request = model.completion_request("hello").build();
@@ -2542,12 +2547,11 @@ pub mod fixtures {
         fn driver() -> WireDriver {
             WireDriver::new("gemini", |chunks| {
                 Box::pin(async move {
-                    let client = crate::providers::gemini::Client::builder()
-                        .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                        .build()?
-                        .interactions_api();
-                    let model = client.completion_model("gemini-2.5-pro");
+                    let model = crate::driver::Bind::bind(
+                        crate::providers::gemini::Gemini::new("test-key")
+                            .interactions("gemini-2.5-pro"),
+                        SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                    );
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })
@@ -2671,13 +2675,12 @@ pub mod fixtures {
         fn driver() -> WireDriver {
             WireDriver::new("anthropic", |chunks| {
                 Box::pin(async move {
-                    let client = crate::providers::anthropic::Client::builder()
-                        .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                        .build()?;
-                    let model = client.completion_model(
-                        crate::providers::anthropic::completion::CLAUDE_SONNET_4_6,
+                    let bound = crate::driver::Bind::bind(
+                        crate::providers::anthropic::wire::Anthropic::new("test-key"),
+                        SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                     );
+                    let model = bound
+                        .completion(crate::providers::anthropic::completion::CLAUDE_SONNET_4_6);
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })
@@ -2793,12 +2796,11 @@ pub mod fixtures {
         fn driver() -> WireDriver {
             WireDriver::new("cohere", |chunks| {
                 Box::pin(async move {
-                    let client = crate::providers::cohere::Client::builder()
-                        .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                        .build()?;
-                    let model =
-                        client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+                    let bound = crate::driver::Bind::bind(
+                        crate::providers::cohere::wire::Cohere::new("test-key"),
+                        SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                    );
+                    let model = bound.completion(crate::providers::cohere::COMMAND_R_08_2024);
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })
@@ -2910,11 +2912,11 @@ pub mod fixtures {
         fn driver() -> WireDriver {
             WireDriver::new("ollama", |chunks| {
                 Box::pin(async move {
-                    let client = crate::providers::ollama::Client::builder()
-                        .api_key("test-key")
-                        .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                        .build()?;
-                    let model = client.completion_model("llama3.2");
+                    let bound = crate::driver::Bind::bind(
+                        crate::providers::ollama::wire::Ollama::new(),
+                        SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                    );
+                    let model = bound.completion("llama3.2");
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })

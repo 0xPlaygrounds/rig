@@ -8,8 +8,8 @@ use crate::completion::request::Document as RigDocument;
 use crate::streaming::{BlockClose, BlockKind, Delta, StreamEvent};
 use futures::StreamExt;
 
-/// A fresh adapter labelled the way [`GenericCompletionModel::stream`]
-/// labels Anthropic proper.
+/// A fresh decoder labelled the way the [`Messages`](super::super::wire::Messages)
+/// wire labels Anthropic proper.
 fn adapter() -> MessagesDecoder {
     MessagesDecoder::new("anthropic")
 }
@@ -58,7 +58,7 @@ fn message_delta(stop_reason: &str, usage: PartialUsage) -> StreamingEvent {
     }
 }
 
-/// Wrap hand-built adapter output as the stream
+/// Wrap hand-built decoder output as the stream
 /// [`crate::streaming::StreamingCompletionResponse`] consumes, exactly as
 /// the driver would yield it.
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -75,27 +75,36 @@ fn to_stream_result(
     Box::pin(futures::stream::iter(items))
 }
 
-/// Build the streaming request body the way [`GenericCompletionModel::stream`]
-/// does — the shared typed request, then the streaming-only patches — without
-/// needing a client to reach the prelude.
+/// The streaming request body the [`Messages`](super::super::wire::Messages)
+/// wire encodes — the shared typed request plus the streaming-only patches.
+///
+/// Read back off the encoded HTTP request rather than rebuilt here: the
+/// wire's `encode` is the only statement of that body now, so a cell that
+/// pins the body pins the thing that runs.
 fn built_streaming_body(
     model: &str,
     request: CompletionRequest,
     strict_tools: bool,
 ) -> Result<Value, CompletionError> {
-    let typed = AnthropicCompletionRequest::try_from_params(
-        AnthropicRequestParams {
-            model,
-            request,
-            prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
-            static_prefix_cache_ttl: None,
-        },
-        strict_tools.then_some(crate::providers::anthropic::wire::strict_tool_transform as fn(&mut crate::providers::anthropic::completion::ToolDefinition)),
-    )?;
+    use crate::wire::{Body, Mode, Wire};
 
-    streaming_body(&typed)
+    let wire = crate::providers::anthropic::wire::Anthropic::new("test-key").messages(model);
+    let wire = if strict_tools {
+        wire.with_strict_tools()
+    } else {
+        wire
+    };
+    let encoded = wire.encode(request, Mode::Streaming)?;
+    let request = encoded
+        .requests
+        .first()
+        .ok_or_else(|| CompletionError::RequestError("the wire encoded no request".into()))?;
+    match request.body() {
+        Body::Bytes(bytes) => Ok(serde_json::from_slice(bytes)?),
+        Body::Multipart(_) => Err(CompletionError::RequestError(
+            "the Messages endpoint takes JSON".into(),
+        )),
+    }
 }
 
 #[test]
@@ -1748,9 +1757,9 @@ async fn unknown_stop_reason_survives_onto_the_terminal_record() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod terminal_emission {
     use super::super::super::completion::CLAUDE_SONNET_4_6;
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::providers::anthropic::Client;
+    use crate::driver::Bind;
+    use crate::providers::anthropic::wire::Anthropic;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
@@ -1779,14 +1788,11 @@ mod terminal_emission {
         bool,
         crate::streaming::StreamingCompletionResponse,
     ) {
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(MockStreamingClient { sse_bytes })
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+        let bound = Anthropic::new("test-key")
+            .messages(CLAUDE_SONNET_4_6)
+            .bind(MockStreamingClient { sse_bytes });
+        let request = bound.completion_request("hello").build();
+        let mut stream = crate::completion::CompletionModel::stream(&bound, request)
             .await
             .expect("stream should open");
 
@@ -1828,21 +1834,18 @@ mod terminal_emission {
         // A transport failure injected into the byte stream after some
         // content must be forwarded (via `from_stream_transport`) and must
         // not be papered over with a synthesized terminal record.
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(SequencedStreamingHttpClient::new(vec![
+        let bound = Anthropic::new("test-key")
+            .messages(CLAUDE_SONNET_4_6)
+            .bind(SequencedStreamingHttpClient::new(vec![
                 Ok(sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA])),
                 Err(crate::http_client::Error::non_success_with_details(
                     http::StatusCode::BAD_GATEWAY,
                     http::HeaderMap::new(),
                     "connection reset".to_string(),
                 )),
-            ]))
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            ]));
+        let request = bound.completion_request("hello").build();
+        let mut stream = crate::completion::CompletionModel::stream(&bound, request)
             .await
             .expect("stream should open");
 
@@ -2006,8 +2009,8 @@ mod terminal_emission {
     }
 
     /// Raw capture on the streaming terminal, through the real
-    /// `CompletionModel::stream` seam over the mock transport:
-    /// the adapter serializes the native terminal onto the record it maps,
+    /// `CompletionModel::stream` seam on `Bound` over the mock transport:
+    /// the decoder serializes the native terminal onto the record it maps,
     /// so the terminal `StreamFinal.raw` is Anthropic's own
     /// `StreamingCompletionResponse`. A `message_delta` with
     /// `stop_sequence` set is used because the normalized terminal folds
@@ -2017,16 +2020,13 @@ mod terminal_emission {
     async fn terminal_raw_round_trips_into_the_terminal_type() {
         const STOP_SEQUENCE_DELTA: &str = r#"{"type":"message_delta","delta":{"stop_reason":"stop_sequence","stop_sequence":"alpha"},"usage":{"output_tokens":3}}"#;
 
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(MockStreamingClient {
+        let bound = Anthropic::new("test-key")
+            .messages(CLAUDE_SONNET_4_6)
+            .bind(MockStreamingClient {
                 sse_bytes: sse(&[MESSAGE_START, TEXT_START, TEXT_DELTA, STOP_SEQUENCE_DELTA]),
-            })
-            .build()
-            .expect("build client");
-        let model = client.completion_model(CLAUDE_SONNET_4_6);
-        let request = model.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&model, request)
+            });
+        let request = bound.completion_request("hello").build();
+        let mut stream = crate::completion::CompletionModel::stream(&bound, request)
             .await
             .expect("stream should open");
         while let Some(item) = stream.next().await {

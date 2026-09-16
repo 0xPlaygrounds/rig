@@ -168,22 +168,26 @@ fn text_of(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
-/// Run one recorded turn and hand back the response it produced.
-async fn observe(scenario: &'static str) -> RigCompletionResponse {
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&observed);
-    with_llamacpp_cassette(scenario, |client| async move {
-        let model = client.completion(CASSETTE_MODEL);
-        let response = model
-            .completion(request(&model))
-            .await
-            .expect("completion should succeed");
-        *sink.lock().expect("observation lock") = Some(response);
-    })
-    .await;
+/// Where a cell parks the response its recorded turn produced.
+///
+/// The body is shared but the wrapper call is not: `cassette_safety` reads
+/// every scenario out of the AST and accepts only a literal at the call site,
+/// so a helper that took the scenario as a parameter would register nothing
+/// and orphan four fixtures.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<RigCompletionResponse>>>;
 
-    observed
-        .lock()
+/// The one turn every cell here runs.
+async fn run(client: BoundLlamacpp, sink: Observed) {
+    let model = client.completion(CASSETTE_MODEL);
+    let response = model
+        .completion(request(&model))
+        .await
+        .expect("completion should succeed");
+    *sink.lock().expect("observation lock") = Some(response);
+}
+
+fn observed(sink: &Observed) -> RigCompletionResponse {
+    sink.lock()
         .expect("observation lock")
         .take()
         .expect("the test body must have captured the response")
@@ -196,7 +200,13 @@ async fn observe(scenario: &'static str) -> RigCompletionResponse {
 #[tokio::test]
 async fn raw_reads_back_as_the_provider_type() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
-    let response = observe("raw_capture_matrix/raw_round_trips_provider_type").await;
+    let sink = Observed::default();
+    with_llamacpp_cassette(
+        "raw_capture_matrix/raw_round_trips_provider_type",
+        |client| run(client, sink.clone()),
+    )
+    .await;
+    let response = observed(&sink);
 
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_envelope(&body, scenario);
@@ -241,7 +251,13 @@ async fn raw_reads_back_as_the_provider_type() {
 #[tokio::test]
 async fn raw_exposes_envelope_fields() {
     let scenario = "raw_capture_matrix/raw_exposes_envelope_fields";
-    let response = observe("raw_capture_matrix/raw_exposes_envelope_fields").await;
+    let sink = Observed::default();
+    with_llamacpp_cassette(
+        "raw_capture_matrix/raw_exposes_envelope_fields",
+        |client| run(client, sink.clone()),
+    )
+    .await;
+    let response = observed(&sink);
 
     let mut normalized = response.clone();
     normalized.raw = Value::Null;
@@ -295,7 +311,13 @@ async fn raw_exposes_envelope_fields() {
 #[tokio::test]
 async fn normalized_fields_match_the_typed_raw() {
     let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
-    let response = observe("raw_capture_matrix/normalized_fields_equal_raw_renormalized").await;
+    let sink = Observed::default();
+    with_llamacpp_cassette(
+        "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
+        |client| run(client, sink.clone()),
+    )
+    .await;
+    let response = observed(&sink);
 
     let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
         .expect("raw must deserialize into llamacpp::CompletionResponse");
@@ -375,7 +397,12 @@ async fn normalized_fields_match_the_typed_raw() {
 #[tokio::test]
 async fn raw_preserves_the_timings_the_openai_type_drops() {
     let scenario = "raw_capture_matrix/raw_preserves_timings";
-    let response = observe("raw_capture_matrix/raw_preserves_timings").await;
+    let sink = Observed::default();
+    with_llamacpp_cassette("raw_capture_matrix/raw_preserves_timings", |client| {
+        run(client, sink.clone())
+    })
+    .await;
+    let response = observed(&sink);
 
     let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
         .expect("raw must deserialize into llamacpp::CompletionResponse");

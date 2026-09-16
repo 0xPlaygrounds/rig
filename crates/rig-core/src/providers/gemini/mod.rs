@@ -1,19 +1,22 @@
 //! Google Gemini API client and Rig integration
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::{client::EmbeddingsClient, providers::gemini};
+//! ```no_run
+//! use rig_core::providers::gemini;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = gemini::Client::new("YOUR_API_KEY")?;
+//! let provider = gemini::Gemini::from_env()?;
 //!
-//! let gemini_embedding_model = client.embedding_model(gemini::EMBEDDING_001);
+//! let embeddings = provider.embeddings(gemini::EMBEDDING_001, None);
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! A wire says what to send and how to read the reply; `.bind(transport)`
+//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
+//! implements the consumer-facing model traits.
 
 pub mod cached_content;
-pub mod client;
 pub mod completion;
 pub mod embedding;
 #[cfg(feature = "image")]
@@ -25,22 +28,14 @@ mod observation;
 pub mod streaming;
 pub mod transcription;
 
-pub use cached_content::{
-    CacheExpiry, CachedContent, CachedContentClient, CachedContentError, NewCachedContent,
-};
-pub use client::{Client, InteractionsClient};
-pub use completion::CompletionModel;
-pub use embedding::{EMBEDDING_001, EMBEDDING_004, EmbeddingModel};
+pub use cached_content::{CacheExpiry, CachedContent, CachedContentError, NewCachedContent};
+pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
-pub use image_generation::{GEMINI_2_5_FLASH_IMAGE, ImageGenerationModel};
-pub use interactions_api::InteractionsCompletionModel;
+pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
 pub use model_listing::*;
-pub use transcription::TranscriptionModel;
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{
-    HasCompletion, HasEmbedding, HasModelListing, HasTranscription, HasVerify,
-};
+use crate::driver::{HasCompletion, HasEmbedding, HasModelListing, HasTranscription, HasVerify};
 use crate::wire::Secret;
 
 /// Stable descriptor name for both Gemini surfaces, as records and

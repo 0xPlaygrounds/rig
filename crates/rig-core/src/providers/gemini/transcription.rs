@@ -6,16 +6,13 @@ use serde_json::{Map, Value};
 
 use crate::{
     completion::Usage,
-    http_client::HttpClientExt,
     operation::Transcription,
     providers::gemini::completion::gemini_api_types::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
         visible_text_parts,
     },
-    providers::internal::transcription::send_json_transcription,
     providers::internal::wire::classify_marker_keyed_frame,
     transcription::{self, NormalizeTranscriptionResponse, TranscriptionError},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
 };
 
@@ -24,62 +21,11 @@ use super::completion::gemini_api_types::GenerateContentResponse;
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
-pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
-    crate::providers::internal::transcription::GenericTranscriptionModel<
-        crate::providers::gemini::client::Gemini,
-        T,
-    >;
-
-impl<T> TranscriptionModel<T>
-where
-    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
-{
-    /// Perform the transcription and return Gemini's native
-    /// [`GenerateContentResponse`] instead of the normalized
-    /// [`transcription::TranscriptionResponse`]. Same request, transport,
-    /// parser, and error path as
-    /// [`transcription::TranscriptionModel::transcription`].
-    pub async fn raw_transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<GenerateContentResponse, TranscriptionError> {
-        let body = transcription_body(request)?;
-
-        // Gemini sends no transport request-id header.
-        send_json_transcription(
-            &self.client,
-            self.client
-                .post(format!("/v1beta/models/{}:generateContent", self.model))?,
-            body,
-            None,
-            |_, body| {
-                let body: GenerateContentResponse = serde_json::from_slice(body)?;
-
-                match body.usage_metadata {
-                    Some(ref usage) => tracing::info!(target: "rig",
-                    "Gemini completion token usage: {}",
-                    usage
-                    ),
-                    None => tracing::info!(target: "rig",
-                        "Gemini completion token usage: n/a",
-                    ),
-                }
-
-                tracing::debug!("Received response");
-
-                Ok(body)
-            },
-        )
-        .await
-        .map(|(response, _)| response)
-    }
-}
-
 /// The `generateContent` body one transcription sends: the audio inline as
 /// base64, under the preamble's system instruction.
 ///
-/// Both the client path and [`Transcriptions`] call this, so the bytes Gemini
-/// receives are stated exactly once.
+/// The one place the bytes Gemini receives are stated: [`Transcriptions`]
+/// encodes through it.
 fn transcription_body(
     request: transcription::TranscriptionRequest,
 ) -> Result<Vec<u8>, TranscriptionError> {
@@ -221,30 +167,6 @@ impl Decoder<Transcription> for TranscriptionsDecoder {
     /// so this wire holds no second reading of the same reply.
     fn interpret(&mut self, event: Self::Event, out: &mut Output<Transcription>) {
         out.push(event.normalize(super::PROVIDER_NAME));
-    }
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
-{
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
-        crate::telemetry::instrument_modality(
-            super::completion::PROVIDER_NAME,
-            &self.model,
-            crate::telemetry::ModalityOperation::Transcription,
-            async {
-                let response = self.raw_transcription(request).await?;
-                let captured = serde_json::to_value(&response)?;
-                Ok(response
-                    .normalize(super::completion::PROVIDER_NAME)?
-                    .with_raw(captured))
-            },
-        )
-        .await
     }
 }
 

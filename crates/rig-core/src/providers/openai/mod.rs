@@ -1,20 +1,24 @@
 //! OpenAI API client and Rig integration
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::{client::CompletionClient, providers::openai};
+//! ```no_run
+//! use rig_core::providers::openai;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = openai::Client::new("YOUR_API_KEY")?;
+//! let provider = openai::wire::OpenAI::from_env()?;
 //!
-//! let model = client.completion_model(openai::GPT_5_2);
+//! let gpt_5_2 = provider.chat(openai::GPT_5_2);
+//! let embeddings = provider.embeddings(openai::TEXT_EMBEDDING_3_SMALL, None);
 //! # Ok(())
 //! # }
 //! ```
-pub mod client;
+//!
+//! A wire says what to send and how to read the reply; `.bind(transport)`
+//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
+//! implements the consumer-facing model traits.
+
 pub mod completion;
 pub mod embedding;
-pub mod model_listing;
 mod observation;
 pub mod responses_api;
 
@@ -34,10 +38,8 @@ pub use image_generation::*;
 
 pub mod transcription;
 
-pub use client::*;
 pub use completion::*;
 pub use embedding::*;
-pub use model_listing::*;
 pub use responses_api::ResponsesCompletionModel;
 
 /// Recursively ensures all object schemas in a JSON schema respect OpenAI structured output restrictions.
@@ -78,9 +80,7 @@ pub(crate) fn structured_output_schema(schema: schemars::Schema) -> (String, ser
 }
 
 #[cfg(feature = "audio")]
-pub use audio_generation::{
-    AudioGenerationModel, CompletionsAudioGenerationModel, TTS_1, TTS_1_HD,
-};
+pub use audio_generation::{TTS_1, TTS_1_HD};
 
 pub use streaming::*;
 pub use transcription::*;

@@ -1,17 +1,12 @@
 use crate::{
     completion::{self, CompletionError},
-    http_client::HttpClientExt,
     json_utils,
     message::{self, Reasoning, ToolChoice},
-    providers::internal::{completion_send::send_completion, envelope::DirectPayload},
-    telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator},
 };
 use std::collections::HashMap;
 
-use super::client::Client;
 use crate::completion::CompletionRequest;
 use serde::{Deserialize, Serialize};
-use tracing::Instrument;
 
 /// Stable descriptor name recorded on normalized responses, streams, and
 /// telemetry spans for this provider.
@@ -44,42 +39,6 @@ impl CompletionResponse {
         };
 
         Ok((content, citations, tool_calls))
-    }
-}
-
-impl crate::telemetry::ProviderResponseExt for CompletionResponse {
-    type Usage = Usage;
-
-    fn response_id(&self) -> Option<&str> {
-        Some(self.id.as_str())
-    }
-
-    fn response_model_name(&self) -> Option<&str> {
-        None
-    }
-
-    fn text_response(&self) -> Option<String> {
-        let Message::Assistant { ref content, .. } = self.message else {
-            return None;
-        };
-
-        let res = content
-            .iter()
-            .filter_map(|x| {
-                if let AssistantContent::Text { text } = x {
-                    Some(text.clone())
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<String>>()
-            .join("\n");
-
-        if res.is_empty() { None } else { Some(res) }
-    }
-
-    fn usage(&self) -> Option<Self::Usage> {
-        self.usage
     }
 }
 
@@ -503,12 +462,6 @@ impl TryFrom<message::Message> for Vec<Message> {
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T = crate::http_client::BoxedHttpClient> {
-    pub(crate) client: Client<T>,
-    pub model: String,
-}
-
 /// Cohere's `tool_choice` is a bare string; only `REQUIRED`/`NONE` are valid.
 /// `Auto` errors below rather than silently mapping to the omitted-field
 /// behavior that would actually let the model decide.
@@ -632,136 +585,5 @@ impl TryFrom<(&str, CompletionRequest)> for CohereCompletionRequest {
     }
 }
 
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt,
-{
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Execute a completion and return Cohere's own wire response.
-    ///
-    /// This is the escape hatch for Cohere-specific fields rig does not
-    /// normalize (citations, tool plans). It shares the request builder,
-    /// transport, telemetry, and error handling with
-    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
-    /// which calls it and then applies the provider-local mapping — one network
-    /// request either way.
-    pub async fn raw_completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        self.raw_completion_observed(completion_request, None).await
-    }
-
-    /// [`Self::raw_completion`] with observation context owned by this
-    /// invocation.
-    async fn raw_completion_observed(
-        &self,
-        completion_request: completion::CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.system_instructions().map(str::to_owned);
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = CohereCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-
-        let llm_span =
-            CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
-                .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-                .build();
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Cohere completion request",
-            &request,
-        );
-
-        let req_body = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post("/v2/chat")?
-            .body(req_body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-        if let Some(observation) = observation {
-            observation.attach(&mut req, "/v2/chat");
-        }
-
-        // Left unboxed so `provider_response_status`/`_body` can read the
-        // status and body straight off the transport error.
-        send_completion::<_, DirectPayload<CompletionResponse>, _>(
-            &self.client,
-            req,
-            "Cohere completion",
-            // Cohere reports no request-id response header (its `x-debug-trace-id`
-            // is a debug trace handle, not a documented request id); the
-            // normalized id is None by design.
-            None,
-            |json_response| {
-                let span = tracing::Span::current();
-                let usage = json_response
-                    .usage
-                    .as_ref()
-                    .map(completion::Usage::from)
-                    .unwrap_or_default();
-                span.record_token_usage(&usage);
-                span.record_response_metadata(json_response);
-            },
-        )
-        .instrument(llm_span)
-        .await
-        .map(|(payload, _)| payload)
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.completion_with_context(completion_request, None).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        self.stream_with_context(request, None).await
-    }
-
-    async fn completion_with_context(
-        &self,
-        completion_request: completion::CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self
-            .raw_completion_observed(completion_request, context)
-            .await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
-    }
-
-    async fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        CompletionModel::stream_observed(self, request, context).await
-    }
-}
 #[cfg(test)]
 mod tests;

@@ -5,7 +5,6 @@
 //! cell's own test.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::doubleword::QWEN3_5_397B_A17B;
 
 use super::super::support::{BoundDoubleword, with_doubleword_cassette};

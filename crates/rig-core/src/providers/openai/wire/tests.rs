@@ -287,3 +287,126 @@ fn only_a_dialect_with_a_rerank_path_reranks() {
             .is_ok()
     );
 }
+
+/// Every dialect's listing and credential-check URL, against the paths the
+/// recorded fixtures under `tests/cassettes/<provider>/**` actually show.
+///
+/// This is the audit in executable form. The deleted client did things to a
+/// request that each wire's `encode` must now state — `llama-server`'s
+/// unversioned operational routes are the case that got through review once
+/// (`verify_path: "/props"` resolved to `/v1/props`, which that server
+/// answers 404) — so the paths are pinned rather than re-derived.
+#[test]
+fn every_dialects_listing_and_verify_urls_match_the_recorded_paths() {
+    // (dialect, models URL, verify URL or None when the dialect offers no
+    // token-free check)
+    let expected: &[(&Dialect, &str, Option<&str>)] = &[
+        (
+            &OPENAI,
+            "https://api.openai.com/v1/models",
+            Some("https://api.openai.com/v1/models"),
+        ),
+        (
+            &DEEPSEEK,
+            "https://api.deepseek.com/models",
+            Some("https://api.deepseek.com/user/balance"),
+        ),
+        (
+            &GROQ,
+            "https://api.groq.com/openai/v1/models",
+            Some("https://api.groq.com/openai/v1/models"),
+        ),
+        (
+            &MISTRAL,
+            "https://api.mistral.ai/v1/models",
+            Some("https://api.mistral.ai/v1/models"),
+        ),
+        (
+            &OPENROUTER,
+            "https://openrouter.ai/api/v1/models",
+            Some("https://openrouter.ai/api/v1/key"),
+        ),
+        (
+            &VENICE,
+            "https://api.venice.ai/api/v1/models",
+            Some("https://api.venice.ai/api/v1/models"),
+        ),
+        (
+            // The one that was wrong: `/props` is a root route on
+            // `llama-server`, while `/models` is versioned.
+            &LLAMACPP,
+            "http://localhost:8080/v1/models",
+            Some("http://localhost:8080/props"),
+        ),
+        (
+            &MIRA,
+            "https://api.mira.network/v1/models",
+            Some("https://api.mira.network/user-credits"),
+        ),
+        (
+            &HUGGINGFACE,
+            "https://router.huggingface.co/models",
+            Some("https://router.huggingface.co/api/whoami-v2"),
+        ),
+        (
+            &TOGETHER,
+            "https://api.together.xyz/v1/models",
+            Some("https://api.together.xyz/models"),
+        ),
+        (&PERPLEXITY, "https://api.perplexity.ai/models", None),
+        (&XAI, "https://api.x.ai/v1/models", Some("https://api.x.ai/v1/api-key")),
+    ];
+
+    for (dialect, models, verify) in expected {
+        let provider = OpenAI::with_key(dialect, "k");
+        assert_eq!(
+            provider.uri(dialect.quirks.models_path, None),
+            *models,
+            "{} model-listing URL",
+            dialect.name
+        );
+        match verify {
+            Some(verify) => assert_eq!(
+                provider.uri(dialect.quirks.verify_path, None),
+                *verify,
+                "{} verify URL",
+                dialect.name
+            ),
+            None => assert!(
+                dialect.quirks.verify_path.is_empty(),
+                "{} has no token-free credential check",
+                dialect.name
+            ),
+        }
+    }
+}
+
+/// `llama-server` serves its operational routes at the root; the versioned
+/// base URL applies to everything else.
+#[test]
+fn llamacpp_serves_its_operational_routes_unversioned() {
+    let provider = OpenAI::with_key(&LLAMACPP, "");
+    for route in LLAMACPP.quirks.root_relative_routes {
+        assert_eq!(
+            provider.uri(route, None),
+            format!("http://localhost:8080{route}"),
+            "{route} is a root route"
+        );
+    }
+    // Everything else keeps the `/v1` the base URL carries.
+    assert_eq!(
+        provider.uri("/chat/completions", None),
+        "http://localhost:8080/v1/chat/completions"
+    );
+    assert_eq!(provider.uri("/rerank", None), "http://localhost:8080/v1/rerank");
+    // And no other dialect has any.
+    for dialect in all() {
+        if dialect.name != "llamacpp" {
+            assert!(
+                dialect.quirks.root_relative_routes.is_empty(),
+                "{} declares root routes it never had",
+                dialect.name
+            );
+        }
+    }
+}

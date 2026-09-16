@@ -2,6 +2,46 @@ use super::*;
 use crate::providers::gemini::completion::gemini_api_types::TrafficType;
 use serde_json::json;
 
+/// The request every stream test below sends. The decoder is what they
+/// exercise, so the request only has to be well-formed.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn streaming_request() -> crate::completion::CompletionRequest {
+    crate::completion::CompletionRequest {
+        model: None,
+        chat_history: vec![crate::message::Message::user("hello")],
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}
+
+/// The GenerateContent wire for `model`, bound to a transport that answers
+/// with `frames` as one SSE body.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn streamed(
+    model: &str,
+    frames: &[&str],
+) -> crate::driver::Bound<
+    crate::providers::gemini::completion::GenerateContent,
+    crate::test_utils::MockStreamingClient,
+> {
+    let sse_bytes = bytes::Bytes::from(
+        frames
+            .iter()
+            .map(|frame| format!("data: {frame}\n\n"))
+            .collect::<String>(),
+    );
+    crate::driver::Bound::new(
+        crate::providers::gemini::Gemini::new("test-key").generate_content(model),
+        crate::test_utils::MockStreamingClient { sse_bytes },
+    )
+}
+
 #[test]
 fn test_deserialize_stream_response_with_single_text_part() {
     let json_data = json!({
@@ -102,11 +142,7 @@ fn test_streaming_tool_protocol_finish_reason_returns_response_error() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::gemini::Client;
     use crate::streaming::{Delta, StreamEvent};
-    use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
     // A tool-protocol terminal failure, then more frames: a well-formed
@@ -121,21 +157,9 @@ async fn tool_protocol_failure_ends_the_stream_without_draining_later_frames() {
         r#"{"someFutureField":{"x":1}}"#,
         r#"{"candidates":[{"content":{"parts":[],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":1,"candidatesTokenCount":1,"totalTokenCount":2}}"#,
     ];
-    let sse_bytes = bytes::Bytes::from(
-        frames
-            .iter()
-            .map(|frame| format!("data: {frame}\n\n"))
-            .collect::<String>(),
-    );
 
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient { sse_bytes })
-        .build()
-        .expect("build client");
-    let model = client.completion_model("gemini-2.5-flash");
-    let request = model.completion_request("hello").build();
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
+    let model = streamed("gemini-2.5-flash", &frames);
+    let mut stream = crate::completion::CompletionModel::stream(&model, streaming_request())
         .await
         .expect("stream should open");
 
@@ -602,12 +626,17 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 mod terminal_emission {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::gemini::Client;
+    use crate::driver::Bound;
+    use crate::providers::gemini::Gemini;
+    use crate::providers::gemini::completion::{GEMINI_2_5_PRO_PREVIEW_06_05, GenerateContent};
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
+
+    /// The wire under test, unbound.
+    fn wire() -> GenerateContent {
+        Gemini::new("test-key").generate_content(GEMINI_2_5_PRO_PREVIEW_06_05)
+    }
 
     const CONTENT_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"}}],"responseId":"resp-1","modelVersion":"gemini-2.5-pro"}"#;
     const TERMINAL_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"!"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":5,"candidatesTokenCount":2,"totalTokenCount":7},"responseId":"resp-1","modelVersion":"gemini-2.5-pro"}"#;
@@ -629,17 +658,11 @@ mod terminal_emission {
         bool,
         crate::streaming::StreamingCompletionResponse,
     ) {
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(MockStreamingClient { sse_bytes })
-            .build()
-            .expect("build client");
-        let model = client
-            .completion_model(crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05);
-        let request = model.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&model, request)
-            .await
-            .expect("stream should open");
+        let model = Bound::new(wire(), MockStreamingClient { sse_bytes });
+        let mut stream =
+            crate::completion::CompletionModel::stream(&model, super::streaming_request())
+                .await
+                .expect("stream should open");
 
         let mut texts = Vec::new();
         let mut saw_error = false;
@@ -665,19 +688,16 @@ mod terminal_emission {
         // provider state even when no thought text accumulated.
         const SIGNATURE_ONLY_CHUNK: &str = r#"{"candidates":[{"content":{"parts":[{"text":"","thought":true,"thoughtSignature":"sig-only"}],"role":"model"},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":1,"totalTokenCount":4}}"#;
 
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(MockStreamingClient {
+        let model = Bound::new(
+            wire(),
+            MockStreamingClient {
                 sse_bytes: sse(&[SIGNATURE_ONLY_CHUNK]),
-            })
-            .build()
-            .expect("build client");
-        let model = client
-            .completion_model(crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05);
-        let request = model.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&model, request)
-            .await
-            .expect("stream should open");
+            },
+        );
+        let mut stream =
+            crate::completion::CompletionModel::stream(&model, super::streaming_request())
+                .await
+                .expect("stream should open");
 
         let mut signed = None;
         while let Some(item) = stream.next().await {
@@ -715,24 +735,21 @@ mod terminal_emission {
 
         // A transport failure after some content must reach the consumer
         // and must not be papered over with a synthesized terminal record.
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(SequencedStreamingHttpClient::new(vec![
+        let model = Bound::new(
+            wire(),
+            SequencedStreamingHttpClient::new(vec![
                 Ok(sse(&[CONTENT_CHUNK])),
                 Err(crate::http_client::Error::non_success_with_details(
                     http::StatusCode::BAD_GATEWAY,
                     http::HeaderMap::new(),
                     "connection reset".to_string(),
                 )),
-            ]))
-            .build()
-            .expect("build client");
-        let model = client
-            .completion_model(crate::providers::gemini::completion::GEMINI_2_5_PRO_PREVIEW_06_05);
-        let request = model.completion_request("hello").build();
-        let mut stream = crate::completion::CompletionModel::stream(&model, request)
-            .await
-            .expect("stream should open");
+            ]),
+        );
+        let mut stream =
+            crate::completion::CompletionModel::stream(&model, super::streaming_request())
+                .await
+                .expect("stream should open");
 
         let mut texts = Vec::new();
         let mut saw_error = false;
@@ -818,26 +835,10 @@ async fn collect_stream(
     Vec<Result<crate::streaming::StreamEvent, crate::error::ErrorReport>>,
     bool,
 ) {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::gemini::Client;
-    use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
-    let sse_bytes = bytes::Bytes::from(
-        frames
-            .iter()
-            .map(|frame| format!("data: {frame}\n\n"))
-            .collect::<String>(),
-    );
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient { sse_bytes })
-        .build()
-        .expect("build client");
-    let model = client.completion_model("gemini-2.5-flash");
-    let request = model.completion_request("hello").build();
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
+    let model = streamed("gemini-2.5-flash", frames);
+    let mut stream = crate::completion::CompletionModel::stream(&model, streaming_request())
         .await
         .expect("stream should open");
     let mut items = Vec::new();

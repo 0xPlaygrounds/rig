@@ -10,6 +10,7 @@ use std::sync::{Arc, Mutex};
 use anyhow::Result;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
+use rig::prelude::*;
 use rig::providers::mistral;
 use rig::tool::Tool;
 use schemars::JsonSchema;

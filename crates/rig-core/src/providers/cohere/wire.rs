@@ -351,13 +351,6 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
     }
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<ImageEmbedding>) {
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
-            Err(error) => {
-                out.push(Err(error.into()));
-                return;
-            }
-        };
         // One image per request, so one vector per reply: a second one is a
         // provider defect, and none means the request bought nothing.
         let [vector] = reply.embeddings.values.as_slice() else {
@@ -378,10 +371,15 @@ impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
             document: String::new(),
             vec: vector.iter().filter_map(|n| n.as_f64()).collect(),
         };
+        // No `with_raw` here: this wire answers one operation with several
+        // requests, so a per-reply capture would be the first page's document
+        // and the fold keeps the first metadata it is given — every later page
+        // would be unreachable. The driver owns `raw` for a batch: it collects
+        // each page's verbatim document and stamps the sequence (the bare
+        // document when there was only one page).
         let mut response =
             crate::embeddings::ImageEmbeddingResponse::new(vec![vector], PROVIDER_NAME)
-                .with_usage(usage)
-                .with_raw(raw);
+                .with_usage(usage);
         if let Some(id) = reply.id {
             response = response.with_response_id(id);
         }

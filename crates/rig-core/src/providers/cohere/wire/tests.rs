@@ -294,4 +294,43 @@ async fn an_image_batch_folds_its_replies_in_input_order() {
     );
     // Both replies billed one image each.
     assert_eq!(response.usage.input_tokens, None);
+    // The per-image sequence, in input order: Cohere bills an image embed in
+    // images, not tokens, so `meta.billed_units.images` on each page is the
+    // only route to an image count and every page has to be reachable.
+    let pages: Vec<super::super::embeddings::ImageEmbeddingResponse> =
+        serde_json::from_value(response.raw.clone()).expect("raw is the per-image array");
+    assert_eq!(pages.len(), 2);
+    assert_eq!(
+        pages
+            .iter()
+            .map(|page| page.id.as_deref())
+            .collect::<Vec<_>>(),
+        vec![Some("img-0.5"), Some("img-0.75")]
+    );
+    assert!(
+        pages
+            .iter()
+            .all(|page| page.meta.as_ref().map(|meta| meta.billed_units.images) == Some(1))
+    );
+}
+
+#[tokio::test]
+async fn a_single_image_embed_captures_the_bare_document() {
+    let http = SequencedHttpClient::new([image_reply(0.5)]);
+    let response = Bound::new(cohere().image_embeddings(), http.clone())
+        .embed_images_response(vec![png(b"only")])
+        .await
+        .expect("the reply decodes");
+
+    assert_eq!(http.requests().len(), 1);
+    // One request, one page: `raw` is that document itself, not a one-element
+    // array, so a single-image embed reads the same as any non-batched wire.
+    assert!(
+        response.raw.is_object(),
+        "one page is captured bare: {}",
+        response.raw
+    );
+    let page: super::super::embeddings::ImageEmbeddingResponse =
+        serde_json::from_value(response.raw.clone()).expect("raw is Cohere's own answer");
+    assert_eq!(page.id.as_deref(), Some("img-0.5"));
 }

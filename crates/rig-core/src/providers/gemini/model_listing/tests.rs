@@ -59,52 +59,6 @@ fn parse_models_page_keeps_a_non_empty_next_page_token() {
     assert_eq!(next_page_token.as_deref(), Some("abc123"));
 }
 
-/// Loop-level: a server that keeps echoing the same cursor cannot advance
-/// the listing, so the loop must stop rather than fetch the same page
-/// forever. The parser-level guard above only covers the *empty* cursor;
-/// this covers the other way a cursor fails to move.
-#[tokio::test]
-async fn list_all_stops_on_a_cursor_that_does_not_advance() {
-    use crate::client::ModelLister as _;
-    use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
-
-    let page = |id: &str, token: &str| {
-        MockHttpResponse::success(
-            serde_json::json!({
-                "models": [{
-                    "name": format!("models/{id}"),
-                    "displayName": id,
-                    "inputTokenLimit": 1024
-                }],
-                "nextPageToken": token
-            })
-            .to_string(),
-        )
-    };
-    let http_client = SequencedHttpClient::new(vec![
-        page("a", "stuck"),
-        page("b", "stuck"),
-        page("c", "stuck"),
-    ]);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("client should build");
-
-    let models = GeminiModelLister::new(client)
-        .list_all()
-        .await
-        .expect("listing should terminate");
-
-    assert_eq!(
-        models.data.len(),
-        2,
-        "the repeat is only detectable on the second page, so both are kept",
-    );
-    assert_eq!(http_client.remaining_responses(), 1);
-}
-
 #[test]
 fn parse_models_page_falls_back_to_name_when_base_model_id_is_missing() {
     let body = br#"{

@@ -321,17 +321,15 @@ fn unsupported_tool_choices_are_rejected_before_the_request_is_sent() {
 /// must stop them before the HTTP boundary.
 #[tokio::test]
 async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_sent() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::new("{}");
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("build client");
-    let model = client.completion_model(crate::providers::cohere::COMMAND_A_03_2025);
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client.clone(),
+    )
+    .completion(crate::providers::cohere::COMMAND_A_03_2025);
     let request = model
         .completion_request("hello")
         .tool_choice(ToolChoice::Required)
@@ -424,19 +422,17 @@ fn tool_choice_is_omitted_when_unset() {
 
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model(crate::providers::cohere::COMMAND_A_03_2025);
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client,
+    )
+    .completion(crate::providers::cohere::COMMAND_A_03_2025);
     let request = model.completion_request("hello").build();
 
     let error = model

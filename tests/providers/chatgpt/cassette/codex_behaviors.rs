@@ -15,7 +15,10 @@ use rig::tool::Tool;
 use serde::Deserialize;
 
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};
+use crate::cassettes::recorded_interaction_bodies;
 use crate::support::{Adder, TOOLS_PREAMBLE};
+
+const CHATGPT_PROVIDER: &str = "chatgpt";
 
 #[tokio::test]
 async fn strict_tools_opt_in_roundtrip() {
@@ -75,16 +78,20 @@ async fn strict_tools_opt_in_roundtrip() {
 
 #[tokio::test]
 async fn store_false_and_prompt_cache_fields_roundtrip() {
+    let scenario = "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip";
     with_chatgpt_cassette(
         "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip",
         |client| async move {
             let model = client.completion(chatgpt::GPT_5_4);
             // `store` and `prompt_cache_key` are Responses-API wire fields
             // with no normalized home, so they are read off the backend's own
-            // response type, deserialized from the one reply's `raw`. The
-            // cassette records a single interaction, so the assistant-text
-            // check that used to ride along here lives only in
-            // `codex_sessions`; the marker prompt is kept verbatim so the
+            // response type — deserialized from the one reply's `raw`, which
+            // for a dialect that answers even a unary request with an event
+            // stream is the envelope the decoder reassembled from the terminal
+            // `response.completed` frame. That frame carries no output items,
+            // and the cassette records a single interaction, so the
+            // assistant-text check that used to ride along here lives only in
+            // `codex_sessions`. The marker prompt is kept verbatim so the
             // request still matches the recorded cassette.
             let response = model
                 .completion(
@@ -95,9 +102,8 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
-            let raw = responses_api::CompletionResponse::deserialize(&response.raw).expect(
-                "`raw` is the serialized responses_api::CompletionResponse",
-            );
+            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+                .expect("`raw` is the serialized responses_api::CompletionResponse");
 
             assert_eq!(
                 raw.additional_parameters.store,
@@ -120,6 +126,23 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
         },
     )
     .await;
+
+    // `store` is rig's own request field, so the recorded request bytes are
+    // where that contract actually lives; the read off the reply above only
+    // proves the backend echoed it back.
+    let interactions = recorded_interaction_bodies(CHATGPT_PROVIDER, scenario);
+    assert_eq!(
+        interactions.len(),
+        1,
+        "{scenario}: the scenario must record exactly one interaction"
+    );
+    let request: serde_json::Value = serde_json::from_str(&interactions[0].0)
+        .expect("the recorded request body should be JSON");
+    assert_eq!(
+        request.get("store"),
+        Some(&serde_json::Value::Bool(false)),
+        "the request ChatGPT receives must carry store=false"
+    );
 }
 
 #[tokio::test]

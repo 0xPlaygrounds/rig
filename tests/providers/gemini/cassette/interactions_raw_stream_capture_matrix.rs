@@ -36,7 +36,6 @@ use futures::StreamExt;
 use rig::completion::{CompletionModel as _, FinishReason};
 use rig::driver::Bound;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::gemini::interactions_api::Interactions;
 use rig::providers::gemini::interactions_api::streaming::StreamingCompletionResponse;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};

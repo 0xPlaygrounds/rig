@@ -1,7 +1,7 @@
 //! Provider-adapter execution through native ECS, using the original agent
 //! fixtures. The original tests remain independent baseline executions.
 
-use rig::{prelude::*, providers::openai};
+use rig::providers::openai;
 use rig_ecs::agent::{MaxTokens, Temperature};
 use rig_ecs::bus::Streamed;
 

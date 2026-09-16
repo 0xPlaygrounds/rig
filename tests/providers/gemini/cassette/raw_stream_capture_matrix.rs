@@ -44,7 +44,6 @@
 use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
-use rig::prelude::*;
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use rig::tool::Tool;

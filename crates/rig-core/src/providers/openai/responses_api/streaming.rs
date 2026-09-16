@@ -762,7 +762,11 @@ impl RawChoiceAccumulator {
                 // (the pure-replay shape). The durable handle is the item's
                 // real `rs_*` id regardless of the accumulation key.
                 let provider_id = crate::streaming::non_empty_id(id.clone());
-                let key = match self.reasoning_slots.remove(&output_index) {
+                let slot = self.reasoning_slots.remove(&output_index);
+                // No deltas preceded this item, so there is no part to
+                // supersede and the item is all there is.
+                let pure_replay = slot.is_none();
+                let key = match slot {
                     Some(key) => key,
                     // No slot and no id (an envelope-less done item with
                     // nothing before it): mint from the bridge's ONE
@@ -770,12 +774,30 @@ impl RawChoiceAccumulator {
                     None if id.is_empty() => self.tool_slots.minted_ids().mint(),
                     None => BlockId::wire(id),
                 };
-                if let Some(reasoning) = reasoning_from_done_item(
+                let reasoning = reasoning_from_done_item(
                     provider_id.as_deref(),
                     summary,
                     content,
                     encrypted_content,
-                ) {
+                )
+                // A contentless reasoning item is still an item: its `rs_*`
+                // id is the durable handle the next turn has to replay.
+                // Copilot's Responses route answers a tool-calling turn
+                // with `{"id":…,"summary":[]}` and then requires it back —
+                // `tests/cassettes/copilot/typed_prompt_tools/
+                // prompt_typed_with_tool_call_roundtrip.yaml` — and without
+                // it turn two's `input` is missing an element the provider
+                // sent. An item with no id at all still says nothing at the
+                // boundary, and neither does an empty restatement of a part
+                // the deltas already built.
+                .or_else(|| {
+                    let id = provider_id.filter(|_| pure_replay)?;
+                    Some(crate::message::Reasoning {
+                        id: Some(id),
+                        content: Vec::new(),
+                    })
+                });
+                if let Some(reasoning) = reasoning {
                     out.reasoning_end(key, Some(reasoning), None, true);
                 }
             }
@@ -1280,9 +1302,6 @@ pub struct ResponsesDecoder {
     /// [`repair_envelope_less_frame`] for why repairing those would hide a
     /// defect.
     repair_envelopes: bool,
-    /// Whether a success body may be the provider's error envelope instead
-    /// of a response.
-    error_envelope_in_success: bool,
     /// A `response.failed` event (or a success-status error envelope) ended
     /// the turn: the flush-then-`Err` sequence has been pushed and the
     /// driver stops consuming.
@@ -1297,7 +1316,6 @@ impl ResponsesDecoder {
             accumulator: RawChoiceAccumulator::new(provider, None),
             options,
             repair_envelopes: false,
-            error_envelope_in_success: false,
             finished: false,
         }
     }
@@ -1305,12 +1323,6 @@ impl ResponsesDecoder {
     /// Salvage replayed frames that omit their envelope bookkeeping.
     pub fn with_envelope_repair(mut self) -> Self {
         self.repair_envelopes = true;
-        self
-    }
-
-    /// Accept the provider's error envelope on a success status.
-    pub fn with_success_error_envelope(mut self) -> Self {
-        self.error_envelope_in_success = true;
         self
     }
 
@@ -1333,15 +1345,15 @@ impl ResponsesDecoder {
                 .map(|response| ResponsesEvent::Whole(Box::new(response)))
         };
         let envelope = |data: &str| {
-            // Only the gateways that answer a success with an envelope have
-            // this shape; elsewhere the empty marker set makes the frame
-            // unrecognizable, so the earlier error stays the diagnostic.
-            let markers: &[&str] = if self.error_envelope_in_success {
-                &["error"]
-            } else {
-                &[]
-            };
-            wire::classify_marker_keyed_frame::<ErrorEnvelope>(data, markers)
+            // An `error` payload is the Responses protocol's own in-band
+            // failure on EVERY dialect — the stream's `error` event — so it
+            // is recognized unconditionally. `error_envelope_in_success` is
+            // a different fact about a different shape: a gateway answering
+            // a 200 with an error envelope as the whole BODY. Gating the
+            // event on that quirk made a standard protocol frame
+            // unreadable, and EOF became the diagnostic instead of the
+            // provider's own message.
+            wire::classify_marker_keyed_frame::<ErrorEnvelope>(data, &["error"])
                 .map(|_| ResponsesEvent::Failure(data.to_owned()))
         };
         wire::classify_or(
@@ -1368,12 +1380,14 @@ impl ResponsesDecoder {
             }
             StreamingCompletionChunk::Response(chunk) => {
                 let ResponseChunk { kind, response, .. } = chunk;
-                // The terminal event carries the reply's whole envelope,
-                // and on a unary call over this wire there is no other
-                // document: the bytes were an event stream.
-                if self.document.is_none() {
-                    self.document = serde_json::to_value(&response).ok();
-                }
+                // The reply's whole envelope, and on a unary call over this
+                // wire there is no other document: the bytes were an event
+                // stream. Every `response.*` frame carries a snapshot of the
+                // same envelope, so the LAST one wins — `response.created`
+                // and `response.in_progress` precede the usage and the final
+                // status, and latching the first would hand back a
+                // pre-completion snapshot.
+                self.document = serde_json::to_value(&response).ok();
                 if matches!(kind, ResponseChunkKind::ResponseCompleted) {
                     // Inert under the driver, which records the same fields
                     // off the terminal record; the client layer's stream
@@ -1457,9 +1471,7 @@ impl Decoder<Completion> for ResponsesDecoder {
             // the events the stream sends, then close it with the terminal
             // the body itself is.
             ResponsesEvent::Whole(response) => {
-                if self.document.is_none() {
-                    self.document = serde_json::to_value(&*response).ok();
-                }
+                self.document = serde_json::to_value(&*response).ok();
                 self.accumulator.replay_whole_response(*response, out);
                 self.flush(out);
             }

@@ -6,7 +6,7 @@
 //! its documented `None`/zero outcome, which is exactly what these cells
 //! assert rather than skip. Dimensions ride `output_dimensionality`.
 
-use rig::embeddings::{EmbeddingModel as _, NormalizeEmbeddingResponse as _};
+use rig::embeddings::EmbeddingModel as _;
 use rig::providers::gemini;
 
 use super::super::support::with_gemini_cassette;
@@ -56,14 +56,23 @@ async fn raw_round_trips() {
             serde_json::from_value(response.raw.clone()).expect("raw round-trips");
         assert_eq!(raw.embeddings.len(), response.embeddings.len());
 
-        let renormalized = raw
-            .normalize("gcp.gemini", inputs())
-            .expect("re-normalization succeeds");
-        assert_eq!(renormalized.embeddings.len(), response.embeddings.len());
+        // One decoder, two views: Gemini's own reply typed out of `raw` says
+        // what the normalized response says, vector for vector. Re-normalizing
+        // it by hand would only compare the decoder's mapping to a copy of
+        // itself.
+        for (typed, normalized) in raw.embeddings.iter().zip(&response.embeddings) {
+            assert_eq!(
+                typed.values.len(),
+                normalized.vec.len(),
+                "each captured vector has the width the normalized one reports"
+            );
+        }
     })
     .await;
 }
 
+/// There is one embed seam, so the axis this cell pins is that repeating the
+/// request is stable and that the captured payload is the reply Gemini sent.
 #[tokio::test]
 async fn raw_route_parity() {
     with_gemini_cassette("embedding_matrix/raw_route_parity", |client| async move {
@@ -72,10 +81,12 @@ async fn raw_route_parity() {
             .embed_texts_response(inputs())
             .await
             .expect("normalized call should succeed");
-        let raw = model
-            .raw_embed_texts(inputs())
+        let again = model
+            .embed_texts_response(inputs())
             .await
-            .expect("raw call should succeed");
+            .expect("the same request should succeed again");
+        let raw: gemini::embedding::gemini_api_types::EmbeddingResponse =
+            serde_json::from_value(again.raw.clone()).expect("raw is Gemini's own embed reply");
         assert_eq!(raw.embeddings.len(), normalized.embeddings.len());
     })
     .await;

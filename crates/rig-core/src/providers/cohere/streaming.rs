@@ -1,21 +1,10 @@
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::GenericEventSource;
 use crate::operation::Completion;
-use crate::providers::cohere::CompletionModel;
 use crate::providers::cohere::completion::{
-    AssistantContent, CohereCompletionRequest, CompletionResponse, FinishReason, PROVIDER_NAME,
-    Usage, map_finish_reason,
+    AssistantContent, CompletionResponse, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
 };
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
-use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_and_done,
-};
+use crate::providers::internal::adapter::{AdapterOutput, WireFrame};
 use crate::providers::internal::wire;
 use crate::streaming::{BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-
-use crate::{json_utils, streaming};
 use serde::{Deserialize, Serialize};
 
 /// One streamed frame of Cohere's `/v2/chat`, named by its `type`.
@@ -173,17 +162,24 @@ impl Default for ChatDecoder {
     }
 }
 
-impl WireAdapter for ChatDecoder {
-    type Frame = WireFrame;
-    type Event = StreamingEvent;
+/// One frame of the `/v2/chat` wire.
+///
+/// The streamed frames name themselves in `type`; the unary body carries no
+/// discriminator at all, so it is the untagged fallback — the one place the
+/// whole-reply shape appears. Both go through the same [`ChatDecoder`], so
+/// the two paths cannot drift.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ChatEvent {
+    /// One SSE frame of `POST /v2/chat` with `stream: true`.
+    Stream(StreamingEvent),
+    /// The whole reply of `POST /v2/chat` without `stream`.
+    Reply(CompletionResponse),
+}
 
-    fn classify(&self, frame: WireFrame) -> wire::WireEvent<StreamingEvent> {
-        wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
-            KNOWN_EVENT_TYPES.contains(&event_type)
-        })
-    }
-
-    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
+impl ChatDecoder {
+    /// Interpret one streamed `/v2/chat` frame.
+    fn interpret_stream(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
         match event {
             StreamingEvent::MessageStart { id: Some(id) } => {
                 self.message_id = Some(id);
@@ -308,30 +304,6 @@ impl WireAdapter for ChatDecoder {
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput) {
-        // Only Cohere's `message-end` event counts as the provider completing
-        // the turn. A stream that reached EOF without it (truncation) has no
-        // terminal record to report; synthesizing one would present a partial
-        // turn as a successful, zero-usage completion.
-    }
-}
-
-/// One frame of the `/v2/chat` wire.
-///
-/// The streamed frames name themselves in `type`; the unary body carries no
-/// discriminator at all, so it is the untagged fallback — the one place the
-/// whole-reply shape appears. Both go through the same [`ChatDecoder`], so
-/// the two paths cannot drift.
-#[derive(Debug, Deserialize)]
-#[serde(untagged)]
-pub enum ChatEvent {
-    /// One SSE frame of `POST /v2/chat` with `stream: true`.
-    Stream(StreamingEvent),
-    /// The whole reply of `POST /v2/chat` without `stream`.
-    Reply(CompletionResponse),
-}
-
-impl ChatDecoder {
     /// Interpret the unary reply by *synthesizing the stream* it would have
     /// been: one block per content part, each tool call whole, then the
     /// terminal the `message-end` event carries.
@@ -412,8 +384,7 @@ impl ChatDecoder {
 }
 
 /// The `/v2/chat` wire decodes its unary and streamed replies with the same
-/// state machine: [`WireAdapter`] is the streamed half's historical name and
-/// this is the operation-generic contract the driver folds through.
+/// state machine, so the two paths cannot drift.
 impl crate::wire::Decoder<Completion> for ChatDecoder {
     type Event = ChatEvent;
 
@@ -428,77 +399,16 @@ impl crate::wire::Decoder<Completion> for ChatDecoder {
 
     fn interpret(&mut self, event: ChatEvent, out: &mut AdapterOutput) {
         match event {
-            ChatEvent::Stream(event) => WireAdapter::interpret(self, event, out),
+            ChatEvent::Stream(event) => self.interpret_stream(event, out),
             ChatEvent::Reply(reply) => self.interpret_reply(reply, out),
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput) {
-        WireAdapter::finish(self, out);
-    }
-}
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Open a chat stream with observation context owned by this invocation.
-    pub(crate) async fn stream_observed(
-        &self,
-        request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let system_instructions = request.system_instructions().map(str::to_owned);
-        let record_telemetry_content = request.record_telemetry_content;
-        let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true}),
-        );
-
-        request.additional_params = Some(params);
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Streaming,
-            "Cohere streaming completion input",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post("/v2/chat")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-        if let Some(observation) = observation {
-            observation.attach(&mut req, "/v2/chat");
-        }
-
-        let stream = open_wire_stream(
-            GenericEventSource::new(self.client.clone(), req),
-            SseTransportOptions {
-                open_log: OpenLog::Trace,
-                stream_ended_is_error: false,
-                log_transport_errors: true,
-            },
-            |data: String| skip_blank_and_done(&data),
-            ChatDecoder::default(),
-            span,
-        );
-
-        Ok(streaming::StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            stream,
-        ))
+    fn finish(&mut self, _out: &mut AdapterOutput) {
+        // Only Cohere's `message-end` event counts as the provider completing
+        // the turn. A stream that reached EOF without it (truncation) has no
+        // terminal record to report; synthesizing one would present a partial
+        // turn as a successful, zero-usage completion.
     }
 }
 

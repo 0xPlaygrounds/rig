@@ -4,7 +4,6 @@ use super::support::with_deepseek_cassette_result;
 use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
 use rig::message::Message;
-use rig::prelude::*;
 use rig::providers::deepseek;
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {

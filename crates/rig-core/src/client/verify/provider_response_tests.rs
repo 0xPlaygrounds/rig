@@ -64,68 +64,27 @@ fn verify_error_provider_response_helpers_with_unrelated_variant() {
     assert_eq!(error.provider_response_json().expect("no body"), None);
 }
 
-#[tokio::test]
-async fn verify_preserves_status_and_body_on_provider_error_response() {
-    use crate::client::VerifyClient;
-    use crate::providers::openai::Client;
-    use crate::test_utils::RecordingHttpClient;
-
-    let body = r#"{"error":{"message":"server exploded","type":"server_error"}}"#;
-    let http_client =
-        RecordingHttpClient::with_error_response(StatusCode::INTERNAL_SERVER_ERROR, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-
-    let error = client
-        .verify()
-        .await
-        .expect_err("verify should fail on a 500 response");
-
-    assert_eq!(
-        error.provider_response_status(),
-        Some(StatusCode::INTERNAL_SERVER_ERROR)
-    );
-    assert_eq!(error.provider_response_body(), Some(body));
-    let json = error
-        .provider_response_json()
-        .expect("raw body should be valid JSON")
-        .expect("parsed JSON should be present");
-    assert_eq!(json["error"]["type"], "server_error");
-}
-
-/// rig#2210: `verify` builds its own errors on three separate branches
-/// (500, Anthropic's 529, and the generic non-success tail). Each must
-/// preserve the failed response's headers, so a rejected verification can
-/// still be retried on the server's schedule.
-#[tokio::test]
-async fn verify_preserves_response_headers_on_every_failing_branch() {
-    use crate::client::VerifyClient;
-    use crate::providers::openai::Client;
-    use crate::test_utils::RecordingHttpClient;
-
+/// rig#2210, on the wire path: the 401/403 reading is the only thing
+/// `VerifyError`'s `WireError` impl may collapse. Every other rejected
+/// verification must still carry the reply the driver stamped onto it —
+/// status, body, and headers — so a caller can retry on the server's
+/// schedule instead of guessing.
+#[test]
+fn a_rejected_verification_keeps_its_reply_unless_it_is_an_auth_failure() {
     let body = r#"{"error":{"message":"slow down"}}"#;
+    let mut headers = http::HeaderMap::new();
+    headers.insert(http::header::RETRY_AFTER, "20".parse().expect("value"));
+
     for status in [
         StatusCode::INTERNAL_SERVER_ERROR,
         StatusCode::from_u16(529).expect("overloaded"),
         StatusCode::TOO_MANY_REQUESTS,
     ] {
-        let mut headers = http::HeaderMap::new();
-        headers.insert(http::header::RETRY_AFTER, "20".parse().expect("value"));
-        let http_client = RecordingHttpClient::with_error_response_headers(status, body, headers);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
+        let error = <VerifyError as WireError>::http_response(status, body)
+            .with_response_headers(Some(headers.clone()));
 
-        let error = client
-            .verify()
-            .await
-            .expect_err("verify should fail on a non-success status");
-
+        assert_eq!(error.provider_response_status(), Some(status));
+        assert_eq!(error.provider_response_body(), Some(body));
         assert_eq!(
             error
                 .provider_response_headers()
@@ -134,7 +93,28 @@ async fn verify_preserves_response_headers_on_every_failing_branch() {
             Some("20"),
             "{status}: Retry-After not recoverable from a failed verify",
         );
-        assert_eq!(error.provider_response_status(), Some(status));
-        assert_eq!(error.provider_response_body(), Some(body));
+    }
+
+    for status in [StatusCode::UNAUTHORIZED, StatusCode::FORBIDDEN] {
+        assert!(
+            matches!(
+                <VerifyError as WireError>::http_response(status, body),
+                VerifyError::InvalidAuthentication
+            ),
+            "{status} is a verdict on the credential, not a provider response",
+        );
+        assert!(
+            matches!(
+                <VerifyError as WireError>::transport(
+                    http_client::Error::non_success_with_details(
+                        status,
+                        http::HeaderMap::new(),
+                        body.to_string(),
+                    )
+                ),
+                VerifyError::InvalidAuthentication
+            ),
+            "{status} seen by the transport is the same verdict",
+        );
     }
 }

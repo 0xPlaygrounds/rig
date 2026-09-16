@@ -44,7 +44,9 @@ use serde::Deserialize as _;
 use serde_json::Value;
 
 use super::super::DEFAULT_MODEL;
-use super::super::support::{assert_matches_recorded_token, with_openrouter_cassette_result};
+use super::super::support::{
+    BoundOpenRouter, assert_matches_recorded_token, with_openrouter_cassette_result,
+};
 
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -114,22 +116,25 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value, contex
     );
 }
 
-/// Run the scenario's two identical turns and hand both responses back.
-async fn observe_two_turns(scenario: &'static str) -> (CompletionResponse, CompletionResponse) {
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_openrouter_cassette_result(scenario, |client| async move {
-        let model = client.completion(DEFAULT_MODEL);
-        let first = model.completion(request(&model)).await?;
-        let second = model.completion(request(&model)).await?;
-        *sink.lock().expect("observation lock") = Some((first, second));
-        Ok::<(), anyhow::Error>(())
-    })
-    .await
-    .unwrap_or_else(|error| panic!("{scenario} should replay from its cassette: {error}"));
+/// Where a cell parks the two responses its recorded turns produced.
+///
+/// The wrapper call itself stays inline in every cell with its own scenario
+/// literal: `cassette_safety` reads the registered scenarios out of the AST
+/// and accepts only a literal, so a shared helper that took the scenario as a
+/// parameter would register nothing and orphan the fixture.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<(CompletionResponse, CompletionResponse)>>>;
 
-    observed
-        .lock()
+/// The body both cells share: the same built request, sent twice.
+async fn run_two_turns(client: BoundOpenRouter, sink: Observed) -> Result<(), anyhow::Error> {
+    let model = client.completion(DEFAULT_MODEL);
+    let first = model.completion(request(&model)).await?;
+    let second = model.completion(request(&model)).await?;
+    *sink.lock().expect("observation lock") = Some((first, second));
+    Ok(())
+}
+
+fn observed(sink: &Observed) -> (CompletionResponse, CompletionResponse) {
+    sink.lock()
         .expect("observation lock")
         .take()
         .expect("the cell should observe both turns")
@@ -142,7 +147,14 @@ async fn observe_two_turns(scenario: &'static str) -> (CompletionResponse, Compl
 #[tokio::test]
 async fn raw_reproduces_the_completion_it_rode_on() {
     const SCENARIO: &str = "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion";
-    let (first, second) = observe_two_turns(SCENARIO).await;
+    let sink = Observed::default();
+    with_openrouter_cassette_result(
+        "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
+        |client| run_two_turns(client, sink.clone()),
+    )
+    .await
+    .expect("raw_with_request_id_reproduces_completion should replay from its cassette");
+    let (first, second) = observed(&sink);
 
     let interactions = recorded_json(SCENARIO);
     assert_eq!(interactions.len(), 2, "one turn, then its twin");
@@ -206,7 +218,14 @@ async fn raw_reproduces_the_completion_it_rode_on() {
 async fn no_request_id_contract_holds_on_both_turns() {
     const SCENARIO: &str =
         "raw_completion_parity_matrix/plain_raw_completion_matches_completion_without_id";
-    let (first, second) = observe_two_turns(SCENARIO).await;
+    let sink = Observed::default();
+    with_openrouter_cassette_result(
+        "raw_completion_parity_matrix/plain_raw_completion_matches_completion_without_id",
+        |client| run_two_turns(client, sink.clone()),
+    )
+    .await
+    .expect("plain_raw_completion_matches_completion_without_id should replay from its cassette");
+    let (first, second) = observed(&sink);
 
     let interactions = recorded_json(SCENARIO);
     assert_eq!(interactions.len(), 2);

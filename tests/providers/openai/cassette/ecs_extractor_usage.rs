@@ -3,7 +3,6 @@ use super::super::support::with_openai_cassette_result;
 use super::extractor_usage::{Address, Person, assert_compatible_professions};
 use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
-use rig::prelude::*;
 use rig::providers;
 /// Test that `extract()`'s `.output` is the extracted value
 /// (usage rides alongside it on the response).

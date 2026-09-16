@@ -10,7 +10,6 @@
 
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::tool::Tool;
 

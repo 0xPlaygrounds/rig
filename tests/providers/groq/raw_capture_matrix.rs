@@ -44,7 +44,8 @@ use serde_json::{Value, json};
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
 use super::support::{
-    assert_matches_recorded_token, recorded_response_headers, with_groq_cassette_result,
+    BoundGroq, assert_matches_recorded_token, recorded_response_headers,
+    with_groq_cassette_result,
 };
 
 const PROVIDER: &str = "groq";
@@ -147,21 +148,23 @@ fn assert_reproduces_fixture(
     );
 }
 
-/// Run one recorded turn and hand back the response it produced.
-async fn observe(scenario: &'static str) -> CompletionResponse {
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_groq_cassette_result(scenario, |client| async move {
-        let model = client.completion(RAW_CAPTURE_MATRIX_MODEL);
-        let response = model.completion(request(&model)).await?;
-        *sink.lock().expect("observation lock") = Some(response);
-        Ok::<(), anyhow::Error>(())
-    })
-    .await
-    .unwrap_or_else(|error| panic!("{scenario} should replay from its cassette: {error}"));
+/// Where a cell parks the response its recorded turn produced.
+///
+/// The wrapper call stays inline in every cell with its own scenario
+/// literal — the fixture scan reads that literal out of the AST — so what is
+/// shared here is the turn's body, not the call.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
 
-    observed
-        .lock()
+/// Run one recorded turn and park the response it produced.
+async fn run(client: BoundGroq, sink: Observed) -> Result<(), anyhow::Error> {
+    let model = client.completion(RAW_CAPTURE_MATRIX_MODEL);
+    let response = model.completion(request(&model)).await?;
+    *sink.lock().expect("observation lock") = Some(response);
+    Ok(())
+}
+
+fn observed(sink: &Observed) -> CompletionResponse {
+    sink.lock()
         .expect("observation lock")
         .take()
         .expect("the cell should observe a response")
@@ -174,7 +177,14 @@ async fn observe(scenario: &'static str) -> CompletionResponse {
 #[tokio::test]
 async fn raw_is_the_verbatim_response_body() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
-    let response = observe("raw_capture_matrix/raw_round_trips_openai_type").await;
+    let sink = Observed::default();
+    with_groq_cassette_result(
+        "raw_capture_matrix/raw_round_trips_openai_type",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("raw_round_trips_openai_type should replay from its cassette");
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     assert!(
@@ -239,7 +249,14 @@ async fn raw_is_the_verbatim_response_body() {
 #[tokio::test]
 async fn raw_exposes_queue_time() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_queue_time";
-    let response = observe("raw_capture_matrix/raw_exposes_queue_time").await;
+    let sink = Observed::default();
+    with_groq_cassette_result(
+        "raw_capture_matrix/raw_exposes_queue_time",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("raw_exposes_queue_time should replay from its cassette");
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     let recorded_queue_time = body["usage"]["queue_time"]
@@ -285,7 +302,14 @@ async fn raw_exposes_queue_time() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let response = observe("raw_capture_matrix/normalized_fields_match_raw_renormalized").await;
+    let sink = Observed::default();
+    with_groq_cassette_result(
+        "raw_capture_matrix/normalized_fields_match_raw_renormalized",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     let request_id = recorded_request_id(SCENARIO);

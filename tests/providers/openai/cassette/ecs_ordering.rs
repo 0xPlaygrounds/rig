@@ -9,7 +9,7 @@ use crate::{
         assert_tool_call_precedes_later_text,
     },
 };
-use rig::{prelude::*, providers::openai};
+use rig::providers::openai;
 
 #[tokio::test]
 async fn responses_stream_preserves_tool_result_flow() {

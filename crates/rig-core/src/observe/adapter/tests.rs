@@ -424,7 +424,7 @@ impl crate::http_client::HttpClientExt for PendingHttp {
             if !body_pending {
                 return std::future::pending().await;
             }
-            let body: crate::http_client::sse::BoxedStream = Box::pin(futures::stream::pending());
+            let body: crate::http_client::BoxedStream = Box::pin(futures::stream::pending());
             http::Response::builder()
                 .header(http::header::CONTENT_TYPE, "text/event-stream")
                 .body(body)

@@ -8,15 +8,11 @@ async fn embeddings_non_success_preserves_status_and_body() {
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.embedding_model(
-        crate::providers::cohere::EMBED_ENGLISH_V3,
-        "search_document",
-    );
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client,
+    )
+    .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
 
     let error = model
         .embed_texts(["hello".to_string()])
@@ -29,38 +25,6 @@ async fn embeddings_non_success_preserves_status_and_body() {
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
     );
     assert_eq!(error.provider_response_body(), Some(body));
-}
-
-#[tokio::test]
-async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
-    use crate::embeddings::EmbeddingModel as _;
-    use crate::test_utils::RecordingHttpClient;
-
-    // Deserializes to `ApiResponse::Err(ApiErrorResponse { message })` on a 200 OK.
-    let body = r#"{"message":"boom"}"#;
-    let http_client = RecordingHttpClient::new(body);
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.embedding_model(
-        crate::providers::cohere::EMBED_ENGLISH_V3,
-        "search_document",
-    );
-
-    let error = model
-        .embed_texts(["hello".to_string()])
-        .await
-        .expect_err("should fail with provider error envelope");
-
-    match &error {
-        EmbeddingError::ProviderResponse(stored) => {
-            assert_eq!(stored.body, body);
-            assert_eq!(stored.status, Some(http::StatusCode::OK));
-        }
-        other => panic!("expected ProviderResponse, got {other:?}"),
-    }
 }
 
 #[test]
@@ -116,20 +80,22 @@ fn image_data_url_rejects_unsupported_and_oversized_inputs() {
     ));
 }
 
+/// Cohere's acceptance policy runs inside `ImageEmbeddings::encode`, so an
+/// unsniffable image in a batch fails the whole operation before the driver
+/// opens a socket.
 #[tokio::test]
 async fn image_batches_are_fully_validated_before_any_request() {
     use crate::embeddings::ImageEmbeddingModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::default();
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("build client");
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client.clone(),
+    )
+    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
 
-    let error = client
-        .image_embedding_model()
+    let error = model
         .embed_images([b"\x89PNG\r\n\x1a\n".to_vec(), b"not an image".to_vec()])
         .await
         .expect_err("invalid batch should fail before transport");
@@ -146,14 +112,13 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client,
+    )
+    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
 
-    let error = client
-        .image_embedding_model()
+    let error = model
         .embed_image(b"\x89PNG\r\n\x1a\n")
         .await
         .expect_err("should fail with non-success status");
@@ -164,32 +129,4 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
     );
     assert_eq!(error.provider_response_body(), Some(body));
-}
-
-#[tokio::test]
-async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
-    use crate::embeddings::ImageEmbeddingModel as _;
-    use crate::test_utils::RecordingHttpClient;
-
-    let body = r#"{"message":"boom"}"#;
-    let http_client = RecordingHttpClient::new(body);
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-
-    let error = client
-        .image_embedding_model()
-        .embed_image(b"\x89PNG\r\n\x1a\n")
-        .await
-        .expect_err("should fail with provider error envelope");
-
-    match &error {
-        EmbeddingError::ProviderResponse(stored) => {
-            assert_eq!(stored.body, body);
-            assert_eq!(stored.status, Some(http::StatusCode::OK));
-        }
-        other => panic!("expected ProviderResponse, got {other:?}"),
-    }
 }

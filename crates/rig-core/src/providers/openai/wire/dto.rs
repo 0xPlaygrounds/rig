@@ -235,11 +235,6 @@ pub struct ChatChoice {
 /// One frame of the chat-completions wire.
 #[derive(Deserialize, Debug)]
 pub struct ChatFrame {
-    /// `chat.completion` for the unary reply, `chat.completion.chunk` for a
-    /// streamed frame. Optional: several gateways omit it, which is why the
-    /// shape is decided by the choice as well.
-    #[serde(default, deserialize_with = "json_utils::null_or_default")]
-    pub(crate) object: String,
     pub(crate) id: Option<String>,
     pub(crate) model: Option<String>,
     #[serde(default, deserialize_with = "json_utils::null_or_default")]
@@ -261,8 +256,32 @@ impl ChatFrame {
     /// are needed: `object` is the authoritative tag, and several gateways
     /// omit it entirely.
     pub(crate) fn is_whole(&self) -> bool {
-        self.object == "chat.completion"
-            || self.choices.iter().any(|choice| choice.message.is_some())
+        match self.object() {
+            // The tag is authoritative when the dialect sends one. It has to
+            // be: Perplexity streams a full `message` on every chunk beside
+            // its `delta`, and its terminator is tagged
+            // `chat.completion.done`, so keying on "a choice carries a
+            // message" read every one of its stream frames as the whole
+            // reply — the first frame emitted a terminal, the driver stopped,
+            // and the rest of the turn was dropped.
+            Some(object) => object == "chat.completion",
+            // No tag: several gateways omit it, and then a choice carrying a
+            // whole `message` rather than a `delta` is the unary body.
+            None => self.choices.iter().any(|choice| choice.message.is_some()),
+        }
+    }
+
+    /// The frame's `object` tag, when the dialect sends one.
+    ///
+    /// Read out of the flattened metadata rather than declared as a field on
+    /// purpose: a named field would *consume* the key, and `object` would
+    /// then be missing from the terminal record's `additional_params` while
+    /// its neighbours (`service_tier`, `system_fingerprint`) survived — the
+    /// old adapter accumulated all of them.
+    pub(crate) fn object(&self) -> Option<&str> {
+        self.additional_params
+            .get("object")
+            .and_then(serde_json::Value::as_str)
     }
 
     /// The primary candidate.

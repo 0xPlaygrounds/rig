@@ -1,11 +1,20 @@
+//! The Messages projection, driven through [`crate::driver`].
+//!
+//! The projector is reached as [`crate::wire::Decoder::project`], which the
+//! driver calls on every raw payload — the rejection body included — so
+//! these cells exercise the wire and the driver together rather than the
+//! projector in isolation. That is the only way the *closure* facts
+//! (`Started`, `Response`, `Finished`) are observable at all: they belong to
+//! the attempt, not to the payload.
+
 use std::sync::Arc;
 
-use crate::client::CompletionClient;
-use crate::completion::CompletionModel as _;
+use crate::completion::CompletionRequest;
 use crate::observe::{
     Action, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,
     AdapterEvent, AdapterUsage, AdapterVerdict, ObservationLog, Subject,
 };
+use crate::providers::anthropic::wire::{Anthropic, Messages};
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use futures::StreamExt;
 
@@ -24,6 +33,25 @@ fn context(log: &Arc<ObservationLog>) -> Option<AdapterContext> {
     Some(AdapterContext::new(log.clone(), Subject::default(), "call"))
 }
 
+fn wire() -> Messages {
+    Anthropic::new("test-key").messages("claude-test")
+}
+
+fn request() -> CompletionRequest {
+    CompletionRequest {
+        model: None,
+        chat_history: vec![crate::message::Message::user("hello")],
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: Some(64),
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}
+
 /// A rejected Messages call: the envelope's type and message, and the
 /// closure with the one funnel's classification.
 #[tokio::test]
@@ -32,20 +60,10 @@ async fn messages_rejection_projects_the_envelope() {
         http::StatusCode::SERVICE_UNAVAILABLE,
         r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#,
     );
-    let client = crate::providers::anthropic::Client::builder()
-        .api_key("test-key")
-        .http_client(http)
-        .build()
-        .unwrap();
-    let model = client.completion_model("claude-test");
     let log = Arc::new(ObservationLog::default());
-    let error = model
-        .completion_with_context(
-            model.completion_request("hello").max_tokens(64).build(),
-            context(&log),
-        )
+    let error = crate::driver::call(&wire(), &http, request(), context(&log))
         .await
-        .unwrap_err();
+        .expect_err("the transport rejects the call");
     assert!(error.is_retryable());
     let events = adapter_events(&log);
     assert!(
@@ -83,24 +101,15 @@ event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,
 event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n\
 event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}\n\n\
 event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n";
-    let client = crate::providers::anthropic::Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(sse),
-        })
-        .build()
-        .unwrap();
-    let model = client.completion_model("claude-test");
+    let http = MockStreamingClient {
+        sse_bytes: bytes::Bytes::from(sse),
+    };
     let log = Arc::new(ObservationLog::default());
-    let mut stream = model
-        .stream_with_context(
-            model.completion_request("hello").max_tokens(64).build(),
-            context(&log),
-        )
-        .await
-        .unwrap();
+    let stream = crate::driver::stream(&wire(), &http, request(), context(&log))
+        .expect("the streamed request encodes");
+    let mut stream = Box::pin(stream);
     while let Some(item) = stream.next().await {
-        item.unwrap();
+        item.expect("the recorded stream decodes without an in-band error");
     }
     drop(stream);
 

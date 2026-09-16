@@ -49,11 +49,13 @@
 //!     cached_content_matrix -- --test-threads=1
 //! ```
 
-use rig::providers::gemini;
+use rig::prelude::*;
+use rig::providers::gemini::Gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use std::time::Duration;
 
 use super::super::support::{
+    BoundGemini,
     always_deleting_cached_contents, assert_recorded_requests_read_from_a_cache,
     assert_recorded_response_contains, with_gemini_prompt_caching_cassette,
 };
@@ -139,7 +141,7 @@ fn build(cell: Cell) -> NewCachedContent {
 ///
 /// The delete runs on the failure path too: a matrix this size would leak a lot
 /// of billed caches if one assertion took the test down with it.
-async fn run_cell(client: gemini::Client, cell: Cell) {
+async fn run_cell(client: BoundGemini, cell: Cell) {
     let created: CachedContent = client
         .cached_contents()
         .create(build(cell))
@@ -336,11 +338,10 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 
     use super::super::tools_support::CountingPing;
 
-    let client = gemini::Client::builder()
-        .api_key("not-a-real-key")
-        .base_url("http://127.0.0.1:1")
-        .build()
-        .expect("client should build");
+    let client = Gemini::new("not-a-real-key")
+        .with_base_url("http://127.0.0.1:1")
+        .bound()
+        .expect("transport should build");
 
     let agent = AgentBuilder::new(
         client

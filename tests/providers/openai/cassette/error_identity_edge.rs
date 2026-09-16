@@ -130,10 +130,10 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
     .await;
 }
 
-/// Family C: the embeddings capability's error enum reads the new transport
-/// variant — status and body survive a 4xx; embeddings has no request-id
-/// contract today, so the accessor answers `None` (the recording documents
-/// whether the header was nonetheless on the wire — see the PR findings).
+/// Family C: an embeddings 4xx keeps the provider's status and body, and
+/// carries the transport request id the recording shows on the wire — the
+/// embeddings wire reports `x-request-id` like every other route on this
+/// dialect, so the id is no longer dropped on the way to the caller.
 #[tokio::test]
 async fn embeddings_error_preserves_status_and_body() {
     with_openai_cassette(
@@ -154,7 +154,7 @@ async fn embeddings_error_preserves_status_and_body() {
                 "the capability error reads the details-preserving variant: {error:?}"
             );
             assert!(error.provider_response_body().is_some());
-            assert_eq!(error.provider_request_id(), None);
+            assert_transport_request_id(error.provider_request_id(), "embeddings 404");
         },
     )
     .await;

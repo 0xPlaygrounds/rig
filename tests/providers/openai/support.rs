@@ -1,6 +1,5 @@
 use rig::driver::{Bind, Bound};
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::prelude::*;
 use rig::providers::openai::responses_api::wire::{OPENAI as RESPONSES, ResponsesApi};
 use rig::providers::openai::wire::{OPENAI as CHAT, OpenAI};
 use std::future::Future;
@@ -19,7 +18,7 @@ use crate::cassettes::DirectRecordingHttpClient;
 /// The two OpenAI provider configurations one recorded endpoint serves.
 ///
 /// `openai::Client` was `Client<OpenAIResponses, H>` — the Responses API —
-/// and `completions_api()` swapped the marker to reach `/chat/completions`
+/// and the client layer swapped a marker type to reach `/chat/completions`
 /// on the same credential and base URL. In the wire model those are two
 /// configurations, because they are two request shapes:
 /// [`ResponsesApi`] serves `POST /responses`, and [`OpenAI`] serves every
@@ -50,7 +49,7 @@ impl<H: Clone> OpenAiCassette<H> {
     }
 }
 
-/// The bundled transport, erased — what `Client::builder().build()` built.
+/// The bundled transport, erased — the socket the deleted client built.
 fn bundled() -> BoxedHttpClient {
     ReqwestClient::default().boxed()
 }

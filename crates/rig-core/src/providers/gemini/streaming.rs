@@ -5,20 +5,13 @@ use super::completion::gemini_api_types::{
     map_finish_reason,
 };
 use super::completion::{
-    CompletionModel, PROVIDER_NAME, blocked_prompt_error, create_request_body,
-    function_call_finish_reason_error, resolve_request_model, streaming_endpoint,
+    PROVIDER_NAME, blocked_prompt_error, function_call_finish_reason_error, part_kind_name,
 };
-use crate::completion::{CompletionError, CompletionRequest};
+use crate::completion::CompletionError;
 use crate::operation::Completion;
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::GenericEventSource;
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
-use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
-};
+use crate::providers::internal::adapter::{AdapterOutput, WireFrame};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::wire::{Decoder, ObservationSink, Output};
 
 /// Part-kind interpretation shared by the Gemini wires whose payloads
@@ -182,6 +175,16 @@ pub struct GenerateContentDecoder {
     /// and silently drop the model's whole answer while still reporting a
     /// successful `STOP`.
     saw_finish_reason: bool,
+    /// Whether any part of the turn mapped to assistant content.
+    ///
+    /// A turn the provider COMPLETED that produced none is not a blank
+    /// successful answer: the unary mapper this decoder replaced ended with
+    /// `require_non_empty_response`, and a caller reading `choice: []` as an
+    /// answer is the outcome that rule exists to prevent. Checked in
+    /// `finish`, so a turn whose only parts were `executableCode` /
+    /// `codeExecutionResult` fails on both transports instead of only on the
+    /// one that used to have the rule.
+    delivered: bool,
     /// A tool-protocol finish reason or a blocked prompt ended the turn; later frames are dead —
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn.
@@ -202,6 +205,7 @@ impl Default for GenerateContentDecoder {
             final_model_version: None,
             final_response_id: None,
             saw_finish_reason: false,
+            delivered: false,
             failed: false,
         }
     }
@@ -332,6 +336,18 @@ impl Decoder<Completion> for GenerateContentDecoder {
             return;
         }
 
+        // The provider completed the turn and it carried no assistant
+        // content: the same rejection `require_non_empty_response` gave the
+        // blocking path, now on both transports. Pushed instead of the
+        // terminal, because a terminal here is the blank successful answer
+        // this refuses to report.
+        if !self.delivered {
+            out.error(CompletionError::ResponseError(
+                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
+            ));
+            return;
+        }
+
         // Deferral, not synthesis: the provider *did* signal the finish, on a
         // chunk that is not reliably its last (see `saw_finish_reason`).
         // Holding the record until EOF is what lets the driver read the rest
@@ -384,36 +400,17 @@ impl Decoder<Completion> for GenerateContentDecoder {
     }
 }
 
-/// The streaming transport's view of the same decoder, so the client layer
-/// this port replaces keeps compiling until it is deleted. Every method
-/// forwards: the decode is stated once, above.
-impl WireAdapter for GenerateContentDecoder {
-    type Frame = WireFrame;
-    type Event = StreamGenerateContentResponse;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
-        <Self as Decoder<Completion>>::classify(self, frame)
-    }
-
-    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        <Self as Decoder<Completion>>::is_analysis_only(self, frame)
-    }
-
-    fn interpret(&mut self, event: StreamGenerateContentResponse, out: &mut AdapterOutput) {
-        <Self as Decoder<Completion>>::interpret(self, event, out);
-    }
-
-    fn finish(&mut self, out: &mut AdapterOutput) {
-        <Self as Decoder<Completion>>::finish(self, out);
-    }
-
-    fn is_finished(&self) -> bool {
-        <Self as Decoder<Completion>>::is_finished(self)
-    }
-}
-
 impl GenerateContentDecoder {
     fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput) {
+        // Every arm below but the two skipping arms produces assistant
+        // content; the skips leave `delivered` alone, which is what lets
+        // `finish` tell a completed-but-contentless turn from a real answer.
+        if !matches!(
+            part.part,
+            PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_)
+        ) {
+            self.delivered = true;
+        }
         match part {
             Part {
                 part: PartKind::Text(text),
@@ -565,76 +562,34 @@ impl GenerateContentDecoder {
                     out,
                 );
             }
-            part => {
-                // Structural metadata only: an unmodeled part can carry
-                // model output, which must not leak into WARN logs.
-                crate::providers::internal::adapter::warn_unmodeled("gemini_part", &part);
+            Part {
+                part: part @ (PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_)),
+                ..
+            } => {
+                // The `codeExecution` tool's own output: real Gemini output
+                // with no slot in `AssistantContent`, skipped by both
+                // transports since #2258. Structural metadata only in the
+                // log — an unmodeled part can carry model output, which must
+                // not leak into WARN logs.
+                crate::providers::internal::adapter::warn_unmodeled(
+                    "gemini_part",
+                    &part_kind_name(&part),
+                );
+            }
+            Part { part, .. } => {
+                // A part kind rig cannot account for at all. `functionResponse`
+                // and `fileData` are request-side shapes `generateContent`
+                // never answers with, so one arriving means the reply is not
+                // what this wire models — the blocking mapper this decoder
+                // replaced failed the response rather than dropping content
+                // with a WARN, and that is the contract.
+                out.error(CompletionError::ResponseError(format!(
+                    "Gemini response part kind {} carries no assistant content rig can account for",
+                    part_kind_name(&part)
+                )));
+                self.failed = true;
             }
         }
-    }
-}
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    pub(crate) async fn stream_observed(
-        &self,
-        completion_request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(
-            completion_request.system_instructions(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-        let mut request = create_request_body(completion_request)?;
-        if let Some(name) = self.cached_content.as_deref() {
-            request.with_cached_content(name)?;
-        }
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Streaming,
-            "Gemini streaming completion request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post(format!("{}?alt=sse", streaming_endpoint(&request_model)))?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        if let Some(observation) = observation {
-            super::observation::attach(
-                observation,
-                &mut req,
-                "/models/{model}:streamGenerateContent",
-            );
-        }
-        Ok(streaming::StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            open_wire_stream(
-                GenericEventSource::new(self.client.clone(), req),
-                SseTransportOptions {
-                    open_log: OpenLog::Debug,
-                    stream_ended_is_error: false,
-                    log_transport_errors: true,
-                },
-                skip_blank_frames,
-                GenerateContentDecoder::default(),
-                span,
-            ),
-        ))
     }
 }
 

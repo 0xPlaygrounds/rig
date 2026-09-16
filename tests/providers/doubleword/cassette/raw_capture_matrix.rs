@@ -45,7 +45,9 @@ use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::DEFAULT_MODEL;
-use super::super::support::{assert_matches_recorded_token, with_doubleword_cassette_result};
+use super::super::support::{
+    BoundDoubleword, assert_matches_recorded_token, with_doubleword_cassette_result,
+};
 
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -128,21 +130,25 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.provider_request_id, None, "request id");
 }
 
-/// Run one completion under `scenario` and hand back the response it observed.
-async fn observe(scenario: &'static str) -> CompletionResponse {
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_doubleword_cassette_result(scenario, |client| async move {
-        let model = client.completion(DEFAULT_MODEL);
-        let response = model.completion(request(&model)).await?;
-        *sink.lock().expect("observation lock") = Some(response);
-        Ok::<(), anyhow::Error>(())
-    })
-    .await
-    .unwrap_or_else(|error| panic!("{scenario} should replay from its cassette: {error}"));
+/// Where a cell parks the response it observed, so the assertions can run
+/// after the cassette wrapper has finished and written its fixture.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
 
-    observed
-        .lock()
+/// One completion under the cell's model, parked in `sink`.
+///
+/// The wrapper call itself stays at each `#[tokio::test]` site with its
+/// scenario literal: `tests/common/cassette_safety.rs` discovers fixtures by
+/// parsing those literals out of the wrapper's first argument, so hiding one
+/// behind a variable would orphan the cassette.
+async fn run(client: BoundDoubleword, sink: Observed) -> Result<(), anyhow::Error> {
+    let model = client.completion(DEFAULT_MODEL);
+    let response = model.completion(request(&model)).await?;
+    *sink.lock().expect("observation lock") = Some(response);
+    Ok(())
+}
+
+fn observed(sink: &Observed) -> CompletionResponse {
+    sink.lock()
         .expect("observation lock")
         .take()
         .expect("the cell should observe a response")
@@ -162,7 +168,14 @@ const UNMODELLED_USAGE: [&str; 3] = [
 #[tokio::test]
 async fn raw_round_trips_openai_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
-    let response = observe(SCENARIO).await;
+    let sink = Observed::default();
+    with_doubleword_cassette_result(
+        "raw_capture_matrix/raw_round_trips_openai_type",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("raw_round_trips_openai_type should replay from its cassette");
+    let response = observed(&sink);
 
     let raw = &response.raw;
     let typed = openai::CompletionResponse::deserialize(raw)
@@ -193,7 +206,13 @@ async fn raw_round_trips_openai_type() {
 #[tokio::test]
 async fn raw_exposes_object() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object";
-    let response = observe(SCENARIO).await;
+    let sink = Observed::default();
+    with_doubleword_cassette_result("raw_capture_matrix/raw_exposes_object", |client| {
+        run(client, sink.clone())
+    })
+    .await
+    .expect("raw_exposes_object should replay from its cassette");
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     let recorded_object = body["object"]
@@ -232,7 +251,14 @@ async fn raw_exposes_object() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let response = observe(SCENARIO).await;
+    let sink = Observed::default();
+    with_doubleword_cassette_result(
+        "raw_capture_matrix/normalized_fields_match_raw_renormalized",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     assert_reproduces_fixture(&response, &body);

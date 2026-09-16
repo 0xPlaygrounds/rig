@@ -125,7 +125,15 @@ impl Embeddings {
     /// OpenAI's legacy Ada model does not accept a width at all, and
     /// `llama-server` reads no width field, so neither is sent one.
     fn requested_width(&self) -> Option<(&'static str, usize)> {
-        let ndims = self.ndims?;
+        // The width the caller named, or the one this model is documented at
+        // — the deleted client sent `ndims.or_else(|| default_ndims(model))`,
+        // and every recorded embedding cassette carries the resolved value.
+        // A model absent from every width table resolves to 0, which is the
+        // sentinel for "unknown", and then nothing is sent.
+        let ndims = match self.resolved_ndims() {
+            0 => return None,
+            ndims => ndims,
+        };
         match self.provider.dialect.quirks.embedding.dimensions {
             DimensionsField::Ignored => None,
             _ if self.model == crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002 => None,
@@ -226,10 +234,18 @@ impl Wire for Embeddings {
     }
 
     fn capabilities(&self) -> EmbeddingCapabilities {
+        // `ndims` is the resolved width — the caller's, else the model
+        // table's — because that is what goes on the wire and what
+        // `EmbeddingModel::ndims` must report. `declared` is the narrower
+        // fact of whether the caller asked for a width at all, which is the
+        // only thing that licenses the consumer's mismatch check: a handle
+        // that named none has nothing to disagree with, and `Some(0)` is
+        // rig's sentinel for "unknown" rather than a claim.
         EmbeddingCapabilities::new(
             self.provider.dialect.quirks.embedding.max_documents,
             self.resolved_ndims(),
         )
+        .declaring(self.ndims)
     }
 
     fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
@@ -463,21 +479,46 @@ pub struct ImageDatum {
     pub b64_json: String,
 }
 
+/// One generated image on the dialects that key it `image` under `images`.
+#[cfg(feature = "image")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImagesReplyImage {
+    /// The image, base64-encoded.
+    pub image: String,
+}
+
 /// The image-generation reply.
 ///
-/// `created` is optional and the rest of the object is kept verbatim: OpenAI
-/// sends `{created, data}` and xAI sends `{data}` alone, so a required
-/// `created` would fail every xAI reply.
+/// Three shapes, and the keys are disjoint, so one type reads all of them
+/// without asking which dialect answered: OpenAI sends `{created, data}`,
+/// xAI sends `{data}` with no `created` (a required one would fail every xAI
+/// reply), and Hyperbolic sends `{images:[{image}]}`.
 #[cfg(feature = "image")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImagesReply {
-    /// The generated images.
+    /// The generated images, as OpenAI and xAI key them.
     #[serde(default)]
     pub data: Vec<ImageDatum>,
-    /// Whatever else the dialect sent (`created`, and any field this build
-    /// does not model), so the raw payload loses nothing.
+    /// The generated images, as Hyperbolic keys them.
+    #[serde(default)]
+    pub images: Vec<ImagesReplyImage>,
+    /// Whatever else the dialect sent (`created`, Venice's `id`/`timing`, and
+    /// any field this build does not model), so the raw payload loses
+    /// nothing.
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
+#[cfg(feature = "image")]
+impl ImagesReply {
+    /// The first image's base64 payload, whichever key the dialect used.
+    pub fn first_base64(&self) -> Option<&str> {
+        self.data
+            .first()
+            .map(|image| image.b64_json.as_str())
+            .or_else(|| self.images.first().map(|image| image.image.as_str()))
+            .filter(|encoded| !encoded.is_empty())
+    }
 }
 
 #[cfg(feature = "image")]
@@ -496,7 +537,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
         use base64::Engine;
         use crate::image_generation::{ImageGenerationError, ImageGenerationResponse};
 
-        let Some(encoded) = event.data.first().map(|image| image.b64_json.as_str()) else {
+        let Some(encoded) = event.first_base64() else {
             out.push(Err(ImageGenerationError::ResponseError(
                 "missing image data".to_owned(),
             )));
@@ -551,6 +592,14 @@ impl Wire for Images {
                 "prompt": request.prompt,
                 "response_format": "b64_json",
                 "aspect_ratio": "1:1",
+            }),
+            // Hyperbolic names the model `model_name` and takes the size as
+            // two fields rather than `"{w}x{h}"`.
+            ImageBody::Hyperbolic => serde_json::json!({
+                "model_name": self.model,
+                "prompt": request.prompt,
+                "height": request.height,
+                "width": request.width,
             }),
         };
         // Merged last, so a caller can reach the endpoint's other parameters
@@ -614,6 +663,17 @@ impl Speech {
 #[derive(Default)]
 pub struct SpeechDecoder {
     provider: &'static str,
+    /// Which reply shape this dialect answers with.
+    body: Option<SpeechBody>,
+}
+
+/// Hyperbolic's speech reply: base64 in a JSON envelope rather than the
+/// audio bytes themselves.
+#[cfg(feature = "audio")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SpeechReply {
+    /// The audio, base64-encoded.
+    pub audio: String,
 }
 
 #[cfg(feature = "audio")]
@@ -634,8 +694,31 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
         event: Self::Event,
         out: &mut Output<crate::operation::AudioGeneration>,
     ) {
+        use base64::Engine;
+
+        let audio = match self.body {
+            // OpenAI and xAI answer with the audio itself.
+            Some(SpeechBody::OpenAi) | Some(SpeechBody::Xai) | None => event,
+            // Hyperbolic wraps it, base64-encoded, in a JSON envelope.
+            Some(SpeechBody::Hyperbolic) => {
+                let reply = match serde_json::from_slice::<SpeechReply>(&event) {
+                    Ok(reply) => reply,
+                    Err(error) => {
+                        out.push(Err(AudioGenerationError::ResponseError(error.to_string())));
+                        return;
+                    }
+                };
+                match base64::prelude::BASE64_STANDARD.decode(&reply.audio) {
+                    Ok(audio) => audio,
+                    Err(error) => {
+                        out.push(Err(AudioGenerationError::ResponseError(error.to_string())));
+                        return;
+                    }
+                }
+            }
+        };
         out.push(Ok(crate::audio_generation::AudioGenerationResponse::new(
-            event,
+            audio,
             self.provider,
         )));
     }
@@ -673,6 +756,14 @@ impl Wire for Speech {
                 "voice_id": if request.voice.is_empty() { "eve" } else { request.voice.as_str() },
                 "language": "en",
             }),
+            // Hyperbolic addresses this endpoint by language, so the
+            // identifier the caller passes as the model IS the language tag.
+            SpeechBody::Hyperbolic => serde_json::json!({
+                "language": self.model,
+                "speaker": request.voice,
+                "text": request.text,
+                "speed": request.speed,
+            }),
         };
         // Last, so a caller can reach the endpoint's other parameters —
         // `response_format`, `instructions` — and override what is derived
@@ -697,6 +788,7 @@ impl Wire for Speech {
     fn decoder(&self) -> SpeechDecoder {
         SpeechDecoder {
             provider: self.provider.dialect.name,
+            body: Some(self.provider.dialect.quirks.speech_body),
         }
     }
 }

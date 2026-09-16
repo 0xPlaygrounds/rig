@@ -1,4 +1,8 @@
-//! Bounded framing diagnostics beside the SSE decoder; never stores frame data.
+//! Bounded SSE framing diagnostics for the observability adapter: how many
+//! bytes of the reply arrived after the last event delimiter, and nothing
+//! else. Deliberately *not* [`super::framing::SseFramer`], which buffers the
+//! partial frame because it has to reassemble it — this counter never stores
+//! frame data.
 
 /// Counts bytes after the most recent SSE event delimiter, across body chunks.
 #[derive(Default)]

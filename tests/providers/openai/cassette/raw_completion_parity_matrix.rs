@@ -53,11 +53,10 @@ use std::pin::Pin;
 
 use rig::completion::{
     AssistantContent, CompletionModel as _, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse as _, ToolDefinition,
+    ToolDefinition,
 };
 use rig::driver::Bound;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::wire::Responses;
 use rig::providers::openai::wire::Chat;

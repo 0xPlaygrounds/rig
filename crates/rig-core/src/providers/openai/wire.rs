@@ -171,6 +171,10 @@ pub enum ImageBody {
     /// xAI: `{model, prompt, response_format, aspect_ratio}` and no `size`,
     /// answered with `data[].b64_json` and no `created`.
     Xai,
+    /// Hyperbolic: `{model_name, prompt, height, width}` — the model key is
+    /// `model_name` and the size is two fields, not `"{w}x{h}"` — answered
+    /// with `images[].image`.
+    Hyperbolic,
 }
 
 /// Which body a speech endpoint takes.
@@ -180,6 +184,12 @@ pub enum SpeechBody {
     OpenAi,
     /// xAI: `{text, voice_id, language}`, with `eve` as the default voice.
     Xai,
+    /// Hyperbolic: `{language, speaker, text, speed}`, answered with
+    /// `{"audio": "<base64>"}` rather than the audio bytes themselves.
+    ///
+    /// It addresses this endpoint by *language*, so the identifier a caller
+    /// passes as the model is the language tag (`"EN"`).
+    Hyperbolic,
 }
 
 /// How a dialect addresses a model.
@@ -368,6 +378,15 @@ pub struct Quirks {
     /// Whether the dialect emits `reasoning_details` entries (OpenRouter's
     /// encrypted reasoning blobs and replay signatures).
     pub reasoning_details: bool,
+    /// Whether this dialect can answer a chat request with a bare JSON
+    /// string instead of a completion envelope.
+    ///
+    /// Mira's gateway does: `mira::CompletionResponse` was
+    /// `#[serde(untagged)]` over an envelope and a `Simple(String)`, and the
+    /// bare string normalized to one text block with default usage and no
+    /// finish reason. Some deployment sends it, so dropping the tolerance
+    /// turns a working call into a parse error.
+    pub accepts_bare_string_reply: bool,
     /// Whether this dialect accepts a document or file content part that
     /// carries only a provider file id.
     ///
@@ -387,6 +406,14 @@ pub struct Quirks {
     pub accepts_file_ids: bool,
     /// The rewrite this dialect applies to the serialized chat body.
     pub rewrite: BodyRewrite,
+    /// Paths this dialect serves at the server root rather than under the
+    /// versioned base URL.
+    ///
+    /// `llama-server` serves its operational routes unversioned — `GET
+    /// /v1/props` is a 404 there — and the deleted client carried an explicit
+    /// list for exactly this. A base URL ending in `/v1` has that suffix
+    /// stripped for these paths, which is what the recorded requests show.
+    pub root_relative_routes: &'static [&'static str],
     /// Whether the model is the modality endpoint's *path* rather than a
     /// body field. Hugging Face's router addresses transcription and image
     /// generation as `/{model}`; everyone else uses a fixed path.
@@ -423,12 +450,14 @@ impl Quirks {
             output_cap: OutputCap::OpenAiReasoningFamilies,
             native_finish_reason: false,
             reasoning_details: false,
+            accepts_bare_string_reply: false,
             accepts_file_ids: true,
             rewrite: BodyRewrite::None,
             embedding: EmbeddingQuirks::openai(),
             // OpenAI has no reranking endpoint, and neither does any dialect
             // on this wire but llama.cpp.
             rerank: RerankQuirks::unsupported(),
+            root_relative_routes: &[],
             model_is_modality_path: false,
             image_body: ImageBody::OpenAi,
             speech_body: SpeechBody::OpenAi,
@@ -532,7 +561,15 @@ impl OpenAI {
             api_key: api_key.into(),
             base_url: dialect.base_url.to_owned(),
             dialect: *dialect,
-            api_version: None,
+            // Azure carries an `api-version` on every route, and formatting
+            // an empty one would silently address an unversioned endpoint.
+            // This is the version its deleted client builder defaulted to.
+            api_version: match dialect.quirks.routing {
+                Routing::AzureDeployment => {
+                    Some(dialects::AZURE_DEFAULT_API_VERSION.to_owned())
+                }
+                Routing::Path => None,
+            },
             audio_api_version: None,
             auth: dialect.quirks.auth,
             sub_route: None,
@@ -721,8 +758,18 @@ impl OpenAI {
                 path,
                 api_version.unwrap_or_default(),
             ),
-            _ => format!("{}{}", self.base_url.trim_end_matches('/'), path),
+            _ => format!("{}{}", self.base(path), path),
         }
+    }
+
+    /// The base URL `path` resolves against: the configured one, with the
+    /// version segment dropped for a route the dialect serves at the root.
+    fn base(&self, path: &str) -> &str {
+        let base = self.base_url.trim_end_matches('/');
+        if self.dialect.quirks.root_relative_routes.contains(&path) {
+            return base.strip_suffix("/v1").unwrap_or(base);
+        }
+        base
     }
 
     /// The `api-version` a speech request carries.

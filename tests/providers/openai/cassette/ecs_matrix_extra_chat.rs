@@ -6,7 +6,6 @@
 //! literals and the wire's models.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::{GPT_4O, GPT_5_MINI, GPT_5_NANO};
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};

@@ -39,7 +39,6 @@ use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openrouter;
 use rig::streaming::{Delta, StreamEvent};
 use serde::Deserialize as _;

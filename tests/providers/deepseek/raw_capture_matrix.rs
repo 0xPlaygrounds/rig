@@ -37,7 +37,6 @@
 
 use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
 use rig::message::{AssistantContent, ReasoningContent};
-use rig::prelude::*;
 use rig::providers::deepseek;
 use serde::Deserialize;
 use serde_json::{Value, json};

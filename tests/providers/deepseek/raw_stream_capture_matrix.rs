@@ -21,8 +21,8 @@
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame | recorded |
-//! | 2 | `stream_raw_exposes_terminal_cache_miss_tokens` | terminal-only field | `raw.usage.prompt_cache_miss_tokens` equals the recorded terminal frame's | recorded |
-//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` round-trips into `StreamingCompletionResponse<ChatUsage>` and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
+//! | 2 | `stream_raw_exposes_terminal_cache_miss_tokens` | terminal-only field | the terminal accounting reads back as [`ChatUsage`], whose `extra` carries `prompt_cache_miss_tokens` and whose `to_normalized` keeps only the hit half | recorded |
+//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` round-trips the same way and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that the recorded SSE stream carries usage on exactly one frame
@@ -38,7 +38,6 @@ use rig::message::AssistantContent;
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::ReasoningContent;
-use rig::prelude::*;
 use rig::providers::deepseek;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
@@ -48,6 +47,8 @@ use serde_json::{Value, json};
 use super::support::{assert_matches_recorded_token, with_deepseek_cassette_result};
 use crate::support::collect_text_and_terminal;
 
+/// The decoder's terminal record, as `raw` holds it: the shared
+/// chat-completions terminal over the wire's own accounting.
 type DeepSeekTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "deepseek";
@@ -263,13 +264,24 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
         .expect("DeepSeek's terminal usage reports prompt_cache_hit_tokens");
 
     let raw = &terminal.raw;
+    // Typed, through the wire's own accounting shape: the OpenAI-compatible
+    // counters are modeled and DeepSeek's split rides in `extra`.
+    let usage = DeepSeekTerminal::deserialize(raw)
+        .expect("raw is the chat-completions terminal over the wire's own usage")
+        .usage
+        .expect("the recorded terminal carries usage");
     assert_eq!(
-        raw["usage"]["prompt_cache_miss_tokens"],
-        json!(recorded_miss)
+        usage.extra.get("prompt_cache_miss_tokens"),
+        Some(&json!(recorded_miss))
     );
-    assert_eq!(raw["usage"]["prompt_cache_hit_tokens"], json!(recorded_hit));
+    assert_eq!(
+        usage.extra.get("prompt_cache_hit_tokens"),
+        Some(&json!(recorded_hit))
+    );
     // The normalized terminal keeps the hit count (as cached input) and has
-    // no slot for the miss count.
+    // no slot for the miss count: `to_normalized` is where exactly half of
+    // the split crosses over.
+    assert_eq!(usage.to_normalized().cached_input_tokens, Some(recorded_hit));
     assert_eq!(terminal.usage.cached_input_tokens, Some(recorded_hit));
     let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
     assert!(

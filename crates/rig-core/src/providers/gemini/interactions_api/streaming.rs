@@ -1,31 +1,18 @@
-use async_stream::stream;
-use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
 
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
     Step, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
     ThoughtSummaryDelta, map_interaction_status,
 };
-use super::{InteractionsCompletionModel, PROVIDER_NAME, create_request_body};
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
-use crate::http_client::Request;
-use crate::http_client::sse::{Event, GenericEventSource};
+use super::PROVIDER_NAME;
 use crate::providers::gemini::streaming::shared_parts;
 use crate::providers::internal::chunk_lifecycle::ChunkParts;
-use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
-};
 use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 
-use crate::providers::internal::adapter::{
-    AdapterOutput, TriagedFrame, WireAdapter, WireFrame, triage_frame,
-};
+use crate::providers::internal::adapter::WireFrame;
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::operation::Completion;
 use crate::wire::{Decoder, Output};
 use serde_json::{Map, Value};
@@ -47,9 +34,9 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
     "error",
 ];
 
-/// Classify one Interactions SSE frame. The single classify site for both
-/// consumers of this wire: the completion adapter below and the raw
-/// [`stream_interaction_events`] surface.
+/// Classify one Interactions SSE frame: the tagged half of this wire.
+/// [`classify_interactions_frame`] composes it with the whole-resource
+/// classifier, so the `event_type` table is read in exactly one place.
 fn classify_interaction_frame(data: &str) -> WireEvent<InteractionSseEvent> {
     wire::classify_tagged_frame(data, "event_type", |event_type| {
         KNOWN_EVENT_TYPES.contains(&event_type)
@@ -111,14 +98,6 @@ pub struct StreamingCompletionResponse {
     pub model_version: Option<String>,
 }
 
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type InteractionEventStream =
-    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>> + Send>>;
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type InteractionEventStream =
-    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
-
 impl From<&StreamingCompletionResponse> for crate::completion::Usage {
     fn from(value: &StreamingCompletionResponse) -> crate::completion::Usage {
         value
@@ -132,64 +111,6 @@ impl From<&StreamingCompletionResponse> for crate::completion::Usage {
 impl From<StreamingCompletionResponse> for crate::completion::Usage {
     fn from(value: StreamingCompletionResponse) -> crate::completion::Usage {
         (&value).into()
-    }
-}
-
-impl<T> InteractionsCompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Open an interaction stream with observation context owned by this
-    /// invocation.
-    pub(crate) async fn stream_observed(
-        &self,
-        completion_request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &self.model,
-            CompletionOperation::InteractionsStreaming,
-        )
-        .system_instructions(
-            completion_request.system_instructions(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        let request = create_request_body(self.model.clone(), completion_request, Some(true))?;
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Streaming,
-            "Gemini interactions streaming request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-        let mut req = self
-            .client
-            .post("/v1beta/interactions?alt=sse")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-        if let Some(observation) = observation {
-            observation.attach(&mut req, "/v1beta/interactions");
-        }
-
-        Ok(streaming::StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            open_wire_stream(
-                GenericEventSource::new(self.client.clone(), req),
-                SseTransportOptions {
-                    open_log: OpenLog::Debug,
-                    stream_ended_is_error: false,
-                    log_transport_errors: true,
-                },
-                skip_blank_frames,
-                InteractionsDecoder::default(),
-                span,
-            ),
-        ))
     }
 }
 
@@ -492,80 +413,6 @@ impl Decoder<Completion> for InteractionsDecoder {
         // transport (and pass through post-error unknown frames).
         self.failed
     }
-}
-
-/// The streaming transport's view of the same decoder, so the client layer
-/// this port replaces keeps compiling until it is deleted. Forwards: the
-/// decode is stated once, above. Its `Event` is the SSE event alone —
-/// the transport only ever carries streamed frames.
-impl WireAdapter for InteractionsDecoder {
-    type Frame = WireFrame;
-    type Event = InteractionSseEvent;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<InteractionSseEvent> {
-        classify_interaction_frame(&frame.as_str())
-    }
-
-    fn interpret(&mut self, event: InteractionSseEvent, out: &mut AdapterOutput) {
-        <Self as Decoder<Completion>>::interpret(self, InteractionsEvent::Sse(event), out);
-    }
-
-    fn finish(&mut self, out: &mut AdapterOutput) {
-        <Self as Decoder<Completion>>::finish(self, out);
-    }
-
-    fn is_finished(&self) -> bool {
-        <Self as Decoder<Completion>>::is_finished(self)
-    }
-}
-
-pub(crate) fn stream_interaction_events<T>(
-    client: super::InteractionsClient<T>,
-    request: Request<Vec<u8>>,
-) -> InteractionEventStream
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    let mut event_source = GenericEventSource::new(client, request);
-
-    let stream = stream! {
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => continue,
-                Ok(Event::Message(message)) => {
-                    if message.data.trim().is_empty() {
-                        continue;
-                    }
-
-                    // Same frame-triage table as the completion path's
-                    // `run_wire_stream` driver — this surface yields typed
-                    // events rather than grammar events, so it applies the
-                    // driver's factored per-frame policy against the same
-                    // classify site instead of restating the table.
-                    match triage_frame(classify_interaction_frame(&message.data)) {
-                        Ok(TriagedFrame::Event(event)) => yield Ok(event),
-                        // This surface yields typed interaction events, not
-                        // grammar events — there is no raw passthrough item to
-                        // carry an unknown frame on, so it stays a warned skip
-                        // (the completion path surfaces Unknown via the
-                        // driver's `StreamEvent::Unknown` passthrough).
-                        Ok(TriagedFrame::Unknown(_)) => {}
-                        Err(error) => yield Err(error),
-                    }
-                }
-                Err(crate::http_client::Error::StreamEnded) => break,
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::from_stream_transport(error));
-                    break;
-                }
-            }
-        }
-
-        event_source.close();
-    };
-
-    Box::pin(stream)
 }
 
 /// Close an announced function-call step. The shared accumulator finalizes

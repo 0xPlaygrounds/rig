@@ -27,8 +27,9 @@
 //!   provider integration. Excluded, and it is the clearest case in the table.
 //! * **`POST /v1/messages`** — llama.cpp also speaks the *Anthropic* Messages
 //!   wire, converting it to chat completions internally. Rig has an Anthropic
-//!   provider, so this is reachable today by pointing `anthropic::Client` at a
-//!   llama.cpp base URL. It is excluded from *this* provider because a
+//!   wire, so this is reachable today with
+//!   `anthropic::wire::Anthropic::new(key).with_base_url(url).bound()?`. It is
+//!   excluded from *this* provider because a
 //!   provider that spoke two wires would have to pick one for every capability,
 //!   and the OpenAI wire is the one llama.cpp's own documentation leads with.
 //! * **The legacy completion wire** (`/completion`, `/v1/completions`) — the
@@ -206,7 +207,6 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
 #[tokio::test]
 async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
     use rig::completion::CompletionModel as _;
-    use rig::prelude::*;
     use rig::providers::openai::responses_api::wire::ResponsesApi;
 
     with_llamacpp_bare_openai_cassette("unmapped_surface/responses_api", |client| async move {

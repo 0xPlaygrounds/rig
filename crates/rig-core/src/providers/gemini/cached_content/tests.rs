@@ -27,7 +27,7 @@ fn resource_path_accepts_a_bare_id_or_a_full_handle() {
 ///
 /// `resource_path`'s unit tests prove the string is refused; this proves the
 /// refusal happens *before* the request is built. It matters because the
-/// URL these handles produce is not malformed — `Gemini::build_uri`
+/// URL these handles produce is not malformed — `Gemini::uri`
 /// appends the API key with `&` once the path contains a `?`, so
 /// `DELETE /v1beta/cachedContents/abc?stale&key=…` is a well-formed request
 /// that deletes cache `abc` and returns 200.
@@ -37,12 +37,7 @@ async fn a_mis_targeting_handle_never_reaches_the_socket() {
         // No scripted responses: anything that does escape fails twice, once
         // on the error variant and once on the captured request.
         let http_client = SequencedHttpClient::default();
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
-        let caches = client.cached_contents();
+        let caches = bound_caches(http_client.clone());
 
         let outcomes = [
             ("get", caches.get(smuggled).await.err()),
@@ -76,7 +71,7 @@ async fn a_mis_targeting_handle_never_reaches_the_socket() {
 /// query-string writers is pinned in one place.
 ///
 /// `resource_path` writes the path, the `format!` appends `?updateMask=`,
-/// and `build_uri` follows with `&key=` because it now sees a `?`. That
+/// and `Gemini::uri` follows with `&key=` because it now sees a `?`. That
 /// layout is only stable while a handle cannot carry its own `?` — which is
 /// what `resource_path` refuses, and what the cells above cover. This cell
 /// pins the well-formed side: it passed before the validation existed and
@@ -93,14 +88,7 @@ async fn update_expiry_puts_its_update_mask_after_the_validated_path() {
         })
         .to_string(),
     )]);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("client should build");
-
-    client
-        .cached_contents()
+    bound_caches(http_client.clone())
         .update_expiry(
             "cachedContents/n3v1qk0nqz9k",
             CacheExpiry::ttl(Duration::from_secs(600)),
@@ -174,11 +162,11 @@ fn create_body_omits_unset_fields() {
 
 // The pagination loop, and every way its cursor can fail to advance:
 // absent, empty, repeated, and alternating — the last of which only the
-// page ceiling catches. `paginate_models` carries the same three rules for
-// model listings, but this resource cannot call it (it is typed on
-// `Model`/`ModelListingError` and fetches through `get_bytes`, which
-// collapses the 403/404 triage `CachedContentError::Expired` exists for),
-// so the rules are restated in `list_with_page_size` and pinned here.
+// page ceiling catches. The model-listing wire carries the same three
+// rules, but this resource cannot share them: its replies are
+// `CachedContent` documents and its failures need the 403/404 triage
+// `CachedContentError::Expired` exists for, so the rules live in
+// `list_pages` and are pinned here.
 //
 // Only the malformed-cursor cells are unrecordable: no live response
 // carries an empty, repeated or alternating cursor, and no live cursor
@@ -203,22 +191,18 @@ fn cached_page(names: &[&str], next_page_token: Option<&str>) -> MockHttpRespons
     )
 }
 
-/// A `cachedContents` client whose transport answers the scripted pages in
-/// order and `NOT_IMPLEMENTED` once they run out — so a loop that fails to
-/// terminate ends its test with an error rather than hanging the suite.
+/// A `cachedContents` resource handle whose transport answers the scripted
+/// pages in order and `NOT_IMPLEMENTED` once they run out — so a loop that
+/// fails to terminate ends its test with an error rather than hanging the
+/// suite.
 fn caches(
     pages: Vec<MockHttpResponse>,
 ) -> (
-    CachedContentClient<SequencedHttpClient>,
+    super::CachedContents<SequencedHttpClient>,
     SequencedHttpClient,
 ) {
     let http_client = SequencedHttpClient::new(pages);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("client should build");
-    (client.cached_contents(), http_client)
+    (bound_caches(http_client.clone()), http_client)
 }
 
 /// The ordinary single-page listing — what `list()`'s default page size
@@ -336,5 +320,94 @@ async fn pagination_percent_encodes_the_cursor() {
     assert!(
         uris[1].contains("pageSize=1&pageToken=weird+token%26x%3D1&key="),
         "the cursor must be percent-encoded: {uris:?}",
+    );
+}
+
+// ── the resource API on a bound provider ────────────────────────────────
+//
+// The cache lifecycle moved off the client layer onto
+// `Bound<Gemini, H>::cached_contents()`. These two cells are the in-tree
+// proof that it moved *without moving the bytes*: they pin the paths the
+// recorded traffic and the axum-stub harness cells
+// (`tests/providers/gemini/support.rs`, which asserts the literal
+// `DELETE /v1beta/cachedContents/leaky`) match on.
+
+fn bound_caches(
+    http: SequencedHttpClient,
+) -> super::CachedContents<SequencedHttpClient> {
+    crate::driver::Bound::new(crate::providers::gemini::Gemini::new("test-key"), http)
+        .cached_contents()
+}
+
+#[tokio::test]
+async fn the_bound_cache_sends_each_recorded_path_with_the_key_in_the_query() {
+    const HANDLE: &str = r#"{"name":"cachedContents/leaky","model":"models/gemini-2.5-flash"}"#;
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(HANDLE),
+        MockHttpResponse::success(HANDLE),
+        MockHttpResponse::success(HANDLE),
+        MockHttpResponse::success("{}"),
+    ]);
+    let caches = bound_caches(http.clone());
+
+    caches
+        .create(NewCachedContent::new("gemini-2.5-flash").content("corpus"))
+        .await
+        .expect("create decodes");
+    caches.get("leaky").await.expect("get decodes");
+    caches
+        .update_expiry("leaky", CacheExpiry::ttl(Duration::from_secs(600)))
+        .await
+        .expect("the patch decodes");
+    // Storage bills until this is sent, and it is the one request whose
+    // path a mistake would aim at another cache.
+    caches.delete("cachedContents/leaky").await.expect("delete");
+
+    let uris: Vec<_> = http
+        .requests()
+        .into_iter()
+        .map(|request| request.uri)
+        .collect();
+    assert_eq!(
+        uris,
+        vec![
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents?key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?updateMask=ttl&key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?key=test-key",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_bound_cache_follows_the_listing_cursor() {
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(
+            r#"{"cachedContents":[{"name":"cachedContents/one"}],"nextPageToken":"two"}"#,
+        ),
+        MockHttpResponse::success(r#"{"cachedContents":[{"name":"cachedContents/two"}]}"#),
+    ]);
+    let caches = bound_caches(http.clone());
+
+    let all = caches
+        .list_with_page_size(1)
+        .await
+        .expect("both pages decode");
+    assert_eq!(
+        all.iter().map(|cache| cache.name.as_str()).collect::<Vec<_>>(),
+        vec!["cachedContents/one", "cachedContents/two"]
+    );
+
+    let uris: Vec<_> = http
+        .requests()
+        .into_iter()
+        .map(|request| request.uri)
+        .collect();
+    assert_eq!(
+        uris,
+        vec![
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents?pageSize=1&key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents?pageSize=1&pageToken=two&key=test-key",
+        ]
     );
 }

@@ -40,7 +40,9 @@ use rig::message::AssistantContent;
 use rig::providers::perplexity;
 use serde_json::{Value, json};
 
-use super::super::support::{assert_matches_recorded_token, with_perplexity_cassette};
+use super::super::support::{
+    BoundPerplexity, assert_matches_recorded_token, with_perplexity_cassette,
+};
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;
@@ -124,22 +126,28 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.provider_request_id, None, "request id");
 }
 
-/// Run one recorded turn and hand back the response it produced.
-async fn observe(scenario: &'static str) -> CompletionResponse {
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_perplexity_cassette(scenario, |client| async move {
-        let model = client.completion(MODEL);
-        let response = model
-            .completion(request(&model))
-            .await
-            .expect("the turn should succeed");
-        *sink.lock().expect("observation lock") = Some(response);
-    })
-    .await;
+/// Where a cell parks the response its recorded turn produced.
+///
+/// The cassette-safety scan reads each wrapper call's scenario out of the AST
+/// and accepts only a string literal, so the `with_perplexity_cassette(..)`
+/// call has to stay inline in every `#[tokio::test]` with its own literal —
+/// folding the three near-identical cells into one `observe(scenario)` helper
+/// hands the scan a variable and orphans the fixtures. These two helpers share
+/// everything except that call.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
 
-    observed
-        .lock()
+/// The body every cell runs: one recorded turn, parked in `sink`.
+async fn run(client: BoundPerplexity, sink: Observed) {
+    let model = client.completion(MODEL);
+    let response = model
+        .completion(request(&model))
+        .await
+        .expect("the turn should succeed");
+    *sink.lock().expect("observation lock") = Some(response);
+}
+
+fn observed(sink: &Observed) -> CompletionResponse {
+    sink.lock()
         .expect("observation lock")
         .take()
         .expect("the cell should observe a response")
@@ -152,7 +160,9 @@ async fn observe(scenario: &'static str) -> CompletionResponse {
 #[tokio::test]
 async fn raw_is_the_verbatim_response_body() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
-    let response = observe("raw_capture_matrix/raw_round_trips_openai_type").await;
+    let sink = Observed::default();
+    with_perplexity_cassette("raw_capture_matrix/raw_round_trips_openai_type", |client| run(client, sink.clone())).await;
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     assert!(
@@ -192,7 +202,9 @@ async fn raw_is_the_verbatim_response_body() {
 #[tokio::test]
 async fn raw_exposes_object_and_citations() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object_not_citations";
-    let response = observe("raw_capture_matrix/raw_exposes_object_not_citations").await;
+    let sink = Observed::default();
+    with_perplexity_cassette("raw_capture_matrix/raw_exposes_object_not_citations", |client| run(client, sink.clone())).await;
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     let recorded_object = body["object"]
@@ -231,7 +243,9 @@ async fn raw_exposes_object_and_citations() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let response = observe("raw_capture_matrix/normalized_fields_match_raw_renormalized").await;
+    let sink = Observed::default();
+    with_perplexity_cassette("raw_capture_matrix/normalized_fields_match_raw_renormalized", |client| run(client, sink.clone())).await;
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     assert_reproduces_fixture(&response, &body);

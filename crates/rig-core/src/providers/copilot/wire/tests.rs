@@ -232,6 +232,38 @@ async fn the_responses_route_folds_its_recorded_turn() {
     assert_eq!(response.response_id.as_deref(), Some("resp_REDACTED_1"));
 }
 
+/// Copilot's Responses route answers a tool-calling turn with a
+/// *contentless* reasoning item — empty `content`, empty `summary`, no
+/// encrypted payload, just an id. The next turn has to replay it verbatim:
+/// `tests/cassettes/copilot/typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml`
+/// records `{"id":"id_REDACTED_1","summary":[],"type":"reasoning"}` ahead of
+/// the tool result in its second request, so the block has to survive the
+/// fold or the replayed history is missing an item the provider sent.
+#[tokio::test]
+async fn a_contentless_reasoning_item_survives_the_fold() {
+    let body = cassette_body(
+        "typed_prompt_tools/prompt_typed_with_tool_call_roundtrip.yaml",
+        "then",
+    );
+    let response = Bound::new(
+        copilot().completion(super::super::GPT_5_3_CODEX),
+        RecordingHttpClient::new(Bytes::from(body)),
+    )
+    .completion(prompt())
+    .await
+    .expect("the recorded responses body folds");
+
+    let reasoning = response
+        .choice
+        .iter()
+        .find_map(|content| match content {
+            crate::message::AssistantContent::Reasoning(reasoning) => Some(reasoning),
+            _ => None,
+        })
+        .unwrap_or_else(|| panic!("the turn's reasoning item survives: {:?}", response.choice));
+    assert_eq!(reasoning.id.as_deref(), Some("id_REDACTED_1"));
+}
+
 // ── the modality wires ──────────────────────────────────────────────────
 
 /// The embeddings reply folds with the request's inputs joined back on, and

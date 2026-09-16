@@ -1,7 +1,6 @@
 //! Native openai lifecycle counterparts with shared original transport/assertion helpers.
 //! Entry storage, startup rewrites and settlement observations run in native systems.
 
-use rig::prelude::*;
 use rig::providers::openai;
 
 use super::super::support::with_openai_lifecycle_cassette;

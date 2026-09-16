@@ -23,7 +23,6 @@
 //! compliance; the finish-reason matrix tests termination semantics directly.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::{doubleword, openai};
 use serde::Deserialize as _;
 

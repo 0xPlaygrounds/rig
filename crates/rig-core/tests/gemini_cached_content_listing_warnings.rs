@@ -35,7 +35,7 @@ use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 const CEILING_WARNING: &str = "hit its page ceiling";
 const REPEATED_CURSOR_WARNING: &str = "repeated its pagination cursor";
 
-/// `internal::model_listing::MAX_LISTING_PAGES`, which is `pub(crate)`. Pinned
+/// `gemini::cached_content::MAX_LISTING_PAGES`, which is `pub(crate)`. Pinned
 /// rather than imported: a listing that needs more than a thousand pages of
 /// caches does not exist, so this only has to be *at least* the real bound for
 /// the ceiling cells to reach it.

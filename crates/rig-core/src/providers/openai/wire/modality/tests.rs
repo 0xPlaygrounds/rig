@@ -81,6 +81,50 @@ async fn a_short_embedding_reply_fails_the_call() {
     );
 }
 
+/// An unstated width still goes on the wire, resolved from the model's
+/// documented dimensionality — which is what every recorded embedding
+/// cassette carries, and what `bound.embedding(model, None)` regressed on.
+#[test]
+fn an_unstated_width_resolves_from_the_model_table() {
+    let width = |model: &str, ndims: Option<usize>| -> Option<serde_json::Value> {
+        let encoded = OpenAI::new("sk-test")
+            .embeddings(model, ndims)
+            .encode(documents(), Mode::Unary)
+            .expect("the request encodes");
+        let [request] = encoded.requests.as_slice() else {
+            panic!("one request")
+        };
+        let Body::Bytes(bytes) = request.body() else {
+            panic!("bytes")
+        };
+        let body: serde_json::Value = serde_json::from_slice(bytes).expect("JSON");
+        body.get("dimensions").cloned()
+    };
+
+    // The documented width, with the caller naming none.
+    assert_eq!(
+        width("text-embedding-3-small", None),
+        Some(serde_json::json!(1536))
+    );
+    assert_eq!(
+        width("text-embedding-3-large", None),
+        Some(serde_json::json!(3072))
+    );
+    // The caller's width wins over the table's.
+    assert_eq!(
+        width("text-embedding-3-small", Some(512)),
+        Some(serde_json::json!(512))
+    );
+    // A model absent from every table resolves to the unknown sentinel, and
+    // nothing is sent — the old `default_ndims` returning `None`.
+    assert_eq!(width("some-compatible-embedder", None), None);
+    // And OpenAI's legacy Ada model rejects the field outright.
+    assert_eq!(
+        width(crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002, None),
+        None
+    );
+}
+
 /// A requested width goes on the wire in the field the dialect spells it
 /// with — and the recorded request is what that looks like.
 #[test]
@@ -514,4 +558,122 @@ fn a_rerank_request_is_the_jina_shape() {
         OpenAI::with_key(&LLAMACPP, "").reranker("r").capabilities(),
         1024
     );
+}
+
+/// Hyperbolic's image endpoint names the model `model_name`, takes the size
+/// as two fields, and answers under `images[].image` — none of which the
+/// OpenAI shape would have matched.
+#[cfg(feature = "image")]
+#[tokio::test]
+async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
+    use crate::image_generation::ImageGenerationModel as _;
+    use crate::providers::openai::wire::HYPERBOLIC;
+
+    let request = || crate::image_generation::ImageGenerationRequest {
+        prompt: "a cat".to_owned(),
+        width: 1024,
+        height: 768,
+        additional_params: None,
+    };
+    let encoded = OpenAI::with_key(&HYPERBOLIC, "hb")
+        .images("SDXL1.0-base")
+        .encode(request(), Mode::Unary)
+        .expect("the request encodes");
+    let [http_request] = encoded.requests.as_slice() else {
+        panic!("one request")
+    };
+    assert_eq!(
+        http_request.uri().to_string(),
+        "https://api.hyperbolic.xyz/v1/image/generation"
+    );
+    let body = json_body(&encoded);
+    assert_eq!(body["model_name"], "SDXL1.0-base");
+    assert_eq!(body["width"], 1024);
+    assert_eq!(body["height"], 768);
+    assert!(body.get("model").is_none(), "the key is `model_name`: {body}");
+    assert!(body.get("size").is_none(), "the size is two fields: {body}");
+
+    // And the reply is keyed `images[].image`, not `data[].b64_json`.
+    let response = Bound::new(
+        OpenAI::with_key(&HYPERBOLIC, "hb").images("SDXL1.0-base"),
+        RecordingHttpClient::new(r#"{"images":[{"image":"aGk="}]}"#),
+    )
+    .image_generation(request())
+    .await
+    .expect("Hyperbolic's reply shape decodes");
+    assert_eq!(response.image, b"hi");
+    assert_eq!(response.provider, "hyperbolic");
+}
+
+/// Hyperbolic addresses speech by language and answers with base64 in a JSON
+/// envelope rather than the audio bytes OpenAI's endpoint returns.
+#[cfg(feature = "audio")]
+#[tokio::test]
+async fn the_hyperbolic_speech_body_and_reply_differ_from_openais() {
+    use crate::audio_generation::AudioGenerationModel as _;
+    use crate::providers::openai::wire::HYPERBOLIC;
+
+    let request = || crate::audio_generation::AudioGenerationRequest {
+        text: "hello".to_owned(),
+        voice: "EN-US".to_owned(),
+        speed: 1.0,
+        additional_params: None,
+    };
+    let encoded = OpenAI::with_key(&HYPERBOLIC, "hb")
+        .speech("EN")
+        .encode(request(), Mode::Unary)
+        .expect("the request encodes");
+    let [http_request] = encoded.requests.as_slice() else {
+        panic!("one request")
+    };
+    assert_eq!(
+        http_request.uri().to_string(),
+        "https://api.hyperbolic.xyz/v1/audio/generation"
+    );
+    let body = json_body(&encoded);
+    // The "model" handle IS the language tag.
+    assert_eq!(body["language"], "EN");
+    assert_eq!(body["speaker"], "EN-US");
+    assert_eq!(body["text"], "hello");
+    assert_eq!(body["speed"], 1.0);
+    assert!(body.get("model").is_none(), "{body}");
+    assert!(body.get("voice").is_none(), "{body}");
+
+    let response = Bound::new(
+        OpenAI::with_key(&HYPERBOLIC, "hb").speech("EN"),
+        RecordingHttpClient::new(r#"{"audio":"aGk="}"#),
+    )
+    .audio_generation(request())
+    .await
+    .expect("Hyperbolic's base64 envelope decodes");
+    assert_eq!(response.audio, b"hi");
+    assert_eq!(response.provider, "hyperbolic");
+
+    // OpenAI's own endpoint answers with the bytes themselves, so the same
+    // decoder must not go looking for an envelope there.
+    let openai = Bound::new(
+        OpenAI::new("sk").speech("tts-1"),
+        RecordingHttpClient::new(&b"ID3\x04raw-mp3"[..]),
+    )
+    .audio_generation(request())
+    .await
+    .expect("raw bytes decode");
+    assert_eq!(openai.audio, b"ID3\x04raw-mp3");
+}
+
+/// Azure must never address an unversioned endpoint, so a configuration
+/// built without reading the environment still names a version.
+#[test]
+fn azure_always_carries_an_api_version() {
+    let provider = OpenAI::with_key(&AZURE, "k").with_base_url("https://x.openai.azure.com");
+    assert_eq!(provider.api_version.as_deref(), Some("2024-10-21"));
+    assert!(
+        !provider
+            .uri("/chat/completions", Some("d"))
+            .ends_with("api-version="),
+        "an empty api-version would silently address the wrong API: {}",
+        provider.uri("/chat/completions", Some("d"))
+    );
+    // No other dialect invents one.
+    assert_eq!(OpenAI::new("k").api_version, None);
 }

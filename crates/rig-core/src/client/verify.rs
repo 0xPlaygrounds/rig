@@ -4,7 +4,8 @@ use crate::wire::WireError;
 use crate::{http_client, provider_response};
 use thiserror::Error;
 
-/// Errors from provider client verification.
+/// Errors from the `Verify` operation: asking a provider whether it accepts
+/// the configured credentials.
 ///
 /// Inspect provider failures with [`Self::provider_response_body`],
 /// [`Self::provider_response_json`], and [`Self::provider_response_status`].
@@ -130,17 +131,6 @@ impl From<&VerifyError> for ErrorReport {
         report.provider_response = provider_response;
         report
     }
-}
-
-/// A provider client that can verify the configuration.
-///
-/// Superseded by `Bound::verify`; still here for the providers not yet
-/// ported to a wire.
-pub trait VerifyClient {
-    /// Verify the configuration.
-    fn verify(
-        &self,
-    ) -> impl Future<Output = Result<(), VerifyError>> + crate::wasm_compat::WasmCompatSend;
 }
 
 #[cfg(test)]

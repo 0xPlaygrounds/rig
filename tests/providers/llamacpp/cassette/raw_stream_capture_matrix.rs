@@ -48,7 +48,6 @@
 
 use futures::StreamExt;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse as WireTerminal};
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
@@ -59,6 +58,14 @@ use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_j
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
+
+/// The terminal record as the decoder serialized it, accounting included.
+///
+/// [`ChatUsage`](rig::providers::openai::wire::ChatUsage) in the `U` slot
+/// reads the OpenAI-compatible counters *and* the dialect's extras — which is
+/// how llama.cpp's `timings` reach the caller on this path without any
+/// provider-specific type.
+type LlamacppTerminal = WireTerminal<ChatUsage>;
 
 fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
@@ -136,7 +143,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             .await;
 
             let raw = &terminal.raw;
-            let typed = WireTerminal::<ChatUsage>::deserialize(raw)
+            let typed = LlamacppTerminal::deserialize(raw)
                 .expect("raw must deserialize into the wire's terminal record");
             assert_eq!(
                 serde_json::to_value(&typed).expect("terminal type should serialize"),
@@ -147,16 +154,11 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             );
 
             // The typed terminal agrees with the normalized one on usage and
-            // identity: raw is the record the decoder emitted.
-            let typed_usage = typed.usage.as_ref().expect("terminal carries usage");
-            assert_eq!(
-                Some(typed_usage.openai.prompt_tokens as u64),
-                terminal.usage.input_tokens
-            );
-            assert_eq!(
-                typed_usage.openai.completion_tokens.map(|tokens| tokens as u64),
-                terminal.usage.output_tokens
-            );
+            // identity: raw is the record the decoder emitted, and
+            // `ChatUsage::to_normalized` is the mapping the decoder applied,
+            // pinned directly rather than compared to a copy of itself.
+            let usage = typed.usage.as_ref().expect("terminal carries usage");
+            assert_eq!(usage.to_normalized(), terminal.usage);
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.model, terminal.model);
             *sink.lock().expect("capture mutex") = Some(raw.clone());
@@ -252,7 +254,7 @@ async fn stream_raw_exposes_envelope_fields() {
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    let typed = WireTerminal::<ChatUsage>::deserialize(&raw)
+    let typed = LlamacppTerminal::deserialize(&raw)
         .expect("raw must deserialize into the wire's terminal record");
     let typed_params = typed
         .additional_params

@@ -2,7 +2,6 @@
 use crate::ecs_agent::EcsAgent;
 use crate::perplexity::support::with_perplexity_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::prelude::*;
 use rig::providers::perplexity;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]

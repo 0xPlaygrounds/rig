@@ -51,7 +51,7 @@
 //! ```
 
 use rig::prelude::*;
-use rig::providers::gemini;
+use rig::providers::gemini::Gemini;
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -60,7 +60,9 @@ use crate::cache_conformance::{
     report_and_assert_live, run_cache_probe, run_cache_probe_streaming,
 };
 
-use super::super::support::{always_deleting_cached_contents, with_gemini_prompt_caching_cassette};
+use super::super::support::{
+    BoundGemini, always_deleting_cached_contents, with_gemini_prompt_caching_cassette,
+};
 
 /// Gemini 2.5 Flash: implicit caching, and the cheapest model that has it.
 pub(super) const CACHE_MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
@@ -165,7 +167,10 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = gemini::Client::from_env().expect("GEMINI_API_KEY");
+    let client = Gemini::from_env()
+        .expect("GEMINI_API_KEY")
+        .bound()
+        .expect("transport should build");
     let model = client.completion(CACHE_MODEL);
 
     // Two passes, asserting on the second — the same procedure the module docs
@@ -213,7 +218,7 @@ fn cached_corpus() -> String {
 }
 
 async fn create_probe_cache(
-    client: &gemini::Client,
+    client: &BoundGemini,
     display_name: &str,
 ) -> rig::providers::gemini::cached_content::CachedContent {
     client

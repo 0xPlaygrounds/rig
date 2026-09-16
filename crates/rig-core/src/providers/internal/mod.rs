@@ -9,29 +9,18 @@
 //! crate-private.
 
 pub mod adapter;
-pub(crate) mod anthropic_compatible;
-#[cfg(feature = "audio")]
-pub(crate) mod audio_generation;
 pub(crate) mod auth;
 pub mod chunk_lifecycle;
-pub(crate) mod completion_send;
 #[cfg(not(target_family = "wasm"))]
 pub(crate) mod device_auth;
-pub(crate) mod envelope;
-#[cfg(feature = "image")]
-pub(crate) mod image_generation;
-pub(crate) mod model_listing;
 pub(crate) mod openai_chat_completions_compatible;
-pub(crate) mod rerank;
 pub(crate) mod schema;
 /// The debug-mode sequence-law validator. Public only because it is the
 /// completion sink's `Laws` type; its checks run under `debug_assertions`.
 #[doc(hidden)]
 pub mod sequence_law;
-pub(crate) mod sse_transport;
 pub mod tool_call_bridge;
 pub mod tool_call_ids;
-pub(crate) mod transcription;
 pub mod wire;
 
 /// Fill empty [`ToolResult::name`](crate::message::ToolResult::name)s from
@@ -168,4 +157,18 @@ pub(crate) fn request_id_from_headers(
             .filter(|value| !value.is_empty())
             .map(str::to_string)
     })
+}
+
+/// `path` with `pairs` appended as a percent-encoded query string.
+///
+/// Shared by the wires that put a provider-reported cursor or page size in a
+/// URI (Anthropic's `Models`, Gemini's `models` and `cachedContents`):
+/// concatenating a cursor raw would let a `+`, `&`, `=` or `/` inside it
+/// truncate the cursor or inject a query parameter, silently dropping pages.
+pub(crate) fn with_query_pairs(path: &str, pairs: &[(&str, &str)]) -> String {
+    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+    for (name, value) in pairs {
+        serializer.append_pair(name, value);
+    }
+    format!("{path}?{}", serializer.finish())
 }

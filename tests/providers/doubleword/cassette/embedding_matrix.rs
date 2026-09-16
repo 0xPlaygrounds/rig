@@ -85,7 +85,7 @@ async fn raw_round_trips() {
 async fn raw_route_parity() {
     const SCENARIO: &str = "embedding_matrix/raw_route_parity";
 
-    with_doubleword_cassette(SCENARIO, |client| async move {
+    with_doubleword_cassette("embedding_matrix/raw_route_parity", |client| async move {
         let model = client.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
         let normalized = model
             .embed_texts_response(inputs())

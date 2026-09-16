@@ -16,9 +16,9 @@ use rig::streaming::Delta;
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::model::ModelLister;
 use rig::completion::CompletionModel as _;
 use rig::embeddings::EmbeddingModel as _;
+use rig::model::ModelLister;
 use rig::providers::mistral;
 
 use super::support::with_mistral_capability_cassette;

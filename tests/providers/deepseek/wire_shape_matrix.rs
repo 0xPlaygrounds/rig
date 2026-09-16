@@ -44,7 +44,6 @@
 
 use rig::completion::{CompletionModel, Document, Message};
 use rig::message::{DocumentMediaType, DocumentSourceKind, ToolChoice, UserContent};
-use rig::prelude::*;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 

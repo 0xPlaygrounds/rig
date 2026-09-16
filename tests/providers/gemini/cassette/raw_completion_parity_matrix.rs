@@ -38,7 +38,6 @@
 use rig::completion::{
     AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason,
 };
-use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };
@@ -247,10 +246,10 @@ async fn interactions_raw_try_into_matches_completion() {
                 typed.usage.as_ref().and_then(|usage| usage.total_tokens),
                 second.usage.total_tokens
             );
-            assert_eq!(
-                typed.status,
-                Some(InteractionStatus::Completed),
-                "the document keeps the API's own lifecycle spelling"
+            assert!(
+                matches!(typed.status, Some(InteractionStatus::Completed)),
+                "the document keeps the API's own lifecycle spelling, got {:?}",
+                typed.status
             );
             assert_eq!(
                 second.finish_reason(),

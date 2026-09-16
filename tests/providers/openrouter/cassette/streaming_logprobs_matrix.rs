@@ -41,7 +41,6 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 

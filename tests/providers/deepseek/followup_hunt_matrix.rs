@@ -6,7 +6,6 @@
 //! moved into a dedicated per-bug exhaustive matrix before merge.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::deepseek;
 use serde_json::{Value, json};
 

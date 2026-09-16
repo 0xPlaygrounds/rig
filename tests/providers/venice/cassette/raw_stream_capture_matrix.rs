@@ -4,7 +4,9 @@
 //! **The feature.** Every stream's terminal
 //! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
 //! record — for Venice the shared chat-completions
-//! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture is
+//! [`StreamingCompletionResponse`], whose accounting is [`ChatUsage`] —
+//! serialized. That is a serialization rather than the socket's bytes, so the
+//! round trip through the record's own type is exact. Capture is
 //! always on: there is no flag to request it, nothing about it reaches the
 //! wire, and a `Value::Null` only ever means a terminal built by hand with no
 //! provider record behind it. It is the terminal record only, never the
@@ -16,7 +18,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` whose native fields reproduce the normalized terminal; the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; its accounting normalizes to the terminal's usage; the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_cost` | terminal-only field | `raw.additional_params.cost.usd` equals the recorded terminal frame's, and no earlier frame carried a cost | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -116,26 +118,34 @@ async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
-    with_venice_cassette_result(SCENARIO, |client| async move {
+    with_venice_cassette_result(
+        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
+        |client| async move {
         let model = client.completion(DEFAULT_MODEL);
         let stream = model.stream(request(&model)).await?;
         let (text, terminal) = collect_text_and_terminal(stream).await;
         let terminal = terminal.expect("stream should end with a terminal record");
         assert!(!text.is_empty());
 
-        // The captured document is the decoder's terminal record, so it reads
-        // back as that type and its native fields are the normalized ones.
-        let typed = VeniceTerminal::deserialize(&terminal.raw)
-            .expect("raw is the chat-completions terminal over the wire's own usage");
+        // The captured document is the decoder's terminal record serialized,
+        // so it round-trips exactly and its native fields are the normalized
+        // ones.
+        let raw = &terminal.raw;
+        let typed = VeniceTerminal::deserialize(raw)
+            .expect("raw is the chat-completions terminal record");
+        assert_eq!(
+            serde_json::to_value(&typed).expect("typed serializes"),
+            *raw,
+            "the captured value is the typed terminal serialized, nothing more"
+        );
         assert_eq!(typed.response_id, terminal.response_id);
         assert_eq!(typed.model, terminal.model);
         assert_eq!(typed.finish_reason, terminal.finish_reason);
+        // The accounting normalizes to what the terminal reports — the
+        // decoder's mapping itself, pinned rather than compared to a copy.
         assert_eq!(
-            typed
-                .usage
-                .as_ref()
-                .map(|usage| usage.to_normalized().total_tokens),
-            Some(terminal.usage.total_tokens),
+            typed.usage.as_ref().map(ChatUsage::to_normalized),
+            Some(terminal.usage),
             "the captured accounting normalizes to the terminal's"
         );
         assert_eq!(
@@ -169,7 +179,9 @@ async fn stream_raw_exposes_terminal_cost() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
-    with_venice_cassette_result(SCENARIO, |client| async move {
+    with_venice_cassette_result(
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost",
+        |client| async move {
         let model = client.completion(DEFAULT_MODEL);
         let stream = model.stream(request(&model)).await?;
         let (_, terminal) = collect_text_and_terminal(stream).await;

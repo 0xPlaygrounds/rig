@@ -4,8 +4,9 @@
 //! **The feature.** Every stream's terminal
 //! [`rig::streaming::StreamFinal::raw`] carries the record the chat decoder
 //! reassembled from the reply's frames — the shared chat terminal
-//! (`openai::wire::StreamingCompletionResponse`) over the shared chat usage
-//! shape, serialized. Capture is always on: there is no flag to request it,
+//! (`openai::wire::StreamingCompletionResponse`), serialized. Unlike a unary
+//! reply's `raw`, this one is a serialization of that record rather than the
+//! socket's bytes, so reading it back through the same type is exact. Capture is always on: there is no flag to request it,
 //! nothing about it reaches the wire, and a `Value::Null` only ever means a
 //! terminal built by hand with no provider record behind it. It is the terminal
 //! record only, never the stream's frames.
@@ -19,7 +20,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_reads_back_as_terminal_type` | typed read-back | terminal `raw` deserializes into the shared chat terminal, and the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 1 | `stream_raw_reads_back_as_terminal_type` | typed round trip | terminal `raw` deserializes into the shared chat terminal and re-serializes equal, its `usage` maps to the normalized usage, and the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_cost_and_provider` | terminal-only fields | `raw.usage.cost` and `raw.additional_params.provider` equal the recorded terminal frame's | recorded |
 //!
 //! The scenario literals — and therefore the fixture filenames — keep the
@@ -41,7 +42,9 @@ use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::DEFAULT_MODEL;
-use super::super::support::{assert_matches_recorded_token, with_openrouter_cassette_result};
+use super::super::support::{
+    BoundOpenRouter, assert_matches_recorded_token, with_openrouter_cassette_result,
+};
 use crate::support::collect_text_and_terminal;
 
 type OpenRouterTerminal = StreamingCompletionResponse<ChatUsage>;
@@ -105,24 +108,27 @@ fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
     );
 }
 
-/// Drain one recorded stream and hand back its terminal record.
-async fn observe(scenario: &'static str) -> StreamFinal {
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_openrouter_cassette_result(scenario, |client| async move {
-        let model = client.completion(DEFAULT_MODEL);
-        let stream = model.stream(request(&model)).await?;
-        let (text, terminal) = collect_text_and_terminal(stream).await;
-        let terminal = terminal.expect("stream should end with a terminal record");
-        assert!(!text.is_empty());
-        *sink.lock().expect("observation lock") = Some(terminal);
-        Ok::<(), anyhow::Error>(())
-    })
-    .await
-    .unwrap_or_else(|error| panic!("{scenario} should replay from its cassette: {error}"));
+/// Where a cell parks the terminal record its recorded stream produced.
+///
+/// The wrapper call itself stays inline in every cell with its own scenario
+/// literal: `cassette_safety` reads the registered scenarios out of the AST
+/// and accepts only a literal, so a shared helper that took the scenario as a
+/// parameter would register nothing and orphan the fixture.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<StreamFinal>>>;
 
-    observed
-        .lock()
+/// The body both cells share: drain one stream, park its terminal record.
+async fn run(client: BoundOpenRouter, sink: Observed) -> Result<(), anyhow::Error> {
+    let model = client.completion(DEFAULT_MODEL);
+    let stream = model.stream(request(&model)).await?;
+    let (text, terminal) = collect_text_and_terminal(stream).await;
+    let terminal = terminal.expect("stream should end with a terminal record");
+    assert!(!text.is_empty());
+    *sink.lock().expect("observation lock") = Some(terminal);
+    Ok(())
+}
+
+fn observed(sink: &Observed) -> StreamFinal {
+    sink.lock()
         .expect("observation lock")
         .take()
         .expect("the cell should observe a terminal record")
@@ -135,15 +141,35 @@ async fn observe(scenario: &'static str) -> StreamFinal {
 #[tokio::test]
 async fn stream_raw_reads_back_as_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let terminal = observe("raw_stream_capture_matrix/stream_raw_round_trips_terminal_type").await;
+    let sink = Observed::default();
+    with_openrouter_cassette_result(
+        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
+    let terminal = observed(&sink);
 
     let raw = &terminal.raw;
+    // The streamed terminal's `raw` is the decoder's own record serialized
+    // (`emit_terminal` builds it with `serde_json::to_value`), not socket
+    // bytes — so the round trip back through the same type is exact.
     let typed = OpenRouterTerminal::deserialize(raw)
-        .expect("raw is the shared chat terminal over the chat usage shape");
+        .expect("raw is the shared chat terminal record");
+    assert_eq!(
+        serde_json::to_value(&typed).expect("the terminal record serializes"),
+        *raw,
+        "the captured value is the terminal record serialized, nothing more"
+    );
     assert_eq!(typed.response_id, terminal.response_id);
     assert_eq!(typed.finish_reason, terminal.finish_reason);
     assert_eq!(typed.provider_request_id, terminal.provider_request_id);
     assert_eq!(typed.model, terminal.model);
+    // The accounting comes back typed with the record: `ChatUsage` flattens
+    // the dialect's extra usage fields, and its own mapping is what the
+    // normalized terminal reports.
+    let usage = typed.usage.as_ref().expect("the terminal reports usage");
+    assert_eq!(usage.to_normalized(), terminal.usage);
 
     let frame = recorded_terminal_frame(SCENARIO);
     assert_terminal_reproduces_frame(&terminal, &frame);
@@ -159,8 +185,14 @@ async fn stream_raw_reads_back_as_terminal_type() {
 async fn stream_raw_exposes_terminal_cost_and_provider() {
     const SCENARIO: &str =
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider";
-    let terminal =
-        observe("raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider").await;
+    let sink = Observed::default();
+    with_openrouter_cassette_result(
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost_and_provider",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("stream_raw_exposes_terminal_cost_and_provider should replay from its cassette");
+    let terminal = observed(&sink);
 
     let frame = recorded_terminal_frame(SCENARIO);
     let recorded_cost = frame["usage"]["cost"]

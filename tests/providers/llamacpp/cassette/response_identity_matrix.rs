@@ -43,7 +43,6 @@
 //! other is the provider's own handle for the turn.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::llamacpp;
 use serde::Deserialize;
 use serde_json::Value;

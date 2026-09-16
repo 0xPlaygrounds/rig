@@ -1,27 +1,26 @@
 //! Non-success triage across every shape a transport can report one in.
 //!
 //! The recorded cassettes only ever exercise the bundled reqwest shape: the
-//! transport rejects the reply as `InvalidStatusCodeWithDetails`. But `H` is
-//! a public extension point (`ClientBuilder::http_client`), and a custom
-//! [`HttpClientExt`] may hand the same 404 back as an `Ok` response carrying
-//! the status, or reject it with an empty body — shapes rig's own test
-//! double produces. On those the triage used to fall through to
-//! `CachedContentError::Http` or to a bogus deserialization error, so the
+//! transport rejects the reply as `InvalidStatusCodeWithDetails`. But the
+//! socket is a public extension point — any [`HttpClientExt`] can be bound
+//! to the provider — and a custom one may hand the same 404 back as an `Ok`
+//! response carrying the status, or reject it with an empty body: shapes
+//! rig's own test double produces. On those the triage used to fall through
+//! to `CachedContentError::Http` or to a bogus deserialization error, so the
 //! recovery this module documents (`Expired { .. } => recreate the cache`)
 //! silently never fired.
 
 use super::*;
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 
-/// A `cachedContents` client whose transport answers the next request with
-/// `response` and nothing after it.
-fn caches(response: MockHttpResponse) -> CachedContentClient<SequencedHttpClient> {
-    Client::builder()
-        .api_key("test-key")
-        .http_client(SequencedHttpClient::new(vec![response]))
-        .build()
-        .expect("client should build")
-        .cached_contents()
+/// A `cachedContents` resource handle whose transport answers the next
+/// request with `response` and nothing after it.
+fn caches(response: MockHttpResponse) -> super::CachedContents<SequencedHttpClient> {
+    crate::driver::Bound::new(
+        crate::providers::gemini::Gemini::new("test-key"),
+        SequencedHttpClient::new(vec![response]),
+    )
+    .cached_contents()
 }
 
 const GONE: &str =
@@ -142,12 +141,11 @@ async fn a_server_error_reports_the_status_rather_than_an_expiry() {
 async fn a_status_error_with_no_body_still_names_why_it_has_no_message() {
     // `SequencedHttpClient` answers 501 with an empty body once its scripted
     // responses run out.
-    let caches = Client::builder()
-        .api_key("test-key")
-        .http_client(SequencedHttpClient::new(Vec::new()))
-        .build()
-        .expect("client should build")
-        .cached_contents();
+    let caches = crate::driver::Bound::new(
+        crate::providers::gemini::Gemini::new("test-key"),
+        SequencedHttpClient::new(Vec::new()),
+    )
+    .cached_contents();
 
     let error = caches
         .get("cachedContents/abc123")

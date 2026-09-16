@@ -67,7 +67,8 @@ crate::provider_response::provider_error_enum!(
 
     /// The provider returned vectors of a width other than the one the caller
     /// declared through
-    /// [`embedding_model_with_ndims`](crate::client::EmbeddingsClient::embedding_model_with_ndims).
+    /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
+    /// argument.
     ///
     /// Raised only when the width was set *explicitly*: a model handle built
     /// without one reports whatever the provider's own table says and has
@@ -87,7 +88,12 @@ crate::provider_response::provider_error_enum!(
     )]
     MismatchedDimensions {
         /// Provider whose response disagreed with the declared width.
-        provider: &'static str,
+        ///
+        /// Owned, unlike the `&'static str` the request-shaped variants
+        /// above carry: this one is raised by the shared driver from a
+        /// [`Wire`](crate::wire::Wire)'s name, and the wire model erases the
+        /// provider's `'static` descriptor to `&str` at that seam.
+        provider: String,
         /// Width the caller declared.
         requested: usize,
         /// Width the provider actually returned.

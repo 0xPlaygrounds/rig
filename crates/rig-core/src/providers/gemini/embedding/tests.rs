@@ -1,5 +1,4 @@
 use super::*;
-use crate::client::EmbeddingsClient;
 use crate::driver::WireDriver;
 use crate::providers::gemini::{Gemini, PROVIDER_NAME};
 use crate::wire::{Fold, Operation, Reply};
@@ -18,101 +17,24 @@ fn test_model_default_ndims_lookup() {
     assert_eq!(model_default_ndims("unknown-model"), None);
 }
 
+/// `ndims` is what every document in the batch asks for, so the wire has to
+/// resolve it from the model identifier when the caller named none — the
+/// batch body carries `output_dimensionality` unconditionally.
 #[test]
-fn test_make_resolves_default_dims() {
-    let client =
-        Client::new_with("test_key", crate::test_utils::RecordingHttpClient::new("")).unwrap();
+fn ndims_defaults_from_the_model_identifier() {
+    let gemini = Gemini::new("test_key");
 
-    // EMBEDDING_001 defaults to 3072
-    let model = client.embedding_model(EMBEDDING_001);
-    assert_eq!(embeddings::EmbeddingModel::ndims(&model), 3072);
-
-    // EMBEDDING_004 defaults to 768
-    let model = client.embedding_model(EMBEDDING_004);
-    assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
-
-    // Unknown model falls back to 768
-    let model = client.embedding_model("some-future-model");
-    assert_eq!(embeddings::EmbeddingModel::ndims(&model), 768);
+    assert_eq!(gemini.embeddings(EMBEDDING_001, None).ndims, 3072);
+    assert_eq!(gemini.embeddings(EMBEDDING_004, None).ndims, 768);
+    // A model this build has never heard of still gets a dimensionality.
+    assert_eq!(gemini.embeddings("some-future-model", None).ndims, 768);
 }
 
 #[test]
-fn test_make_respects_explicit_dims() {
-    let client =
-        Client::new_with("test_key", crate::test_utils::RecordingHttpClient::new("")).unwrap();
+fn an_explicit_ndims_outranks_the_models_default() {
+    let gemini = Gemini::new("test_key");
 
-    let model = client.embedding_model_with_ndims(EMBEDDING_001, 256);
-    assert_eq!(embeddings::EmbeddingModel::ndims(&model), 256);
-}
-
-#[test]
-fn test_new_uses_provided_ndims() {
-    let client =
-        Client::new_with("test_key", crate::test_utils::RecordingHttpClient::new("")).unwrap();
-
-    let model = EmbeddingModel::new(client, EMBEDDING_001, 512);
-    assert_eq!(embeddings::EmbeddingModel::ndims(&model), 512);
-}
-
-#[tokio::test]
-async fn embedding_non_success_preserves_status_and_body() {
-    use crate::client::embeddings::EmbeddingsClient;
-    use crate::embeddings::EmbeddingModel as _;
-    use crate::test_utils::RecordingHttpClient;
-
-    // The non-success status guard preserves the raw provider body without
-    // depending on its envelope shape.
-    let body = r#"{"error":{"code":503,"message":"service unavailable","status":"UNAVAILABLE"}}"#;
-    let http_client =
-        RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.embedding_model(EMBEDDING_001);
-
-    let error = model
-        .embed_texts(vec!["hello".to_string()])
-        .await
-        .expect_err("should fail with non-success status");
-
-    assert!(matches!(error, EmbeddingError::ProviderResponse(_)));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::SERVICE_UNAVAILABLE)
-    );
-    assert_eq!(error.provider_response_body(), Some(body));
-}
-
-#[tokio::test]
-async fn embedding_2xx_error_envelope_preserves_status_and_body() {
-    use crate::client::embeddings::EmbeddingsClient;
-    use crate::embeddings::EmbeddingModel as _;
-    use crate::test_utils::RecordingHttpClient;
-
-    // 200 OK carrying Gemini's standard nested error envelope.
-    let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
-    let http_client = RecordingHttpClient::new(body); // 200 OK
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.embedding_model(EMBEDDING_001);
-
-    let error = model
-        .embed_texts(vec!["hello".to_string()])
-        .await
-        .expect_err("should fail with provider error envelope");
-
-    match &error {
-        EmbeddingError::ProviderResponse(stored) => {
-            assert_eq!(stored.body, body);
-            assert_eq!(stored.status, Some(http::StatusCode::OK));
-        }
-        other => panic!("expected ProviderResponse, got {other:?}"),
-    }
+    assert_eq!(gemini.embeddings(EMBEDDING_001, Some(256)).ndims, 256);
 }
 
 /// `tests/cassettes/gemini/embeddings/derive_document_embeddings.yaml`'s

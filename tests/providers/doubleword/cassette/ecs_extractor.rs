@@ -2,7 +2,6 @@
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson};
-use rig::prelude::*;
 use rig_agent::test_utils::validate_extraction_fields;
 #[tokio::test]
 async fn extractor_smoke() {

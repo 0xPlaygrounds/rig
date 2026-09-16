@@ -12,7 +12,6 @@ use futures::StreamExt;
 use rig::completion::{CompletionModel, CompletionResponse};
 use rig::driver::Bound;
 use rig::message::{AssistantContent, Message, Reasoning};
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::wire::Responses;
 use rig::streaming::{BlockKind, Delta, StreamEvent};

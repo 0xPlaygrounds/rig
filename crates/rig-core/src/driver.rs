@@ -243,6 +243,10 @@ where
         provider_request_id: None,
     };
 
+    // One document per page. A batched wire — Cohere embeds one image per
+    // call — answers a single operation with several, and the last one is
+    // not the reply.
+    let mut documents: Vec<serde_json::Value> = Vec::new();
     let mut pending: std::collections::VecDeque<http::Request<Body>> = requests.into();
     while let Some(mut http_request) = pending.pop_front() {
         accept_header(&mut http_request, framing);
@@ -311,9 +315,9 @@ where
             observation.finish(AdapterEnding::Decoded);
         }
 
-        // The reply's own bytes when they are one document; otherwise the
+        // The page's own bytes when they are one document; otherwise the
         // envelope the decoder reassembled from the event stream.
-        reply.raw = serde_json::from_slice(&page_reply.body)
+        let document = serde_json::from_slice(&page_reply.body)
             .ok()
             .or_else(|| page.document())
             .unwrap_or(serde_json::Value::Null);
@@ -321,13 +325,22 @@ where
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             &format!("{} {} reply", wire.name(), <W::Op as Operation>::NAME),
-            &reply.raw,
+            &document,
         );
+        documents.push(document);
 
         if let Some(next) = page.continuation() {
             pending.push_front(next);
         }
     }
+
+    // One page answered with one document; several answered with the
+    // sequence, which is what the per-request escape hatch returned.
+    reply.raw = if documents.len() > 1 {
+        serde_json::Value::Array(documents)
+    } else {
+        documents.pop().unwrap_or(serde_json::Value::Null)
+    };
 
     let response = fold.finish(reply)?;
     <W::Op as Operation>::record(&span, &response);
@@ -759,7 +772,7 @@ const REJECTED_CHUNK_LIMIT: usize = 4096;
 /// body to its end (bounded in bytes and chunks) so the provider's payload
 /// and the transport's headers ride on the error.
 async fn reject_response(
-    response: http::Response<crate::http_client::sse::BoxedStream>,
+    response: http::Response<crate::http_client::BoxedStream>,
 ) -> http_client::Error {
     let status = response.status();
     let headers = response.headers().clone();

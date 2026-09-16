@@ -1781,28 +1781,21 @@ fn test_create_request_body_without_documents() {
     }
 }
 
+/// A non-success reply is reported with the provider's own status and body
+/// preserved: the envelope shape is Gemini's business, so nothing on the
+/// path may narrow it by parsing before the caller sees it.
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-    use crate::client::completion::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::providers::gemini::Client;
-    use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
-    let http_client =
-        RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model(super::GEMINI_3_FLASH_PREVIEW);
-    let request = model.completion_request("hello").build();
-
-    let error = model
-        .completion(request)
-        .await
-        .expect_err("should fail with non-success status");
+    let error = Bound::new(
+        wire(super::GEMINI_3_FLASH_PREVIEW),
+        RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body),
+    )
+    .completion(wire_request("hello"))
+    .await
+    .expect_err("should fail with non-success status");
 
     assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(

@@ -18,7 +18,6 @@
 use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ToolCall};
-use rig::prelude::*;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 
 use super::super::support::with_ollama_cassette;

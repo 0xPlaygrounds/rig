@@ -7,7 +7,6 @@
 //! scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::GPT_5_MINI;
 
 use super::super::support::{OpenAiCassette, with_openai_cassette};

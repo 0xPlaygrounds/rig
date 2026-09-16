@@ -34,7 +34,6 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 
 use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
-use rig::prelude::*;
 use rig::providers::ollama;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -243,15 +242,21 @@ async fn normalized_fields_equal_raw_renormalized() {
 
             assert_eq!(response.provider, OLLAMA_PROVIDER);
             assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-            assert_eq!(
-                typed.done_reason.as_deref(),
-                Some("stop"),
-                "the recorded turn stopped naturally in Ollama's own vocabulary"
-            );
+            // The provider's own vocabulary, paired with what the decoder made
+            // of it. Read from the payload rather than hardcoded, so the cell
+            // pins the mapping for whichever reason the fixture holds and fails
+            // loudly on one this wire has never seen.
+            let expected = match typed.done_reason.as_deref() {
+                Some("stop") => rig::completion::FinishReason::Stop,
+                Some("length") => rig::completion::FinishReason::Length,
+                other => panic!(
+                    "the recorded turn should stop naturally or hit the cap, got {other:?}"
+                ),
+            };
             assert_eq!(
                 response.finish_reason(),
-                Some(rig::completion::FinishReason::Stop),
-                "and the decoder maps `stop` onto a natural stop"
+                Some(expected),
+                "the decoder maps Ollama's `done_reason` onto the normalized vocabulary"
             );
             assert_eq!(typed.prompt_eval_count, response.usage.input_tokens);
             assert_eq!(typed.eval_count, response.usage.output_tokens);
@@ -288,7 +293,10 @@ async fn normalized_fields_equal_raw_renormalized() {
     assert_eq!(from_wire.eval_count, response.usage.output_tokens);
     assert_eq!(
         normalized_without_raw(response).get("finish_reason").cloned(),
-        Some(serde_json::json!("stop")),
-        "the wire's `done_reason` reaches the normalized finish reason"
+        from_wire
+            .done_reason
+            .as_deref()
+            .map(|reason| serde_json::json!(reason)),
+        "the wire's own `done_reason` reaches the normalized finish reason verbatim"
     );
 }

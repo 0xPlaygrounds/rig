@@ -60,7 +60,6 @@ use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
 use rig::driver::Bound;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::wire::Responses;
 use rig::providers::openai::wire::Chat;
@@ -86,6 +85,9 @@ const REASONING_PROMPT: &str = "A train leaves at 09:30 and travels 150 km at 60
      At what time does it arrive? Reply with only the time in HH:MM.";
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 
+/// The chat terminal record, with the dialect's own accounting in the `U`
+/// slot so a cell reaches both the OpenAI counters and any extras the
+/// dialect flattens beside them.
 type ChatTerminal = openai::wire::StreamingCompletionResponse<openai::wire::ChatUsage>;
 type ResponsesTerminal = openai::responses_api::streaming::StreamingCompletionResponse;
 
@@ -289,33 +291,25 @@ fn assert_responses_raw_matches_terminal(
     );
 }
 
-/// Running the decoder's own terminal mapper over the captured record
-/// reproduces the record the stream yielded — so `raw` lost nothing the
-/// normalized terminal carries.
-fn assert_raw_maps_back_to(scenario: &str, terminal: &StreamFinal, renormalized: &StreamFinal) {
-    assert_eq!(terminal.usage, renormalized.usage, "{scenario}: usage");
+/// The captured chat record and the normalized terminal are two views of one
+/// record: the provider-native fields the decoder assembled are the fields
+/// it reported, and the accounting maps through `ChatUsage::to_normalized`
+/// — the decoder's own reading of it.
+fn assert_chat_raw_matches_terminal(
+    scenario: &str,
+    typed: &ChatTerminal,
+    usage: &openai::wire::ChatUsage,
+    terminal: &StreamFinal,
+) {
+    assert_eq!(usage.to_normalized(), terminal.usage, "{scenario}: usage");
+    assert_eq!(typed.model, terminal.model, "{scenario}: model");
     assert_eq!(
-        terminal.finish_reason, renormalized.finish_reason,
-        "{scenario}: finish reason"
-    );
-    assert_eq!(terminal.model, renormalized.model, "{scenario}: model");
-    assert_eq!(
-        terminal.provider, renormalized.provider,
-        "{scenario}: provider"
-    );
-    assert_eq!(
-        terminal.message_id, renormalized.message_id,
-        "{scenario}: message id"
-    );
-    assert_eq!(
-        terminal.response_id, renormalized.response_id,
+        typed.response_id, terminal.response_id,
         "{scenario}: response id"
     );
-    // The transport id is stamped by the transport onto the normalized
-    // terminal; mapping the native record alone cannot recover it.
     assert_eq!(
-        renormalized.provider_request_id, None,
-        "{scenario}: transport id is not in the native record"
+        typed.finish_reason, terminal.finish_reason,
+        "{scenario}: finish reason"
     );
 }
 
@@ -365,22 +359,19 @@ async fn chat_stream_raw_round_trips_typed() {
         "{SCENARIO}: terminal model"
     );
     assert_eq!(typed.finish_reason, Some(FinishReason::Stop));
-    let usage = last_chunk_field(&frames, "usage");
+    let recorded_usage = last_chunk_field(&frames, "usage");
+    let usage = typed
+        .usage
+        .as_ref()
+        .unwrap_or_else(|| panic!("{SCENARIO}: the terminal record carries the accounting"));
     assert_eq!(
-        typed
-            .usage
-            .as_ref()
-            .map(|usage| usage.openai.prompt_tokens as u64),
-        usage["prompt_tokens"].as_u64(),
+        Some(usage.openai.prompt_tokens as u64),
+        recorded_usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );
     assert_eq!(
-        typed
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.openai.completion_tokens)
-            .map(|tokens| tokens as u64),
-        usage["completion_tokens"].as_u64(),
+        usage.openai.completion_tokens.map(|tokens| tokens as u64),
+        recorded_usage["completion_tokens"].as_u64(),
         "{SCENARIO}: terminal completion tokens"
     );
     // The transport id is stamped on the normalized terminal, never on the
@@ -389,9 +380,9 @@ async fn chat_stream_raw_round_trips_typed() {
         typed.provider_request_id, None,
         "{SCENARIO}: the native record never carries the transport id"
     );
-    // The decoder's own mapper over the captured record reproduces it.
-    let renormalized = typed.into_stream_final(PROVIDER);
-    assert_raw_maps_back_to(SCENARIO, &terminal, &renormalized);
+    // Two views of one record: the captured record's own fields are the ones
+    // the stream reported.
+    assert_chat_raw_matches_terminal(SCENARIO, &typed, usage, &terminal);
 }
 
 #[tokio::test]
@@ -700,23 +691,22 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
         Some(FinishReason::ToolCalls),
         "{SCENARIO}: the normalized terminal reports the tool call"
     );
-    let usage = last_chunk_field(&frames, "usage");
+    let recorded_usage = last_chunk_field(&frames, "usage");
+    let usage = typed
+        .usage
+        .as_ref()
+        .unwrap_or_else(|| panic!("{SCENARIO}: the terminal record carries the accounting"));
     assert_eq!(
-        typed
-            .usage
-            .as_ref()
-            .map(|usage| usage.openai.prompt_tokens as u64),
-        usage["prompt_tokens"].as_u64(),
+        Some(usage.openai.prompt_tokens as u64),
+        recorded_usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );
     assert_eq!(
         typed.provider_request_id, None,
         "{SCENARIO}: the native record never carries the transport id"
     );
-    // The decoder's own mapper over the captured record reproduces it.
-    // The wire already said `tool_calls`, so the `Stop -> ToolCalls`
-    // reconciliation `StreamingCompletionResponse` layers on has nothing to change and
-    // the comparison stays exact.
-    let renormalized = typed.into_stream_final(PROVIDER);
-    assert_raw_maps_back_to(SCENARIO, &terminal, &renormalized);
+    // Two views of one record. The wire already said `tool_calls`, so the
+    // `Stop -> ToolCalls` reconciliation the normalized stream layers on has
+    // nothing to change and the comparison stays exact.
+    assert_chat_raw_matches_terminal(SCENARIO, &typed, usage, &terminal);
 }

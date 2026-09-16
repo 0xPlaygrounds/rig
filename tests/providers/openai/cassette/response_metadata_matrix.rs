@@ -42,7 +42,6 @@
 
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use serde_json::Value;
 

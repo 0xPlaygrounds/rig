@@ -9,7 +9,6 @@
 //! raised in PR #2313.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use super::super::support::with_openrouter_cassette;
 

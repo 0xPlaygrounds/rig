@@ -7,7 +7,6 @@
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, cells, world::run_world};

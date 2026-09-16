@@ -192,28 +192,50 @@ async fn image_normalized_and_raw_round_trip() {
                 response.usage
             );
 
-            let raw: Vec<cohere::embeddings::ImageEmbeddingResponse> =
-                serde_json::from_value(response.raw.clone()).expect("raw is the per-image array");
-            assert_eq!(raw.len(), 1);
+            // Cohere embeds one image per request, so this wire is an
+            // `Encoded::batch` and the driver collects one document per page.
+            // This scenario records ONE image, so the batch has one page and
+            // `raw` is that page's bare document — a single-request wire is
+            // byte-identical to a non-batched one by design. The multi-page
+            // shape, where `raw` is the sequence, is pinned by
+            // `embeddings::embed_images_preserves_batch_order`.
+            let raw: cohere::embeddings::ImageEmbeddingResponse =
+                serde_json::from_value(response.raw.clone())
+                    .expect("raw is Cohere's own per-image answer");
             assert_eq!(
-                raw[0].embeddings.values.len(),
+                raw.embeddings.values.len(),
                 1,
                 "one embedding per per-image answer"
             );
             assert_eq!(
-                raw[0].meta.as_ref().map(|meta| meta.billed_units.images),
+                raw.meta.as_ref().map(|meta| meta.billed_units.images),
                 Some(1),
                 "the image count rides the raw payload's billed_units"
             );
 
+            // The same request captures the same document: one embed seam, so
+            // the axis left to pin is that the capture is stable rather than
+            // that a second route agrees with the first.
             let again = model
                 .embed_images_response(vec![decode_image(PNG_2X2)])
                 .await
                 .expect("the same image embed should succeed again");
-            let typed: Vec<cohere::embeddings::ImageEmbeddingResponse> =
+            // Not byte-equality: Cohere mints a fresh generation id per call,
+            // so the two recorded replies differ in `id` alone. What repeats is
+            // the shape and the billing.
+            let again_raw: cohere::embeddings::ImageEmbeddingResponse =
                 serde_json::from_value(again.raw.clone())
-                    .expect("raw is the per-image array");
-            assert_eq!(typed.len(), 1);
+                    .expect("the second capture is Cohere's own per-image answer");
+            assert_eq!(again_raw.embeddings.values.len(), 1);
+            assert_eq!(
+                again_raw.meta.as_ref().map(|meta| meta.billed_units.images),
+                Some(1),
+                "and bills the same single image"
+            );
+            assert_ne!(
+                again_raw.id, raw.id,
+                "each call is its own generation, so the ids differ"
+            );
         },
     )
     .await;

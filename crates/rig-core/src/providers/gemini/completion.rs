@@ -29,25 +29,19 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
 use crate::completion::{self, CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
 use crate::message::{self, MimeType, Reasoning};
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::providers::internal::completion_send::send_completion_with;
-use crate::providers::internal::envelope::DirectPayload;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::telemetry::CompletionOperation;
 use gemini_api_types::{
     Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
     GenerationConfig, Part, PartKind, Role, Tool, map_finish_reason,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use tracing_futures::Instrument;
 use crate::operation::Completion;
 use crate::wire::{Body, Encoded, Framing, Mode, Wire};
-
-use super::Client;
 
 // =================================================================
 // Rig Implementation Types
@@ -160,240 +154,6 @@ impl Wire for GenerateContent {
 
     fn decoder(&self) -> Self::Decoder {
         super::streaming::GenerateContentDecoder::default()
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct CompletionModel<T = crate::http_client::BoxedHttpClient> {
-    pub(crate) client: Client<T>,
-    pub model: String,
-    /// Handle of a `cachedContents` resource every request should read from.
-    ///
-    /// See [`CompletionModel::with_cached_content`].
-    pub(crate) cached_content: Option<String>,
-}
-
-impl<T> CompletionModel<T> {
-    /// The provider client this model sends through.
-    pub fn client(&self) -> &Client<T> {
-        &self.client
-    }
-
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            cached_content: None,
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            cached_content: None,
-        }
-    }
-
-    /// Read every request's prefix from an explicit `cachedContents` handle.
-    ///
-    /// This is Gemini's *explicit* context cache, which is a different feature
-    /// from the implicit prefix caching that happens with no API surface at all.
-    /// Explicit caching hits on the first request and across unrelated
-    /// conversations; implicit caching needs a warm-up and keys on a prefix a
-    /// fresh conversation does not have. Measured on `gemini-2.5-flash` over one
-    /// 18.5k-token corpus: implicit read zero cached tokens for five consecutive
-    /// turns, explicit read 100% on turn one.
-    ///
-    /// Create the handle with
-    /// [`crate::providers::gemini::cached_content::CachedContentClient`], and
-    /// delete it when you are done — storage bills until you do.
-    ///
-    /// # What can actually use the handle
-    ///
-    /// The cache owns the system instruction, the tool set *and* the tool
-    /// choice, so a request built from this model must carry none of the three;
-    /// rig rejects that before the request goes out rather than letting Gemini
-    /// answer 400.
-    ///
-    /// That is a tighter constraint than it looks for rig's `Agent`, because an
-    /// agent does not choose what to send — it sends what it holds:
-    ///
-    /// * a preamble becomes `systemInstruction`, so an agent reading from a
-    ///   cache must have no preamble and put those instructions in the cache;
-    /// * every always-exposed tool is advertised on every turn, and the agent
-    ///   can only dispatch what it advertised, so an agent reading from a cache
-    ///   must have no tools — and a function tool set moved into the cache is
-    ///   declarations the agent could never execute (see
-    ///   [`crate::providers::gemini::cached_content::NewCachedContent::tools`]).
-    ///   An empty `RequestPatch::active_tools` allow-list does suppress the
-    ///   `tools` field for a turn, so a tool-holding agent *can* be made to pass
-    ///   this check — but it gains a request, not a dispatch: neither its own
-    ///   suppressed tools nor the cache's are callable on that turn;
-    /// * a configured `tool_choice` becomes `toolConfig` even on a tool-less
-    ///   agent, so it has to go too — though dropping it costs a tool-less agent
-    ///   nothing;
-    /// * `output_schema` is fine under the default `OutputMode::Auto`, which for
-    ///   a tool-less agent resolves to `Native` and sends the schema as a
-    ///   `generationConfig` constraint with no tool. It is not fine in `Tool`
-    ///   mode, which advertises a synthetic output tool *and* appends an
-    ///   instruction to the preamble — and `Extractor` pins `Tool` mode, so
-    ///   extractors cannot read from a cache at all. `Prompted` is out for the
-    ///   same reason: it writes the schema into the preamble, so even a
-    ///   preamble-less agent ends up sending a `systemInstruction`.
-    ///
-    /// Context documents are fine either way: they are appended to the chat
-    /// history as user content, never to the system instruction.
-    ///
-    /// So there are two supported shapes: an agent with no preamble, no tools
-    /// and no `tool_choice` (with or without native structured output), or this
-    /// model driven directly
-    /// through
-    /// [`CompletionModel::completion`](completion::CompletionModel::completion)
-    /// or [`Self::raw_completion`] with a tool loop you run yourself.
-    pub fn with_cached_content(mut self, name: impl Into<String>) -> Self {
-        self.cached_content = Some(name.into());
-        self
-    }
-}
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Execute a completion and return Gemini's own `generateContent` payload.
-    ///
-    /// This is the escape hatch for provider-specific fields rig does not
-    /// normalize. It shares the request builder, transport, telemetry, and
-    /// error handling with
-    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
-    /// which calls it and then applies the provider-local mapping — one network
-    /// request either way.
-    pub async fn raw_completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<GenerateContentResponse, CompletionError> {
-        self.raw_completion_with_context(completion_request, None)
-            .await
-    }
-
-    /// Return provider-native output with context owned by this invocation.
-    pub async fn raw_completion_with_context(
-        &self,
-        completion_request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<GenerateContentResponse, CompletionError> {
-        self.complete_with(completion_request, context, Ok).await
-    }
-
-    async fn complete_with<R>(
-        &self,
-        completion_request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-        normalize: impl FnOnce(GenerateContentResponse) -> Result<R, CompletionError>,
-    ) -> Result<R, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &request_model,
-            CompletionOperation::GenerateContent,
-        )
-        .system_instructions(
-            completion_request.system_instructions(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        let mut request = create_request_body(completion_request)?;
-        if let Some(name) = self.cached_content.as_deref() {
-            request.with_cached_content(name)?;
-        }
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Gemini completion request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let path = completion_endpoint(&request_model);
-
-        let mut request = self
-            .client
-            .post(path.as_str())?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        if let Some(observation) = observation {
-            super::observation::attach(
-                observation,
-                &mut request,
-                "/models/{model}:generateContent",
-            );
-        }
-        send_completion_with::<_, DirectPayload<GenerateContentResponse>, _, _, _>(
-            &self.client,
-            request,
-            "Gemini completion",
-            // Gemini reports no transport request-id response header (verified
-            // against the live API); the normalized id is None by design.
-            None,
-            |response| {
-                let span = tracing::Span::current();
-                span.record_response_metadata(response);
-                let usage = response
-                    .usage_metadata
-                    .as_ref()
-                    .map(crate::completion::Usage::from)
-                    .unwrap_or_default();
-                span.record_token_usage(&usage);
-            },
-            normalize,
-        )
-        .instrument(span)
-        .await
-        .map(|(payload, _)| payload)
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, CompletionError> {
-        self.completion_with_context(request, None).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        self.stream_with_context(request, None).await
-    }
-
-    async fn completion_with_context(
-        &self,
-        completion_request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.complete_with(completion_request, context, |raw| {
-            let captured = serde_json::to_value(&raw)?;
-            let response: completion::CompletionResponse = raw.try_into()?;
-            Ok(response.with_raw(captured))
-        })
-        .await
-    }
-
-    async fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        self.stream_observed(request, context).await
     }
 }
 
@@ -972,7 +732,7 @@ pub fn attach_trailing_signature(
 }
 
 /// The wire name of a part kind, for error messages.
-fn part_kind_name(part: &PartKind) -> &'static str {
+pub(crate) fn part_kind_name(part: &PartKind) -> &'static str {
     match part {
         PartKind::Text(_) => "text",
         PartKind::InlineData(_) => "inlineData",
@@ -1065,7 +825,6 @@ impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
 }
 
 pub mod gemini_api_types {
-    use crate::telemetry::ProviderResponseExt;
     use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
     // =================================================================
@@ -1125,40 +884,6 @@ pub mod gemini_api_types {
         pub model_version: Option<String>,
     }
 
-    impl ProviderResponseExt for GenerateContentResponse {
-        type Usage = UsageMetadata;
-
-        fn response_id(&self) -> Option<&str> {
-            Some(self.response_id.as_str())
-        }
-
-        fn response_model_name(&self) -> Option<&str> {
-            self.model_version.as_deref()
-        }
-
-        fn text_response(&self) -> Option<String> {
-            let str = self
-                .candidates
-                .iter()
-                .filter_map(|x| {
-                    let content = x.content.as_ref()?;
-                    if content.role.as_ref().is_none_or(|y| y != &Role::Model) {
-                        return None;
-                    }
-
-                    Some(visible_text_parts(content).collect::<Vec<_>>().join("\n"))
-                })
-                .collect::<Vec<String>>()
-                .join("\n");
-
-            if str.is_empty() { None } else { Some(str) }
-        }
-
-        fn usage(&self) -> Option<Self::Usage> {
-            self.usage_metadata.clone()
-        }
-    }
-
     /// The model-visible text of a content's parts, in order.
     ///
     /// A `thought: true` part is the model's chain-of-thought, not its answer:
@@ -1171,8 +896,8 @@ pub mod gemini_api_types {
     /// The *skip* rule lives here; the *join* rule stays with each caller,
     /// because they differ legitimately: a transcript is one continuous text
     /// whose part boundaries are not sentence boundaries, so transcription
-    /// concatenates, while `text_response` keeps the newline separator it
-    /// has always used between a candidate's blocks.
+    /// concatenates, while a reader that presents a candidate's blocks keeps
+    /// a newline between them.
     pub(crate) fn visible_text_parts(content: &Content) -> impl Iterator<Item = &str> {
         content.parts.iter().filter_map(|part| match &part.part {
             PartKind::Text(text) if !part.thought.unwrap_or(false) => Some(text.as_str()),
@@ -2880,7 +2605,7 @@ impl gemini_api_types::GenerateContentRequest {
                 " Note that function declarations in a cache are declarations only — rig's \
                  `Agent` can only dispatch tools it advertised, so a cached function tool set is \
                  never executable from an agent; it is usable only when you drive \
-                 `CompletionModel` yourself and run the tool loop. (Provider-hosted tools such \
+                 `GenerateContent` yourself and run the tool loop. (Provider-hosted tools such \
                  as `codeExecution` run on Gemini's side and are fine to keep in the cache.)"
             } else {
                 ""

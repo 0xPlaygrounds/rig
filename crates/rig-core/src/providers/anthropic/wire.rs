@@ -145,7 +145,7 @@ pub const ZAI: Dialect = compatible(
     "zai",
     "https://api.z.ai/api/anthropic",
     "ZAI_API_KEY",
-    Some("ZAI_BASE_URL"),
+    Some("ZAI_ANTHROPIC_API_BASE"),
 );
 
 /// MiniMax's Anthropic-format endpoint.
@@ -153,7 +153,7 @@ pub const MINIMAX: Dialect = compatible(
     "minimax",
     "https://api.minimax.io/anthropic",
     "MINIMAX_API_KEY",
-    Some("MINIMAX_BASE_URL"),
+    Some("MINIMAX_ANTHROPIC_API_BASE"),
 );
 
 /// Moonshot's Anthropic-format endpoint.
@@ -161,15 +161,15 @@ pub const MOONSHOT: Dialect = compatible(
     "moonshot",
     "https://api.moonshot.ai/anthropic",
     "MOONSHOT_API_KEY",
-    Some("MOONSHOT_BASE_URL"),
+    Some("MOONSHOT_ANTHROPIC_API_BASE"),
 );
 
 /// Xiaomi MiMo's Anthropic-format endpoint.
 pub const XIAOMIMIMO: Dialect = compatible(
     "xiaomimimo",
-    "https://api-inference.modelscope.cn/anthropic",
-    "XIAOMIMIMO_API_KEY",
-    Some("XIAOMIMIMO_BASE_URL"),
+    "https://api.xiaomimimo.com/anthropic/v1",
+    "XIAOMI_MIMO_API_KEY",
+    Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),
 );
 
 /// The shared configuration of an Anthropic-format provider.
@@ -349,13 +349,54 @@ impl Messages {
     /// breakpoint management. This is the recommended mode for multi-turn
     /// conversations; use [`Self::with_prompt_caching`] when you need
     /// per-block control.
+    ///
+    /// ```no_run
+    /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+    /// use rig_core::providers::anthropic::wire::Anthropic;
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let messages = Anthropic::from_env()?
+    ///     .messages(CLAUDE_SONNET_4_6)
+    ///     .with_automatic_caching();
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// On a [`Bound`](crate::driver::Bound) the same option is forwarded
+    /// with `bound.map_wire(|wire| wire.with_automatic_caching())`.
+    ///
+    /// ## Minimum cacheable prompt length
+    ///
+    /// The combined prompt (tools + system + messages up to the
+    /// automatically chosen breakpoint) must meet the model-specific
+    /// minimum or caching is silently skipped by the API:
+    ///
+    /// | Model | Minimum tokens |
+    /// |-------|---------------|
+    /// | `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
+    /// | `claude-sonnet-4-6` | 2 048 |
+    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
+    /// | `claude-haiku-4-5` | 4 096 |
     pub fn with_automatic_caching(mut self) -> Self {
         self.automatic_caching = true;
         self
     }
 
     /// Automatic caching with the one-hour TTL rather than the default five
-    /// minutes.
+    /// minutes. Identical to [`Self::with_automatic_caching`] but sets
+    /// `ttl: "1h"` on the top-level `cache_control` field.
+    ///
+    /// ```no_run
+    /// use rig_core::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+    /// use rig_core::providers::anthropic::wire::Anthropic;
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let messages = Anthropic::from_env()?
+    ///     .messages(CLAUDE_SONNET_4_6)
+    ///     .with_automatic_caching_1h();
+    /// # Ok(())
+    /// # }
+    /// ```
     pub fn with_automatic_caching_1h(mut self) -> Self {
         self.automatic_caching = true;
         self.automatic_caching_ttl = Some(CacheTtl::OneHour);
@@ -364,6 +405,42 @@ impl Messages {
 
     /// Cache the static prefix (tool definitions and system prompt) at its
     /// own TTL, independent of the conversation tail's.
+    ///
+    /// An agent's prompt has two parts with very different volatility: the
+    /// system prompt and tool definitions are byte-identical across
+    /// sessions, while the conversation tail changes every turn and is
+    /// worthless an hour later. A 1-hour cache write costs ~2x base input
+    /// tokens where a 5-minute write costs ~1.25x, so the optimal
+    /// configuration is usually mixed — `1h` on the prefix, the 5-minute
+    /// default on the tail:
+    ///
+    /// ```no_run
+    /// use rig_core::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
+    /// use rig_core::providers::anthropic::wire::Anthropic;
+    ///
+    /// # fn run() -> Result<(), Box<dyn std::error::Error>> {
+    /// let messages = Anthropic::from_env()?
+    ///     .messages(CLAUDE_SONNET_4_6)
+    ///     .with_automatic_caching()
+    ///     .with_static_prefix_cache_ttl(CacheTtl::OneHour);
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Rig places explicit `cache_control` markers on the final tool
+    /// definition and the system prompt at this TTL. The conversation tail
+    /// is unaffected: it follows the automatic/top-level TTL (Anthropic's
+    /// moving breakpoint in automatic mode, Rig's last-message marker in
+    /// manual [`Self::with_prompt_caching`] mode).
+    ///
+    /// Anthropic requires 1-hour markers to precede 5-minute ones. The
+    /// static prefix precedes the tail, so `OneHour` here composes with a
+    /// 5-minute tail — but setting `FiveMinutes` here alongside
+    /// [`Self::with_automatic_caching_1h`] is the illegal inversion and
+    /// fails before any request is sent. The model-specific minimum
+    /// cacheable prompt lengths tabulated on
+    /// [`Self::with_automatic_caching`] apply to each marker; below the
+    /// minimum, Anthropic silently skips caching.
     pub fn with_static_prefix_cache_ttl(mut self, ttl: CacheTtl) -> Self {
         self.static_prefix_cache_ttl = Some(ttl);
         self
@@ -522,7 +599,7 @@ impl Models {
             Some(cursor) => format!(
                 "{}{}",
                 self.provider.base_url,
-                crate::providers::internal::model_listing::with_query_pairs(
+                crate::providers::internal::with_query_pairs(
                     "/v1/models",
                     &[("after_id", cursor)],
                 )

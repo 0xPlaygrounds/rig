@@ -1,4 +1,3 @@
-use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
 use http::HeaderName;
 pub use http::{
@@ -9,7 +8,7 @@ pub mod framing;
 pub mod middleware;
 pub mod multipart;
 pub mod retry;
-pub mod sse;
+pub(crate) mod tail;
 use crate::wasm_compat::*;
 pub use erased::BoxedHttpClient;
 pub use middleware::HttpMiddleware;
@@ -141,6 +140,10 @@ impl Error {
 
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
+
+/// The body of a streaming response: the transport's own chunks, boxed.
+pub type BoxedStream =
+    std::pin::Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>>;
 
 pub type StreamingResponse = Response<BoxedStream>;
 

@@ -1105,18 +1105,9 @@ fn test_completion_request_without_output_schema() {
     );
 }
 
-#[test]
-fn test_client_initialization() {
-    let _client = crate::providers::ollama::Client::new_with(
-        Nothing,
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("Client::new() failed");
-    let _client_from_builder = crate::providers::ollama::Client::builder()
-        .api_key(Nothing)
-        .http_client(crate::test_utils::RecordingHttpClient::new(""))
-        .build()
-        .expect("Client::builder() failed");
+/// The chat wire bound to `http_client`: the model every case below drives.
+fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Bound<Chat, H> {
+    crate::driver::Bound::new(Ollama::new(), http_client).completion(LLAMA3_2)
 }
 
 // Proves a truncated NDJSON stream — content chunks then EOF without a
@@ -1124,7 +1115,6 @@ fn test_client_initialization() {
 // terminal record.
 #[tokio::test]
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -1134,14 +1124,9 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
         "\n",
     );
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(ndjson),
-        })
-        .build()
-        .expect("build client");
-    let model = client.completion_model(LLAMA3_2);
+    let model = ollama_model(MockStreamingClient {
+        sse_bytes: bytes::Bytes::from(ndjson),
+    });
     let request = model.completion_request("hello").build();
 
     let mut stream = model.stream(request).await.expect("stream should open");
@@ -1172,7 +1157,6 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
 // the `done: true` record still arrive.
 #[tokio::test]
 async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -1187,14 +1171,9 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}"#,
         "\n",
     );
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(ndjson),
-        })
-        .build()
-        .expect("build client");
-    let model = client.completion_model(LLAMA3_2);
+    let model = ollama_model(MockStreamingClient {
+        sse_bytes: bytes::Bytes::from(ndjson),
+    });
     let request = model.completion_request("hello").build();
 
     let mut stream = model.stream(request).await.expect("stream should open");
@@ -1228,7 +1207,6 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
 // terminal record reach the consumer.
 #[tokio::test]
 async fn content_after_the_done_record_is_not_yielded() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -1242,14 +1220,9 @@ async fn content_after_the_done_record_is_not_yielded() {
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":"stray"},"done":false}"#,
         "\n",
     );
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(ndjson),
-        })
-        .build()
-        .expect("build client");
-    let model = client.completion_model(LLAMA3_2);
+    let model = ollama_model(MockStreamingClient {
+        sse_bytes: bytes::Bytes::from(ndjson),
+    });
     let request = model.completion_request("hello").build();
 
     let mut stream = model.stream(request).await.expect("stream should open");
@@ -1290,19 +1263,13 @@ async fn content_after_the_done_record_is_not_yielded() {
 // (issue #1931).
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":"model not found"}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model(LLAMA3_2);
+    let model = ollama_model(http_client);
     let request = model.completion_request("hello").build();
 
     let error = model
@@ -1323,19 +1290,13 @@ async fn completion_non_success_preserves_status_and_body() {
 // (issue #1931).
 #[tokio::test]
 async fn embeddings_non_success_preserves_status_and_body() {
-    use crate::client::EmbeddingsClient;
     use crate::embeddings::EmbeddingModel;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":"model not found"}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.embedding_model(ALL_MINILM);
+    let model = crate::driver::Bound::new(Ollama::new(), http_client).embedding(ALL_MINILM, None);
 
     let error = model
         .embed_texts(vec!["hello".to_string()])
@@ -1351,15 +1312,14 @@ async fn embeddings_non_success_preserves_status_and_body() {
 }
 
 /// Raw-capture tests: the `TryFrom` shape, driven end to end through
-/// `CompletionModel::completion` over the recording mock transport. Ollama
-/// has no request-id contract, so there is nothing transport-side to
-/// reattach; the capture is the `/api/chat` body exactly as `raw_completion`
-/// parses it. The body carries the timing fields (`total_duration`,
+/// `CompletionModel::completion` on the bound chat wire over the recording
+/// mock transport. Ollama has no request-id contract, so there is nothing
+/// transport-side to reattach; `CompletionResponse::raw` is the `/api/chat`
+/// body verbatim. The body carries the timing fields (`total_duration`,
 /// `eval_duration`, ...) rig never normalizes, so the capture can be shown
 /// to answer more than the normalized response does.
 mod raw_capture {
     use super::*;
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
@@ -1377,13 +1337,8 @@ mod raw_capture {
             "eval_duration": 4709213000
         }"#;
 
-    fn model() -> CompletionModel<RecordingHttpClient> {
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(RecordingHttpClient::new(BODY))
-            .build()
-            .expect("build client");
-        client.completion_model(LLAMA3_2)
+    fn model() -> crate::driver::Bound<Chat, RecordingHttpClient> {
+        ollama_model(RecordingHttpClient::new(BODY))
     }
 
     /// The load-bearing capture property: `raw` is Ollama's

@@ -4,7 +4,6 @@ use super::extractor_usage::{Address, Person, assert_compatible_professions};
 use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
 use rig::message::Message;
-use rig::prelude::*;
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {
     with_openrouter_cassette_result(

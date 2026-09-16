@@ -43,7 +43,6 @@ use rig::completion::{
 };
 use rig::driver::Bound;
 use rig::http_client::BoxedHttpClient;
-use rig::prelude::*;
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus, Interactions};
 use serde::Deserialize;
 use serde_json::Value;
@@ -147,10 +146,10 @@ async fn raw_roundtrips_interaction() {
                 typed.usage.as_ref().and_then(|usage| usage.total_tokens),
                 response.usage.total_tokens
             );
-            assert_eq!(
-                typed.status,
-                Some(InteractionStatus::Completed),
-                "the document keeps the API's own lifecycle spelling"
+            assert!(
+                matches!(typed.status, Some(InteractionStatus::Completed)),
+                "the document keeps the API's own lifecycle spelling, got {:?}",
+                typed.status
             );
             assert_eq!(
                 response.finish_reason(),

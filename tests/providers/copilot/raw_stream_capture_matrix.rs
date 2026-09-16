@@ -54,8 +54,9 @@ use rig::driver::Bound;
 use rig::providers::copilot;
 use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai::responses_api;
-use rig::providers::openai::wire::StreamingCompletionResponse;
+use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::{StreamEvent, StreamFinal};
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
@@ -162,29 +163,25 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
             let raw = &terminal.raw;
-            // The accounting is read as JSON rather than as the wire's
-            // [`ChatUsage`]: serde's field default on the record's generic
-            // `usage` bounds it `Default`, which `ChatUsage` does not
-            // implement, and a `Value` keeps every key the dialect added — so
-            // the round trip below is lossless over the whole record.
-            let chat: StreamingCompletionResponse<Value> = serde_json::from_value(raw.clone())
+            // The record carries the wire's own accounting, which flattens
+            // both the OpenAI-compatible counters and whatever else the
+            // dialect added — so the round trip below is exact, and the
+            // accounting's own normalization is what the terminal must carry.
+            let chat = StreamingCompletionResponse::<ChatUsage>::deserialize(raw)
                 .expect("chat-route raw must read back as the chat terminal record");
             assert_eq!(
                 serde_json::to_value(&chat).expect("terminal type should serialize"),
                 *raw,
                 "the chat record must round-trip through its own serde"
             );
-            let chat_usage = chat
+            let usage = chat
                 .usage
                 .as_ref()
                 .expect("the chat terminal carries usage");
             assert_eq!(
-                chat_usage.get("prompt_tokens").and_then(Value::as_u64),
-                terminal.usage.input_tokens
-            );
-            assert_eq!(
-                chat_usage.get("completion_tokens").and_then(Value::as_u64),
-                terminal.usage.output_tokens
+                usage.to_normalized(),
+                terminal.usage,
+                "the terminal record's usage must be the accounting's own normalization"
             );
             assert_eq!(chat.provider_request_id, terminal.provider_request_id);
             *sink.lock().expect("capture mutex") = Some(raw.clone());
@@ -273,7 +270,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
             "raw.additional_params.system_fingerprint must carry the chunk fingerprint"
         ),
     }
-    let typed: StreamingCompletionResponse<Value> = serde_json::from_value(raw.clone())
+    let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(&raw)
         .expect("chat-route raw must read back as the chat terminal record");
     let typed_params = typed
         .additional_params

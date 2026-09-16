@@ -19,7 +19,6 @@
 use futures::StreamExt;
 use rig::completion::{CompletionError, CompletionModel};
 use rig::error::ErrorReport;
-use rig::prelude::*;
 use rig::providers::doubleword;
 use serde_json::json;
 

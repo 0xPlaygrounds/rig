@@ -129,16 +129,3 @@ impl RerankResponse {
 }
 
 crate::provider_response::modality_response_metadata_setters!(RerankResponse);
-
-/// Convert a provider's own rerank payload into the normalized
-/// [`RerankResponse`].
-///
-/// The provider descriptor name is an *input*, never something the conversion
-/// knows — the Jina-shaped wire is shared by several servers, and a hardcoded
-/// name would mislabel every provider but one. A trait rather than
-/// `TryFrom<(&str, T)>` so that out-of-tree provider extensions can implement
-/// it on their own response type without tripping the orphan rule.
-pub trait NormalizeRerankResponse {
-    /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<RerankResponse, RerankError>;
-}

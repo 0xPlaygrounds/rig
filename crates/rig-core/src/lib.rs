@@ -52,17 +52,29 @@
 //! or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 //!
 //! # Core concepts
-//! ## Completion and embedding models
-//! Rig provides a consistent API for working with LLMs and embeddings. Each
-//! provider contributes plain configuration data (`openai::wire::OpenAI`,
-//! `anthropic::wire::Anthropic`, `cohere::Cohere`, …) plus one *wire* per API
-//! endpoint, saying what to send and how to read the reply. Binding a wire to
-//! a transport with [`Bound`](crate::driver::Bound) produces the model:
+//! ## Providers, wires, and models
+//! Rig provides a consistent API for working with LLMs and embeddings. A
+//! provider is plain configuration data (`openai::wire::OpenAI`,
+//! `anthropic::wire::Anthropic`, `cohere::Cohere`, …) — its base URL, its
+//! credential, its dialect — plus one *wire* per API endpoint, saying what to
+//! send and how to read the reply. Nothing generic sits between the two.
+//!
+//! Binding a provider to an HTTP transport yields a
+//! [`Bound`](crate::driver::Bound): `provider.bound()?` builds the bundled
+//! `reqwest` transport (from `rig-reqwest`, whose prelude the `rig` facade
+//! re-exports), and `provider.bind(transport)` takes one you already own.
+//! Every capability hangs off that `Bound` — `completion(model)`,
+//! `embedding(model, ndims)`, `verify()`, one method per capability the
+//! provider declares a wire for. A capability it has no wire for is a method
+//! that does not exist, and the compiler says so.
+//!
 //! `Bound` is the single implementor of
 //! [CompletionModel](crate::completion::CompletionModel),
 //! [EmbeddingModel](crate::embeddings::EmbeddingModel) and their siblings,
 //! which provide a common, low-level interface for creating completion and
-//! embedding requests and executing them.
+//! embedding requests and executing them; one driver
+//! ([`driver`](crate::driver)) runs all of them, so a provider never restates
+//! request plumbing, retry classification, or telemetry.
 //!
 //! ## Agent runtimes
 //! This crate owns the provider-agnostic model, message, tool, and storage
@@ -97,7 +109,7 @@
 //! Rig natively supports the following completion and embedding model provider integrations:
 //! - Anthropic
 //! - Azure OpenAI
-//! - ChatGPT and GitHub Copilot auth-backed clients
+//! - ChatGPT and GitHub Copilot (OAuth-backed)
 //! - Cohere
 //! - DeepSeek
 //! - Gemini
@@ -235,7 +247,7 @@ const _: fn() = || {
     // The serializable identity a typed view is resolved from.
     assert_send_sync_static::<completion::ModelRef>();
     assert_send_sync_static::<tool::DynamicTool>();
-    // One erased transport shared by every provider client a host builds.
+    // One erased transport, shared by every provider a host binds.
     assert_send_sync_static::<http_client::BoxedHttpClient>();
     // A live stream is owned by one poller: `Send` so it can move to a worker,
     // not `Sync`.

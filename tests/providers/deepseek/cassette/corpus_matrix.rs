@@ -10,7 +10,6 @@
 //! had, whose producer stays where it is.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};

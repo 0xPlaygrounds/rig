@@ -3,7 +3,6 @@ use crate::doubleword::DEFAULT_MODEL;
 use crate::doubleword::support::with_doubleword_cassette;
 use crate::ecs_agent::EcsAgent;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::prelude::*;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {

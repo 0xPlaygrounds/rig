@@ -1,13 +1,8 @@
 use crate::{
-    client::{self, ModelLister, Provider, VerifyError},
-    http_client::HttpClientExt,
+    client::VerifyError,
     model::{Model, ModelList, ModelListingError},
     operation::{ModelListing, Verify},
-    providers::{
-        gemini::{Client, InteractionsClient},
-        internal::{self, wire::classify_marker_keyed_frame},
-    },
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    providers::internal::{with_query_pairs, wire::classify_marker_keyed_frame},
     wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
 };
 use serde::{Deserialize, Serialize};
@@ -96,13 +91,20 @@ fn list_models_path(page_token: Option<&str>) -> String {
     if let Some(page_token) = page_token {
         pairs.push(("pageToken", page_token));
     }
-    internal::model_listing::with_query_pairs("/v1beta/models", &pairs)
+    with_query_pairs("/v1beta/models", &pairs)
+}
+
+/// One decoded page of `GET /v1beta/models`: the models it carried, and the
+/// cursor it named when it named a usable one.
+struct ListingPage {
+    models: Vec<Model>,
+    next_cursor: Option<String>,
 }
 
 fn parse_models_page(
     body: &[u8],
     path: &str,
-) -> Result<internal::model_listing::ListingPage, ModelListingError> {
+) -> Result<ListingPage, ModelListingError> {
     let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
         ModelListingError::parse_error_with_context("Gemini", path, &error, body)
     })?;
@@ -121,75 +123,14 @@ fn parse_models_page(
     // provider-reported identifier in rig is read. Reporting `Some("")` would
     // tell the shared loop there is a next page, and re-sending an empty
     // `pageToken` returns the same page forever.
-    Ok(internal::model_listing::ListingPage {
+    Ok(ListingPage {
         models,
         next_cursor: page.next_page_token.filter(|token| !token.is_empty()),
     })
 }
 
-async fn list_all_models<Ext, H>(
-    client: &client::Client<Ext, H>,
-) -> Result<ModelList, ModelListingError>
-where
-    Ext: Provider + WasmCompatSend + WasmCompatSync + 'static,
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    internal::model_listing::paginate_models(client, "Gemini", list_models_path, parse_models_page)
-        .await
-}
-
-/// [`ModelLister`] implementation for Gemini GenerateContent clients.
-#[derive(Clone)]
-pub struct GeminiModelLister<H = crate::http_client::BoxedHttpClient> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for GeminiModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        list_all_models(&self.client).await
-    }
-}
-
-impl<H> GeminiModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
-{
-    /// Build the lister over `client`.
-    pub fn new(client: Client<H>) -> Self {
-        Self { client }
-    }
-}
-
 #[cfg(test)]
 mod tests;
-
-/// [`ModelLister`] implementation for Gemini Interactions API clients.
-#[derive(Clone)]
-pub struct GeminiInteractionsModelLister<H = crate::http_client::BoxedHttpClient> {
-    client: InteractionsClient<H>,
-}
-
-impl<H> ModelLister<H> for GeminiInteractionsModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        list_all_models(&self.client).await
-    }
-}
-
-impl<H> GeminiInteractionsModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
-{
-    /// Build the lister over `client`.
-    pub fn new(client: InteractionsClient<H>) -> Self {
-        Self { client }
-    }
-}
 
 /// The top-level keys a genuine `GET /v1beta/models` reply carries.
 ///
@@ -201,9 +142,9 @@ const MODEL_PAGE_MARKERS: &[&str] = &["models", "nextPageToken"];
 ///
 /// Both Gemini providers list from the same endpoint and differ in nothing
 /// else, which is why one endpoint has two wires: GenerateContent appends
-/// the credential as the last `key=` query pair (`client::Gemini::build_uri`)
-/// while the Interactions API sends `x-goog-api-key` and names no query
-/// credential at all (`client::GeminiInteractions::prepare`).
+/// the credential as the last `key=` query pair (`Gemini::uri`) while the
+/// Interactions API sends `x-goog-api-key` and names no query credential at
+/// all (`Gemini::interactions_uri`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Auth {
     Query,
@@ -220,7 +161,7 @@ fn list_models_request(
     let trimmed = path.trim_start_matches('/');
     let base_url = &provider.base_url;
     // `list_models_path` always names `pageSize`, so a query credential joins
-    // an existing query string and lands last, as `build_uri` writes it.
+    // an existing query string and lands last, as `Gemini::uri` writes it.
     let request = match auth {
         Auth::Query => http::Request::get(format!(
             "{base_url}/{trimmed}&key={}",

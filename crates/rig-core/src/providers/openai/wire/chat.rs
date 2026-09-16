@@ -153,7 +153,7 @@ impl Chat {
                 }
             }
             BodyRewrite::DeepSeek => finalize_deepseek(map),
-            BodyRewrite::Mistral => finalize_mistral(map),
+            BodyRewrite::Mistral => finalize_mistral(map)?,
             BodyRewrite::OpenRouter => finalize_openrouter(map, self.prompt_caching),
             BodyRewrite::None
             | BodyRewrite::HuggingFaceRouter
@@ -167,6 +167,71 @@ impl Chat {
 
 fn as_array_mut(value: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
     value.as_array_mut()
+}
+
+/// The raw tool-call array of a unary choice's assistant message.
+///
+/// Reached on the body rather than on a decoded frame because the policy
+/// below turns on the *verbatim* `arguments` string, which the typed decode
+/// has already normalized away.
+fn message_tool_calls_mut(choice: &mut serde_json::Value) -> Option<&mut Vec<serde_json::Value>> {
+    choice
+        .get_mut("message")
+        .and_then(|message| message.get_mut("tool_calls"))
+        .and_then(as_array_mut)
+}
+
+/// Whether a raw tool call's `arguments` string is unusable as tool input.
+///
+/// Empty counts as unusable alongside unparseable: `parse_tool_arguments`
+/// maps an empty string onto `{}` so a genuine zero-argument tool works, and
+/// a call cut *before* its first argument token is exactly what that
+/// normalization would disguise as a zero-argument call. `"{}"` itself is
+/// neither empty nor unparseable and stays.
+///
+/// Arguments the dialect sent as a raw JSON value rather than a string
+/// (llama.cpp and Hugging Face both do) are never unusable: there is no
+/// half-written string to fail on.
+fn arguments_are_unusable(call: &serde_json::Value) -> bool {
+    call.get("function")
+        .and_then(|function| function.get("arguments"))
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|raw| {
+            raw.trim().is_empty() || crate::json_utils::parse_tool_arguments(raw).is_err()
+        })
+}
+
+/// Stub every unusable `arguments` string to `{}`, reporting whether any
+/// call needed it. The input to the compound-defect probe below.
+fn stub_unusable_arguments(choice: &mut serde_json::Value) -> bool {
+    let Some(calls) = message_tool_calls_mut(choice) else {
+        return false;
+    };
+    let mut stubbed = false;
+    for call in calls {
+        if !arguments_are_unusable(call) {
+            continue;
+        }
+        let Some(arguments) = call
+            .get_mut("function")
+            .and_then(|function| function.get_mut("arguments"))
+        else {
+            continue;
+        };
+        *arguments = serde_json::Value::String("{}".to_owned());
+        stubbed = true;
+    }
+    stubbed
+}
+
+/// Remove every call with unusable arguments, reporting how many went.
+fn drop_unusable_calls(choice: &mut serde_json::Value) -> usize {
+    let Some(calls) = message_tool_calls_mut(choice) else {
+        return 0;
+    };
+    let before = calls.len();
+    calls.retain(|call| !arguments_are_unusable(call));
+    before - calls.len()
 }
 
 /// Groq's compound-system native tools (`browser_search`, `code_interpreter`,
@@ -301,11 +366,8 @@ fn finalize_deepseek(map: &mut serde_json::Map<String, serde_json::Value>) {
 /// choice, the relaxation that lets a structured format ride beside tools,
 /// and its assistant-message schema.
 ///
-/// Mistral's multimodal *content* mapping — text-only arrays to a string,
-/// images/audio/documents to its own chunk shapes — still lives in
-/// `providers::mistral::completion::normalize_request_content` and must move
-/// here when that module is collapsed onto this dialect.
-fn finalize_mistral(map: &mut serde_json::Map<String, serde_json::Value>) {
+/// Its multimodal content mapping is [`mistral_content`].
+fn finalize_mistral(map: &mut serde_json::Map<String, serde_json::Value>) -> Result<(), CompletionError> {
     // Mistral spells the "must call some tool" mode `any`, not `required`.
     if let Some(tool_choice) = map.get_mut("tool_choice")
         && tool_choice.as_str() == Some("required")
@@ -350,24 +412,255 @@ fn finalize_mistral(map: &mut serde_json::Map<String, serde_json::Value>) {
     }
 
     let Some(messages) = map.get_mut("messages").and_then(as_array_mut) else {
-        return;
+        return Ok(());
     };
     for message in messages {
         let Some(message) = message.as_object_mut() else {
             continue;
         };
-        if message.get("role").and_then(serde_json::Value::as_str) != Some("assistant") {
-            continue;
+        let is_assistant =
+            message.get("role").and_then(serde_json::Value::as_str) == Some("assistant");
+
+        // Mistral takes text-only message `content` as a plain string and
+        // carries images, audio and documents as its own chunk array.
+        // Content it has no chunk for fails here rather than reaching the API
+        // with the part removed.
+        if let Some(content) = message.get_mut("content") {
+            mistral_content(content)?;
         }
-        if !message.contains_key("content") {
-            message.insert("content".to_owned(), serde_json::Value::String(String::new()));
+
+        if is_assistant {
+            if !message.contains_key("content") {
+                message.insert("content".to_owned(), serde_json::Value::String(String::new()));
+            }
+            // `prefix` is part of Mistral's assistant message schema.
+            message.entry("prefix").or_insert(serde_json::Value::Bool(false));
+            // Mistral rejects unknown assistant fields; hidden reasoning
+            // cannot be echoed back.
+            message.remove("reasoning_content");
         }
-        // `prefix` is part of Mistral's assistant message schema.
-        message.entry("prefix").or_insert(serde_json::Value::Bool(false));
-        // Mistral rejects unknown assistant fields; hidden reasoning cannot
-        // be echoed back.
-        message.remove("reasoning_content");
     }
+    Ok(())
+}
+
+// ── Mistral's message content schema ────────────────────────────────────
+//
+// Mistral validates message content as a tagged union, not as OpenAI's
+// content parts, so a part has to be rebuilt as the chunk its schema names.
+// The five below are the kinds the shared OpenAI-compatible conversion can
+// produce.
+
+/// Mistral's text chunk tag.
+const MISTRAL_TEXT: &str = "text";
+/// Mistral's image chunk tag.
+const MISTRAL_IMAGE: &str = "image_url";
+/// Mistral's audio chunk tag.
+const MISTRAL_AUDIO: &str = "input_audio";
+/// Mistral's document chunk tag.
+const MISTRAL_DOCUMENT: &str = "document_url";
+/// Mistral's uploaded-file chunk tag.
+const MISTRAL_FILE: &str = "file";
+/// OpenAI's refusal part: textual, but under a key Mistral's chunk schema
+/// has no field for, so it is re-tagged rather than forwarded.
+const MISTRAL_REFUSAL: &str = "refusal";
+
+/// The text a part carries, under either key the shared conversion uses.
+fn mistral_part_text(part: &serde_json::Value) -> Option<&str> {
+    part.get(MISTRAL_TEXT)
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| part.get(MISTRAL_REFUSAL).and_then(serde_json::Value::as_str))
+}
+
+/// Whether a part is purely textual, and so belongs in the plain-string form.
+///
+/// Decided on the `type` tag first, and only on the keys for a part carrying
+/// no tag. Deciding on the keys alone would let a part that names a chunk
+/// kind *and* happens to carry a `text` key be flattened away, which is the
+/// silent drop this whole path exists to prevent.
+fn is_mistral_text_part(part: &serde_json::Value) -> bool {
+    match part.get("type").and_then(serde_json::Value::as_str) {
+        Some(MISTRAL_TEXT | MISTRAL_REFUSAL) => true,
+        Some(_) => false,
+        None => mistral_part_text(part).is_some(),
+    }
+}
+
+fn mistral_unsupported(what: &str) -> CompletionError {
+    crate::message::MessageError::ConversionError(format!(
+        "Mistral cannot carry {what}. Mistral messages accept text, `{MISTRAL_IMAGE}`, \
+         `{MISTRAL_AUDIO}`, `{MISTRAL_DOCUMENT}` and `{MISTRAL_FILE}` content; convert the \
+         content to one of those before sending it."
+    ))
+    .into()
+}
+
+/// OpenAI's `{"type": "file", "file": {…}}` as the Mistral chunk carrying the
+/// same document.
+///
+/// Inline bytes become `document_url`, which reads the base64 `data:` URI the
+/// shared conversion already built for `file_data` and carries the filename
+/// in its own optional `document_name`. An uploaded-file reference becomes
+/// Mistral's `file` chunk, which names the id at the top level rather than
+/// nesting it under `file` as OpenAI does — sending OpenAI's nesting is
+/// rejected twice over, for a missing `file_id` and for a forbidden extra
+/// `file`, since every Mistral chunk forbids unknown fields.
+fn mistral_file_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
+    let file = part.get(MISTRAL_FILE);
+    let field = |name: &str| {
+        file.and_then(|file| file.get(name))
+            .and_then(serde_json::Value::as_str)
+    };
+
+    // Already a Mistral file chunk (`file_id` at the top level, as this
+    // emits): pass it through, so finalizing an already-finalized body is a
+    // no-op rather than an error about content rig itself built.
+    if let Some(file_id) = part.get("file_id").and_then(serde_json::Value::as_str) {
+        return Ok(serde_json::json!({"type": MISTRAL_FILE, "file_id": file_id}));
+    }
+
+    if let Some(data) = field("file_data") {
+        // `document_name` is left out entirely rather than sent as null when
+        // the part has no filename.
+        Ok(match field("filename") {
+            Some(filename) => serde_json::json!({
+                "type": MISTRAL_DOCUMENT,
+                MISTRAL_DOCUMENT: data,
+                "document_name": filename,
+            }),
+            None => serde_json::json!({"type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: data}),
+        })
+    } else if let Some(file_id) = field("file_id") {
+        Ok(serde_json::json!({"type": MISTRAL_FILE, "file_id": file_id}))
+    } else {
+        Err(mistral_unsupported(
+            "a file content part carrying neither `file_data` nor `file_id`",
+        ))
+    }
+}
+
+/// An `input_audio` part as Mistral's canonical audio chunk, whose payload is
+/// the base64 string itself.
+///
+/// Mistral currently also accepts the `{data, format}` object the shared
+/// conversion produces — its schema flattens the object and discards
+/// `format` — but the bare string is the form its published schema
+/// documents. Nothing is lost: a deliberately wrong `format` changes no
+/// result, and a `format` placed as a *sibling* of `input_audio` is rejected
+/// outright.
+fn mistral_audio_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
+    let payload = part.get(MISTRAL_AUDIO).ok_or_else(|| {
+        mistral_unsupported("an audio content part carrying no `input_audio` payload")
+    })?;
+
+    let data = match payload {
+        serde_json::Value::String(data) => data.as_str(),
+        payload => payload
+            .get("data")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                mistral_unsupported(
+                    "an audio content part whose `input_audio` payload is not base64 data",
+                )
+            })?,
+    };
+
+    Ok(serde_json::json!({"type": MISTRAL_AUDIO, MISTRAL_AUDIO: data}))
+}
+
+/// One content part as the Mistral chunk that carries it.
+///
+/// Dispatched on the `type` tag, which the shared conversion always emits, so
+/// a part naming a chunk kind is converted as that kind regardless of what
+/// other keys it carries.
+fn mistral_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
+    /// Text and refusal parts are both re-tagged `text`: Mistral's schema has
+    /// no `refusal` field and every chunk forbids unknown keys.
+    fn text_chunk(part: &serde_json::Value) -> Result<serde_json::Value, CompletionError> {
+        let text = mistral_part_text(part)
+            .ok_or_else(|| mistral_unsupported("a text content part carrying no text"))?;
+        Ok(serde_json::json!({"type": MISTRAL_TEXT, MISTRAL_TEXT: text}))
+    }
+
+    match part.get("type").and_then(serde_json::Value::as_str) {
+        Some(MISTRAL_TEXT | MISTRAL_REFUSAL) => text_chunk(part),
+        // The payload needs no reshaping — Mistral's image chunk takes the
+        // `{url, detail}` object rig sends as readily as a bare URL string,
+        // and reads a base64 `data:` URI in either. It is still rebuilt
+        // rather than forwarded, because every Mistral chunk forbids unknown
+        // fields: a stray sibling key riding on the part would 422 the whole
+        // request.
+        Some(MISTRAL_IMAGE) => {
+            let image = part.get(MISTRAL_IMAGE).ok_or_else(|| {
+                mistral_unsupported("an image content part carrying no `image_url` payload")
+            })?;
+            Ok(serde_json::json!({"type": MISTRAL_IMAGE, MISTRAL_IMAGE: image}))
+        }
+        Some(MISTRAL_AUDIO) => mistral_audio_chunk(part),
+        Some(MISTRAL_FILE) => mistral_file_chunk(part),
+        // Already a Mistral document chunk — see `mistral_file_chunk` on why
+        // an already-converted part passes through.
+        Some(MISTRAL_DOCUMENT) => {
+            let url = part.get(MISTRAL_DOCUMENT).ok_or_else(|| {
+                mistral_unsupported("a document content part carrying no `document_url`")
+            })?;
+            Ok(match part.get("document_name") {
+                Some(name) => serde_json::json!({
+                    "type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: url, "document_name": name,
+                }),
+                None => serde_json::json!({"type": MISTRAL_DOCUMENT, MISTRAL_DOCUMENT: url}),
+            })
+        }
+        Some(kind) => Err(mistral_unsupported(&format!("`{kind}` message content"))),
+        // Untagged, but textual: the flattening would have taken it, so it
+        // converts rather than failing.
+        None if mistral_part_text(part).is_some() => text_chunk(part),
+        None => Err(mistral_unsupported("untyped message content")),
+    }
+}
+
+/// Rewrite one serialized message `content` into Mistral's content schema.
+///
+/// Mistral accepts content as either a plain string or an array of typed
+/// chunks. Text-only content keeps the plain-string form it has always taken.
+/// Content carrying anything else keeps the array, with each part rendered
+/// the way Mistral's schema names it, instead of being flattened away: a
+/// text-only flattening keeps only parts with a `text`/`refusal` key, so an
+/// attached image, document or audio clip was dropped from the request and
+/// the caller got an ordinary completion answering a prompt it never sent
+/// (rig#2290).
+///
+/// Content Mistral has no chunk for — video, and any part type a future
+/// conversion adds — fails here rather than being silently removed. The one
+/// exception is content whose parts are *all* tagged `text`/`refusal`: that
+/// takes the flattening path, which drops a part carrying no string payload
+/// exactly as it always has, rather than inventing a new failure for a shape
+/// rig's own conversion cannot produce.
+fn mistral_content(content: &mut serde_json::Value) -> Result<(), CompletionError> {
+    let Some(parts) = content.as_array() else {
+        return Ok(());
+    };
+
+    if parts.iter().all(is_mistral_text_part) {
+        // Flattened unconditionally rather than under `only_if_all_text`, so
+        // the helper does not re-decide: it judges per key while the guard
+        // above judges on the type tag, and the two disagree for a malformed
+        // part such as `{"type": "text"}` carrying no `text`. Letting the
+        // helper decline would leave that content as an array of chunks
+        // Mistral cannot read.
+        unary::flatten_text_content_parts(content, "", false);
+        return Ok(());
+    }
+
+    // Re-borrowed rather than held across the branch above, which needs
+    // `content` itself. The array-ness was just established, so the `else` is
+    // unreachable — expressed as a no-op instead of an unwrap.
+    if let Some(parts) = content.as_array_mut() {
+        for part in parts {
+            *part = mistral_chunk(part)?;
+        }
+    }
+
+    Ok(())
 }
 
 /// OpenRouter's two body rewrites.
@@ -600,6 +893,9 @@ pub enum ChatEvent {
     Done,
     /// The wire's in-band error envelope, delivered with a 200 status.
     Failure(CompletionError),
+    /// A bare JSON string where an envelope belongs: the whole answer, with
+    /// no metadata and no terminal reason. Mira's gateway sends this.
+    BareText(String),
 }
 
 /// The chat-completions decoder: one state machine for both replies.
@@ -831,6 +1127,110 @@ impl ChatDecoder {
         }
     }
 
+    /// Whether a decoded unary body is an output-length-truncated turn that
+    /// still carries tool calls — the one state whose verbatim `arguments`
+    /// strings are worth re-reading off the body.
+    ///
+    /// An over-approximation on purpose: a cut that landed before the first
+    /// argument token decodes as `{}`, indistinguishable at this level from a
+    /// genuine zero-argument call, so the raw-body pass decides.
+    fn is_budget_cut_tool_turn(&self, frame: &ChatFrame) -> bool {
+        let Some(choice) = frame.primary() else {
+            return false;
+        };
+        if !matches!(
+            self.finish_reason(choice).reported(),
+            Some(FinishReason::Length)
+        ) {
+            return false;
+        }
+        matches!(
+            &choice.message,
+            Some(Message::Assistant { tool_calls, .. }) if !tool_calls.is_empty()
+        )
+    }
+
+    /// Whether a raw choice blames the output-token budget, under the same
+    /// precedence [`Self::finish_reason`] applies to a decoded one.
+    fn reports_output_length(&self, choice: &serde_json::Value) -> bool {
+        let reason = |key: &str| {
+            choice
+                .get(key)
+                .and_then(serde_json::Value::as_str)
+                .filter(|reason| !reason.is_empty())
+        };
+        if let Some(normalized) = reason("finish_reason") {
+            return matches!(map_openai_finish_reason(normalized), FinishReason::Length);
+        }
+        self.quirks.native_finish_reason
+            && reason("native_finish_reason").is_some_and(|native| {
+                matches!(map_native_finish_reason(native), FinishReason::Length)
+            })
+    }
+
+    /// The unary body with every tool call the output-token budget cut out of
+    /// it dropped, or `None` when nothing was dropped and the ordinary
+    /// classification stands.
+    ///
+    /// # The scenario
+    ///
+    /// A turn that runs out of output budget mid-arguments comes back with
+    /// `finish_reason: "length"` and `tool_calls[].function.arguments` cut
+    /// partway through the JSON object — `{"note": "The` on llama.cpp at a
+    /// 20-token cap. The strict argument decode then fails, and failing it
+    /// takes the *whole frame* down: this is the defect rig#2359 fixed, and
+    /// the shared policy DeepSeek, Mistral and OpenRouter all carry.
+    ///
+    /// # Why the call is dropped rather than raised
+    ///
+    /// The turn happened. It has usage the caller is billed for, an id, a
+    /// finish reason saying precisely what went wrong, and often text beside
+    /// the call — erroring throws all of that away to report one unusable
+    /// fragment. And a mid-arguments cut is not a protocol violation: the
+    /// provider did what it was told and stopped at the cap the caller set,
+    /// so the honest normalization is a `Length` turn minus the call that
+    /// never finished. A half-parsed call must not reach the caller either,
+    /// because invoking a tool on truncated input is worse than not invoking
+    /// it — hence dropped, not repaired.
+    ///
+    /// # What stays loud
+    ///
+    /// Only an output-length choice is eligible, so an ordinary completed
+    /// `tool_calls` turn carrying malformed JSON is still a decode error —
+    /// there the provider claims it finished, and malformed arguments are its
+    /// own defect. Valid-JSON arguments are never touched, whatever they
+    /// contain: unexpected *content* is a schema problem, not a cut. And
+    /// before any call is dropped, a copy with its arguments stubbed to `{}`
+    /// must decode, so a choice that is *also* broken elsewhere (a call
+    /// missing its id, an unknown tool type) keeps its original error rather
+    /// than having the evidence deleted underneath it.
+    fn body_without_calls_cut_by_the_budget(&self, data: &str) -> Option<ChatFrame> {
+        let mut body = serde_json::from_str::<serde_json::Value>(data).ok()?;
+        let mut dropped = 0;
+        for choice in body.get_mut("choices").and_then(as_array_mut)? {
+            if !self.reports_output_length(choice) {
+                continue;
+            }
+            let mut probe = choice.clone();
+            if !stub_unusable_arguments(&mut probe)
+                || serde_json::from_value::<super::dto::ChatChoice>(probe).is_err()
+            {
+                continue;
+            }
+            dropped += drop_unusable_calls(choice);
+        }
+        if dropped == 0 {
+            return None;
+        }
+        let frame = serde_json::from_value::<ChatFrame>(body).ok()?;
+        tracing::debug!(
+            provider = self.provider,
+            dropped,
+            "dropping unary tool calls whose arguments the output-token budget cut short"
+        );
+        Some(frame)
+    }
+
     /// The unary `chat.completion` body: synthesize the events a stream of
     /// the same turn would have pushed.
     fn interpret_whole(&mut self, mut frame: ChatFrame, out: &mut Output<Completion>) {
@@ -868,38 +1268,62 @@ impl ChatDecoder {
         // so it rides on the terminal record's `response_id` — which is also
         // the only place the streamed reply could put it.
 
-        // Reasoning first: the compatible providers that expose hidden
-        // reasoning on this non-standard field stream it before any text, and
-        // the unary body must produce the same block order.
-        if let Some(reasoning) = reasoning.filter(|reasoning| !reasoning.is_empty()) {
-            out.reasoning(reasoning);
-        }
-
-        for part in &content {
-            let text = match part {
-                AssistantContent::Text { text } => text,
-                AssistantContent::Refusal { refusal } => refusal,
-            };
-            if !text.is_empty() {
-                out.text(text);
+        // The whole turn is declared as one chunk and emitted through the
+        // SAME lifecycle the streamed path uses. Open-coding the emission
+        // here is what made a `reasoning_content` turn panic the sequence
+        // law: `out.reasoning` mints a reasoning part and `out.text` then
+        // interleaved text into it without the derived boundary end. It is
+        // also exactly the unary/stream drift this model exists to remove,
+        // so there is one emitter and not two.
+        let text = {
+            // The streamed path concatenates a turn's text deltas into one
+            // block, so the unary body's parts join the same way rather than
+            // producing a different number of blocks for the same turn.
+            let mut text = String::new();
+            for part in &content {
+                let part = match part {
+                    AssistantContent::Text { text } => text,
+                    AssistantContent::Refusal { refusal } => refusal,
+                };
+                text.push_str(part);
             }
-        }
-        // This wire spells a refusal as a *sibling* of `content`
-        // (`{"content": null, "refusal": "…"}`), so a path reading `content`
-        // alone would drop it entirely.
-        if let Some(refusal) = assistant_refusal_fallback(&content, refusal.as_deref()) {
-            out.text(refusal);
-        }
+            // This wire spells a refusal as a *sibling* of `content`
+            // (`{"content": null, "refusal": "…"}`), so a path reading
+            // `content` alone would drop it entirely.
+            if let Some(refusal) = assistant_refusal_fallback(&content, refusal.as_deref()) {
+                text.push_str(refusal);
+            }
+            text
+        };
 
-        for call in &tool_calls {
-            let key = crate::streaming::non_empty_id(call.id.clone())
-                .map_or_else(|| BlockId::minted(MintKind::Tool, 0), BlockId::wire);
-            out.tool_end(
-                key,
-                ToolCallEnd::whole(&call.function.name, call.function.arguments.clone())
-                    .with_tool_id(call.id.clone()),
-            );
-        }
+        let tool_events = tool_calls
+            .iter()
+            .map(|call| {
+                let key = crate::streaming::non_empty_id(call.id.clone())
+                    .map_or_else(|| BlockId::minted(MintKind::Tool, 0), BlockId::wire);
+                StreamEvent::BlockEnd {
+                    id: key,
+                    end: crate::streaming::BlockClose::ToolCall(
+                        ToolCallEnd::whole(&call.function.name, call.function.arguments.clone())
+                            .with_tool_id(call.id.clone()),
+                    ),
+                    block: None,
+                }
+            })
+            .collect();
+
+        self.reasoning.emit_chunk(
+            ChunkParts {
+                reasoning: reasoning.filter(|reasoning| !reasoning.is_empty()),
+                // The unary body carries no signature-only detail; a
+                // reasoning block it opened is closed by the boundary the
+                // lifecycle derives, or by `close_active_blocks` below.
+                reasoning_signature: None,
+                text: (!text.is_empty()).then_some(text),
+                tool_events,
+            },
+            out,
+        );
 
         out.close_active_blocks();
         self.emit_terminal(out);
@@ -953,7 +1377,35 @@ impl Decoder<Completion> for ChatDecoder {
         if let Some(error) = provider_error_envelope(&data) {
             return WireEvent::Known(ChatEvent::Failure(error));
         }
-        classify_chat_completions_frame::<ChatFrame>(&data).map(|frame| {
+        // A gateway that answers with a bare JSON string rather than an
+        // envelope. Modeled as its own event for the dialects measured to do
+        // it, because the shared classifier reads a non-object frame as
+        // `Unknown` and the turn would then produce no answer at all. This
+        // pre-empts the classifier exactly as `[DONE]` and the error
+        // envelope above do: a frame that is not the wire's object shape is
+        // not the classifier's business.
+        if self.quirks.accepts_bare_string_reply
+            && let Ok(serde_json::Value::String(text)) =
+                serde_json::from_str::<serde_json::Value>(&data)
+        {
+            return WireEvent::Known(ChatEvent::BareText(text));
+        }
+        let classified = classify_chat_completions_frame::<ChatFrame>(&data);
+        // A tool call the output-token budget cut mid-arguments is not a
+        // corrupt frame. It reaches here two ways — the strict argument
+        // decode fails outright, or the cut landed before the first argument
+        // token and decoded as `{}` — and both are settled on the raw body.
+        let may_be_budget_cut = match &classified {
+            WireEvent::Corrupt(_) => true,
+            WireEvent::Known(frame) => self.is_budget_cut_tool_turn(frame),
+            WireEvent::Unknown { .. } => false,
+        };
+        if may_be_budget_cut
+            && let Some(frame) = self.body_without_calls_cut_by_the_budget(&data)
+        {
+            return WireEvent::Known(ChatEvent::Whole(frame));
+        }
+        classified.map(|frame| {
             if frame.is_whole() {
                 ChatEvent::Whole(frame)
             } else {
@@ -967,6 +1419,18 @@ impl Decoder<Completion> for ChatDecoder {
             ChatEvent::Chunk(frame) => self.interpret_chunk(frame, out),
             ChatEvent::Whole(frame) => self.interpret_whole(frame, out),
             ChatEvent::Done => self.saw_terminal = true,
+            ChatEvent::BareText(text) => {
+                // The whole reply: no id, no model, no usage and no finish
+                // reason, which is what the gateway sent and what the
+                // deleted `Simple(String)` branch normalized to.
+                self.saw_any_valid_frame = true;
+                self.saw_terminal = true;
+                if !text.is_empty() {
+                    out.text(text);
+                }
+                out.close_active_blocks();
+                self.emit_terminal(out);
+            }
             ChatEvent::Failure(error) => {
                 // Content the provider fully delivered reaches the consumer
                 // before the failure, and no terminal record follows.

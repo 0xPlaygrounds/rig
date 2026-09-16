@@ -206,7 +206,7 @@ async fn top_n_beyond_the_document_count_is_clamped() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_beyond_count", |client| async move {
         let reranked = client
             .rerank(CASSETTE_RERANK_MODEL)
-            .top_n(99)
+            .map_wire(|wire| wire.with_top_n(99))
             .rerank(QUERY, documents())
             .await
             .expect("an over-large top_n is clamped, not refused");
@@ -239,7 +239,7 @@ async fn top_n_below_the_document_count_truncates() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_truncates", |client| async move {
         let reranked = client
             .rerank(CASSETTE_RERANK_MODEL)
-            .top_n(1)
+            .map_wire(|wire| wire.with_top_n(1))
             .rerank(QUERY, documents())
             .await
             .expect("a truncating top_n should succeed");
@@ -273,7 +273,7 @@ async fn top_n_zero_returns_an_empty_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_zero", |client| async move {
         let reranked = client
             .rerank(CASSETTE_RERANK_MODEL)
-            .top_n(0)
+            .map_wire(|wire| wire.with_top_n(0))
             .rerank(QUERY, documents())
             .await
             .expect("top_n 0 is a valid request, not an error");

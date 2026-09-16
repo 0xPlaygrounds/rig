@@ -48,6 +48,11 @@ const MISTRALRS_PROVIDER: &str = "mistralrs";
 const NORMALIZED_PROVIDER: &str = "openai";
 const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
 
+/// The wire's terminal record over the wire's own accounting, which for
+/// mistral.rs carries its per-second throughput counters in `ChatUsage`'s
+/// flattened extras.
+type MistralRsTerminal = StreamingCompletionResponse<ChatUsage>;
+
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
@@ -124,23 +129,28 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
             let raw = &terminal.raw;
-            let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(raw)
+            let typed = MistralRsTerminal::deserialize(raw)
                 .expect("raw must deserialize into the wire's terminal record");
             assert_eq!(
                 serde_json::to_value(&typed).expect("terminal type should serialize"),
                 *raw,
                 "the terminal record must round-trip through its own serde"
             );
-            let typed_usage = typed.usage.as_ref().expect("terminal carries usage");
+            let usage = typed
+                .usage
+                .as_ref()
+                .expect("the terminal record carries the reply's accounting");
             assert_eq!(
-                Some(typed_usage.openai.prompt_tokens as u64),
+                usage.to_normalized(),
+                terminal.usage,
+                "the normalized usage is that accounting, normalized"
+            );
+            assert_eq!(
+                Some(usage.openai.prompt_tokens as u64),
                 terminal.usage.input_tokens
             );
             assert_eq!(
-                typed_usage
-                    .openai
-                    .completion_tokens
-                    .map(|tokens| tokens as u64),
+                usage.openai.completion_tokens.map(|tokens| tokens as u64),
                 terminal.usage.output_tokens
             );
             assert_eq!(typed.response_id, terminal.response_id);
@@ -236,7 +246,7 @@ async fn stream_raw_exposes_envelope_fields() {
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(&raw)
+    let typed = MistralRsTerminal::deserialize(&raw)
         .expect("raw must deserialize into the wire's terminal record");
     let typed_params = typed
         .additional_params

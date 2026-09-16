@@ -9,7 +9,6 @@
 use rig::agent::AgentBuilder;
 use rig::completion::{CompletionModel, FinishReason, Message};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::providers::openai::responses_api::{
     CompletionResponse as ResponsesReply, ResponseStatus,

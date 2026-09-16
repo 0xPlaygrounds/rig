@@ -7,7 +7,6 @@
 
 use anyhow::Result;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use super::support::with_groq_cassette_result;
 

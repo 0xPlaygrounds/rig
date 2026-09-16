@@ -4,7 +4,6 @@ use crate::cache_conformance::assert_breakpoints_match_support;
 use crate::{
     cache_conformance::assert_prefix_stable, ecs_agent::EcsAgent, ecs_cache::assert_cache_growth,
 };
-use rig::prelude::*;
 
 #[tokio::test]
 async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {

@@ -15,7 +15,6 @@
 
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::{doubleword, openai};
 use serde::Deserialize as _;
 

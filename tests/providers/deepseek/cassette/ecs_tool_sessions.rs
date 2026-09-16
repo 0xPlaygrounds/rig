@@ -10,7 +10,6 @@ use crate::support::{
     assert_two_tool_roundtrip_contract,
 };
 use anyhow::Result;
-use rig::prelude::*;
 use rig::tool::Tool;
 use serde_json::json;
 use std::sync::{Arc, Mutex};

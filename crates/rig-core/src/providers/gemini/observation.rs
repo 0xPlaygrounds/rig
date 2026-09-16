@@ -1,9 +1,6 @@
 //! GenerateContent metadata projected before normalization can discard it.
 
-use crate::observe::{
-    AdapterAttempt, AdapterContext, AdapterErrorEnvelope, AdapterEvent, AdapterUsage,
-    AdapterVerdict, PayloadObserver,
-};
+use crate::observe::{AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -66,20 +63,10 @@ fn count<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<u64
     Ok(serde_json::Value::deserialize(deserializer)?.as_u64())
 }
 
-pub(super) fn attach<B>(
-    context: AdapterContext,
-    request: &mut http::Request<B>,
-    route: &'static str,
-) {
-    context.attach(request, route);
-    request.extensions_mut().insert(PayloadObserver(payload));
-}
-
 /// Project one GenerateContent payload's boundary facts.
 ///
 /// The body of [`Decoder::project`](crate::wire::Decoder::project) for the
-/// GenerateContent wire, and — through [`payload`] below — of the streaming
-/// transport the client layer still uses, so the projection is stated once.
+/// GenerateContent wire, so the projection is stated once.
 pub(super) fn project(bytes: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
     // The observation projection must not inherit native response defaults:
     // omitted prompt/total counts in UsageMetadata otherwise become zero.
@@ -128,11 +115,4 @@ pub(super) fn project(bytes: &[u8], sink: &mut dyn crate::wire::ObservationSink)
             },
         });
     }
-}
-
-/// The [`PayloadObserver`] the client layer's transports register. Forwards
-/// to [`project`]: `AdapterAttempt` is itself an
-/// [`ObservationSink`](crate::wire::ObservationSink).
-fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
-    project(bytes, attempt);
 }

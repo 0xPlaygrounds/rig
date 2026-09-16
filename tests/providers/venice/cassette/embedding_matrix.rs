@@ -90,7 +90,7 @@ async fn raw_round_trips() {
 async fn raw_route_parity() {
     const SCENARIO: &str = "embedding_matrix/raw_route_parity";
 
-    with_venice_cassette(SCENARIO, |client| async move {
+    with_venice_cassette("embedding_matrix/raw_route_parity", |client| async move {
         let model = client.embedding(venice::TEXT_EMBEDDING_QWEN3_0_6B, None);
         let normalized = model
             .embed_texts_response(inputs())

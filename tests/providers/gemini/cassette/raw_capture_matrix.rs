@@ -55,7 +55,6 @@ use rig::completion::{
     AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason,
 };
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };

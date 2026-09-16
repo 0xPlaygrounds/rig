@@ -80,7 +80,6 @@ fn minted_tool_ids_replay_as_a_consistent_pair() {
 
 use super::*;
 use crate::completion::CompletionRequestBuilder;
-use crate::telemetry::ProviderResponseExt;
 use crate::test_utils::MockCompletionModel;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -656,51 +655,40 @@ fn assistant_reasoning_roundtrips_back_to_rig_message() {
     assert!(matches!(items[1], message::AssistantContent::Text(_)));
 }
 
+/// The raw text view of an assistant turn joins its non-empty parts in
+/// order, refusal parts included. This is the helper every unary path on
+/// this wire reads text through.
 #[test]
-fn provider_response_text_response_reads_assistant_multipart_output() {
-    let response = CompletionResponse {
-        id: "resp_123".to_owned(),
-        object: "chat.completion".to_owned(),
-        created: 0,
-        model: GPT_4O.to_owned(),
-        system_fingerprint: None,
-        service_tier: None,
-        choices: vec![Choice {
-            index: 0,
-            message: Message::Assistant {
-                content: vec![
-                    AssistantContent::Text {
-                        text: "first".to_owned(),
-                    },
-                    AssistantContent::Refusal {
-                        refusal: "second".to_owned(),
-                    },
-                    AssistantContent::Text {
-                        text: "third".to_owned(),
-                    },
-                ],
-                reasoning: Some("hidden".to_owned()),
-                refusal: None,
-                audio: None,
-                name: None,
-                tool_calls: vec![],
-                reasoning_details: vec![],
-                images: vec![],
+fn assistant_message_text_joins_every_non_empty_part() {
+    let message = Message::Assistant {
+        content: vec![
+            AssistantContent::Text {
+                text: "first".to_owned(),
             },
-            logprobs: None,
-            finish_reason: "stop".to_owned(),
-        }],
-        usage: None,
+            AssistantContent::Refusal {
+                refusal: "second".to_owned(),
+            },
+            AssistantContent::Text {
+                text: "third".to_owned(),
+            },
+        ],
+        reasoning: Some("hidden".to_owned()),
+        refusal: None,
+        audio: None,
+        name: None,
+        tool_calls: vec![],
+        reasoning_details: vec![],
+        images: vec![],
     };
 
     assert_eq!(
-        response.text_response(),
+        assistant_message_text_response(&message),
         Some("first\nsecond\nthird".to_owned())
     );
 }
 
 #[test]
-fn raw_completion_response_retains_service_tier() {
+fn completion_response_retains_service_tier() {
     let response: CompletionResponse = serde_json::from_value(json!({
         "id": "chatcmpl-tier",
         "object": "chat.completion",
@@ -719,90 +707,41 @@ fn raw_completion_response_retains_service_tier() {
     assert_eq!(response.service_tier.as_deref(), Some("priority"));
 }
 
-#[test]
-fn provider_response_text_response_falls_back_to_assistant_refusal_field() {
-    let response = CompletionResponse {
-        id: "resp_123".to_owned(),
-        object: "chat.completion".to_owned(),
-        created: 0,
-        model: GPT_4O.to_owned(),
-        system_fingerprint: None,
-        service_tier: None,
-        choices: vec![Choice {
-            index: 0,
-            message: Message::Assistant {
-                content: vec![],
-                reasoning: None,
-                refusal: Some("blocked".to_owned()),
-                audio: None,
-                name: None,
-                tool_calls: vec![],
-                reasoning_details: vec![],
-                images: vec![],
-            },
-            logprobs: None,
-            finish_reason: "stop".to_owned(),
-        }],
-        usage: None,
-    };
-
-    assert_eq!(response.text_response(), Some("blocked".to_owned()));
-}
-
 /// One chat-completions turn, built from the wire shape a structured-output
 /// refusal actually has (`content: null` beside a top-level `refusal`).
-fn refusal_response(body: Value) -> CompletionResponse {
-    serde_json::from_value(json!({
-        "id": "chatcmpl-refusal",
-        "object": "chat.completion",
-        "created": 0,
-        "model": GPT_4O,
-        "choices": [{ "index": 0, "message": body, "finish_reason": "stop" }],
-    }))
-    .expect("the refusal wire shape must deserialize")
+fn refusal_message(body: Value) -> Message {
+    serde_json::from_value(body).expect("the refusal wire shape must deserialize")
 }
 
-fn normalized_text(response: CompletionResponse) -> Vec<completion::AssistantContent> {
-    use crate::completion::NormalizeCompletionResponse;
-
-    response
-        .normalize("openai")
-        .expect("a refusal turn must normalize")
-        .choice
+/// The fallback as every reader of this wire applies it: the message's own
+/// parts decide, and the top-level `refusal` is the turn's text only when
+/// they carry nothing.
+fn fallback(message: &Message) -> Option<String> {
+    let Message::Assistant {
+        content, refusal, ..
+    } = message
+    else {
+        panic!("assistant message expected");
+    };
+    assistant_refusal_fallback(content, refusal.as_deref()).map(str::to_owned)
 }
 
 #[test]
-fn refusal_sibling_of_null_content_becomes_assistant_text() {
-    let response = refusal_response(json!({
+fn refusal_sibling_of_null_content_is_the_turns_text() {
+    let message = refusal_message(json!({
         "role": "assistant",
         "content": null,
         "refusal": "I'm sorry, I can't help with that."
     }));
 
     assert_eq!(
-        normalized_text(response),
-        vec![completion::AssistantContent::text(
-            "I'm sorry, I can't help with that."
-        )]
+        fallback(&message).as_deref(),
+        Some("I'm sorry, I can't help with that.")
     );
-}
-
-/// The raw text view and the normalized response must not disagree about
-/// whether the turn said anything — the disagreement was the bug.
-#[test]
-fn refusal_raw_and_normalized_views_agree() {
-    let message = json!({
-        "role": "assistant",
-        "content": null,
-        "refusal": "I'm sorry, I can't help with that."
-    });
-    let raw_text = refusal_response(message.clone())
-        .text_response()
-        .expect("raw text view");
-
     assert_eq!(
-        normalized_text(refusal_response(message)),
-        vec![completion::AssistantContent::text(raw_text)]
+        assistant_message_text_response(&message).as_deref(),
+        Some("I'm sorry, I can't help with that."),
+        "the raw text view routes through the same rule"
     );
 }
 
@@ -810,76 +749,48 @@ fn refusal_raw_and_normalized_views_agree() {
 /// turn with both never duplicates its text.
 #[test]
 fn refusal_beside_non_empty_content_does_not_duplicate() {
-    let response = refusal_response(json!({
+    let message = refusal_message(json!({
         "role": "assistant",
         "content": "here is the answer",
         "refusal": "I'm sorry, I can't help with that."
     }));
 
+    assert_eq!(fallback(&message), None);
     assert_eq!(
-        normalized_text(response),
-        vec![completion::AssistantContent::text("here is the answer")]
+        assistant_message_text_response(&message).as_deref(),
+        Some("here is the answer")
     );
 }
 
-/// An empty `refusal` is not content: the turn stays an empty-response
-/// error rather than gaining a fabricated empty text block.
+/// An empty `refusal` is not content: the turn stays empty rather than
+/// gaining a fabricated empty text block.
 #[test]
 fn empty_refusal_is_not_content() {
-    use crate::completion::NormalizeCompletionResponse;
-
-    let response = refusal_response(json!({
+    let message = refusal_message(json!({
         "role": "assistant",
         "content": null,
         "refusal": ""
     }));
 
-    assert!(response.normalize("openai").is_err());
-}
-
-/// A refusal beside tool calls keeps both — the fallback is about the
-/// message's *text*, and tool calls are appended as before.
-#[test]
-fn refusal_beside_tool_calls_keeps_both() {
-    let response = refusal_response(json!({
-        "role": "assistant",
-        "content": null,
-        "refusal": "I'm sorry, I can't help with that.",
-        "tool_calls": [{
-            "id": "call_1",
-            "type": "function",
-            "function": { "name": "lookup", "arguments": "{}" }
-        }]
-    }));
-
-    let content = normalized_text(response);
-    assert_eq!(content.len(), 2);
-    assert_eq!(
-        content.first(),
-        Some(&completion::AssistantContent::text(
-            "I'm sorry, I can't help with that."
-        ))
-    );
-    assert!(matches!(
-        content.get(1),
-        Some(completion::AssistantContent::ToolCall(_))
-    ));
+    assert_eq!(fallback(&message), None);
+    assert_eq!(assistant_message_text_response(&message), None);
 }
 
 /// The Responses-shaped `refusal` **content part** is not what chat
 /// completions sends, but the model still accepts it — and it must not
 /// also trigger the sibling fallback.
 #[test]
-fn refusal_content_part_still_maps_to_text_without_the_fallback() {
-    let response = refusal_response(json!({
+fn refusal_content_part_suppresses_the_sibling_fallback() {
+    let message = refusal_message(json!({
         "role": "assistant",
         "content": [{ "type": "refusal", "refusal": "part refusal" }],
         "refusal": "sibling refusal"
     }));
 
+    assert_eq!(fallback(&message), None);
     assert_eq!(
-        normalized_text(response),
-        vec![completion::AssistantContent::text("part refusal")]
+        assistant_message_text_response(&message).as_deref(),
+        Some("part refusal")
     );
 }
 
@@ -1144,15 +1055,6 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
             "{model:?} still takes `max_tokens`; changing its request would be a regression"
         );
     }
-}
-
-/// The predicate is what the provider extension actually consults.
-#[test]
-fn openai_extension_asks_for_the_modern_cap_only_on_reasoning_models() {
-    let ext = super::super::OpenAICompletions::default();
-
-    assert!(ext.requires_modern_output_cap("gpt-5-nano"));
-    assert!(!ext.requires_modern_output_cap(GPT_4O_MINI));
 }
 
 #[test]
@@ -1424,11 +1326,9 @@ fn deserialize_llama_cpp_tool_call() {
             "id": "xxx"
         }
         "#;
-    let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("the llama.cpp-shaped reply should decode");
 
-    let ApiResponse::Ok(response) = response else {
-        panic!("expected successful completion response");
-    };
     assert_eq!(response.choices.len(), 1);
 
     let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
@@ -1463,11 +1363,9 @@ fn deserialize_openai_stringified_tool_call() {
             "id": "xxx"
         }
         "#;
-    let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("the OpenAI-shaped reply should decode");
 
-    let ApiResponse::Ok(response) = response else {
-        panic!("expected successful completion response");
-    };
     assert_eq!(response.choices.len(), 1);
 
     let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
@@ -1512,13 +1410,15 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         }
         "#;
 
-    let ApiResponse::Ok(response) =
-        serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap()
-    else {
-        panic!("expected successful completion response");
-    };
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("the truncated turn should survive decode");
 
-    let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+    let Message::Assistant {
+        content,
+        tool_calls,
+        ..
+    } = &response.choices[0].message
+    else {
         panic!("expected assistant message");
     };
     assert_eq!(
@@ -1526,32 +1426,17 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         1,
         "the unusable call is dropped at decode; the complete one survives"
     );
+    assert_eq!(tool_calls[0].function.name, "page");
 
-    let converted = response.normalize("openai").unwrap();
-
-    assert_eq!(
-        converted.finish_reason(),
-        Some(crate::completion::FinishReason::Length)
-    );
-    assert_eq!(converted.usage.total_tokens, Some(396));
-    assert_eq!(converted.response_id.as_deref(), Some("chatcmpl-truncated"));
-    let names = converted
-        .choice
-        .iter()
-        .filter_map(|content| match content {
-            completion::AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(names, vec!["page"], "only the truncated call is dropped");
-    assert!(
-        converted.choice.iter().any(|content| matches!(
-            content,
-            completion::AssistantContent::Text(text) if text.text == "Acknowledged."
-        )),
-        "the turn's text survives: {:?}",
-        converted.choice
-    );
+    // The rest of the turn is untouched: the text, the usage, the id and
+    // the terminal reason all survive the dropped call.
+    assert!(matches!(
+        content.as_slice(),
+        [AssistantContent::Text { text }] if text == "Acknowledged."
+    ));
+    assert_eq!(response.choices[0].finish_reason, "length");
+    assert_eq!(response.usage.expect("usage").total_tokens, 396);
+    assert_eq!(response.id, "chatcmpl-truncated");
 }
 
 fn response_with_tool_call(finish_reason: &str, call: serde_json::Value) -> serde_json::Value {
@@ -1668,14 +1553,12 @@ fn tolerant_tool_arguments_leave_complete_payloads_alone() {
         }
         "#;
 
-    let ApiResponse::Ok(response) =
-        serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap()
-    else {
-        panic!("expected successful completion response");
-    };
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("every complete call should survive decode");
     let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
         panic!("expected assistant message");
     };
+    assert_eq!(tool_calls.len(), 4, "every completed call survives");
     assert_eq!(tool_calls[0].function.arguments, serde_json::json!({}));
     assert_eq!(
         tool_calls[1].function.arguments,
@@ -1692,24 +1575,15 @@ fn tolerant_tool_arguments_leave_complete_payloads_alone() {
         serde_json::Value::Null,
         "and the same for a bare JSON null in the non-string branch"
     );
-
-    let converted = response.normalize("openai").unwrap();
-    assert_eq!(
-        converted
-            .choice
-            .iter()
-            .filter(|content| matches!(content, completion::AssistantContent::ToolCall(_)))
-            .count(),
-        4,
-        "every completed parameterless call survives"
-    );
 }
 
 /// The Doubleword reasoning tool-loop cassette exposed text-before-reasoning
-/// in this shared unary converter. A controlled reply pins both fields even
-/// when a live model chooses not to produce reasoning for a simple prompt.
+/// in the shared unary converter. The ordering itself is the chat wire's
+/// rule; what this pins is the decode the wire reads it from — a
+/// `reasoning_content` sibling of `content` lands on the assistant
+/// message's `reasoning` field rather than being dropped.
 #[test]
-fn deserialize_compatible_response_orders_reasoning_before_text() {
+fn compatible_response_decodes_reasoning_content_beside_text() {
     let request = r#"
         {
             "choices": [
@@ -1747,29 +1621,23 @@ fn deserialize_compatible_response_orders_reasoning_before_text() {
             }
         }
         "#;
-    let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
-    let ApiResponse::Ok(response) = response else {
-        panic!("expected successful completion response");
-    };
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("the llama.cpp-shaped reply should decode");
 
-    let response: completion::CompletionResponse =
-        response
-            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
-            .unwrap();
-
-    assert_eq!(response.choice.len(), 2);
-
-    let Some(completion::message::AssistantContent::Reasoning(reasoning)) = response.choice.first()
+    let Message::Assistant {
+        content, reasoning, ..
+    } = &response.choices[0].message
     else {
-        panic!("expected assistant content to be reasoning");
+        panic!("expected assistant message");
     };
     assert_eq!(
-        reasoning.first_text(),
+        reasoning.as_deref(),
         Some("Now I understand the structure better. I need to: ...")
     );
-    assert!(
-        matches!(&response.choice[1], completion::AssistantContent::Text(text) if text.text == "The answer.")
-    );
+    assert!(matches!(
+        content.as_slice(),
+        [AssistantContent::Text { text }] if text == "The answer."
+    ));
 }
 
 #[test]
@@ -1950,213 +1818,6 @@ fn mixed_text_and_pdf_user_message_produces_two_content_parts() {
     assert!(matches!(parts[1], UserContent::File { .. }));
 }
 
-#[tokio::test]
-async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel;
-    use crate::providers::openai::CompletionsClient;
-    use crate::test_utils::RecordingHttpClient;
-
-    let body = r#"{"message":"slow down","type":"rate_limit","code":"rate_limit_exceeded"}"#;
-    let http_client = RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
-    let client = CompletionsClient::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model("gpt-4o-mini");
-    let request = model.completion_request("hello").build();
-
-    let error = model
-        .completion(request)
-        .await
-        .expect_err("completion should fail with provider error envelope");
-
-    match &error {
-        CompletionError::ProviderResponse(stored) => {
-            assert_eq!(stored.body, body);
-            assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
-            assert_eq!(error.provider_response_body(), Some(body));
-            assert_eq!(
-                error.provider_response_status(),
-                Some(http::StatusCode::ACCEPTED)
-            );
-            let json = error
-                .provider_response_json()
-                .expect("raw body should be valid JSON")
-                .expect("parsed JSON should be present");
-            assert_eq!(json["code"], "rate_limit_exceeded");
-            assert_eq!(json["type"], "rate_limit");
-        }
-        other => panic!("expected ProviderResponse, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn completion_http_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel;
-    use crate::providers::openai::CompletionsClient;
-    use crate::test_utils::RecordingHttpClient;
-
-    let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
-    let http_client =
-        RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
-    let client = CompletionsClient::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model("gpt-4o-mini");
-    let request = model.completion_request("hello").build();
-
-    let error = model
-        .completion(request)
-        .await
-        .expect_err("completion should fail with non-success status");
-
-    // rig#2314: a provider with a request-id contract preserves its
-    // non-success responses as ProviderResponse, so the transport id has
-    // a home on the error; this mock sent no header, so the id is None.
-    assert!(matches!(error, CompletionError::ProviderResponse(_)));
-    assert_eq!(error.provider_request_id(), None);
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::TOO_MANY_REQUESTS)
-    );
-    assert_eq!(error.provider_response_body(), Some(body));
-    let json = error
-        .provider_response_json()
-        .expect("raw body should be valid JSON")
-        .expect("parsed JSON should be present");
-    assert_eq!(json["error"]["type"], "rate_limit_error");
-}
-
-/// Raw-capture tests: the `normalize` shape through the OpenAI-compatible
-/// model, driven end to end over a mock transport that hands back a real
-/// chat-completions body *and* an `x-request-id` response header, so the
-/// same fixture serves the capture contract and the Part A parity
-/// contract. `with_error_response_headers` is the only unary double that
-/// carries headers; with `200 OK` it is simply a successful response with
-/// headers (`completion_send` already relies on that).
-mod raw_capture {
-    use super::*;
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::openai::CompletionsClient;
-    use crate::test_utils::RecordingHttpClient;
-
-    const REQUEST_ID: &str = "req_unit_chat_0001";
-
-    /// A chat-completions body carrying fields the normalized response
-    /// provably lacks (`system_fingerprint`, `service_tier`), so the
-    /// captured value can be shown to answer more than `completion()`.
-    const BODY: &str = r#"{
-            "id": "chatcmpl-raw-1",
-            "object": "chat.completion",
-            "created": 1700000000,
-            "model": "gpt-4o-mini-2024-07-18",
-            "system_fingerprint": "fp_unit_test",
-            "service_tier": "default",
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": "hello"},
-                "logprobs": null,
-                "finish_reason": "stop"
-            }],
-            "usage": {"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5}
-        }"#;
-
-    fn model() -> CompletionModel<RecordingHttpClient> {
-        let mut headers = http::HeaderMap::new();
-        headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
-        let http_client =
-            RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers);
-        let client = CompletionsClient::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        client.completion_model("gpt-4o-mini")
-    }
-
-    /// The load-bearing capture property: `raw` is the wire type as rig
-    /// parsed it — it deserializes back into
-    /// `openai::completion::CompletionResponse` and re-serializes to the
-    /// identical value — and re-normalizing that capture (with the header
-    /// id reattached, exactly as `completion()` does) reproduces every
-    /// normalized field. Also reads a field rig does not normalize
-    /// (`system_fingerprint`) off the capture.
-    #[tokio::test]
-    async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
-        let model = model();
-
-        let response = model
-            .completion(model.completion_request("hello").build())
-            .await
-            .expect("completion");
-
-        let raw = &response.raw;
-        let typed = super::CompletionResponse::deserialize(raw)
-            .expect("raw must deserialize into the provider wire type");
-        assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the wire type serializes to"
-        );
-        assert_eq!(typed.system_fingerprint.as_deref(), Some("fp_unit_test"));
-        assert_eq!(raw["service_tier"], "default");
-
-        // The capture and the normalized response tell one story.
-        let renormalized = typed
-            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
-            .expect("re-normalize the capture")
-            .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
-        assert_eq!(response.identity(), renormalized.identity());
-        assert_eq!(response.finish_reason(), renormalized.finish_reason());
-        assert_eq!(response.model, renormalized.model);
-        assert_eq!(response.usage, renormalized.usage);
-        assert_eq!(response.choice, renormalized.choice);
-        assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(
-            response.finish_reason(),
-            Some(crate::completion::FinishReason::Stop)
-        );
-    }
-
-    /// Part A parity, unit form: the typed route
-    /// `raw_completion_with_request_id` → `normalize` →
-    /// `with_optional_provider_request_id` reproduces `completion()` on
-    /// identity, finish reason, model and usage — and specifically the
-    /// transport id, which lives only on the response header and which
-    /// plain `raw_completion` drops. This is why the pair is public.
-    #[tokio::test]
-    async fn raw_completion_with_request_id_reproduces_completion() {
-        let model = model();
-
-        let (raw, id) = model
-            .raw_completion_with_request_id(model.completion_request("hello").build())
-            .await
-            .expect("typed route");
-        assert_eq!(id.as_deref(), Some(REQUEST_ID));
-        let reassembled = raw
-            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
-            .expect("normalize")
-            .with_optional_provider_request_id(id);
-
-        let normalized = model
-            .completion(model.completion_request("hello").build())
-            .await
-            .expect("normalized route");
-
-        assert_eq!(reassembled.identity(), normalized.identity());
-        assert_eq!(reassembled.finish_reason(), normalized.finish_reason());
-        assert_eq!(reassembled.model, normalized.model);
-        assert_eq!(reassembled.usage, normalized.usage);
-        assert_eq!(reassembled.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
-    }
-}
 /// Synthetic history exercises a collision and result order that cannot be
 /// reliably elicited from a live provider; assertions inspect the request wire.
 #[test]

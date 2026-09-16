@@ -20,6 +20,18 @@ use super::{
 /// route carries it and no default addresses the right API.
 pub(super) const AZURE_API_VERSION_ENV: &str = "AZURE_API_VERSION";
 
+/// The `api-version` the Azure client builder defaulted to. Every Azure
+/// route carries one, so a configuration built without reading the
+/// environment still names a version rather than an empty string.
+///
+/// `pub` because `providers::azure` aliases it as its own
+/// `DEFAULT_API_VERSION`, preserving the public spelling callers already
+/// use. The dependency runs provider-data -> wire, which is the safe
+/// direction: this encoder is what actually reads the value, and two
+/// independently-editable copies of the literal would drift silently
+/// against a live endpoint.
+pub const AZURE_DEFAULT_API_VERSION: &str = "2024-10-21";
+
 /// Azure versions its speech endpoint separately from the rest.
 pub(super) const AZURE_AUDIO_API_VERSION_ENV: &str = "AZURE_AUDIO_API_VERSION";
 
@@ -133,6 +145,8 @@ pub const HYPERBOLIC: Dialect = Dialect {
         verify_path: "/models",
         image_generation_path: "/v1/image/generation",
         audio_generation_path: "/v1/audio/generation",
+        image_body: ImageBody::Hyperbolic,
+        speech_body: SpeechBody::Hyperbolic,
         rewrite: BodyRewrite::Hyperbolic,
         ..Quirks::openai()
     },
@@ -156,6 +170,8 @@ pub const MIRA: Dialect = Dialect {
         completion_path: "/v1/chat/completions",
         models_path: "/v1/models",
         verify_path: "/user-credits",
+        // The gateway can answer with a bare JSON string.
+        accepts_bare_string_reply: true,
         rewrite: BodyRewrite::Mira,
         ..Quirks::openai()
     },
@@ -250,8 +266,20 @@ pub const LLAMACPP: Dialect = Dialect {
         // back through a tool reaches the model, 3/3, matching a control
         // that sends the same bytes in a `user` message.
         supports_image_tool_results: true,
-        // `llama-server` serves its operational routes unversioned.
         verify_path: "/props",
+        // `llama-server` serves these at the server root; `GET /v1/props`
+        // is a 404. The deleted client carried the same list.
+        root_relative_routes: &[
+            "/props",
+            "/health",
+            "/slots",
+            "/metrics",
+            "/tokenize",
+            "/detokenize",
+            "/apply-template",
+            "/infill",
+            "/lora-adapters",
+        ],
         rewrite: BodyRewrite::LlamaCpp,
         rerank: RerankQuirks {
             // `llama-server` serves one rerank handler behind four aliases

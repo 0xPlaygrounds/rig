@@ -2,7 +2,6 @@
 use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_agent::EcsAgent;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::prelude::*;
 use rig::providers::deepseek;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]

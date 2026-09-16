@@ -42,6 +42,8 @@ use super::support::{
 };
 use crate::support::collect_text_and_terminal;
 
+/// The wire's terminal record over the wire's own accounting — the typed
+/// escape hatch [`rig::streaming::StreamFinal::raw`] advertises.
 type GroqTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "groq";
@@ -143,11 +145,20 @@ async fn stream_raw_round_trips_terminal_type() {
             assert!(!text.is_empty());
             let raw = &terminal.raw;
             let typed = GroqTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over the shared OpenAI usage");
+                .expect("raw is the chat-completions terminal record, serialized");
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
                 *raw,
                 "the captured value is the typed terminal serialized, nothing more"
+            );
+            let usage = typed
+                .usage
+                .as_ref()
+                .expect("the terminal record carries the reply's accounting");
+            assert_eq!(
+                usage.to_normalized(),
+                terminal.usage,
+                "the normalized usage is that accounting, normalized"
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);

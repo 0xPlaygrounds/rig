@@ -11,7 +11,6 @@ use super::super::cassette_support::*;
 use super::extractor_usage::{Address, EXTRACTOR_PREAMBLE, Person, assert_compatible_professions};
 use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
-use rig::prelude::*;
 use serde_json::json;
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {

@@ -84,8 +84,10 @@ pub struct Quirks {
     /// The gateway accepts only the codex parameter subset: no sampling
     /// controls, no storage, no metadata, no structured output.
     pub codex_parameter_subset: bool,
-    /// A success body may be the provider's error envelope instead of a
-    /// response.
+    /// The gateway answers a success with its error envelope as the whole
+    /// body, and publishes a finished tool call at `output_item.done`. The
+    /// stream's own `error` event is not this: that is protocol on every
+    /// dialect and the decoder always reads it.
     pub error_envelope_in_success: bool,
     /// The gateway's replayed frames may omit their envelope bookkeeping
     /// (`sequence_number`, `output_index`, …), which the typed decode
@@ -552,9 +554,6 @@ impl Wire for Responses {
         let mut decoder = ResponsesDecoder::new(self.provider.dialect.name, options);
         if quirks.repair_envelope_less_frames {
             decoder = decoder.with_envelope_repair();
-        }
-        if quirks.error_envelope_in_success {
-            decoder = decoder.with_success_error_envelope();
         }
         decoder
     }

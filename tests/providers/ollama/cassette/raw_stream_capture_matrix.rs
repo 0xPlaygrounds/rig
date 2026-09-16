@@ -35,7 +35,6 @@
 
 use futures::StreamExt;
 use rig::completion::CompletionModel as _;
-use rig::prelude::*;
 use rig::providers::ollama;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;

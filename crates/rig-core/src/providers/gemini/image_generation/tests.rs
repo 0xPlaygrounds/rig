@@ -164,80 +164,22 @@ fn response_parsing_rejects_text_only_response() {
     assert!(err.to_string().contains("did not include image data"));
 }
 
+/// A blocked prompt is a *successful* `generateContent` document: no
+/// candidates, only `promptFeedback`. Every field of the response type is
+/// optional or defaulted so that a reply carrying nothing but the block
+/// still parses and the block can be reported, instead of the parse failing
+/// and hiding the reason.
 #[test]
-fn api_response_parsing_keeps_blocked_prompt_as_success() {
-    let response: ApiResponse<GenerateContentResponse> = serde_json::from_value(json!({
+fn a_blocked_prompt_reply_parses_as_a_candidate_less_response() {
+    let response: GenerateContentResponse = serde_json::from_value(json!({
         "promptFeedback": {
             "blockReason": "SAFETY"
         }
     }))
     .expect("blocked prompt response should deserialize");
 
-    match response {
-        ApiResponse::Ok(response) => assert!(response.candidates.is_empty()),
-        ApiResponse::Err(err) => panic!("expected success envelope, got error: {err:?}"),
-    }
-}
-
-#[tokio::test]
-async fn image_generation_non_success_preserves_status_and_body() {
-    use crate::client::image_generation::ImageGenerationClient;
-    use crate::image_generation::ImageGenerationModel as _;
-    use crate::test_utils::RecordingHttpClient;
-
-    let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
-    let http_client =
-        RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.image_generation_model(GEMINI_2_5_FLASH_IMAGE);
-
-    let error = model
-        .image_generation(image_generation_request("draw a cat"))
-        .await
-        .expect_err("should fail with non-success status");
-
-    assert!(matches!(error, ImageGenerationError::ProviderResponse(_)));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::SERVICE_UNAVAILABLE)
-    );
-    assert_eq!(error.provider_response_body(), Some(body));
-}
-
-#[tokio::test]
-async fn image_generation_2xx_error_envelope_preserves_status_and_body() {
-    use crate::client::image_generation::ImageGenerationClient;
-    use crate::image_generation::ImageGenerationModel as _;
-    use crate::test_utils::RecordingHttpClient;
-
-    // 200 OK carrying Gemini's standard nested error envelope. The error
-    // variant must be tried first because all identifying fields in
-    // `GenerateContentResponse` can be omitted.
-    let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
-    let http_client = RecordingHttpClient::new(body); // 200 OK
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.image_generation_model(GEMINI_2_5_FLASH_IMAGE);
-
-    let error = model
-        .image_generation(image_generation_request("draw a cat"))
-        .await
-        .expect_err("should fail with provider error envelope");
-
-    match &error {
-        ImageGenerationError::ProviderResponse(stored) => {
-            assert_eq!(stored.body, body);
-            assert_eq!(stored.status, Some(http::StatusCode::OK));
-        }
-        other => panic!("expected ProviderResponse, got {other:?}"),
-    }
+    assert!(response.candidates.is_empty());
+    assert!(response.prompt_feedback.is_some());
 }
 
 /// The 200 reply recorded in

@@ -23,7 +23,6 @@
 //! fixtures below carry only `content-type`.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 

@@ -8,7 +8,7 @@ async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().with_target(false).init();
 
     // Uses ADC credentials and expects GOOGLE_CLOUD_PROJECT to be set. See
-    // `rig_vertexai::ClientBuilder` (`Client::builder()`) for more granular control.
+    // `rig_vertexai::ClientBuilder` for more granular control.
     let client = Client::from_env()?;
     let model = client.completion(GEMINI_2_5_FLASH_LITE);
 

@@ -14,7 +14,6 @@ use crate::{
     support::Adder,
 };
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use rig_ecs::agent::{AdditionalParams, MaxTokens, Temperature};
 
 #[tokio::test]

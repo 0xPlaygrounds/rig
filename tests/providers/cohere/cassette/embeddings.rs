@@ -96,12 +96,42 @@ async fn embed_images_preserves_batch_order() {
         "embeddings/embed_images_preserves_batch_order",
         |client| async move {
             let model = client.map_wire(|cohere| cohere.image_embeddings());
-            let embeddings = model
-                .embed_images([decode_image(PNG_2X2), decode_image(GIF_2X2)])
+            let response = model
+                .embed_images_response([decode_image(PNG_2X2), decode_image(GIF_2X2)])
                 .await
                 .expect("image embedding batch should succeed");
+            let embeddings = response.embeddings.clone();
 
             assert_embeddings_nonempty_and_consistent(&embeddings, 2);
+            // Two images are two requests on this wire, so the operation has
+            // two pages and `raw` is the per-image sequence in input order —
+            // what the per-request escape hatch used to return. Each page
+            // carries its own `meta.billed_units.images`, the only route to an
+            // image count: `Usage` is token-denominated and has no slot for it.
+            let raw: Vec<cohere::embeddings::ImageEmbeddingResponse> =
+                serde_json::from_value(response.raw.clone())
+                    .expect("raw is the per-image array");
+            assert_eq!(raw.len(), 2, "one answer per input image: {raw:?}");
+            for page in &raw {
+                assert_eq!(
+                    page.meta.as_ref().map(|meta| meta.billed_units.images),
+                    Some(1),
+                    "each page bills its own image: {page:?}"
+                );
+                assert_eq!(
+                    page.embeddings.values.len(),
+                    1,
+                    "one embedding per per-image answer: {page:?}"
+                );
+            }
+            // Not byte equality between the pages: Cohere mints a fresh
+            // generation id per call, so the two recorded replies differ in
+            // `id` alone. What repeats is the shape and the billing.
+            assert_ne!(
+                raw.first().and_then(|page| page.id.clone()),
+                raw.get(1).and_then(|page| page.id.clone()),
+                "each call is its own generation, so the ids differ"
+            );
             assert_eq!(embeddings.first().map(|item| item.vec.len()), Some(1024));
             assert_eq!(embeddings.get(1).map(|item| item.vec.len()), Some(1024));
             assert!(

@@ -102,7 +102,6 @@
 use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};

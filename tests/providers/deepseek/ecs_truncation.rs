@@ -3,7 +3,6 @@ use super::truncation_matrix::*;
 use crate::{ecs_agent::EcsAgent, ecs_observation};
 use rig::completion::FinishReason;
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig_ecs::{
     agent::{AdditionalParams, DefaultMaxTurns, Failure, MaxTokens},
     systems::RunCommands,

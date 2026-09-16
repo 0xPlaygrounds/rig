@@ -5,7 +5,6 @@
 //! cell's own test.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};

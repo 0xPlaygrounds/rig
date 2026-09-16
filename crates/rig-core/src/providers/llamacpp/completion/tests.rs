@@ -1,6 +1,4 @@
 use super::*;
-use crate::completion::NormalizeCompletionResponse as _;
-use crate::telemetry::ProviderResponseExt as _;
 
 /// A real b10499 chat-completions body, trimmed to the fields under test.
 const BODY: &str = r#"{
@@ -22,7 +20,7 @@ const BODY: &str = r#"{
     }"#;
 
 #[test]
-fn timings_survive_deserialization_and_normalization() {
+fn timings_survive_deserialization() {
     let response: CompletionResponse =
         serde_json::from_str(BODY).expect("a llama.cpp body should deserialize");
 
@@ -34,19 +32,23 @@ fn timings_survive_deserialization_and_normalization() {
     assert_eq!(timings.predicted_n, Some(2));
     assert_eq!(response.predicted_tokens_per_second(), Some(118.3));
 
-    // The OpenAI half is intact and normalizes exactly as before.
-    assert_eq!(response.response_id(), Some("chatcmpl-abc"));
+    // The OpenAI half is intact beside them: `timings` is an addition to the
+    // wire, not a replacement for it.
+    assert_eq!(response.openai.id, "chatcmpl-abc");
     assert_eq!(
         response.openai.system_fingerprint.as_deref(),
         Some("b10499-6d05498")
     );
-    let normalized = response
-        .normalize("llamacpp")
-        .expect("a llama.cpp body should normalize");
-    assert_eq!(normalized.provider, "llamacpp");
-    // `cache_n` and the normalized cached-token count are independently
+    // `cache_n` and the OpenAI-shaped cached-token count are independently
     // populated and must agree.
-    assert_eq!(normalized.usage.cached_input_tokens, Some(8));
+    assert_eq!(
+        response
+            .openai
+            .usage
+            .and_then(|usage| usage.prompt_tokens_details)
+            .map(|details| details.cached_tokens),
+        Some(8)
+    );
 }
 
 /// A response with no `timings` is not an error.
@@ -65,7 +67,17 @@ fn a_response_without_timings_still_decodes() {
         .unwrap_or_else(|error| panic!("should decode without timings: {error}"));
     assert!(response.timings.is_none());
     assert!(response.predicted_tokens_per_second().is_none());
-    assert_eq!(response.text_response().as_deref(), Some("ok"));
+    assert_eq!(
+        response
+            .openai
+            .choices
+            .first()
+            .and_then(|choice| openai::completion::assistant_message_text_response(
+                &choice.message
+            ))
+            .as_deref(),
+        Some("ok")
+    );
 }
 
 /// Round-tripping must not invent or lose the extra field.

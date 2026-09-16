@@ -5,7 +5,6 @@ use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ToolCall, ToolChoice, ToolResultContent, UserContent,
 };
-use rig::prelude::*;
 use rig::providers::gemini::interactions_api::{AdditionalParameters, Interaction, Tool};
 use rig::streaming::{Delta, StreamEvent};
 use serde::Deserialize;

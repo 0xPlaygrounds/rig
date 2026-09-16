@@ -4,7 +4,6 @@
 use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {

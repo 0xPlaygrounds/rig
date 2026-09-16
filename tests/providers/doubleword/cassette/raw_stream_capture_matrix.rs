@@ -22,7 +22,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` whose native fields reproduce the normalized terminal; the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; its accounting normalizes to the terminal's usage; the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_usage_and_object` | terminal-only field | `raw.usage` counts equal the sole usage-bearing frame's *including* its unmodeled cache extras; `raw.additional_params.object` equals the frames' tag | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -121,26 +121,34 @@ async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
-    with_doubleword_cassette_result(SCENARIO, |client| async move {
+    with_doubleword_cassette_result(
+        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
+        |client| async move {
         let model = client.completion(DEFAULT_MODEL);
         let stream = model.stream(request(&model)).await?;
         let (text, terminal) = collect_text_and_terminal(stream).await;
         let terminal = terminal.expect("stream should end with a terminal record");
         assert!(!text.is_empty());
 
-        // The captured document is the decoder's terminal record, so it reads
-        // back as that type and its native fields are the normalized ones.
-        let typed = DoublewordTerminal::deserialize(&terminal.raw)
-            .expect("raw is the chat-completions terminal over the wire's own usage");
+        // The captured document is the decoder's terminal record serialized,
+        // so it round-trips exactly and its native fields are the normalized
+        // ones.
+        let raw = &terminal.raw;
+        let typed = DoublewordTerminal::deserialize(raw)
+            .expect("raw is the chat-completions terminal record");
+        assert_eq!(
+            serde_json::to_value(&typed).expect("typed serializes"),
+            *raw,
+            "the captured value is the typed terminal serialized, nothing more"
+        );
         assert_eq!(typed.response_id, terminal.response_id);
         assert_eq!(typed.model, terminal.model);
         assert_eq!(typed.finish_reason, terminal.finish_reason);
+        // The accounting normalizes to what the terminal reports — the
+        // decoder's mapping itself, pinned rather than compared to a copy.
         assert_eq!(
-            typed
-                .usage
-                .as_ref()
-                .map(|usage| usage.to_normalized().total_tokens),
-            Some(terminal.usage.total_tokens),
+            typed.usage.as_ref().map(ChatUsage::to_normalized),
+            Some(terminal.usage),
             "the captured accounting normalizes to the terminal's"
         );
         assert_eq!(
@@ -174,7 +182,9 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
-    with_doubleword_cassette_result(SCENARIO, |client| async move {
+    with_doubleword_cassette_result(
+        "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object",
+        |client| async move {
         let model = client.completion(DEFAULT_MODEL);
         let stream = model.stream(request(&model)).await?;
         let (_, terminal) = collect_text_and_terminal(stream).await;

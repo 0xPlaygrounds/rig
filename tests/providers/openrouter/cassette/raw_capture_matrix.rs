@@ -42,7 +42,9 @@ use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::DEFAULT_MODEL;
-use super::super::support::{assert_matches_recorded_token, with_openrouter_cassette_result};
+use super::super::support::{
+    BoundOpenRouter, assert_matches_recorded_token, with_openrouter_cassette_result,
+};
 
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -125,21 +127,25 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.provider_request_id, None, "request id");
 }
 
-/// Run one recorded turn and hand back the response it produced.
-async fn observe(scenario: &'static str) -> CompletionResponse {
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_openrouter_cassette_result(scenario, |client| async move {
-        let model = client.completion(DEFAULT_MODEL);
-        let response = model.completion(request(&model)).await?;
-        *sink.lock().expect("observation lock") = Some(response);
-        Ok::<(), anyhow::Error>(())
-    })
-    .await
-    .unwrap_or_else(|error| panic!("{scenario} should replay from its cassette: {error}"));
+/// Where a cell parks the response its recorded turn produced.
+///
+/// The wrapper call itself stays inline in every cell with its own scenario
+/// literal: `cassette_safety` reads the registered scenarios out of the AST
+/// and accepts only a literal, so a shared helper that took the scenario as a
+/// parameter would register nothing and orphan the fixture.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
 
-    observed
-        .lock()
+/// The body every cell here shares: one turn, parked for the assertions that
+/// run after the wrapper returns.
+async fn run(client: BoundOpenRouter, sink: Observed) -> Result<(), anyhow::Error> {
+    let model = client.completion(DEFAULT_MODEL);
+    let response = model.completion(request(&model)).await?;
+    *sink.lock().expect("observation lock") = Some(response);
+    Ok(())
+}
+
+fn observed(sink: &Observed) -> CompletionResponse {
+    sink.lock()
         .expect("observation lock")
         .take()
         .expect("the cell should observe a response")
@@ -152,7 +158,14 @@ async fn observe(scenario: &'static str) -> CompletionResponse {
 #[tokio::test]
 async fn raw_reads_back_as_openrouter_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openrouter_type";
-    let response = observe("raw_capture_matrix/raw_round_trips_openrouter_type").await;
+    let sink = Observed::default();
+    with_openrouter_cassette_result(
+        "raw_capture_matrix/raw_round_trips_openrouter_type",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("raw_round_trips_openrouter_type should replay from its cassette");
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     assert!(
@@ -203,7 +216,14 @@ async fn raw_reads_back_as_openrouter_type() {
 #[tokio::test]
 async fn raw_exposes_routed_provider() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_routed_provider";
-    let response = observe("raw_capture_matrix/raw_exposes_routed_provider").await;
+    let sink = Observed::default();
+    with_openrouter_cassette_result(
+        "raw_capture_matrix/raw_exposes_routed_provider",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("raw_exposes_routed_provider should replay from its cassette");
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     let recorded_provider = body["provider"]
@@ -237,7 +257,14 @@ async fn raw_exposes_routed_provider() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let response = observe("raw_capture_matrix/normalized_fields_match_raw_renormalized").await;
+    let sink = Observed::default();
+    with_openrouter_cassette_result(
+        "raw_capture_matrix/normalized_fields_match_raw_renormalized",
+        |client| run(client, sink.clone()),
+    )
+    .await
+    .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = observed(&sink);
 
     let (_, body) = recorded_json(SCENARIO);
     assert_reproduces_fixture(&response, &body);

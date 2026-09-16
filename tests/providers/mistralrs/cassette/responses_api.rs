@@ -3,7 +3,6 @@
 use rig::agent::AgentBuilder;
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::responses_api::wire::Responses;
 use serde::Deserialize;

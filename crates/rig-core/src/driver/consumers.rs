@@ -100,7 +100,18 @@ where
         texts: impl IntoIterator<Item = String> + WasmCompatSend,
     ) -> Result<EmbeddingResponse, EmbeddingError> {
         let texts: Vec<String> = texts.into_iter().collect();
-        call(&self.wire, &self.http, texts, None).await
+        let response = call(&self.wire, &self.http, texts, None).await?;
+        // This impl publishes `ndims()`, so this impl owes the caller
+        // vectors of that width: the declaration is the wire's, the
+        // vectors are the reply's, and nothing else holds both.
+        self.wire.capabilities().honour_declaration(
+            self.wire.name(),
+            response
+                .embeddings
+                .iter()
+                .map(|embedding| embedding.vec.len()),
+        )?;
+        Ok(response)
     }
 }
 
@@ -122,7 +133,16 @@ where
         images: impl IntoIterator<Item = Vec<u8>> + WasmCompatSend,
     ) -> Result<ImageEmbeddingResponse, EmbeddingError> {
         let images: Vec<Vec<u8>> = images.into_iter().collect();
-        call(&self.wire, &self.http, images, None).await
+        let response = call(&self.wire, &self.http, images, None).await?;
+        // Same promise as the text wires, on the same value.
+        self.wire.capabilities().honour_declaration(
+            self.wire.name(),
+            response
+                .embeddings
+                .iter()
+                .map(|embedding| embedding.vec.len()),
+        )?;
+        Ok(response)
     }
 }
 

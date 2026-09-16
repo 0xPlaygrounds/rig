@@ -1286,6 +1286,23 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
             "1. Hummingbirds are the only birds capable of flying **backwards**.\n2. Their hearts can beat up to **1,260 times per minute**."
         ))
     );
+
+    // Both paths keep the interaction resource reachable, in the shape each
+    // reply actually has: a unary reply's bytes ARE the resource, so `raw`
+    // is it; a streamed reply's terminal record is the envelope the wire
+    // reassembled, so the resource is under `/interaction`. A caller that
+    // wants the provider's own vocabulary gets it either way, which is what
+    // the escape hatch promises.
+    let buffered_interaction: Interaction = serde_json::from_value(buffered.raw.clone())
+        .expect("a unary reply's `raw` is the interaction document");
+    assert_eq!(buffered_interaction.id, "v1_REDACTED_1");
+    assert!(buffered_interaction.is_terminal());
+
+    let streamed_interaction: Interaction =
+        serde_json::from_value(streamed.raw["interaction"].clone())
+            .expect("a streamed reply's terminal record carries the interaction");
+    assert_eq!(streamed_interaction.id, "v1_REDACTED_1");
+    assert!(streamed_interaction.is_terminal());
 }
 
 /// The one request an `Encoded` carries: this wire sends one per call.

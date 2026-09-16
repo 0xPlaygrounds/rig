@@ -2,7 +2,6 @@
 use crate::ecs_agent::EcsAgent;
 use crate::ollama::support::with_ollama_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::prelude::*;
 use rig_ecs::agent::DefaultMaxTurns;
 const MODEL: &str = "qwen3:4b";
 #[tokio::test]

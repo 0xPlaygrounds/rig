@@ -413,7 +413,7 @@ impl HttpClientExt for MockStreamingClient {
         async move {
             let byte_stream =
                 futures::stream::iter(vec![Ok::<Bytes, http_client::Error>(sse_bytes)]);
-            let boxed_stream: http_client::sse::BoxedStream = Box::pin(byte_stream);
+            let boxed_stream: http_client::BoxedStream = Box::pin(byte_stream);
 
             Response::builder()
                 .status(http::StatusCode::OK)
@@ -567,7 +567,7 @@ impl HttpClientExt for SequencedStreamingHttpClient {
             };
 
             let byte_stream = futures::stream::iter(chunks);
-            let boxed_stream: http_client::sse::BoxedStream = Box::pin(byte_stream);
+            let boxed_stream: http_client::BoxedStream = Box::pin(byte_stream);
 
             Response::builder()
                 .status(http::StatusCode::OK)

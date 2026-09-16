@@ -3,22 +3,9 @@
 //! envelope, on the unary reply and on the stream's `message_start`,
 //! `message_delta` and `error` events.
 
-use crate::observe::{
-    AdapterAttempt, AdapterContext, AdapterErrorEnvelope, AdapterEvent, AdapterUsage,
-    AdapterVerdict, PayloadObserver,
-};
+use crate::observe::{AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict};
 use crate::wire::ObservationSink;
 use serde::Deserialize;
-
-/// Attach `context` to a Messages request, with the Messages projector.
-pub(crate) fn attach<B>(
-    context: AdapterContext,
-    request: &mut http::Request<B>,
-    route: &'static str,
-) {
-    context.attach(request, route);
-    request.extensions_mut().insert(PayloadObserver(payload));
-}
 
 fn count<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<u64>, D::Error> {
     Ok(serde_json::Value::deserialize(deserializer)?.as_u64())
@@ -58,10 +45,6 @@ struct Payload {
     message: Option<Box<Payload>>,
     delta: Option<Delta>,
     error: Option<Envelope>,
-}
-
-fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
-    project(bytes, attempt);
 }
 
 /// Messages metadata, projected off one raw payload.

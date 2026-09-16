@@ -7,7 +7,6 @@ use crate::ecs_agent::EcsAgent;
 use crate::llamacpp::cassette_support::CASSETTE_MODEL;
 use crate::llamacpp::cassette_support::with_llamacpp_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::prelude::*;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {

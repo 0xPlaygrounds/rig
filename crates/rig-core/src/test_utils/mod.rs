@@ -3,8 +3,6 @@
 mod completion;
 mod embeddings;
 mod http;
-#[cfg(test)]
-pub(crate) mod internal_streaming_profiles;
 mod memory;
 mod model_listing;
 pub mod observations;

@@ -20,7 +20,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; the normalized terminal reproduces the recorded last frame | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into the terminal record and re-serializes equal; its `ChatUsage` normalizes to the terminal usage; the normalized terminal reproduces the recorded last frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_usage_and_object` | terminal-only fields | `raw.usage` equals the recorded last frame's counters *including* the unmodeled `cost` block; `raw.additional_params.object` equals the frames' tag | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -41,6 +41,7 @@ use serde_json::{Value, json};
 use super::super::support::{assert_matches_recorded_token, with_perplexity_cassette};
 use crate::support::collect_text_and_terminal;
 
+/// The terminal record as the decoder serialized it, accounting included.
 type PerplexityTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "perplexity";
@@ -122,7 +123,10 @@ async fn stream_raw_round_trips_terminal_type() {
             assert!(!text.is_empty());
             let raw = &terminal.raw;
             let typed = PerplexityTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over the wire's own usage");
+                .expect("raw is the chat-completions terminal record");
+            // Unlike a unary `CompletionResponse::raw`, a stream's terminal
+            // `raw` IS this record serialized (`openai/wire/chat.rs`'s
+            // `emit_terminal`), so the round trip is exact.
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
                 *raw,
@@ -134,6 +138,14 @@ async fn stream_raw_round_trips_terminal_type() {
                 typed.provider_request_id, None,
                 "the transport id is stamped on the normalized terminal, not the native record"
             );
+            // `ChatUsage::to_normalized` is the mapping the terminal's usage
+            // went through, so pinning it directly says more than an equality
+            // between the record and its own serialization would.
+            let usage = typed
+                .usage
+                .as_ref()
+                .expect("the terminal carries the dialect's accounting");
+            assert_eq!(usage.to_normalized(), terminal.usage);
             *sink.lock().expect("observation lock") = Some(terminal);
         },
     )

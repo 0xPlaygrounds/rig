@@ -102,8 +102,8 @@ where
 
 /// The chat-completions surface of the same server.
 ///
-/// The two surfaces are two configurations rather than one client with a
-/// `completions_api()` hop, so this builds its own instead of crossing over
+/// The two endpoints are two configurations of the same dialect rather than
+/// two faces of one object, so this builds its own instead of crossing over
 /// from the Responses one.
 pub(super) async fn with_mistralrs_completions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,

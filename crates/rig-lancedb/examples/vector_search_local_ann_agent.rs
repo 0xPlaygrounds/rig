@@ -1,6 +1,6 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig_agent::client::AgentModelExt;
+use rig_agent::client::AgentProviderExt;
 use rig_core::providers::openai;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
@@ -73,8 +73,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Build RAG agent with dynamic context.
     // Use OpenAI-compatible API interface to build agent
     let agent = openai_client
-        .completion(openai::GPT_4O)
-        .into_agent_builder()
+        .agent(openai::GPT_4O)
         .temperature(0.5)
         .preamble("You are a helpful AI assistant.")
         .dynamic_context(top_k, vector_store_index)

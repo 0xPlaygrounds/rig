@@ -15,7 +15,6 @@
 //! | additional params | `response_format` | `{"type":"json_object"}` |
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::doubleword;
 use serde_json::{Value, json};
 
