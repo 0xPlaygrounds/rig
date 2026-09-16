@@ -398,10 +398,11 @@ pub struct CompletionResponse {
     /// persisted before the field existed — never that the provider sent
     /// nothing: no provider seam produces `Null`.
     ///
-    /// Typed access is recoverable: provider raw types are `Deserialize`, so
-    /// `provider::CompletionResponse::deserialize(&raw)` returns the
-    /// provider's own type, and [`NormalizeCompletionResponse`] converts
-    /// forward.
+    /// Typed access is recoverable: provider reply types are `Deserialize`,
+    /// so `provider::CompletionResponse::deserialize(&raw)` returns the
+    /// provider's own type. There is no second mapping to convert it
+    /// forward — this response IS the fold of that document, produced once
+    /// by the provider's decoder.
     #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
     pub raw: serde_json::Value,
 }
@@ -538,26 +539,6 @@ impl From<CompletionResponseRepr> for CompletionResponse {
             .with_optional_model(model)
             .with_raw(raw)
     }
-}
-
-/// Convert a provider's own completion payload into the normalized
-/// [`CompletionResponse`].
-///
-/// The provider descriptor name is an *input* rather than something the
-/// conversion knows, because several providers share one wire shape — the
-/// OpenAI chat-completions payload is used by more than a dozen of them. A
-/// conversion that hardcoded a name would mislabel every provider but one, and
-/// a placeholder overwritten by the caller would be correct only by convention.
-///
-/// This is a trait rather than `TryFrom<(&str, T)>` for a concrete reason:
-/// a tuple is not a local type, so `impl TryFrom<(&str, TheirResponse)> for
-/// CompletionResponse` is rejected by the orphan rule in any crate other than
-/// `rig-core`. Implementing this trait on a provider's own response type is
-/// allowed anywhere, which keeps provider extensions implementable outside this
-/// crate.
-pub trait NormalizeCompletionResponse {
-    /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<CompletionResponse, CompletionError>;
 }
 
 /// The token usage a provider reported for one completion.
