@@ -149,6 +149,7 @@ extern crate self as rig;
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
+pub mod driver;
 pub mod effect;
 pub mod embeddings;
 pub mod error;
@@ -166,6 +167,7 @@ pub mod markers;
 pub mod memory;
 pub mod model;
 pub mod observe;
+pub mod operation;
 pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
@@ -184,6 +186,7 @@ pub mod wasm_compat;
 #[cfg(feature = "websocket")]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod ws_client;
+pub mod wire;
 
 // Re-export commonly used types and traits
 pub use completion::message;

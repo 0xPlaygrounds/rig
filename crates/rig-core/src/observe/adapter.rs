@@ -477,6 +477,20 @@ impl AdapterAttempt {
         }
     }
 }
+impl crate::wire::ObservationSink for AdapterAttempt {
+    fn emit(&mut self, event: AdapterEvent) {
+        AdapterAttempt::emit(self, event);
+    }
+
+    fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>) {
+        AdapterAttempt::provider(self, verdict, response_id);
+    }
+
+    fn text(&self, text: &str) -> String {
+        AdapterAttempt::text(self, text)
+    }
+}
+
 
 impl Drop for AdapterAttempt {
     fn drop(&mut self) {

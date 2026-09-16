@@ -28,6 +28,12 @@ impl From<http_client::Error> for VerifyError {
         Self::from_transport_error(error)
     }
 }
+impl From<serde_json::Error> for VerifyError {
+    fn from(error: serde_json::Error) -> Self {
+        Self::ProviderError(error.to_string())
+    }
+}
+
 
 /// A provider client that can verify the configuration.
 /// Clone is required for conversions between client types.

@@ -4,6 +4,8 @@ use http::HeaderName;
 pub use http::{
     HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,
 };
+pub mod framing;
+pub use framing::{Framing, NdjsonFramer, SseEvent, SseFramer};
 mod erased;
 pub mod middleware;
 pub mod multipart;
