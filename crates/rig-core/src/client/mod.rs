@@ -89,6 +89,7 @@
 
 pub mod audio_generation;
 pub mod completion;
+pub mod env;
 pub mod embeddings;
 pub mod image_generation;
 pub mod model_listing;
@@ -106,6 +107,7 @@ use std::{env::VarError, fmt::Debug, sync::Arc};
 use thiserror::Error;
 pub use transcription::{HasTranscription, TranscriptionClient};
 pub use verify::{VerifyClient, VerifyError};
+pub use env::EnvError;
 
 #[cfg(feature = "image")]
 pub use image_generation::{HasImageGeneration, ImageGenerationClient};
