@@ -226,6 +226,11 @@ impl AdapterOutput {
         self.items.push(Err(error));
     }
 
+    /// What this output holds, without taking it.
+    pub fn items(&self) -> &[Result<StreamEvent, CompletionError>] {
+        &self.items
+    }
+
     /// Iterate the buffered items.
     pub fn iter(&self) -> std::slice::Iter<'_, Result<StreamEvent, CompletionError>> {
         self.items.iter()

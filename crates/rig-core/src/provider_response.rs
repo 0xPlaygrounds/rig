@@ -727,6 +727,7 @@ macro_rules! provider_error_enum {
         }
 
         $crate::provider_response::impl_provider_response_helpers!($name);
+        $crate::wire::impl_wire_error!($name);
 
         impl From<$crate::http_client::Error> for $name {
             fn from(error: $crate::http_client::Error) -> Self {

@@ -118,6 +118,7 @@ pub enum CompletionError {
 }
 
 crate::provider_response::impl_provider_response_helpers!(CompletionError);
+crate::wire::impl_wire_error!(CompletionError);
 
 impl From<http_client::Error> for CompletionError {
     fn from(error: http_client::Error) -> Self {

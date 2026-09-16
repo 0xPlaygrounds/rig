@@ -26,6 +26,121 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 
+/// The mutable state of the fold from stream events to one completion
+/// response, borrowed for one step.
+///
+/// Two surfaces run this fold: [`StreamingCompletionResponse`] as it yields
+/// events, and [`CompletionFold`](crate::operation::CompletionFold) as the
+/// driver folds a buffered reply. Sharing the step is what makes "a unary
+/// reply is a stream of one frame" true rather than aspirational.
+pub(crate) struct FoldStep<'a> {
+    pub accumulator: &'a mut BlockAccumulator,
+    pub response: &'a mut Option<StreamFinal>,
+    pub message_id: &'a mut Option<String>,
+    pub provider: &'a mut String,
+    /// Whether the terminal record names the provider (a stream that came
+    /// over the bus) rather than the opener.
+    pub provider_from_terminal: bool,
+}
+
+/// What one fold step decided about an event.
+pub(crate) enum Absorbed {
+    /// Forward this event (possibly rewritten with the block it finalized).
+    Yield(StreamEvent),
+    /// The accumulator rejected it; the stream keeps consuming.
+    Failed(ErrorReport),
+    /// A duplicate terminal: the first one latched.
+    Skip,
+}
+
+/// Absorb one event into the fold.
+pub(crate) fn absorb(step: FoldStep<'_>, event: StreamEvent) -> Absorbed {
+    match event {
+        StreamEvent::BlockStart {
+            id,
+            kind: BlockKind::Message,
+        } => {
+            // The wire announced the assistant message's own id; it
+            // outranks the terminal record's.
+            if let Some(message_id) = id.wire_str() {
+                *step.message_id = Some(message_id.to_owned());
+            }
+            Absorbed::Yield(StreamEvent::BlockStart {
+                id,
+                kind: BlockKind::Message,
+            })
+        }
+        StreamEvent::Final(mut response) => {
+            // A second terminal is a provider defect; the first one latched.
+            if step.response.is_some() {
+                return Absorbed::Skip;
+            }
+            // Finish-reason reconciliation against the accumulator's
+            // authoritative view of completed calls, so a `stop` that was
+            // really a tool call reads the same on both surfaces.
+            response.finish_reason = response
+                .finish_reason
+                .map(|reason| reason.reconcile_with_output(step.accumulator.saw_tool_call()));
+            // An explicit message-id block keeps precedence; the terminal
+            // record only fills a gap.
+            if step.message_id.is_none() {
+                step.message_id.clone_from(&response.message_id);
+            }
+            if step.provider_from_terminal && !response.provider.is_empty() {
+                step.provider.clone_from(&response.provider);
+            }
+            *step.response = Some(response.clone());
+            Absorbed::Yield(StreamEvent::Final(response))
+        }
+        // Passed straight through; never folded into the aggregated choice.
+        StreamEvent::Unknown(value) => Absorbed::Yield(StreamEvent::Unknown(value)),
+        event => match step.accumulator.apply(&event) {
+            // A block end that finalized a block publishes it under the key
+            // its deltas carried.
+            Ok(Some((id, block))) => {
+                let StreamEvent::BlockEnd { end, .. } = event else {
+                    // Only ends finalize; the accumulator upholds it.
+                    return Absorbed::Yield(event);
+                };
+                Absorbed::Yield(StreamEvent::BlockEnd {
+                    id,
+                    end,
+                    block: Some(block),
+                })
+            }
+            Ok(None) => Absorbed::Yield(event),
+            // Malformed complete input surfaces in-band.
+            Err(error) => Absorbed::Failed(error),
+        },
+    }
+}
+
+/// The folded completion response: the aggregated choice plus the terminal
+/// record's usage and metadata. Usage reports no counter when the reply
+/// produced no terminal record.
+pub(crate) fn fold_finish(
+    mut accumulator: BlockAccumulator,
+    terminal: Option<&StreamFinal>,
+    message_id: Option<String>,
+    provider: String,
+) -> CompletionResponse {
+    CompletionResponse::new(
+        accumulator.finish(),
+        terminal.map(|response| response.usage).unwrap_or_default(),
+        provider,
+    )
+    // An explicit message-id block outranks the terminal record's ID.
+    .with_optional_message_id(
+        message_id.or_else(|| terminal.and_then(|response| response.message_id.clone())),
+    )
+    .with_optional_response_id(terminal.and_then(|response| response.response_id.clone()))
+    .with_optional_provider_request_id(
+        terminal.and_then(|response| response.provider_request_id.clone()),
+    )
+    .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
+    .with_optional_model(terminal.and_then(|response| response.model.clone()))
+}
+
 /// Shared pause flag plus the parked consumer's waker.
 ///
 /// `AtomicWaker` holds a single waker, so this is correct only while one
@@ -458,26 +573,13 @@ impl StreamingCompletionResponse {
     ///
     /// Events not yet polled are not part of the choice: drain the stream
     /// first when the whole turn is wanted.
-    pub fn finish(mut self) -> CompletionResponse {
-        let choice = self.accumulator.finish();
-        let terminal = self.response.as_ref();
-        CompletionResponse::new(
-            choice,
-            terminal.map(|response| response.usage).unwrap_or_default(),
+    pub fn finish(self) -> CompletionResponse {
+        fold_finish(
+            self.accumulator,
+            self.response.as_ref(),
+            self.message_id.clone(),
             self.provider.clone(),
         )
-        // An explicit message-id block outranks the terminal record's ID.
-        .with_optional_message_id(
-            self.message_id
-                .clone()
-                .or_else(|| terminal.and_then(|response| response.message_id.clone())),
-        )
-        .with_optional_response_id(terminal.and_then(|response| response.response_id.clone()))
-        .with_optional_provider_request_id(
-            terminal.and_then(|response| response.provider_request_id.clone()),
-        )
-        .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
-        .with_optional_model(terminal.and_then(|response| response.model.clone()))
     }
 
     /// Cancel the stream and immediately drop the provider's inner stream.
@@ -582,71 +684,22 @@ impl Stream for StreamingCompletionResponse {
                 // terminates the inner stream with `Ready(None)` above, so
                 // the aggregated choice is finished normally.
                 Poll::Ready(Some(Err(err))) => Poll::Ready(Some(Err(err))),
-                Poll::Ready(Some(Ok(event))) => match event {
-                    StreamEvent::BlockStart {
-                        id,
-                        kind: BlockKind::Message,
-                    } => {
-                        // The wire announced the assistant message's own id;
-                        // it outranks the terminal record's.
-                        if let Some(message_id) = id.wire_str() {
-                            stream.message_id = Some(message_id.to_owned());
-                        }
-                        Poll::Ready(Some(Ok(StreamEvent::BlockStart {
-                            id,
-                            kind: BlockKind::Message,
-                        })))
+                Poll::Ready(Some(Ok(event))) => {
+                    let step = FoldStep {
+                        accumulator: &mut stream.accumulator,
+                        response: &mut stream.response,
+                        message_id: &mut stream.message_id,
+                        provider: &mut stream.provider,
+                        provider_from_terminal: stream.provider_from_terminal,
+                    };
+                    match absorb(step, event) {
+                        Absorbed::Yield(event) => Poll::Ready(Some(Ok(event))),
+                        // The stream keeps consuming, matching the
+                        // malformed-frame contract.
+                        Absorbed::Failed(error) => Poll::Ready(Some(Err(error))),
+                        Absorbed::Skip => continue,
                     }
-                    StreamEvent::Final(mut response) => {
-                        // A second terminal is a provider defect; the first
-                        // one latched.
-                        if stream.response.is_some() {
-                            continue;
-                        }
-                        // Finish-reason reconciliation against the
-                        // accumulator's authoritative view of completed calls:
-                        // the streaming counterpart of the unary path's, so
-                        // both agree about a `stop` that was really a tool
-                        // call.
-                        response.finish_reason = response.finish_reason.map(|reason| {
-                            reason.reconcile_with_output(stream.accumulator.saw_tool_call())
-                        });
-                        // An explicit message-id block keeps precedence; the
-                        // terminal record only fills a gap.
-                        if stream.message_id.is_none() {
-                            stream.message_id.clone_from(&response.message_id);
-                        }
-                        if stream.provider_from_terminal && !response.provider.is_empty() {
-                            stream.provider.clone_from(&response.provider);
-                        }
-                        stream.response = Some(response.clone());
-                        Poll::Ready(Some(Ok(StreamEvent::Final(response))))
-                    }
-                    StreamEvent::Unknown(value) => {
-                        // Passed straight through; never folded into the
-                        // aggregated choice (no `AssistantContent::Unknown`).
-                        Poll::Ready(Some(Ok(StreamEvent::Unknown(value))))
-                    }
-                    event => match stream.accumulator.apply(&event) {
-                        // A block end that finalized a block publishes it
-                        // under the key its deltas carried.
-                        Ok(Some((id, block))) => {
-                            let StreamEvent::BlockEnd { end, .. } = event else {
-                                // Only ends finalize; the accumulator upholds it.
-                                return Poll::Ready(Some(Ok(event)));
-                            };
-                            Poll::Ready(Some(Ok(StreamEvent::BlockEnd {
-                                id,
-                                end,
-                                block: Some(block),
-                            })))
-                        }
-                        Ok(None) => Poll::Ready(Some(Ok(event))),
-                        // Malformed complete input surfaces in-band; the stream
-                        // keeps consuming, matching the malformed-frame contract.
-                        Err(err) => Poll::Ready(Some(Err(err))),
-                    },
-                },
+                }
             };
         }
     }

@@ -24,8 +24,10 @@ pub(crate) mod model_listing;
 pub(crate) mod openai_chat_completions_compatible;
 pub(crate) mod rerank;
 pub(crate) mod schema;
-#[cfg(any(test, debug_assertions))]
-pub(crate) mod sequence_law;
+/// The debug-mode sequence-law validator. Public only because it is the
+/// completion sink's `Laws` type; its checks run under `debug_assertions`.
+#[doc(hidden)]
+pub mod sequence_law;
 pub(crate) mod sse_transport;
 pub mod tool_call_bridge;
 pub mod tool_call_ids;

@@ -7,4 +7,4 @@
 
 pub mod listing;
 
-pub use listing::{Model, ModelList, ModelListingError};
+pub use listing::{Model, ModelList, ModelLister, ModelListingError};

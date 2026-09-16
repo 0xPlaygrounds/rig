@@ -21,8 +21,14 @@ use crate::{
     memory::MemoryError,
     rerank::RerankError,
     tool::{ToolErrorKind, ToolExecutionError},
+    transcription::TranscriptionError,
     vector_store::VectorStoreError,
 };
+
+#[cfg(feature = "audio")]
+use crate::audio_generation::AudioGenerationError;
+#[cfg(feature = "image")]
+use crate::image_generation::ImageGenerationError;
 
 /// Normalized classification of an [`ErrorReport`].
 ///
@@ -345,6 +351,62 @@ fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
     }
     chain
 }
+
+/// The report of an operation error declared by
+/// [`provider_error_enum!`](crate::provider_response::provider_error_enum):
+/// the five core variants classify identically on every operation, and
+/// whatever the operation adds is a fault in the request it was asked to
+/// build.
+macro_rules! impl_report_for_provider_error {
+    ($error:ident) => {
+        impl From<&$error> for ErrorReport {
+            fn from(error: &$error) -> Self {
+                let (kind, provider_response) = match error {
+                    $error::HttpError(_) => (ErrorKind::Http, None),
+                    $error::JsonError(_) => (ErrorKind::Json, None),
+                    $error::ResponseError(_) => (ErrorKind::Response, None),
+                    $error::ProviderError(_) => (ErrorKind::Provider, None),
+                    $error::ProviderResponse(response) => {
+                        (ErrorKind::ProviderResponse, Some(response.clone()))
+                    }
+                    _ => (ErrorKind::Request, None),
+                };
+                ErrorReport {
+                    kind,
+                    retryable: error.is_retryable(),
+                    message: error.to_string(),
+                    code: provider_response
+                        .as_ref()
+                        .and_then(|response| response.machine_code()),
+                    http_status: provider_response
+                        .as_ref()
+                        .and_then(|response| response.status.map(|status| status.as_u16())),
+                    refusal: provider_response
+                        .as_ref()
+                        .is_some_and(|response| response.refusal),
+                    source_chain: source_chain(error),
+                    request_id: provider_response
+                        .as_ref()
+                        .and_then(|response| response.provider_request_id.clone()),
+                    provider_response,
+                    detail: None,
+                }
+            }
+        }
+
+        impl From<$error> for ErrorReport {
+            fn from(error: $error) -> Self {
+                Self::from(&error)
+            }
+        }
+    };
+}
+
+impl_report_for_provider_error!(TranscriptionError);
+#[cfg(feature = "image")]
+impl_report_for_provider_error!(ImageGenerationError);
+#[cfg(feature = "audio")]
+impl_report_for_provider_error!(AudioGenerationError);
 
 impl CompletionError {
     /// The wire form of this error.

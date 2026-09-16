@@ -5,6 +5,7 @@ pub use http::{
     HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,
 };
 mod erased;
+pub mod framing;
 pub mod middleware;
 pub mod multipart;
 pub mod retry;

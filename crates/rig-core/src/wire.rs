@@ -1,0 +1,446 @@
+//! What a provider is: data, an encoder, and a decoder.
+//!
+//! A [`Wire`] holds no transport, no future, no `dyn`, and no type
+//! parameter. It turns one request into bytes ([`Wire::encode`]) and hands
+//! out a fresh [`Decoder`] for one reply. The reply's frames fold into the
+//! operation's response, and the only `async` in the provider layer is the
+//! two functions in [`crate::driver`] that push bytes between them.
+//!
+//! Unary and streaming replies go through the *same* decoder: a unary reply
+//! is a stream of one frame, and a provider whose unary body has a different
+//! shape from its stream events names that shape in `classify` as one more
+//! [`WireEvent`] variant. There is no `decode`, so the two paths cannot drift.
+//!
+//! # Writing a provider
+//!
+//! A provider is a config struct plus one wire per operation. This is a
+//! complete one, end to end:
+//!
+//! ```
+//! use rig_core::completion::{CompletionError, CompletionRequest};
+//! use rig_core::driver::Bound;
+//! use rig_core::operation::{Completion, CompletionEvent};
+//! use rig_core::streaming::{BlockId, StreamEvent, StreamFinal};
+//! use rig_core::wire::{
+//!     Body, Decoder, Encoded, Framing, Output, Secret, Wire, WireEvent, WireFrame,
+//! };
+//!
+//! /// The provider's shared configuration: plain data, key redacted.
+//! #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+//! pub struct Example {
+//!     pub api_key: Secret,
+//!     pub base_url: String,
+//! }
+//!
+//! impl Example {
+//!     pub fn new(api_key: impl Into<Secret>) -> Self {
+//!         Self { api_key: api_key.into(), base_url: "https://example.invalid".into() }
+//!     }
+//!     /// The completion wire.
+//!     pub fn messages(&self, model: impl Into<String>) -> Messages {
+//!         Messages { provider: self.clone(), model: model.into() }
+//!     }
+//! }
+//!
+//! /// One operation's wire: the config plus what this endpoint needs.
+//! #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+//! pub struct Messages {
+//!     pub provider: Example,
+//!     pub model: String,
+//! }
+//!
+//! /// The reply shape, for both the unary body and the stream frames.
+//! #[derive(serde::Deserialize)]
+//! pub struct Reply {
+//!     text: String,
+//! }
+//!
+//! #[derive(Default)]
+//! pub struct ExampleDecoder;
+//!
+//! impl Decoder<Completion> for ExampleDecoder {
+//!     type Event = Reply;
+//!
+//!     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+//!         match serde_json::from_str(&frame.as_str()) {
+//!             Ok(reply) => WireEvent::Known(reply),
+//!             Err(error) => WireEvent::Corrupt(error),
+//!         }
+//!     }
+//!
+//!     fn interpret(&mut self, event: Self::Event, out: &mut Output<Completion>) {
+//!         out.text_delta(&event.text);
+//!         out.push(Ok(StreamEvent::Final(StreamFinal::new("example"))));
+//!     }
+//!
+//!     fn finish(&mut self, _out: &mut Output<Completion>) {}
+//! }
+//!
+//! impl Wire for Messages {
+//!     type Op = Completion;
+//!     type Decoder = ExampleDecoder;
+//!
+//!     fn name(&self) -> &str {
+//!         "example"
+//!     }
+//!
+//!     fn model(&self) -> Option<&str> {
+//!         Some(&self.model)
+//!     }
+//!
+//!     fn encode(&self, request: CompletionRequest) -> Result<Encoded, CompletionError> {
+//!         let body = serde_json::json!({ "model": self.model, "prompt": request.prompt });
+//!         let request = http::Request::post(format!("{}/messages", self.provider.base_url))
+//!             .header("authorization", self.provider.api_key.expose())
+//!             .body(Body::Bytes(serde_json::to_vec(&body)?))
+//!             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+//!         Ok(Encoded::new(request, Framing::Whole))
+//!     }
+//!
+//!     fn decoder(&self) -> Self::Decoder {
+//!         ExampleDecoder
+//!     }
+//! }
+//!
+//! # fn main() {
+//! // A wire plus a socket is a `CompletionModel`.
+//! let _ = |http: rig_core::http_client::BoxedHttpClient| {
+//!     Bound::new(Example::new("k").messages("m"), http)
+//! };
+//! // Decoding is testable from bytes alone, with no socket at all.
+//! let mut decoder = ExampleDecoder;
+//! let mut out = Output::<Completion>::new();
+//! let WireEvent::Known(event) = decoder.classify(WireFrame::Text(r#"{"text":"hi"}"#.into()))
+//! else {
+//!     unreachable!("the fixture is a modeled frame")
+//! };
+//! decoder.interpret(event, &mut out);
+//! assert!(out.iter().any(|item| matches!(item, Ok(CompletionEvent::Final(_)))));
+//! # }
+//! ```
+
+use crate::http_client::MultipartForm;
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+
+pub use crate::http_client::framing::Framing;
+pub use crate::observe::{AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict};
+pub use crate::providers::internal::adapter::WireFrame;
+pub use crate::providers::internal::wire::WireEvent;
+
+mod error;
+mod secret;
+
+pub use error::WireError;
+pub(crate) use error::impl_wire_error;
+pub use secret::Secret;
+
+/// The request a wire sends, and how its reply is framed.
+///
+/// Data only: built by [`Wire::encode`] from the wire and the request, and
+/// read by the driver. A wire never touches a socket or a request extension.
+pub struct Encoded {
+    /// The HTTP request, body already serialized.
+    pub request: http::Request<Body>,
+    /// How the reply's bytes split into frames.
+    pub framing: Framing,
+    /// The reply header carrying the provider's transport request id
+    /// (Anthropic `request-id`, OpenAI `x-request-id`), when the provider
+    /// reports one. `None` is "does not report one", never an error.
+    pub request_id_header: Option<&'static str>,
+    /// Whether a streamed reply may omit `Content-Type` (one gateway
+    /// replays Responses bodies without it). A *wrong* content type is
+    /// still rejected.
+    pub relaxed_content_type: bool,
+}
+
+impl Encoded {
+    /// A request whose provider reports no transport request id.
+    pub fn new(request: http::Request<Body>, framing: Framing) -> Self {
+        Self {
+            request,
+            framing,
+            request_id_header: None,
+            relaxed_content_type: false,
+        }
+    }
+
+    /// Name the reply header carrying the provider's transport request id.
+    pub fn with_request_id_header(mut self, header: Option<&'static str>) -> Self {
+        self.request_id_header = header;
+        self
+    }
+
+    /// Accept a streamed reply that names no content type.
+    pub fn with_relaxed_content_type(mut self) -> Self {
+        self.relaxed_content_type = true;
+        self
+    }
+}
+
+/// A request body: bytes, or a multipart form for the upload endpoints.
+pub enum Body {
+    /// A serialized body (JSON for every wire in this crate, or empty).
+    Bytes(Vec<u8>),
+    /// A multipart form (audio transcription, image edits).
+    Multipart(MultipartForm),
+}
+
+impl Body {
+    /// An empty body, for a `GET`.
+    pub fn empty() -> Self {
+        Self::Bytes(Vec::new())
+    }
+}
+
+/// An operation: what goes in, what comes out event by event, and how those
+/// events fold into one response.
+///
+/// Implemented once per operation in [`crate::operation`], never per
+/// provider. For a unary operation `Event` is `Response` and the fold takes
+/// the one event.
+pub trait Operation: Sized + 'static {
+    /// The normalized request this operation accepts.
+    type Request: WasmCompatSend + 'static;
+    /// One decoded step of a reply.
+    type Event: WasmCompatSend + 'static;
+    /// The normalized response the events fold into.
+    type Response;
+    /// The operation's error enum.
+    type Error: WireError;
+    /// What a runtime accounts for. `()` for operations with nothing to
+    /// declare.
+    type Capabilities: Default;
+    /// Where a decoder writes the events of one `interpret` step.
+    type Output: Sink<Self> + WasmCompatSend;
+    /// The fold from events to the response.
+    type Fold: Fold<Self>;
+    /// The canonical telemetry operation a wire performs. `()` for
+    /// operations that open no span.
+    type Telemetry: Copy;
+
+    /// The operation's name, as telemetry and records spell it.
+    const NAME: &'static str;
+
+    /// Whether this event is the provider's genuine terminal — after it the
+    /// driver stops consuming.
+    fn is_terminal(event: &Self::Event) -> bool;
+
+    /// Stamp the transport request id read off the reply's headers onto a
+    /// terminal event. Operations whose events carry no transport id do
+    /// nothing.
+    fn stamp_request_id(_event: &mut Self::Event, _request_id: &Option<String>) {}
+
+    /// Stamp what the driver learned about a unary reply beyond its events.
+    fn stamp_reply(_response: &mut Self::Response, _reply: Reply) {}
+
+    /// The operation's channel for an unmodeled frame's raw payload.
+    /// `None` — the default — skips it: only a stream of assistant content
+    /// has somewhere to put a frame nothing models.
+    fn unknown(_payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
+        None
+    }
+
+    /// The canonical telemetry operation for a unary (`false`) or streaming
+    /// (`true`) call. A wire whose endpoint has its own canonical name
+    /// overrides [`Wire::telemetry`].
+    fn telemetry(streaming: bool) -> Self::Telemetry;
+
+    /// The operation's telemetry span. The default is no span: an operation
+    /// with nothing to record (verification, model listing) opens none.
+    fn span(
+        _provider: &str,
+        _model: Option<&str>,
+        _telemetry: Self::Telemetry,
+        _request: &Self::Request,
+    ) -> tracing::Span {
+        tracing::Span::none()
+    }
+
+    /// Record the folded response onto the operation's span.
+    fn record(_span: &tracing::Span, _response: &Self::Response) {}
+}
+
+/// What the driver learned about a unary reply beyond its events: the
+/// provider's name, the body as JSON (a completion's `raw`) and the
+/// transport request id.
+pub struct Reply {
+    /// The provider descriptor name, for the response's `provider` field.
+    pub provider: String,
+    /// The reply body parsed as JSON, `Null` when it is not JSON.
+    pub raw: serde_json::Value,
+    /// The provider's transport request id from the reply headers.
+    pub provider_request_id: Option<String>,
+}
+
+/// Where a decoder writes the events of one `interpret` step.
+///
+/// The driver drains the sink after every frame, so a decoder never has to
+/// know whether it is feeding a stream or a buffered fold.
+pub trait Sink<Op: Operation>: Default {
+    /// Debug-mode sequence laws checked against what the decoder actually
+    /// emitted. `()` for operations with no sequence to check.
+    type Laws: Default + WasmCompatSend;
+
+    /// Push one event or one in-band error.
+    fn push(&mut self, item: Result<Op::Event, Op::Error>);
+
+    /// Take everything pushed since the last drain.
+    fn drain(&mut self) -> std::vec::Drain<'_, Result<Op::Event, Op::Error>>;
+
+    /// What this sink holds, without taking it.
+    fn items(&self) -> &[Result<Op::Event, Op::Error>];
+
+    /// Check the operation's sequence laws over this batch.
+    fn check_laws(&self, _laws: &mut Self::Laws) {}
+}
+
+/// The fold from a reply's events to its response.
+pub trait Fold<Op: Operation>: Default {
+    /// Absorb one event. An error fails the whole operation: a buffered
+    /// reply has no stream to carry an in-band defect.
+    fn absorb(&mut self, event: Op::Event) -> Result<(), Op::Error>;
+
+    /// The folded response.
+    fn finish(self, reply: Reply) -> Result<Op::Response, Op::Error>;
+}
+
+/// Where a decoder's observation projection writes its facts.
+///
+/// The projector reads verdicts, usage, ids and error envelopes off a raw
+/// payload before normalization discards them. Text it forwards must go
+/// through [`Self::scrub`]: a payload can echo credentials.
+pub trait ObservationSink {
+    /// Record one boundary fact.
+    fn emit(&mut self, event: AdapterEvent);
+
+    /// Record the provider's verdict, and the response id it named.
+    fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>);
+
+    /// Bound and redact diagnostic text from the payload.
+    fn scrub(&self, value: &str) -> String;
+}
+
+/// Where a decoder writes one `interpret` step's events.
+pub type Output<Op> = <Op as Operation>::Output;
+
+/// A sync state machine over one reply's frames.
+///
+/// Everything a decoder does is pure and synchronous; frame-triage policy
+/// is the driver's (see [`crate::driver`]), so a decoder contains no
+/// `match WireEvent`.
+///
+/// `Frame` is [`WireFrame`] for every HTTP wire — bytes the framers split.
+/// A typed transport (an AWS event stream, a gRPC stream, an in-process
+/// generator) names its SDK's event type instead and inherits the same fold
+/// through [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream).
+pub trait Decoder<Op: Operation, Frame = WireFrame> {
+    /// The wire's typed event, produced by this decoder's classifier.
+    type Event;
+
+    /// Decode and classify one frame. A JSON wire MUST delegate to a
+    /// classifier in [`crate::providers::internal::wire`], so the
+    /// decode-then-validate policy is not re-derived per provider.
+    fn classify(&self, frame: Frame) -> WireEvent<Self::Event>;
+
+    /// Map one `Known` event onto the operation's events. Stateful: index
+    /// maps, open-block state and wire-quirk quarantine live here.
+    fn interpret(&mut self, event: Self::Event, out: &mut Output<Op>);
+
+    /// End-of-reply flush without a terminal (close open blocks). Must not
+    /// synthesize a terminal: EOF without the provider's end event is
+    /// truncation.
+    fn finish(&mut self, _out: &mut Output<Op>) {}
+
+    /// Flush content the provider fully delivered before a terminal error
+    /// reaches the consumer. Must not push a terminal.
+    fn flush_before_terminal_error(&mut self, _out: &mut Output<Op>) {}
+
+    /// The observation projection: verdicts, usage, ids and error envelopes
+    /// read off a raw payload before normalization discards them. The
+    /// default projects nothing.
+    fn project(&self, _payload: &[u8], _sink: &mut dyn ObservationSink) {}
+
+    /// A paged operation's next request, if the reply named one.
+    fn continuation(&self) -> Option<http::Request<Body>> {
+        None
+    }
+
+    /// Whether this frame carries only analysis metadata: it still decodes,
+    /// but does not advance observation's EOF/corruption positions.
+    fn is_analysis_only(&self, _frame: &Frame) -> bool {
+        false
+    }
+
+    /// Whether `interpret` consumed the wire's own in-band terminal failure
+    /// and already pushed the flush-then-error sequence itself.
+    fn is_finished(&self) -> bool {
+        false
+    }
+}
+
+/// A provider: data, an encoder, and a decoder.
+///
+/// No transport, no future, no type parameter. Implementations are plain
+/// data (`Clone + PartialEq + Debug + Serialize + Deserialize`, with
+/// credentials held in [`Secret`]), so a host can store one in a scene, a
+/// component, or a config file.
+pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
+    /// The operation this wire performs.
+    type Op: Operation;
+    /// The decoder for one of its replies.
+    type Decoder: Decoder<Self::Op> + WasmCompatSend + 'static;
+
+    /// The provider descriptor name (`"anthropic"`), as records and
+    /// telemetry name it.
+    fn name(&self) -> &str;
+
+    /// The request to send. Pure: it may read `self` and `request`, and
+    /// nothing else.
+    fn encode(&self, request: Request<Self>) -> Result<Encoded, Error<Self>>;
+
+    /// A fresh decoder for one reply.
+    fn decoder(&self) -> Self::Decoder;
+
+    /// What a runtime accounts for.
+    fn capabilities(&self) -> Capabilities<Self> {
+        Capabilities::<Self>::default()
+    }
+
+    /// The model this wire addresses, for telemetry. `None` for operations
+    /// that address no model.
+    fn model(&self) -> Option<&str> {
+        None
+    }
+
+    /// The canonical telemetry operation this wire performs. Override when
+    /// the endpoint has its own name (Gemini `generate_content`).
+    fn telemetry(&self, streaming: bool) -> Telemetry<Self> {
+        <Self::Op as Operation>::telemetry(streaming)
+    }
+}
+
+/// A wire's request type.
+pub type Request<W> = <<W as Wire>::Op as Operation>::Request;
+/// A wire's response type.
+pub type Response<W> = <<W as Wire>::Op as Operation>::Response;
+/// A wire's event type.
+pub type Event<W> = <<W as Wire>::Op as Operation>::Event;
+/// A wire's error type.
+pub type Error<W> = <<W as Wire>::Op as Operation>::Error;
+/// A wire's capability type.
+pub type Capabilities<W> = <<W as Wire>::Op as Operation>::Capabilities;
+/// A wire's telemetry operation type.
+pub type Telemetry<W> = <<W as Wire>::Op as Operation>::Telemetry;
+
+/// A provider config that has a completion wire.
+///
+/// One small trait, implemented by provider config structs, so
+/// `Bound<P, H>` can build the provider's completion wire and rig-agent can
+/// offer `agent(model)` / `extractor(model)` on it without naming a provider.
+pub trait HasCompletion: WasmCompatSend + WasmCompatSync {
+    /// The provider's completion wire.
+    type Wire: Wire<Op = crate::operation::Completion>;
+
+    /// Build the completion wire for `model`.
+    fn completion(&self, model: impl Into<String>) -> Self::Wire;
+}
