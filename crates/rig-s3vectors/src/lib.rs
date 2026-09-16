@@ -120,7 +120,6 @@ impl S3SearchFilter {
         )]))
     }
 
-    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(document_object([("$not", self.0)]))
     }

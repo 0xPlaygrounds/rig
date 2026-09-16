@@ -92,7 +92,7 @@ async fn run_with(action: Option<InvalidToolCallAction>) -> (Observed, MockCompl
 
 fn assert_original_report(error: StreamingError) {
     match error {
-        StreamingError::Prompt(err) => match *err {
+        StreamingError::Prompt(err) => match err {
             PromptError::Report(report) => {
                 assert_eq!(report.kind, ErrorKind::Response);
                 assert!(
@@ -221,7 +221,7 @@ async fn malformed_arguments_repair_fails_closed() {
 async fn malformed_arguments_stop_ends_the_run_cleanly() {
     let (observed, recorded) = run_with(Some(InvalidToolCallAction::stop("operator halted"))).await;
     match observed.error.expect("stop is surfaced as a cancellation") {
-        StreamingError::Prompt(err) => match *err {
+        StreamingError::Prompt(err) => match err {
             PromptError::PromptCancelled { reason, .. } => {
                 assert_eq!(reason, "operator halted");
             }

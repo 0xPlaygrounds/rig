@@ -380,7 +380,7 @@ where
                 }
                 Err(err) => {
                     usage += error_usage;
-                    Err(StructuredOutputError::PromptError(Box::new(err)))
+                    Err(StructuredOutputError::PromptError(err))
                 }
             };
             match outcome {

@@ -186,7 +186,7 @@ where
             String::from_utf8_lossy(&bytes),
         )
         .with_provider_request_id(provider_request_id)
-        .with_response_headers(Some(Box::new(parts.headers))));
+        .with_response_headers(Some(parts.headers)));
     }
 
     Ok((bytes, provider_request_id))

@@ -251,7 +251,7 @@ where
 
         let (parts, body) = response.into_parts();
         let status = parts.status;
-        let headers = Box::new(parts.headers);
+        let headers = parts.headers;
         let raw_body = body.await?;
 
         if status.is_success() {
@@ -480,7 +480,7 @@ where
         let response = self.client.send::<_, Vec<u8>>(request).await?;
         let (parts, body) = response.into_parts();
         let status = parts.status;
-        let headers = Box::new(parts.headers);
+        let headers = parts.headers;
         let raw_body = body.await?;
 
         if !status.is_success() {

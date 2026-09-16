@@ -47,10 +47,6 @@ impl Decision {
 /// What a layer decides about an answer on its way out.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "verdict", rename_all = "snake_case")]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "a verdict is made once per dispatch and returned once; boxing the replacement would cost every layer author an allocation for nothing"
-)]
 pub enum Verdict {
     /// The consumer receives what the handler answered.
     Keep,

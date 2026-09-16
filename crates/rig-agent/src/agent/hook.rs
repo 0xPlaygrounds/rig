@@ -944,10 +944,6 @@ pub struct DispatchEvent<'a> {
 
 /// What a hook decides at the dispatch boundary. Closed on purpose.
 #[derive(Debug, Clone)]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "a patch carries a whole effect by design; the common `Proceed` is returned by value once per dispatch"
-)]
 pub enum DispatchAction {
     /// Dispatch as is.
     Proceed,
@@ -1088,10 +1084,6 @@ pub struct OutcomeEvent<'a> {
 
 /// What a hook decides after an effect resolved. Closed on purpose.
 #[derive(Debug, Clone)]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "a replacement carries a whole outcome by design; the common `Proceed` is returned by value once per dispatch"
-)]
 pub enum OutcomeAction {
     /// Keep the answer.
     Proceed,

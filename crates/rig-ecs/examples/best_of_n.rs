@@ -9,7 +9,6 @@
     clippy::unwrap_used,
     clippy::indexing_slicing,
     clippy::panic,
-    clippy::type_complexity,
     reason = "an example: user code, thirty lines, a mock behind it"
 )]
 

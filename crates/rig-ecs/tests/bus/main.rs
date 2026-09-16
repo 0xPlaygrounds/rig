@@ -6,7 +6,6 @@
     clippy::panic,
     clippy::unreachable,
     clippy::indexing_slicing,
-    clippy::type_complexity,
     dead_code,
     reason = "test suites assert directly and share support each uses part of"
 )]

@@ -157,10 +157,6 @@ fn conflicting_history_and_cross_run_targets_fail_before_dispatch() {
 #[derive(Resource)]
 struct DenyPart(Entity);
 
-#[allow(
-    clippy::type_complexity,
-    reason = "gate fixture names the full pending-effect filter"
-)]
 fn deny_targeted_part(
     target: Res<DenyPart>,
     parts: Query<&TextPart>,

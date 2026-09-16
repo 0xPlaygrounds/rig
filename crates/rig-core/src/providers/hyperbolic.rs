@@ -351,7 +351,7 @@ mod audio_generation {
             let response = self.client.send::<_, Bytes>(req).await?;
             let (parts, body) = response.into_parts();
             let status = parts.status;
-            let headers = Box::new(parts.headers);
+            let headers = parts.headers;
             let response_body = body.into_future().await?.to_vec();
 
             if !status.is_success() {

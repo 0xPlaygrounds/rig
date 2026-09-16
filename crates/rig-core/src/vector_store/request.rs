@@ -190,7 +190,6 @@ impl<P> SqlCondition<P> {
     }
 
     /// Negates the condition as `NOT (condition)`, keeping its parameters.
-    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self {
             condition: format!("NOT ({})", self.condition),

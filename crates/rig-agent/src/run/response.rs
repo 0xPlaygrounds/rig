@@ -325,9 +325,9 @@ pub enum PromptError {
         /// Configured total model-call budget.
         max_turns: usize,
         /// Canonical history available when the budget was exhausted.
-        chat_history: Box<Vec<Message>>,
+        chat_history: Vec<Message>,
         /// Prompt for the call that could not be dispatched.
-        prompt: Box<Message>,
+        prompt: Message,
     },
 
     /// A prompting loop was cancelled.
@@ -351,7 +351,7 @@ pub enum PromptError {
         /// Exact immutable set allowed for this turn.
         allowed_tools: Vec<String>,
         /// Canonical history available at failure.
-        chat_history: Box<Vec<Message>>,
+        chat_history: Vec<Message>,
     },
 }
 

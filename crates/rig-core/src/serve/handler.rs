@@ -372,10 +372,6 @@ pub fn stream_truncated() -> ErrorReport {
 }
 
 /// An answer, or an owned stream whose execution belongs to the driver.
-#[allow(
-    clippy::large_enum_variant,
-    reason = "a unary reply is returned once without another allocation"
-)]
 pub enum Reply {
     /// The completed unary answer or a setup error.
     Outcome(Result<Outcome, ErrorReport>),

@@ -236,7 +236,7 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
         }
         StreamingError::Prompt(error) => {
             assert!(
-                matches!(&**error, rig::completion::PromptError::PromptCancelled { reason, .. } if reason == CANCEL_STREAM_REASON),
+                matches!(error, rig::completion::PromptError::PromptCancelled { reason, .. } if reason == CANCEL_STREAM_REASON),
                 "{error:?}"
             );
         }

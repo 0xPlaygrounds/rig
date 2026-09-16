@@ -168,7 +168,7 @@ pub enum ResponsesWebSocketDoneEventKind {
 #[derive(Debug, Clone)]
 pub enum ResponsesWebSocketEvent {
     /// A response lifecycle event such as `response.created` or `response.completed`.
-    Response(Box<ResponseChunk>),
+    Response(ResponseChunk),
     /// A streaming item/delta event such as `response.output_text.delta`.
     Item(ItemChunk),
     /// A protocol-level websocket error event.

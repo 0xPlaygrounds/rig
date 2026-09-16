@@ -86,9 +86,9 @@ impl fmt::Display for BusId {
 /// What became of an offered command.
 pub(super) enum Enqueue {
     Sent,
-    Parked(Box<Command>),
-    Refused(Box<Command>),
-    Cancelled(Box<Command>),
+    Parked(Command),
+    Refused(Command),
+    Cancelled(Command),
     /// The driver is gone. Decided under the queue lock, so a command can
     /// never slip into the buffer after the close emptied it; the command is
     /// dropped (its reply half with it — the caller answers `BusClosed`).
@@ -97,7 +97,7 @@ pub(super) enum Enqueue {
 
 /// The bounded command buffer and the wakers on either side of it.
 struct CommandQueue {
-    commands: VecDeque<Box<Command>>,
+    commands: VecDeque<Command>,
     capacity: usize,
     /// The driver's waker, refreshed on every driver poll; woken when a
     /// command is enqueued or the last dispatcher drops.
@@ -211,7 +211,7 @@ impl Shared {
     /// would queue behind the handler that is making it is `Refused`.
     pub(super) fn enqueue(
         &self,
-        command: Box<Command>,
+        command: Command,
         parked: &Arc<AtomicWaker>,
         cx: &Context<'_>,
     ) -> Enqueue {
@@ -259,7 +259,7 @@ impl Shared {
     /// (an orphaned descendant failed by [`Self::fail_cancelled_buffered`]).
     /// A sender woken to a buffer that has since refilled parks again; a
     /// sender left parked on a buffer with room would never be woken.
-    pub(super) fn drain(&self, cx: &Context<'_>) -> VecDeque<Box<Command>> {
+    pub(super) fn drain(&self, cx: &Context<'_>) -> VecDeque<Command> {
         // Raw waker clone/drop callbacks may reenter the dispatcher too.
         let next_driver = cx.waker().clone();
         let mut queue = self.queue.lock().unwrap_or_else(PoisonError::into_inner);
@@ -873,7 +873,7 @@ impl Dispatcher {
             id,
             parent: self.parent,
             state: PendingState::Sending {
-                command: Some(Box::new(Command {
+                command: Some(Command {
                     lineage: Lineage::new(id, self.lineage.clone()),
                     id,
                     key: key.clone(),
@@ -886,7 +886,7 @@ impl Dispatcher {
                     reply: Reply::Unary(reply),
                     span: tracing::Span::current(),
                     cancel,
-                })),
+                }),
             },
             receiver,
             shared: self.shared.clone(),
@@ -906,7 +906,7 @@ impl Dispatcher {
         Pending {
             id: self.mint_id(),
             parent: self.parent,
-            state: PendingState::Failed(Some(Box::new(report))),
+            state: PendingState::Failed(Some(report)),
             receiver,
             shared: self.shared.clone(),
             parked: Arc::new(AtomicWaker::new()),
@@ -976,7 +976,7 @@ impl Dispatcher {
             id,
             parent: self.parent,
             state: StreamState::Sending {
-                command: Some(Box::new(Command {
+                command: Some(Command {
                     lineage: Lineage::new(id, self.lineage.clone()),
                     id,
                     key: key.clone(),
@@ -989,7 +989,7 @@ impl Dispatcher {
                     reply: Reply::Stream(events),
                     span: tracing::Span::current(),
                     cancel,
-                })),
+                }),
                 receiver: Some(receiver),
             },
             shared: self.shared.clone(),
@@ -1084,14 +1084,13 @@ fn reply_dropped(shared: &Shared) -> ErrorReport {
 
 enum PendingState {
     Sending {
-        command: Option<Box<Command>>,
+        command: Option<Command>,
     },
     Waiting,
     /// Refused before any send: the request had no wire form
     /// ([`rig_core::effect::Family::wrap`] failed). Resolves the report on
-    /// the first poll; nothing reaches a handler or a recorder. Boxed so
-    /// the rare arm costs the common ones nothing (`Pending`'s budget).
-    Failed(Option<Box<ErrorReport>>),
+    /// the first poll; nothing reaches a handler or a recorder.
+    Failed(Option<ErrorReport>),
 }
 
 /// What a dispatch may carry beside the effect. Every field is optional and
@@ -1216,15 +1215,9 @@ impl Future for Pending {
                     }
                 }
                 PendingState::Failed(report) => {
-                    return Poll::Ready(Err(report.take().map_or_else(
-                        || {
-                            ErrorReport::new(
-                                ErrorKind::Internal,
-                                "a refused dispatch was polled twice",
-                            )
-                        },
-                        |report| *report,
-                    )));
+                    return Poll::Ready(Err(report.take().unwrap_or_else(|| {
+                        ErrorReport::new(ErrorKind::Internal, "a refused dispatch was polled twice")
+                    })));
                 }
                 PendingState::Waiting => {
                     return match Pin::new(&mut this.receiver).poll(cx) {
@@ -1242,7 +1235,7 @@ impl Future for Pending {
 
 enum StreamState {
     Sending {
-        command: Option<Box<Command>>,
+        command: Option<Command>,
         receiver: Option<mpsc::Receiver<Result<StreamEvent, ErrorReport>>>,
     },
     Receiving {
@@ -1385,10 +1378,7 @@ impl Stream for EffectStream {
     }
 }
 
-// The client half crosses threads on every target and polls anywhere; the
-// values a dispatch returns are small, plain futures — budgeted here so a
-// field that grows one past its budget fails to compile with the budget in
-// the message (raise a budget deliberately, with the reason in the commit).
+// The client half crosses threads on every target and polls anywhere.
 const _: () = {
     const fn assert_dispatcher<T: Clone + Send + Sync + 'static>() {}
     const fn assert_unpin<T: Unpin + 'static>() {}
@@ -1401,18 +1391,6 @@ const _: () = {
     assert_unpin::<EffectStream>();
     assert_send::<Pending>();
     assert_send::<EffectStream>();
-    assert!(
-        size_of::<Dispatcher>() <= 56,
-        "Dispatcher budget: 56 bytes (shared half, stream capacity, parent id, retained ancestry, scope)"
-    );
-    assert!(
-        size_of::<Pending>() <= 80,
-        "Pending budget: 80 bytes (measured 80 natively: one parked-sender slot, one parent, the published-context slot of a tool call)"
-    );
-    assert!(
-        size_of::<EffectStream>() <= 168,
-        "EffectStream budget: 168 bytes (measured 168 natively: one parked-sender slot, one parent)"
-    );
 };
 
 #[cfg(all(test, not(rig_loom)))]

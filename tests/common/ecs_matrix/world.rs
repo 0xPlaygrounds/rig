@@ -1416,7 +1416,7 @@ fn assert_fault(app: &mut App, cell: &Cell, run: Entity, log: &EffectLog, gates:
             {
                 let headers = response
                     .headers
-                    .as_deref()
+                    .as_ref()
                     .expect("the reply's headers are kept");
                 assert_eq!(
                     headers

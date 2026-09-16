@@ -53,7 +53,7 @@ async fn handshake_details_error_classifies_with_contract() {
             crate::http_client::Error::InvalidStatusCodeWithDetails {
                 status: http::StatusCode::NOT_FOUND,
                 body: r#"{"error":"no model"}"#.to_string(),
-                headers: Box::new(headers),
+                headers,
             },
         ),
     )]));
@@ -92,7 +92,7 @@ async fn handshake_details_error_preserves_rate_limit_headers() {
             crate::http_client::Error::InvalidStatusCodeWithDetails {
                 status: http::StatusCode::TOO_MANY_REQUESTS,
                 body: r#"{"error":"slow down"}"#.to_string(),
-                headers: Box::new(headers),
+                headers,
             },
         ),
     )]));

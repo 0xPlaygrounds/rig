@@ -141,7 +141,6 @@ impl SearchFilter for Filter {
 }
 
 impl Filter {
-    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(format!("NOT ({})", self.0))
     }

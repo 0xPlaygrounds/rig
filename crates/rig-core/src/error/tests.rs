@@ -264,7 +264,7 @@ fn a_provider_response_travels_with_the_report() {
     let error = CompletionError::ProviderResponse(
         ProviderResponseError::new(StatusCode::TOO_MANY_REQUESTS, r#"{"error":"slow down"}"#)
             .with_provider_request_id(Some("req-9".to_owned()))
-            .with_headers(Some(Box::new(headers))),
+            .with_headers(Some(headers)),
     );
     let report = ErrorReport::from(&error);
     assert_eq!(report.kind, ErrorKind::ProviderResponse);
@@ -301,7 +301,7 @@ fn a_provider_response_travels_with_the_report() {
     let mut without_headers = report.clone();
     without_headers.provider_response = without_headers
         .provider_response
-        .map(|response| Box::new(response.with_headers(None)));
+        .map(|response| response.with_headers(None));
     assert_eq!(back, without_headers);
 
     // A non-success reply the transport rejected carries its status and body
@@ -332,7 +332,7 @@ fn embedding_and_rerank_reports_retain_structured_provider_metadata() {
     ] {
         assert_eq!(report.request_id.as_deref(), Some("req-retained"));
         assert_eq!(
-            serde_json::to_value(report.provider_response.as_deref()).unwrap(),
+            serde_json::to_value(report.provider_response.as_ref()).unwrap(),
             serde_json::to_value(Some(&response)).unwrap()
         );
         assert!(report.retryable);
@@ -364,7 +364,7 @@ fn embedding_and_rerank_http_reports_retain_body_and_headers() {
         http_client::Error::InvalidStatusCodeWithDetails {
             status: StatusCode::SERVICE_UNAVAILABLE,
             body: "temporary outage".into(),
-            headers: Box::new(headers),
+            headers,
         }
     };
     for report in [

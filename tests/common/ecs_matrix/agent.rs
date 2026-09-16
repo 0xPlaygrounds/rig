@@ -75,7 +75,7 @@ fn classify_prompt(error: PromptError) -> RunFailure {
 
 fn classify_stream(error: StreamingError) -> RunFailure {
     match error {
-        StreamingError::Prompt(error) => classify_prompt(*error),
+        StreamingError::Prompt(error) => classify_prompt(error),
         StreamingError::Report(report) => RunFailure::Report(report),
         StreamingError::Completion(error) => RunFailure::Report(ErrorReport::from(&error)),
     }

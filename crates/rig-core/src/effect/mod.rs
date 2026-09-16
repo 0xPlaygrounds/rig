@@ -734,10 +734,6 @@ pub enum EmbedModality {
 /// One effect: what a handler is asked to do.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "effect", rename_all = "snake_case")]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "a completion request is the common case and is moved, not copied; boxing it would put an allocation on every dispatch"
-)]
 pub enum EffectKind {
     /// A completion request.
     Completion {
@@ -894,10 +890,6 @@ pub enum RetrieveQuery {
 /// What a handler answered.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "outcome", rename_all = "snake_case")]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "a completion response is the common case and is moved, not copied"
-)]
 pub enum Outcome {
     /// A unary completion.
     Completion(CompletionResponse),

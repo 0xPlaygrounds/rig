@@ -26,10 +26,9 @@ pub struct ProviderResponseError {
     pub provider_request_id: Option<String>,
     /// The response's headers, verbatim, when the capture path had them in
     /// hand — the rate-limit metadata (`Retry-After`, `x-ratelimit-*`) a
-    /// caller needs to back off correctly after a 429 (rig#2210). Boxed to
-    /// keep this error small enough for `clippy::result_large_err`. `None`
+    /// caller needs to back off correctly after a 429 (rig#2210). `None`
     /// means "not captured", never "the response had no headers".
-    pub headers: Option<Box<http::HeaderMap>>,
+    pub headers: Option<http::HeaderMap>,
     /// The provider's own machine-readable code for the failure, when the
     /// transport reported one apart from the body: a gRPC status code name
     /// (`UNAVAILABLE`), an AWS exception type (`ThrottlingException`).
@@ -136,7 +135,7 @@ impl ProviderResponseError {
 
     /// Attach the response's headers, so rate-limit metadata survives onto the
     /// error (rig#2210).
-    pub fn with_headers(mut self, headers: Option<Box<http::HeaderMap>>) -> Self {
+    pub fn with_headers(mut self, headers: Option<http::HeaderMap>) -> Self {
         self.headers = headers;
         self
     }
@@ -326,7 +325,7 @@ macro_rules! impl_provider_response_helpers {
             /// with no response to annotate. An error that already captured
             /// headers keeps the ones it has: the first capture is the one
             /// that saw the response, so this never overwrites.
-            pub fn with_response_headers(self, headers: Option<Box<http::HeaderMap>>) -> Self {
+            pub fn with_response_headers(self, headers: Option<http::HeaderMap>) -> Self {
                 let Some(headers) = headers else {
                     return self;
                 };
@@ -499,7 +498,7 @@ macro_rules! impl_provider_response_helpers {
             /// captured", never "the response had no headers".
             pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
                 match self {
-                    Self::ProviderResponse(response) => response.headers.as_deref(),
+                    Self::ProviderResponse(response) => response.headers.as_ref(),
                     _ => None,
                 }
             }

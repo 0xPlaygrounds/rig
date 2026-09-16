@@ -195,7 +195,7 @@ where
                 String::from_utf8_lossy(&response_body).into_owned(),
             )
             .with_provider_request_id(provider_request_id)
-            .with_response_headers(Some(Box::new(parts.headers))));
+            .with_response_headers(Some(parts.headers)));
         }
 
         // Named rather than bare `?`: a 200 whose body is not a rerank

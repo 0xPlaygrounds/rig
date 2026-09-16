@@ -235,11 +235,8 @@ fn copilot_completion_response_round_trips_both_variants() {
         serde_json::from_str(RESPONSES_BODY).expect("responses body parses");
 
     for (variant, tag) in [
-        (CopilotCompletionResponse::Chat(Box::new(chat)), "chat"),
-        (
-            CopilotCompletionResponse::Responses(Box::new(responses)),
-            "responses",
-        ),
+        (CopilotCompletionResponse::Chat(chat), "chat"),
+        (CopilotCompletionResponse::Responses(responses), "responses"),
     ] {
         let value = serde_json::to_value(&variant).expect("serialize");
         assert_eq!(value["api"], tag);

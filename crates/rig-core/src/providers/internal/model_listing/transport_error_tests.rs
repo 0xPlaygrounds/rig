@@ -12,7 +12,7 @@ fn details_variant_maps_to_api_error_with_context() {
         http_client::Error::InvalidStatusCodeWithDetails {
             status: http::StatusCode::UNAUTHORIZED,
             body: r#"{"error":"no"}"#.to_string(),
-            headers: Box::new(http::HeaderMap::new()),
+            headers: http::HeaderMap::new(),
         },
     );
     let with_message = map_transport_error(

@@ -28,10 +28,6 @@ use super::{BlockId, StreamFinal, UnknownPayload, UnparseableToolInput};
 /// One event of a completion stream.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "event", rename_all = "snake_case")]
-#[allow(
-    clippy::large_enum_variant,
-    reason = "the terminal record is one event per stream and is moved, not copied; boxing it would put an allocation on every consumer's terminal match"
-)]
 pub enum StreamEvent {
     /// A block opened.
     BlockStart {
@@ -172,8 +168,7 @@ pub struct ToolCallEnd {
     /// completed response. This does not supply provider provenance; provider
     /// handles remain in `tool_id` and `call_id`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    // Keep BlockClose compact without allocating for ordinary delta-only ends.
-    pub durable_id: Option<Box<crate::message::ToolCallId>>,
+    pub durable_id: Option<crate::message::ToolCallId>,
     /// Authoritative provider-issued tool id, when one exists (e.g. an id
     /// that arrived after the call opened id-less). The durable handle;
     /// absence is `None`, never an empty string (see
@@ -227,7 +222,7 @@ impl ToolCallEnd {
 
     /// Preserve an existing local correlation handle through stream folding.
     pub fn with_durable_id(mut self, id: crate::message::ToolCallId) -> Self {
-        self.durable_id = Some(Box::new(id));
+        self.durable_id = Some(id);
         self
     }
 

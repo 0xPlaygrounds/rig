@@ -34,7 +34,7 @@ use super::{CompletionResponse, GenericResponsesCompletionModel, Output, Respons
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(untagged)]
 pub enum StreamingCompletionChunk {
-    Response(Box<ResponseChunk>),
+    Response(ResponseChunk),
     Delta(ItemChunk),
 }
 
@@ -313,7 +313,7 @@ pub(crate) fn parse_sse_completion_body(
     for data in sse_data_frames(body) {
         if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
             if let StreamingCompletionChunk::Response(chunk) = chunk {
-                let ResponseChunk { kind, response, .. } = *chunk;
+                let ResponseChunk { kind, response, .. } = chunk;
                 match kind {
                     // `response.incomplete` is a genuine terminal; the unary
                     // conversion maps its status to a finish reason.
@@ -1199,7 +1199,7 @@ impl WireAdapter for ResponsesAdapter {
                 self.accumulator.decode_item_chunk(chunk, self.options, out);
             }
             StreamingCompletionChunk::Response(chunk) => {
-                let ResponseChunk { kind, response, .. } = *chunk;
+                let ResponseChunk { kind, response, .. } = chunk;
                 if matches!(kind, ResponseChunkKind::ResponseCompleted) {
                     let span = tracing::Span::current();
                     span.record("gen_ai.response.id", response.id.as_str());

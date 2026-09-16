@@ -355,7 +355,6 @@ impl MongoDbSearchFilter {
         Self(doc! { key: { "$lte": value } })
     }
 
-    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(doc! { "$nor": [self.0] })
     }

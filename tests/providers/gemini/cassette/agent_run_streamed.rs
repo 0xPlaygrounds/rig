@@ -36,7 +36,7 @@ enum TurnEnd {
     Finished,
     /// Mid-stream recovery abandoned the turn (retry or skip).
     Abandoned {
-        skipped_tool_result: Option<Box<ToolResult>>,
+        skipped_tool_result: Option<ToolResult>,
     },
 }
 
@@ -44,7 +44,6 @@ enum TurnEnd {
 /// mirroring the built-in streaming driver's protocol. Invalid tool calls are
 /// resolved with `on_invalid`'s action; streamed text accumulates into
 /// `collected_text`.
-#[allow(clippy::too_many_arguments)]
 async fn run_streamed_turn(
     agent: &GeminiAgent,
     run: &mut AgentRun,
@@ -512,7 +511,7 @@ async fn builtin_streaming_max_turns_error_carries_pending_message() {
                 match item {
                     Ok(_) => {}
                     Err(StreamingError::Prompt(error)) => {
-                        prompt_error = Some(*error);
+                        prompt_error = Some(error);
                         break;
                     }
                     Err(other) => panic!("expected a prompt error, got {other:?}"),
@@ -588,7 +587,7 @@ async fn builtin_streaming_cancellation_history_includes_assistant_turn() {
                     Ok(MultiTurnStreamItem::FinalResponse(_)) => saw_final = true,
                     Ok(_) => {}
                     Err(StreamingError::Prompt(error)) => {
-                        prompt_error = Some(*error);
+                        prompt_error = Some(error);
                         break;
                     }
                     Err(other) => panic!("expected a prompt error, got {other:?}"),

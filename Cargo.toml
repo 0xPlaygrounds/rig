@@ -98,6 +98,15 @@ unimplemented = "forbid"
 unreachable = "deny"
 unwrap_used = "deny"
 
+# Size and shape heuristics, not correctness: in this tree each one only ever
+# produced a suppression, a box inside a public enum variant, or a type alias
+# that shortened a signature instead of naming a concept.
+large_enum_variant = "allow"
+result_large_err = "allow"
+type_complexity = "allow"
+too_many_arguments = "allow"
+should_implement_trait = "allow"
+
 [profile.release]
 lto = true
 opt-level = "s"

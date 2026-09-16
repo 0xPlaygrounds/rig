@@ -5,12 +5,6 @@
 //! list (`Hooks`) and makes the hook's decision at the hook's moment —
 //! CONTRACT §9 names the moment per hook.
 
-#![allow(
-    clippy::type_complexity,
-    clippy::too_many_arguments,
-    reason = "test support: the queries are the point, one system per moment"
-)]
-
 use bevy_ecs::prelude::*;
 use rig_core::{
     effect::{EffectKind, HandlerKey, MemoryOp, Outcome},

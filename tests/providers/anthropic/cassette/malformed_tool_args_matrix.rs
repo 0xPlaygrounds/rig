@@ -211,7 +211,7 @@ async fn streaming_malformed_fails_by_default() {
                 }
             }
             match error.expect("default policy is fail-fast") {
-                StreamingError::Prompt(err) => match *err {
+                StreamingError::Prompt(err) => match err {
                     PromptError::Report(report) => assert!(
                         report.message.contains("malformed JSON input"),
                         "{}",

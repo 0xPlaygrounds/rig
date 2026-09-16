@@ -17,7 +17,7 @@ fn non_success_headers_absent_when_not_captured() {
     let error = Error::InvalidStatusCodeWithDetails {
         status: StatusCode::TOO_MANY_REQUESTS,
         body: "rate limited".to_string(),
-        headers: Box::new(HeaderMap::new()),
+        headers: HeaderMap::new(),
     };
     assert!(error.non_success_headers().is_some_and(HeaderMap::is_empty));
 }

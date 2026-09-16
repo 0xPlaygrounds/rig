@@ -174,7 +174,7 @@ pub fn validate_max_turns_failure(
         ));
     };
     let pending_prompt_retained = matches!(
-        prompt.as_ref(),
+        prompt,
         Message::User { content } if content.iter().next().is_some()
     );
     if *max_turns != expected_max_turns || chat_history.is_empty() || !pending_prompt_retained {

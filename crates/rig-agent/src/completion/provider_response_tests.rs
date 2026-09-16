@@ -85,15 +85,15 @@ fn prompt_error_forwards_captured_response_headers() {
         // A preserved response, with and without a request id.
         CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
             .with_provider_request_id(Some("req_abc".to_string()))
-            .with_response_headers(Some(Box::new(headers.clone()))),
+            .with_response_headers(Some(headers.clone())),
         CompletionError::from_http_response(http::StatusCode::TOO_MANY_REQUESTS, body)
-            .with_response_headers(Some(Box::new(headers.clone()))),
+            .with_response_headers(Some(headers.clone())),
         // A transport that reported the reply as an error routes through
         // the same funnel, headers included.
         CompletionError::from_transport_error(http_client::Error::InvalidStatusCodeWithDetails {
             status: http::StatusCode::TOO_MANY_REQUESTS,
             body: body.to_string(),
-            headers: Box::new(headers.clone()),
+            headers: headers.clone(),
         }),
     ] {
         let prompt_error = PromptError::CompletionError(completion_error);
@@ -106,7 +106,7 @@ fn prompt_error_forwards_captured_response_headers() {
             "PromptError dropped the captured headers",
         );
 
-        let structured = StructuredOutputError::PromptError(Box::new(prompt_error));
+        let structured = StructuredOutputError::PromptError(prompt_error);
         assert_eq!(
             structured
                 .provider_response_headers()
@@ -164,12 +164,12 @@ fn prompt_error_provider_response_helpers_return_none_for_unrelated_variant() {
 #[test]
 fn structured_output_error_provider_response_helpers_forward_prompt_error() {
     let body = r#"{"error":{"message":"bad input"}}"#;
-    let error = StructuredOutputError::PromptError(Box::new(PromptError::CompletionError(
+    let error = StructuredOutputError::PromptError(PromptError::CompletionError(
         CompletionError::ProviderResponse(ProviderResponseError::new(
             http::StatusCode::BAD_REQUEST,
             body,
         )),
-    )));
+    ));
 
     assert_eq!(error.provider_response_body(), Some(body));
     assert_eq!(

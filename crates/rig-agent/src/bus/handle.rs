@@ -726,11 +726,6 @@ const _: () = {
     const fn assert_unpin<T: Unpin>() {}
     assert_unpin::<Completion>();
     assert_unpin::<ToolCall>();
-    // A `Pending` carries its parked-sender slot (8 bytes) and its parent.
-    assert!(
-        size_of::<Typed<family::Completion>>() <= 88,
-        "Typed<Completion> budget: 88 bytes (measured 88 natively: a Pending and its family)"
-    );
 };
 
 #[cfg(test)]

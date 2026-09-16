@@ -217,7 +217,6 @@ impl LanceDBFilter {
         self.0
     }
 
-    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(self.0.map(|s| format!("NOT ({s})")))
     }

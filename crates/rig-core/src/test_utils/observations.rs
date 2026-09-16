@@ -23,7 +23,7 @@ pub enum Comparison {
     /// Every semantic field agrees.
     Equal,
     /// The traces diverge here.
-    Diverged(Box<Divergence>),
+    Diverged(Divergence),
     /// The traces cannot be compared: one is incomplete.
     Incomparable {
         /// Why.
@@ -65,11 +65,11 @@ pub fn compare(expected: &ObservationTrace, actual: &ObservationTrace) -> Compar
         let left = expected.observations.get(index).map(semantic);
         let right = actual.observations.get(index).map(semantic);
         if left != right {
-            return Comparison::Diverged(Box::new(Divergence {
+            return Comparison::Diverged(Divergence {
                 index,
                 expected: left,
                 actual: right,
-            }));
+            });
         }
     }
     Comparison::Equal

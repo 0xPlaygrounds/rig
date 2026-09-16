@@ -183,7 +183,6 @@ impl SearchFilter for SurrealSearchFilter {
 }
 
 impl SurrealSearchFilter {
-    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(format!("NOT ({self})"))
     }

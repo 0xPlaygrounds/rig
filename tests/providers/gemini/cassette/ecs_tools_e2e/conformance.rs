@@ -1,6 +1,5 @@
 //! Original neutral conformance tools/assertions; execution is native ECS.
 // Keep the original conformance error type and unchanged predicate signatures.
-#![allow(clippy::result_large_err)]
 use super::runtime::{NativeResponse, configured, execute};
 use rig::{
     completion::CompletionModel,

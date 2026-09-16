@@ -269,7 +269,7 @@ async fn chat_plain_raw_completion_lacks_request_id() {
                 panic!("premise: gpt-4o routes through chat completions");
             };
             assert!(
-                serde_json::to_value(chat.as_ref())
+                serde_json::to_value(chat)
                     .expect("wire type should serialize")
                     .get("provider_request_id")
                     .is_none(),

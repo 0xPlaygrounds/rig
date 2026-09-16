@@ -151,7 +151,7 @@ pub struct ErrorReport {
     /// failure that crossed the wire loses nothing a caller could read off
     /// the provider error it came from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_response: Option<Box<crate::provider_response::ProviderResponseError>>,
+    pub provider_response: Option<crate::provider_response::ProviderResponseError>,
     /// Structured diagnostic for failures a consumer may want to *route*
     /// rather than only display. Absent for the common case; see
     /// [`ErrorDetail`] for what each variant carries and why.
@@ -176,7 +176,7 @@ pub enum ErrorDetail {
     /// feed it back for a retry instead of ending the run. `raw` is the
     /// exact argument text the accumulator held, unmodified, so a consumer
     /// can log or replay it; `error` is the parser's own description.
-    MalformedToolInput(Box<MalformedToolInput>),
+    MalformedToolInput(MalformedToolInput),
 }
 
 /// The payload of [`ErrorDetail::MalformedToolInput`].
@@ -273,7 +273,7 @@ impl ErrorReport {
     pub fn provider_response_headers(&self) -> Option<&http::HeaderMap> {
         self.provider_response
             .as_ref()
-            .and_then(|response| response.headers.as_deref())
+            .and_then(|response| response.headers.as_ref())
     }
 
     /// The HTTP status this report carries, as a status code.
@@ -380,7 +380,7 @@ impl From<&CompletionError> for ErrorReport {
         // provider error exposed (status, body, headers, request id) stays
         // readable after the failure crossed the wire.
         let provider_response = match error {
-            CompletionError::ProviderResponse(response) => Some(Box::new(response.clone())),
+            CompletionError::ProviderResponse(response) => Some(response.clone()),
             CompletionError::HttpError(_)
             | CompletionError::JsonError(_)
             | CompletionError::UrlError(_)
@@ -517,7 +517,7 @@ impl From<&EmbeddingError> for ErrorReport {
         // never a copy of its table kept beside the report.
         let retryable = error.is_retryable();
         let provider_response = match error {
-            EmbeddingError::ProviderResponse(response) => Some(Box::new(response.clone())),
+            EmbeddingError::ProviderResponse(response) => Some(response.clone()),
             _ => None,
         };
         let request_id = provider_response
@@ -567,7 +567,7 @@ impl From<&RerankError> for ErrorReport {
         // never a copy of its table kept beside the report.
         let retryable = error.is_retryable();
         let provider_response = match error {
-            RerankError::ProviderResponse(response) => Some(Box::new(response.clone())),
+            RerankError::ProviderResponse(response) => Some(response.clone()),
             _ => None,
         };
         let request_id = provider_response
@@ -630,9 +630,9 @@ impl From<&VectorStoreError> for ErrorReport {
         };
         // The store's reply travels with the report like any provider's.
         let provider_response = match error {
-            VectorStoreError::ExternalAPIError(status, body) => Some(Box::new(
+            VectorStoreError::ExternalAPIError(status, body) => Some(
                 crate::provider_response::ProviderResponseError::new(*status, body.clone()),
-            )),
+            ),
             _ => None,
         };
         ErrorReport {

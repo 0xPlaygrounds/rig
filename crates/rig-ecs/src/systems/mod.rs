@@ -805,10 +805,6 @@ fn links_in_order<'a, L: Component, F: bevy_ecs::query::QueryFilter>(
 /// context link, in the agent's order (an agent with `Retrieves` links
 /// gets a `Retrieving` turn instead: the adverts and attachments come with
 /// the results) — or, at its budget, fails `MaxTurns`.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system, one pass: every parameter is a distinct world access it needs"
-)]
 pub fn advance(
     mut commands: Commands,
     runs: Query<(Entity, &RunOf, &Cursor, &RunSeq, &RunPhase), Wanting>,
@@ -885,10 +881,6 @@ pub fn advance(
 /// static grants; the static attachments, then one document entity per
 /// result (an existing entity with that id reused). Runs after `Advance`
 /// and before `Select`; `gather_turn` waits for it.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system, one pass: every parameter is a distinct world access it needs"
-)]
 pub fn attach_retrieved(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf), RetrievingTurn>,
@@ -1100,10 +1092,6 @@ fn land_loaded(
 /// said — every utterance not `Remembered`, in order — when it settles
 /// (CONTRACT §11). The persisted marker distinguishes new work from scene
 /// rehydration; Bevy change-detection ticks are not durable transitions.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system pass reads the graph and its memory effect state"
-)]
 pub fn append_memory(
     mut commands: Commands,
     settled: Query<(Entity, &RunOf, &Conversation), NeedsMemoryAppend>,
@@ -1546,10 +1534,6 @@ impl Settings<'_, '_> {
 /// terminates the run with a provider `HandlerUnavailable` report; it
 /// never silently waits. An output tool named like a granted tool fails
 /// the run `OutputToolCollision`; a content error fails it `Content`.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system, one pass: every parameter is a distinct world access it needs"
-)]
 pub fn gather_turn(
     mut commands: Commands,
     fresh: Query<FreshTurn, With<Fresh>>,
@@ -1978,10 +1962,6 @@ pub fn release_batch(
 /// run fails and the calls never started are despawned (never dispatched,
 /// no record). A call to the output tool beside the batch settles the run
 /// with its arguments once the results are history (unpinned).
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system, one pass: every parameter is a distinct world access it needs"
-)]
 pub fn land_batch(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2296,10 +2276,6 @@ fn fail_unknown_call(
 /// one user utterance answering the call and its peers with the feedback,
 /// every result `Skipped`; the turn is read and the run wants another
 /// (a retry spends one of `InvalidRetries`).
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one transition: what it reads of the turn, the run and the stream"
-)]
 fn abandon_turn(
     commands: &mut Commands,
     assets: &mut BinaryAssets,
@@ -2348,10 +2324,6 @@ fn abandon_turn(
 /// another; repairs and ignores wait for the end and for every delivered
 /// name to be judged, then edit the turn's `Outputs` and the turn goes on
 /// to `read_turn`. The judged calls are despawned.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system, one pass: every parameter is a distinct world access it needs"
-)]
 pub fn judge_invalid_calls(
     mut commands: Commands,
     mut assets: ResMut<BinaryAssets>,
@@ -2505,10 +2477,6 @@ fn provider_failed(
 /// the turn awaiting its resolution, and the turn stays unread. Else the
 /// turn's content, the response's message id and the tools it may call
 /// go on the turn as [`TurnRead`] for the rest of the chain.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system, one pass: every parameter is a distinct world access it needs"
-)]
 pub fn read_turn(
     mut commands: Commands,
     turns: Query<(Entity, &ChildOf, &Outputs), Unread>,

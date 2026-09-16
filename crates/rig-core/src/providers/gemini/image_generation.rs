@@ -82,7 +82,7 @@ where
 
         let (parts, body) = response.into_parts();
         let status = parts.status;
-        let headers = Box::new(parts.headers);
+        let headers = parts.headers;
         let text = String::from(String::from_utf8_lossy(&body.await?));
 
         if !status.is_success() {

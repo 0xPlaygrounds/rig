@@ -357,15 +357,11 @@ fn observe_hold_transition(
     }
 }
 
-/// What the pre-flight outcome observer reads: the outcome, whether the
-/// intent was issued, whether the driver refused it itself.
-pub type PreflightView = (&'static EffectOutcome, Has<Issued>, Has<Refused>);
-
 /// An outcome landed on an intent never issued: a `Gate` denial (or a
 /// driver refusal, which the driver emitted itself and marked `Refused`).
 fn observe_preflight_outcome(
     added: On<bevy_ecs::lifecycle::Add, EffectOutcome>,
-    outcomes: Query<PreflightView, With<PendingEffect>>,
+    outcomes: Query<(&EffectOutcome, Has<Issued>, Has<Refused>), With<PendingEffect>>,
     subjects: Subjects,
     witness: Option<Res<Witnessing>>,
 ) {

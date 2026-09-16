@@ -39,14 +39,11 @@ pub struct StreamCursor {
 #[derive(Component)]
 pub struct CollectedOutcome;
 
-/// Submitted world answers whose visible outcome has not landed.
-pub type WorldAnswersReady = (With<InFlight>, Without<EffectOutcome>);
-
 /// Publish submitted world answers at the same boundary as task results.
 /// Arrival order is independent of dispatch order and entity archetypes.
 pub fn collect_world(
     mut commands: Commands,
-    ready: Query<(Entity, &WorldOutcome), WorldAnswersReady>,
+    ready: Query<(Entity, &WorldOutcome), (With<InFlight>, Without<EffectOutcome>)>,
 ) {
     let mut ready: Vec<_> = ready.iter().collect();
     ready.sort_by_key(|(_, outcome)| outcome.order());
@@ -100,10 +97,6 @@ pub fn collect_tasks(
 /// Drain bounded worker delivery and fold each item. The first folded
 /// outcome is retained; streaming effects settle at EOF, including post-final
 /// metadata and errors. Pending waits for the host's next Collect invocation.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one collection pass shares driver state and its work allowance"
-)]
 pub fn collect_streams(
     mut commands: Commands,
     mut streaming: Query<StreamingView, With<InFlight>>,
@@ -290,22 +283,22 @@ pub type StreamingView = (
 /// An outcome that landed on an effect still in flight.
 pub type Landing = (Added<EffectOutcome>, With<InFlight>);
 
-/// The outcome and durable tool output needed to close a dispatch's record.
-pub type LandedView = (
-    Entity,
-    &'static Issued,
-    &'static EffectOutcome,
-    Option<&'static Observed>,
-    Option<&'static ToolOutputs>,
-);
-
 /// An outcome landed on an in-flight effect: the record closes with it and
 /// the effect leaves flight. The one place records close, so a `Gate`
 /// denial (never in flight) is no record and a `Judge` rewrite (after this)
 /// is not re-recorded: decisions are program, never record.
 pub fn settle(
     mut commands: Commands,
-    landed: Query<LandedView, Landing>,
+    landed: Query<
+        (
+            Entity,
+            &Issued,
+            &EffectOutcome,
+            Option<&Observed>,
+            Option<&ToolOutputs>,
+        ),
+        Landing,
+    >,
     replaced: Query<&super::record::ReplacedBy>,
     recording: Option<Res<Recording>>,
     witness: Option<Res<Witnessing>>,

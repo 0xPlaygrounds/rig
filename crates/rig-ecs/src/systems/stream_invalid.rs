@@ -42,7 +42,6 @@ pub(super) fn completed_call_id(events: &[StreamEvent], offset: usize) -> Option
 /// A user system in `RigSet::Judge` may resolve the resulting `InvalidCall`.
 /// Failure takes effect immediately; other resolutions remain attached until
 /// the producer drains, retaining its actual outcome and usage for continuation.
-#[allow(clippy::too_many_arguments, reason = "separate native graph accesses")]
 pub fn discover_streamed_invalid_calls(
     mut commands: Commands,
     effects: Query<(&ChildOf, &BusStreamed), NotRetrieval>,

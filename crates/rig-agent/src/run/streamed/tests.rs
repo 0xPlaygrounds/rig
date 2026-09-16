@@ -790,7 +790,7 @@ fn finish_passes_raw_choice_through_for_plain_text_turns() {
 
 fn expect_invalid(events: Vec<StreamedTurnEvent>) -> StreamedInvalidToolCall {
     match events.into_iter().next() {
-        Some(StreamedTurnEvent::InvalidToolCall(invalid)) => *invalid,
+        Some(StreamedTurnEvent::InvalidToolCall(invalid)) => invalid,
         other => panic!("expected InvalidToolCall, got {other:?}"),
     }
 }

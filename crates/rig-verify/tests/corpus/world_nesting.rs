@@ -5,11 +5,6 @@
 //! rig-agent's bus `Lookup`'s sink dispatcher does. Program, not record: the
 //! replayers answer only the leaves (the model, the host's note).
 
-#![allow(
-    clippy::type_complexity,
-    reason = "test support: the queries are the point"
-)]
-
 use bevy_ecs::prelude::*;
 use rig_core::{
     completion::CompletionRequestBuilder,

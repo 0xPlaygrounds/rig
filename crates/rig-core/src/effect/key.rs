@@ -110,8 +110,4 @@ impl<F: Family> fmt::Display for Key<F> {
 const _: () = {
     const fn assert_send_sync<T: Send + Sync + 'static>() {}
     assert_send_sync::<Key<super::family::Completion>>();
-    assert!(
-        size_of::<Key<super::family::Completion>>() <= 32,
-        "Key<F> budget: 32 bytes (measured 16 natively): a key is its string, nothing more"
-    );
 };

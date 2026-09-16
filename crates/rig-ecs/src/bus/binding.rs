@@ -655,10 +655,10 @@ pub fn materialize_bindings(world: &mut World) -> Result<MaterializeReport, Mate
         for (entity, key, _, handler) in built {
             let served = handlers
                 .register_erased(key.clone(), handler)
-                .map_err(|error| Box::new((key, error)))?;
+                .map_err(|error| (key, error))?;
             debug_assert_eq!(served, entity, "the binding's entity is the handler's");
         }
-        Ok::<(), Box<(HandlerKey, rig_core::error::ErrorReport)>>(())
+        Ok::<(), (HandlerKey, rig_core::error::ErrorReport)>(())
     });
     let (key, error) = match registered {
         Ok(Ok(())) => {
@@ -667,7 +667,7 @@ pub fn materialize_bindings(world: &mut World) -> Result<MaterializeReport, Mate
                 .extend(plan.into_iter().map(|(_, key)| key));
             return Ok(report);
         }
-        Ok(Err(refused)) => *refused,
+        Ok(Err(refused)) => refused,
         Err(error) => (
             plan.first()
                 .map(|(_, key)| key.clone())

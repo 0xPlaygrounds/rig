@@ -45,12 +45,12 @@ fn recording() -> (std::sync::Arc<Recording>, Waker) {
 
 type Receiver = oneshot::Receiver<Result<rig_core::effect::Outcome, rig_core::error::ErrorReport>>;
 
-fn command(id: u64) -> (Box<Command>, Receiver) {
+fn command(id: u64) -> (Command, Receiver) {
     let (reply, receiver) = oneshot::channel();
     let (cancel_guard, cancel) = oneshot::channel();
     std::mem::forget(cancel_guard);
     (
-        Box::new(Command {
+        Command {
             lineage: super::dispatcher::Lineage::new(EffectId::from_raw(id), None),
             id: EffectId::from_raw(id),
             key: HandlerKey::from("k"),
@@ -66,7 +66,7 @@ fn command(id: u64) -> (Box<Command>, Receiver) {
             reply: Reply::Unary(reply),
             span: tracing::Span::none(),
             cancel,
-        }),
+        },
         receiver,
     )
 }

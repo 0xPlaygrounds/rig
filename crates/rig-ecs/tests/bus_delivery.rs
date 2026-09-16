@@ -406,7 +406,6 @@ fn observe_visible(effects: Query<&PendingEffect, With<EffectOutcome>>, mut seen
     }
 }
 
-#[allow(clippy::type_complexity)]
 fn world_answer<const LATE: bool>(
     effects: Query<
         (Entity, &PendingEffect),

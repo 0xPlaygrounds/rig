@@ -311,7 +311,7 @@ async fn max_turns_error_carries_pending_tool_results_message() {
             );
             assert!(
                 matches!(
-                    &*prompt,
+                    &prompt,
                     Message::User { content }
                         if content.iter().all(|item| matches!(item, UserContent::ToolResult(_)))
                 ),

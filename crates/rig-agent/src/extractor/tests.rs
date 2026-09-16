@@ -340,7 +340,7 @@ async fn extractor_completion_call_stop_prevents_provider_io() {
         error,
         StructuredOutputError::PromptError(err)
             if matches!(
-                *err,
+                err,
                 PromptError::PromptCancelled { ref reason, .. } if reason == "extractor stopped"
             )
     ));
@@ -452,7 +452,7 @@ async fn unexpected_tool_call_hook_can_stop_extraction() {
         error,
         StructuredOutputError::PromptError(err)
             if matches!(
-                *err,
+                err,
                 PromptError::PromptCancelled { ref reason, .. }
                     if reason == "unexpected extractor tool call"
             )
@@ -596,7 +596,7 @@ async fn exhausted_retries_return_error_from_final_attempt() {
         err,
         StructuredOutputError::PromptError(err)
             if matches!(
-                *err,
+                err,
                 PromptError::Report(ref report)
                     if report.kind == rig_core::error::ErrorKind::Provider
                         && report.message.ends_with("second")

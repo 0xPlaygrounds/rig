@@ -175,7 +175,7 @@ pub(crate) fn stamp_terminal_request_id(
                 // headers fill it before the slot does.
                 let from_headers = response
                     .headers
-                    .as_deref()
+                    .as_ref()
                     .and_then(|headers| super::request_id_from_headers(headers, request_id_header));
                 let stamped = if response.provider_request_id.is_none() {
                     response.with_provider_request_id(from_headers.or(request_id))

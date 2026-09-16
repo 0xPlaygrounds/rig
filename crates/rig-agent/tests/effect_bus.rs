@@ -1214,7 +1214,7 @@ async fn a_cancelling_replacement_on_a_completion_outcome_stops_the_run_on_both_
     while let Some(item) = within(stream.next()).await {
         if let Err(rig_agent::agent::StreamingError::Prompt(err)) = item
             && matches!(
-                *err,
+                &err,
                 rig_agent::run::response::PromptError::PromptCancelled { .. }
             )
         {
