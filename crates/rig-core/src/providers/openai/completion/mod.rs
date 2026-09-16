@@ -1498,8 +1498,17 @@ pub struct PromptTokensDetails {
     ///
     /// Not serialized when zero: the streamed terminal record is rebuilt from
     /// this type, and emitting `"audio_tokens": 0` would put a figure into a
-    /// text-only dialect's record that the provider never sent.
-    #[serde(default, skip_serializing_if = "is_zero")]
+    /// text-only dialect's record that the provider never sent. Read through
+    /// `null_or_default` because a gateway with no audio to report spells the
+    /// absence as an explicit `null` rather than omitting the key
+    /// (Doubleword sends `"audio_tokens":null`), and `serde(default)` alone
+    /// covers only a missing key — a text-only reply would fail to decode at
+    /// all.
+    #[serde(
+        default,
+        deserialize_with = "json_utils::null_or_default",
+        skip_serializing_if = "is_zero"
+    )]
     pub audio_tokens: usize,
 }
 

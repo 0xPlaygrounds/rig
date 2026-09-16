@@ -674,7 +674,7 @@ fn mistral_content(content: &mut serde_json::Value) -> Result<(), CompletionErro
     Ok(())
 }
 
-/// OpenRouter's two body rewrites.
+/// OpenRouter's body rewrites.
 ///
 /// OpenRouter's routing preferences (`ProviderPreferences`) are still built
 /// by `providers::openrouter::completion`'s own request type and must move
@@ -684,16 +684,39 @@ fn finalize_openrouter(map: &mut serde_json::Map<String, serde_json::Value>, pro
         apply_openrouter_prompt_caching(map);
     }
 
-    // The shared assistant message serializes hidden reasoning under the
-    // llama.cpp/DeepSeek key `reasoning_content`; OpenRouter's documented
-    // assistant field is `reasoning`.
-    if let Some(messages) = map.get_mut("messages").and_then(as_array_mut) {
-        for message in messages {
-            if let Some(message) = message.as_object_mut()
-                && message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
-                && let Some(reasoning) = message.remove("reasoning_content")
+    let Some(messages) = map.get_mut("messages").and_then(as_array_mut) else {
+        return;
+    };
+    for message in messages {
+        let Some(message) = message.as_object_mut() else {
+            continue;
+        };
+        // The shared assistant message serializes hidden reasoning under the
+        // llama.cpp/DeepSeek key `reasoning_content`; OpenRouter's documented
+        // assistant field is `reasoning`.
+        if message.get("role").and_then(serde_json::Value::as_str) == Some("assistant")
+            && let Some(reasoning) = message.remove("reasoning_content")
+        {
+            message.insert("reasoning".to_owned(), reasoning);
+        }
+
+        // OpenRouter's image part is `{"image_url": {"url": …}}` and nothing
+        // else. The shared part carries OpenAI's `detail` hint, which rig
+        // defaults to `"auto"` — i.e. "no preference" — so sending it states
+        // a fidelity choice the caller never made to a gateway whose own
+        // conversion never had the field. The recorded requests carry no
+        // `detail`.
+        for part in message
+            .get_mut("content")
+            .and_then(as_array_mut)
+            .into_iter()
+            .flatten()
+        {
+            if let Some(image) = part
+                .get_mut("image_url")
+                .and_then(serde_json::Value::as_object_mut)
             {
-                message.insert("reasoning".to_owned(), reasoning);
+                image.remove("detail");
             }
         }
     }
