@@ -28,6 +28,8 @@ use futures::{Stream, StreamExt};
 
 use super::wire::WireEvent;
 use crate::completion::CompletionError;
+use crate::operation::Completion;
+use crate::wire::Decoder;
 use crate::streaming::{
     BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, StreamFinal, StreamingResult,
     SyntheticIds, ToolCallEnd, UnknownPayload,
@@ -664,30 +666,33 @@ fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
     counter.0
 }
 
-/// Drive one transport stream through an adapter under the shared policy.
+/// Drive one transport stream through a decoder under the shared policy.
 ///
-/// This is the single policy site for every wire family (see the module table).
-/// Adapters contain no `match WireEvent`.
-pub fn run_wire_stream<A, S>(transport: S, adapter: A) -> StreamingResult
+/// The async wrapper over the shared fold, and nothing else: it exists so a
+/// typed transport — an AWS event stream, a gRPC stream, an in-process
+/// generator — can reuse [`WireDriver`](crate::driver::WireDriver)'s policy
+/// without an HTTP request behind it. Every byte wire in rig-core goes
+/// through [`driver::stream`](crate::driver::stream) instead.
+pub fn run_wire_stream<D, F, S>(transport: S, decoder: D) -> StreamingResult
 where
-    A: WireAdapter + WasmCompatSend + 'static,
-    A::Frame: WasmCompatSend,
-    A::Event: WasmCompatSend,
-    S: Stream<Item = Result<A::Frame, CompletionError>> + WasmCompatSend + 'static,
+    D: Decoder<Completion, F> + WasmCompatSend + 'static,
+    F: WasmCompatSend,
+    D::Event: WasmCompatSend,
+    S: Stream<Item = Result<F, CompletionError>> + WasmCompatSend + 'static,
 {
-    run_wire_stream_observed(transport, adapter, None)
+    run_wire_stream_observed(transport, decoder, None)
 }
 
-pub(crate) fn run_wire_stream_observed<A, S>(
+pub(crate) fn run_wire_stream_observed<D, F, S>(
     transport: S,
-    mut adapter: A,
+    mut adapter: D,
     observation: Option<crate::observe::AdapterSlot>,
 ) -> StreamingResult
 where
-    A: WireAdapter + WasmCompatSend + 'static,
-    A::Frame: WasmCompatSend,
-    A::Event: WasmCompatSend,
-    S: Stream<Item = Result<A::Frame, CompletionError>> + WasmCompatSend + 'static,
+    D: Decoder<Completion, F> + WasmCompatSend + 'static,
+    F: WasmCompatSend,
+    D::Event: WasmCompatSend,
+    S: Stream<Item = Result<F, CompletionError>> + WasmCompatSend + 'static,
 {
     Box::pin(async_stream::stream! {
         let mut transport = Box::pin(transport);
@@ -807,12 +812,12 @@ where
 /// The `Corrupt` error's own message is surfaced verbatim (as a
 /// [`CompletionError::ResponseError`]), so a classifier can attach
 /// frame-naming context for the operation error.
-pub fn run_wire_buffered<A>(
-    frames: impl IntoIterator<Item = A::Frame>,
-    mut adapter: A,
+pub fn run_wire_buffered<D, F>(
+    frames: impl IntoIterator<Item = F>,
+    mut adapter: D,
 ) -> Result<Vec<StreamEvent>, CompletionError>
 where
-    A: WireAdapter,
+    D: Decoder<Completion, F>,
 {
     let mut out = AdapterOutput::new();
     let mut choices = Vec::new();

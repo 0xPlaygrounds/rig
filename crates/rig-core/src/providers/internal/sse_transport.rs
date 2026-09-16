@@ -18,7 +18,7 @@ use async_stream::stream;
 use futures::{Stream, StreamExt};
 use tracing_futures::Instrument;
 
-use super::adapter::{WireAdapter, WireFrame, run_wire_stream_observed};
+use super::adapter::{WireFrame, run_wire_stream_observed};
 use crate::completion::CompletionError;
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::{Event, GenericEventSource};
@@ -205,7 +205,7 @@ pub(crate) fn open_wire_stream<HttpClient, RequestBody, A, F>(
 where
     HttpClient: HttpClientExt + Clone + 'static,
     RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
-    A: WireAdapter<Frame = WireFrame> + WasmCompatSend + 'static,
+    A: crate::wire::Decoder<crate::operation::Completion, WireFrame> + WasmCompatSend + 'static,
     A::Event: WasmCompatSend,
     F: FnMut(String) -> FrameDisposition + WasmCompatSend + 'static,
 {

@@ -586,6 +586,40 @@ impl<P: CompatibleStreamProfile> CompatAdapter<P> {
     }
 }
 
+/// The surviving client-layer stream path drives this through the shared
+/// async wrapper, which is bounded on the operation-generic decoder. Dies
+/// with that path.
+impl<P> crate::wire::Decoder<crate::operation::Completion> for CompatAdapter<P>
+where
+    P: CompatibleStreamProfile,
+{
+    type Event = CompatEvent<P::Usage, P::Detail>;
+
+    fn classify(&self, frame: WireFrame) -> crate::providers::internal::wire::WireEvent<Self::Event> {
+        WireAdapter::classify(self, frame)
+    }
+
+    fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput) {
+        WireAdapter::interpret(self, event, out);
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput) {
+        WireAdapter::finish(self, out);
+    }
+
+    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
+        WireAdapter::flush_before_terminal_error(self, out);
+    }
+
+    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
+        WireAdapter::is_analysis_only(self, frame)
+    }
+
+    fn is_finished(&self) -> bool {
+        WireAdapter::is_finished(self)
+    }
+}
+
 impl<P> WireAdapter for CompatAdapter<P>
 where
     P: CompatibleStreamProfile,
