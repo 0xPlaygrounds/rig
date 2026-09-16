@@ -295,68 +295,69 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "I'll start by reading the four files in parallel.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_REDACTED_1",
+                      "index": 0,
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_REDACTED_2",
+                      "index": 1,
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_REDACTED_3",
+                      "index": 2,
+                      "type": "function"
+                    },
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"docs/DESIGN.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_REDACTED_4",
+                      "index": 3,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_1",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "I'll start by reading the four files in parallel.",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_1",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "read_file",
-                        "arguments": "{\"path\":\"tests/basic.rs\"}"
-                      }
-                    },
-                    {
-                      "id": "call_REDACTED_2",
-                      "index": 1,
-                      "type": "function",
-                      "function": {
-                        "name": "read_file",
-                        "arguments": "{\"path\":\"src/lib.rs\"}"
-                      }
-                    },
-                    {
-                      "id": "call_REDACTED_3",
-                      "index": 2,
-                      "type": "function",
-                      "function": {
-                        "name": "read_file",
-                        "arguments": "{\"path\":\"src/calendar.rs\"}"
-                      }
-                    },
-                    {
-                      "id": "call_REDACTED_4",
-                      "index": 3,
-                      "type": "function",
-                      "function": {
-                        "name": "read_file",
-                        "arguments": "{\"path\":\"docs/DESIGN.md\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 143,
-              "prompt_tokens": 732,
               "prompt_cache_hit_tokens": 512,
               "prompt_cache_miss_tokens": 220,
-              "total_tokens": 875,
+              "prompt_tokens": 732,
               "prompt_tokens_details": {
                 "cached_tokens": 512
-              }
+              },
+              "total_tokens": 875
             }
           }
         }
@@ -749,41 +750,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_REDACTED_5",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_2",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_5",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "run_tests",
-                        "arguments": "{}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 22,
-              "prompt_tokens": 1056,
               "prompt_cache_hit_tokens": 896,
               "prompt_cache_miss_tokens": 160,
-              "total_tokens": 1078,
+              "prompt_tokens": 1056,
               "prompt_tokens_details": {
                 "cached_tokens": 896
-              }
+              },
+              "total_tokens": 1078
             }
           }
         }
@@ -1143,41 +1145,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_REDACTED_6",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_3",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_6",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "write_file",
-                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 87,
-              "prompt_tokens": 1234,
               "prompt_cache_hit_tokens": 1024,
               "prompt_cache_miss_tokens": 210,
-              "total_tokens": 1321,
+              "prompt_tokens": 1234,
               "prompt_tokens_details": {
                 "cached_tokens": 1024
-              }
+              },
+              "total_tokens": 1321
             }
           }
         }
@@ -1581,41 +1584,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_REDACTED_7",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_4",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_7",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "run_tests",
-                        "arguments": "{}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 22,
-              "prompt_tokens": 1342,
               "prompt_cache_hit_tokens": 1152,
               "prompt_cache_miss_tokens": 190,
-              "total_tokens": 1364,
+              "prompt_tokens": 1342,
               "prompt_tokens_details": {
                 "cached_tokens": 1152
-              }
+              },
+              "total_tokens": 1364
             }
           }
         }
@@ -2066,41 +2070,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\", \"path\": \"src/calendar.rs\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_REDACTED_8",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_5",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_8",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "write_file",
-                        "arguments": "{\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\",\"path\":\"src/calendar.rs\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 79,
-              "prompt_tokens": 1533,
               "prompt_cache_hit_tokens": 1280,
               "prompt_cache_miss_tokens": 253,
-              "total_tokens": 1612,
+              "prompt_tokens": 1533,
               "prompt_tokens_details": {
                 "cached_tokens": 1280
-              }
+              },
+              "total_tokens": 1612
             }
           }
         }
@@ -2595,41 +2600,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_REDACTED_9",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_6",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_9",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "run_tests",
-                        "arguments": "{}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 22,
-              "prompt_tokens": 1634,
               "prompt_cache_hit_tokens": 1408,
               "prompt_cache_miss_tokens": 226,
-              "total_tokens": 1656,
+              "prompt_tokens": 1634,
               "prompt_tokens_details": {
                 "cached_tokens": 1408
-              }
+              },
+              "total_tokens": 1656
             }
           }
         }
@@ -3156,30 +3162,31 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "done",
+                  "role": "assistant"
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_7",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "done"
-                },
-                "logprobs": null,
-                "finish_reason": "stop"
-              }
-            ],
             "usage": {
               "completion_tokens": 1,
-              "prompt_tokens": 1723,
               "prompt_cache_hit_tokens": 1536,
               "prompt_cache_miss_tokens": 187,
-              "total_tokens": 1724,
+              "prompt_tokens": 1723,
               "prompt_tokens_details": {
                 "cached_tokens": 1536
-              }
+              },
+              "total_tokens": 1724
             }
           }
         }

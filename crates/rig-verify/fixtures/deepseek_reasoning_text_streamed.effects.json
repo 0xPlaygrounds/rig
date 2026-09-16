@@ -99,17 +99,17 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 104,
               "prompt_tokens": 57,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 57,
+              "completion_tokens": 104,
               "total_tokens": 161,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
               "completion_tokens_details": {
                 "reasoning_tokens": 47
               },
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              }
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 57
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_1",
@@ -985,17 +985,17 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 104,
               "prompt_tokens": 57,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 57,
+              "completion_tokens": 104,
               "total_tokens": 161,
+              "prompt_tokens_details": {
+                "cached_tokens": 0
+              },
               "completion_tokens_details": {
                 "reasoning_tokens": 47
               },
-              "prompt_tokens_details": {
-                "cached_tokens": 0
-              }
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 57
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_1",

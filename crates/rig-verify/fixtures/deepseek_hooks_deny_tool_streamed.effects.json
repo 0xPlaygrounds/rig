@@ -147,14 +147,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 52,
               "prompt_tokens": 336,
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 208,
+              "completion_tokens": 52,
               "total_tokens": 388,
               "prompt_tokens_details": {
                 "cached_tokens": 128
-              }
+              },
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 208
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_1",
@@ -323,14 +323,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 52,
               "prompt_tokens": 336,
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 208,
+              "completion_tokens": 52,
               "total_tokens": 388,
               "prompt_tokens_details": {
                 "cached_tokens": 128
-              }
+              },
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 208
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_1",
@@ -468,14 +468,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 1,
               "prompt_tokens": 406,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 150,
+              "completion_tokens": 1,
               "total_tokens": 407,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 150
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_2",
@@ -519,14 +519,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 1,
               "prompt_tokens": 406,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 150,
+              "completion_tokens": 1,
               "total_tokens": 407,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 150
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_2",

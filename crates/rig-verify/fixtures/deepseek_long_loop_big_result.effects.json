@@ -240,41 +240,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "I'll start by listing the repository files.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "list_files"
+                      },
+                      "id": "call_REDACTED_1",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_1",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "I'll start by listing the repository files.",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_1",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "list_files",
-                        "arguments": "{}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 29,
-              "prompt_tokens": 745,
               "prompt_cache_hit_tokens": 512,
               "prompt_cache_miss_tokens": 233,
-              "total_tokens": 774,
+              "prompt_tokens": 745,
               "prompt_tokens_details": {
                 "cached_tokens": 512
-              }
+              },
+              "total_tokens": 774
             }
           }
         }
@@ -482,41 +483,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"README.md\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_REDACTED_2",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_2",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_2",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "read_file",
-                        "arguments": "{\"path\":\"README.md\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 38,
-              "prompt_tokens": 807,
               "prompt_cache_hit_tokens": 640,
               "prompt_cache_miss_tokens": 167,
-              "total_tokens": 845,
+              "prompt_tokens": 807,
               "prompt_tokens_details": {
                 "cached_tokens": 640
-              }
+              },
+              "total_tokens": 845
             }
           }
         }
@@ -770,41 +772,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"tests/basic.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_REDACTED_3",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_3",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_3",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "read_file",
-                        "arguments": "{\"path\":\"tests/basic.rs\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 40,
-              "prompt_tokens": 923,
               "prompt_cache_hit_tokens": 768,
               "prompt_cache_miss_tokens": 155,
-              "total_tokens": 963,
+              "prompt_tokens": 923,
               "prompt_tokens_details": {
                 "cached_tokens": 768
-              }
+              },
+              "total_tokens": 963
             }
           }
         }
@@ -1104,41 +1107,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_REDACTED_4",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_4",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_4",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "read_file",
-                        "arguments": "{\"path\":\"src/lib.rs\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 39,
-              "prompt_tokens": 1054,
               "prompt_cache_hit_tokens": 896,
               "prompt_cache_miss_tokens": 158,
-              "total_tokens": 1093,
+              "prompt_tokens": 1054,
               "prompt_tokens_details": {
                 "cached_tokens": 896
-              }
+              },
+              "total_tokens": 1093
             }
           }
         }
@@ -1482,41 +1486,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_REDACTED_5",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_5",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_5",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "run_tests",
-                        "arguments": "{}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 22,
-              "prompt_tokens": 1138,
               "prompt_cache_hit_tokens": 896,
               "prompt_cache_miss_tokens": 242,
-              "total_tokens": 1160,
+              "prompt_tokens": 1138,
               "prompt_tokens_details": {
                 "cached_tokens": 896
-              }
+              },
+              "total_tokens": 1160
             }
           }
         }
@@ -1911,41 +1916,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/lib.rs\", \"content\": \"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_REDACTED_6",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_6",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "The failing assertion points at `days_in_year` in src/lib.rs. I'll fix the returned value.",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_6",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "write_file",
-                        "arguments": "{\"path\":\"src/lib.rs\",\"content\":\"pub mod calendar;\\n\\n/// The number of days in a common (non-leap) year.\\npub fn days_in_year() -> u32 {\\n    365\\n}\\n\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 108,
-              "prompt_tokens": 16687,
               "prompt_cache_hit_tokens": 16512,
               "prompt_cache_miss_tokens": 175,
-              "total_tokens": 16795,
+              "prompt_tokens": 16687,
               "prompt_tokens_details": {
                 "cached_tokens": 16512
-              }
+              },
+              "total_tokens": 16795
             }
           }
         }
@@ -2384,41 +2390,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_REDACTED_7",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_7",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_7",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "run_tests",
-                        "arguments": "{}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 22,
-              "prompt_tokens": 16816,
               "prompt_cache_hit_tokens": 16640,
               "prompt_cache_miss_tokens": 176,
-              "total_tokens": 16838,
+              "prompt_tokens": 16816,
               "prompt_tokens_details": {
                 "cached_tokens": 16640
-              }
+              },
+              "total_tokens": 16838
             }
           }
         }
@@ -2907,41 +2914,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "The second test now fails, pointing at `days_in_week` in src/calendar.rs. I need to read that file before fixing it.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\"}",
+                        "name": "read_file"
+                      },
+                      "id": "call_REDACTED_8",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_8",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "The second test now fails, pointing at `days_in_week` in src/calendar.rs. I need to read that file before fixing it.",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_8",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "read_file",
-                        "arguments": "{\"path\":\"src/calendar.rs\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 69,
-              "prompt_tokens": 32378,
               "prompt_cache_hit_tokens": 32128,
               "prompt_cache_miss_tokens": 250,
-              "total_tokens": 32447,
+              "prompt_tokens": 32378,
               "prompt_tokens_details": {
                 "cached_tokens": 32128
-              }
+              },
+              "total_tokens": 32447
             }
           }
         }
@@ -3477,41 +3485,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"path\": \"src/calendar.rs\", \"content\": \"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}",
+                        "name": "write_file"
+                      },
+                      "id": "call_REDACTED_9",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_9",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_9",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "write_file",
-                        "arguments": "{\"path\":\"src/calendar.rs\",\"content\":\"/// The number of days in a week.\\npub fn days_in_week() -> u32 {\\n    7\\n}\\n\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 79,
-              "prompt_tokens": 32483,
               "prompt_cache_hit_tokens": 32256,
               "prompt_cache_miss_tokens": 227,
-              "total_tokens": 32562,
+              "prompt_tokens": 32483,
               "prompt_tokens_details": {
                 "cached_tokens": 32256
-              }
+              },
+              "total_tokens": 32562
             }
           }
         }
@@ -4091,41 +4100,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{}",
+                        "name": "run_tests"
+                      },
+                      "id": "call_REDACTED_10",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_10",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_10",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "run_tests",
-                        "arguments": "{}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 22,
-              "prompt_tokens": 32584,
               "prompt_cache_hit_tokens": 32384,
               "prompt_cache_miss_tokens": 200,
-              "total_tokens": 32606,
+              "prompt_tokens": 32584,
               "prompt_tokens_details": {
                 "cached_tokens": 32384
-              }
+              },
+              "total_tokens": 32606
             }
           }
         }
@@ -4737,30 +4747,31 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "done",
+                  "role": "assistant"
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_11",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "done"
-                },
-                "logprobs": null,
-                "finish_reason": "stop"
-              }
-            ],
             "usage": {
               "completion_tokens": 1,
-              "prompt_tokens": 48044,
               "prompt_cache_hit_tokens": 47872,
               "prompt_cache_miss_tokens": 172,
-              "total_tokens": 48045,
+              "prompt_tokens": 48044,
               "prompt_tokens_details": {
                 "cached_tokens": 47872
-              }
+              },
+              "total_tokens": 48045
             }
           }
         }
