@@ -572,7 +572,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_thinking_stream",
         |client| async move {
-            let model = client.completion("gemini-3-flash-preview");
+            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
             let request = model
                 .completion_request(
                     "How many positive integers n < 200 are divisible by 4 but not by 10? \
@@ -720,7 +720,7 @@ async fn interactions_requires_action_roundtrip() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_requires_action",
         |client| async move {
-            let model = client.completion("gemini-3-flash-preview");
+            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
             let tool = rig::tool::tool_definition(&AlphaSignal);
 
             let raw = model
@@ -837,7 +837,7 @@ async fn interactions_same_tool_called_twice_stays_distinct() {
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_same_tool_twice",
         |client| async move {
-            let model = client.completion("gemini-3-flash-preview");
+            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
             let request = model
                 .completion_request(
                     "Use the `add` tool twice in this single reply, before any text: first \
@@ -945,7 +945,7 @@ async fn interactions_signature_without_summaries_never_fabricates_an_empty_sibl
     super::super::support::with_gemini_interactions_cassette(
         "streaming_grammar/interactions_signature_without_summaries",
         |client| async move {
-            let model = client.completion("gemini-3-flash-preview");
+            let model = client.map_wire(|config| config.interactions("gemini-3-flash-preview"));
             let request = model
                 .completion_request(
                     "How many positive integers n < 100 are divisible by 6 but not by 9? \

@@ -1990,6 +1990,56 @@ async fn both_transports_place_a_trailing_thought_signature_the_same_way() {
     assert_eq!(signature(&buffered), signature(&streamed));
 }
 
+/// One part carrying *both* non-empty text and the trailing
+/// `thoughtSignature`, in a single frame — the shape
+/// [`both_transports_place_a_trailing_thought_signature_the_same_way`]
+/// cannot reach.
+///
+/// There the signature rides an *empty* text in its own event, so the text
+/// is already delivered by the time the signature arrives and any folding
+/// order agrees. Here the two ride one part, and the transports are free to
+/// disagree: the unary mapper pushes the text and *then* appends the
+/// signature-only reasoning block (`attach_trailing_signature`), while a
+/// streamed reply that declared the part as one chunk emitted the chunk's
+/// reasoning end before its text and put the block ahead of the text. The
+/// signature is replay-required state Gemini validates
+/// (`MISSING_THOUGHT_SIGNATURE`), so a turn replayed from the streamed view
+/// of these bytes sent it back in a different place than one replayed from
+/// the unary view. Recorded in the effect corpus
+/// (`crates/rig-verify/fixtures/gemini_tool_call_turns.effects.json`), which
+/// is why this is a fixture-bearing contract and not a curiosity.
+const SIGNED_ONE_PART: &str = r#"{"candidates":[{"content":{"parts":[{"text":"done","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"thoughtsTokenCount":12,"totalTokenCount":27}}"#;
+
+/// The same document as one SSE event: the streamed twin of [`SIGNED_ONE_PART`].
+const SIGNED_ONE_PART_STREAM: &str = concat!(
+    r#"data: {"candidates":[{"content":{"parts":[{"text":"done","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"thoughtsTokenCount":12,"totalTokenCount":27}}"#,
+    "\r\n\r\n",
+);
+
+#[tokio::test]
+async fn a_signature_on_its_own_text_part_lands_after_that_text_on_both_transports() {
+    let buffered = unary("gemini-3-flash-preview", SIGNED_ONE_PART).await;
+    let streamed = streamed("gemini-3-flash-preview", SIGNED_ONE_PART_STREAM).await;
+
+    let expected = vec![
+        message::AssistantContent::text("done"),
+        message::AssistantContent::Reasoning(Reasoning::new_with_signature(
+            "",
+            Some("signature_REDACTED_1".to_owned()),
+        )),
+    ];
+    assert_eq!(
+        buffered.choice.to_vec(),
+        expected,
+        "the unary reply answers the text first and hangs the signature on the block after it"
+    );
+    assert_eq!(
+        streamed.choice.to_vec(),
+        expected,
+        "the streamed reply must place the same bytes the same way"
+    );
+}
+
 /// The one request an `Encoded` carries: every Gemini wire sends one per
 /// call — only the batch endpoints of other providers send more.
 fn sole(encoded: &crate::wire::Encoded) -> &http::Request<crate::wire::Body> {

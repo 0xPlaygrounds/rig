@@ -93,11 +93,17 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
             };
 
             assert_eq!(*status_code, 400, "unexpected status: {error:#?}");
-            for expected in [
-                "provider=Gemini",
-                "path=/v1beta/models?pageSize=1000",
-                "status=400",
-            ] {
+            // `provider=` carries the wire's stable descriptor name — the
+            // same token `CompletionResponse::provider` reports and telemetry
+            // records. The deleted client layer decorated this message with
+            // its own capitalised display name instead, so one provider's
+            // identity had two spellings; there is now one.
+            //
+            // `path=` is likewise the path actually sent. The listing's
+            // credential and `pageSize` ride the query string, which the
+            // route never quotes — quoting it would put the API key in every
+            // failed-listing diagnostic.
+            for expected in ["provider=gcp.gemini", "path=/v1beta/models", "status=400"] {
                 assert!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

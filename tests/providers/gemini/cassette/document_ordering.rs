@@ -82,7 +82,7 @@ async fn interactions_keeps_documents_after_system_before_history() {
         "document_ordering/interactions_keeps_documents_after_system_before_history",
         |client| async move {
             let response = client
-                .completion("gemini-3-flash-preview")
+                .map_wire(|config| config.interactions("gemini-3-flash-preview"))
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))

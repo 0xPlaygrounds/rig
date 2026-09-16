@@ -600,16 +600,26 @@ where
 /// non-success shape a transport can report.
 ///
 /// The one body every `cachedContents` call goes through, so the status
-/// triage this module documents is stated once.
+/// triage this module documents is stated once — and the one place
+/// `Content-Type: application/json` is set. This resource is not a
+/// [`Wire`](crate::wire::Wire), so `driver`'s header pass never sees it;
+/// the deleted client layer put the header in the default headers of every
+/// request it built, including the bodyless `GET`s and `DELETE`s, and
+/// recorded `cachedContents` traffic pins it on all five operations.
 async fn send_json<H, T>(
     http: &H,
-    request: http_client::Request<Vec<u8>>,
+    mut request: http_client::Request<Vec<u8>>,
     name: Option<&str>,
 ) -> Result<T, CachedContentError>
 where
     H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
     T: serde::de::DeserializeOwned,
 {
+    request
+        .headers_mut()
+        .entry(http::header::CONTENT_TYPE)
+        .or_insert(http::HeaderValue::from_static("application/json"));
+
     let response = HttpClientExt::send::<_, Vec<u8>>(http, request).await;
 
     let bytes = match response {
