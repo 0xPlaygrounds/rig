@@ -45,12 +45,6 @@ fn world() -> World {
     world
 }
 
-/// A finished worker, for a `Streaming` whose receiver is prefilled by hand.
-#[cfg(not(target_family = "wasm"))]
-fn idle_task() -> bevy_tasks::Task<()> {
-    bevy_tasks::IoTaskPool::get().spawn(async {})
-}
-
 fn insert(world: &mut World, streaming: Streaming, seq: u64) -> Entity {
     world
         .spawn((
@@ -72,8 +66,6 @@ fn ready(world: &mut World, seq: u64, count: usize) -> Entity {
     insert(
         world,
         Streaming {
-            #[cfg(not(target_family = "wasm"))]
-            task: idle_task(),
             events,
             fold: rig_core::serve::StreamTap::new(),
             delivered: 0,
@@ -114,8 +106,6 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
     insert(
         &mut world,
         Streaming {
-            #[cfg(not(target_family = "wasm"))]
-            task: idle_task(),
             events: first_events,
             fold: rig_core::serve::StreamTap::new(),
             delivered: 0,
@@ -132,8 +122,6 @@ fn empty_setup_polls_do_not_rotate_a_later_ready_delivery_batch() {
     insert(
         &mut world,
         Streaming {
-            #[cfg(not(target_family = "wasm"))]
-            task: idle_task(),
             events: second_events,
             fold: rig_core::serve::StreamTap::new(),
             delivered: 0,
@@ -264,8 +252,8 @@ fn worker_self_wakes_without_collect_and_stalls_on_full_delivery() {
     // futures mpsc has four shared slots and one sender-reserved slot.
     assert_eq!(polls.load(Ordering::SeqCst), 8);
     assert!(world.get::<Streamed>(effect).unwrap().events.is_empty());
-    // The component owns the worker: removing it drops the stream.
-    world.entity_mut(effect).remove::<Streaming>();
+    // The table owns the worker: leaving flight drops the stream.
+    world.entity_mut(effect).remove::<InFlight>();
     wait_for(|| drops.load(Ordering::SeqCst) == 1);
 }
 

@@ -2,8 +2,6 @@
 
 pub mod binary;
 
-pub mod cache;
-
 pub mod parts;
 
 pub mod reflect;

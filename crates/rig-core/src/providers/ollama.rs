@@ -52,9 +52,7 @@ use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinato
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
     embeddings::{self, EmbeddingError},
-    json_utils, message,
-    message::Text,
-    streaming,
+    json_utils, message, streaming,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use async_stream::stream;
@@ -1485,84 +1483,6 @@ impl TryFrom<crate::message::Message> for Vec<Message> {
                         .collect::<Vec<_>>(),
                 }])
             }
-        }
-    }
-}
-
-/// Conversion from provider Message to a completion message.
-/// This is needed so that responses can be converted back into chat history.
-///
-/// An assistant message with empty `content` and no thinking or tool calls
-/// converts to **empty** message content — no fabricated empty-text block.
-/// Such a message cannot be replayed through the request boundary
-/// (`validate_message_content` rejects a content-less assistant message);
-/// callers ingesting raw Ollama history should filter empty assistant
-/// messages rather than expect rig to invent content for them. The agent
-/// loop never produces this shape: it drops empty turns before history.
-impl From<Message> for crate::completion::Message {
-    fn from(msg: Message) -> Self {
-        match msg {
-            Message::User { content, .. } => crate::completion::Message::User {
-                content: vec![crate::completion::message::UserContent::Text(Text::new(
-                    content,
-                ))],
-            },
-            Message::Assistant {
-                content,
-                thinking,
-                tool_calls,
-                ..
-            } => {
-                let mut assistant_contents = Vec::new();
-                // Preserve reasoning so it survives the round-trip (issue #1926).
-                if let Some(thinking) = thinking.filter(|t| !t.is_empty()) {
-                    assistant_contents.push(
-                        crate::completion::message::AssistantContent::reasoning(thinking),
-                    );
-                }
-                // Only a non-empty text body becomes a text block. Pushing
-                // unconditionally would mint the legacy `vec![Text("")]`
-                // sentinel for a content-less assistant message — the shape
-                // `is_empty_assistant_turn` documents as produced by old
-                // persisted histories only. Empty content is representable
-                // now, and the agent layer handles it.
-                if !content.is_empty() {
-                    assistant_contents.push(crate::completion::message::AssistantContent::Text(
-                        Text::new(content),
-                    ));
-                }
-                // Same id policy as the unary decode above: a daemon-issued
-                // id is preserved, an absent one mints (provider id: none).
-                for tc in tool_calls {
-                    assistant_contents.push(
-                        crate::completion::message::AssistantContent::tool_call(
-                            tc.id.as_deref().unwrap_or(""),
-                            tc.function.name,
-                            tc.function.arguments,
-                        ),
-                    );
-                }
-                crate::message::normalize_missing_tool_call_ids(&mut assistant_contents);
-                crate::completion::Message::Assistant {
-                    id: None,
-                    content: assistant_contents,
-                }
-            }
-            // System and ToolResult are converted to User message as needed.
-            Message::System { content, .. } => crate::completion::Message::User {
-                content: vec![crate::completion::message::UserContent::Text(Text::new(
-                    content,
-                ))],
-            },
-            Message::ToolResult { name, content } => crate::completion::Message::User {
-                // Ollama tool messages carry no call id; the name is the
-                // wire's correlator and the rig-level handle is minted.
-                content: vec![message::UserContent::tool_result_from_wire(
-                    "",
-                    name,
-                    vec![message::ToolResultContent::text(content)],
-                )],
-            },
         }
     }
 }

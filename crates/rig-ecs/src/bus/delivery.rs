@@ -254,7 +254,6 @@ impl ReplayDelivery {
 #[derive(Component)]
 enum Buffered {
     Waiting {
-        serving: Serving,
         streamed: bool,
     },
     Unary {
@@ -277,8 +276,8 @@ impl Buffered {
         capacity: usize,
         wake: super::plugin::Wake,
     ) {
-        if let Self::Waiting { serving, streamed } = self {
-            let Some(reply) = tasks.poll(entity, serving) else {
+        if let Self::Waiting { streamed } = self {
+            let Some(reply) = tasks.poll(entity) else {
                 return;
             };
             match reply {
@@ -384,8 +383,8 @@ pub fn collect_replayed(world: &mut World) {
         for (id, entity) in &entities {
             let mut effect = world.entity_mut(*entity);
             let streamed = effect.contains::<Streamed>();
-            if let Some(serving) = effect.take::<Serving>() {
-                effect.insert(Buffered::Waiting { serving, streamed });
+            if effect.take::<Serving>().is_some() {
+                effect.insert(Buffered::Waiting { streamed });
             } else if let Some(streaming) = effect.take::<Streaming>() {
                 effect.insert(Buffered::Stream {
                     streaming,

@@ -18,7 +18,7 @@
 //! - **A handler is an entity.** [`Handlers::register`] spawns one with a
 //!   [`Bound`] component (the key and the descriptor, serde; immutable, so
 //!   its hooks keep [`HandlerIndex`] exact), a `Name`, and the erased
-//!   handler as [`Handler`] on the same entity (on wasm it is `!Send` and
+//!   handler as [`Handler`] on the same entity (the erased handler itself
 //!   lives in the non-send `HandlerTable`). An effect names its handler by
 //!   [`ServedBy`] (its inverse [`Serves`]). The registry is a query;
 //!   deregistration is a despawn.

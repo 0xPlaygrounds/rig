@@ -201,78 +201,6 @@ fn streaming_terminal_record_is_normalized() {
     assert_eq!(final_record.usage.total_tokens, 12);
 }
 
-// Test conversion from provider Message to completion Message.
-#[test]
-fn test_message_conversion() {
-    // Construct a provider Message (User variant with String content).
-    let provider_msg = Message::User {
-        content: "Test message".to_owned(),
-        images: None,
-        name: None,
-    };
-    // Convert it into a completion::Message.
-    let comp_msg: crate::completion::Message = provider_msg.into();
-    match comp_msg {
-        crate::completion::Message::User { content } => {
-            let first_content = content.first();
-            // The expected type is crate::completion::message::UserContent::Text wrapping a Text struct.
-            match first_content {
-                Some(crate::completion::message::UserContent::Text(text_struct)) => {
-                    assert_eq!(text_struct.text, "Test message");
-                }
-                _ => panic!("Expected text content in conversion"),
-            }
-        }
-        _ => panic!("Conversion from provider Message to completion Message failed"),
-    }
-}
-
-#[test]
-fn empty_assistant_history_converts_to_empty_content_not_a_sentinel() {
-    // A content-less Ollama assistant message converts to genuinely empty
-    // message content — no fabricated `Text("")` block. Pinned because the
-    // consequence is deliberate: such a message cannot be replayed through
-    // the request boundary, and callers ingesting raw Ollama history
-    // filter it rather than rig inventing content (see the `From` doc).
-    let provider_msg = Message::Assistant {
-        content: String::new(),
-        thinking: None,
-        images: None,
-        name: None,
-        tool_calls: Vec::new(),
-    };
-    let comp_msg: crate::completion::Message = provider_msg.into();
-    match comp_msg {
-        crate::completion::Message::Assistant { content, .. } => {
-            assert!(content.is_empty(), "expected empty content: {content:?}");
-        }
-        other => panic!("expected an assistant message, got {other:?}"),
-    }
-
-    // A non-empty body still converts to exactly one text block.
-    let provider_msg = Message::Assistant {
-        content: "hello".to_owned(),
-        thinking: None,
-        images: None,
-        name: None,
-        tool_calls: Vec::new(),
-    };
-    let comp_msg: crate::completion::Message = provider_msg.into();
-    match comp_msg {
-        crate::completion::Message::Assistant { content, .. } => {
-            assert!(
-                matches!(
-                    content.as_slice(),
-                    [crate::completion::message::AssistantContent::Text(text)]
-                        if text.text == "hello"
-                ),
-                "unexpected content: {content:?}"
-            );
-        }
-        other => panic!("expected an assistant message, got {other:?}"),
-    }
-}
-
 #[test]
 fn mixed_user_content_preserves_message_order() {
     use crate::message::{Message as RigMessage, ToolResultContent, UserContent};
@@ -493,42 +421,6 @@ fn test_message_conversion_with_thinking() {
     } else {
         panic!("Expected Assistant message with thinking");
     }
-}
-
-/// A user-supplied ollama-format assistant message carrying a
-/// daemon-issued call id keeps it through conversion — the same id
-/// policy as the unary decode (preserve when present, absent mints).
-#[test]
-fn wire_message_conversion_preserves_the_daemon_tool_call_id() {
-    let wire = Message::Assistant {
-        content: String::new(),
-        thinking: None,
-        images: None,
-        name: None,
-        tool_calls: vec![ToolCall {
-            id: Some("call_abc".to_owned()),
-            r#type: ToolType::default(),
-            function: Function {
-                name: "get_weather".to_owned(),
-                arguments: json!({}),
-            },
-        }],
-    };
-
-    let converted: crate::completion::Message = wire.into();
-    let crate::completion::Message::Assistant { content, .. } = converted else {
-        panic!("Expected Assistant message");
-    };
-    let ids: Vec<String> = content
-        .iter()
-        .filter_map(|item| match item {
-            crate::message::AssistantContent::ToolCall(call) => {
-                Some(call.id.explicit().expect("provider-issued ID").to_owned())
-            }
-            _ => None,
-        })
-        .collect();
-    assert_eq!(ids, vec!["call_abc".to_owned()]);
 }
 
 /// Regression test for issue #1926: a non-streaming `/api/chat` response that
@@ -1635,7 +1527,7 @@ mod raw_capture {
 /// Synthetic wire values test absent-ID and explicit-ID collisions deterministically;
 /// recordings cannot reliably force a provider to emit these boundary combinations.
 #[test]
-fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses_and_messages() {
+fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
     let wire = json!({
         "model": "test", "created_at": "2024-01-01T00:00:00Z", "done": true,
         "message": {"role":"assistant", "content":"", "tool_calls":[
@@ -1655,18 +1547,8 @@ fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses_and_mess
         serde_json::to_value(&first.choice).unwrap(),
         serde_json::to_value(normalize().choice).unwrap()
     );
-    let normalized_message: crate::message::Message =
-        serde_json::from_value::<Message>(wire["message"].clone())
-            .unwrap()
-            .into();
-    let crate::message::Message::Assistant { content, .. } = normalized_message else {
-        panic!("assistant");
-    };
-    assert_eq!(
-        serde_json::to_value(&first.choice).unwrap(),
-        serde_json::to_value(&content).unwrap()
-    );
-    let calls: Vec<_> = content
+    let calls: Vec<_> = first
+        .choice
         .iter()
         .filter_map(|item| match item {
             crate::message::AssistantContent::ToolCall(call) => Some(call),

@@ -178,23 +178,5 @@ pub async fn sleep(duration: std::time::Duration) {
     futures_timer::Delay::new(duration).await;
 }
 
-#[macro_export]
-macro_rules! if_wasm {
-    ($($tokens:tt)*) => {
-        #[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-        $($tokens)*
-
-    };
-}
-
-#[macro_export]
-macro_rules! if_not_wasm {
-    ($($tokens:tt)*) => {
-        #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-        $($tokens)*
-
-    };
-}
-
 #[cfg(test)]
 mod tests;
