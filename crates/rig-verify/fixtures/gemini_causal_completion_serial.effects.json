@@ -129,9 +129,6 @@
             "input_tokens": 109,
             "output_tokens": 20,
             "total_tokens": 197,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 68
           },
           "message_id": null,
@@ -269,9 +266,6 @@
             "input_tokens": 14,
             "output_tokens": 1,
             "total_tokens": 48,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 33
           },
           "message_id": null,
@@ -433,11 +427,7 @@
           "usage": {
             "input_tokens": 209,
             "output_tokens": 1,
-            "total_tokens": 210,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 210
           },
           "message_id": null,
           "response_id": "id_REDACTED_3",

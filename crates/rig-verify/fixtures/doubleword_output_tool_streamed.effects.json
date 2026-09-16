@@ -116,8 +116,6 @@
             "output_tokens": 69,
             "total_tokens": 453,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -400,8 +398,6 @@
             "output_tokens": 69,
             "total_tokens": 453,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",

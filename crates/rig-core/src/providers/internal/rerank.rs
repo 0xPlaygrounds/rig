@@ -90,7 +90,11 @@ pub struct JinaRerankResponse {
 
 impl NormalizeRerankResponse for JinaRerankResponse {
     fn normalize(self, provider: &str) -> Result<RerankResponse, RerankError> {
-        let usage = self.usage.unwrap_or_default();
+        let usage = self.usage.map(|usage| crate::completion::Usage {
+            input_tokens: Some(usage.prompt_tokens),
+            total_tokens: Some(usage.total_tokens),
+            ..Default::default()
+        });
         Ok(RerankResponse::new(
             self.results
                 .into_iter()
@@ -105,11 +109,7 @@ impl NormalizeRerankResponse for JinaRerankResponse {
         // A server that omits `model` still produced a ranking; `None` is
         // the honest report.
         .with_optional_model(self.model)
-        .with_usage(crate::completion::Usage {
-            input_tokens: usage.prompt_tokens,
-            total_tokens: usage.total_tokens,
-            ..crate::completion::Usage::new()
-        }))
+        .with_usage(usage.unwrap_or_default()))
     }
 }
 

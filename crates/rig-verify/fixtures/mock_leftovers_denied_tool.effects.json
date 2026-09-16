@@ -137,15 +137,7 @@
               "additional_params": null
             }
           ],
-          "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
-          },
+          "usage": {},
           "message_id": null,
           "response_id": null,
           "finish_reason": null,
@@ -265,15 +257,7 @@
               "text": "I could not add them."
             }
           ],
-          "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
-          },
+          "usage": {},
           "message_id": null,
           "response_id": null,
           "finish_reason": null,

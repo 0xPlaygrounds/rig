@@ -927,7 +927,7 @@ impl TurnSource for StreamingTurnSource {
             };
             // Captured from each completion-call emission so the normalized
             // `ModelTurnFinished` event carries the turn's usage.
-            let mut last_usage = crate::completion::Usage::new();
+            let mut last_usage = crate::completion::Usage::default();
 
             let mut assembler = StreamedTurnAssembler::new(
                 prepared.executable_tool_names.clone(),
@@ -1300,7 +1300,7 @@ impl TurnSource for StreamingTurnSource {
             }
 
             // Final fallback: no usage was ever learned, so there is nothing to
-            // record onto the span (zero usage is the missing-metrics sentinel)
+            // record onto the span (every counter stays `None`)
             // and this is the last read of the flag — kept inline (not
             // `emit_completion_call!`) so it doesn't emit a dead
             // `completion_call_emitted = true` write, which `unused_assignments`
@@ -1312,7 +1312,7 @@ impl TurnSource for StreamingTurnSource {
                     .as_ref()
                     .and_then(|response| response.finish_reason.clone());
                 match run.record_streamed_completion_call(
-                    crate::completion::Usage::new(),
+                    crate::completion::Usage::default(),
                     stream.identity(),
                     fallback_finish_reason,
                     stream

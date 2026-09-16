@@ -70,13 +70,7 @@
             }
           ],
           "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 2,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 2
           },
           "message_id": null,
           "response_id": null,
@@ -85,13 +79,7 @@
           "model": null,
           "raw": {
             "usage": {
-              "input_tokens": 0,
-              "output_tokens": 0,
-              "total_tokens": 2,
-              "cached_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
-              "tool_use_prompt_tokens": 0,
-              "reasoning_tokens": 0
+              "total_tokens": 2
             },
             "finish_reason": null,
             "message_id": null,
@@ -128,13 +116,7 @@
         {
           "event": "final",
           "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 2,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 2
           },
           "finish_reason": null,
           "message_id": null,
@@ -143,13 +125,7 @@
           "model": null,
           "raw": {
             "usage": {
-              "input_tokens": 0,
-              "output_tokens": 0,
-              "total_tokens": 2,
-              "cached_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
-              "tool_use_prompt_tokens": 0,
-              "reasoning_tokens": 0
+              "total_tokens": 2
             },
             "finish_reason": null,
             "message_id": null,

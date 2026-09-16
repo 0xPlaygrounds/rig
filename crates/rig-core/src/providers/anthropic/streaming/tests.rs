@@ -1694,10 +1694,10 @@ async fn terminal_record_normalizes_stop_reason_usage_and_metadata() {
         terminal.finish_reason,
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(terminal.usage.input_tokens, 3);
-    assert_eq!(terminal.usage.output_tokens, 5);
-    assert_eq!(terminal.usage.cached_input_tokens, 2);
-    assert_eq!(terminal.usage.total_tokens, 10);
+    assert_eq!(terminal.usage.input_tokens, Some(3));
+    assert_eq!(terminal.usage.output_tokens, Some(5));
+    assert_eq!(terminal.usage.cached_input_tokens, Some(2));
+    assert_eq!(terminal.usage.total_tokens, Some(10));
 }
 
 #[tokio::test]
@@ -1964,7 +1964,7 @@ mod terminal_emission {
 
             assert!(saw_terminal, "{case}: the turn must complete");
             let terminal = stream.response.expect("terminal record");
-            assert_eq!(terminal.usage.input_tokens, expected, "{case}");
+            assert_eq!(terminal.usage.input_tokens, Some(expected), "{case}");
         }
     }
 
@@ -2060,7 +2060,7 @@ mod terminal_emission {
             terminal.finish_reason,
             Some(crate::completion::FinishReason::Stop)
         );
-        assert_eq!(terminal.usage.output_tokens, 3);
+        assert_eq!(terminal.usage.output_tokens, Some(3));
     }
 }
 

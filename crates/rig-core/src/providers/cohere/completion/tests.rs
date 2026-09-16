@@ -143,9 +143,9 @@ fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
         normalized.finish_reason(),
         Some(completion::FinishReason::ToolCalls)
     );
-    assert_eq!(normalized.usage.input_tokens, 10);
-    assert_eq!(normalized.usage.output_tokens, 4);
-    assert_eq!(normalized.usage.total_tokens, 14);
+    assert_eq!(normalized.usage.input_tokens, Some(10));
+    assert_eq!(normalized.usage.output_tokens, Some(4));
+    assert_eq!(normalized.usage.total_tokens, Some(14));
 }
 
 #[test]
@@ -160,10 +160,10 @@ fn usage_is_mapped_from_tokens_and_carries_cached_input() {
     .expect("usage should deserialize");
 
     let mapped = crate::completion::Usage::from(&usage);
-    assert_eq!(mapped.input_tokens, 1610);
-    assert_eq!(mapped.output_tokens, 56);
-    assert_eq!(mapped.total_tokens, 1666);
-    assert_eq!(mapped.cached_input_tokens, 112);
+    assert_eq!(mapped.input_tokens, Some(1610));
+    assert_eq!(mapped.output_tokens, Some(56));
+    assert_eq!(mapped.total_tokens, Some(1666));
+    assert_eq!(mapped.cached_input_tokens, Some(112));
 }
 
 #[test]
@@ -188,23 +188,25 @@ fn response_usage_matches_the_canonical_mapping() {
         response.try_into().expect("response should convert");
 
     assert_eq!(converted.usage, expected);
-    assert_eq!(converted.usage.input_tokens, 1610);
-    assert_eq!(converted.usage.cached_input_tokens, 112);
+    assert_eq!(converted.usage.input_tokens, Some(1610));
+    assert_eq!(converted.usage.cached_input_tokens, Some(112));
 }
 
+/// Without `tokens` nothing is reported — including `cached_tokens`, which
+/// is a subset of an input count Cohere did not send.
 #[test]
-fn usage_without_token_counts_maps_to_zero() {
+fn usage_without_token_counts_is_unreported() {
     let usage: Usage = serde_json::from_str("{}").expect("usage should deserialize");
     assert_eq!(
         crate::completion::Usage::from(&usage),
-        crate::completion::Usage::new()
+        crate::completion::Usage::default()
     );
 
     let cached_only: Usage =
         serde_json::from_str(r#"{"cached_tokens": 512}"#).expect("usage should deserialize");
     assert_eq!(
         crate::completion::Usage::from(&cached_only),
-        crate::completion::Usage::new()
+        crate::completion::Usage::default()
     );
 }
 

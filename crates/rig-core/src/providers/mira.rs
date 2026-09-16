@@ -207,14 +207,14 @@ impl crate::telemetry::ProviderResponseExt for CompletionResponse {
 
 impl From<&Usage> for completion::Usage {
     fn from(usage: &Usage) -> Self {
-        crate::providers::internal::completion_usage(
-            usage.prompt_tokens as u64,
+        Self {
+            input_tokens: Some(usage.prompt_tokens as u64),
             // Mira reports only prompt and total counts; the completion count
             // is the remainder.
-            usage.total_tokens.saturating_sub(usage.prompt_tokens) as u64,
-            usage.total_tokens as u64,
-            0,
-        )
+            output_tokens: Some(usage.total_tokens.saturating_sub(usage.prompt_tokens) as u64),
+            total_tokens: Some(usage.total_tokens as u64),
+            ..Default::default()
+        }
     }
 }
 
@@ -249,7 +249,7 @@ impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
                 ])?;
                 return Ok(completion::CompletionResponse::new(
                     choice,
-                    completion::Usage::new(),
+                    completion::Usage::default(),
                     provider,
                 ));
             }

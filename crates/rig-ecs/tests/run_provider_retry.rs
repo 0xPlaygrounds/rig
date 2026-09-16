@@ -79,7 +79,7 @@ impl Serve for Flaky {
         Reply::Outcome(match next {
             Some(Ok(choice)) => Ok(Outcome::Completion(CompletionResponse::new(
                 choice,
-                Usage::new(),
+                Usage::default(),
                 "flaky",
             ))),
             Some(Err(report)) => Err(report),
@@ -498,7 +498,7 @@ impl Serve for Truncating {
         }
         Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
             done(),
-            Usage::new(),
+            Usage::default(),
             "whole",
         ))))
     }

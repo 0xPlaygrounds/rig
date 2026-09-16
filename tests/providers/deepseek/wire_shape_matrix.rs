@@ -765,7 +765,7 @@ async fn blocking_repeated_prompt_reports_the_cache_split() {
             let normalized = rig::completion::Usage::from(&second.usage);
             assert_eq!(
                 normalized.cached_input_tokens,
-                u64::from(second.usage.prompt_cache_hit_tokens),
+                Some(u64::from(second.usage.prompt_cache_hit_tokens)),
                 "the native cache-hit counter reaches rig's usage"
             );
             Ok::<(), anyhow::Error>(())
@@ -803,7 +803,7 @@ async fn streaming_repeated_prompt_reports_the_cache_split() {
                 .map(|record| record.usage)
                 .expect("the stream should yield a terminal record");
             assert!(
-                usage.cached_input_tokens > 0,
+                usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "the streamed terminal carries DeepSeek's cache-hit counter: {usage:?}"
             );
             assert!(usage.input_tokens > usage.cached_input_tokens);

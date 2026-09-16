@@ -25,13 +25,13 @@ pub struct AwsConverseOutput(pub InternalConverseOutput);
 /// unary response path and the streaming terminal record.
 pub(crate) fn normalize_usage(usage: &TokenUsage) -> completion::Usage {
     completion::Usage {
-        input_tokens: usage.input_tokens as u64,
-        output_tokens: usage.output_tokens as u64,
-        total_tokens: usage.total_tokens as u64,
-        cached_input_tokens: usage.cache_read_input_tokens.unwrap_or_default() as u64,
-        cache_creation_input_tokens: usage.cache_write_input_tokens.unwrap_or_default() as u64,
-        tool_use_prompt_tokens: 0,
-        reasoning_tokens: 0,
+        input_tokens: Some(usage.input_tokens as u64),
+        output_tokens: Some(usage.output_tokens as u64),
+        total_tokens: Some(usage.total_tokens as u64),
+        cached_input_tokens: usage.cache_read_input_tokens.map(|n| n as u64),
+        cache_creation_input_tokens: usage.cache_write_input_tokens.map(|n| n as u64),
+        tool_use_prompt_tokens: None,
+        reasoning_tokens: None,
     }
 }
 

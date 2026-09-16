@@ -109,17 +109,16 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
                 total_tokens,
                 ..
             }) => Usage {
-                input_tokens: *input_tokens,
-                output_tokens: *output_tokens,
-                total_tokens: *total_tokens,
-                ..Usage::new()
+                input_tokens: Some(*input_tokens),
+                output_tokens: Some(*output_tokens),
+                total_tokens: Some(*total_tokens),
+                ..Default::default()
             },
-            // Duration billing reports no token counts; the zero sentinel is
-            // the documented "not reported" value, and the seconds stay
+            // Duration billing reports no token counts; the seconds stay
             // reachable on the raw payload.
             Some(TranscriptionUsage::Duration { .. })
             | Some(TranscriptionUsage::Other(_))
-            | None => Usage::new(),
+            | None => Usage::default(),
         };
         Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
     }

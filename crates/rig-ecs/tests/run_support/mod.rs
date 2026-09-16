@@ -71,7 +71,7 @@ impl Serve for Capturing {
                 self.requests.lock().expect("requests").push(request);
                 let response = CompletionResponse::new(
                     vec![AssistantContent::text(&self.answer)],
-                    Usage::new(),
+                    Usage::default(),
                     "capturing",
                 );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
@@ -273,7 +273,7 @@ impl Serve for Scripted {
                     .expect("turns")
                     .pop_front()
                     .unwrap_or_else(|| vec![AssistantContent::text("done")]);
-                let response = CompletionResponse::new(choice, Usage::new(), "scripted");
+                let response = CompletionResponse::new(choice, Usage::default(), "scripted");
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(

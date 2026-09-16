@@ -31,10 +31,10 @@ async fn streaming_smoke() {
         // cached_tokens = 480. `tokens` is the counter rig reports, not
         // `billed_units`, which excludes cached input and understates usage.
         let usage = provider_final.usage;
-        assert_eq!(usage.input_tokens, 553);
-        assert_eq!(usage.output_tokens, 64);
-        assert_eq!(usage.total_tokens, usage.input_tokens + usage.output_tokens);
-        assert_eq!(usage.cached_input_tokens, 480);
+        assert_eq!(usage.input_tokens, Some(553));
+        assert_eq!(usage.output_tokens, Some(64));
+        assert_eq!(usage.total_tokens, Some(553 + 64));
+        assert_eq!(usage.cached_input_tokens, Some(480));
     })
     .await;
 }

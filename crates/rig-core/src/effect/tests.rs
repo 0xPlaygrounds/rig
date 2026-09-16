@@ -305,7 +305,7 @@ fn every_outcome_round_trips() {
         (
             Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("hi")],
-                Usage::new(),
+                Usage::default(),
                 "mock",
             )),
             EffectFamily::Completion,
@@ -433,7 +433,7 @@ fn every_family_wraps_its_request_and_unwraps_its_own_outcome() {
     let completion = family::Completion::wrap(request()).expect("a request has a wire form");
     assert_eq!(completion.family(), EffectFamily::Completion);
     let response =
-        CompletionResponse::new(vec![AssistantContent::text("hi")], Usage::new(), "mock");
+        CompletionResponse::new(vec![AssistantContent::text("hi")], Usage::default(), "mock");
     let answer =
         family::Completion::unwrap(Outcome::Completion(response.clone())).expect("own family");
     assert_eq!(answer.choice, response.choice);

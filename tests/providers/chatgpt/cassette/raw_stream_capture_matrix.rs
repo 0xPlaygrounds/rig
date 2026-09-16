@@ -123,9 +123,16 @@ async fn stream_raw_terminal_round_trips_provider_type() {
                 "responses_api::streaming::StreamingCompletionResponse must round-trip"
             );
 
-            assert_eq!(typed.usage.total_tokens, terminal.usage.total_tokens);
-            assert_eq!(typed.usage.input_tokens, terminal.usage.input_tokens);
-            assert_eq!(typed.usage.output_tokens, terminal.usage.output_tokens);
+            let typed_usage = typed
+                .usage
+                .as_ref()
+                .expect("the Responses terminal carries usage");
+            assert_eq!(Some(typed_usage.total_tokens), terminal.usage.total_tokens);
+            assert_eq!(Some(typed_usage.input_tokens), terminal.usage.input_tokens);
+            assert_eq!(
+                Some(typed_usage.output_tokens),
+                terminal.usage.output_tokens
+            );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.message_id, terminal.message_id);
             assert_eq!(typed.model, terminal.model);

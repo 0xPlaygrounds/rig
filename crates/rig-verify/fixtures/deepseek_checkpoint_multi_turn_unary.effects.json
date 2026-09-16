@@ -134,10 +134,7 @@
             "input_tokens": 366,
             "output_tokens": 44,
             "total_tokens": 410,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 0
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_1",
@@ -348,10 +345,7 @@
             "input_tokens": 438,
             "output_tokens": 41,
             "total_tokens": 479,
-            "cached_input_tokens": 256,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 256
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_2",
@@ -612,10 +606,7 @@
             "input_tokens": 507,
             "output_tokens": 41,
             "total_tokens": 548,
-            "cached_input_tokens": 256,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 256
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_3",
@@ -926,10 +917,7 @@
             "input_tokens": 577,
             "output_tokens": 42,
             "total_tokens": 619,
-            "cached_input_tokens": 384,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 384
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_4",
@@ -1276,10 +1264,7 @@
             "input_tokens": 644,
             "output_tokens": 4,
             "total_tokens": 648,
-            "cached_input_tokens": 384,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 384
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_5",

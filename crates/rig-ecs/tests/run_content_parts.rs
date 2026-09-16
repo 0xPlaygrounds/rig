@@ -286,7 +286,7 @@ fn a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass() {
     let answer = |choice: Vec<AssistantContent>| {
         EffectOutcome(Ok(Outcome::Completion(CompletionResponse::new(
             choice,
-            Usage::new(),
+            Usage::default(),
             "model",
         ))))
     };

@@ -675,17 +675,17 @@ fn decode_optional_base64(sig: Option<String>) -> Result<Vec<u8>, CompletionErro
 ///
 /// Known gap (unchanged here): `tool_use_prompt_token_count` and
 /// `thoughts_token_count` are not yet surfaced, so `tool_use_prompt_tokens`
-/// and `reasoning_tokens` read as 0.
+/// and `reasoning_tokens` are `None`.
 pub(crate) fn map_usage(usage: Option<&proto::UsageMetadata>) -> completion::Usage {
     usage
         .map(|usage| completion::Usage {
-            input_tokens: usage.prompt_token_count as u64,
-            output_tokens: usage.candidates_token_count as u64,
-            total_tokens: usage.total_token_count as u64,
-            cached_input_tokens: usage.cached_content_token_count as u64,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
+            input_tokens: Some(usage.prompt_token_count as u64),
+            output_tokens: Some(usage.candidates_token_count as u64),
+            total_tokens: Some(usage.total_token_count as u64),
+            cached_input_tokens: Some(usage.cached_content_token_count as u64),
+            cache_creation_input_tokens: None,
+            tool_use_prompt_tokens: None,
+            reasoning_tokens: None,
         })
         .unwrap_or_default()
 }

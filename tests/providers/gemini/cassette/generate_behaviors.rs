@@ -86,7 +86,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
                 "provider response should preserve the model version"
             );
             assert!(
-                response.usage.output_tokens > 0,
+                response.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should reflect the truncated candidate, got {:?}",
                 response.usage
             );

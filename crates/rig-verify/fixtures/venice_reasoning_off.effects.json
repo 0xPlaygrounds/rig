@@ -76,11 +76,7 @@
           "usage": {
             "input_tokens": 1008,
             "output_tokens": 55,
-            "total_tokens": 1063,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 1063
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_1",

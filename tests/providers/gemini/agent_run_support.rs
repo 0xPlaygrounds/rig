@@ -292,7 +292,7 @@ pub(crate) fn is_tool_result_user_message(message: &Message) -> bool {
 }
 
 pub(crate) fn sum_completion_call_usage(calls: &[CompletionCall]) -> Usage {
-    let mut total = Usage::new();
+    let mut total = Usage::default();
     for call in calls {
         total += call.usage;
     }

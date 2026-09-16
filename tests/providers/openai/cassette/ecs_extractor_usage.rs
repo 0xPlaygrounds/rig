@@ -46,9 +46,9 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
             anyhow::ensure!(response.output.name.as_deref() == Some("Jane Smith"));
             anyhow::ensure!(response.output.age == Some(45));
             anyhow::ensure!(response.output.profession.as_deref() == Some("data scientist"));
-            anyhow::ensure!(response.usage.input_tokens > 0);
-            anyhow::ensure!(response.usage.output_tokens > 0);
-            anyhow::ensure!(response.usage.total_tokens > 0);
+            anyhow::ensure!(response.usage.input_tokens.is_some_and(|n| n > 0));
+            anyhow::ensure!(response.usage.output_tokens.is_some_and(|n| n > 0));
+            anyhow::ensure!(response.usage.total_tokens.is_some_and(|n| n > 0));
             Ok(())
         },
     )
@@ -79,8 +79,8 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
             anyhow::ensure!(response.output.city.as_deref() == Some("Springfield"));
             anyhow::ensure!(response.output.state.as_deref() == Some("IL"));
             anyhow::ensure!(response.output.zip_code.as_deref() == Some("62701"));
-            anyhow::ensure!(response.usage.input_tokens > 0);
-            anyhow::ensure!(response.usage.total_tokens > 0);
+            anyhow::ensure!(response.usage.input_tokens.is_some_and(|n| n > 0));
+            anyhow::ensure!(response.usage.total_tokens.is_some_and(|n| n > 0));
             Ok(())
         },
     )
@@ -109,7 +109,10 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
                 person.profession.as_deref(),
                 response.output.profession.as_deref(),
             )?;
-            anyhow::ensure!(response.usage.total_tokens > 0, "usage should be populated");
+            anyhow::ensure!(
+                response.usage.total_tokens.is_some_and(|n| n > 0),
+                "usage should be populated"
+            );
             Ok(())
         },
     )
@@ -129,7 +132,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             let person_response = person_extractor
                 .extract("Alice is a 25 year old developer.", &[])
                 .await?;
-            anyhow::ensure!(person_response.usage.total_tokens > 0);
+            anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
             let mut address_extractor = EcsExtractor::<Address>::new(
                 client.completion_model(providers::openai::GPT_4O_MINI),
                 None,
@@ -138,7 +141,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
             let address_response = address_extractor
                 .extract("456 Oak Avenue, Cambridge, MA 02139", &[])
                 .await?;
-            anyhow::ensure!(address_response.usage.total_tokens > 0);
+            anyhow::ensure!(address_response.usage.total_tokens.is_some_and(|n| n > 0));
             Ok(())
         },
     )

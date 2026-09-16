@@ -438,7 +438,7 @@ impl AgentRunner {
         mut self,
         ambient: tracing::Span,
     ) -> (Result<PromptResponse, PromptError>, Usage) {
-        let usage = Arc::new(Mutex::new(Usage::new()));
+        let usage = Arc::new(Mutex::new(Usage::default()));
         self.error_usage = Some(usage.clone());
         let result = self.run_under(ambient).await;
         let observed = result.as_ref().map_or_else(

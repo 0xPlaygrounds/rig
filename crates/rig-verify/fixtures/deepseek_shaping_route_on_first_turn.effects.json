@@ -164,8 +164,6 @@
             "output_tokens": 71,
             "total_tokens": 432,
             "cached_input_tokens": 128,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 18
           },
           "message_id": null,
@@ -369,10 +367,7 @@
             "input_tokens": 401,
             "output_tokens": 1,
             "total_tokens": 402,
-            "cached_input_tokens": 256,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 256
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_2",

@@ -255,12 +255,14 @@ pub const PROVIDER_NAME: &str = "candle";
 impl From<&CandleCompletionResponse> for Usage {
     fn from(response: &CandleCompletionResponse) -> Self {
         Usage {
-            input_tokens: response.prompt_tokens,
-            output_tokens: response.generated_tokens,
-            total_tokens: response
-                .prompt_tokens
-                .saturating_add(response.generated_tokens),
-            ..Usage::new()
+            input_tokens: Some(response.prompt_tokens),
+            output_tokens: Some(response.generated_tokens),
+            total_tokens: Some(
+                response
+                    .prompt_tokens
+                    .saturating_add(response.generated_tokens),
+            ),
+            ..Usage::default()
         }
     }
 }

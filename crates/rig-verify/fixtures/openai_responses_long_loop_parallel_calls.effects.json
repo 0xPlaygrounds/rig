@@ -284,8 +284,6 @@
             "output_tokens": 83,
             "total_tokens": 484,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -824,8 +822,6 @@
             "output_tokens": 11,
             "total_tokens": 635,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -1309,8 +1305,6 @@
             "output_tokens": 59,
             "total_tokens": 833,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -1840,8 +1834,6 @@
             "output_tokens": 11,
             "total_tokens": 861,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -2420,8 +2412,6 @@
             "output_tokens": 47,
             "total_tokens": 1055,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -3046,8 +3036,6 @@
             "output_tokens": 11,
             "total_tokens": 1083,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -3705,8 +3693,6 @@
             "output_tokens": 3,
             "total_tokens": 1142,
             "cached_input_tokens": 1024,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": "msg_REDACTED_1",

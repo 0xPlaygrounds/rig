@@ -143,7 +143,7 @@ async fn run_streamed_turn(
     );
     if !recorded {
         run.record_streamed_completion_call(
-            Usage::new(),
+            Usage::default(),
             rig::completion::ResponseIdentity::default(),
             None,
             serde_json::Value::Null,
@@ -163,7 +163,7 @@ where
             return final_response.usage;
         }
     }
-    Usage::new()
+    Usage::default()
 }
 
 #[tokio::test]
@@ -175,7 +175,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::new(), rig::completion::ResponseIdentity::default(), None, serde_json::Value::Null).is_err(),
+                fresh.record_streamed_completion_call(Usage::default(), rig::completion::ResponseIdentity::default(), None, serde_json::Value::Null).is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 
@@ -246,7 +246,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
                 response.usage
             );
             assert!(
-                response.usage.total_tokens > 0,
+                response.usage.total_tokens.is_some_and(|n| n > 0),
                 "cassette-recorded usage should be non-zero"
             );
 

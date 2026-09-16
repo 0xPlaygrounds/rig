@@ -102,8 +102,8 @@ pub enum MultiTurnStreamItem {
     /// ```rust,ignore
     /// match item {
     ///     MultiTurnStreamItem::CompletionCall(completion_call) => {
-    ///         // Zero-valued usage means the provider reported no metrics.
-    ///         if completion_call.usage.has_values() {
+    ///         // Every counter is `None` when the provider reported no metrics.
+    ///         if completion_call.usage.is_reported() {
     ///             let context_tokens = completion_call.usage.input_tokens;
     ///         }
     ///     }
@@ -212,7 +212,7 @@ pub(crate) async fn drain_stream_usage(
         }
     }
 
-    Ok(crate::completion::Usage::new())
+    Ok(crate::completion::Usage::default())
 }
 
 /// Build the final streamed content for a finished run (#1928).

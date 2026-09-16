@@ -69,7 +69,7 @@ fn main() -> Result<()> {
     println!(
         "done: {} completion call(s), {} total tokens",
         response.completion_calls().len(),
-        response.usage().total_tokens
+        response.usage().total_tokens.unwrap_or(0)
     );
     Ok(())
 }

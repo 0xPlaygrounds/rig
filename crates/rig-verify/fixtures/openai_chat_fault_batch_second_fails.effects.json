@@ -151,8 +151,6 @@
             "output_tokens": 246,
             "total_tokens": 501,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 192
           },
           "message_id": null,
@@ -276,8 +274,6 @@
             "output_tokens": 246,
             "total_tokens": 501,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 192
           },
           "finish_reason": "tool_calls",
@@ -511,8 +507,6 @@
             "output_tokens": 149,
             "total_tokens": 479,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 128
           },
           "message_id": null,
@@ -657,8 +651,6 @@
             "output_tokens": 149,
             "total_tokens": 479,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 128
           },
           "finish_reason": "stop",

@@ -636,9 +636,9 @@ async fn responses_stream_incomplete_is_a_terminal_with_partial_content() {
         terminal.finish_reason,
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(terminal.usage.input_tokens, 1);
-    assert_eq!(terminal.usage.output_tokens, 2);
-    assert_eq!(terminal.usage.total_tokens, 3);
+    assert_eq!(terminal.usage.input_tokens, Some(1));
+    assert_eq!(terminal.usage.output_tokens, Some(2));
+    assert_eq!(terminal.usage.total_tokens, Some(3));
 }
 
 #[tokio::test]

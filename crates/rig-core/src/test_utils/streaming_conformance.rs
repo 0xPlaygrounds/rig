@@ -176,7 +176,7 @@ pub const CANONICAL_SCENARIOS: &[&str] = &[
     "delta_less_choice_prelude_is_a_noop",
     "refusal_frames_deliver_text_without_error",
     "bare_terminal_after_only_unparseable_frames_fabricates_nothing",
-    "usage_variants_are_reported_or_zero_sentinel",
+    "usage_variants_are_reported_or_absent",
     "interleaved_constant_id_reasoning_preserves_order",
 ];
 
@@ -848,7 +848,7 @@ fn concat_frames(parts: &[&[WireInput]]) -> Vec<WireInput> {
 ///
 /// Pins the truncation family from round one (`rig-2257-code-review-findings-ec9f2625.md`):
 /// EOF without the provider's end event must not synthesize a successful
-/// zero-usage terminal.
+/// usage-less terminal.
 pub async fn truncation_preserves_content_without_terminal(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioReport, ConformanceError> {
@@ -1375,15 +1375,15 @@ pub async fn bare_terminal_after_only_unparseable_frames_fabricates_nothing(
 }
 
 /// The genuine terminal must report the provider's usage; a terminal without
-/// usage metrics must complete with the documented zero-usage sentinel rather
-/// than being suppressed or invented.
+/// usage metrics must complete with no counter reported rather than being
+/// suppressed or invented.
 ///
-/// Pins the zero-usage-sentinel contract on [`StreamFinal::usage`]
+/// Pins the absent-usage contract on [`StreamFinal::usage`]
 /// (round one, `rig-2257-code-review-findings-ec9f2625.md`).
-pub async fn usage_variants_are_reported_or_zero_sentinel(
+pub async fn usage_variants_are_reported_or_absent(
     fixture: &ProviderWireFixture,
 ) -> Result<ScenarioReport, ConformanceError> {
-    const SCENARIO: &str = "usage_variants_are_reported_or_zero_sentinel";
+    const SCENARIO: &str = "usage_variants_are_reported_or_absent";
     let provider = fixture.driver.provider;
     let mut observations = Vec::new();
 
@@ -1396,12 +1396,12 @@ pub async fn usage_variants_are_reported_or_zero_sentinel(
             "the genuine terminal must produce a record",
         )
     })?;
-    if response.usage.total_tokens != fixture.expected_usage_total {
+    if response.usage.total_tokens != Some(fixture.expected_usage_total) {
         return Err(ConformanceError::contract(
             SCENARIO,
             provider,
             format!(
-                "terminal usage must be preserved: expected total {}, observed {}",
+                "terminal usage must be preserved: expected total {}, observed {:?}",
                 fixture.expected_usage_total, response.usage.total_tokens
             ),
         ));
@@ -1431,14 +1431,17 @@ pub async fn usage_variants_are_reported_or_zero_sentinel(
                 "a usage-less genuine terminal must still complete the stream",
             )
         })?;
-        if response.usage.total_tokens != 0 {
+        if response.usage.is_reported() {
             return Err(ConformanceError::contract(
                 SCENARIO,
                 provider,
-                "missing usage metrics must be the zero-usage sentinel, not invented values",
+                format!(
+                    "missing usage metrics must leave every counter unreported, not invented: {:?}",
+                    response.usage
+                ),
             ));
         }
-        observations.push("usage-less terminal completed with the zero sentinel".to_string());
+        observations.push("usage-less terminal completed with no counter reported".to_string());
     }
 
     Ok(ScenarioReport {

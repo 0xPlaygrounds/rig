@@ -410,7 +410,7 @@ async fn witnessed_success_matches_the_unwitnessed_run() {
         events.iter().any(|event| matches!(
             event,
             AdapterEvent::Usage { usage: observed }
-                if observed.total_tokens == Some(usage.total_tokens)
+                if observed.total_tokens == usage.total_tokens
         )),
         "the observed usage is the terminal record's: {events:?}"
     );

@@ -75,11 +75,11 @@ async fn usage_is_reported_from_token_counts() {
                 .try_into()
                 .expect("normalization should succeed");
 
-            assert_eq!(response.usage.input_tokens, expected_input_tokens);
-            assert_eq!(response.usage.output_tokens, expected_output_tokens);
+            assert_eq!(response.usage.input_tokens, Some(expected_input_tokens));
+            assert_eq!(response.usage.output_tokens, Some(expected_output_tokens));
             assert_eq!(
                 response.usage.total_tokens,
-                response.usage.input_tokens + response.usage.output_tokens
+                Some(expected_input_tokens + expected_output_tokens)
             );
 
             assert_ne!(
@@ -87,7 +87,7 @@ async fn usage_is_reported_from_token_counts() {
                 "expected Cohere's two input counters to differ, so the assertions above are meaningful"
             );
 
-            assert_eq!(response.usage.cached_input_tokens, cached as u64);
+            assert_eq!(response.usage.cached_input_tokens, Some(cached as u64));
             assert_eq!(expected_usage, response.usage);
         },
     )

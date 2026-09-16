@@ -243,10 +243,10 @@ fn deepseek_response_preserves_metadata_and_reasoning_token_usage() {
     assert_eq!(converted.message_id, None);
     assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
     assert_eq!(converted.finish_reason(), Some(FinishReason::Stop));
-    assert_eq!(converted.usage.input_tokens, 10);
-    assert_eq!(converted.usage.cached_input_tokens, 3);
-    assert_eq!(converted.usage.output_tokens, 8);
-    assert_eq!(converted.usage.reasoning_tokens, 5);
+    assert_eq!(converted.usage.input_tokens, Some(10));
+    assert_eq!(converted.usage.cached_input_tokens, Some(3));
+    assert_eq!(converted.usage.output_tokens, Some(8));
+    assert_eq!(converted.usage.reasoning_tokens, Some(5));
 }
 
 fn response_with_finish_reason(finish_reason: &str) -> CompletionResponse {
@@ -377,8 +377,8 @@ fn deepseek_truncated_tool_arguments_do_not_destroy_the_response() {
     assert_eq!(converted.finish_reason(), Some(FinishReason::Length));
     assert_eq!(converted.response_id.as_deref(), Some("chatcmpl_truncated"));
     assert_eq!(converted.model.as_deref(), Some("deepseek-v4-flash"));
-    assert_eq!(converted.usage.total_tokens, 396);
-    assert_eq!(converted.usage.cached_input_tokens, 256);
+    assert_eq!(converted.usage.total_tokens, Some(396));
+    assert_eq!(converted.usage.cached_input_tokens, Some(256));
     assert_eq!(block_kinds(&converted.choice), vec!["text"]);
 }
 

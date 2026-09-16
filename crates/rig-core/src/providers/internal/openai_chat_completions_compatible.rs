@@ -39,7 +39,7 @@ fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionEr
     // `{"error":{"message":"rate limited"},"choices":[]}` carry — must not
     // mask the error: a masked one classifies as a normal chunk and a
     // following `[DONE]` commits a failed turn to history as a successful
-    // zero-usage completion (introduced in #1944; #2258 B6).
+    // usage-less completion (introduced in #1944; #2258 B6).
     if value
         .get("choices")
         .and_then(serde_json::Value::as_array)
@@ -296,8 +296,9 @@ impl CompatibleFinishReason {
 /// can build its own provider-native terminal record.
 #[derive(Debug, Clone)]
 pub(crate) struct CompatibleTerminal<U> {
-    /// Provider-native usage payload from the terminal event.
-    pub(crate) usage: U,
+    /// Provider-native usage payload from the terminal event; `None` when the
+    /// stream never carried one.
+    pub(crate) usage: Option<U>,
     /// Normalized finish reason, when the stream reported one.
     pub(crate) finish_reason: Option<FinishReason>,
     /// Provider-assigned response identifier, when emitted.
@@ -423,7 +424,7 @@ where
 }
 
 pub(crate) trait CompatibleStreamProfile: WasmCompatSend {
-    type Usage: Clone + Default + Into<Usage> + WasmCompatSend + 'static;
+    type Usage: Clone + Into<Usage> + WasmCompatSend + 'static;
     type Detail: WasmCompatSend + 'static;
 
     /// Classify one SSE `data:` payload as this profile's chunk shape.
@@ -791,8 +792,11 @@ where
             return;
         }
 
-        let final_usage = self.final_usage.take().unwrap_or_default();
-        record_usage(&tracing::Span::current(), &final_usage.clone().into());
+        let final_usage = self.final_usage.take();
+        record_usage(
+            &tracing::Span::current(),
+            &final_usage.clone().map(Into::into).unwrap_or_default(),
+        );
         let terminal = CompatibleTerminal {
             usage: final_usage,
             finish_reason: self.final_finish_reason.take(),
@@ -875,18 +879,20 @@ fn record_usage(span: &tracing::Span, usage: &Usage) {
         return;
     }
 
-    if !usage.has_values() {
-        // Zero-valued usage is the documented sentinel for missing provider
-        // usage metrics; leave the span fields unset.
-        return;
+    // A counter the provider did not report leaves its span field unset.
+    let fields = [
+        ("gen_ai.usage.input_tokens", usage.input_tokens),
+        ("gen_ai.usage.output_tokens", usage.output_tokens),
+        (
+            "gen_ai.usage.cache_read.input_tokens",
+            usage.cached_input_tokens,
+        ),
+    ];
+    for (field, value) in fields {
+        if let Some(value) = value {
+            span.record(field, value);
+        }
     }
-
-    span.record("gen_ai.usage.input_tokens", usage.input_tokens);
-    span.record("gen_ai.usage.output_tokens", usage.output_tokens);
-    span.record(
-        "gen_ai.usage.cache_read.input_tokens",
-        usage.cached_input_tokens,
-    );
 }
 
 fn record_response_metadata(

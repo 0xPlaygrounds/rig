@@ -22,8 +22,8 @@ struct Person {
 
 fn usage(total_tokens: u64) -> Usage {
     Usage {
-        total_tokens,
-        ..Usage::new()
+        total_tokens: Some(total_tokens),
+        ..Usage::default()
     }
 }
 
@@ -365,7 +365,7 @@ async fn usage_accumulates_across_failed_attempts() {
             name: "John".to_string()
         }
     );
-    assert_eq!(response.usage.total_tokens, 15);
+    assert_eq!(response.usage.total_tokens, Some(15));
 }
 
 async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) {
@@ -385,7 +385,7 @@ async fn assert_billed_hook_termination_usage(phase: StopFirstBilledResponseAt) 
         .expect("second attempt should succeed");
 
     assert_eq!(response.output.name, "John");
-    assert_eq!(response.usage.total_tokens, 15);
+    assert_eq!(response.usage.total_tokens, Some(15));
 }
 
 #[tokio::test]
@@ -411,7 +411,7 @@ async fn unexpected_tool_call_preserves_usage_and_retries() {
         .expect("second attempt should succeed");
 
     assert_eq!(response.output.name, "John");
-    assert_eq!(response.usage.total_tokens, 15);
+    assert_eq!(response.usage.total_tokens, Some(15));
 }
 
 #[tokio::test]
@@ -431,7 +431,7 @@ async fn unexpected_tool_call_runs_hooks_before_extractor_fallback() {
         .expect("deferred invalid call should use extractor fallback");
 
     assert_eq!(response.output.name, "John");
-    assert_eq!(response.usage.total_tokens, 15);
+    assert_eq!(response.usage.total_tokens, Some(15));
     assert_eq!(counts.invalid_tool_calls.load(Ordering::SeqCst), 1);
     assert_eq!(counts.completion_responses.load(Ordering::SeqCst), 2);
     assert_eq!(counts.model_turns.load(Ordering::SeqCst), 2);
@@ -510,7 +510,7 @@ async fn submit_call_wins_over_unexpected_sibling_call() {
         .expect("submit should remain authoritative");
 
     assert_eq!(response.output.name, "John");
-    assert_eq!(response.usage.total_tokens, 7);
+    assert_eq!(response.usage.total_tokens, Some(7));
 }
 
 #[tokio::test]
@@ -556,7 +556,7 @@ async fn transport_errors_contribute_no_usage() {
         .await
         .expect("second attempt should succeed");
 
-    assert_eq!(response.usage.total_tokens, 5);
+    assert_eq!(response.usage.total_tokens, Some(5));
 }
 
 #[tokio::test]
@@ -568,7 +568,7 @@ async fn single_successful_attempt_reports_its_own_usage() {
         .await
         .expect("extraction should succeed");
 
-    assert_eq!(response.usage.total_tokens, 7);
+    assert_eq!(response.usage.total_tokens, Some(7));
 }
 
 #[tokio::test]

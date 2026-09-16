@@ -135,7 +135,7 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
             let second = send(model, padding).await;
 
             assert!(
-                second.usage.cached_input_tokens > 0,
+                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "the second turn must read the cache for this fixture to say anything \
                  about cache-hit accounting; usage: {:?}",
                 second.usage

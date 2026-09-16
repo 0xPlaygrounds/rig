@@ -287,10 +287,7 @@
             "input_tokens": 732,
             "output_tokens": 143,
             "total_tokens": 875,
-            "cached_input_tokens": 512,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 512
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_1",
@@ -744,10 +741,7 @@
             "input_tokens": 1056,
             "output_tokens": 22,
             "total_tokens": 1078,
-            "cached_input_tokens": 896,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 896
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_2",
@@ -1141,10 +1135,7 @@
             "input_tokens": 1234,
             "output_tokens": 87,
             "total_tokens": 1321,
-            "cached_input_tokens": 1024,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 1024
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_3",
@@ -1582,10 +1573,7 @@
             "input_tokens": 1342,
             "output_tokens": 22,
             "total_tokens": 1364,
-            "cached_input_tokens": 1152,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 1152
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_4",
@@ -2070,10 +2058,7 @@
             "input_tokens": 1533,
             "output_tokens": 79,
             "total_tokens": 1612,
-            "cached_input_tokens": 1280,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 1280
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_5",
@@ -2602,10 +2587,7 @@
             "input_tokens": 1634,
             "output_tokens": 22,
             "total_tokens": 1656,
-            "cached_input_tokens": 1408,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 1408
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_6",
@@ -3166,10 +3148,7 @@
             "input_tokens": 1723,
             "output_tokens": 1,
             "total_tokens": 1724,
-            "cached_input_tokens": 1536,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 1536
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_7",

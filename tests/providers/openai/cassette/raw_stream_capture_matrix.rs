@@ -266,7 +266,7 @@ fn assert_responses_raw_matches_terminal(
     typed: &openai::responses_api::streaming::StreamingCompletionResponse,
 ) {
     assert_eq!(
-        rig::completion::Usage::from(&typed.usage),
+        rig::completion::Usage::from(typed),
         terminal.usage,
         "{scenario}: usage"
     );
@@ -356,12 +356,16 @@ async fn chat_stream_raw_round_trips_typed() {
     assert_eq!(typed.finish_reason, Some(FinishReason::Stop));
     let usage = last_chunk_field(&frames, "usage");
     assert_eq!(
-        Some(typed.usage.prompt_tokens as u64),
+        typed.usage.as_ref().map(|usage| usage.prompt_tokens as u64),
         usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );
     assert_eq!(
-        typed.usage.completion_tokens.map(|tokens| tokens as u64),
+        typed
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.completion_tokens)
+            .map(|tokens| tokens as u64),
         usage["completion_tokens"].as_u64(),
         "{SCENARIO}: terminal completion tokens"
     );
@@ -445,12 +449,12 @@ async fn responses_stream_raw_round_trips_typed() {
         "{SCENARIO}: terminal model"
     );
     assert_eq!(
-        Some(typed.usage.input_tokens),
+        typed.usage.as_ref().map(|usage| usage.input_tokens),
         completed["usage"]["input_tokens"].as_u64(),
         "{SCENARIO}: terminal input tokens"
     );
     assert_eq!(
-        Some(typed.usage.output_tokens),
+        typed.usage.as_ref().map(|usage| usage.output_tokens),
         completed["usage"]["output_tokens"].as_u64(),
         "{SCENARIO}: terminal output tokens"
     );
@@ -582,15 +586,15 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
         "{SCENARIO}: terminal model"
     );
     assert_eq!(
-        Some(typed.usage.output_tokens),
+        typed.usage.as_ref().map(|usage| usage.output_tokens),
         completed["usage"]["output_tokens"].as_u64(),
         "{SCENARIO}: terminal output tokens"
     );
     assert_eq!(
         typed
             .usage
-            .output_tokens_details
             .as_ref()
+            .and_then(|usage| usage.output_tokens_details.as_ref())
             .map(|details| details.reasoning_tokens),
         completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         "{SCENARIO}: terminal reasoning tokens"
@@ -606,7 +610,7 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
     // The normalized terminal reports the reasoning tokens the completed
     // event carried.
     assert_eq!(
-        Some(terminal.usage.reasoning_tokens),
+        terminal.usage.reasoning_tokens,
         completed["usage"]["output_tokens_details"]["reasoning_tokens"].as_u64(),
         "{SCENARIO}: normalized reasoning tokens"
     );
@@ -684,7 +688,7 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     );
     let usage = last_chunk_field(&frames, "usage");
     assert_eq!(
-        Some(typed.usage.prompt_tokens as u64),
+        typed.usage.as_ref().map(|usage| usage.prompt_tokens as u64),
         usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );

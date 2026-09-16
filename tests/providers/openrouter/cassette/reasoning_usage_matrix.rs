@@ -125,7 +125,7 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
     const SCENARIO: &str =
         "reasoning_usage_matrix/blocking_reasoning_tokens_reach_normalized_usage";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -140,7 +140,7 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
 
             let response = model.completion(request).await.expect("reasoning turn");
 
-            assert!(response.usage.reasoning_tokens > 0);
+            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
     )
@@ -150,7 +150,7 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
     // The contrast for cell 11: with reasoning shown, this route returns both
@@ -164,7 +164,7 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
     const SCENARIO: &str =
         "reasoning_usage_matrix/streaming_reasoning_tokens_reach_the_terminal_record";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -181,7 +181,7 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert!(terminal.usage.reasoning_tokens > 0);
+            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
         },
     )
@@ -191,7 +191,7 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -203,7 +203,7 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
 async fn blocking_agent_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_agent_reports_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -220,7 +220,11 @@ async fn blocking_agent_reports_reasoning_tokens() {
                 .await
                 .expect("agent reasoning turn");
 
-            assert!(response.usage.reasoning_tokens > 0, "{:?}", response.usage);
+            assert!(
+                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
+                "{:?}",
+                response.usage
+            );
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
     )
@@ -230,7 +234,7 @@ async fn blocking_agent_reports_reasoning_tokens() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the agent's aggregated usage must report exactly what the wire billed"
     );
 }
@@ -239,7 +243,7 @@ async fn blocking_agent_reports_reasoning_tokens() {
 async fn streaming_agent_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/streaming_agent_reports_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -256,7 +260,7 @@ async fn streaming_agent_reports_reasoning_tokens() {
                 .await
                 .expect("agent stream should succeed");
 
-            assert!(provider_final.usage.reasoning_tokens > 0);
+            assert!(provider_final.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = provider_final.usage.reasoning_tokens;
         },
     )
@@ -266,7 +270,7 @@ async fn streaming_agent_reports_reasoning_tokens() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -275,7 +279,7 @@ async fn streaming_agent_reports_reasoning_tokens() {
 async fn blocking_high_effort_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_high_effort_reports_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -289,7 +293,7 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens > 0);
+            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
     )
@@ -299,7 +303,7 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -308,7 +312,7 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
 async fn blocking_gpt_5_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_gpt_5_reports_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -322,7 +326,7 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens > 0);
+            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
     )
@@ -332,7 +336,7 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -341,7 +345,7 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
 async fn streaming_gpt_5_reports_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/streaming_gpt_5_reports_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -358,7 +362,7 @@ async fn streaming_gpt_5_reports_reasoning_tokens() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert!(terminal.usage.reasoning_tokens > 0);
+            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
         },
     )
@@ -368,7 +372,7 @@ async fn streaming_gpt_5_reports_reasoning_tokens() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -382,7 +386,7 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
     const SCENARIO: &str =
         "reasoning_usage_matrix/blocking_anthropic_routed_reports_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -399,7 +403,7 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens > 0);
+            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
     )
@@ -409,7 +413,7 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
     assert_recorded_provider(SCENARIO, "Anthropic");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -419,7 +423,7 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
     const SCENARIO: &str =
         "reasoning_usage_matrix/streaming_anthropic_routed_reports_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -439,7 +443,7 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert!(terminal.usage.reasoning_tokens > 0);
+            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = terminal.usage.reasoning_tokens;
         },
     )
@@ -449,7 +453,7 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
     assert_recorded_provider(SCENARIO, "Anthropic");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -459,7 +463,7 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
     const SCENARIO: &str =
         "reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -473,7 +477,7 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens > 0);
+            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
     )
@@ -483,7 +487,7 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
     assert_recorded_provider(SCENARIO, "DeepInfra");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -502,7 +506,7 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
 async fn blocking_excluded_reasoning_still_counts_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_excluded_reasoning_still_counts_tokens";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -520,7 +524,7 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
 
             let response = model.completion(request).await.expect("reasoning turn");
 
-            assert!(response.usage.reasoning_tokens > 0);
+            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
     )
@@ -530,7 +534,7 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
     // Pin the census claim in this cell's doc comment to the bytes, so it
@@ -559,9 +563,15 @@ async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
             let response = model.completion(request).await.expect("reasoning turn");
             let usage = &response.usage;
 
-            assert!(usage.reasoning_tokens > 0, "{usage:?}");
+            assert!(usage.reasoning_tokens.is_some_and(|n| n > 0), "{usage:?}");
             assert!(usage.reasoning_tokens <= usage.output_tokens, "{usage:?}");
-            assert_eq!(usage.total_tokens, usage.input_tokens + usage.output_tokens);
+            assert_eq!(
+                usage.total_tokens,
+                usage
+                    .input_tokens
+                    .zip(usage.output_tokens)
+                    .map(|(input, output)| input + output)
+            );
         },
     )
     .await;
@@ -574,7 +584,7 @@ async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
 async fn blocking_reasoning_tokens_with_tools_in_request() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_reasoning_tokens_with_tools_in_request";
 
-    let delivered = Arc::new(Mutex::new(0u64));
+    let delivered = Arc::new(Mutex::new(None));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -589,7 +599,7 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
                 .build();
 
             let response = model.completion(request).await.expect("reasoning turn");
-            assert!(response.usage.reasoning_tokens > 0);
+            assert!(response.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = response.usage.reasoning_tokens;
         },
     )
@@ -599,7 +609,7 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
     assert_recorded_provider(SCENARIO, "OpenAI");
     assert_eq!(
         *delivered.lock().expect("recorder"),
-        recorded_reasoning_tokens(SCENARIO),
+        Some(recorded_reasoning_tokens(SCENARIO)),
         "the reported reasoning tokens must be exactly what the wire billed"
     );
 }
@@ -611,7 +621,7 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
 async fn transports_agree_on_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/transports_agree_on_reasoning_tokens";
 
-    let delivered = Arc::new(Mutex::new((0u64, 0u64)));
+    let delivered = Arc::new(Mutex::new((None, None)));
     let recorder = delivered.clone();
 
     with_openrouter_usage_cassette(
@@ -643,8 +653,8 @@ async fn transports_agree_on_reasoning_tokens() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert!(blocking.usage.reasoning_tokens > 0);
-            assert!(terminal.usage.reasoning_tokens > 0);
+            assert!(blocking.usage.reasoning_tokens.is_some_and(|n| n > 0));
+            assert!(terminal.usage.reasoning_tokens.is_some_and(|n| n > 0));
             *recorder.lock().expect("recorder") = (
                 blocking.usage.reasoning_tokens,
                 terminal.usage.reasoning_tokens,
@@ -664,12 +674,12 @@ async fn transports_agree_on_reasoning_tokens() {
         "one blocking body and one final SSE usage: {recorded:?}"
     );
     assert!(
-        recorded.contains(&blocking),
-        "{blocking} not in {recorded:?}"
+        blocking.is_some_and(|count| recorded.contains(&count)),
+        "{blocking:?} not in {recorded:?}"
     );
     assert!(
-        recorded.contains(&streamed),
-        "{streamed} not in {recorded:?}"
+        streamed.is_some_and(|count| recorded.contains(&count)),
+        "{streamed:?} not in {recorded:?}"
     );
 }
 
@@ -699,7 +709,7 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
             let normalized = raw.normalize("openrouter").expect("normalization");
 
             assert!(raw_reasoning > 0);
-            assert_eq!(normalized.usage.reasoning_tokens, raw_reasoning);
+            assert_eq!(normalized.usage.reasoning_tokens, Some(raw_reasoning));
         },
     )
     .await;
@@ -746,18 +756,18 @@ async fn blocking_cost_and_cache_details_still_map() {
                 usage
                     .prompt_tokens_details
                     .as_ref()
-                    .map_or(0, |d| d.cached_tokens as u64)
+                    .map(|d| d.cached_tokens as u64)
             );
             // These two do carry weight: the new field must not have displaced
             // the cost mapping, and the reasoning share must still arrive.
             assert!(
-                normalized.usage.reasoning_tokens > 0,
+                normalized.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "{:?}",
                 normalized.usage
             );
             assert_eq!(
                 normalized.usage.output_tokens,
-                usage.completion_tokens as u64
+                Some(usage.completion_tokens as u64)
             );
         },
     )
@@ -787,8 +797,8 @@ async fn control_non_reasoning_model_reports_zero_blocking() {
                 .build();
 
             let response = model.completion(request).await.expect("plain turn");
-            assert_eq!(response.usage.reasoning_tokens, 0);
-            assert!(response.usage.output_tokens > 0);
+            assert_eq!(response.usage.reasoning_tokens, Some(0));
+            assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;
@@ -816,8 +826,8 @@ async fn control_non_reasoning_model_reports_zero_streaming() {
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("terminal record");
 
-            assert_eq!(terminal.usage.reasoning_tokens, 0);
-            assert!(terminal.usage.output_tokens > 0);
+            assert_eq!(terminal.usage.reasoning_tokens, Some(0));
+            assert!(terminal.usage.output_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;

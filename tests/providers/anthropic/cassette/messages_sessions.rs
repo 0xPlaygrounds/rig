@@ -366,7 +366,8 @@ async fn long_history_replay_nonstreaming() {
                 "provider response should preserve model and message id"
             );
             assert!(
-                response.usage.input_tokens > 0 && response.usage.output_tokens > 0,
+                response.usage.input_tokens.is_some_and(|n| n > 0)
+                    && response.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should be populated, got {:?}",
                 response.usage
             );
@@ -411,15 +412,15 @@ async fn usage_accumulates_across_streaming_multi_turn() {
             );
             let usage = final_usage.expect("stream should emit a final response with usage");
             assert!(
-                usage.input_tokens > 0,
+                usage.input_tokens.is_some_and(|n| n > 0),
                 "aggregated input tokens should be nonzero: {usage:?}"
             );
             assert!(
-                usage.output_tokens > 0,
+                usage.output_tokens.is_some_and(|n| n > 0),
                 "aggregated output tokens should be nonzero: {usage:?}"
             );
             assert!(
-                usage.total_tokens >= usage.output_tokens,
+                usage.total_tokens.unwrap_or(0) >= usage.output_tokens.unwrap_or(0),
                 "total tokens should cover output tokens: {usage:?}"
             );
         },

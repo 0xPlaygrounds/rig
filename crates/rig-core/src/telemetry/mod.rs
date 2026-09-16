@@ -955,24 +955,29 @@ impl SpanCombinator for tracing::Span {
             return;
         }
 
-        // Zero-valued usage is the documented sentinel for missing provider
-        // usage metrics; leave the span fields unset.
-        if usage.has_values() {
-            self.record("gen_ai.usage.input_tokens", usage.input_tokens);
-            self.record("gen_ai.usage.output_tokens", usage.output_tokens);
-            self.record(
+        // A counter the provider did not report leaves its span field unset;
+        // a reported zero is recorded as zero.
+        let fields = [
+            ("gen_ai.usage.input_tokens", usage.input_tokens),
+            ("gen_ai.usage.output_tokens", usage.output_tokens),
+            (
                 "gen_ai.usage.cache_read.input_tokens",
                 usage.cached_input_tokens,
-            );
-            self.record(
+            ),
+            (
                 "gen_ai.usage.cache_creation.input_tokens",
                 usage.cache_creation_input_tokens,
-            );
-            self.record(
+            ),
+            (
                 "gen_ai.usage.tool_use_prompt_tokens",
                 usage.tool_use_prompt_tokens,
-            );
-            self.record("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens);
+            ),
+            ("gen_ai.usage.reasoning_tokens", usage.reasoning_tokens),
+        ];
+        for (field, value) in fields {
+            if let Some(value) = value {
+                self.record(field, value);
+            }
         }
     }
 

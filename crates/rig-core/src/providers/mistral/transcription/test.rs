@@ -86,9 +86,9 @@ fn test_response_conversion() {
     );
     assert_eq!(response.provider, "mistral");
     assert_eq!(response.model.as_deref(), Some(VOXTRAL_MINI));
-    assert_eq!(response.usage.input_tokens, 10);
-    assert_eq!(response.usage.output_tokens, 10);
-    assert_eq!(response.usage.total_tokens, 20);
+    assert_eq!(response.usage.input_tokens, Some(10));
+    assert_eq!(response.usage.output_tokens, Some(10));
+    assert_eq!(response.usage.total_tokens, Some(20));
 }
 
 #[tokio::test]

@@ -28,7 +28,7 @@ async fn together_embeddings_send_dimensions_to_v1_path() {
         .await
         .expect("embedding request should succeed");
 
-    assert_eq!(response.usage.total_tokens, 0);
+    assert!(!response.usage.is_reported());
     let requests = http_client.requests();
     assert_eq!(requests.len(), 1);
     assert!(requests[0].uri.ends_with("/v1/embeddings"));

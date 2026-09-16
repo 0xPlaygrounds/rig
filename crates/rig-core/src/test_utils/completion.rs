@@ -120,7 +120,7 @@ impl MockTurn {
         Self {
             response: Ok(MockTurnResponse {
                 choice: vec![content],
-                usage: Usage::new(),
+                usage: Usage::default(),
                 message_id: None,
                 response_id: None,
                 provider_request_id: None,
@@ -138,7 +138,7 @@ impl MockTurn {
         Self {
             response: Ok(MockTurnResponse {
                 choice: content.into_iter().collect(),
-                usage: Usage::new(),
+                usage: Usage::default(),
                 message_id: None,
                 response_id: None,
                 provider_request_id: None,

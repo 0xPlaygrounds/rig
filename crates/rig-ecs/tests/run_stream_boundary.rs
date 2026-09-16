@@ -50,8 +50,8 @@ impl Serve for FinishingName {
             return Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("done")],
                 ProviderUsage {
-                    total_tokens: 3,
-                    ..ProviderUsage::new()
+                    total_tokens: Some(3),
+                    ..ProviderUsage::default()
                 },
                 "boundary",
             ))));
@@ -90,8 +90,8 @@ impl Serve for FinishingName {
                 .event(StreamEvent::Final(StreamFinal::new(
                     "boundary",
                     ProviderUsage {
-                        total_tokens: 7,
-                        ..ProviderUsage::new()
+                        total_tokens: Some(7),
+                        ..ProviderUsage::default()
                     },
                 )))
                 .await
@@ -196,7 +196,7 @@ fn early_skip_retains_prefix_and_drained_usage_without_dispatching_tool() {
     assert_eq!(app.world().get::<RunResult>(run).expect("result").0, "done");
     assert_eq!(
         app.world().get::<Usage>(run).expect("usage").0.total_tokens,
-        10
+        Some(10)
     );
     assert_eq!(peak.load(std::sync::atomic::Ordering::SeqCst), 0);
     assert_eq!(app.world().resource::<RepairCount>().0, 1);
@@ -304,7 +304,7 @@ fn early_repair_survives_raw_block_completion_and_provider_identity() {
     assert_eq!(peak.load(std::sync::atomic::Ordering::SeqCst), 1);
     assert_eq!(
         app.world().get::<Usage>(run).expect("usage").0.total_tokens,
-        10
+        Some(10)
     );
     let calls: Vec<_> = app
         .world_mut()

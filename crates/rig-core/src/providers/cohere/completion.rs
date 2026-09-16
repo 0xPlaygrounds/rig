@@ -127,18 +127,20 @@ pub struct Usage {
 /// and system overhead, silently undercounting.
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> crate::completion::Usage {
-        let mut normalized = crate::completion::Usage::new();
-
-        if let Some(ref tokens) = usage.tokens {
-            normalized.input_tokens = tokens.input_tokens.unwrap_or_default() as u64;
-            normalized.output_tokens = tokens.output_tokens.unwrap_or_default() as u64;
-            normalized.total_tokens = normalized.input_tokens + normalized.output_tokens;
+        let tokens = usage.tokens.as_ref();
+        let input_tokens = tokens.and_then(|t| t.input_tokens).map(|n| n as u64);
+        let output_tokens = tokens.and_then(|t| t.output_tokens).map(|n| n as u64);
+        crate::completion::Usage {
+            input_tokens,
+            output_tokens,
+            total_tokens: input_tokens
+                .zip(output_tokens)
+                .map(|(input, output)| input + output),
             // `cached_input_tokens` is a subset of `input_tokens`, so it's only
-            // reported when Cohere also reports `input_tokens`.
-            normalized.cached_input_tokens = usage.cached_tokens.unwrap_or_default() as u64;
+            // reported when Cohere also reports `tokens`.
+            cached_input_tokens: tokens.and(usage.cached_tokens).map(|n| n as u64),
+            ..Default::default()
         }
-
-        normalized
     }
 }
 

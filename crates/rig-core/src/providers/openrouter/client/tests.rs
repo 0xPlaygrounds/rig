@@ -128,28 +128,41 @@ fn completion_tokens_details_reaches_normalized_usage() {
     .expect("recorded usage should deserialize");
 
     let normalized = crate::completion::Usage::from(&usage);
-    assert_eq!(normalized.reasoning_tokens, 531);
-    assert_eq!(normalized.output_tokens, 540);
-    assert_eq!(normalized.input_tokens, 94);
-    assert_eq!(normalized.total_tokens, 634);
+    assert_eq!(normalized.reasoning_tokens, Some(531));
+    assert_eq!(normalized.output_tokens, Some(540));
+    assert_eq!(normalized.input_tokens, Some(94));
+    assert_eq!(normalized.total_tokens, Some(634));
     // The reasoning share is counted *inside* the completion tokens.
     assert!(normalized.reasoning_tokens <= normalized.output_tokens);
 }
 
-/// A non-reasoning route reports the object with a zero share; a gateway
-/// that omits it entirely, or sends it as `null`, must read the same.
+/// A gateway that omits the breakdown entirely, or sends it as `null`,
+/// reported nothing: the counter is absent, not zero.
 #[test]
-fn completion_tokens_details_absent_null_or_zero_all_read_zero() {
+fn completion_tokens_details_absent_or_null_leaves_reasoning_unreported() {
     for body in [
         r#"{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8}"#,
         r#"{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":null}"#,
+    ] {
+        let usage: Usage = serde_json::from_str(body).expect("usage should deserialize");
+        let normalized = crate::completion::Usage::from(&usage);
+        assert_eq!(normalized.reasoning_tokens, None, "body: {body}");
+        assert_eq!(normalized.output_tokens, Some(3), "body: {body}");
+    }
+}
+
+/// A non-reasoning route reports the object with a zero share; an empty
+/// object reads the same. Both are a reported zero.
+#[test]
+fn completion_tokens_details_present_with_zero_or_empty_reads_zero() {
+    for body in [
         r#"{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{"reasoning_tokens":0}}"#,
         r#"{"prompt_tokens":5,"completion_tokens":3,"total_tokens":8,"completion_tokens_details":{}}"#,
     ] {
         let usage: Usage = serde_json::from_str(body).expect("usage should deserialize");
         let normalized = crate::completion::Usage::from(&usage);
-        assert_eq!(normalized.reasoning_tokens, 0, "body: {body}");
-        assert_eq!(normalized.output_tokens, 3, "body: {body}");
+        assert_eq!(normalized.reasoning_tokens, Some(0), "body: {body}");
+        assert_eq!(normalized.output_tokens, Some(3), "body: {body}");
     }
 }
 
@@ -164,7 +177,10 @@ fn completion_tokens_details_tolerates_unmodeled_siblings() {
     )
     .expect("usage should deserialize");
 
-    assert_eq!(crate::completion::Usage::from(&usage).reasoning_tokens, 7);
+    assert_eq!(
+        crate::completion::Usage::from(&usage).reasoning_tokens,
+        Some(7)
+    );
 }
 
 /// The completion-token fallback (`total - prompt` for gateways that omit
@@ -178,8 +194,8 @@ fn completion_tokens_details_does_not_disturb_the_output_token_fallback() {
     .expect("usage should deserialize");
 
     let normalized = crate::completion::Usage::from(&usage);
-    assert_eq!(normalized.output_tokens, 20);
-    assert_eq!(normalized.reasoning_tokens, 12);
+    assert_eq!(normalized.output_tokens, Some(20));
+    assert_eq!(normalized.reasoning_tokens, Some(12));
 }
 
 /// Round-tripping the type must not start sending a breakdown rig never

@@ -222,9 +222,6 @@
             "input_tokens": 147,
             "output_tokens": 19,
             "total_tokens": 248,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 82
           },
           "message_id": null,
@@ -473,9 +470,6 @@
             "input_tokens": 180,
             "output_tokens": 19,
             "total_tokens": 240,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 41
           },
           "message_id": null,
@@ -766,9 +760,6 @@
             "input_tokens": 213,
             "output_tokens": 8,
             "total_tokens": 250,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 29
           },
           "message_id": null,

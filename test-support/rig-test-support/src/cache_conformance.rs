@@ -153,14 +153,35 @@ impl CacheSupport {
     /// The prompt tokens the provider billed for a turn, however it reports them.
     ///
     /// This is [`assert_hit_ratio`]'s denominator. See [`CacheAccounting`].
+    /// A turn whose usage mapping reported no input tokens has no denominator:
+    /// that is a mapping bug, not a cache miss, and fails here by name. An
+    /// absent cache counter is nothing cached.
+    ///
+    /// # Panics
+    /// When `usage.input_tokens` is `None`.
     pub fn prompt_tokens(&self, usage: &Usage) -> u64 {
+        let Some(input) = usage.input_tokens else {
+            panic!(
+                "[{}] the usage mapping reported no input tokens ({usage:?}); a cache ratio over \
+                 unreported usage is undefined",
+                self.provider
+            );
+        };
         match self.accounting {
-            CacheAccounting::Alongside => {
-                usage.input_tokens + usage.cached_input_tokens + usage.cache_creation_input_tokens
-            }
-            CacheAccounting::Subset => usage.input_tokens,
+            CacheAccounting::Alongside => input + cached_reads(usage) + cached_writes(usage),
+            CacheAccounting::Subset => input,
         }
     }
+}
+
+/// Cache reads a turn reported; an absent counter is nothing read.
+fn cached_reads(usage: &Usage) -> u64 {
+    usage.cached_input_tokens.unwrap_or(0)
+}
+
+/// Cache writes a turn reported; an absent counter is nothing written.
+fn cached_writes(usage: &Usage) -> u64 {
+    usage.cache_creation_input_tokens.unwrap_or(0)
 }
 
 /// Deterministic padding sentence, shared with the Anthropic suite's idiom.
@@ -387,7 +408,7 @@ impl CacheObservation {
             .enumerate()
             .map(|(index, usage)| {
                 format!(
-                    "  turn {}: prompt={} input={} cached={} created={} output={} total={}",
+                    "  turn {}: prompt={} input={:?} cached={:?} created={:?} output={:?} total={:?}",
                     index + 1,
                     support.prompt_tokens(usage),
                     usage.input_tokens,
@@ -575,7 +596,7 @@ pub fn assert_warms(observation: &CacheObservation, support: &CacheSupport, cont
 
     if support.reports_writes {
         assert!(
-            turn.cache_creation_input_tokens > 0 || turn.cached_input_tokens > 0,
+            cached_writes(turn) > 0 || cached_reads(turn) > 0,
             "[{}] {context}: turn 1 should create or read cache tokens — this provider reports \
              writes, so a turn that does neither means nothing was cached.\n{}",
             support.provider,
@@ -583,10 +604,10 @@ pub fn assert_warms(observation: &CacheObservation, support: &CacheSupport, cont
         );
     } else {
         assert_eq!(
-            turn.cache_creation_input_tokens,
+            cached_writes(turn),
             0,
             "[{}] {context}: descriptor says this provider cannot report cache writes, but turn 1 \
-             reported {} — the descriptor or the usage mapping is wrong.\n{}",
+             reported {:?} — the descriptor or the usage mapping is wrong.\n{}",
             support.provider,
             turn.cache_creation_input_tokens,
             observation.report(support)
@@ -609,7 +630,7 @@ pub fn assert_warms(observation: &CacheObservation, support: &CacheSupport, cont
 pub fn assert_hits(observation: &CacheObservation, support: &CacheSupport, context: &str) {
     let turn = observation.turn(1, support);
     assert!(
-        turn.cached_input_tokens > 0,
+        cached_reads(turn) > 0,
         "[{}] {context}: turn 2 is byte-identical to turn 1 and must read cached tokens, but read \
          none. Either the provider declined to cache (check the padding against \
          min_cacheable_tokens) or rig moved the wire prefix between two requests that should have \
@@ -637,14 +658,14 @@ pub fn assert_hit_ratio(observation: &CacheObservation, support: &CacheSupport, 
         observation.report(support)
     );
 
-    let ratio = hit.cached_input_tokens as f64 / denominator as f64;
+    let ratio = cached_reads(hit) as f64 / denominator as f64;
     assert!(
         ratio >= support.hit_ratio_floor,
         "[{}] {context}: turn 2 read {} cached tokens against turn 1's {} billed prompt tokens — \
          a {:.1}% hit ratio, below this provider's {:.0}% floor. Caching is *on* but degraded: \
          most of the prefix is being re-billed on every turn.\n{}",
         support.provider,
-        hit.cached_input_tokens,
+        cached_reads(hit),
         denominator,
         ratio * 100.0,
         support.hit_ratio_floor * 100.0,
@@ -681,7 +702,7 @@ pub fn assert_growth_still_hits(
         observation.report(support)
     );
 
-    let ratio = grown.cached_input_tokens as f64 / denominator as f64;
+    let ratio = cached_reads(grown) as f64 / denominator as f64;
     assert!(
         ratio >= support.hit_ratio_floor,
         "[{}] {context}: turn 3 appended an assistant turn and a user turn, so every byte turn 2 \
@@ -690,7 +711,7 @@ pub fn assert_growth_still_hits(
          rewrote an earlier turn on the way back in, which busts the cache for the rest of the \
          conversation.\n{}",
         support.provider,
-        grown.cached_input_tokens,
+        cached_reads(grown),
         denominator,
         ratio * 100.0,
         support.hit_ratio_floor * 100.0,
@@ -988,7 +1009,7 @@ pub fn assert_agent_growth_still_hits(
         let ratio = if denominator == 0 {
             0.0
         } else {
-            usage.cached_input_tokens as f64 / denominator as f64
+            cached_reads(usage) as f64 / denominator as f64
         };
 
         if ever_hit {
@@ -1000,7 +1021,7 @@ pub fn assert_agent_growth_still_hits(
                  something rewrote an earlier turn between iterations.\n{}",
                 support.provider,
                 index + 1,
-                usage.cached_input_tokens,
+                cached_reads(usage),
                 denominator,
                 ratio * 100.0,
                 support.hit_ratio_floor * 100.0,
@@ -1054,7 +1075,7 @@ pub fn assert_no_meaningful_prefix_cache(
         let ratio = if turn_denominator == 0 {
             0.0
         } else {
-            usage.cached_input_tokens as f64 / turn_denominator as f64
+            cached_reads(usage) as f64 / turn_denominator as f64
         };
         assert!(
             ratio < support.hit_ratio_floor,
@@ -1065,7 +1086,7 @@ pub fn assert_no_meaningful_prefix_cache(
              late) and drop the provider's coverage opt-out.\n{}",
             support.provider,
             index + 1,
-            usage.cached_input_tokens,
+            cached_reads(usage),
             ratio * 100.0,
             observation.report(support)
         );
@@ -1109,7 +1130,7 @@ pub fn assert_cache_warms_over_turns(
             if denominator == 0 {
                 0.0
             } else {
-                usage.cached_input_tokens as f64 / denominator as f64
+                cached_reads(usage) as f64 / denominator as f64
             }
         })
         .collect();
@@ -1206,7 +1227,7 @@ pub fn assert_cache_read_is_surfaced(
             if denominator == 0 {
                 0.0
             } else {
-                usage.cached_input_tokens as f64 / denominator as f64
+                cached_reads(usage) as f64 / denominator as f64
             }
         })
         .fold(0.0_f64, f64::max);
@@ -1242,7 +1263,7 @@ pub fn report_and_assert_live(
     let ratio = if denominator == 0 {
         0.0
     } else {
-        hit.cached_input_tokens as f64 / denominator as f64
+        cached_reads(hit) as f64 / denominator as f64
     };
 
     eprintln!(
@@ -1251,10 +1272,10 @@ pub fn report_and_assert_live(
         support.provider,
         scenario,
         denominator,
-        warm.cache_creation_input_tokens,
-        hit.cached_input_tokens,
+        cached_writes(warm),
+        cached_reads(hit),
         ratio * 100.0,
-        grown.cached_input_tokens,
+        cached_reads(grown),
     );
 
     assert_cache_conformance(observation, support, scenario);

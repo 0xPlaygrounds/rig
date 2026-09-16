@@ -121,7 +121,7 @@ async fn assert_blocking_tool_call(client: openai::Client) {
         response.choice
     );
     assert!(
-        response.usage.total_tokens > 0,
+        response.usage.total_tokens.is_some_and(|n| n > 0),
         "usage must survive, got {:?}",
         response.usage
     );

@@ -318,7 +318,7 @@ async fn refusal_only_stream_delivers_the_refusal_text() {
     assert_eq!(text, "I'm sorry, I can't help.");
     let terminal = terminal.expect("a refusal turn still ends with a terminal record");
     assert_eq!(terminal.finish_reason, Some(NormalizedFinishReason::Stop));
-    assert_eq!(terminal.usage.output_tokens, 8);
+    assert_eq!(terminal.usage.output_tokens, Some(8));
 }
 
 #[test]
@@ -586,8 +586,8 @@ async fn test_streaming_usage_only_chunk_is_not_ignored() {
     }
 
     let usage = final_usage.expect("expected a final response with usage");
-    assert_eq!(usage.input_tokens, 10);
-    assert_eq!(usage.total_tokens, 15);
+    assert_eq!(usage.input_tokens, Some(10));
+    assert_eq!(usage.total_tokens, Some(15));
 }
 
 #[tokio::test]
@@ -746,9 +746,9 @@ async fn test_streaming_reasoning_content_and_text_chunks_are_incremental() {
     assert_eq!(text_chunks, vec!["hel".to_string(), "lo".to_string()]);
 
     let response = final_response.expect("expected final usage");
-    assert_eq!(response.usage.input_tokens, 4);
-    assert_eq!(response.usage.output_tokens, 6);
-    assert_eq!(response.usage.total_tokens, 10);
+    assert_eq!(response.usage.input_tokens, Some(4));
+    assert_eq!(response.usage.output_tokens, Some(6));
+    assert_eq!(response.usage.total_tokens, Some(10));
     assert_eq!(response.finish_reason, Some(NormalizedFinishReason::Stop));
 }
 
@@ -786,21 +786,18 @@ async fn test_streaming_cached_input_tokens_populated() {
         serde_json::from_value(final_response.expect("expected a final response"))
             .expect("raw is the provider's terminal record");
 
+    let usage = res.usage.expect("the terminal carries usage");
     // Verify provider-level usage has the cached_tokens
     assert_eq!(
-        res.usage
-            .prompt_tokens_details
-            .as_ref()
-            .unwrap()
-            .cached_tokens,
+        usage.prompt_tokens_details.as_ref().unwrap().cached_tokens,
         80
     );
 
     // Verify core Usage also has cached_input_tokens
-    let core_usage = crate::completion::Usage::from(res.usage);
-    assert_eq!(core_usage.cached_input_tokens, 80);
-    assert_eq!(core_usage.input_tokens, 100);
-    assert_eq!(core_usage.total_tokens, 110);
+    let core_usage = crate::completion::Usage::from(usage);
+    assert_eq!(core_usage.cached_input_tokens, Some(80));
+    assert_eq!(core_usage.input_tokens, Some(100));
+    assert_eq!(core_usage.total_tokens, Some(110));
 }
 
 /// Reproduces the bug where a proxy/gateway sends multiple parallel tool
@@ -1157,6 +1154,6 @@ mod raw_capture {
         assert_eq!(record.usage, renormalized.usage);
         assert_eq!(record.finish_reason, Some(NormalizedFinishReason::Stop));
         assert_eq!(record.model.as_deref(), Some("gpt-4o-mini-2024-07-18"));
-        assert_eq!(record.usage.total_tokens, 4);
+        assert_eq!(record.usage.total_tokens, Some(4));
     }
 }

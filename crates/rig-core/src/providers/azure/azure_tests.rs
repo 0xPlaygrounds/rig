@@ -294,8 +294,8 @@ async fn embedding_preserves_deployment_url_and_body_and_reports_usage() {
         .expect("embedding should succeed");
 
     // Usage is now surfaced instead of the zero-usage default.
-    assert_eq!(response.usage.input_tokens, 4);
-    assert_eq!(response.usage.total_tokens, 4);
+    assert_eq!(response.usage.input_tokens, Some(4));
+    assert_eq!(response.usage.total_tokens, Some(4));
     assert_eq!(response.embeddings.len(), 1);
 
     // The deployment stays in the URL and the body carries no `model`

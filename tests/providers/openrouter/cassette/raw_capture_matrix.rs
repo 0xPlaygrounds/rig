@@ -98,23 +98,17 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     );
     assert_eq!(
         response.usage.input_tokens,
-        body["usage"]["prompt_tokens"]
-            .as_u64()
-            .expect("prompt_tokens"),
+        body["usage"]["prompt_tokens"].as_u64(),
         "input tokens"
     );
     assert_eq!(
         response.usage.output_tokens,
-        body["usage"]["completion_tokens"]
-            .as_u64()
-            .expect("completion_tokens"),
+        body["usage"]["completion_tokens"].as_u64(),
         "output tokens"
     );
     assert_eq!(
         response.usage.total_tokens,
-        body["usage"]["total_tokens"]
-            .as_u64()
-            .expect("total_tokens"),
+        body["usage"]["total_tokens"].as_u64(),
         "total tokens"
     );
     assert_eq!(

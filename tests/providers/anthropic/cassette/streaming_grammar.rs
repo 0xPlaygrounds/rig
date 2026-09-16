@@ -99,7 +99,7 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "unexpected finish reason"
     );
     assert!(
-        terminal.usage.total_tokens > 0,
+        terminal.usage.total_tokens.is_some_and(|n| n > 0),
         "terminal record should carry non-zero usage, got {:?}",
         terminal.usage
     );

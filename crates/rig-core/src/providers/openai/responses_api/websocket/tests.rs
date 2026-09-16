@@ -1,7 +1,7 @@
 use super::*;
 use crate::http_client::{HeaderMap, StatusCode};
 use crate::providers::openai::responses_api::{
-    IncompleteDetailsReason, ResponseError, ResponseObject,
+    IncompleteDetailsReason, ResponseError, ResponseObject, ResponsesUsage,
 };
 use crate::ws_client::CloseFrame;
 use serde_json::json;

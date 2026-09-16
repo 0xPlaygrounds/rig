@@ -106,12 +106,11 @@ async fn drain_openai_responses_websocket_events(
 ) -> conformance::DrainedStream {
     use ResponsesWebSocketEvent;
     use rig_core::providers::internal::adapter::AdapterOutput;
-    use rig_core::providers::openai::responses_api::ResponsesUsage;
     use rig_core::providers::openai::responses_api::streaming::{
         RawChoiceAccumulator, ResponseChunkKind, ResponsesStreamOptions,
     };
 
-    let mut accumulator = RawChoiceAccumulator::new(provider, ResponsesUsage::new());
+    let mut accumulator = RawChoiceAccumulator::new(provider, None);
     let mut out = AdapterOutput::new();
     let mut errored = false;
     for event in events {

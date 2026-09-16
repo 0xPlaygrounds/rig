@@ -180,8 +180,8 @@ pub trait EmbeddingModel: WasmCompatSend + WasmCompatSync {
 pub struct EmbeddingResponse {
     /// The embeddings returned by the provider, one per input text, in input order.
     pub embeddings: Vec<Embedding>,
-    /// Token usage for this request. Zero-valued when the provider reported
-    /// none — the sentinel [`Usage`] documents.
+    /// Token usage for this request; every counter is `None` when the
+    /// provider reported none (see [`Usage`]).
     #[serde(default)]
     pub usage: Usage,
     /// Stable descriptor name of the provider that produced this response,
@@ -213,7 +213,7 @@ impl EmbeddingResponse {
     pub fn new(embeddings: Vec<Embedding>, provider: impl Into<String>) -> Self {
         Self {
             embeddings,
-            usage: Usage::new(),
+            usage: Usage::default(),
             provider: provider.into(),
             model: None,
             response_id: None,
@@ -264,8 +264,8 @@ pub trait NormalizeEmbeddingResponse {
 pub struct ImageEmbeddingResponse {
     /// The embeddings returned by the provider, one per input image, in input order.
     pub embeddings: Vec<Embedding>,
-    /// Token usage for this request. Zero-valued when the provider reported
-    /// none — the sentinel [`Usage`] documents.
+    /// Token usage for this request; every counter is `None` when the
+    /// provider reported none (see [`Usage`]).
     #[serde(default)]
     pub usage: Usage,
     /// Stable descriptor name of the provider that produced this response,
@@ -297,7 +297,7 @@ impl ImageEmbeddingResponse {
     pub fn new(embeddings: Vec<Embedding>, provider: impl Into<String>) -> Self {
         Self {
             embeddings,
-            usage: Usage::new(),
+            usage: Usage::default(),
             provider: provider.into(),
             model: None,
             response_id: None,

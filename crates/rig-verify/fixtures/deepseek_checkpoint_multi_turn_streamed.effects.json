@@ -130,10 +130,7 @@
             "input_tokens": 366,
             "output_tokens": 38,
             "total_tokens": 404,
-            "cached_input_tokens": 128,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 128
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_1",
@@ -276,10 +273,7 @@
             "input_tokens": 366,
             "output_tokens": 38,
             "total_tokens": 404,
-            "cached_input_tokens": 128,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 128
           },
           "finish_reason": "tool_calls",
           "message_id": null,
@@ -468,10 +462,7 @@
             "input_tokens": 432,
             "output_tokens": 41,
             "total_tokens": 473,
-            "cached_input_tokens": 256,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 256
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_2",
@@ -638,10 +629,7 @@
             "input_tokens": 432,
             "output_tokens": 41,
             "total_tokens": 473,
-            "cached_input_tokens": 256,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 256
           },
           "finish_reason": "tool_calls",
           "message_id": null,
@@ -880,10 +868,7 @@
             "input_tokens": 501,
             "output_tokens": 41,
             "total_tokens": 542,
-            "cached_input_tokens": 256,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 256
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_3",
@@ -1050,10 +1035,7 @@
             "input_tokens": 501,
             "output_tokens": 41,
             "total_tokens": 542,
-            "cached_input_tokens": 256,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 256
           },
           "finish_reason": "tool_calls",
           "message_id": null,
@@ -1342,10 +1324,7 @@
             "input_tokens": 571,
             "output_tokens": 42,
             "total_tokens": 613,
-            "cached_input_tokens": 384,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 384
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_4",
@@ -1520,10 +1499,7 @@
             "input_tokens": 571,
             "output_tokens": 42,
             "total_tokens": 613,
-            "cached_input_tokens": 384,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 384
           },
           "finish_reason": "tool_calls",
           "message_id": null,
@@ -1848,10 +1824,7 @@
             "input_tokens": 638,
             "output_tokens": 4,
             "total_tokens": 642,
-            "cached_input_tokens": 384,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 384
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_5",
@@ -1926,10 +1899,7 @@
             "input_tokens": 638,
             "output_tokens": 4,
             "total_tokens": 642,
-            "cached_input_tokens": 384,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 384
           },
           "finish_reason": "stop",
           "message_id": null,

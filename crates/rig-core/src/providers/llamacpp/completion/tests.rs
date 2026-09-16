@@ -46,7 +46,7 @@ fn timings_survive_deserialization_and_normalization() {
     assert_eq!(normalized.provider, "llamacpp");
     // `cache_n` and the normalized cached-token count are independently
     // populated and must agree.
-    assert_eq!(normalized.usage.cached_input_tokens, 8);
+    assert_eq!(normalized.usage.cached_input_tokens, Some(8));
 }
 
 /// A response with no `timings` is not an error.

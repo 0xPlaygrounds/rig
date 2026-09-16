@@ -114,8 +114,6 @@
             "output_tokens": 547,
             "total_tokens": 771,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 448
           },
           "message_id": null,

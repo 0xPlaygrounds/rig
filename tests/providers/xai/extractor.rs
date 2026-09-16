@@ -35,7 +35,10 @@ async fn extractor_smoke() {
         assert_nonempty_response(first_name);
         assert_nonempty_response(last_name);
         assert_nonempty_response(job);
-        assert!(response.usage.total_tokens > 0, "usage should be populated");
+        assert!(
+            response.usage.total_tokens.is_some_and(|n| n > 0),
+            "usage should be populated"
+        );
     })
     .await;
 }

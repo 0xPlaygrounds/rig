@@ -44,7 +44,7 @@ async fn nonstreaming_multi_turn_executes_tools_and_reports_usage() {
                 response.requests()
             );
             assert!(
-                response.usage.total_tokens > 0,
+                response.usage.total_tokens.is_some_and(|n| n > 0),
                 "aggregated usage should be recorded: {:?}",
                 response.usage
             );

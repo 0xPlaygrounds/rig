@@ -199,23 +199,17 @@ fn assert_terminal_reproduces_frame(
     assert_eq!(terminal.model.as_deref(), frame["model"].as_str(), "model");
     assert_eq!(
         terminal.usage.input_tokens,
-        frame["usage"]["prompt_tokens"]
-            .as_u64()
-            .expect("prompt_tokens"),
+        frame["usage"]["prompt_tokens"].as_u64(),
         "input tokens"
     );
     assert_eq!(
         terminal.usage.output_tokens,
-        frame["usage"]["completion_tokens"]
-            .as_u64()
-            .expect("completion_tokens"),
+        frame["usage"]["completion_tokens"].as_u64(),
         "output tokens"
     );
     assert_eq!(
         terminal.usage.total_tokens,
-        frame["usage"]["total_tokens"]
-            .as_u64()
-            .expect("total_tokens"),
+        frame["usage"]["total_tokens"].as_u64(),
         "total tokens"
     );
     assert!(

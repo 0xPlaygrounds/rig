@@ -33,8 +33,8 @@ crate::provider_response::provider_error_enum!(
 pub struct ImageGenerationResponse {
     /// The generated image, decoded to bytes.
     pub image: Vec<u8>,
-    /// Usage as the provider reported it. Zero-valued when the provider
-    /// reported none — the same sentinel [`Usage`] documents for completions.
+    /// Usage as the provider reported it; every counter is `None` when the
+    /// provider reported none (see [`Usage`]).
     #[serde(default)]
     pub usage: Usage,
     /// Stable descriptor name of the provider that produced this response,
@@ -68,7 +68,7 @@ impl ImageGenerationResponse {
     pub fn new(image: Vec<u8>, provider: impl Into<String>) -> Self {
         Self {
             image,
-            usage: Usage::new(),
+            usage: Usage::default(),
             provider: provider.into(),
             model: None,
             response_id: None,

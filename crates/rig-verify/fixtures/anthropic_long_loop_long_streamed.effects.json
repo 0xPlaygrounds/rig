@@ -229,9 +229,7 @@
             "output_tokens": 57,
             "total_tokens": 1128,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_1",
           "response_id": null,
@@ -358,9 +356,7 @@
             "output_tokens": 57,
             "total_tokens": 1128,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_1",
@@ -581,9 +577,7 @@
             "output_tokens": 66,
             "total_tokens": 1233,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_2",
           "response_id": null,
@@ -720,9 +714,7 @@
             "output_tokens": 66,
             "total_tokens": 1233,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_2",
@@ -993,9 +985,7 @@
             "output_tokens": 70,
             "total_tokens": 1387,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_3",
           "response_id": null,
@@ -1140,9 +1130,7 @@
             "output_tokens": 70,
             "total_tokens": 1387,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_3",
@@ -1463,9 +1451,7 @@
             "output_tokens": 70,
             "total_tokens": 1567,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_4",
           "response_id": null,
@@ -1594,9 +1580,7 @@
             "output_tokens": 70,
             "total_tokens": 1567,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_4",
@@ -1965,9 +1949,7 @@
             "output_tokens": 49,
             "total_tokens": 1668,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_5",
           "response_id": null,
@@ -2086,9 +2068,7 @@
             "output_tokens": 49,
             "total_tokens": 1668,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_5",
@@ -2508,9 +2488,7 @@
             "output_tokens": 148,
             "total_tokens": 1993,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_6",
           "response_id": null,
@@ -2848,9 +2826,7 @@
             "output_tokens": 148,
             "total_tokens": 1993,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_6",
@@ -3318,9 +3294,7 @@
             "output_tokens": 45,
             "total_tokens": 2061,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_7",
           "response_id": null,
@@ -3423,9 +3397,7 @@
             "output_tokens": 45,
             "total_tokens": 2061,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_7",
@@ -3943,9 +3915,7 @@
             "output_tokens": 99,
             "total_tokens": 2346,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_8",
           "response_id": null,
@@ -4138,9 +4108,7 @@
             "output_tokens": 99,
             "total_tokens": 2346,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_8",
@@ -4709,9 +4677,7 @@
             "output_tokens": 122,
             "total_tokens": 2509,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_9",
           "response_id": null,
@@ -4985,9 +4951,7 @@
             "output_tokens": 122,
             "total_tokens": 2509,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_9",
@@ -5604,9 +5568,7 @@
             "output_tokens": 45,
             "total_tokens": 2577,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_10",
           "response_id": null,
@@ -5709,9 +5671,7 @@
             "output_tokens": 45,
             "total_tokens": 2577,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": "msg_REDACTED_10",
@@ -6360,9 +6320,7 @@
             "output_tokens": 14,
             "total_tokens": 2664,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "message_id": "msg_REDACTED_11",
           "response_id": null,
@@ -6434,9 +6392,7 @@
             "output_tokens": 14,
             "total_tokens": 2664,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cache_creation_input_tokens": 0
           },
           "finish_reason": "stop",
           "message_id": "msg_REDACTED_11",

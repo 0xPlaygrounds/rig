@@ -1186,7 +1186,7 @@ fn answer_open(
                         vec![rig_core::message::AssistantContent::text(
                             "served by a system",
                         )],
-                        rig_core::completion::Usage::new(),
+                        rig_core::completion::Usage::default(),
                         "open",
                     ),
                 ))));

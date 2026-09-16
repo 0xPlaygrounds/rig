@@ -77,8 +77,8 @@ pub struct RerankResponse {
     /// still produced a ranking.
     #[serde(default)]
     pub model: Option<String>,
-    /// Token usage for this rerank request. Zero-valued when the provider
-    /// reported none — the sentinel [`Usage`] documents.
+    /// Token usage for this rerank request; every counter is `None` when the
+    /// provider reported none (see [`Usage`]).
     #[serde(default)]
     pub usage: Usage,
     /// Stable descriptor name of the provider that produced this response,
@@ -108,7 +108,7 @@ impl RerankResponse {
         Self {
             results,
             model: None,
-            usage: Usage::new(),
+            usage: Usage::default(),
             provider: provider.into(),
             response_id: None,
             provider_request_id: None,

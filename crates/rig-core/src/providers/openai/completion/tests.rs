@@ -1533,7 +1533,7 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         converted.finish_reason(),
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(converted.usage.total_tokens, 396);
+    assert_eq!(converted.usage.total_tokens, Some(396));
     assert_eq!(converted.response_id.as_deref(), Some("chatcmpl-truncated"));
     let names = converted
         .choice

@@ -470,7 +470,7 @@ impl rig_core::serve::Serve for RetryModel {
         Reply::Outcome(match index {
             1 => Ok(Outcome::Completion(CompletionResponse::new(
                 vec![call("c1", "add", serde_json::json!({"x":1,"y":2}))],
-                Usage::new(),
+                Usage::default(),
                 "retry-model",
             ))),
             2 => Err(ErrorReport::new(ErrorKind::ProviderResponse, "transient")
@@ -478,7 +478,7 @@ impl rig_core::serve::Serve for RetryModel {
                 .with_retryable(true)),
             3 => Ok(Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("done")],
-                Usage::new(),
+                Usage::default(),
                 "retry-model",
             ))),
             _ => panic!("unexpected repeated request"),

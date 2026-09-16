@@ -223,7 +223,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                 .await
                 .expect("the warm turn should succeed");
             assert!(
-                second.usage.cached_input_tokens > 0,
+                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "the slot must be warm before the switch is tested: {:?}",
                 second.usage
             );
@@ -241,7 +241,8 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                 .await
                 .expect("cache_prompt: false should succeed");
             assert_eq!(
-                disabled.usage.cached_input_tokens, 0,
+                disabled.usage.cached_input_tokens,
+                Some(0),
                 "the switch must actually disable the read: {:?}",
                 disabled.usage
             );
@@ -258,7 +259,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
                 .await
                 .expect("the turn after the switch should succeed");
             assert!(
-                after.usage.cached_input_tokens > 0,
+                after.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "one disabled turn must not evict the slot: {:?}",
                 after.usage
             );

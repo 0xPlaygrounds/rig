@@ -13,13 +13,10 @@ use rig_agent::test_utils::{MockAddTool, MockCompletionModel, MockTurn};
 fn simple_text_turn() -> MockTurn {
     MockTurn::text("hello from mock")
         .with_usage(Usage {
-            input_tokens: 10,
-            output_tokens: 5,
-            total_tokens: 15,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
+            input_tokens: Some(10),
+            output_tokens: Some(5),
+            total_tokens: Some(15),
+            ..Default::default()
         })
         .with_message_id("msg_mock_1")
 }
@@ -32,24 +29,18 @@ fn tool_then_text_model() -> MockCompletionModel {
     MockCompletionModel::new([
         MockTurn::tool_call("tc_1", "add", serde_json::json!({"x": 2, "y": 3}))
             .with_usage(Usage {
-                input_tokens: 15,
-                output_tokens: 8,
-                total_tokens: 23,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
+                input_tokens: Some(15),
+                output_tokens: Some(8),
+                total_tokens: Some(23),
+                ..Default::default()
             })
             .with_message_id("msg_tool"),
         MockTurn::text("The answer is 5")
             .with_usage(Usage {
-                input_tokens: 20,
-                output_tokens: 4,
-                total_tokens: 24,
-                cached_input_tokens: 0,
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
+                input_tokens: Some(20),
+                output_tokens: Some(4),
+                total_tokens: Some(24),
+                ..Default::default()
             })
             .with_message_id("msg_text"),
     ])
@@ -85,8 +76,8 @@ async fn prompt_response_populates_messages() {
     let resp = agent.prompt("hi").await.expect("prompt should succeed");
 
     assert_eq!(resp.output, "hello from mock");
-    assert_eq!(resp.usage.input_tokens, 10);
-    assert_eq!(resp.usage.output_tokens, 5);
+    assert_eq!(resp.usage.input_tokens, Some(10));
+    assert_eq!(resp.usage.output_tokens, Some(5));
 
     // Messages should be populated
     let messages = resp
@@ -227,8 +218,8 @@ async fn multi_turn_messages_include_tool_calls() {
     }
 
     // Usage should be aggregated across both turns
-    assert_eq!(resp.usage.input_tokens, 35); // 15 + 20
-    assert_eq!(resp.usage.output_tokens, 12); // 8 + 4
+    assert_eq!(resp.usage.input_tokens, Some(35)); // 15 + 20
+    assert_eq!(resp.usage.output_tokens, Some(12)); // 8 + 4
 }
 
 /// Test 6: `PromptResponse::new()` backward compatibility — 2-argument constructor
@@ -237,7 +228,7 @@ async fn multi_turn_messages_include_tool_calls() {
 async fn prompt_response_new_backward_compat() {
     use rig::agent::PromptResponse;
 
-    let resp = PromptResponse::new("output text", Usage::new());
+    let resp = PromptResponse::new("output text", Usage::default());
 
     assert_eq!(resp.output, "output text");
     assert!(resp.messages.is_none());
@@ -248,7 +239,7 @@ async fn prompt_response_new_backward_compat() {
 async fn prompt_response_display_shows_output() {
     use rig::agent::PromptResponse;
 
-    let resp = PromptResponse::new("the answer is 42", Usage::new());
+    let resp = PromptResponse::new("the answer is 42", Usage::default());
 
     assert_eq!(format!("{resp}"), "the answer is 42");
     // Also works with format args
@@ -262,7 +253,7 @@ async fn prompt_response_with_messages_builder() {
 
     let messages = vec![Message::user("hello"), Message::assistant("world")];
 
-    let resp = PromptResponse::new("output", Usage::new()).with_messages(messages);
+    let resp = PromptResponse::new("output", Usage::default()).with_messages(messages);
 
     assert!(resp.messages.is_some());
     assert_eq!(resp.messages.as_ref().unwrap().len(), 2);
@@ -481,7 +472,7 @@ async fn sequential_prompts_have_independent_histories() {
 fn memory_append_is_absent_without_memory_and_round_trips_through_serde() {
     use rig::agent::{MemoryAppend, PromptResponse};
 
-    let bare = PromptResponse::new("output", Usage::new());
+    let bare = PromptResponse::new("output", Usage::default());
     assert_eq!(bare.memory_append, None);
     let json = serde_json::to_value(&bare).expect("serializes");
     assert!(

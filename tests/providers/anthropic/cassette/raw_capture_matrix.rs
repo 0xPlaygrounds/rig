@@ -259,15 +259,11 @@ fn assert_identity_matches_fixture(scenario: &str, observed: &Observed) -> Value
     assert_eq!(observed.model.as_deref(), body["model"].as_str());
     assert_eq!(
         observed.usage.input_tokens,
-        body["usage"]["input_tokens"]
-            .as_u64()
-            .expect("input_tokens")
+        body["usage"]["input_tokens"].as_u64()
     );
     assert_eq!(
         observed.usage.output_tokens,
-        body["usage"]["output_tokens"]
-            .as_u64()
-            .expect("output_tokens")
+        body["usage"]["output_tokens"].as_u64()
     );
     body
 }
@@ -590,7 +586,10 @@ async fn raw_exposes_thinking_block_and_signature() {
         }],
         "the normalized reasoning is the wire's text and signature, re-spelled"
     );
-    assert_eq!(observed.usage.reasoning_tokens, recorded_thinking_tokens);
+    assert_eq!(
+        observed.usage.reasoning_tokens,
+        Some(recorded_thinking_tokens)
+    );
     let mut normalized_without_raw = observed.normalized.clone();
     normalized_without_raw
         .as_object_mut()

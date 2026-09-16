@@ -132,9 +132,9 @@ fn instrument_modality_records_usage_and_identity() {
             .with_model("probe-embed-v2")
             .with_response_id("emb_123")
             .with_usage(Usage {
-                input_tokens: 7,
-                total_tokens: 7,
-                ..Usage::new()
+                input_tokens: Some(7),
+                total_tokens: Some(7),
+                ..Usage::default()
             });
         let runtime = tokio::runtime::Builder::new_current_thread()
             .build()
@@ -218,7 +218,7 @@ fn embedding_seam_and_vector_search_record_on_the_span() {
                 .embed_texts_response(["hello".to_owned()])
                 .await
                 .expect("embedding succeeds");
-            assert_eq!(response.usage.input_tokens, 4);
+            assert_eq!(response.usage.input_tokens, Some(4));
 
             let store = InMemoryVectorStore::from_documents([(
                 "doc".to_owned(),
@@ -283,6 +283,15 @@ impl CapturedFields {
             fields
                 .iter()
                 .any(|field| field == &(name.to_string(), value))
+        })
+    }
+
+    fn get(&self, name: &str) -> Option<u64> {
+        self.0.lock().ok().and_then(|fields| {
+            fields
+                .iter()
+                .find(|(field, _)| field == name)
+                .map(|(_, value)| *value)
         })
     }
 }
@@ -1163,13 +1172,13 @@ fn record_token_usage_records_tool_use_prompt_tokens() {
         fields: fields.clone(),
     });
     let usage = Usage {
-        input_tokens: 1,
-        output_tokens: 2,
-        total_tokens: 15,
-        cached_input_tokens: 3,
-        cache_creation_input_tokens: 4,
-        tool_use_prompt_tokens: 12,
-        reasoning_tokens: 5,
+        input_tokens: Some(1),
+        output_tokens: Some(2),
+        total_tokens: Some(15),
+        cached_input_tokens: Some(3),
+        cache_creation_input_tokens: Some(4),
+        tool_use_prompt_tokens: Some(12),
+        reasoning_tokens: Some(5),
     };
 
     // Scoped-subscriber tests must not run concurrently; see
@@ -1190,4 +1199,35 @@ fn record_token_usage_records_tool_use_prompt_tokens() {
     });
 
     assert!(fields.contains("gen_ai.usage.tool_use_prompt_tokens", 12));
+}
+
+/// A reported zero reaches the span; a counter the provider never sent
+/// leaves its field unset instead of being recorded as zero.
+#[test]
+fn record_token_usage_records_reported_zero_and_skips_absent_counters() {
+    let fields = CapturedFields::default();
+    let subscriber = Registry::default().with(FieldCaptureLayer {
+        fields: fields.clone(),
+    });
+    let usage = Usage {
+        input_tokens: Some(9),
+        reasoning_tokens: Some(0),
+        ..Usage::default()
+    };
+
+    let _isolation = crate::test_utils::scoped_tracing_subscriber_guard_blocking();
+    tracing::subscriber::with_default(subscriber, || {
+        let span = tracing::info_span!(
+            "usage_recording",
+            gen_ai.usage.input_tokens = tracing::field::Empty,
+            gen_ai.usage.output_tokens = tracing::field::Empty,
+            gen_ai.usage.reasoning_tokens = tracing::field::Empty,
+        );
+
+        span.record_token_usage(&usage);
+    });
+
+    assert_eq!(fields.get("gen_ai.usage.input_tokens"), Some(9));
+    assert_eq!(fields.get("gen_ai.usage.reasoning_tokens"), Some(0));
+    assert_eq!(fields.get("gen_ai.usage.output_tokens"), None);
 }

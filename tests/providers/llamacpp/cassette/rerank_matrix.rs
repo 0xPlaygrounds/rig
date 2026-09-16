@@ -108,7 +108,7 @@ async fn multiple_documents_come_back_ranked() {
         );
 
         assert!(
-            reranked.usage.total_tokens > 0,
+            reranked.usage.total_tokens.is_some_and(|n| n > 0),
             "the server bills the ranking: {:?}",
             reranked.usage
         );
@@ -285,7 +285,7 @@ async fn top_n_zero_returns_an_empty_ranking() {
             reranked.results
         );
         assert!(
-            reranked.usage.total_tokens > 0,
+            reranked.usage.total_tokens.is_some_and(|n| n > 0),
             "the documents were still scored and still billed: {:?}",
             reranked.usage
         );

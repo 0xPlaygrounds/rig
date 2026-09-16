@@ -122,10 +122,11 @@ fn assert_recorded_content_is_an_array(scenario: &str) {
 /// reported. An audio turn is where that stops holding if audio tokens are
 /// dropped from the input count.
 fn assert_usage_adds_up(usage: &rig::completion::Usage) {
-    assert!(usage.total_tokens > 0, "the turn must report usage");
+    let total_tokens = usage.total_tokens.unwrap_or(0);
+    assert!(total_tokens > 0, "the turn must report usage");
     assert_eq!(
-        usage.input_tokens + usage.output_tokens,
-        usage.total_tokens,
+        usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0),
+        total_tokens,
         "input + output must equal the total Mistral reported: {usage:?}"
     );
 }

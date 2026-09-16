@@ -156,23 +156,17 @@ fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
     assert_eq!(terminal.model.as_deref(), frame["model"].as_str(), "model");
     assert_eq!(
         terminal.usage.input_tokens,
-        frame["usage"]["prompt_tokens"]
-            .as_u64()
-            .expect("prompt_tokens"),
+        frame["usage"]["prompt_tokens"].as_u64(),
         "input tokens"
     );
     assert_eq!(
         terminal.usage.output_tokens,
-        frame["usage"]["completion_tokens"]
-            .as_u64()
-            .expect("completion_tokens"),
+        frame["usage"]["completion_tokens"].as_u64(),
         "output tokens"
     );
     assert_eq!(
         terminal.usage.total_tokens,
-        frame["usage"]["total_tokens"]
-            .as_u64()
-            .expect("total_tokens"),
+        frame["usage"]["total_tokens"].as_u64(),
         "total tokens"
     );
     assert_eq!(
@@ -271,7 +265,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     assert_eq!(raw["usage"]["prompt_cache_hit_tokens"], json!(recorded_hit));
     // The normalized terminal keeps the hit count (as cached input) and has
     // no slot for the miss count.
-    assert_eq!(terminal.usage.cached_input_tokens, recorded_hit);
+    assert_eq!(terminal.usage.cached_input_tokens, Some(recorded_hit));
     let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
     assert!(
         normalized_usage.get("prompt_cache_miss_tokens").is_none(),

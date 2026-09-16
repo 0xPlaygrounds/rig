@@ -59,7 +59,7 @@ async fn kept_stream_replay_preserves_every_error_item_and_its_position() {
         let error = Err(ErrorReport::new(ErrorKind::Response, "first error"));
         let terminal = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
             "test",
-            rig_core::completion::Usage::new(),
+            rig_core::completion::Usage::default(),
         )));
         let mut items = if error_first {
             vec![error, terminal]
@@ -118,7 +118,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
             rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(
                 rig_core::completion::CompletionResponse::new(
                     vec![AssistantContent::text("ok")],
-                    rig_core::completion::Usage::new(),
+                    rig_core::completion::Usage::default(),
                     "composing",
                 ),
             )))
@@ -1216,7 +1216,7 @@ async fn kept_events_replay_a_fold_error_as_the_items_that_produced_it() {
         }),
         Ok(StreamEvent::Final(StreamFinal::new(
             "test",
-            rig_core::completion::Usage::new(),
+            rig_core::completion::Usage::default(),
         ))),
     ];
     let key = HandlerKey::from("model");

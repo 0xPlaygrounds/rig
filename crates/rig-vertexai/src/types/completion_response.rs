@@ -150,22 +150,22 @@ impl TryFrom<VertexGenerateContentOutput> for CompletionResponse {
             .usage_metadata
             .as_ref()
             .map(|usage| Usage {
-                input_tokens: usage.prompt_token_count as u64,
-                output_tokens: usage.candidates_token_count as u64,
-                total_tokens: usage.total_token_count as u64,
+                input_tokens: Some(usage.prompt_token_count as u64),
+                output_tokens: Some(usage.candidates_token_count as u64),
+                total_tokens: Some(usage.total_token_count as u64),
                 // `prompt_token_count` is documented as "still the total
                 // effective prompt size... including the number of tokens in the
                 // cached content", so the cached count is a *subset* of the
                 // input count, matching the Gemini surface.
-                cached_input_tokens: usage.cached_content_token_count as u64,
+                cached_input_tokens: Some(usage.cached_content_token_count as u64),
                 // Vertex reports no cache-write counter.
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
+                cache_creation_input_tokens: None,
+                tool_use_prompt_tokens: None,
                 // Vertex reports `thoughts_token_count`, and rig has a field for
                 // it. Hardcoding zero here silently discarded the thinking spend
                 // on every Vertex response — on the sibling Gemini surface it is
                 // routinely the largest component of the bill.
-                reasoning_tokens: usage.thoughts_token_count as u64,
+                reasoning_tokens: Some(usage.thoughts_token_count as u64),
             })
             .unwrap_or_default();
 

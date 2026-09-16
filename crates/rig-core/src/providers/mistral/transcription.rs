@@ -84,10 +84,10 @@ impl NormalizeTranscriptionResponse for MistralTranscriptionResponse {
         provider: &str,
     ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
         let usage = Usage {
-            input_tokens: self.usage.prompt_tokens.max(0) as u64,
-            output_tokens: self.usage.completion_tokens.max(0) as u64,
-            total_tokens: self.usage.total_tokens.max(0) as u64,
-            ..Usage::new()
+            input_tokens: Some(self.usage.prompt_tokens.max(0) as u64),
+            output_tokens: Some(self.usage.completion_tokens.max(0) as u64),
+            total_tokens: Some(self.usage.total_tokens.max(0) as u64),
+            ..Default::default()
         };
         Ok(
             transcription::TranscriptionResponse::new(self.text, provider)

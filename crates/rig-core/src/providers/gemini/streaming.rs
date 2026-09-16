@@ -323,6 +323,13 @@ impl WireAdapter for GeminiRestAdapter {
         // Holding the record until EOF is what lets the driver read the rest
         // of the turn, and it means the terminal carries the last reason,
         // usage, and metadata the stream actually reported.
+        // A terminal that never carried `usageMetadata` reports no usage; the
+        // defaulted metadata below only fills the raw record's shape.
+        let usage = self
+            .final_usage
+            .as_ref()
+            .map(crate::completion::Usage::from)
+            .unwrap_or_default();
         let native = StreamingCompletionResponse {
             usage_metadata: self.final_usage.take().unwrap_or_default(),
             finish_reason: self.final_finish_reason.take(),
@@ -339,7 +346,7 @@ impl WireAdapter for GeminiRestAdapter {
         };
         let finish_reason = native.finish_reason.as_ref().and_then(map_finish_reason);
         out.final_record(
-            streaming::StreamFinal::new(PROVIDER_NAME, (&native.usage_metadata).into())
+            streaming::StreamFinal::new(PROVIDER_NAME, usage)
                 .with_optional_finish_reason(finish_reason)
                 .with_optional_response_id(native.response_id)
                 .with_optional_model(native.model_version)

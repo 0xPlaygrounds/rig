@@ -405,9 +405,9 @@ fn test_response_function_call_mapping() {
         other => panic!("unexpected content: {other:?}"),
     }
 
-    assert_eq!(response.usage.input_tokens, 5);
-    assert_eq!(response.usage.output_tokens, 7);
-    assert_eq!(response.usage.total_tokens, 12);
+    assert_eq!(response.usage.input_tokens, Some(5));
+    assert_eq!(response.usage.output_tokens, Some(7));
+    assert_eq!(response.usage.total_tokens, Some(12));
 }
 
 #[test]

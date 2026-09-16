@@ -160,7 +160,7 @@ async fn raw_roundtrips_streaming_completion_response() {
             );
             assert_eq!(
                 typed.usage.as_ref().and_then(|usage| usage.total_tokens),
-                Some(terminal.usage.total_tokens)
+                terminal.usage.total_tokens
             );
             *sink.lock().expect("observation lock") = Some(raw.clone());
         },

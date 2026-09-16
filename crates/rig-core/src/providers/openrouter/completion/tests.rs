@@ -378,7 +378,7 @@ fn test_completion_response_usage_prefers_reported_completion_tokens() {
 
     let response: CompletionResponse = serde_json::from_value(json).unwrap();
     let converted = response.normalize(PROVIDER_NAME).unwrap();
-    assert_eq!(converted.usage.output_tokens, 10);
+    assert_eq!(converted.usage.output_tokens, Some(10));
 }
 
 #[test]
@@ -398,7 +398,7 @@ fn test_completion_response_usage_falls_back_when_completion_tokens_missing() {
 
     let response: CompletionResponse = serde_json::from_value(json).unwrap();
     let converted = response.normalize(PROVIDER_NAME).unwrap();
-    assert_eq!(converted.usage.output_tokens, 10);
+    assert_eq!(converted.usage.output_tokens, Some(10));
 }
 
 #[test]
@@ -430,14 +430,14 @@ fn test_completion_response_maps_cache_token_accounting() {
     let response: CompletionResponse = serde_json::from_value(json).unwrap();
     let converted = response.normalize(PROVIDER_NAME).unwrap();
 
-    assert_eq!(converted.usage.input_tokens, 500);
-    assert_eq!(converted.usage.output_tokens, 10);
-    assert_eq!(converted.usage.cached_input_tokens, 400);
-    assert_eq!(converted.usage.cache_creation_input_tokens, 50);
+    assert_eq!(converted.usage.input_tokens, Some(500));
+    assert_eq!(converted.usage.output_tokens, Some(10));
+    assert_eq!(converted.usage.cached_input_tokens, Some(400));
+    assert_eq!(converted.usage.cache_creation_input_tokens, Some(50));
 }
 
 #[test]
-fn test_completion_response_cache_tokens_absent_defaults_to_zero() {
+fn test_completion_response_cache_tokens_absent_are_unreported() {
     let json = json!({
         "id": "gen-no-cache",
         "object": "chat.completion",
@@ -461,8 +461,8 @@ fn test_completion_response_cache_tokens_absent_defaults_to_zero() {
     let response: CompletionResponse = serde_json::from_value(json).unwrap();
     let converted = response.normalize(PROVIDER_NAME).unwrap();
 
-    assert_eq!(converted.usage.cached_input_tokens, 0);
-    assert_eq!(converted.usage.cache_creation_input_tokens, 0);
+    assert_eq!(converted.usage.cached_input_tokens, None);
+    assert_eq!(converted.usage.cache_creation_input_tokens, None);
 }
 
 #[test]
@@ -661,7 +661,7 @@ fn openrouter_truncated_tool_arguments_do_not_destroy_the_response() {
         "the turn's text survives: {:?}",
         converted.choice
     );
-    assert_eq!(converted.usage.total_tokens, 34);
+    assert_eq!(converted.usage.total_tokens, Some(34));
 }
 
 #[test]
@@ -743,7 +743,7 @@ fn openrouter_length_preserves_an_empty_turn_after_dropping_its_only_call() {
             converted.finish_reason(),
             Some(crate::completion::FinishReason::Length)
         );
-        assert_eq!(converted.usage.total_tokens, 11);
+        assert_eq!(converted.usage.total_tokens, Some(11));
         assert_eq!(
             converted.response_id.as_deref(),
             Some("gen-empty-truncated")

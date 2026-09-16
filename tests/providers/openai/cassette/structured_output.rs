@@ -149,7 +149,10 @@ async fn prompt_typed_and_output_schema() {
                 .await
                 .expect("extended prompt_typed should succeed");
             assert_weather_forecast(&extended.output, &["los angeles", "la"]);
-            assert!(extended.usage.total_tokens > 0, "usage should be populated");
+            assert!(
+                extended.usage.total_tokens.is_some_and(|n| n > 0),
+                "usage should be populated"
+            );
 
             let agent_with_schema = client
                 .agent(openai::GPT_4O)

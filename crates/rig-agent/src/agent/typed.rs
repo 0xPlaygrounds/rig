@@ -42,8 +42,8 @@ pub struct TypedPromptResponse<T> {
     ///
     /// `usage` remains the aggregate across the whole run. Use the last
     /// entry's usage to inspect the final completion request's prompt/context
-    /// length. Zero-valued entry usage means the provider reported no usage
-    /// metrics for that request.
+    /// length. An entry whose counters are all `None` means the provider
+    /// reported no usage metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
     /// How the accepted attempt's conversation-memory append settled; see
@@ -71,8 +71,8 @@ impl<T> TypedPromptResponse<T> {
 
     /// Returns successfully completed completion requests made by this agent run.
     ///
-    /// Zero-valued entry usage means the provider reported no usage metrics
-    /// for that request.
+    /// An entry whose counters are all `None` means the provider reported no
+    /// usage metrics for that request.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }
@@ -353,7 +353,7 @@ where
         self,
         ambient: tracing::Span,
     ) -> Result<TypedPromptResponse<T>, StructuredOutputError> {
-        let mut usage = Usage::new();
+        let mut usage = Usage::default();
         let mut last_error = None;
 
         for attempt in 0..=self.retries {

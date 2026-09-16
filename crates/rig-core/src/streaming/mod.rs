@@ -147,12 +147,12 @@ pub struct ToolCallDecoration {
 /// is surfaced and the stream keeps consuming, so a later genuine terminal
 /// still completes it. Consumers must drain the stream to `None` rather than
 /// stop at the first `Err`, and must treat the absence of a terminal record as
-/// truncation, never as a successful zero-usage completion.
+/// truncation, never as a successful usage-less completion.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(from = "StreamFinalRepr")]
 pub struct StreamFinal {
     /// Token usage reported by the provider for this streamed completion.
-    /// Zero-valued usage is the documented sentinel for missing metrics.
+    /// A counter the provider did not report is `None`.
     pub usage: Usage,
     /// Why the model stopped generating, when the provider reported it.
     ///
@@ -451,9 +451,10 @@ impl StreamingCompletionResponse {
     }
 
     /// Consume the stream into the unary response shape: the aggregated
-    /// choice, the terminal record's usage and metadata. Usage is the zero
-    /// sentinel (`Usage::new`) when the stream produced no terminal record;
-    /// `provider` comes from the stream itself, so it is populated even then.
+    /// choice, the terminal record's usage and metadata. Usage reports no
+    /// counter ([`Usage::default`]) when the stream produced no terminal
+    /// record; `provider` comes from the stream itself, so it is populated
+    /// even then.
     ///
     /// Events not yet polled are not part of the choice: drain the stream
     /// first when the whole turn is wanted.
@@ -513,8 +514,7 @@ impl StreamingCompletionResponse {
     ///
     /// Returns the usage carried by the final response once the stream has
     /// produced it. Until then — or when the provider does not report streamed
-    /// usage — this returns [`Usage::new`], the zero-valued sentinel for missing
-    /// usage metrics.
+    /// usage — this returns [`Usage::default`], with every counter `None`.
     pub fn usage(&self) -> Usage {
         self.response
             .as_ref()

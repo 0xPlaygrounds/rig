@@ -605,7 +605,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
             anyhow::ensure!(
-                response.usage.input_tokens > 0 && response.usage.output_tokens > 0,
+                response.usage.input_tokens.is_some_and(|n| n > 0) && response.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should be populated on long-history replay: {:?}",
                 response.usage
             );
@@ -727,8 +727,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 .usage
                 .as_ref()
                 .and_then(|usage| usage.output_tokens_details.as_ref())
-                .map(|details| details.reasoning_tokens)
-                .unwrap_or_default();
+                .map(|details| details.reasoning_tokens);
             assert_raw_response_metadata(&raw);
 
             let response: rig::completion::CompletionResponse =
@@ -742,12 +741,13 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 "xAI reasoning response should preserve a reasoning content block"
             );
             anyhow::ensure!(
-                response.usage.reasoning_tokens > 0,
+                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "core usage should preserve xAI reasoning tokens: {:?}",
                 response.usage
             );
             anyhow::ensure!(
-                response.usage.reasoning_tokens == raw_reasoning_tokens && raw_reasoning_tokens > 0,
+                response.usage.reasoning_tokens == raw_reasoning_tokens
+                    && raw_reasoning_tokens.is_some_and(|n| n > 0),
                 "usage reasoning tokens should match raw provider details"
             );
             assert_response_metadata(&response);

@@ -81,7 +81,9 @@ impl Tool for ProjectStatusTool {
 fn print_usage(label: &str, usage: Usage) {
     println!(
         "{label}: input_tokens={}, output_tokens={}, total_tokens={}",
-        usage.input_tokens, usage.output_tokens, usage.total_tokens
+        usage.input_tokens.unwrap_or(0),
+        usage.output_tokens.unwrap_or(0),
+        usage.total_tokens.unwrap_or(0)
     );
 }
 
@@ -137,9 +139,9 @@ async fn main() -> Result<()> {
                     println!();
                     printed_streamed_text = false;
                 }
-                // Zero-valued usage is Usage's documented sentinel for
-                // "the provider reported no usage metrics".
-                if completion_call.usage.has_values() {
+                // A `Usage` with every counter `None` means the provider
+                // reported no usage metrics.
+                if completion_call.usage.is_reported() {
                     print_usage(
                         &format!("completion call {} usage", completion_call.call_index),
                         completion_call.usage,
@@ -165,9 +167,12 @@ async fn main() -> Result<()> {
 
     if let Some(final_completion_call) = response.completion_calls().last().cloned() {
         let usage = final_completion_call.usage;
-        if usage.has_values() {
+        if usage.is_reported() {
             print_usage("final completion call usage", usage);
-            println!("final prompt/context token length: {}", usage.input_tokens);
+            println!(
+                "final prompt/context token length: {}",
+                usage.input_tokens.unwrap_or(0)
+            );
         } else {
             println!("final completion call usage: not reported");
         }

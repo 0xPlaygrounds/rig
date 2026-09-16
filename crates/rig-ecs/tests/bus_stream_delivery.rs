@@ -56,7 +56,10 @@ impl Serve for WithErrors {
     async fn serve(&self, _: EffectKind, _: Dispatch) -> Reply {
         Reply::Stream(Box::pin(futures::stream::iter([
             Err(ErrorReport::new(ErrorKind::Response, "before final")),
-            Ok(StreamEvent::Final(StreamFinal::new("mock", Usage::new()))),
+            Ok(StreamEvent::Final(StreamFinal::new(
+                "mock",
+                Usage::default(),
+            ))),
             Err(ErrorReport::new(ErrorKind::Provider, "after final")),
         ])))
     }
@@ -260,7 +263,7 @@ fn late_and_reenabled_consumers_hydrate_without_a_backlog() {
     sender
         .unbounded_send(Ok(StreamEvent::Final(StreamFinal::new(
             "mock",
-            Usage::new(),
+            Usage::default(),
         ))))
         .unwrap();
     drop(sender);
@@ -424,7 +427,10 @@ fn empty_final_and_unary_stream_fold_have_distinct_delivery_contracts() {
             .world_mut()
             .spawn(PendingEffect::new("model", kind))
             .id();
-        let terminal = Ok(StreamEvent::Final(StreamFinal::new("mock", Usage::new())));
+        let terminal = Ok(StreamEvent::Final(StreamFinal::new(
+            "mock",
+            Usage::default(),
+        )));
         sender.unbounded_send(terminal.clone()).unwrap();
         drop(sender);
         bus_support::tick_until(&mut app, "empty stream closed", |world| {
@@ -468,7 +474,7 @@ impl Serve for RetryingStream {
                 .unwrap();
             if !first {
                 writer
-                    .finish(StreamFinal::new("mock", Usage::new()))
+                    .finish(StreamFinal::new("mock", Usage::default()))
                     .await
                     .unwrap();
             }

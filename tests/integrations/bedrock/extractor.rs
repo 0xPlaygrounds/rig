@@ -37,7 +37,10 @@ async fn extractor_smoke() {
         .expect("extractor request should succeed");
 
     assert_smoke_person(&response.output);
-    assert!(response.usage.total_tokens > 0, "usage should be populated");
+    assert!(
+        response.usage.total_tokens.is_some_and(|n| n > 0),
+        "usage should be populated"
+    );
 }
 
 #[tokio::test]
@@ -56,5 +59,8 @@ async fn extractor_with_chat_history_smoke() {
         .expect("extractor request with chat history should succeed");
 
     assert_smoke_person(&response.output);
-    assert!(response.usage.total_tokens > 0, "usage should be populated");
+    assert!(
+        response.usage.total_tokens.is_some_and(|n| n > 0),
+        "usage should be populated"
+    );
 }

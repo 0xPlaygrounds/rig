@@ -89,9 +89,6 @@
             "input_tokens": 29,
             "output_tokens": 50,
             "total_tokens": 485,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 406
           },
           "message_id": null,

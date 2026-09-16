@@ -46,9 +46,9 @@ fn test_completion_response_conversion() {
         completion_response.finish_reason(),
         Some(FinishReason::Stop)
     );
-    assert_eq!(completion_response.usage.input_tokens, 10);
-    assert_eq!(completion_response.usage.output_tokens, 10);
-    assert_eq!(completion_response.usage.total_tokens, 20);
+    assert_eq!(completion_response.usage.input_tokens, Some(10));
+    assert_eq!(completion_response.usage.output_tokens, Some(10));
+    assert_eq!(completion_response.usage.total_tokens, Some(20));
 }
 
 fn structured_response_with_finish_reason(finish_reason: &str) -> CompletionResponse {

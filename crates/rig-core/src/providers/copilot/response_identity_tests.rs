@@ -10,7 +10,7 @@ use super::*;
 fn chat_streaming_terminal_carries_request_id_into_stream_final() {
     let mut chat_terminal = openai::completion::streaming::StreamingCompletionResponse::<
         openai::completion::Usage,
-    >::new(openai::completion::Usage::default());
+    >::new(None);
     chat_terminal.provider_request_id = Some("req-chat".to_string());
     let chat_final = chat_terminal.into_stream_final(PROVIDER_NAME);
     assert_eq!(chat_final.provider_request_id.as_deref(), Some("req-chat"));

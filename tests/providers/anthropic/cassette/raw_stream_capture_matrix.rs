@@ -325,8 +325,8 @@ fn assert_terminal_matches_fixture(
         scenario,
     );
     assert_eq!(terminal.model, recorded.model);
-    assert_eq!(terminal.usage.input_tokens, recorded.input_tokens);
-    assert_eq!(terminal.usage.output_tokens, recorded.output_tokens);
+    assert_eq!(terminal.usage.input_tokens, Some(recorded.input_tokens));
+    assert_eq!(terminal.usage.output_tokens, Some(recorded.output_tokens));
     assert_eq!(terminal.provider, ANTHROPIC_PROVIDER);
 }
 
@@ -538,7 +538,7 @@ async fn normalized_terminal_matches_raw_renormalized() {
     assert_eq!(typed.model, terminal.model);
     assert_eq!(
         typed.usage.input_tokens.map(|n| n as u64),
-        Some(terminal.usage.input_tokens)
+        terminal.usage.input_tokens
     );
 
     // …and none of that is vacuous: the normalized terminal is the fixture's.
@@ -646,7 +646,10 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
     // The normalized terminal folds it into `reasoning_tokens` and never
     // spells `thinking` — only `raw` does.
     assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
-    assert_eq!(terminal.usage.reasoning_tokens, recorded_thinking_tokens);
+    assert_eq!(
+        terminal.usage.reasoning_tokens,
+        Some(recorded_thinking_tokens)
+    );
     let normalized = normalized_without_raw(&terminal);
     assert!(
         !contains_string(&normalized, "thinking")

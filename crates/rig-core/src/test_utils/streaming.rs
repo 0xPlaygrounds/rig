@@ -31,9 +31,10 @@ fn fixture_additional_params(
 
 /// Build a terminal record whose usage has only `total_tokens` set.
 pub fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
-    let mut usage = Usage::new();
-    usage.total_tokens = total_tokens;
-    mock_final(usage)
+    mock_final(Usage {
+        total_tokens: Some(total_tokens),
+        ..Default::default()
+    })
 }
 
 /// Scripted streaming event yielded by [`MockCompletionModel`](super::MockCompletionModel).
@@ -221,9 +222,9 @@ impl MockStreamEvent {
         Self::FinalResponse(mock_final(usage))
     }
 
-    /// Create a final response event with default zero usage.
+    /// Create a final response event whose usage reports no counter.
     pub fn final_response_with_default_usage() -> Self {
-        Self::FinalResponse(mock_final(Usage::new()))
+        Self::FinalResponse(mock_final(Usage::default()))
     }
 
     /// Create a final response event whose usage has only `total_tokens` set.

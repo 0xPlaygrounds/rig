@@ -51,7 +51,10 @@ async fn max_tokens_truncation_preserves_stop_reason_and_partial_text() {
                 "partial output text should still be surfaced"
             );
             assert!(
-                response.usage.output_tokens > 0 && response.usage.output_tokens <= 64,
+                response
+                    .usage
+                    .output_tokens
+                    .is_some_and(|n| n > 0 && n <= 64),
                 "output tokens should reflect the truncation cap, got {:?}",
                 response.usage
             );

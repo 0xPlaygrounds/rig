@@ -50,7 +50,7 @@ async fn streaming_smoke_through_boxed_transport() {
 
         assert_nonempty_response(&response);
         assert_eq!(provider_final.provider, "anthropic");
-        assert!(provider_final.usage.total_tokens > 0);
+        assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
     })
     .await;
 }

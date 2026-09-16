@@ -319,7 +319,9 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
 
                 // Unlike implicit caching, turn 1 already hits — there is no warm-up.
                 assert!(
-                    observation.turns[0].cached_input_tokens > 0,
+                    observation.turns[0]
+                        .cached_input_tokens
+                        .is_some_and(|n| n > 0),
                     "explicit caching should hit on the very first request; that is the property \
                      implicit caching does not have.\n{}",
                     observation.report(&GEMINI_EXPLICIT_SUPPORT)
@@ -381,8 +383,8 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
                         .await
                         .expect("a cached-content request should succeed");
                     reads.push((
-                        response.usage.input_tokens,
-                        response.usage.cached_input_tokens,
+                        response.usage.input_tokens.unwrap_or(0),
+                        response.usage.cached_input_tokens.unwrap_or(0),
                     ));
                 }
 
@@ -525,15 +527,17 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
                 .await
                 .expect("second small request should succeed");
 
+            let first_input = first.usage.input_tokens.unwrap_or(0);
             assert!(
-                first.usage.input_tokens < GEMINI_CACHE_SUPPORT.min_cacheable_tokens as u64,
+                first_input < GEMINI_CACHE_SUPPORT.min_cacheable_tokens as u64,
                 "this probe is supposed to sit *below* the {}-token minimum, but billed {} — \
                  re-tune the padding or the cell proves nothing",
                 GEMINI_CACHE_SUPPORT.min_cacheable_tokens,
-                first.usage.input_tokens
+                first_input
             );
             assert_eq!(
-                second.usage.cached_input_tokens, 0,
+                second.usage.cached_input_tokens.unwrap_or(0),
+                0,
                 "a prefix below the documented minimum must not cache; if Gemini started caching \
                  it, the minimum in GEMINI_CACHE_SUPPORT is wrong and every other cell's padding \
                  needs revisiting. usage: {:?}",
@@ -572,15 +576,15 @@ async fn changing_temperature_still_hits() {
             .await
             .expect("second request should succeed");
 
-            let ratio = hotter.usage.cached_input_tokens as f64 / hotter.usage.input_tokens as f64;
+            let cached = hotter.usage.cached_input_tokens.unwrap_or(0);
+            let input = hotter.usage.input_tokens.unwrap_or(0);
+            let ratio = cached as f64 / input as f64;
             assert!(
                 ratio >= GEMINI_CACHE_SUPPORT.hit_ratio_floor,
                 "changing only `temperature` should not move the cached prefix, but the second \
-                 turn read {} of {} prompt tokens ({:.1}%). If this ever fails, rig should warn \
-                 users that per-request sampling changes cost them their cache.\nwarm: {:?}\nhot: \
-                 {:?}",
-                hotter.usage.cached_input_tokens,
-                hotter.usage.input_tokens,
+                 turn read {cached} of {input} prompt tokens ({:.1}%). If this ever fails, rig \
+                 should warn users that per-request sampling changes cost them their cache.\nwarm: \
+                 {:?}\nhot: {:?}",
                 ratio * 100.0,
                 warm.usage,
                 hotter.usage
@@ -626,7 +630,8 @@ async fn changing_the_system_instruction_misses() {
             .expect("mutated request should succeed");
 
             assert_eq!(
-                after.usage.cached_input_tokens, 0,
+                after.usage.cached_input_tokens.unwrap_or(0),
+                0,
                 "a changed system instruction is a different prefix and must not hit the previous \
                  entry. usage: {:?}",
                 after.usage

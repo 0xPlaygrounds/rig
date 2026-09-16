@@ -181,10 +181,10 @@ fn tool_names(names: &[&str]) -> BTreeSet<String> {
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
     Usage {
-        input_tokens,
-        output_tokens,
-        total_tokens: input_tokens + output_tokens,
-        ..Usage::new()
+        input_tokens: Some(input_tokens),
+        output_tokens: Some(output_tokens),
+        total_tokens: Some(input_tokens + output_tokens),
+        ..Usage::default()
     }
 }
 
@@ -192,7 +192,7 @@ fn text_turn(text: &str) -> ModelTurn {
     ModelTurn::new(
         None,
         vec![AssistantContent::text(text)],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
     )
@@ -223,7 +223,7 @@ fn tool_call_turn(id: &str, name: &str) -> ModelTurn {
     ModelTurn::new(
         None,
         vec![tool_call(id, name)],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
     )
@@ -255,7 +255,7 @@ fn expect_call_tools(run: &mut AgentRun) -> Vec<PendingToolCall> {
 
 fn expect_done(run: &mut AgentRun) -> PromptResponse {
     match run.next_step().expect("next_step should succeed") {
-        AgentRunStep::Done(response) => response,
+        AgentRunStep::Done(response) => *response,
         step => panic!("expected Done, got {step:?}"),
     }
 }
@@ -482,7 +482,7 @@ fn parallel_tool_calls_surface_in_emission_order() {
     let turn = ModelTurn::new(
         None,
         vec![tool_call("call_1", "add"), tool_call("call_2", "add")],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
     );
@@ -731,7 +731,7 @@ fn invalid_tool_call_skip_suppresses_all_peer_executions() {
     let turn = ModelTurn::new(
         None,
         vec![tool_call("call_1", "unknown"), tool_call("call_2", "add")],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
     );
@@ -764,7 +764,7 @@ fn id_less_calls_keep_distinct_skip_results() {
     let turn = ModelTurn::new(
         None,
         vec![id_less_call(0, "unknown"), id_less_call(1, "add")],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
     );
@@ -823,7 +823,7 @@ fn skip_under_tool_choice_none_fails() {
         run.model_response(ModelTurn::new(
             None,
             vec![tool_call("call_1", "add")],
-            Usage::new(),
+            Usage::default(),
             tool_names(&["add"]),
             BTreeSet::new(),
         ))
@@ -883,7 +883,7 @@ fn model_response_rejected_after_streamed_completion_call_record() {
     let mut run = AgentRun::new("hello");
     expect_call_model(&mut run);
     run.record_streamed_completion_call(
-        Usage::new(),
+        Usage::default(),
         ResponseIdentity::default(),
         None,
         serde_json::Value::Null,
@@ -1000,7 +1000,7 @@ fn agent_run_deserializes_suspended_state() {
     // A suspended run persisted mid-`ExecutingTools` restores and resumes:
     // the recorded call's usage loads, the pending tool call is re-issued,
     // and the run advances to the next model call after results arrive.
-    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0},"completion_calls":[{"call_index":0,"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"cached_input_tokens":0,"cache_creation_input_tokens":0,"tool_use_prompt_tokens":0,"reasoning_tokens":0}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":"wire:call_1"}]}}"#;
+    let fixture = r#"{"max_turns":2,"max_invalid_tool_call_retries":0,"tool_choice":null,"chat_history":null,"new_messages":[{"role":"user","content":[{"type":"text","text":"add things"}]},{"role":"assistant","id":null,"content":[{"type":"toolcall","id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null}]}],"current_turn":1,"usage":{"input_tokens":10,"output_tokens":5,"total_tokens":15},"completion_calls":[{"call_index":0,"usage":{}}],"completion_call_index":1,"invalid_tool_call_retries":0,"rollback_pending":false,"streamed_completion_call_recorded":false,"state":{"ExecutingTools":[{"tool_call":{"id":{"origin":"explicit","id":"call_1"},"function":{"name":"add","arguments":{"x":1}},"signature":null,"additional_params":null},"preresolved_result":null,"block_id":"wire:call_1"}]}}"#;
 
     let legacy = fixture.replace(
         r#""id":{"origin":"explicit","id":"call_1"}"#,
@@ -1014,7 +1014,7 @@ fn agent_run_deserializes_suspended_state() {
 
     let mut restored: AgentRun =
         serde_json::from_str(fixture).expect("suspended run should deserialize");
-    assert_eq!(restored.completion_calls()[0].usage, Usage::new());
+    assert_eq!(restored.completion_calls()[0].usage, Usage::default());
 
     let calls = expect_call_tools(&mut restored);
     assert_eq!(calls.len(), 1);
@@ -1134,7 +1134,7 @@ fn output_tool_turn(id: &str, name: &str) -> ModelTurn {
     ModelTurn::new(
         None,
         vec![tool_call(id, name)],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add", name]),
     )
@@ -1147,7 +1147,7 @@ fn output_tool_turn_with_args(id: &str, name: &str, arguments: serde_json::Value
             id,
             ToolFunction::new(name.to_string(), arguments),
         ))],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add", name]),
     )
@@ -1257,7 +1257,7 @@ fn output_tool_call_wins_over_sibling_real_tool_calls() {
             tool_call("call_1", "add"),
             tool_call("call_2", "final_result"),
         ],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add", "final_result"]),
     );
@@ -1460,7 +1460,7 @@ fn durable_human_in_the_loop_approval_survives_serialize_resume() {
         .model_response(ModelTurn::new(
             None,
             two_calls,
-            Usage::new(),
+            Usage::default(),
             tool_names(&["add"]),
             tool_names(&["add"]),
         ))
@@ -1745,7 +1745,7 @@ fn a_truncated_reasoning_only_turn_commits_nothing() {
         vec![AssistantContent::Reasoning(
             rig_core::message::Reasoning::new("thinking, never answering"),
         )],
-        Usage::new(),
+        Usage::default(),
         tool_names(&["add"]),
         tool_names(&["add"]),
     )

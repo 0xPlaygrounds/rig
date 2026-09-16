@@ -93,7 +93,9 @@ async fn loads_and_generates_with_a_real_local_model()
     if normalized_text.is_empty() {
         return Err(std::io::Error::other("normalized completion returned empty text").into());
     }
-    if normalized.usage.input_tokens == 0 || normalized.usage.output_tokens == 0 {
+    if normalized.usage.input_tokens.is_none_or(|n| n == 0)
+        || normalized.usage.output_tokens.is_none_or(|n| n == 0)
+    {
         return Err(std::io::Error::other("normalized completion returned zero usage").into());
     }
 

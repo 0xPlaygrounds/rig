@@ -52,7 +52,7 @@ impl AgentHook for StopAgentStreamingBeforeCompletion {
 async fn public_streaming_request_constructor_preserves_agent_hooks() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::text("should not run"),
-        MockStreamEvent::final_response(Usage::new()),
+        MockStreamEvent::final_response(Usage::default()),
     ]]);
     let agent = Arc::new(
         AgentBuilder::new(model.clone())
@@ -586,13 +586,10 @@ fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
     Usage {
-        input_tokens,
-        output_tokens,
-        total_tokens: input_tokens + output_tokens,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        tool_use_prompt_tokens: 0,
-        reasoning_tokens: 0,
+        input_tokens: Some(input_tokens),
+        output_tokens: Some(output_tokens),
+        total_tokens: Some(input_tokens + output_tokens),
+        ..Usage::default()
     }
 }
 
@@ -625,7 +622,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
                 rig_core::message::ToolFunction::new(tool_name, serde_json::json!({})),
             ),
         )],
-        Usage::new(),
+        Usage::default(),
         advertised.clone(),
         advertised,
     );
@@ -933,31 +930,31 @@ async fn assert_stream_usage_recorded_on_chat_spans(
                 .map(String::as_str),
             Some("chat")
         );
+        // A counter the provider did not report leaves its span field unset.
+        let field = |name: &str| chat_span.fields.get(name).copied();
         assert_eq!(
-            chat_span.fields.get("gen_ai.usage.input_tokens"),
-            Some(&expected_usage.input_tokens)
+            field("gen_ai.usage.input_tokens"),
+            expected_usage.input_tokens
         );
         assert_eq!(
-            chat_span.fields.get("gen_ai.usage.output_tokens"),
-            Some(&expected_usage.output_tokens)
+            field("gen_ai.usage.output_tokens"),
+            expected_usage.output_tokens
         );
         assert_eq!(
-            chat_span.fields.get("gen_ai.usage.cache_read.input_tokens"),
-            Some(&expected_usage.cached_input_tokens)
+            field("gen_ai.usage.cache_read.input_tokens"),
+            expected_usage.cached_input_tokens
         );
         assert_eq!(
-            chat_span
-                .fields
-                .get("gen_ai.usage.cache_creation.input_tokens"),
-            Some(&expected_usage.cache_creation_input_tokens)
+            field("gen_ai.usage.cache_creation.input_tokens"),
+            expected_usage.cache_creation_input_tokens
         );
         assert_eq!(
-            chat_span.fields.get("gen_ai.usage.tool_use_prompt_tokens"),
-            Some(&expected_usage.tool_use_prompt_tokens)
+            field("gen_ai.usage.tool_use_prompt_tokens"),
+            expected_usage.tool_use_prompt_tokens
         );
         assert_eq!(
-            chat_span.fields.get("gen_ai.usage.reasoning_tokens"),
-            Some(&expected_usage.reasoning_tokens)
+            field("gen_ai.usage.reasoning_tokens"),
+            expected_usage.reasoning_tokens
         );
     }
 
@@ -1450,10 +1447,6 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
                 "input_tokens": 3,
                 "output_tokens": 4,
                 "total_tokens": 7,
-                "cached_input_tokens": 0,
-                "cache_creation_input_tokens": 0,
-                "tool_use_prompt_tokens": 0,
-                "reasoning_tokens": 0,
             }
         })
     );
@@ -1468,25 +1461,17 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
     }
 
     let item: MultiTurnStreamItem =
-        MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, Usage::new()));
+        MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, Usage::default()));
     let value = serde_json::to_value(&item).expect("serialize missing usage event");
 
-    // Unreported usage serializes as a plain zero-valued object (Usage's
-    // documented sentinel for missing provider metrics).
+    // Unreported usage serializes as an empty object: every counter is
+    // `None`, and `None` counters are omitted rather than encoded as zero.
     assert_eq!(
         value,
         serde_json::json!({
             "type": "completionCall",
             "call_index": 3,
-            "usage": {
-                "input_tokens": 0,
-                "output_tokens": 0,
-                "total_tokens": 0,
-                "cached_input_tokens": 0,
-                "cache_creation_input_tokens": 0,
-                "tool_use_prompt_tokens": 0,
-                "reasoning_tokens": 0,
-            }
+            "usage": {}
         })
     );
 }
@@ -1497,7 +1482,7 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
         vec![AssistantContent::text("done")],
         usage(3, 4),
         vec![
-            CompletionCall::new(0, Usage::new()),
+            CompletionCall::new(0, Usage::default()),
             CompletionCall::new(1, usage(3, 4)),
         ],
         None,
@@ -1514,15 +1499,7 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
         Some(&serde_json::json!([
             {
                 "call_index": 0,
-                "usage": {
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "total_tokens": 0,
-                    "cached_input_tokens": 0,
-                    "cache_creation_input_tokens": 0,
-                    "tool_use_prompt_tokens": 0,
-                    "reasoning_tokens": 0,
-                }
+                "usage": {}
             },
             {
                 "call_index": 1,
@@ -1530,10 +1507,6 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
                     "input_tokens": 3,
                     "output_tokens": 4,
                     "total_tokens": 7,
-                    "cached_input_tokens": 0,
-                    "cache_creation_input_tokens": 0,
-                    "tool_use_prompt_tokens": 0,
-                    "reasoning_tokens": 0,
                 }
             }
         ]))
@@ -2491,7 +2464,7 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
         .stream();
     let mut completion_call_events = Vec::new();
     let mut final_response_text = None;
-    let mut final_response_usage = Usage::new();
+    let mut final_response_usage = Usage::default();
     let mut final_completion_calls = Vec::new();
 
     while let Some(item) = stream.next().await {
@@ -2512,17 +2485,21 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
 
     assert_eq!(final_response_text.as_deref(), Some("retried"));
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let mut first_usage = Usage::new();
-    first_usage.total_tokens = 4;
-    let mut second_usage = Usage::new();
-    second_usage.total_tokens = 6;
+    let first_usage = Usage {
+        total_tokens: Some(4),
+        ..Default::default()
+    };
+    let second_usage = Usage {
+        total_tokens: Some(6),
+        ..Default::default()
+    };
     let expected_completion_calls = vec![
         streamed_call(0, first_usage),
         streamed_call(1, second_usage),
     ];
     assert_eq!(completion_call_events, expected_completion_calls);
     assert_eq!(final_completion_calls, expected_completion_calls);
-    assert_eq!(final_response_usage.total_tokens, 10);
+    assert_eq!(final_response_usage.total_tokens, Some(10));
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
@@ -2892,7 +2869,7 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
         .stream();
     let mut completion_call_events = Vec::new();
     let mut final_response_text = None;
-    let mut final_response_usage = Usage::new();
+    let mut final_response_usage = Usage::default();
     let mut final_completion_calls = Vec::new();
 
     while let Some(item) = stream.next().await {
@@ -2918,17 +2895,21 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
     assert_eq!(final_response_text.as_deref(), Some("retried"));
     assert!(delta_hook.observed().is_empty());
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let mut first_usage = Usage::new();
-    first_usage.total_tokens = 4;
-    let mut second_usage = Usage::new();
-    second_usage.total_tokens = 6;
+    let first_usage = Usage {
+        total_tokens: Some(4),
+        ..Default::default()
+    };
+    let second_usage = Usage {
+        total_tokens: Some(6),
+        ..Default::default()
+    };
     let expected_completion_calls = vec![
         streamed_call(0, first_usage),
         streamed_call(1, second_usage),
     ];
     assert_eq!(completion_call_events, expected_completion_calls);
     assert_eq!(final_completion_calls, expected_completion_calls);
-    assert_eq!(final_response_usage.total_tokens, 10);
+    assert_eq!(final_response_usage.total_tokens, Some(10));
 
     let requests = recorded.requests();
     assert_eq!(requests.len(), 2);
@@ -4663,13 +4644,10 @@ async fn stream_prompt_exposes_completion_calls() {
     assert_eq!(
         final_response.usage(),
         Usage {
-            input_tokens: 35,
-            output_tokens: 7,
-            total_tokens: 42,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
+            input_tokens: Some(35),
+            output_tokens: Some(7),
+            total_tokens: Some(42),
+            ..Usage::default()
         }
     );
     assert_eq!(
@@ -4763,9 +4741,9 @@ async fn stream_prompt_completion_calls_records_unreported_usage() {
             MockStreamEvent::tool_call("tool_call_1", "add", serde_json::json!({"x": 1, "y": 2}))
                 .with_call_id("call_1"),
             // A genuine terminal whose usage is unreported: the completion
-            // call records the zero-usage sentinel. (A turn with no
+            // call records every counter as `None`. (A turn with no
             // terminal at all is rejected as truncation instead.)
-            MockStreamEvent::final_response(Usage::new()),
+            MockStreamEvent::final_response(Usage::default()),
         ],
         vec![
             MockStreamEvent::text("done"),
@@ -4798,7 +4776,7 @@ async fn stream_prompt_completion_calls_records_unreported_usage() {
     }
 
     let expected_usage = vec![
-        streamed_call(0, Usage::new()),
+        streamed_call(0, Usage::default()),
         streamed_call(1, second_call_usage),
     ];
     assert_eq!(completion_calls_events, expected_usage);
@@ -4983,7 +4961,7 @@ async fn final_response_can_remain_empty_for_truly_textless_turns() {
 #[tokio::test]
 async fn empty_turn_truncated_at_max_tokens_is_an_error_not_an_empty_answer() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+        mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
     )]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5033,7 +5011,7 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::Text("a partial ans".to_string()),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5078,7 +5056,7 @@ async fn partial_output_truncated_at_max_tokens_stays_a_valid_answer() {
 #[tokio::test]
 async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        mock_final(Usage::new()).with_finish_reason(FinishReason::ContentFilter),
+        mock_final(Usage::default()).with_finish_reason(FinishReason::ContentFilter),
     )]]);
     let agent = AgentBuilder::new(model).build();
 
@@ -5120,7 +5098,7 @@ async fn empty_content_filtered_turn_is_an_error_not_an_empty_answer() {
 #[tokio::test]
 async fn empty_turn_with_unmodeled_finish_reason_still_finalizes() {
     let model = MockCompletionModel::from_stream_turns([[MockStreamEvent::FinalResponse(
-        mock_final(Usage::new())
+        mock_final(Usage::default())
             .with_finish_reason(FinishReason::Other("PROVIDER_SPECIFIC".to_string())),
     )]]);
     let agent = AgentBuilder::new(model).build();
@@ -5161,7 +5139,7 @@ async fn reasoning_only_turn_truncated_at_max_tokens_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("thinking hard and never reaching an answer"),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5200,7 +5178,7 @@ async fn reasoning_only_turn_content_filtered_is_an_error() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("considering something the filter rejects"),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::new()).with_finish_reason(FinishReason::ContentFilter),
+            mock_final(Usage::default()).with_finish_reason(FinishReason::ContentFilter),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5245,7 +5223,7 @@ async fn reasoning_then_text_truncated_stays_a_valid_answer() {
         MockStreamEvent::reasoning("weighing the options"),
         MockStreamEvent::Text("the answer so f".to_string()),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5285,7 +5263,7 @@ async fn reasoning_only_turn_that_stopped_naturally_still_finalizes() {
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("thought about it, nothing to add"),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::new()).with_finish_reason(FinishReason::Stop),
+            mock_final(Usage::default()).with_finish_reason(FinishReason::Stop),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();
@@ -5322,7 +5300,7 @@ async fn partial_reasoning_reaches_the_consumer_when_the_truncated_turn_errors()
     let model = MockCompletionModel::from_stream_turns([[
         MockStreamEvent::reasoning("partial thinking worth keeping"),
         MockStreamEvent::FinalResponse(
-            mock_final(Usage::new()).with_finish_reason(FinishReason::Length),
+            mock_final(Usage::default()).with_finish_reason(FinishReason::Length),
         ),
     ]]);
     let agent = AgentBuilder::new(model).build();

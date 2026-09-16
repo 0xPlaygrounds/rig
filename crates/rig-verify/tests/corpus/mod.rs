@@ -4046,7 +4046,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         break None;
                     }
                 }
-                AgentRunStep::Done(response) => break Some(response),
+                AgentRunStep::Done(response) => break Some(*response),
             }
         };
         let response = match resumed.take() {

@@ -213,8 +213,9 @@ pub enum AgentRunStep {
         /// The tool calls of the current assistant turn, in emission order.
         calls: Vec<PendingToolCall>,
     },
-    /// The run is complete.
-    Done(PromptResponse),
+    /// The run is complete. Boxed: a response carries the whole run's
+    /// messages and usage, and a step is otherwise a few words.
+    Done(Box<PromptResponse>),
 }
 
 /// One tool call awaiting execution by the driver.
@@ -591,7 +592,7 @@ impl AgentRun {
             chat_history: None,
             new_messages: vec![prompt.into()],
             current_turn: 0,
-            usage: Usage::new(),
+            usage: Usage::default(),
             completion_calls: Vec::new(),
             completion_call_index: 0,
             invalid_tool_call_retries: 0,
@@ -1250,7 +1251,7 @@ impl AgentRun {
                 Ok(step)
             }
             RunState::Done(response) => {
-                let step = AgentRunStep::Done((*response).clone());
+                let step = AgentRunStep::Done(response.clone());
                 self.state = RunState::Done(response);
                 Ok(step)
             }
@@ -1379,7 +1380,8 @@ impl AgentRun {
             .with_completion_calls(self.completion_calls.clone())
             .with_output_tool_calls(output_tool_calls)
             .with_content(content);
-        self.state = RunState::Done(Box::new(response.clone()));
+        let response = Box::new(response);
+        self.state = RunState::Done(response.clone());
         AgentRunStep::Done(response)
     }
 
@@ -1727,8 +1729,8 @@ impl AgentRun {
     /// stream is drained for usage after the rollback — so recording is
     /// decoupled from turn ingestion. Valid while a model response is pending
     /// or between a turn rollback and the next [`AgentRunStep::CallModel`];
-    /// aggregates `usage` into the run total. Zero-valued usage means the
-    /// provider reported no usage metrics.
+    /// aggregates `usage` into the run total. Usage whose counters are all
+    /// `None` means the provider reported no usage metrics.
     ///
     /// `raw` is the stream's terminal record as carried on `StreamFinal::raw`
     /// — read off the same terminal the driver reads `identity` and
@@ -1907,14 +1909,14 @@ impl AgentRun {
         // never learned usage (no record before the turn completed) still get
         // the call recorded, with no reported usage.
         if !self.streamed_completion_call_recorded {
-            // `Usage::new()` is the additive identity for `Usage`'s `AddAssign`,
+            // `Usage::default()` is the additive identity for `Usage`'s `AddAssign`,
             // so routing the no-usage fallback through `record_completion_call`
             // leaves the run total unchanged while unifying the accounting.
             // Identity carries the turn's message id — the same value written
             // into run history below — so `completion_calls` and `messages()`
             // agree even for a hand-driven driver that never recorded usage.
             self.record_completion_call(
-                Usage::new(),
+                Usage::default(),
                 ResponseIdentity {
                     message_id: turn.message_id.clone(),
                     ..ResponseIdentity::default()

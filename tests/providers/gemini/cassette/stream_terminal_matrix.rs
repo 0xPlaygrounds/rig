@@ -344,9 +344,9 @@ async fn two_terminal_stream_terminal_carries_the_last_usage() {
             // a re-record cannot leave it behind.
             assert_eq!(
                 terminal.usage.total_tokens,
-                last_frame_total_tokens(
+                Some(last_frame_total_tokens(
                     "stream_terminal_matrix/two_terminal_stream_terminal_carries_the_last_usage"
-                ),
+                )),
                 "the terminal must carry the last frame's cumulative usage, not the \
                  intermediate finish's"
             );
@@ -865,7 +865,8 @@ mod unit {
         let run = run(&[ANSWER, REAL_TERMINAL, TRAILER]).await;
         let terminal = run.terminals.first().expect("one terminal");
         assert_eq!(
-            terminal.usage.total_tokens, 109,
+            terminal.usage.total_tokens,
+            Some(109),
             "a usage trailer after the finish chunk must reach the terminal record"
         );
     }
@@ -876,7 +877,7 @@ mod unit {
         let terminal = run.terminals.first().expect("one terminal");
         assert_eq!(terminal.response_id.as_deref(), Some("resp-last"));
         assert_eq!(terminal.model.as_deref(), Some("gemini-2.5-flash-002"));
-        assert_eq!(terminal.usage.total_tokens, 50);
+        assert_eq!(terminal.usage.total_tokens, Some(50));
     }
 
     #[tokio::test]

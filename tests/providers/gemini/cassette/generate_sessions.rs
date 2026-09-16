@@ -257,7 +257,8 @@ async fn long_history_replay_nonstreaming() {
                 "answer should recall the replayed tool result, got {text:?}"
             );
             assert!(
-                response.usage.input_tokens > 0 && response.usage.output_tokens > 0,
+                response.usage.input_tokens.is_some_and(|n| n > 0)
+                    && response.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should be populated, got {:?}",
                 response.usage
             );
@@ -311,13 +312,14 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
                 "the visible answer should state the result, got {text:?}"
             );
             assert!(
-                response.usage.reasoning_tokens > 0,
+                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "thoughtsTokenCount should surface as reasoning tokens: {:?}",
                 response.usage
             );
             assert!(
-                response.usage.total_tokens
-                    >= response.usage.input_tokens + response.usage.output_tokens,
+                response.usage.total_tokens.unwrap_or(0)
+                    >= response.usage.input_tokens.unwrap_or(0)
+                        + response.usage.output_tokens.unwrap_or(0),
                 "total tokens should cover prompt and candidate tokens: {:?}",
                 response.usage
             );

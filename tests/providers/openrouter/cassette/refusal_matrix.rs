@@ -294,11 +294,23 @@ async fn blocking_usage_survives_the_refusal() {
 
             let response = model.completion(request).await.expect("refusal turn");
 
-            assert!(response.usage.input_tokens > 0, "{:?}", response.usage);
-            assert!(response.usage.output_tokens > 0, "{:?}", response.usage);
+            assert!(
+                response.usage.input_tokens.is_some_and(|n| n > 0),
+                "{:?}",
+                response.usage
+            );
+            assert!(
+                response.usage.output_tokens.is_some_and(|n| n > 0),
+                "{:?}",
+                response.usage
+            );
             assert_eq!(
                 response.usage.total_tokens,
-                response.usage.input_tokens + response.usage.output_tokens
+                response
+                    .usage
+                    .input_tokens
+                    .zip(response.usage.output_tokens)
+                    .map(|(input, output)| input + output)
             );
         },
     )
@@ -539,7 +551,11 @@ async fn streaming_terminal_carries_usage_and_reason() {
             let terminal = terminal.expect("a refusal stream still ends with a terminal record");
 
             assert_nonempty_response(&text);
-            assert!(terminal.usage.output_tokens > 0, "{:?}", terminal.usage);
+            assert!(
+                terminal.usage.output_tokens.is_some_and(|n| n > 0),
+                "{:?}",
+                terminal.usage
+            );
             assert_eq!(
                 terminal.finish_reason,
                 Some(rig::completion::FinishReason::Stop)

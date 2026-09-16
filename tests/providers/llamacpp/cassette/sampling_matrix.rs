@@ -146,7 +146,8 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
             "a cap that truncates must be reported as Length, not Stop"
         );
         assert_eq!(
-            response.usage.output_tokens, 1,
+            response.usage.output_tokens,
+            Some(1),
             "the server must honour the cap exactly"
         );
     })
@@ -179,7 +180,7 @@ async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
 
         assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
         assert!(
-            response.usage.output_tokens < 512,
+            response.usage.output_tokens.is_some_and(|n| n < 512),
             "the turn stopped on its own, so it used fewer tokens than the cap"
         );
     })

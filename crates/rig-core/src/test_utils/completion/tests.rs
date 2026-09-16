@@ -93,10 +93,10 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
     let model = MockCompletionModel::from_stream_turns([vec![
         MockStreamEvent::text("hello"),
         MockStreamEvent::final_response(Usage {
-            input_tokens: 1,
-            output_tokens: 2,
-            total_tokens: 3,
-            ..Usage::new()
+            input_tokens: Some(1),
+            output_tokens: Some(2),
+            total_tokens: Some(3),
+            ..Usage::default()
         }),
     ]]);
 
@@ -108,7 +108,7 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
     let terminal = stream.response.expect("terminal record");
     let raw = &terminal.raw;
     let typed: StreamFinal = serde_json::from_value(raw.clone()).expect("terminal type");
-    assert_eq!(typed.usage.total_tokens, 3);
+    assert_eq!(typed.usage.total_tokens, Some(3));
     assert!(
         typed.raw.is_null(),
         "the scripted terminal itself carried no raw (Value::Null)"
@@ -118,7 +118,7 @@ async fn stream_terminal_raw_is_the_scripted_terminal_serialized() {
         *raw,
         "the capture must be exactly what the scripted terminal serializes to"
     );
-    assert_eq!(terminal.usage.total_tokens, 3);
+    assert_eq!(terminal.usage.total_tokens, Some(3));
 }
 
 #[tokio::test]
@@ -192,7 +192,7 @@ async fn stream_yields_scripted_events_and_records_requests() {
                 saw_final = matches!(
                     response.usage,
                     Usage {
-                        total_tokens: 7,
+                        total_tokens: Some(7),
                         ..
                     }
                 );
@@ -245,7 +245,7 @@ fn a_script_is_serde_in_and_serde_out() {
 
     let stream_turns = vec![vec![
         MockStreamEvent::Text("hi".into()),
-        MockStreamEvent::FinalResponse(super::super::streaming::mock_final(Usage::new())),
+        MockStreamEvent::FinalResponse(super::super::streaming::mock_final(Usage::default())),
     ]];
     let json = serde_json::to_string(&stream_turns).expect("stream turns serialize");
     let restored: Vec<Vec<MockStreamEvent>> =

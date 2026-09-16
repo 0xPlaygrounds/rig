@@ -90,7 +90,11 @@ impl CompletionModel for ScriptedModel {
         } else {
             vec![AssistantContent::text("done")]
         };
-        std::future::ready(Ok(CompletionResponse::new(choice, Usage::new(), "fixture")))
+        std::future::ready(Ok(CompletionResponse::new(
+            choice,
+            Usage::default(),
+            "fixture",
+        )))
     }
 
     fn stream(

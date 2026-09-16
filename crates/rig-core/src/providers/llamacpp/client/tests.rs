@@ -199,7 +199,7 @@ async fn embedding_model_preserves_v1_path_and_usage() {
         .await
         .expect("embedding request should succeed");
 
-    assert_eq!(response.usage.total_tokens, 2);
+    assert_eq!(response.usage.total_tokens, Some(2));
     assert_eq!(
         http_client.requests()[0].uri,
         "http://localhost:8080/v1/embeddings"
@@ -276,8 +276,8 @@ async fn rerank_request_shape_and_path() {
     );
 
     assert_eq!(reranked.model.as_deref(), Some("reranker"));
-    assert_eq!(reranked.usage.input_tokens, 42);
-    assert_eq!(reranked.usage.total_tokens, 42);
+    assert_eq!(reranked.usage.input_tokens, Some(42));
+    assert_eq!(reranked.usage.total_tokens, Some(42));
     assert_eq!(
         reranked.results.iter().map(|r| r.index).collect::<Vec<_>>(),
         vec![1, 0],

@@ -59,7 +59,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
                     .await
                     .expect("streaming prompt should succeed");
             assert_nonempty_response(&response);
-            assert!(provider_final.usage.total_tokens > 0);
+            assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;

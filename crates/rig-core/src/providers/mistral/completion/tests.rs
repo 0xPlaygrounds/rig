@@ -67,7 +67,7 @@ fn usage_prefers_structured_cached_tokens_and_falls_back() {
         "prompt_tokens_details": {"cached_tokens": 7}
     }))
     .expect("usage should deserialize");
-    assert_eq!(structured.cached_tokens(), 7);
+    assert_eq!(structured.cached_tokens(), Some(7));
 
     let fallback: Usage = serde_json::from_value(serde_json::json!({
         "prompt_tokens": 10,
@@ -76,7 +76,7 @@ fn usage_prefers_structured_cached_tokens_and_falls_back() {
         "num_cached_tokens": 2
     }))
     .expect("usage should deserialize");
-    assert_eq!(fallback.cached_tokens(), 2);
+    assert_eq!(fallback.cached_tokens(), Some(2));
 
     // The singular alias form used by some Mistral responses.
     let aliased: Usage = serde_json::from_value(serde_json::json!({
@@ -86,7 +86,7 @@ fn usage_prefers_structured_cached_tokens_and_falls_back() {
         "prompt_token_details": {"cached_tokens": 4}
     }))
     .expect("usage should deserialize");
-    assert_eq!(aliased.cached_tokens(), 4);
+    assert_eq!(aliased.cached_tokens(), Some(4));
 }
 
 /// Mistral reports audio outside `prompt_tokens`, so counting only that
@@ -107,11 +107,11 @@ fn usage_counts_audio_tokens_as_input() {
     assert_eq!(usage.input_tokens(), 381);
 
     let normalized = crate::completion::Usage::from(&usage);
-    assert_eq!(normalized.input_tokens, 381);
-    assert_eq!(normalized.output_tokens, 2);
+    assert_eq!(normalized.input_tokens, Some(381));
+    assert_eq!(normalized.output_tokens, Some(2));
     assert_eq!(
-        normalized.input_tokens + normalized.output_tokens,
         normalized.total_tokens,
+        Some(381 + 2),
         "the parts must add up to the total Mistral reported"
     );
 }
@@ -126,7 +126,10 @@ fn usage_without_audio_is_unchanged() {
     .expect("usage should deserialize");
 
     assert_eq!(usage.audio_tokens(), 0);
-    assert_eq!(crate::completion::Usage::from(&usage).input_tokens, 19);
+    assert_eq!(
+        crate::completion::Usage::from(&usage).input_tokens,
+        Some(19)
+    );
 }
 
 /// Mistral emits the tool call anyway when `max_tokens` runs out mid
@@ -165,7 +168,7 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         Some(crate::completion::FinishReason::Length),
         "the finish reason is what reports the truncation"
     );
-    assert_eq!(normalized.usage.total_tokens, 62);
+    assert_eq!(normalized.usage.total_tokens, Some(62));
     // The unusable call is dropped, as the streaming path drops it.
     assert!(
         normalized
