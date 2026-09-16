@@ -159,7 +159,7 @@ impl Wire for Chat {
         ))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         ChatDecoder::default()
     }
 }
@@ -276,7 +276,7 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         EmbeddingsDecoder
     }
 
@@ -388,7 +388,7 @@ impl Wire for ImageEmbeddings {
         Ok(Encoded::batch(requests, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         ImageEmbeddingsDecoder
     }
 

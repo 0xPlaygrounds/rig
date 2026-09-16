@@ -397,3 +397,81 @@ async fn an_empty_body_acknowledges_a_delete_but_answers_no_get() {
         "{error:?}"
     );
 }
+
+/// A body that names a resource and then fails to deserialize is the
+/// defect it is.
+///
+/// The union this replaced read `{"name": 5}` through a flattened
+/// `Option<CachedContent>`, which swallows the deserialization error: the
+/// call reported a *missing* cached content for a body that carried one,
+/// badly. The shape is now decided before the typed decode, so the decode
+/// failure reaches the caller as one.
+#[tokio::test]
+async fn a_malformed_resource_body_is_a_decode_error() {
+    let caches = bound_caches(SequencedHttpClient::new([MockHttpResponse::success(
+        r#"{"name":5}"#,
+    )]));
+
+    let error = caches
+        .get("leaky")
+        .await
+        .expect_err("a `name` that is not a string cannot decode");
+
+    assert!(
+        matches!(error, CachedContentError::JsonError(_)),
+        "{error:?}"
+    );
+}
+
+/// The `{}` every recorded delete is answered with is the whole reply —
+/// [`CachedContentReply::Acknowledged`], not a resource that is absent.
+#[tokio::test]
+async fn a_deletes_empty_object_is_the_acknowledgement() {
+    let wire = crate::providers::gemini::Gemini::new("test-key").cached_contents();
+    let http = SequencedHttpClient::new([MockHttpResponse::success("{}")]);
+
+    let reply = crate::driver::call(
+        &wire,
+        &http,
+        CachedContentRequest::Delete("leaky".to_owned()),
+        None,
+    )
+    .await
+    .expect("the empty object acknowledges the delete");
+
+    assert!(
+        matches!(reply, CachedContentReply::Acknowledged),
+        "{reply:?}"
+    );
+}
+
+/// A reply of a shape the verb did not ask for names the shape it carried,
+/// in both directions. The union could not: a page reaching a `get` left
+/// its `Option<CachedContent>` empty, which read as "no cached content",
+/// and a resource reaching a `list` left its `Vec` empty, which read as an
+/// empty collection.
+#[tokio::test]
+async fn a_reply_of_the_other_shape_names_the_shape_it_carried() {
+    let caches = bound_caches(SequencedHttpClient::new([
+        cached_page(&["a"], None),
+        MockHttpResponse::success(r#"{"name":"cachedContents/leaky"}"#),
+    ]));
+
+    let on_get = caches
+        .get("leaky")
+        .await
+        .expect_err("a listing page is not one cached content");
+    assert!(
+        matches!(&on_get, CachedContentError::ResponseError(message) if message.contains("listing page")),
+        "{on_get:?}"
+    );
+
+    let on_list = caches
+        .list()
+        .await
+        .expect_err("one cached content is not a listing page");
+    assert!(
+        matches!(&on_list, CachedContentError::ResponseError(message) if message.contains("not a listing page")),
+        "{on_list:?}"
+    );
+}

@@ -7,8 +7,10 @@
 //! completion wire that picks the route ([`wire::routes_through_responses`]
 //! is the only home of that predicate — Codex-class models are answered by
 //! `/responses`, everything else by `/chat/completions`), and
-//! [`wire::Embeddings`] and [`wire::Models`] are Copilot's own embeddings and
-//! catalogue endpoints.
+//! [`wire::Embeddings`] is the shared embeddings wire under Copilot's
+//! envelope, while [`wire::Models`] is the one endpoint whose reply really is
+//! Copilot's own — it names the vendor behind each model and nests the
+//! modality under `capabilities.type`.
 //!
 //! Two things Copilot cannot express as a wire stay here. The credential is
 //! *exchanged* over the network before the API can be called at all — a

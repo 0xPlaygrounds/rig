@@ -1,10 +1,11 @@
+use crate::operation::AdapterOutput;
 use crate::operation::Completion;
 use crate::providers::cohere::completion::{
     AssistantContent, CompletionResponse, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
 };
-use crate::providers::internal::adapter::{AdapterOutput, WireFrame};
 use crate::providers::internal::wire;
 use crate::streaming::{BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
+use crate::wire::WireFrame;
 use serde::{Deserialize, Serialize};
 
 /// One streamed frame of Cohere's `/v2/chat`, named by its `type`.

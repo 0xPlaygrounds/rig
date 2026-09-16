@@ -41,7 +41,7 @@ pub const GROK_4: &str = "grok-4-0709";
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
-    Dialect, ImageBody, OutputCap, Quirks, ResponsesQuirks, Route, SpeechBody,
+    Dialect, ImageBody, Quirks, ResponsesContract, ResponsesQuirks, Route, SpeechBody,
 };
 
 /// xAI, as an OpenAI dialect.
@@ -54,15 +54,9 @@ use crate::providers::openai::wire::{
 /// function call at its `output_item.done` rather than at the terminal, and
 /// its native structured output does not compose with tool calls.
 pub const DIALECT: Dialect = Dialect {
-    name: "xai",
-    base_url: "https://api.x.ai",
-    api_key_env: "XAI_API_KEY",
-    base_url_env: None,
     request_id_header: Some("x-request-id"),
-    alternate_auth: None,
     quirks: Quirks {
         completion_route: Route::Responses,
-        output_cap: OutputCap::Legacy,
         completion_path: "/v1/chat/completions",
         embeddings_path: "/v1/embeddings",
         models_path: "/v1/models",
@@ -75,10 +69,10 @@ pub const DIALECT: Dialect = Dialect {
         responses: ResponsesQuirks {
             path: "/v1/responses",
             system_instructions: SystemInstructionsPlacement::InputSystemMessages,
-            error_envelope_in_success: true,
-            native_output_with_tools: false,
+            contract: ResponsesContract::Xai,
             ..ResponsesQuirks::openai()
         },
         ..Quirks::openai()
     },
+    ..Dialect::gateway("xai", "https://api.x.ai", "XAI_API_KEY")
 };

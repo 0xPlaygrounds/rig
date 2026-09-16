@@ -342,7 +342,7 @@ pub fn transient_transport(error: &crate::http_client::Error) -> bool {
 
 /// Collect the `Display` of each `source()` link below `error`, outermost
 /// first.
-fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
+pub(crate) fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
     let mut chain = Vec::new();
     let mut current = error.source();
     while let Some(source) = current {
@@ -357,10 +357,16 @@ fn source_chain(error: &(dyn std::error::Error + 'static)) -> Vec<String> {
 /// the five core variants classify identically on every operation, and
 /// whatever the operation adds is a fault in the request it was asked to
 /// build.
+///
+/// An operation with a variant that is *not* a request fault — Gemini's
+/// `CachedContentError::Expired`, which is the provider's verdict on a
+/// handle with its status folded into the variant — names it after the
+/// type, rather than restating the whole table to change one row.
 macro_rules! impl_report_for_provider_error {
-    ($error:ident) => {
-        impl From<&$error> for ErrorReport {
+    ($error:ident $(, $extra:pat => $extra_kind:expr)* $(,)?) => {
+        impl From<&$error> for $crate::error::ErrorReport {
             fn from(error: &$error) -> Self {
+                use $crate::error::ErrorKind;
                 let (kind, provider_response) = match error {
                     $error::HttpError(_) => (ErrorKind::Http, None),
                     $error::JsonError(_) => (ErrorKind::Json, None),
@@ -369,9 +375,10 @@ macro_rules! impl_report_for_provider_error {
                     $error::ProviderResponse(response) => {
                         (ErrorKind::ProviderResponse, Some(response.clone()))
                     }
+                    $( $extra => ($extra_kind, None), )*
                     _ => (ErrorKind::Request, None),
                 };
-                ErrorReport {
+                $crate::error::ErrorReport {
                     kind,
                     retryable: error.is_retryable(),
                     message: error.to_string(),
@@ -384,7 +391,7 @@ macro_rules! impl_report_for_provider_error {
                     refusal: provider_response
                         .as_ref()
                         .is_some_and(|response| response.refusal),
-                    source_chain: source_chain(error),
+                    source_chain: $crate::error::source_chain(error),
                     request_id: provider_response
                         .as_ref()
                         .and_then(|response| response.provider_request_id.clone()),
@@ -394,13 +401,15 @@ macro_rules! impl_report_for_provider_error {
             }
         }
 
-        impl From<$error> for ErrorReport {
+        impl From<$error> for $crate::error::ErrorReport {
             fn from(error: $error) -> Self {
                 Self::from(&error)
             }
         }
     };
 }
+
+pub(crate) use impl_report_for_provider_error;
 
 impl_report_for_provider_error!(TranscriptionError);
 #[cfg(feature = "image")]

@@ -19,6 +19,9 @@ use crate::completion::{CompletionError, CompletionRequest, ProviderCapabilities
 use crate::operation::Completion;
 use crate::providers::openai::responses_api::streaming::{ResponsesDecoder, ResponsesEvent};
 use crate::providers::openai::responses_api::wire::Responses;
+use crate::providers::openai::responses_api::{
+    ResponsesToolDefinition, SystemInstructionsPlacement,
+};
 use crate::telemetry::CompletionOperation;
 use crate::wire::{
     Body, Decoder, Encoded, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
@@ -26,6 +29,22 @@ use crate::wire::{
 
 use super::OpenAI;
 use super::chat::{Chat, ChatDecoder, ChatEvent};
+
+/// Ask whichever route this is.
+///
+/// Every [`Wire`] and [`Decoder`] method below is the same two-arm match on
+/// the variant — the enum chooses a wire, and the method asks that wire — so
+/// the match is written once here instead of fourteen times. The two methods
+/// whose arms genuinely differ, `decoder` and `classify`, wrap their result
+/// in the matching variant and are written out.
+macro_rules! on_route {
+    ($chosen:expr, $wire:ident => $ask:expr) => {
+        match $chosen {
+            Self::Chat($wire) => $ask,
+            Self::Responses($wire) => $ask,
+        }
+    };
+}
 
 /// Which completion endpoint a configuration serves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,8 +60,9 @@ pub enum Route {
 /// Both variants are the shared wire types on the same configuration, so
 /// this is what [`Bound<OpenAI>::completion`](crate::driver::Bound) — and
 /// the agent sugar on top of it — builds. A caller who wants a specific
-/// endpoint names it and gets the concrete wire back; a caller who wants a
-/// route-specific option on this one matches the variant.
+/// endpoint names it and gets the concrete wire back; every option either
+/// route takes is also forwarded here, and is a no-op on the route that
+/// has no such option, so `map_wire` reaches all of them.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum OpenAiWire {
     /// The chat-completions wire.
@@ -63,18 +83,74 @@ impl OpenAiWire {
 
     /// The configuration this wire speaks to.
     pub fn provider(&self) -> &OpenAI {
-        match self {
-            Self::Chat(wire) => &wire.provider,
-            Self::Responses(wire) => &wire.provider,
-        }
+        on_route!(self, wire => &wire.provider)
     }
 
     /// Sanitize tool schemas for OpenAI's strict mode on whichever route
     /// this is.
     pub fn with_strict_tools(self) -> Self {
+        self.on_chat(Chat::with_strict_tools)
+            .on_responses(Responses::with_strict_tools)
+    }
+
+    /// Serialize tool-result content as arrays: a chat-completions shape,
+    /// so a no-op on the Responses route, whose request has one content
+    /// encoding.
+    pub fn with_tool_result_array_content(self) -> Self {
+        self.on_chat(Chat::with_tool_result_array_content)
+    }
+
+    /// Ask the provider to cache the prompt: an OpenRouter `cache_control`
+    /// on the chat body, so a no-op on the Responses route.
+    pub fn with_prompt_caching(self) -> Self {
+        self.on_chat(Chat::with_prompt_caching)
+    }
+
+    /// Add a provider-side tool to every request: a Responses shape, so a
+    /// no-op on the chat route, which carries no wire-level tools.
+    pub fn with_tool(self, tool: impl Into<ResponsesToolDefinition>) -> Self {
+        self.on_responses(|wire| wire.with_tool(tool))
+    }
+
+    /// Add provider-side tools to every request: a no-op on the chat
+    /// route, which carries no wire-level tools.
+    pub fn with_tools<I, Tool>(self, tools: I) -> Self
+    where
+        I: IntoIterator<Item = Tool>,
+        Tool: Into<ResponsesToolDefinition>,
+    {
+        self.on_responses(|wire| wire.with_tools(tools))
+    }
+
+    /// Put Rig's system instructions somewhere other than the dialect's
+    /// default placement: a no-op on the chat route, where a system message
+    /// has one place to go.
+    pub fn with_system_instructions_placement(
+        self,
+        placement: SystemInstructionsPlacement,
+    ) -> Self {
+        self.on_responses(|wire| wire.with_system_instructions_placement(placement))
+    }
+
+    /// Send Rig's system instructions as `system` messages in `input`: a
+    /// no-op on the chat route, which sends them that way already.
+    pub fn with_system_instructions_as_messages(self) -> Self {
+        self.on_responses(Responses::with_system_instructions_as_messages)
+    }
+
+    /// Apply a chat-route option; the Responses route is left as it is.
+    fn on_chat(self, option: impl FnOnce(Chat) -> Chat) -> Self {
         match self {
-            Self::Chat(wire) => Self::Chat(wire.with_strict_tools()),
-            Self::Responses(wire) => Self::Responses(wire.with_strict_tools()),
+            Self::Chat(wire) => Self::Chat(option(wire)),
+            responses => responses,
+        }
+    }
+
+    /// Apply a Responses-route option; the chat route is left as it is.
+    fn on_responses(self, option: impl FnOnce(Responses) -> Responses) -> Self {
+        match self {
+            Self::Responses(wire) => Self::Responses(option(wire)),
+            chat => chat,
         }
     }
 }
@@ -96,52 +172,34 @@ impl Wire for OpenAiWire {
     type Decoder = OpenAiDecoder;
 
     fn name(&self) -> &str {
-        match self {
-            Self::Chat(wire) => wire.name(),
-            Self::Responses(wire) => wire.name(),
-        }
+        on_route!(self, wire => wire.name())
     }
 
     fn model(&self) -> Option<&str> {
-        match self {
-            Self::Chat(wire) => wire.model(),
-            Self::Responses(wire) => wire.model(),
-        }
+        on_route!(self, wire => wire.model())
     }
 
     fn route(&self) -> Option<&str> {
-        match self {
-            Self::Chat(wire) => wire.route(),
-            Self::Responses(wire) => wire.route(),
-        }
+        on_route!(self, wire => wire.route())
     }
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
-        match self {
-            Self::Chat(wire) => wire.encode(request, mode),
-            Self::Responses(wire) => wire.encode(request, mode),
-        }
+        on_route!(self, wire => wire.encode(request, mode))
     }
 
-    fn decoder(&self) -> OpenAiDecoder {
+    fn decoder(&self, mode: Mode) -> OpenAiDecoder {
         match self {
-            Self::Chat(wire) => OpenAiDecoder::Chat(wire.decoder()),
-            Self::Responses(wire) => OpenAiDecoder::Responses(wire.decoder()),
+            Self::Chat(wire) => OpenAiDecoder::Chat(wire.decoder(mode)),
+            Self::Responses(wire) => OpenAiDecoder::Responses(wire.decoder(mode)),
         }
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
-        match self {
-            Self::Chat(wire) => wire.capabilities(),
-            Self::Responses(wire) => wire.capabilities(),
-        }
+        on_route!(self, wire => wire.capabilities())
     }
 
     fn telemetry(&self, streaming: bool) -> CompletionOperation {
-        match self {
-            Self::Chat(wire) => wire.telemetry(streaming),
-            Self::Responses(wire) => wire.telemetry(streaming),
-        }
+        on_route!(self, wire => wire.telemetry(streaming))
     }
 }
 
@@ -187,58 +245,33 @@ impl Decoder<Completion> for OpenAiDecoder {
     }
 
     fn finish(&mut self, out: &mut Output<Completion>) {
-        match self {
-            Self::Chat(decoder) => decoder.finish(out),
-            Self::Responses(decoder) => decoder.finish(out),
-        }
-    }
-
-    fn whole_reply(&mut self) {
-        match self {
-            Self::Chat(decoder) => decoder.whole_reply(),
-            Self::Responses(decoder) => decoder.whole_reply(),
-        }
+        on_route!(self, decoder => decoder.finish(out))
     }
 
     fn flush_before_terminal_error(&mut self, out: &mut Output<Completion>) {
-        match self {
-            Self::Chat(decoder) => decoder.flush_before_terminal_error(out),
-            Self::Responses(decoder) => decoder.flush_before_terminal_error(out),
-        }
+        on_route!(self, decoder => decoder.flush_before_terminal_error(out))
     }
 
     fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
-        match self {
-            Self::Chat(decoder) => decoder.project(payload, sink),
-            Self::Responses(decoder) => decoder.project(payload, sink),
-        }
+        on_route!(self, decoder => decoder.project(payload, sink))
     }
 
     fn document(&self) -> Option<serde_json::Value> {
-        match self {
-            Self::Chat(decoder) => decoder.document(),
-            Self::Responses(decoder) => decoder.document(),
-        }
+        on_route!(self, decoder => decoder.document())
     }
 
     fn continuation(&self) -> Option<http::Request<Body>> {
-        match self {
-            Self::Chat(decoder) => decoder.continuation(),
-            Self::Responses(decoder) => decoder.continuation(),
-        }
+        on_route!(self, decoder => decoder.continuation())
     }
 
     fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        match self {
-            Self::Chat(decoder) => decoder.is_analysis_only(frame),
-            Self::Responses(decoder) => decoder.is_analysis_only(frame),
-        }
+        on_route!(self, decoder => decoder.is_analysis_only(frame))
     }
 
     fn is_finished(&self) -> bool {
-        match self {
-            Self::Chat(decoder) => decoder.is_finished(),
-            Self::Responses(decoder) => decoder.is_finished(),
-        }
+        on_route!(self, decoder => decoder.is_finished())
     }
 }
+
+#[cfg(test)]
+mod tests;

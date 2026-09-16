@@ -7,11 +7,16 @@
 /// `[redacted]`, `Serialize` writes `"[redacted]"`, and only
 /// [`Self::expose`] returns the value. Equality is by value, so two wires
 /// built from the same key compare equal.
-#[derive(Clone, Default, PartialEq, Eq, Hash, serde::Deserialize)]
-#[serde(transparent)]
+///
+/// The round trip is lossy by contract: deserializing the `"[redacted]"`
+/// sentinel yields the *empty* `Secret`, so a reloaded wire reports
+/// [`Self::is_empty`] and gets its credential from the environment again
+/// rather than sending the sentinel as a key.
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
 pub struct Secret(String);
 
-/// What a redacted secret renders and serializes as.
+/// What a redacted secret renders and serializes as — and the one string
+/// that deserializes to no credential.
 const REDACTED: &str = "[redacted]";
 
 impl Secret {
@@ -44,5 +49,15 @@ impl serde::Serialize for Secret {
     }
 }
 
+impl<'de> serde::Deserialize<'de> for Secret {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let mut value = <String as serde::Deserialize>::deserialize(deserializer)?;
+        if value == REDACTED {
+            value.clear();
+        }
+        Ok(Self(value))
+    }
+}
+
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

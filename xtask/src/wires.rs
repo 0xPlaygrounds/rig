@@ -14,13 +14,14 @@
 //! |---|---|
 //! | no `.await`, `async fn`, or `async` block | a provider owning its transport |
 //! | no `Arc`, `Box<dyn`, or `impl Future` in an `impl Wire` block | a wire that is not data |
-//! | no `struct`/`enum` with an `H` parameter, or a `T` parameter outside [`DATA_GENERICS`] | the transport parameter returning |
+//! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `BoxedHttpClient` | the transport parameter returning |
 //! | no consumer-trait impl | a second way to be a model |
 //!
 //! The one exception is `openai/responses_api/websocket.rs`: a session — one
 //! connection, many turns, warmup — is not a request/response exchange, so it
 //! keeps its own API and decodes every message through the shared driver.
-//! Credential exchange (`/auth/`) is exempt from the `async` rules only.
+//! The credential exchanges named in [`CREDENTIAL_EXCHANGES`] are exempt from
+//! the `async` rules only.
 //!
 //! Source is parsed with `syn`, so an `.await` in a doc comment or a string
 //! cannot trip the check, and a file `syn` cannot parse is an error rather
@@ -36,8 +37,9 @@
 use std::path::{Path, PathBuf};
 
 use proc_macro2::{TokenStream, TokenTree};
+use quote::ToTokens;
 use syn::visit::{self, Visit};
-use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct, Type};
+use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct};
 
 /// The files allowed to own something a pure `encode` structurally cannot
 /// be, each with the reason it is not a wire:
@@ -45,45 +47,37 @@ use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct, Type};
 /// - the Responses websocket is a **connection**: one socket, many turns,
 ///   warmup — a session rather than a request/response exchange.
 ///
-/// Credential exchange is the other, matched by path in
-/// [`is_credential_exchange`] because every provider has one.
+/// [`CREDENTIAL_EXCHANGES`] is the other kind, named one file at a time
+/// because every provider could otherwise claim one.
 ///
 /// A session is exempt from the transport rule as well as the `async`
 /// ones: it holds the socket it is a session over, which is exactly what
 /// distinguishes it from a wire.
 const SESSION_EXCEPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
 
-/// The `T`-generic types that are parametric *data* rather than a held
-/// transport, each with why. A `struct Foo<T>` outside this list is
-/// rejected: `T` is the letter a transport parameter reaches for once `H`
-/// is forbidden.
-const DATA_GENERICS: &[&str] = &[
-    // The classifier's verdict, generic over the wire's own event type.
-    "WireEvent",
-    // The typed-transport triage, generic over an SDK's event type.
-    "TypedEvent",
-    // Cohere's embed reply, generic over the answer shape of the two embed routes.
-    "EmbedReply",
+/// The files that may hold a **conversation** — an `async fn`, an `async`
+/// block, an `.await` — because credential exchange is one: a device flow
+/// polls, an OAuth refresh round-trips, and a token cache is shared. None of
+/// that fits a pure `encode`, and none of it is a wire — it *produces* the
+/// `Secret` a wire holds. Exempt from the no-`async` rules and only from
+/// those: a credential exchange holds no socket of its own.
+///
+/// Named one file at a time rather than matched by path. A `/auth/` pattern
+/// let any provider mint a transport surface inside its wire by calling the
+/// file `auth.rs`, with no review signal; a new credential exchange is
+/// argued for, not added quietly, and `wires/tests.rs` asserts the length.
+const CREDENTIAL_EXCHANGES: &[&str] = &[
+    // GitHub Copilot: device flow, API-key refresh, on-disk token cache.
+    "copilot/auth/mod.rs",
+    "copilot/auth/native.rs",
+    "copilot/auth/wasm.rs",
+    // ChatGPT: the same shape over OpenAI's own device flow.
+    "chatgpt/auth/mod.rs",
+    "chatgpt/auth/native.rs",
+    "chatgpt/auth/wasm.rs",
+    // The request/send helpers both exchanges round-trip through.
+    "internal/auth.rs",
 ];
-
-/// Whether a `T`-generic type is one of the allowlisted data shapes.
-fn is_data_generic(ident: &str) -> bool {
-    DATA_GENERICS.contains(&ident)
-}
-
-/// Whether `relative` is one of the named non-wire surfaces.
-fn is_session(relative: &str) -> bool {
-    SESSION_EXCEPTIONS.contains(&relative)
-}
-
-/// Credential exchange is a conversation, not a request/response exchange:
-/// a device flow polls, an OAuth refresh round-trips, and a token cache is
-/// shared. None of that can live in a pure `encode`, and none of it is a
-/// wire — it *produces* the `Secret` a wire holds. These modules are
-/// therefore exempt from the no-`async` rules, and only from those.
-fn is_credential_exchange(relative: &str) -> bool {
-    relative.contains("/auth/") || relative.ends_with("/auth.rs")
-}
 
 /// The traits a consumer calls a model through. Exactly one implementation of
 /// each ships, and it is `driver::Bound` — a provider contributes a wire.
@@ -170,10 +164,10 @@ struct Wires {
 
 impl Wires {
     fn new(relative: &str) -> Self {
-        let session = is_session(relative);
+        let session = SESSION_EXCEPTIONS.contains(&relative);
         Self {
             file: relative.to_owned(),
-            conversation: session || is_credential_exchange(relative),
+            conversation: session || CREDENTIAL_EXCHANGES.contains(&relative),
             session,
             offenders: Vec::new(),
         }
@@ -183,22 +177,26 @@ impl Wires {
         self.offenders.push(format!("  {}: {what}", self.file));
     }
 
-    /// The transport-parameter rule: no `H`, and no `T` outside
-    /// [`DATA_GENERICS`].
+    /// The transport-parameter rule, stated by **bound** rather than by
+    /// letter: a parameter bounded by `HttpClientExt` — in its own bound list
+    /// or through the item's `where` clause — or defaulted to
+    /// `BoxedHttpClient` is the socket, whatever it is named. A parameter
+    /// with no such bound cannot be sent through, so it is parametric data (a
+    /// `WireEvent<E>`, a reply generic over its answer shape) and needs no
+    /// allowlist — which is why there is no list of letters to maintain.
     fn check_type_params(&mut self, kind: &str, ident: &syn::Ident, generics: &syn::Generics) {
         if self.session {
             return;
         }
         for parameter in generics.type_params() {
-            let offending = parameter.ident == "H"
-                || (parameter.ident == "T" && !is_data_generic(&ident.to_string()));
-            if offending {
-                self.report(&format!(
-                    "`{kind} {ident}<{}>` — a wire holds no transport (parametric data is \
-                     allowlisted in `DATA_GENERICS`)",
-                    parameter.ident
-                ));
+            if !is_transport_parameter(parameter, generics) {
+                continue;
             }
+            self.report(&format!(
+                "`{kind} {ident}<{}>` — a wire holds no transport, and that parameter is \
+                 bounded by `HttpClientExt` or defaulted to `BoxedHttpClient`",
+                parameter.ident
+            ));
         }
     }
 
@@ -246,10 +244,36 @@ fn await_lines(tokens: TokenStream, lines: &mut Vec<usize>) {
     }
 }
 
-/// A type's source text, for the substring checks the rules are stated in.
-fn quote_type(ty: &Type) -> String {
-    use quote::ToTokens as _;
-    ty.to_token_stream().to_string().replace(' ', "")
+/// A syntax node's source text, whitespace removed, so the rules can be
+/// stated as substring checks (`Box<dyn Foo>` matches `Box<dyn`).
+fn source_text(node: &impl ToTokens) -> String {
+    node.to_token_stream().to_string().replace(' ', "")
+}
+
+/// Whether `parameter` is the socket rather than parametric data: bounded by
+/// `HttpClientExt` in its own bounds or in `generics`' `where` clause, or
+/// defaulted to `BoxedHttpClient`.
+fn is_transport_parameter(parameter: &syn::TypeParam, generics: &syn::Generics) -> bool {
+    // Every bound stated for this parameter, wherever it was stated: the
+    // inline list and each `where` predicate naming it are one bound set.
+    let mut bounds = source_text(&parameter.bounds);
+    for predicate in generics
+        .where_clause
+        .iter()
+        .flat_map(|clause| &clause.predicates)
+    {
+        if let syn::WherePredicate::Type(bounded) = predicate
+            && matches!(&bounded.bounded_ty, syn::Type::Path(named)
+                if named.qself.is_none() && named.path.is_ident(&parameter.ident))
+        {
+            bounds.push_str(&source_text(&bounded.bounds));
+        }
+    }
+    bounds.contains("HttpClientExt")
+        || parameter
+            .default
+            .as_ref()
+            .is_some_and(|default| source_text(default).contains("BoxedHttpClient"))
 }
 
 impl<'ast> Visit<'ast> for Wires {
@@ -301,7 +325,7 @@ impl<'ast> Visit<'ast> for Wires {
             if CONSUMER_TRAITS.contains(&name.as_str()) {
                 self.report(&format!(
                     "`impl {name} for {}` — the one implementation is `driver::Bound`",
-                    quote_type(&item.self_ty)
+                    source_text(&item.self_ty)
                 ));
             }
             // A wire is data: nothing in its own impl may be shared,
@@ -311,11 +335,11 @@ impl<'ast> Visit<'ast> for Wires {
                     if item
                         .items
                         .iter()
-                        .any(|inner| impl_item_mentions(inner, forbidden))
+                        .any(|inner| source_text(inner).contains(forbidden))
                     {
                         self.report(&format!(
                             "`impl Wire for {}` mentions `{}` — a wire is data",
-                            quote_type(&item.self_ty),
+                            source_text(&item.self_ty),
                             forbidden.replace("implFuture", "impl Future")
                         ));
                     }
@@ -324,16 +348,6 @@ impl<'ast> Visit<'ast> for Wires {
         }
         visit::visit_item_impl(self, item);
     }
-}
-
-/// Whether an impl item's source text mentions `needle` (whitespace removed,
-/// so `Box<dyn Foo>` matches `Box<dyn`).
-fn impl_item_mentions(item: &syn::ImplItem, needle: &str) -> bool {
-    use quote::ToTokens as _;
-    item.to_token_stream()
-        .to_string()
-        .replace(' ', "")
-        .contains(needle)
 }
 
 #[cfg(test)]

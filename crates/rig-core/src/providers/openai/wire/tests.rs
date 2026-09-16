@@ -1,6 +1,7 @@
 //! The provider configuration and the dialect table.
 
 use super::*;
+use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
 /// A recorded request (`"when"`) or reply (`"then"`) body from a cassette
 /// under `tests/cassettes/openai/`.
@@ -50,24 +51,19 @@ pub(super) fn recorded_json(section: &str, relative: &str) -> serde_json::Value 
 /// be serializable — and serializing it must never write the credential.
 #[test]
 fn a_serialized_configuration_carries_no_key_material() {
-    let json = serde_json::to_string(&OpenAI::new("sk-secret")).expect("the config serializes");
-    assert!(!json.contains("sk-secret"), "the key leaked: {json}");
-    assert!(json.contains("[redacted]"), "{json}");
+    a_config_reloads_without_its_credential(&OpenAI::new("sk-secret"), "sk-secret", |openai| {
+        &openai.api_key
+    });
 
     // And neither does a wire built from it, which is what a host actually
     // stores — on either completion endpoint.
-    let chat = serde_json::to_string(&OpenAI::new("sk-secret").chat("gpt-5.2"))
-        .expect("the wire serializes");
-    assert!(!chat.contains("sk-secret"), "the key leaked: {chat}");
-    let responses = serde_json::to_string(&OpenAI::new("sk-secret").responses("gpt-5.2"))
-        .expect("the wire serializes");
-    assert!(
-        !responses.contains("sk-secret"),
-        "the key leaked: {responses}"
-    );
-
-    // `Debug` is the other way a key escapes — into a log line.
-    assert!(!format!("{:?}", OpenAI::new("sk-secret")).contains("sk-secret"));
+    for wire in [
+        serde_json::to_string(&OpenAI::new("sk-secret").chat("gpt-5.2")),
+        serde_json::to_string(&OpenAI::new("sk-secret").responses("gpt-5.2")),
+    ] {
+        let json = wire.expect("the wire serializes");
+        assert!(!json.contains("sk-secret"), "the key leaked: {json}");
+    }
 }
 
 /// The gateway-specific fields of the one configuration — the account, the
@@ -91,6 +87,7 @@ fn a_gateway_configuration_round_trips_without_its_credential() {
     assert_eq!(restored.account_id.as_deref(), Some("acct-1"));
     assert_eq!(restored.instructions, config.instructions);
     assert_eq!(restored.identity, config.identity);
+    assert!(restored.api_key.is_empty());
 
     let wire = config.responses("gpt-5.4");
     let restored: super::super::responses_api::wire::Responses =

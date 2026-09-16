@@ -280,7 +280,7 @@ fn each_block_streams_under_its_own_key() {
 #[test]
 fn a_second_signature_only_chunk_closes_a_fresh_key_not_the_same_one() {
     let mut lifecycle = lifecycle();
-    let mut out = crate::providers::internal::adapter::AdapterOutput::new();
+    let mut out = crate::operation::AdapterOutput::new();
     let signed = || ChunkParts {
         reasoning: None,
         reasoning_signature: Some("sig".to_owned()),

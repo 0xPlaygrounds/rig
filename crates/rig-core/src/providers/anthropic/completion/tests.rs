@@ -3,7 +3,7 @@ use crate::driver::WireDriver;
 use crate::message::EMPTY_RESPONSE_ERROR;
 use crate::operation::Completion;
 use crate::providers::anthropic::wire::Anthropic;
-use crate::providers::internal::adapter::WireFrame;
+use crate::wire::WireFrame;
 use crate::wire::{Fold, Operation, Wire};
 use serde_json::json;
 use serde_path_to_error::deserialize;
@@ -29,7 +29,7 @@ fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse
         map.entry("type").or_insert_with(|| json!("message"));
     }
     let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder());
+    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
     driver.push(WireFrame::Text(body.to_string()));
     driver.finish();
     let mut fold = <Completion as Operation>::fold(&hello_request());
@@ -228,29 +228,6 @@ fn test_deserialize_message() {
 
         assert_eq!(iter.next(), None);
     }
-}
-
-#[test]
-fn test_content_format_conversion() {
-    use crate::completion::message::ContentFormat;
-
-    let source_type: SourceType = ContentFormat::Url.try_into().unwrap();
-    assert_eq!(source_type, SourceType::URL);
-
-    let content_format: ContentFormat = SourceType::URL.into();
-    assert_eq!(content_format, ContentFormat::Url);
-
-    let source_type: SourceType = ContentFormat::Base64.try_into().unwrap();
-    assert_eq!(source_type, SourceType::BASE64);
-
-    let content_format: ContentFormat = SourceType::BASE64.into();
-    assert_eq!(content_format, ContentFormat::Base64);
-
-    let source_type: SourceType = ContentFormat::String.try_into().unwrap();
-    assert_eq!(source_type, SourceType::TEXT);
-
-    let content_format: ContentFormat = SourceType::TEXT.into();
-    assert_eq!(content_format, ContentFormat::String);
 }
 
 #[test]
@@ -2574,24 +2551,6 @@ fn test_assistant_reasoning_multiblock_to_anthropic_content() {
 }
 
 #[test]
-fn test_redacted_thinking_content_to_assistant_reasoning() {
-    let content = Content::RedactedThinking {
-        data: "opaque-redacted".to_string(),
-    };
-    let converted: message::AssistantContent =
-        content.try_into().expect("convert redacted thinking");
-
-    assert!(matches!(
-        converted,
-        message::AssistantContent::Reasoning(message::Reasoning { content, .. })
-            if matches!(
-                content.first(),
-                Some(message::ReasoningContent::Redacted { data }) if data == "opaque-redacted"
-            )
-    ));
-}
-
-#[test]
 fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
     let reasoning = message::Reasoning {
         id: None,
@@ -3346,27 +3305,6 @@ fn anthropic_citations_returns_empty_when_absent() {
 }
 
 #[test]
-fn content_text_with_citations_survives_assistant_conversion() {
-    let content = Content::Text {
-        text: "the grass is green".into(),
-        citations: vec![Citation::CharLocation(CharLocationCitation {
-            cited_text: "The grass is green.".into(),
-            document_index: 0,
-            document_title: None,
-            start_char_index: 0,
-            end_char_index: 20,
-        })],
-        cache_control: None,
-    };
-    let assistant: message::AssistantContent = content.try_into().unwrap();
-    let message::AssistantContent::Text(text) = assistant else {
-        panic!("expected text variant");
-    };
-    let recovered = anthropic_citations(&text).unwrap();
-    assert_eq!(recovered.len(), 1);
-}
-
-#[test]
 fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
@@ -3703,6 +3641,18 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
     }
 }
 
+/// The history shape a decoded server-tool block takes: an empty text block
+/// carrying the verbatim block under the wire's own key.
+fn raw_content_text(content: &Content) -> message::Text {
+    message::Text {
+        text: String::new(),
+        additional_params: crate::message::AdditionalParams::from_entries([(
+            ANTHROPIC_RAW_CONTENT_KEY,
+            serde_json::to_value(content).unwrap(),
+        )]),
+    }
+}
+
 /// Raw server tools use genuine provider handles; an application-chosen local
 /// ID can resemble one even though normal generated hints do not.
 #[test]
@@ -3728,12 +3678,8 @@ fn request_reserves_raw_server_tool_handles_without_rewriting_them() {
             id: None,
             content: vec![
                 message::AssistantContent::ToolCall(local.clone()),
-                message::AssistantContent::Text(
-                    anthropic_raw_content_to_message_text(raw_call.clone()).unwrap(),
-                ),
-                message::AssistantContent::Text(
-                    anthropic_raw_content_to_message_text(raw_result.clone()).unwrap(),
-                ),
+                message::AssistantContent::Text(raw_content_text(&raw_call)),
+                message::AssistantContent::Text(raw_content_text(&raw_result)),
             ],
         },
         message::Message::User {

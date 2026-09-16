@@ -10,6 +10,7 @@ use super::*;
 use crate::driver::WireDriver;
 use crate::message::AssistantContent;
 use crate::streaming::StreamEvent;
+use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use crate::wire::{Fold, Framing, Mode, Wire};
 
 /// `text_turn_parity.yaml`'s reply body, verbatim.
@@ -54,23 +55,22 @@ fn request() -> CompletionRequest {
     }
 }
 
-/// Fold a recorded reply body through the wire's own decoder.
-fn fold(body: &str, framing: Framing) -> crate::completion::CompletionResponse {
+/// Fold a recorded reply body through the wire's own decoder, read in the
+/// mode the driver would have read it in — which is also what decides the
+/// framing, exactly as `encode` decides it.
+fn fold(body: &str, mode: Mode) -> crate::completion::CompletionResponse {
     let wire = wire();
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder());
-    let mut framer = match framing {
-        Framing::Sse => Some(crate::http_client::framing::SseFramer::new()),
-        _ => None,
-    };
-    match &mut framer {
-        Some(framer) => {
+    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(mode));
+    match mode {
+        Mode::Streaming => {
+            let mut framer = crate::http_client::framing::SseFramer::new();
             for event in framer.push(body.as_bytes()) {
                 if !event.data.trim().is_empty() {
                     driver.push(WireFrame::Text(event.data));
                 }
             }
         }
-        None => driver.push(WireFrame::Text(body.to_owned())),
+        Mode::Unary => driver.push(WireFrame::Text(body.to_owned())),
     }
     driver.finish();
     let mut fold = <Completion as crate::wire::Operation>::fold(&request());
@@ -91,8 +91,8 @@ fn fold(body: &str, framing: Framing) -> crate::completion::CompletionResponse {
 
 #[test]
 fn the_same_turn_folds_identically_whether_it_was_buffered_or_streamed() {
-    let buffered = fold(UNARY, Framing::Whole);
-    let streamed = fold(STREAMED, Framing::Sse);
+    let buffered = fold(UNARY, Mode::Unary);
+    let streamed = fold(STREAMED, Mode::Streaming);
 
     assert_eq!(buffered.choice, streamed.choice);
     assert_eq!(buffered.usage, streamed.usage);
@@ -111,7 +111,7 @@ fn the_same_turn_folds_identically_whether_it_was_buffered_or_streamed() {
 #[test]
 fn the_buffered_reply_is_one_frame_whose_terminal_is_unconditional() {
     let wire = wire();
-    let mut driver = WireDriver::<Completion, _>::new(wire.decoder());
+    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(Mode::Unary));
     driver.push(WireFrame::Text(UNARY.to_owned()));
     let items: Vec<_> = driver.drain().collect();
     assert!(
@@ -179,12 +179,9 @@ fn body_of(encoded: &Encoded) -> serde_json::Value {
 #[test]
 fn a_serialized_provider_never_carries_its_key() {
     let provider = Anthropic::new("sk-live-do-not-leak").with_beta("prompt-caching-2024-07-31");
-    let json = serde_json::to_string(&provider).expect("the config serializes");
-    assert!(
-        !json.contains("sk-live-do-not-leak"),
-        "a wire a host can store must not carry a credential: {json}"
-    );
-    assert!(json.contains("[redacted]"));
+    a_config_reloads_without_its_credential(&provider, "sk-live-do-not-leak", |provider| {
+        &provider.api_key
+    });
 
     let wire = provider.messages("claude-haiku-4-5");
     let json = serde_json::to_string(&wire).expect("the wire serializes");
@@ -192,6 +189,7 @@ fn a_serialized_provider_never_carries_its_key() {
     let restored: Messages = serde_json::from_str(&json).expect("the wire round-trips");
     assert_eq!(restored.model, "claude-haiku-4-5");
     assert_eq!(restored.provider.dialect, ANTHROPIC);
+    assert!(restored.provider.api_key.is_empty());
 }
 
 #[test]

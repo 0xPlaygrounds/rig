@@ -1,21 +1,16 @@
 use rig::completion::{CompletionError, Message as CompletionMessage};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig::providers::openai::responses_api::{
-    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Message, Output,
-    ReasoningSummary, UserContent,
+    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Output, ReasoningSummary,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 #[test]
 fn test_input_item_serialization_avoids_duplicate_role() {
-    let message = Message::User {
-        content: vec![UserContent::InputText {
-            text: "hello".to_string(),
-        }],
-        name: None,
-    };
-    let item: InputItem = message.into();
-    let json = serde_json::to_string(&item).expect("serialize InputItem");
+    let items: Vec<InputItem> = CompletionMessage::user("hello")
+        .try_into()
+        .expect("user text converts to one input item");
+    let json = serde_json::to_string(&items).expect("serialize InputItem");
     let role_count = json.matches("\"role\"").count();
 
     assert_eq!(

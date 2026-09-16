@@ -96,13 +96,6 @@ where
         self.done
     }
 
-    /// State that this reply arrives whole, before its first frame (see
-    /// [`Decoder::whole_reply`]). [`call`] states it for every page it
-    /// reads; a streamed reply never does.
-    pub fn whole_reply(&mut self) {
-        self.decoder.whole_reply();
-    }
-
     /// Feed one frame.
     pub fn push(&mut self, frame: F) {
         if self.done {
@@ -216,6 +209,27 @@ where
         }
         if terminal {
             self.done = true;
+        }
+    }
+}
+
+impl<Op, D> WireDriver<Op, D>
+where
+    Op: Operation,
+    D: Decoder<Op>,
+{
+    /// Project and decode one framed payload: the step every byte reply
+    /// takes, whatever produced its bytes. The payload is projected whether
+    /// or not it is a frame (a heartbeat still carries facts), and
+    /// [`Self::push`] already no-ops once the reply is done.
+    ///
+    /// One payload at a time, because a streamed reply yields between them:
+    /// a consumer that stops reading must not have facts recorded for the
+    /// frames it never saw.
+    fn absorb(&mut self, payload: Framed) {
+        self.project(payload.payload());
+        if let Some(frame) = payload.into_frame() {
+            self.push(frame);
         }
     }
 }
@@ -364,7 +378,7 @@ where
         requests,
         framing,
         request_id_header,
-        relaxed_content_type: _,
+        relaxed_content_type,
     } = wire.encode(request, Mode::Unary)?;
 
     let mut reply = Reply {
@@ -399,10 +413,13 @@ where
         if let Some(observation) = &observation {
             observation.install(attempt);
         }
-        let mut page = WireDriver::<W::Op, _>::observed(wire.decoder(), observation.clone());
-        // Every page this loop reads is read to its end, so the decoder's
-        // EOF is the end of an answer rather than a stream stopping early.
-        page.whole_reply();
+        let mut page = WireDriver::<W::Op, _>::observed(
+            // Every page this loop reads is read to its end, so the
+            // decoder's EOF is the end of an answer rather than a stream
+            // stopping early — which is what `Mode::Unary` tells it.
+            wire.decoder(Mode::Unary),
+            observation.clone(),
+        );
         let sent = tracing::Instrument::instrument(
             send::<W::Op, H>(http, http_request, request_id_header, observation.as_ref()),
             span.clone(),
@@ -423,10 +440,37 @@ where
                 return Err(error);
             }
         };
-        page.project(&page_reply.body);
+        // The status said success, but an SSE framer over a body that is not
+        // an event stream yields no frames at all, which would fold to a
+        // contentless success. The reply the provider actually sent is the
+        // error.
+        if let Some(rejected) =
+            wrong_content_type(&page_reply.headers, framing, relaxed_content_type)
+        {
+            let error = <Error<W> as WireError>::transport(rejected)
+                .with_route(wire.name(), &route)
+                .with_provider_status(Some(page_reply.status))
+                .with_provider_request_id(page_reply.provider_request_id.clone())
+                .with_response_headers(Some(page_reply.headers.clone()));
+            page.project(&page_reply.body);
+            if let Some(observation) = &observation {
+                observation.fail(&error);
+            }
+            return Err(error);
+        }
 
-        for frame in frames_of(framing, &page_reply.body) {
-            page.push(frame);
+        // Frame the reply the way a stream is framed, and project each
+        // payload rather than the body: they are the same bytes only when
+        // the framing is `Whole`, and a wire whose unary reply is an event
+        // stream (the Responses endpoint on an always-streaming dialect)
+        // would otherwise hand every projector a document it cannot parse.
+        let mut framer = Framer::new(framing);
+        for payload in framer
+            .push(&page_reply.body)
+            .into_iter()
+            .chain(framer.finish())
+        {
+            page.absorb(payload);
         }
         page.finish();
         let mut failure = None;
@@ -558,7 +602,8 @@ where
 
     let http = http.clone();
     let observation = context.as_ref().map(|_| AdapterSlot::default());
-    let mut driver = WireDriver::<W::Op, _>::observed(wire.decoder(), observation.clone());
+    let mut driver =
+        WireDriver::<W::Op, _>::observed(wire.decoder(Mode::Streaming), observation.clone());
     let recording = span.clone();
     // Read here rather than inside the stream: `wire` is borrowed, and the
     // generated stream outlives this call.
@@ -589,7 +634,12 @@ where
             Ok(response) if response.status() != http::StatusCode::OK => {
                 Err(reject_response(response).await)
             }
-            Ok(response) => check_content_type(response, framing, relaxed_content_type),
+            Ok(response) => {
+                match wrong_content_type(response.headers(), framing, relaxed_content_type) {
+                    Some(error) => Err(error),
+                    None => Ok(response),
+                }
+            }
             other => other,
         };
         let response = match response {
@@ -646,11 +696,8 @@ where
             if let Some(observation) = &observation {
                 observation.bytes(&chunk);
             }
-            for frame in framer.push(&chunk) {
-                driver.project(frame.payload());
-                if let Some(frame) = frame.into_frame() {
-                    driver.push(frame);
-                }
+            for payload in framer.push(&chunk) {
+                driver.absorb(payload);
                 for item in driver.drain() {
                     yield stamped::<W>(item, &request_id, &recording);
                 }
@@ -659,11 +706,8 @@ where
                 }
             }
         }
-        for frame in framer.finish() {
-            driver.project(frame.payload());
-            if let Some(frame) = frame.into_frame() {
-                driver.push(frame);
-            }
+        for payload in framer.finish() {
+            driver.absorb(payload);
             for item in driver.drain() {
                 yield stamped::<W>(item, &request_id, &recording);
             }
@@ -808,25 +852,24 @@ fn accept_header(request: &mut http::Request<Body>, framing: Framing) {
     }
 }
 
-/// Reject a 200 that is not the event stream an SSE wire asked for: the
-/// framer would silently produce no frames, which reads as truncation
-/// rather than as the wrong endpoint. A reply that names no content type at
-/// all is accepted only by a wire that opted in.
-fn check_content_type<T>(
-    response: http::Response<T>,
+/// Whether a reply's content type is not the event stream an SSE wire asked
+/// for: the framer would silently produce no frames, which reads as
+/// truncation rather than as the wrong endpoint. A reply that names no
+/// content type at all is accepted only by a wire that opted in.
+///
+/// The one predicate both paths ask, so a unary reply and a streamed one
+/// cannot disagree about what the provider sent.
+fn wrong_content_type(
+    headers: &http::HeaderMap,
     framing: Framing,
     relaxed: bool,
-) -> Result<http::Response<T>, http_client::Error> {
+) -> Option<http_client::Error> {
     if framing != Framing::Sse {
-        return Ok(response);
+        return None;
     }
-    let Some(content_type) = response.headers().get(&http::header::CONTENT_TYPE) else {
-        if relaxed {
-            return Ok(response);
-        }
-        return Err(http_client::Error::InvalidContentType(
-            http::HeaderValue::from_static(""),
-        ));
+    let Some(content_type) = headers.get(&http::header::CONTENT_TYPE) else {
+        return (!relaxed)
+            .then(|| http_client::Error::InvalidContentType(http::HeaderValue::from_static("")));
     };
     let event_stream = content_type
         .to_str()
@@ -838,11 +881,7 @@ fn check_content_type<T>(
                 (mime::TEXT, mime::EVENT_STREAM)
             )
         });
-    if event_stream {
-        Ok(response)
-    } else {
-        Err(http_client::Error::InvalidContentType(content_type.clone()))
-    }
+    (!event_stream).then(|| http_client::Error::InvalidContentType(content_type.clone()))
 }
 
 /// A request whose body is bytes. Multipart replies are never streamed.
@@ -942,14 +981,6 @@ impl Framer {
             }
         }
     }
-}
-
-/// Split a whole reply body into frames.
-fn frames_of(framing: Framing, body: &[u8]) -> Vec<WireFrame> {
-    let mut framer = Framer::new(framing);
-    let mut framed = framer.push(body);
-    framed.extend(framer.finish());
-    framed.into_iter().filter_map(Framed::into_frame).collect()
 }
 
 /// Bytes of a rejected reply's body kept on the error; a reply longer than

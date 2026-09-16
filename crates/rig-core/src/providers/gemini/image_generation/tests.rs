@@ -196,7 +196,9 @@ fn the_wire_decodes_a_recorded_image_reply() {
         GEMINI_2_5_FLASH_IMAGE,
     );
 
-    let mut driver = crate::driver::WireDriver::<ImageGeneration, _>::new(wire.decoder());
+    let mut driver = crate::driver::WireDriver::<ImageGeneration, _>::new(
+        wire.decoder(crate::wire::Mode::Unary),
+    );
     driver.push(WireFrame::Text(RECORDED_IMAGE_REPLY.to_string()));
     let decoded: Vec<_> = driver.drain().collect();
 

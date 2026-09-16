@@ -31,15 +31,16 @@ use serde::{Deserialize, Serialize};
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionError, CompletionRequest, ProviderCapabilities};
 use crate::driver::{HasEmbedding, HasModelListing};
-use crate::embeddings::{self, EmbeddingError};
+use crate::embeddings::EmbeddingError;
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ModelListing};
 use crate::providers::internal::wire::classify_untyped_line;
-use crate::providers::openai::completion::Usage;
 use crate::providers::openai::embedding::EncodingFormat;
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
-    Dialect, EmbeddingQuirks, OpenAI, OpenAiDecoder, OpenAiWire, OutputCap, Quirks, ResponsesQuirks,
+    Dialect, EmbeddingQuirks, Embeddings as OpenAiEmbeddings,
+    EmbeddingsDecoder as OpenAiEmbeddingsDecoder, OpenAI, OpenAiDecoder, OpenAiWire, Quirks,
+    ResponsesQuirks,
 };
 use crate::telemetry::CompletionOperation;
 use crate::wire::{
@@ -76,14 +77,9 @@ const BASE_URL_ENV: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
 /// records. Copilot verifies through its token exchange, not a path, and
 /// its editor headers and session-token exchange live in this module.
 pub const DIALECT: Dialect = Dialect {
-    name: PROVIDER_NAME,
-    base_url: super::GITHUB_COPILOT_API_BASE_URL,
-    api_key_env: "GITHUB_COPILOT_API_KEY",
     base_url_env: Some("GITHUB_COPILOT_API_BASE"),
     request_id_header: REQUEST_ID_HEADER,
-    alternate_auth: None,
     quirks: Quirks {
-        output_cap: OutputCap::Legacy,
         verify_path: "",
         base_url_env_alias: Some("COPILOT_BASE_URL"),
         embedding: EmbeddingQuirks {
@@ -96,6 +92,11 @@ pub const DIALECT: Dialect = Dialect {
         },
         ..Quirks::openai()
     },
+    ..Dialect::gateway(
+        PROVIDER_NAME,
+        super::GITHUB_COPILOT_API_BASE_URL,
+        "GITHUB_COPILOT_API_KEY",
+    )
 };
 
 /// Whether `model` is answered by Copilot's `/responses` route rather than
@@ -329,14 +330,17 @@ impl CopilotWire {
         }
         self
     }
+}
 
-    /// The credential this wire sends, for the request envelope.
-    fn provider(&self) -> Copilot {
-        let provider = self.wire.provider();
-        Copilot {
-            api_key: provider.api_key.clone(),
-            base_url: provider.base_url.clone(),
-        }
+/// The Copilot credential behind a delegated wire's shared configuration.
+///
+/// Every route here but the catalogue is a wire pointed at Copilot through
+/// [`Copilot::openai`], and [`stamp`] needs the credential back to build the
+/// envelope: one direction, one definition.
+fn credential_of(provider: &OpenAI) -> Copilot {
+    Copilot {
+        api_key: provider.api_key.clone(),
+        base_url: provider.base_url.clone(),
     }
 }
 
@@ -362,15 +366,15 @@ impl Wire for CopilotWire {
         let initiator = super::request_initiator(&request);
         let has_vision = super::request_has_vision(&request);
         let mut encoded = self.wire.encode(request, mode)?;
-        let provider = self.provider();
+        let provider = credential_of(self.wire.provider());
         for request in &mut encoded.requests {
             stamp::<CompletionError>(request, &provider, initiator, has_vision, self.intent)?;
         }
         Ok(encoded)
     }
 
-    fn decoder(&self) -> OpenAiDecoder {
-        self.wire.decoder()
+    fn decoder(&self, mode: Mode) -> OpenAiDecoder {
+        self.wire.decoder(mode)
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -384,183 +388,79 @@ impl Wire for CopilotWire {
 
 // ── embeddings ──────────────────────────────────────────────────────────
 
-/// Copilot's embeddings path.
-const EMBEDDINGS_PATH: &str = "/embeddings";
-
-/// The most inputs Copilot embeds in one request.
-const MAX_DOCUMENTS: usize = 1024;
-
-/// Copilot's embeddings wire.
+/// Copilot's embeddings wire: the shared embeddings wire pointed at Copilot,
+/// plus the editor envelope.
+///
+/// Copilot relays OpenAI's embeddings contract verbatim — the path, the
+/// width field, the `{ "data": [...] }` reply — and the one thing it is
+/// measured to differ in is already [`DIALECT`]'s to state: the vendors it
+/// fronts do not all report a usage block, hence
+/// `embedding: EmbeddingQuirks { requires_usage: false, .. }`. So there is
+/// no second request body, no second reply type and no second decoder here,
+/// exactly as there is none for either completion route — only the `stamp`
+/// every request to this host carries.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Embeddings {
-    /// Which Copilot, and how to reach it.
-    pub provider: Copilot,
-    /// The embedding model.
-    pub model: String,
-    /// The vector width, resolved at construction from the model identifier
-    /// when the caller named none. Zero means this build knows no width for
-    /// the model, and none is sent.
-    pub ndims: usize,
-    /// The encoding the caller asked the provider to answer in.
-    pub encoding_format: Option<EncodingFormat>,
-    /// The end-user identifier the provider attributes the call to.
-    pub user: Option<String>,
+    /// The shared embeddings wire, pointed at Copilot.
+    pub wire: OpenAiEmbeddings,
 }
 
 impl Embeddings {
-    /// The embeddings wire for `model`, defaulting the width from the model
-    /// identifier when the caller gave none.
+    /// The embeddings wire for `model`.
+    ///
+    /// The width is the caller's, else the model's documented one: that
+    /// resolution is the shared wire's, off the dialect's width table and
+    /// OpenAI's `text-embedding-*` identifiers, so Copilot carries no second
+    /// copy of the defaults.
     pub fn new(provider: Copilot, model: impl Into<String>, ndims: Option<usize>) -> Self {
-        let model = model.into();
-        let ndims = ndims.unwrap_or(match model.as_str() {
-            super::TEXT_EMBEDDING_3_LARGE => 3072,
-            super::TEXT_EMBEDDING_3_SMALL | super::TEXT_EMBEDDING_ADA_002 => 1536,
-            _ => 0,
-        });
         Self {
-            provider,
-            model,
-            ndims,
-            encoding_format: None,
-            user: None,
+            wire: OpenAiEmbeddings::new(provider.openai(), model, ndims),
         }
     }
 
     /// Ask the provider to answer in `encoding_format`.
     pub fn with_encoding_format(mut self, encoding_format: EncodingFormat) -> Self {
-        self.encoding_format = Some(encoding_format);
+        self.wire = self.wire.with_encoding_format(encoding_format);
         self
     }
 
     /// Attribute the call to an end user.
     pub fn with_user(mut self, user: impl Into<String>) -> Self {
-        self.user = Some(user.into());
+        self.wire = self.wire.with_user(user);
         self
-    }
-}
-
-/// Copilot's embeddings reply.
-///
-/// Copilot fronts several vendors, so neither the usage block nor the model
-/// identifier is guaranteed on the wire.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbeddingsReply {
-    /// One datum per input, in input order.
-    pub data: Vec<EmbeddingDatum>,
-    /// Token usage, when the answering vendor reported any.
-    #[serde(default)]
-    pub usage: Option<Usage>,
-    /// The model that answered, when named.
-    #[serde(default)]
-    pub model: Option<String>,
-}
-
-/// One embedded input.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbeddingDatum {
-    /// The vector, as the provider sent it.
-    pub embedding: Vec<serde_json::Number>,
-}
-
-/// The embeddings decoder.
-#[derive(Default)]
-pub struct EmbeddingsDecoder;
-
-impl Decoder<Embedding> for EmbeddingsDecoder {
-    type Event = EmbeddingsReply;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
-    }
-
-    fn interpret(&mut self, event: Self::Event, out: &mut Output<Embedding>) {
-        // A missing usage payload reports no counter at all rather than
-        // failing the call: Copilot's multi-vendor route omits it.
-        let usage = event
-            .usage
-            .as_ref()
-            .map(Usage::to_normalized)
-            .unwrap_or_default();
-        let embeddings = event
-            .data
-            .into_iter()
-            .map(|datum| embeddings::Embedding {
-                // Joined back onto the request's inputs by the operation's
-                // fold, which is the only place that still holds them.
-                document: String::new(),
-                vec: datum
-                    .embedding
-                    .into_iter()
-                    .filter_map(|number| number.as_f64())
-                    .collect(),
-            })
-            .collect();
-        out.push(Ok(embeddings::EmbeddingResponse::new(
-            embeddings,
-            PROVIDER_NAME,
-        )
-        .with_optional_model(event.model)
-        .with_usage(usage)));
     }
 }
 
 impl Wire for Embeddings {
     type Op = Embedding;
-    type Decoder = EmbeddingsDecoder;
+    type Decoder = OpenAiEmbeddingsDecoder;
 
     fn name(&self) -> &str {
-        PROVIDER_NAME
+        self.wire.name()
     }
 
     fn model(&self) -> Option<&str> {
-        Some(&self.model)
+        self.wire.model()
     }
 
     fn capabilities(&self) -> EmbeddingCapabilities {
-        EmbeddingCapabilities::new(MAX_DOCUMENTS, self.ndims)
+        self.wire.capabilities()
     }
 
-    fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
-        let mut body = serde_json::json!({ "model": self.model, "input": request });
-        let Some(object) = body.as_object_mut() else {
-            return Err(EmbeddingError::ResponseError(
-                "embedding request body must be a JSON object".into(),
-            ));
-        };
-        // The legacy Ada model takes no width, and zero means this build
-        // knows none; neither is a value to send.
-        if self.ndims > 0 && self.model != super::TEXT_EMBEDDING_ADA_002 {
-            object.insert("dimensions".to_owned(), serde_json::json!(self.ndims));
+    fn encode(&self, request: Vec<String>, mode: Mode) -> Result<Encoded, EmbeddingError> {
+        let mut encoded = self.wire.encode(request, mode)?;
+        let provider = credential_of(&self.wire.provider);
+        for request in &mut encoded.requests {
+            // The modality routes are not a conversation: the client layer
+            // sent them the panel intent and a `user` initiator, and that is
+            // what the recorded traffic carries.
+            stamp::<EmbeddingError>(request, &provider, "user", false, CopilotIntent::Panel)?;
         }
-        if let Some(encoding_format) = self.encoding_format {
-            object.insert(
-                "encoding_format".to_owned(),
-                serde_json::to_value(encoding_format)?,
-            );
-        }
-        if let Some(user) = &self.user {
-            object.insert("user".to_owned(), serde_json::json!(user));
-        }
-
-        let mut request = http::Request::post(self.provider.uri(EMBEDDINGS_PATH))
-            .header(http::header::CONTENT_TYPE, "application/json")
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| EmbeddingError::ResponseError(error.to_string()))?;
-        // The modality routes are not a conversation: the client layer sent
-        // them the panel intent and a `user` initiator, and that is what the
-        // recorded traffic carries.
-        stamp::<EmbeddingError>(
-            &mut request,
-            &self.provider,
-            "user",
-            false,
-            CopilotIntent::Panel,
-        )?;
-        Ok(Encoded::new(request, Framing::Whole).with_request_id_header(REQUEST_ID_HEADER))
+        Ok(encoded)
     }
 
-    fn decoder(&self) -> EmbeddingsDecoder {
-        EmbeddingsDecoder
+    fn decoder(&self, mode: Mode) -> OpenAiEmbeddingsDecoder {
+        self.wire.decoder(mode)
     }
 }
 
@@ -665,7 +565,7 @@ impl Wire for Models {
         Ok(Encoded::new(request, Framing::Whole).with_request_id_header(REQUEST_ID_HEADER))
     }
 
-    fn decoder(&self) -> ModelsDecoder {
+    fn decoder(&self, _mode: Mode) -> ModelsDecoder {
         ModelsDecoder
     }
 }

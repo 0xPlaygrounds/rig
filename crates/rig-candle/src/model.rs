@@ -71,7 +71,7 @@ use rig_core::completion::{
 use rig_core::driver::run_wire_stream;
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::providers::internal::adapter::AdapterOutput;
+use rig_core::operation::AdapterOutput;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::{StreamFinal, StreamingCompletionResponse, StreamingResult};
 #[cfg(test)]

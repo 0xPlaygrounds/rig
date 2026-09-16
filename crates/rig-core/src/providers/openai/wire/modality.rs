@@ -18,55 +18,77 @@ use crate::operation::{
 };
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::completion::Usage;
-use crate::providers::openai::embedding::{EncodingFormat, model_dimensions_from_identifier};
+use crate::providers::openai::embedding::{
+    CompatibleEmbeddingResponse, EncodingFormat, model_dimensions_from_identifier,
+};
 use crate::rerank::RerankError;
 use crate::transcription::{TranscriptionError, TranscriptionRequest};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
 
-use super::{AcceptedWidths, ModelWidth, OpenAI, Routing, TranscriptionBody};
+use super::{AcceptedWidths, ModelWidth, OpenAI, TranscriptionBody};
 // Each is read by exactly one feature-gated wire.
 #[cfg(feature = "image")]
 use super::ImageBody;
 #[cfg(feature = "audio")]
 use super::SpeechBody;
 
-/// Build the JSON request this dialect's endpoint expects.
+/// The `POST` this dialect's endpoint expects: a JSON body under the
+/// dialect's credential, answered whole, with the dialect's request-id
+/// header read off the reply.
 ///
 /// Generic over the operation's error so a base URL that does not parse as a
 /// URI fails the operation it belongs to, rather than being reported against
 /// some other one.
-fn json_request<E: crate::wire::WireError>(
+fn json_post<E: crate::wire::WireError>(
     provider: &OpenAI,
     path: &str,
     deployment: Option<&str>,
     body: &serde_json::Value,
-) -> Result<http::Request<Body>, E> {
-    json_request_to(provider, provider.uri(path, deployment), body)
+) -> Result<Encoded, E> {
+    json_post_to(provider, provider.uri(path, deployment), body)
 }
 
-/// [`json_request`] against an already-resolved URL, for the endpoints whose
+/// [`json_post`] against an already-resolved URL, for the endpoints whose
 /// URL is derived rather than a fixed path under the base.
-fn json_request_to<E: crate::wire::WireError>(
+fn json_post_to<E: crate::wire::WireError>(
     provider: &OpenAI,
     uri: String,
     body: &serde_json::Value,
-) -> Result<http::Request<Body>, E> {
+) -> Result<Encoded, E> {
     let bytes = serde_json::to_vec(body).map_err(E::json)?;
     let builder = http::Request::post(uri).header("Content-Type", "application/json");
-    provider
-        .authenticate(builder)
-        .body(Body::Bytes(bytes))
-        .map_err(|error| E::decode(error.to_string()))
+    encoded(provider, builder, Body::Bytes(bytes))
 }
 
-/// The deployment segment Azure routes a model through, or `None`.
-fn deployment<'a>(provider: &OpenAI, model: &'a str) -> Option<&'a str> {
-    match provider.dialect.quirks.routing {
-        Routing::AzureDeployment => Some(model),
-        Routing::Path => None,
-    }
+/// The `GET` whose status is the answer, for the two endpoints that send no
+/// body: the model catalogue and the credential check.
+fn get<E: crate::wire::WireError>(provider: &OpenAI, path: &str) -> Result<Encoded, E> {
+    encoded(
+        provider,
+        http::Request::get(provider.uri(path, None)),
+        Body::empty(),
+    )
+}
+
+/// Authenticate `builder`, and say what every endpoint on this wire says
+/// about its reply: one whole document, with the dialect's transport request
+/// id in the header it names.
+///
+/// Stated here rather than at each `encode` so the framing and the header
+/// cannot drift apart between endpoints.
+fn encoded<E: crate::wire::WireError>(
+    provider: &OpenAI,
+    builder: http::request::Builder,
+    body: Body,
+) -> Result<Encoded, E> {
+    let request = provider
+        .authenticate(builder)
+        .body(body)
+        .map_err(|error| E::decode(error.to_string()))?;
+    Ok(Encoded::new(request, Framing::Whole)
+        .with_request_id_header(provider.dialect.request_id_header))
 }
 
 // ── embeddings ──────────────────────────────────────────────────────────
@@ -220,29 +242,12 @@ impl Embeddings {
     }
 }
 
-/// The embeddings reply, as every dialect on this wire answers it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbeddingsReply {
-    #[serde(default)]
-    pub object: String,
-    pub data: Vec<EmbeddingDatum>,
-    #[serde(default)]
-    pub model: String,
-    /// Optional because compatible dialects may omit it.
-    #[serde(default)]
-    pub usage: Option<Usage>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EmbeddingDatum {
-    #[serde(default)]
-    pub object: String,
-    pub embedding: Vec<serde_json::Number>,
-    #[serde(default)]
-    pub index: usize,
-}
-
 /// The embeddings decoder.
+///
+/// Its event is [`CompatibleEmbeddingResponse`] — the permissive parse of
+/// this reply, which is also the `raw` document a caller reads back, so the
+/// shape is stated once beside OpenAI's own strict contract rather than
+/// again here.
 #[derive(Default)]
 pub struct EmbeddingsDecoder {
     /// Whether this dialect's reply must carry usage.
@@ -252,7 +257,7 @@ pub struct EmbeddingsDecoder {
 }
 
 impl Decoder<Embedding> for EmbeddingsDecoder {
-    type Event = EmbeddingsReply;
+    type Event = CompatibleEmbeddingResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_untyped_line(frame.as_str().as_bytes())
@@ -371,17 +376,15 @@ impl Wire for Embeddings {
             object.insert("user".to_owned(), serde_json::json!(user));
         }
 
-        let request = json_request::<EmbeddingError>(
+        json_post(
             &self.provider,
             self.provider.dialect.quirks.embeddings_path,
-            deployment(&self.provider, &self.model),
+            self.provider.deployment(&self.model),
             &body,
-        )?;
-        Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+        )
     }
 
-    fn decoder(&self) -> EmbeddingsDecoder {
+    fn decoder(&self, _mode: Mode) -> EmbeddingsDecoder {
         EmbeddingsDecoder {
             requires_usage: self.provider.dialect.quirks.embedding.requires_usage,
             provider: self.provider.dialect.name,
@@ -421,10 +424,7 @@ impl Transcriptions {
         // every other dialect names the model in the form. Field order
         // matches the order these endpoints were built by hand, so recorded
         // requests stay byte-comparable.
-        if !matches!(
-            self.provider.dialect.quirks.routing,
-            Routing::AzureDeployment
-        ) {
+        if self.provider.deployment(&self.model).is_none() {
             form = form.text("model", self.model.clone());
         }
         form = form.part(Part::bytes("file", request.data).filename(request.filename));
@@ -592,16 +592,10 @@ impl Wire for Transcriptions {
                 self.input_audio_body(request)?,
             ),
         };
-        let request = self
-            .provider
-            .authenticate(builder)
-            .body(body)
-            .map_err(|error| TranscriptionError::ResponseError(error.to_string()))?;
-        Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+        encoded(&self.provider, builder, body)
     }
 
-    fn decoder(&self) -> TranscriptionsDecoder {
+    fn decoder(&self, _mode: Mode) -> TranscriptionsDecoder {
         TranscriptionsDecoder {
             provider: self.provider.dialect.name,
         }
@@ -867,16 +861,10 @@ impl Wire for Images {
                 &self.model,
             )
             .map_err(crate::image_generation::ImageGenerationError::ProviderError)?;
-        let request = json_request_to::<crate::image_generation::ImageGenerationError>(
-            &self.provider,
-            uri,
-            &body,
-        )?;
-        Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+        json_post_to(&self.provider, uri, &body)
     }
 
-    fn decoder(&self) -> ImagesDecoder {
+    fn decoder(&self, _mode: Mode) -> ImagesDecoder {
         ImagesDecoder {
             provider: self.provider.dialect.name,
             body: self.provider.dialect.quirks.image_body,
@@ -916,7 +904,7 @@ impl Speech {
 pub struct SpeechDecoder {
     provider: &'static str,
     /// Which reply shape this dialect answers with.
-    body: Option<SpeechBody>,
+    body: SpeechBody,
 }
 
 /// Hyperbolic's speech reply: base64 in a JSON envelope rather than the
@@ -950,9 +938,9 @@ impl Decoder<crate::operation::AudioGeneration> for SpeechDecoder {
 
         let audio = match self.body {
             // OpenAI and xAI answer with the audio itself.
-            Some(SpeechBody::OpenAi) | Some(SpeechBody::Xai) | None => event,
+            SpeechBody::OpenAi | SpeechBody::Xai => event,
             // Hyperbolic wraps it, base64-encoded, in a JSON envelope.
-            Some(SpeechBody::Hyperbolic) => {
+            SpeechBody::Hyperbolic => {
                 let reply = match serde_json::from_slice::<SpeechReply>(&event) {
                     Ok(reply) => reply,
                     Err(error) => {
@@ -1029,18 +1017,16 @@ impl Wire for Speech {
         // route, so this one request carries its own `api-version`.
         let uri = self.provider.uri_versioned(
             self.provider.dialect.quirks.audio_generation_path,
-            deployment(&self.provider, &self.model),
+            self.provider.deployment(&self.model),
             self.provider.speech_api_version(),
         );
-        let request = json_request_to::<AudioGenerationError>(&self.provider, uri, &body)?;
-        Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+        json_post_to(&self.provider, uri, &body)
     }
 
-    fn decoder(&self) -> SpeechDecoder {
+    fn decoder(&self, _mode: Mode) -> SpeechDecoder {
         SpeechDecoder {
             provider: self.provider.dialect.name,
-            body: Some(self.provider.dialect.quirks.speech_body),
+            body: self.provider.dialect.quirks.speech_body,
         }
     }
 }
@@ -1163,22 +1149,10 @@ impl Wire for Models {
     }
 
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ModelListingError> {
-        let builder = http::Request::get(
-            self.provider
-                .uri(self.provider.dialect.quirks.models_path, None),
-        );
-        let request = self
-            .provider
-            .authenticate(builder)
-            .body(Body::empty())
-            .map_err(|error| ModelListingError::RequestError {
-                message: error.to_string(),
-            })?;
-        Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+        get(&self.provider, self.provider.dialect.quirks.models_path)
     }
 
-    fn decoder(&self) -> ModelsDecoder {
+    fn decoder(&self, _mode: Mode) -> ModelsDecoder {
         ModelsDecoder
     }
 }
@@ -1354,17 +1328,15 @@ impl Wire for Rerank {
             object.insert("top_n".to_owned(), serde_json::json!(top_n));
         }
 
-        let request = json_request::<RerankError>(
+        json_post(
             &self.provider,
             quirks.path,
-            deployment(&self.provider, &self.model),
+            self.provider.deployment(&self.model),
             &body,
-        )?;
-        Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+        )
     }
 
-    fn decoder(&self) -> RerankDecoder {
+    fn decoder(&self, _mode: Mode) -> RerankDecoder {
         RerankDecoder {
             provider: self.provider.dialect.name,
         }
@@ -1432,17 +1404,10 @@ impl Wire for Verify {
                 self.provider.dialect.name
             )));
         }
-        let builder = http::Request::get(self.provider.uri(path, None));
-        let request = self
-            .provider
-            .authenticate(builder)
-            .body(Body::empty())
-            .map_err(|error| VerifyError::ProviderError(error.to_string()))?;
-        Ok(Encoded::new(request, Framing::Whole)
-            .with_request_id_header(self.provider.dialect.request_id_header))
+        get(&self.provider, path)
     }
 
-    fn decoder(&self) -> VerifyDecoder {
+    fn decoder(&self, _mode: Mode) -> VerifyDecoder {
         VerifyDecoder
     }
 }

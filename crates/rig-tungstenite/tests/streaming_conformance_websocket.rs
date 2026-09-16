@@ -106,7 +106,7 @@ async fn drain_openai_responses_websocket_events(
     events: Vec<Result<ResponsesWebSocketEvent, CompletionError>>,
 ) -> conformance::DrainedStream {
     use ResponsesWebSocketEvent;
-    use rig_core::providers::internal::adapter::AdapterOutput;
+    use rig_core::operation::AdapterOutput;
     use rig_core::providers::openai::responses_api::streaming::{
         RawChoiceAccumulator, ResponseChunkKind, ResponsesStreamOptions,
     };

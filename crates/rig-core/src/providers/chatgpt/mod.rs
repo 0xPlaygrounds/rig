@@ -26,7 +26,9 @@
 pub mod auth;
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
-use crate::providers::openai::wire::{Dialect, Identity, Quirks, ResponsesQuirks, Route};
+use crate::providers::openai::wire::{
+    Dialect, Identity, OutputCap, Quirks, ResponsesContract, ResponsesQuirks, Route,
+};
 
 const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_ORIGINATOR: &str = "rig";
@@ -57,14 +59,12 @@ pub const PROVIDER_NAME: &str = "chatgpt";
 /// top-level `instructions` (the `system` role in `input` is rejected), and
 /// it wants to know who is calling.
 pub const DIALECT: Dialect = Dialect {
-    name: PROVIDER_NAME,
-    base_url: CHATGPT_API_BASE_URL,
-    api_key_env: "CHATGPT_ACCESS_TOKEN",
     base_url_env: Some("CHATGPT_API_BASE"),
     request_id_header: Some("x-request-id"),
-    alternate_auth: None,
     quirks: Quirks {
         completion_route: Route::Responses,
+        // The same OpenAI models, so the same output-cap spelling.
+        output_cap: OutputCap::OpenAiReasoningFamilies,
         base_url_env_alias: Some("OPENAI_CHATGPT_API_BASE"),
         account_id_env: Some("CHATGPT_ACCOUNT_ID"),
         default_instructions: Some(DEFAULT_INSTRUCTIONS),
@@ -77,14 +77,12 @@ pub const DIALECT: Dialect = Dialect {
         }),
         responses: ResponsesQuirks {
             system_instructions: SystemInstructionsPlacement::AllInstructions,
-            always_streams: true,
-            relaxed_content_type: true,
-            codex_parameter_subset: true,
-            repair_envelope_less_frames: true,
+            contract: ResponsesContract::Codex,
             ..ResponsesQuirks::openai()
         },
         ..Quirks::openai()
     },
+    ..Dialect::gateway(PROVIDER_NAME, CHATGPT_API_BASE_URL, "CHATGPT_ACCESS_TOKEN")
 };
 
 /// A fresh per-request `session_id` correlator.

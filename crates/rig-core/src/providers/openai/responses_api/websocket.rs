@@ -17,7 +17,6 @@ use crate::driver::{Bound, WireDriver};
 use crate::driver::{TriagedFrame, triage_frame};
 use crate::http_client::{self, NoBody};
 use crate::operation::Completion;
-use crate::providers::internal::adapter::WireFrame;
 use crate::providers::openai::responses_api::streaming::{
     ItemChunk, ResponseChunk, ResponseChunkKind, ResponsesDecoder, StreamingCompletionChunk,
     classify_responses_frame,
@@ -25,7 +24,8 @@ use crate::providers::openai::responses_api::streaming::{
 use crate::providers::openai::responses_api::wire::Responses;
 use crate::streaming::StreamEvent;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use crate::wire::{Fold, Operation, Reply, Wire};
+use crate::wire::WireFrame;
+use crate::wire::{Fold, Mode, Operation, Reply, Wire};
 use crate::ws_client::{
     BoxedWebSocketConnection, ConnectOptions, Frame, WebSocketClientExt, WebSocketConnection,
 };
@@ -575,7 +575,14 @@ impl ResponsesWebSocketSession {
     async fn wait_for_terminal_response(
         &mut self,
     ) -> Result<(CompletionResponse, Vec<StreamEvent>), CompletionError> {
-        let mut driver = WireDriver::<Completion, _>::new(self.wire.decoder());
+        // A session is a stream of messages, not a buffered reply: the
+        // decoder is fed the same deltas the SSE transport feeds it, one
+        // message at a time, and this loop only ever reaches `finish()`
+        // after the provider's own terminal event. So its EOF can never be
+        // "the provider answered with nothing" — the state a whole reply's
+        // EOF reports — and the mode it is built for is `Streaming` even
+        // though the surface above it returns one response.
+        let mut driver = WireDriver::<Completion, _>::new(self.wire.decoder(Mode::Streaming));
         let mut events = Vec::new();
         loop {
             let (event, payload) = self.next_event_with_payload().await?;
@@ -915,7 +922,7 @@ fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, C
     let url = crate::ws_client::websocket_url(&wire.provider.base_url, WEBSOCKET_PATH)
         .map_err(CompletionError::HttpError)?;
 
-    let request = wire.headers(
+    let request = wire.provider.headers(
         http_client::Request::builder()
             .method(http::Method::GET)
             .uri(url),

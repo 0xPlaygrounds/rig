@@ -70,21 +70,6 @@ pub struct CompletionRequest {
 }
 
 impl CompletionRequest {
-    pub fn with_structured_outputs<S>(mut self, schema_name: S, schema: serde_json::Value) -> Self
-    where
-        S: Into<String>,
-    {
-        self.additional_parameters.text = Some(TextConfig::structured_output(schema_name, schema));
-
-        self
-    }
-
-    pub fn with_reasoning(mut self, reasoning: Reasoning) -> Self {
-        self.additional_parameters.reasoning = Some(reasoning);
-
-        self
-    }
-
     /// Adds a provider-native hosted tool (e.g. `web_search`, `file_search`, `computer_use`)
     /// to the request. These tools are executed by OpenAI's infrastructure, not by Rig's
     /// agent loop.
@@ -410,50 +395,6 @@ fn responses_tool_result_output(
     }
 }
 
-impl From<Message> for InputItem {
-    fn from(value: Message) -> Self {
-        match value {
-            Message::User { .. } => Self {
-                role: Some(Role::User),
-                input: InputContent::Message(value),
-            },
-            Message::Assistant { ref content, .. } => {
-                let role = if content
-                    .iter()
-                    .any(|x| matches!(x, AssistantContentType::Reasoning(_)))
-                {
-                    None
-                } else {
-                    Some(Role::Assistant)
-                };
-                Self {
-                    role,
-                    input: InputContent::Message(value),
-                }
-            }
-            Message::AssistantInput { .. } => Self {
-                role: Some(Role::Assistant),
-                input: InputContent::Message(value),
-            },
-            Message::System { .. } => Self {
-                role: Some(Role::System),
-                input: InputContent::Message(value),
-            },
-            Message::ToolResult {
-                tool_call_id,
-                output,
-            } => Self {
-                role: None,
-                input: InputContent::FunctionCallOutput(ToolResult {
-                    call_id: tool_call_id,
-                    output,
-                    status: ToolStatus::Completed,
-                }),
-            },
-        }
-    }
-}
-
 impl TryFrom<crate::completion::Message> for Vec<InputItem> {
     type Error = CompletionError;
 
@@ -656,18 +597,6 @@ impl TryFrom<crate::completion::Message> for Vec<InputItem> {
             }
         }
     }
-}
-
-/// Build reasoning summaries from plain strings.
-///
-/// Free function rather than `impl From<OneOrMany<String>> for
-/// Vec<ReasoningSummary>`: without the container both sides are foreign types
-/// and the orphan rule forbids the impl.
-pub fn reasoning_summaries(value: Vec<String>) -> Vec<ReasoningSummary> {
-    value
-        .into_iter()
-        .map(|text| ReasoningSummary::SummaryText { text })
-        .collect()
 }
 
 /// The canonical blocks of one Responses reasoning item, in the wire's own
@@ -2266,14 +2195,6 @@ pub enum Message {
         tool_call_id: String,
         output: ToolResultOutput,
     },
-}
-
-/// The type of a tool result content item.
-#[derive(Default, Debug, Serialize, Deserialize, PartialEq, Clone)]
-#[serde(rename_all = "lowercase")]
-pub enum ToolResultContentType {
-    #[default]
-    Text,
 }
 
 impl Message {

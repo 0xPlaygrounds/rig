@@ -452,8 +452,9 @@ where
     /// Every cached content this API key can see, following pagination at
     /// the wire's page size.
     pub async fn list(&self) -> Result<Vec<CachedContent>, CachedContentError> {
-        let reply = call(&self.wire, &self.http, CachedContentRequest::List, None).await?;
-        Ok(reply.cached_contents)
+        call(&self.wire, &self.http, CachedContentRequest::List, None)
+            .await?
+            .entries()
     }
 
     /// [`Self::list`] at an explicit page size — see
@@ -463,8 +464,9 @@ where
         page_size: usize,
     ) -> Result<Vec<CachedContent>, CachedContentError> {
         let wire = self.wire.clone().with_page_size(page_size);
-        let reply = call(&wire, &self.http, CachedContentRequest::List, None).await?;
-        Ok(reply.cached_contents)
+        call(&wire, &self.http, CachedContentRequest::List, None)
+            .await?
+            .entries()
     }
 
     /// Extend (or shorten) a cache's life.

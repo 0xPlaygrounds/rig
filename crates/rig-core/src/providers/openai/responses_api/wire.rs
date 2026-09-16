@@ -17,12 +17,12 @@
 
 use crate::completion::{self, CompletionError, ProviderCapabilities};
 use crate::operation::Completion;
-use crate::providers::openai::wire::OpenAI;
+use crate::providers::openai::wire::{OpenAI, ResponsesContract};
 use crate::wire::{
     AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing, Mode,
     ObservationSink, Wire,
 };
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
 
 use super::streaming::{ResponsesDecoder, ResponsesStreamOptions};
 use super::{
@@ -97,36 +97,6 @@ impl Responses {
         self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
     }
 
-    /// The credential and identity headers every request to this dialect
-    /// carries, shared by [`Wire::encode`] and the websocket handshake.
-    pub(crate) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
-        let mut builder = builder.header(
-            http::header::AUTHORIZATION,
-            format!("Bearer {}", self.provider.api_key.expose()),
-        );
-        if let Some(identity) = &self.provider.identity {
-            builder = builder
-                .header("originator", &identity.originator)
-                .header(http::header::USER_AGENT, &identity.user_agent);
-        }
-        if self
-            .provider
-            .dialect
-            .quirks
-            .identity
-            .is_some_and(|identity| identity.session_ids)
-        {
-            // A fresh per-request correlator, minted in the provider that
-            // asks for it — which is where the record-replay guard
-            // (`tests/core/no_random_ids.rs`) pins the one call site.
-            builder = builder.header("session_id", crate::providers::chatgpt::session_id());
-        }
-        if let Some(account_id) = &self.provider.account_id {
-            builder = builder.header("ChatGPT-Account-Id", account_id);
-        }
-        builder
-    }
-
     /// The Responses request this wire sends, before serialization.
     pub(crate) fn responses_request(
         &self,
@@ -153,7 +123,7 @@ impl Responses {
                 request.instructions.as_deref(),
             ));
         }
-        if quirks.codex_parameter_subset {
+        if quirks.contract == ResponsesContract::Codex {
             // The codex gateway takes the turn and the tools; sampling,
             // storage, metadata and structured output are not its to accept,
             // and `store: false` is the one value it wants stated.
@@ -217,10 +187,12 @@ impl Wire for Responses {
         mode: Mode,
     ) -> Result<Encoded, CompletionError> {
         let quirks = &self.provider.dialect.quirks.responses;
-        // A gateway that only ever answers with an event stream is asked for
-        // one whatever the caller wanted: the reply is framed the same way
-        // either way, and the driver folds it.
-        let streaming = matches!(mode, Mode::Streaming) || quirks.always_streams;
+        // The codex gateway only ever answers with an event stream, and
+        // names no content type on it. It is asked for one whatever the
+        // caller wanted: the reply is framed the same way either way, and
+        // the driver folds it.
+        let codex = quirks.contract == ResponsesContract::Codex;
+        let streaming = matches!(mode, Mode::Streaming) || codex;
         let request = self.responses_request(request, streaming)?;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
@@ -230,11 +202,8 @@ impl Wire for Responses {
         let body = serde_json::to_vec(&request)?;
 
         let request = self
-            .headers(http::Request::post(format!(
-                "{}{}",
-                self.provider.base_url.trim_end_matches('/'),
-                quirks.path
-            )))
+            .provider
+            .headers(http::Request::post(self.provider.uri(quirks.path, None)))
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(body))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
@@ -246,24 +215,27 @@ impl Wire for Responses {
         };
         let encoded = Encoded::new(request, framing)
             .with_request_id_header(self.provider.dialect.request_id_header);
-        Ok(if quirks.relaxed_content_type {
+        Ok(if codex {
             encoded.with_relaxed_content_type()
         } else {
             encoded
         })
     }
 
-    fn decoder(&self) -> ResponsesDecoder {
+    fn decoder(&self, _mode: Mode) -> ResponsesDecoder {
         let quirks = &self.provider.dialect.quirks.responses;
-        let options = if quirks.error_envelope_in_success {
-            // The same gateway that answers 200 with an envelope publishes a
-            // finished call at its `output_item.done`.
+        let options = if quirks.contract == ResponsesContract::Xai {
+            // xAI answers a 200 with its error envelope, and the same
+            // gateway publishes a finished call at its `output_item.done`.
             ResponsesStreamOptions::strict_with_immediate_tool_calls()
         } else {
             ResponsesStreamOptions::strict()
         };
         let mut decoder = ResponsesDecoder::new(self.provider.dialect.name, options);
-        if quirks.repair_envelope_less_frames {
+        if quirks.contract == ResponsesContract::Codex {
+            // The codex gateway's replayed frames may omit their envelope
+            // bookkeeping; elsewhere an envelope-less frame is a defect
+            // worth surfacing rather than salvaging.
             decoder = decoder.with_envelope_repair();
         }
         decoder
@@ -273,13 +245,9 @@ impl Wire for Responses {
         // The Responses API constrains only the final assistant message via
         // `text.format`; tools are still called across turns, so native
         // structured output composes with tool calls (issue #1928) — except
-        // on a gateway that says otherwise.
+        // on xAI, whose does not.
         ProviderCapabilities::default().with_native_output_tool_composition(
-            self.provider
-                .dialect
-                .quirks
-                .responses
-                .native_output_with_tools,
+            self.provider.dialect.quirks.responses.contract != ResponsesContract::Xai,
         )
     }
 }
@@ -297,7 +265,7 @@ pub(crate) fn fold_body(
     response: super::CompletionResponse,
 ) -> Result<completion::CompletionResponse, CompletionError> {
     use super::streaming::ResponsesEvent;
-    use crate::providers::internal::adapter::AdapterOutput;
+    use crate::operation::AdapterOutput;
     use crate::wire::{Decoder, Fold, Operation, Reply, Sink};
 
     let reply = Reply {
@@ -318,16 +286,11 @@ pub(crate) fn fold_body(
 
 // ── observation ────────────────────────────────────────────────────────
 
-/// A count the provider may report as something other than a number.
-fn count<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<u64>, D::Error> {
-    Ok(serde_json::Value::deserialize(deserializer)?.as_u64())
-}
-
 #[derive(Default, Deserialize)]
 struct TokenDetails {
-    #[serde(default, deserialize_with = "count")]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     cached_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "count")]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     reasoning_tokens: Option<u64>,
 }
 
@@ -343,11 +306,11 @@ struct Envelope {
 
 #[derive(Deserialize)]
 struct Usage {
-    #[serde(default, deserialize_with = "count")]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     input_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "count")]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     output_tokens: Option<u64>,
-    #[serde(default, deserialize_with = "count")]
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
     total_tokens: Option<u64>,
     #[serde(default)]
     input_tokens_details: Option<TokenDetails>,
@@ -360,7 +323,11 @@ struct IncompleteDetails {
     reason: Option<String>,
 }
 
-#[derive(Deserialize)]
+/// The response object, whether it arrived nested under a stream event's
+/// `response` or as the unary reply itself. Every field is optional: this is
+/// the observation parse, and a payload that carries none of them projects
+/// nothing rather than failing.
+#[derive(Default, Deserialize)]
 struct ResponseObject {
     id: Option<String>,
     model: Option<String>,
@@ -375,13 +342,11 @@ struct Payload {
     #[serde(rename = "type")]
     kind: Option<String>,
     response: Option<ResponseObject>,
-    // The unary reply's own fields, and the stream `error` event's.
-    id: Option<String>,
-    model: Option<String>,
-    status: Option<String>,
-    incomplete_details: Option<IncompleteDetails>,
-    usage: Option<Usage>,
-    error: Option<Envelope>,
+    /// The unary reply *is* the response object, so the same fields are
+    /// read at the top level rather than declared a second time.
+    #[serde(flatten)]
+    unwrapped: ResponseObject,
+    // The stream `error` event's own fields.
     code: Option<serde_json::Value>,
     message: Option<String>,
 }
@@ -400,7 +365,7 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut dyn ObservationSink) {
     if payload.kind.as_deref() == Some("error") {
         // The event carries its envelope either nested under `error` or as
         // its own top-level fields; the nested form names the error type.
-        let error = payload.error.unwrap_or(Envelope {
+        let error = payload.unwrapped.error.unwrap_or(Envelope {
             code: payload.code,
             kind: None,
             message: payload.message,
@@ -408,14 +373,7 @@ pub(crate) fn project_payload(payload: &[u8], sink: &mut dyn ObservationSink) {
         envelope(sink, error);
         return;
     }
-    let object = payload.response.unwrap_or(ResponseObject {
-        id: payload.id,
-        model: payload.model,
-        status: payload.status,
-        incomplete_details: payload.incomplete_details,
-        usage: payload.usage,
-        error: payload.error,
-    });
+    let object = payload.response.unwrap_or(payload.unwrapped);
     if let Some(usage) = object.usage {
         sink.emit(AdapterEvent::Usage {
             usage: AdapterUsage {

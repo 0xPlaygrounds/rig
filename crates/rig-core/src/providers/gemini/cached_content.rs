@@ -122,9 +122,11 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::completion::gemini_api_types::{Content, Part, Role, Tool, ToolConfig};
-use crate::error::{ErrorKind, ErrorReport};
 use crate::operation;
-use crate::providers::internal::{wire::classify_untyped_line, with_query_pairs};
+use crate::providers::internal::{
+    wire::{classify_or, classify_untyped_line},
+    with_query_pairs,
+};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
@@ -194,39 +196,13 @@ impl CachedContentError {
     }
 }
 
-impl From<&CachedContentError> for ErrorReport {
-    fn from(error: &CachedContentError) -> Self {
-        let provider_response = match error {
-            CachedContentError::ProviderResponse(response) => Some(response.clone()),
-            _ => None,
-        };
-        let kind = match error {
-            CachedContentError::HttpError(_) => ErrorKind::Http,
-            CachedContentError::JsonError(_) => ErrorKind::Json,
-            CachedContentError::Request(_) | CachedContentError::Invalid(_) => ErrorKind::Request,
-            CachedContentError::ResponseError(_) => ErrorKind::Response,
-            CachedContentError::ProviderError(_) => ErrorKind::Provider,
-            // An expiry is the provider's verdict on the handle, with its
-            // status folded into the variant.
-            CachedContentError::ProviderResponse(_) | CachedContentError::Expired { .. } => {
-                ErrorKind::ProviderResponse
-            }
-        };
-        let mut report =
-            ErrorReport::new(kind, error.to_string()).with_retryable(error.is_retryable());
-        report.code = provider_response
-            .as_ref()
-            .and_then(|response| response.machine_code());
-        report.http_status = provider_response
-            .as_ref()
-            .and_then(|response| response.status.map(|status| status.as_u16()));
-        report.request_id = provider_response
-            .as_ref()
-            .and_then(|response| response.provider_request_id.clone());
-        report.provider_response = provider_response;
-        report
-    }
-}
+crate::error::impl_report_for_provider_error!(
+    CachedContentError,
+    // An expiry is the provider's verdict on the handle, with its status
+    // folded into the variant, so it reports as a provider response rather
+    // than as the request fault the table's default arm assumes.
+    CachedContentError::Expired { .. } => ErrorKind::ProviderResponse,
+);
 
 /// How a cached content expires.
 ///
@@ -449,36 +425,84 @@ pub enum CachedContentRequest {
     Delete(String),
 }
 
-/// One `cachedContents` reply body.
-///
-/// Every verb answers with one JSON object, and the verb decides what is
-/// read off it: `create`, `get` and `update_expiry` a resource, `list` a
-/// page, `delete` the `{}` it acknowledges with. One shape rather than
-/// three because the decoder does not see the verb, and the keys say which
-/// it is: a resource carries `name`, a page carries `cachedContents`, and
-/// an acknowledgement carries neither.
-#[derive(Debug, Default, Deserialize)]
+/// One page of a `cachedContents` listing.
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct CachedContentResponse {
-    /// The resource, on the replies that carry one.
-    #[serde(flatten)]
-    pub resource: Option<CachedContent>,
-    /// The entries of every page read, in arrival order.
-    #[serde(default)]
+pub struct CachedContentPage {
+    /// The entries of every page read, in arrival order — the fold
+    /// concatenates them.
+    ///
+    /// Required, deliberately: this key is what makes a page a page, so a
+    /// resource body cannot decode as an empty listing.
     pub cached_contents: Vec<CachedContent>,
     /// The cursor naming the next page, when the listing has one. The
-    /// decoder takes it before the page reaches the fold.
+    /// decoder takes it before the page reaches the fold, so a folded
+    /// reply's is always `None`.
     #[serde(default)]
     pub next_page_token: Option<String>,
 }
 
-impl CachedContentResponse {
-    /// The resource this reply carried, for the verbs that are answered
-    /// with one.
-    pub(crate) fn resource(self) -> Result<CachedContent, CachedContentError> {
-        self.resource.ok_or_else(|| {
-            CachedContentError::ResponseError("the reply carried no cached content".to_owned())
-        })
+/// One `cachedContents` reply: exactly one of the three answers Gemini
+/// gives, decided by the shape the body actually has — a page carries
+/// `cachedContents`, a resource carries `name`, and an acknowledgement is
+/// the empty object.
+///
+/// Three variants rather than one envelope holding an
+/// `Option<CachedContent>` beside a `Vec` and a cursor: that shape let a
+/// `delete` carry a resource and a `get` carry a page, and — because a
+/// flattened `Option` swallows the deserialization error — read
+/// `{"name": 5}` as a resource that was *missing*. Here each shape's
+/// decode is strict and none of them accepts another's body, so a
+/// malformed resource is the JSON error it is.
+#[derive(Debug, Default)]
+pub enum CachedContentReply {
+    /// `create`, `get` and `update_expiry`: the resource.
+    Resource(CachedContent),
+    /// `list`: one page of the collection.
+    Page(CachedContentPage),
+    /// A 2xx with nothing to read — what `delete` is acknowledged with,
+    /// and what an empty collection lists as. The default, so a fold that
+    /// absorbed nothing holds the reply an empty 2xx already is.
+    #[default]
+    Acknowledged,
+}
+
+impl CachedContentReply {
+    /// The resource `create`, `get` and `update_expiry` ask for.
+    ///
+    /// Another shape is the provider answering a different question, and
+    /// says which one it answered instead. A *malformed* resource never
+    /// reaches here: a body that names a resource and fails to decode is
+    /// a corrupt frame in [`CachedContentsDecoder::classify`], which the
+    /// driver turns into this operation's JSON error.
+    pub fn resource(self) -> Result<CachedContent, CachedContentError> {
+        match self {
+            Self::Resource(resource) => Ok(resource),
+            other => Err(other.mismatch("one cached content")),
+        }
+    }
+
+    /// The entries `list` asks for, as the fold concatenated the pages. An
+    /// empty collection is answered with the empty object, which is
+    /// [`Self::Acknowledged`].
+    pub fn entries(self) -> Result<Vec<CachedContent>, CachedContentError> {
+        match self {
+            Self::Page(page) => Ok(page.cached_contents),
+            Self::Acknowledged => Ok(Vec::new()),
+            other => Err(other.mismatch("a listing page")),
+        }
+    }
+
+    /// This reply is not what the verb asked for, and both halves of that
+    /// are named — the reply the provider sent is as much of the
+    /// diagnosis as the one it was supposed to send.
+    fn mismatch(&self, wanted: &str) -> CachedContentError {
+        let carried = match self {
+            Self::Resource(_) => "one cached content",
+            Self::Page(_) => "a listing page",
+            Self::Acknowledged => "nothing to read, only a success status",
+        };
+        CachedContentError::ResponseError(format!("the reply carried {carried}, not {wanted}"))
     }
 }
 
@@ -597,11 +621,10 @@ impl Wire for CachedContents {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         CachedContentsDecoder {
             wire: self.clone(),
             next: None,
-            answered: false,
         }
     }
 }
@@ -611,37 +634,39 @@ pub struct CachedContentsDecoder {
     wire: CachedContents,
     /// The cursor the page just interpreted named, when it named a usable one.
     next: Option<String>,
-    answered: bool,
 }
 
 impl Decoder<operation::ContextCache> for CachedContentsDecoder {
-    type Event = CachedContentResponse;
+    type Event = CachedContentReply;
 
-    /// Every reply is one JSON object read for the part the verb asked for,
-    /// so there is no discriminator and nothing this wire calls `Unknown`:
-    /// a body is the reply shape or it is `Corrupt`.
+    /// Which of the three replies this body is, read as the shape it has:
+    /// a page names `cachedContents`, an acknowledgement is the empty
+    /// object, and anything else must decode as the resource. Each decode
+    /// is strict and no shape accepts another's body, so `{"name": 5}`
+    /// fails the resource decode and is reported as the defect it is
+    /// rather than as a resource that went missing.
+    ///
+    /// The composition — read one classifier's verdict, try the next shape
+    /// when the body was not its kind — is
+    /// [`classify_or`]'s, which is where a wire with several reply shapes
+    /// is allowed to state it.
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
+        let body = frame.as_str();
+        classify_or(&body, as_page, |data| {
+            classify_or(data, as_acknowledgement, as_resource)
+        })
     }
 
     fn interpret(&mut self, mut reply: Self::Event, out: &mut Output<operation::ContextCache>) {
-        // An empty cursor counts as absent: re-sending an empty `pageToken`
-        // returns the same page forever.
-        self.next = reply
-            .next_page_token
-            .take()
-            .filter(|token| !token.is_empty());
-        self.answered = true;
-        out.push(Ok(reply));
-    }
-
-    /// A 2xx with no body still answers: `delete` acknowledges with nothing
-    /// to read, and the status already said yes. A verb that needed a
-    /// resource finds none and reports that.
-    fn finish(&mut self, out: &mut Output<operation::ContextCache>) {
-        if !self.answered {
-            out.push(Ok(CachedContentResponse::default()));
+        if let CachedContentReply::Page(page) = &mut reply {
+            // An empty cursor counts as absent: re-sending an empty
+            // `pageToken` returns the same page forever.
+            self.next = page
+                .next_page_token
+                .take()
+                .filter(|token| !token.is_empty());
         }
+        out.push(Ok(reply));
     }
 
     fn continuation(&self) -> Option<http::Request<Body>> {
@@ -649,35 +674,39 @@ impl Decoder<operation::ContextCache> for CachedContentsDecoder {
     }
 }
 
-/// The `PATCH` body and its `updateMask` for one expiry, so the two cannot
-/// disagree about which field is being written.
-fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), CachedContentError> {
-    #[derive(Serialize)]
-    #[serde(rename_all = "camelCase")]
-    struct Patch {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        ttl: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        expire_time: Option<String>,
-    }
+/// One listing page, or a body that is not one.
+fn as_page(data: &str) -> WireEvent<CachedContentReply> {
+    classify_untyped_line::<CachedContentPage>(data.as_bytes()).map(CachedContentReply::Page)
+}
 
-    let (patch, mask) = match expiry {
-        CacheExpiry::Ttl(ttl) => (
-            Patch {
-                ttl: Some(CacheExpiry::ttl_string(ttl)),
-                expire_time: None,
-            },
-            "ttl",
-        ),
-        CacheExpiry::ExpireTime(at) => (
-            Patch {
-                ttl: None,
-                expire_time: Some(at),
-            },
-            "expireTime",
-        ),
+/// The empty object a `delete` is acknowledged with, or a body that is not
+/// one: any key at all makes the body one of the other two shapes, which
+/// is what `deny_unknown_fields` says here.
+fn as_acknowledgement(data: &str) -> WireEvent<CachedContentReply> {
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Acknowledgement {}
+
+    classify_untyped_line::<Acknowledgement>(data.as_bytes())
+        .map(|_| CachedContentReply::Acknowledged)
+}
+
+/// One cached content, or a body that is not one.
+fn as_resource(data: &str) -> WireEvent<CachedContentReply> {
+    classify_untyped_line::<CachedContent>(data.as_bytes()).map(CachedContentReply::Resource)
+}
+
+/// The `PATCH` body and its `updateMask` for one expiry.
+///
+/// One `match` names the field, which is then both the body's only key and
+/// the mask — so the two cannot disagree about which field is written.
+fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), CachedContentError> {
+    let (field, value) = match expiry {
+        CacheExpiry::Ttl(ttl) => ("ttl", CacheExpiry::ttl_string(ttl)),
+        CacheExpiry::ExpireTime(at) => ("expireTime", at),
     };
-    Ok((serde_json::to_vec(&patch)?, mask))
+    let patch = serde_json::Map::from_iter([(field.to_owned(), serde_json::Value::String(value))]);
+    Ok((serde_json::to_vec(&patch)?, field))
 }
 
 /// `models/x` from `x`, idempotently.
@@ -689,7 +718,7 @@ fn qualify_model(model: &str) -> String {
     }
 }
 
-/// The characters a Gemini `cachedContents` id is made of.
+/// `/v1beta/cachedContents/<id>` from either a bare id or a full handle.
 ///
 /// The ids Gemini hands back are twelve lowercase alphanumerics
 /// (`cachedContents/n3v1qk0nqz9k`). `-` and `_` are admitted on top of that
@@ -697,11 +726,6 @@ fn qualify_model(model: &str) -> String {
 /// `cached-REDACTED_1` (`test-support/rig-test-support/src/cassettes.rs`), and a replayed test
 /// hands that placeholder straight back to `delete`. `.` is deliberately left
 /// out: no observed id carries one, and a `..` segment is path traversal.
-fn is_cache_id_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_')
-}
-
-/// `/v1beta/cachedContents/<id>` from either a bare id or a full handle.
 ///
 /// Validates rather than interpolating, because this is the path `get`,
 /// `update_expiry` and — the one that matters — `delete` send. A handle
@@ -725,7 +749,8 @@ fn is_cache_id_char(ch: char) -> bool {
 /// writes itself.
 fn resource_path(name: &str) -> Result<String, CachedContentError> {
     let id = name.strip_prefix("cachedContents/").unwrap_or(name);
-    if id.is_empty() || !id.chars().all(is_cache_id_char) {
+    let is_id_char = |ch: char| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_');
+    if id.is_empty() || !id.chars().all(is_id_char) {
         return Err(CachedContentError::Invalid(format!(
             "`{name}` is not a cached content handle; expected `cachedContents/<id>` or a bare \
              `<id>` of letters, digits, `-` and `_`. The id is spliced into the request path, \

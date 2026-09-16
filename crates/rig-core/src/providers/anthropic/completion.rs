@@ -4,7 +4,7 @@ use crate::completion::CompletionRequest;
 use crate::json_utils::string_or_vec;
 use crate::{
     completion::{self, CompletionError},
-    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
+    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType},
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
@@ -701,20 +701,6 @@ fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>
     }
 }
 
-fn anthropic_raw_content_to_message_text(content: Content) -> Result<message::Text, MessageError> {
-    let raw_content = serde_json::to_value(content).map_err(|err| {
-        MessageError::ConversionError(format!("Failed to preserve Anthropic content block: {err}"))
-    })?;
-
-    Ok(message::Text {
-        text: String::new(),
-        additional_params: message::AdditionalParams::from_entries([(
-            ANTHROPIC_RAW_CONTENT_KEY,
-            raw_content,
-        )]),
-    })
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolResultContent {
@@ -812,14 +798,6 @@ pub enum PlainTextMediaType {
     Plain,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum SourceType {
-    BASE64,
-    URL,
-    TEXT,
-}
-
 impl From<String> for Content {
     fn from(text: String) -> Self {
         Content::Text {
@@ -833,28 +811,6 @@ impl From<String> for Content {
 impl From<String> for ToolResultContent {
     fn from(text: String) -> Self {
         ToolResultContent::Text { text }
-    }
-}
-
-impl TryFrom<message::ContentFormat> for SourceType {
-    type Error = MessageError;
-
-    fn try_from(format: message::ContentFormat) -> Result<Self, Self::Error> {
-        match format {
-            message::ContentFormat::Base64 => Ok(SourceType::BASE64),
-            message::ContentFormat::Url => Ok(SourceType::URL),
-            message::ContentFormat::String => Ok(SourceType::TEXT),
-        }
-    }
-}
-
-impl From<SourceType> for message::ContentFormat {
-    fn from(source_type: SourceType) -> Self {
-        match source_type {
-            SourceType::BASE64 => message::ContentFormat::Base64,
-            SourceType::URL => message::ContentFormat::Url,
-            SourceType::TEXT => message::ContentFormat::String,
-        }
     }
 }
 
@@ -873,30 +829,6 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
                 )));
             }
         })
-    }
-}
-
-impl From<ImageFormat> for message::ImageMediaType {
-    fn from(format: ImageFormat) -> Self {
-        match format {
-            ImageFormat::JPEG => message::ImageMediaType::JPEG,
-            ImageFormat::PNG => message::ImageMediaType::PNG,
-            ImageFormat::GIF => message::ImageMediaType::GIF,
-            ImageFormat::WEBP => message::ImageMediaType::WEBP,
-        }
-    }
-}
-
-impl TryFrom<DocumentMediaType> for DocumentFormat {
-    type Error = MessageError;
-    fn try_from(value: DocumentMediaType) -> Result<Self, Self::Error> {
-        match value {
-            DocumentMediaType::PDF => Ok(DocumentFormat::PDF),
-            other => Err(MessageError::ConversionError(format!(
-                "DocumentFormat only supports PDF for base64 sources, got: {}",
-                other.to_mime_type()
-            ))),
-        }
     }
 }
 
@@ -1173,72 +1105,6 @@ impl TryFrom<message::Message> for Message {
     }
 }
 
-impl TryFrom<Content> for message::AssistantContent {
-    type Error = MessageError;
-
-    fn try_from(content: Content) -> Result<Self, Self::Error> {
-        Ok(match content {
-            // Keep this destructuring exhaustive so new wire fields force an
-            // explicit capture-or-drop decision. `cache_control` is a
-            // request-side directive, deliberately dropped on response
-            // ingest.
-            Content::Text {
-                text,
-                citations,
-                cache_control: _,
-            } => {
-                // Preserve citation metadata on the generic text block via
-                // `additional_params` so callers going through the generic
-                // `AssistantContent` surface can still recover them (see
-                // [`anthropic_citations`]).
-                let additional_params = message::AdditionalParams::from_entries(
-                    (!citations.is_empty()).then(|| ("citations", serde_json::json!(citations))),
-                );
-                message::AssistantContent::Text(message::Text {
-                    text,
-                    additional_params,
-                })
-            }
-            Content::ToolUse { id, name, input } => {
-                message::AssistantContent::tool_call(id, name, input)
-            }
-            raw @ (Content::ServerToolUse { .. }
-            | Content::WebSearchToolResult { .. }
-            | Content::CodeExecutionToolResult { .. }) => {
-                message::AssistantContent::Text(anthropic_raw_content_to_message_text(raw)?)
-            }
-            Content::Thinking {
-                thinking,
-                signature,
-            } => message::AssistantContent::Reasoning(Reasoning::new_with_signature(
-                &thinking, signature,
-            )),
-            Content::RedactedThinking { data } => {
-                message::AssistantContent::Reasoning(Reasoning::redacted(data))
-            }
-            _ => {
-                return Err(MessageError::ConversionError(
-                    "Content did not contain a message, tool call, or reasoning".to_owned(),
-                ));
-            }
-        })
-    }
-}
-
-impl From<ToolResultContent> for message::ToolResultContent {
-    fn from(content: ToolResultContent) -> Self {
-        match content {
-            ToolResultContent::Text { text, .. } => message::ToolResultContent::text(text),
-            ToolResultContent::Image { source } => match source {
-                ImageSource::Base64 { data, media_type } => {
-                    message::ToolResultContent::image_base64(data, Some(media_type.into()), None)
-                }
-                ImageSource::Url { url } => message::ToolResultContent::image_url(url, None, None),
-            },
-        }
-    }
-}
-
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
@@ -1268,11 +1134,6 @@ pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
     model.starts_with(CLAUDE_FABLE_5)
         || model.starts_with(CLAUDE_OPUS_5)
         || model.starts_with(CLAUDE_OPUS_4_8)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Metadata {
-    user_id: Option<String>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]

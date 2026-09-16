@@ -406,7 +406,7 @@ impl OllamaDecoder {
     fn interpret_record(
         &mut self,
         response: CompletionResponse,
-        out: &mut internal::adapter::AdapterOutput,
+        out: &mut crate::operation::AdapterOutput,
     ) {
         let done = response.done;
         let model = response.model;
@@ -422,7 +422,7 @@ impl OllamaDecoder {
             // distinct minted identity and its durable id stays absent —
             // never the tool name, which would collide two same-tool calls
             // in one turn.
-            let mut tool_events = internal::adapter::AdapterOutput::new();
+            let mut tool_events = crate::operation::AdapterOutput::new();
             for tool_call in tool_calls {
                 let key = match tool_call
                     .id
@@ -497,13 +497,11 @@ impl OllamaDecoder {
     /// Classify one NDJSON line. The wire has no discriminator at all: a
     /// line either decodes as the record shape or is corrupt.
     fn classify_line(
-        frame: internal::adapter::WireFrame,
+        frame: crate::wire::WireFrame,
     ) -> internal::wire::WireEvent<CompletionResponse> {
         match frame {
-            internal::adapter::WireFrame::Bytes(line) => {
-                internal::wire::classify_untyped_line(&line)
-            }
-            internal::adapter::WireFrame::Text(line) => {
+            crate::wire::WireFrame::Bytes(line) => internal::wire::classify_untyped_line(&line),
+            crate::wire::WireFrame::Text(line) => {
                 internal::wire::classify_untyped_line(line.as_bytes())
             }
         }
@@ -515,7 +513,7 @@ impl crate::wire::Decoder<Completion> for OllamaDecoder {
 
     fn classify(
         &self,
-        frame: internal::adapter::WireFrame,
+        frame: crate::wire::WireFrame,
     ) -> internal::wire::WireEvent<CompletionResponse> {
         Self::classify_line(frame)
     }
@@ -523,14 +521,14 @@ impl crate::wire::Decoder<Completion> for OllamaDecoder {
     fn interpret(
         &mut self,
         response: CompletionResponse,
-        out: &mut internal::adapter::AdapterOutput,
+        out: &mut crate::operation::AdapterOutput,
     ) {
         self.interpret_record(response, out);
     }
 
     /// EOF without a `done: true` record is truncation: no terminal record
     /// may be synthesized.
-    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput) {}
+    fn finish(&mut self, _out: &mut crate::operation::AdapterOutput) {}
 }
 
 // ---------- Model Listing  ----------

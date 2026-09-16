@@ -5,6 +5,7 @@ use crate::embeddings::EmbeddingModel as _;
 use crate::message::AssistantContent;
 use crate::model::ModelLister as _;
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
+use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
 
 /// The recorded request of `tests/cassettes/ollama/agent/max_tokens.yaml`
@@ -150,7 +151,7 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
 /// whole reply only: the shape is the one recorded in
 /// `tests/cassettes/ollama/structured_output/raw_with_thinking.yaml`.
 #[tokio::test]
-async fn a_whole_reply_splits_legacy_reasoning_out_of_its_content() {
+async fn a_buffered_reply_splits_legacy_reasoning_out_of_its_content() {
     let body = r#"{"model":"deepseek-r1","created_at":"1970-01-01T00:00:00Z","message":{"role":"assistant","content":"<think>weighing it up</think>the answer"},"done":true,"done_reason":"stop","prompt_eval_count":3,"eval_count":5}"#;
     let response = Bound::new(
         Ollama::new().chat("deepseek-r1"),
@@ -204,10 +205,9 @@ async fn a_streamed_fragment_is_never_split_as_legacy_reasoning() {
 }
 
 /// A config is data a host persists, so what survives the round trip is the
-/// part that is not a credential. `Secret` serializes as `"[redacted]"` by
-/// design — including the empty one a local daemon carries — so a reloaded
-/// wire addresses the same daemon with the same model and gets its
-/// credential from the environment again, never from the file.
+/// part that is not a credential: a reloaded wire addresses the same daemon
+/// with the same model and gets its credential from the environment again,
+/// never from the file.
 #[test]
 fn a_serialized_config_round_trips_everything_but_the_credential() {
     let wire = Ollama::new()
@@ -220,15 +220,11 @@ fn a_serialized_config_round_trips_everything_but_the_credential() {
     assert_eq!(restored.provider.base_url, "http://ollama.internal:11434");
 
     // A proxied daemon does take a credential, and that one never travels.
-    let proxied = Ollama::new()
-        .with_api_key("ollama-proxy-key")
-        .chat("qwen3:4b");
-    let serialized = serde_json::to_string(&proxied).expect("the wire serializes");
-    assert!(
-        !serialized.contains("ollama-proxy-key"),
-        "a wire a host may persist must not carry the credential: {serialized}"
+    a_config_reloads_without_its_credential(
+        &Ollama::new().with_api_key("ollama-proxy-key"),
+        "ollama-proxy-key",
+        |ollama| &ollama.api_key,
     );
-    assert!(!format!("{proxied:?}").contains("ollama-proxy-key"));
 }
 
 #[test]

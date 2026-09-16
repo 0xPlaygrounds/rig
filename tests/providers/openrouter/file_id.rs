@@ -10,9 +10,10 @@
 //! OpenRouter's `file` content part with no `file_id` beside it.
 
 use rig::completion::{CompletionError, CompletionRequestBuilder};
-use rig::message::{Document, DocumentSourceKind, Message, UserContent as RigUserContent};
+use rig::message::{
+    Document, DocumentMediaType, DocumentSourceKind, Message, UserContent as RigUserContent,
+};
 use rig::providers::openai::wire::{OPENROUTER, OpenAI};
-use rig::providers::openai::{FileData as OpenAiFileData, UserContent as OpenAiUserContent};
 use rig::wire::{Body, Encoded, Mode, Wire};
 use serde_json::Value;
 
@@ -67,23 +68,19 @@ fn generic_document_file_id_fails_openrouter_message_conversion() {
     );
 }
 
+/// A base64 PDF is the one document shape OpenRouter accepts: it goes out as
+/// the `file` content part, with no `file_id` beside it for the dialect to
+/// refuse.
 #[test]
-fn openai_file_data_converts_to_openrouter_file_data() {
-    let openai_content = OpenAiUserContent::File {
-        file: OpenAiFileData {
-            file_data: Some("data:application/pdf;base64,AAAA".to_string()),
-            file_id: Some("file_abc".to_string()),
-            filename: Some("document.pdf".to_string()),
-        },
+fn file_data_document_encodes_as_an_openrouter_file_part() {
+    let message = Message::User {
+        content: vec![RigUserContent::Document(Document {
+            data: DocumentSourceKind::Base64("AAAA".to_string()),
+            media_type: Some(DocumentMediaType::PDF),
+            additional_params: None,
+        })],
     };
 
-    let message = Message::User {
-        content: vec![RigUserContent::from(openai_content)],
-    };
-    // This passes for a reason independent of OpenRouter's refusal:
-    // `From<openai::UserContent> for rig::message::UserContent` prefers
-    // `file_data` over `file_id`, so the id is already gone before the wire
-    // sees the message. The dialect's refusal therefore never fires here.
     let body = encoded_body(message).expect("a file_data document should encode");
     let json = &body["messages"][0]["content"][0];
 
@@ -96,28 +93,5 @@ fn openai_file_data_converts_to_openrouter_file_data() {
     assert!(
         json["file"].get("file_id").is_none(),
         "OpenRouter payload should not include provider file IDs: {json}"
-    );
-}
-
-#[test]
-fn openai_file_id_only_fails_openrouter_user_content_conversion() {
-    let openai_content = OpenAiUserContent::File {
-        file: OpenAiFileData {
-            file_data: None,
-            file_id: Some("file_abc".to_string()),
-            filename: Some("document.pdf".to_string()),
-        },
-    };
-
-    let message = Message::User {
-        content: vec![RigUserContent::from(openai_content)],
-    };
-    let result = encoded_body(message);
-
-    assert!(result.is_err());
-    let error = result.unwrap_err().to_string();
-    assert!(
-        error.contains("Provider file IDs are not supported"),
-        "unexpected error: {error}"
     );
 }

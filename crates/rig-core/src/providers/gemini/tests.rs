@@ -10,16 +10,15 @@ use crate::wire::Wire;
 #[test]
 fn a_serialized_config_carries_no_key_material() {
     let gemini = Gemini::new("AIzaSyNOTAREALKEY-0123456789");
-    let json = serde_json::to_string(&gemini).expect("the config serializes");
-    assert!(
-        !json.contains("AIzaSyNOTAREALKEY-0123456789"),
-        "the serialized config leaked the key: {json}"
+    crate::wire::secret::tests::a_config_reloads_without_its_credential(
+        &gemini,
+        "AIzaSyNOTAREALKEY-0123456789",
+        |gemini| &gemini.api_key,
     );
     assert_eq!(
-        json,
+        serde_json::to_string(&gemini).expect("the config serializes"),
         format!(r#"{{"api_key":"[redacted]","base_url":"{BASE_URL}"}}"#)
     );
-    assert!(!format!("{gemini:?}").contains("AIzaSyNOTAREALKEY"));
 
     // The wires built from it are data too, and the completion wire is the
     // one a host is most likely to store.

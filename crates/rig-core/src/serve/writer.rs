@@ -4,7 +4,7 @@ use futures::{SinkExt, StreamExt, channel::mpsc};
 
 use crate::{
     error::ErrorReport,
-    providers::internal::adapter::AdapterOutput,
+    operation::AdapterOutput,
     streaming::{StreamEvent, StreamFinal, SyntheticIds, ToolCallEnd},
 };
 
