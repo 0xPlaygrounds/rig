@@ -1,7 +1,6 @@
 use mongodb::{
     Client as MongoClient, Collection,
     bson::{self, doc},
-    options::ClientOptions,
 };
 use rig_core::{providers::openai, vector_store::request::VectorSearchRequest};
 use rig_reqwest::prelude::*;
@@ -54,7 +53,7 @@ async fn main() -> Result<(), anyhow::Error> {
 
     // Initialize MongoDB client
     let mongodb_connection_string = env::var("MONGODB_CONNECTION_STRING")?;
-    let options = ClientOptions::parse(mongodb_connection_string).await?;
+    let options = rig_mongodb::client_options(&mongodb_connection_string).await?;
 
     let mongodb_client = MongoClient::with_options(options)?;
 
