@@ -1236,17 +1236,23 @@ pub enum ResponsesEvent {
     Failure(String),
 }
 
-/// The top-level keys that recognize a Responses body: `object`
-/// (`"response"`), plus the two fields every reply carries whatever the
-/// gateway omits. A stream event carries none of them at top level — its
-/// response object is nested under `response` — so the two shapes cannot be
-/// confused.
-const WHOLE_BODY_MARKERS: &[&str] = &["object", "output", "status"];
+/// The top-level keys that recognize a Responses reply body: `object`
+/// (`"response"`), the two fields every reply carries whatever the gateway
+/// omits, and `error` — a success whose body is nothing but the provider's
+/// error envelope is a reply too, and recognizing it here is what lets the
+/// body decode fail and hand the frame to the envelope classifier. A stream
+/// event carries none of them at top level (its response object is nested
+/// under `response`), so the shapes cannot be confused.
+const WHOLE_BODY_MARKERS: &[&str] = &["object", "output", "status", "error"];
 
 /// The error envelope a success body can carry instead of a response. The
 /// error itself is built from the raw body; this only proves the shape.
 #[derive(Deserialize)]
 struct ErrorEnvelope {
+    // Decoding it is the whole point — it proves the body is an envelope and
+    // nothing else — but the error the consumer sees is built from the raw
+    // body, so the provider's payload rides out verbatim.
+    #[allow(dead_code)]
     error: serde_json::Value,
 }
 
@@ -1318,15 +1324,15 @@ impl ResponsesDecoder {
                 .map(|response| ResponsesEvent::Whole(Box::new(response)))
         };
         let envelope = |data: &str| {
-            if !self.error_envelope_in_success {
-                // Not this dialect's shape: report it unrecognized so the
-                // tagged classifier's own error stays the diagnostic.
-                return WireEvent::Unknown {
-                    event_type: String::new(),
-                    value: serde_json::Value::Null.into(),
-                };
-            }
-            wire::classify_marker_keyed_frame::<ErrorEnvelope>(data, &["error"])
+            // Only the gateways that answer a success with an envelope have
+            // this shape; elsewhere the empty marker set makes the frame
+            // unrecognizable, so the earlier error stays the diagnostic.
+            let markers: &[&str] = if self.error_envelope_in_success {
+                &["error"]
+            } else {
+                &[]
+            };
+            wire::classify_marker_keyed_frame::<ErrorEnvelope>(data, markers)
                 .map(|_| ResponsesEvent::Failure(data.to_owned()))
         };
         wire::classify_or(

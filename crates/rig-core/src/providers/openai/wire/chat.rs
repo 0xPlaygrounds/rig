@@ -180,12 +180,14 @@ fn fold_groq_native_tools(request: &mut unary::CompletionRequest) -> Result<(), 
     let Some(raw_tools) = map.remove("tools") else {
         return Ok(());
     };
-    let native_tools =
-        serde_json::from_value::<Vec<serde_json::Value>>(raw_tools).map_err(|error| {
-            CompletionError::RequestError(
-                format!("Invalid Groq `additional_params.tools` payload: {error}").into(),
-            )
-        })?;
+    // Taken as an array directly rather than through serde: this is the
+    // *request* being shaped, and the only thing to learn about the value is
+    // whether the caller gave an array at all.
+    let serde_json::Value::Array(native_tools) = raw_tools else {
+        return Err(CompletionError::RequestError(
+            "Groq `additional_params.tools` must be an array of native tool objects".into(),
+        ));
+    };
 
     // `compound_custom.enabled_tools` is a set keyed by tool type, so a
     // caller who names the same tool twice enables it once.

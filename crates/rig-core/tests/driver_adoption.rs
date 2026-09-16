@@ -24,6 +24,12 @@ use std::path::PathBuf;
 /// hand-rolls a `WireEvent` policy table is scanned like any other file
 /// instead of inheriting the core driver's exemption.
 const ALLOWED_POLICY_HOMES: &[&str] = &[
+    // The one driver: `WireDriver` is where the policy table lives now, and
+    // `call`/`stream` are the only consumers of it.
+    "rig-core/src/driver.rs",
+    // The trait definitions and the "write a provider" page: `Decoder`'s
+    // contract names the variants it is defined over.
+    "rig-core/src/wire.rs",
     "rig-core/src/providers/internal/adapter.rs",
     "rig-core/src/providers/internal/wire.rs",
 ];

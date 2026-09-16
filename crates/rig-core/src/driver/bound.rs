@@ -68,3 +68,16 @@ where
         }
     }
 }
+
+/// Bind any wire or provider config to a transport.
+///
+/// One blanket impl rather than a `bind` method on every config: whether a
+/// provider can be bound is not a fact about the provider.
+pub trait Bind: Sized {
+    /// Bundle `self` with the socket it will speak over.
+    fn bind<H>(self, http: H) -> Bound<Self, H> {
+        Bound::new(self, http)
+    }
+}
+
+impl<W: Sized> Bind for W {}

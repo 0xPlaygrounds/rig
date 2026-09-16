@@ -19,6 +19,7 @@
 //! or `.http_client(ReqwestClient::default()).build()`.
 
 use rig_core::client::{Client, ClientBuilder, Provider, ProviderClientError};
+use rig_core::driver::Bound;
 use rig_core::http_client::{self, BoxedHttpClient};
 use rig_core::markers::Missing;
 
@@ -27,7 +28,7 @@ use rig_core::markers::Missing;
 /// host with no CA store, for one — while every constructor below promises
 /// a `Result`. Build through the builder and hand the failure back as the
 /// `Http` variant the rest of the client-construction path already uses.
-fn bundled() -> Result<BoxedHttpClient, ProviderClientError> {
+pub fn bundled() -> Result<BoxedHttpClient, ProviderClientError> {
     let client = reqwest::Client::builder()
         .build()
         .map_err(|error| http_client::Error::Instance(Box::new(TransportBuildError(error))))?;
@@ -160,3 +161,19 @@ where
 /// ```
 #[cfg(doc)]
 const _CONSTRUCTION_SPELLINGS: () = ();
+
+/// One-argument binding of a wire or provider config to the bundled
+/// transport: `anthropic::Anthropic::from_env()?.bound()?`.
+///
+/// rig-core depends on no transport, so it cannot build one; this crate is
+/// the orphan-rule-legal seam that supplies the default. To keep the
+/// concrete transport in the type instead, use rig-core's
+/// `Bind::bind(ReqwestClient::default())`.
+pub trait DefaultTransport: Sized {
+    /// Bind `self` to a fresh bundled transport.
+    fn bound(self) -> Result<Bound<Self, BoxedHttpClient>, ProviderClientError> {
+        Ok(Bound::new(self, bundled()?))
+    }
+}
+
+impl<W: Sized> DefaultTransport for W {}

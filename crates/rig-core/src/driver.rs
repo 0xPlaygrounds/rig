@@ -31,7 +31,7 @@ use crate::wire::{
 mod bound;
 mod consumers;
 
-pub use bound::Bound;
+pub use bound::{Bind, Bound};
 pub use consumers::{
     HasCompletion, HasEmbedding, HasImageEmbedding, HasModelListing, HasRerank, HasTranscription,
     HasVerify, Socket,

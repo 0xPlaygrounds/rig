@@ -33,8 +33,17 @@ providers/copilot/mod.rs | serde_json::from_slice::<NestedApiError>(&body) | una
 # --- #[serde(untagged)] unions that are not frame triage --------------------
 providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.
 providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.
-providers/openai/completion/streaming.rs | #[serde(untagged)] | `FinishReason::Other(String)` preserves an unrecognized finish-reason token verbatim (surfacing gateway-invented reasons instead of misreading them as a stop); a scalar vocabulary field, not frame policy.
+providers/openai/wire/dto.rs | #[serde(untagged)] | `FinishReason::Other(String)` preserves an unrecognized finish-reason token verbatim (surfacing gateway-invented reasons instead of misreading them as a stop); a scalar vocabulary field, not frame policy.
 providers/copilot/mod.rs | #[serde(untagged)] | `ChatApiResponse<T>` distinguishes a success body from Copilot's error envelope on a UNARY response (no stream frame involved).
+
+# --- openai chat wire: reasoning-detail sub-payloads, not frame triage ------
+# A chat chunk's `delta.reasoning_details` is deliberately typed
+# `Vec<serde_json::Value>`: the entries are a gateway extension, so an entry
+# shape this build does not model must not fail the chunk that carries it.
+# Both decodes below therefore run on a sub-payload of a frame the classifier
+# already returned as `Known`, and a failure skips that one entry rather than
+# deciding anything about the frame.
+providers/openai/wire/chat.rs | serde_json::from_value::<unary::ReasoningDetails>(detail.clone()) | Two sites, both on an already-`Known` chunk's `reasoning_details` entry: `detail_reasoning` maps a `reasoning.encrypted` entry to a whole reasoning block and `reasoning_signature` reads a signature-only `reasoning.text` entry; a non-matching or undecodable entry yields `None` and the chunk is unaffected.
 
 # --- openai responses websocket: envelope dispatch, not frame triage -------
 # The websocket carries the SAME Responses events the SSE path carries, and
@@ -48,3 +57,11 @@ providers/openai/responses_api/websocket.rs | "error" => serde_json::from_str(pa
 providers/openai/responses_api/websocket.rs | "response.done" => serde_json::from_str(payload) | Decodes the websocket-only `response.done` envelope, which has no SSE counterpart and therefore no classifier; a decode failure is returned as a CompletionError, never skipped.
 providers/openai/responses_api/websocket.rs | serde_json::from_value(status) | Reads the `status` field of an already-decoded `response.done` payload to update the session's previous_response_id bookkeeping; it decides no frame's fate.
 providers/openai/responses_api/websocket.rs | serde_json::from_value(self.response.clone()) | Converts an already-decoded `response.done` payload into the typed terminal response; `None` falls back to the session's explicit no-terminal-body error rather than skipping anything.
+
+# --- the driver: capturing a reply body is not decoding a frame -----------
+# `CompletionResponse::raw` is the provider's own reply, which is what every
+# `raw_completion` caller used to read off a provider-typed response. The
+# driver captures it from the bytes it already has, as an opaque `Value`, and
+# decides nothing: a body that is not JSON becomes `Value::Null` and the
+# reply's frames are decoded by the wire's decoder either way.
+rig-core/src/driver.rs | serde_json::from_slice(&page_reply.body).unwrap_or(serde_json::Value::Null) | Captures the unary reply body verbatim as CompletionResponse::raw; it is not a frame decode and no frame's fate depends on it.
