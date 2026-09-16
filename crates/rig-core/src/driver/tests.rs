@@ -25,7 +25,8 @@ use crate::test_utils::{
     SequencedHttpClient, SequencedStreamingHttpClient,
 };
 use crate::wire::{
-    Body, Decoder, Encoded, ObservationSink, Operation, Output, Sink, Wire, WireEvent, WireFrame,
+    Body, Decoder, Encoded, Mode, ObservationSink, Operation, Output, Sink, Wire, WireEvent,
+    WireFrame,
 };
 
 // ── the fake completion wire ────────────────────────────────────────────
@@ -147,7 +148,11 @@ impl Wire for Echo {
         Some("echo-1")
     }
 
-    fn encode(&self, request: CompletionRequest) -> Result<Encoded, CompletionError> {
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        _mode: Mode,
+    ) -> Result<Encoded, CompletionError> {
         let body = serde_json::to_vec(&serde_json::json!({
             "messages": request.chat_history.len(),
         }))?;
@@ -531,7 +536,7 @@ impl Wire for Catalogue {
         "echo"
     }
 
-    fn encode(&self, _request: ()) -> Result<Encoded, ModelListingError> {
+    fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, ModelListingError> {
         let request = http::Request::get("https://echo.invalid/v1/models")
             .body(Body::empty())
             .map_err(|error| ModelListingError::request_error(error.to_string()))?;

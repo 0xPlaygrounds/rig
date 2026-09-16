@@ -24,7 +24,7 @@ use crate::observe::{AdapterContext, AdapterEnding, AdapterErrorBoundary, Adapte
 use crate::providers::internal::wire::WireEvent;
 use crate::wasm_compat::WasmCompatSend;
 use crate::wire::{
-    Body, Decoder, Encoded, Error, Event, Fold, Operation, Reply, Request, Response, Sink, Wire,
+    Body, Decoder, Encoded, Error, Event, Fold, Mode, Operation, Reply, Request, Response, Sink, Wire,
     WireError, WireFrame,
 };
 
@@ -221,7 +221,7 @@ where
         framing,
         request_id_header,
         relaxed_content_type: _,
-    } = wire.encode(request)?;
+    } = wire.encode(request, Mode::Unary)?;
     accept_header(&mut http_request, framing);
 
     let mut fold = <W::Op as Operation>::Fold::default();
@@ -337,7 +337,7 @@ where
         framing,
         request_id_header,
         relaxed_content_type,
-    } = wire.encode(request)?;
+    } = wire.encode(request, Mode::Streaming)?;
     accept_header(&mut http_request, framing);
     let http_request = byte_request(http_request)?;
 

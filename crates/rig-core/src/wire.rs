@@ -22,7 +22,7 @@
 //! use rig_core::operation::{Completion, CompletionEvent};
 //! use rig_core::streaming::{BlockId, StreamEvent, StreamFinal};
 //! use rig_core::wire::{
-//!     Body, Decoder, Encoded, Framing, Output, Secret, Wire, WireEvent, WireFrame,
+//!     Body, Decoder, Encoded, Framing, Mode, Output, Secret, Wire, WireEvent, WireFrame,
 //! };
 //!
 //! /// The provider's shared configuration: plain data, key redacted.
@@ -69,7 +69,7 @@
 //!     }
 //!
 //!     fn interpret(&mut self, event: Self::Event, out: &mut Output<Completion>) {
-//!         out.text_delta(&event.text);
+//!         out.text(event.text);
 //!         out.push(Ok(StreamEvent::Final(StreamFinal::new("example"))));
 //!     }
 //!
@@ -88,7 +88,11 @@
 //!         Some(&self.model)
 //!     }
 //!
-//!     fn encode(&self, request: CompletionRequest) -> Result<Encoded, CompletionError> {
+//!     fn encode(
+//!         &self,
+//!         request: CompletionRequest,
+//!         _mode: Mode,
+//!     ) -> Result<Encoded, CompletionError> {
 //!         let body = serde_json::json!({ "model": self.model, "prompt": request.prompt });
 //!         let request = http::Request::post(format!("{}/messages", self.provider.base_url))
 //!             .header("authorization", self.provider.api_key.expose())
@@ -190,6 +194,22 @@ impl Body {
     pub fn empty() -> Self {
         Self::Bytes(Vec::new())
     }
+}
+
+/// Which reply a request asks for.
+///
+/// A wire that asks for a streamed reply sends a *different request* — the
+/// chat wires set `stream: true`, Gemini switches endpoint and adds
+/// `?alt=sse` — and recorded traffic pins those bytes, so the mode is an
+/// input to [`Wire::encode`] rather than something the driver adds after
+/// the fact. It is the only thing the two call paths tell a wire, and the
+/// *decoder* is the same either way.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// One whole reply ([`crate::driver::call`]).
+    Unary,
+    /// A streamed reply ([`crate::driver::stream`]).
+    Streaming,
 }
 
 /// An operation: what goes in, what comes out event by event, and how those
@@ -394,9 +414,9 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// telemetry name it.
     fn name(&self) -> &str;
 
-    /// The request to send. Pure: it may read `self` and `request`, and
-    /// nothing else.
-    fn encode(&self, request: Request<Self>) -> Result<Encoded, Error<Self>>;
+    /// The request to send. Pure: it may read `self`, `request` and `mode`,
+    /// and nothing else.
+    fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Encoded, Error<Self>>;
 
     /// A fresh decoder for one reply.
     fn decoder(&self) -> Self::Decoder;
