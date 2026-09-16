@@ -17,8 +17,8 @@ use crate::wire::{
 use serde::{Deserialize, Serialize};
 
 use super::{
-    EmbeddingResponse as VoyageEmbeddingResponse, RerankApiResponse, VOYAGEAI_API_BASE_URL,
-    model_dimensions_from_identifier,
+    EmbeddingResponse as VoyageEmbeddingResponse, RerankApiResponse, RerankErrorEnvelope,
+    VOYAGEAI_API_BASE_URL, model_dimensions_from_identifier,
 };
 
 /// The provider descriptor name, as records and telemetry spell it.
@@ -323,17 +323,70 @@ impl Wire for Rerank {
     }
 }
 
+/// The top-level keys that recognize a `/rerank` reply: `data`, the field
+/// every ordering carries, and `message` — a 200 whose body is nothing but
+/// Voyage's error envelope is a reply too, and recognizing it here is what
+/// makes the ordering's typed decode fail and hands the frame to the
+/// envelope classifier.
+const RERANK_REPLY_MARKERS: &[&str] = &["data", "message"];
+
+/// The key that recognizes the error envelope on its own.
+const RERANK_ERROR_MARKERS: &[&str] = &["message"];
+
+/// One `/rerank` reply: the ordering, or the error envelope Voyage can
+/// answer a **200** with instead.
+pub enum RerankReply {
+    /// The ordering Voyage returned.
+    Reply(RerankApiResponse),
+    /// The provider's error envelope, verbatim.
+    Failure(String),
+}
+
 /// Decodes one `/rerank` reply.
 pub struct RerankDecoder;
 
 impl Decoder<RerankOp> for RerankDecoder {
-    type Event = RerankApiResponse;
+    type Event = RerankReply;
 
+    /// Two shapes on one decoder, composed through the classify layer's own
+    /// combinator so no triage verdict is read here: the ordering is the
+    /// shape the wire mostly sends and stays the diagnostic when neither
+    /// decodes, and the envelope is tried exactly when the ordering's
+    /// decode fails.
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_marker_keyed_frame(&frame.as_str(), &["data"])
+        let data = frame.as_str();
+        crate::providers::internal::wire::classify_or(
+            &data,
+            |data| {
+                crate::providers::internal::wire::classify_marker_keyed_frame::<RerankApiResponse>(
+                    data,
+                    RERANK_REPLY_MARKERS,
+                )
+                .map(RerankReply::Reply)
+            },
+            |data| {
+                crate::providers::internal::wire::classify_marker_keyed_frame::<RerankErrorEnvelope>(
+                    data,
+                    RERANK_ERROR_MARKERS,
+                )
+                .map(|_| RerankReply::Failure(data.to_owned()))
+            },
+        )
     }
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<RerankOp>) {
+        let reply = match reply {
+            RerankReply::Reply(reply) => reply,
+            // A 200 that carried the error envelope instead of an ordering:
+            // the provider's body verbatim, and the driver stamps the status
+            // it arrived under. Without this the frame read as an unmodeled
+            // event, the driver warn-skipped it, and the fold failed with a
+            // `RerankError` naming neither.
+            RerankReply::Failure(body) => {
+                out.push(Err(RerankError::from_provider_body(body)));
+                return;
+            }
+        };
         let raw = match serde_json::to_value(&reply) {
             Ok(raw) => raw,
             Err(error) => {

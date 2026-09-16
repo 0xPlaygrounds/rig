@@ -98,6 +98,18 @@ pub struct RerankApiResponse {
     pub usage: RerankApiUsage,
 }
 
+/// The error envelope Voyage can answer a `/rerank` **200** with instead of
+/// an ordering: `{"message":"…"}`.
+///
+/// Decoding it is the whole point — it proves the body is the envelope and
+/// nothing else — but the error the consumer sees is built from the raw
+/// body, so the provider's payload rides out verbatim.
+#[derive(Debug, Deserialize)]
+pub struct RerankErrorEnvelope {
+    #[allow(dead_code)]
+    message: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RerankApiUsage {
     pub total_tokens: usize,

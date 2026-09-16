@@ -16,7 +16,7 @@ async fn xai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound
         "https://api.x.ai",
     )
     .await;
-    let client = ResponsesApi::with_dialect(cassette.api_key("XAI_API_KEY"), xai::DIALECT)
+    let client = ResponsesApi::with_dialect(cassette.api_key("XAI_API_KEY"), &xai::DIALECT)
         .with_base_url(cassette.base_url())
         .bound()
         .expect("xAI client should build");
@@ -60,7 +60,7 @@ where
         "https://api.x.ai",
     )
     .await;
-    let client = ResponsesApi::with_dialect("xai-invalid-edge-matrix-key", xai::DIALECT)
+    let client = ResponsesApi::with_dialect("xai-invalid-edge-matrix-key", &xai::DIALECT)
         .with_base_url(cassette.base_url())
         .bound()
         .expect("xAI client should build");

@@ -74,10 +74,28 @@ pub enum StreamingEvent {
     /// Anthropic's top-level error envelope (`{"type":"error","error":{...}}`,
     /// e.g. `overloaded_error`). A modeled event, not an unknown to warn-skip:
     /// it surfaces as a provider error like every other family's error
-    /// envelope. The payload stays a raw `Value` so every provider field
-    /// (type, message, extras) survives into the error body.
+    /// envelope.
+    ///
+    /// The nested `error` object is required, and that requirement is the
+    /// whole of the wire's shape check: every Anthropic error body recorded
+    /// under `tests/cassettes/anthropic/` nests it, and the flattened
+    /// `{"type":"error","message":"…"}` form appears in no recorded traffic.
     Error {
+        /// Decoding it is the whole point — it proves the body is the
+        /// envelope and nothing else — but the error the consumer sees is
+        /// built from `raw`, so the provider's payload rides out verbatim.
+        #[allow(dead_code)]
         error: serde_json::Value,
+        /// The envelope's own bytes, attached by
+        /// [`MessagesDecoder::classify`] because serde cannot see them.
+        ///
+        /// A body rebuilt from the fields this client models is not the
+        /// provider's body: re-encoding through `serde_json::Value`
+        /// normalizes key order, and every sibling key of `error` is
+        /// dropped — `request_id` among them, the one field a user quotes
+        /// to provider support.
+        #[serde(skip)]
+        raw: String,
     },
 }
 
@@ -667,8 +685,19 @@ impl Decoder<Completion> for MessagesDecoder {
     type Event = StreamingEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamingEvent> {
-        wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
+        let data = frame.as_str();
+        wire::classify_tagged_frame(&data, "type", |event_type| {
             KNOWN_EVENT_TYPES.contains(&event_type)
+        })
+        .map(|event| match event {
+            // The one event whose payload leaves this crate as bytes rather
+            // than as decoded fields, so it is captured where the frame is
+            // still in hand: serde never sees the text it parsed.
+            StreamingEvent::Error { error, .. } => StreamingEvent::Error {
+                error,
+                raw: data.to_string(),
+            },
+            other => other,
         })
     }
 
@@ -771,15 +800,15 @@ impl Decoder<Completion> for MessagesDecoder {
                     Err(err) => out.error(err),
                 }
             }
-            StreamingEvent::Error { error } => {
-                // The provider aborted the turn in-band. Preserve the full
-                // error envelope (code + message + extras) as the error body,
-                // matching the interactions wire's handling; the stream
+            StreamingEvent::Error { raw, .. } => {
+                // The provider aborted the turn in-band. The envelope is the
+                // error body verbatim — every field it carried, in the order
+                // it carried them — so the consumer reads what Anthropic
+                // said rather than what this client models. The stream
                 // carries it as an in-band `Err` item, and EOF without
                 // `message_delta` then withholds the terminal record.
                 self.failed = true;
-                let body = serde_json::json!({ "type": "error", "error": error }).to_string();
-                out.error(crate::provider_response::completion_error_from_body(body));
+                out.error(crate::provider_response::completion_error_from_body(raw));
             }
             event @ (StreamingEvent::ContentBlockStart { .. }
             | StreamingEvent::ContentBlockDelta { .. }

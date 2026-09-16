@@ -252,7 +252,8 @@ impl Decoder<Completion> for GenerateContentDecoder {
             self.final_model_version = Some(model_version.clone());
         }
         if let Some(usage) = data.usage_metadata.as_ref() {
-            span.record_token_usage(&crate::completion::Usage::from(usage));
+            // Carried for the terminal record only: the driver records usage
+            // off the folded response, so the decoder states it once.
             self.final_usage = Some(usage.clone());
         }
 

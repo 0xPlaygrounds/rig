@@ -39,7 +39,7 @@ impl<H: Clone> OpenAiCassette<H> {
         let api_key = api_key.into();
         let base_url = base_url.into();
         Self {
-            responses: ResponsesApi::with_dialect(api_key.clone(), RESPONSES)
+            responses: ResponsesApi::with_dialect(api_key.clone(), &RESPONSES)
                 .with_base_url(base_url.clone())
                 .bind(http.clone()),
             chat: OpenAI::with_key(&CHAT, api_key)

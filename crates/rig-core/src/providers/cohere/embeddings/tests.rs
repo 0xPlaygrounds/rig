@@ -27,6 +27,37 @@ async fn embeddings_non_success_preserves_status_and_body() {
     assert_eq!(error.provider_response_body(), Some(body));
 }
 
+/// Cohere can answer `/v1/embed` with **200** and an error envelope in the
+/// body. That is still the provider's reply: the caller must read the
+/// status it arrived under and the bytes it arrived as, not a decode
+/// failure about missing embeddings.
+#[tokio::test]
+async fn embeddings_2xx_error_envelope_preserves_status_and_body() {
+    use crate::embeddings::EmbeddingModel as _;
+    use crate::test_utils::RecordingHttpClient;
+
+    let body = r#"{"message":"boom"}"#;
+    let http_client = RecordingHttpClient::new(body); // 200 OK
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client,
+    )
+    .embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+
+    let error = model
+        .embed_texts(["hello".to_string()])
+        .await
+        .expect_err("should fail with provider error envelope");
+
+    let EmbeddingError::ProviderResponse(stored) = &error else {
+        panic!("expected ProviderResponse, got {error:?}");
+    };
+    // Byte-equal, not "contains": a preserved reply is the provider's bytes
+    // or it is a rendering of them.
+    assert_eq!(stored.body, body);
+    assert_eq!(stored.status, Some(http::StatusCode::OK));
+}
+
 #[test]
 fn image_data_urls_detect_every_cohere_image_format() {
     let cases: &[(&[u8], &str)] = &[
@@ -129,4 +160,31 @@ async fn image_embeddings_non_success_preserves_status_and_body() {
         Some(http::StatusCode::SERVICE_UNAVAILABLE)
     );
     assert_eq!(error.provider_response_body(), Some(body));
+}
+
+/// The image route answers on the same `/v1/embed` endpoint, so it can
+/// answer a 200 with the same envelope — and preserves it the same way.
+#[tokio::test]
+async fn image_embeddings_2xx_error_envelope_preserves_status_and_body() {
+    use crate::embeddings::ImageEmbeddingModel as _;
+    use crate::test_utils::RecordingHttpClient;
+
+    let body = r#"{"message":"boom"}"#;
+    let http_client = RecordingHttpClient::new(body); // 200 OK
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client,
+    )
+    .image_embedding(crate::providers::cohere::EMBED_ENGLISH_V3, None);
+
+    let error = model
+        .embed_image(b"\x89PNG\r\n\x1a\n")
+        .await
+        .expect_err("should fail with provider error envelope");
+
+    let EmbeddingError::ProviderResponse(stored) = &error else {
+        panic!("expected ProviderResponse, got {error:?}");
+    };
+    assert_eq!(stored.body, body);
+    assert_eq!(stored.status, Some(http::StatusCode::OK));
 }

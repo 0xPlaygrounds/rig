@@ -182,7 +182,7 @@ async fn a_unary_tool_turn_and_its_stream_fold_alike() {
 #[tokio::test]
 async fn a_chatgpt_replayed_body_folds_the_same_unary_and_streamed() {
     let sse = cassette_body("chatgpt/codex_tool_args/zero_argument_tool_call_nonstreaming.yaml");
-    let wire = ResponsesApi::with_dialect("test-token", CHATGPT)
+    let wire = ResponsesApi::with_dialect("test-token", &CHATGPT)
         .responses("gpt-5.4");
 
     let buffered = folded_unary(wire.clone(), &sse).await;
@@ -212,7 +212,12 @@ fn text_of(response: &completion::CompletionResponse) -> Option<String> {
 // ── what each dialect sends ─────────────────────────────────────────────
 
 fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
-    let encoded = wire.encode(prompt(), mode).expect("the request encodes");
+    encoded_body_of(wire, prompt(), mode)
+}
+
+/// One request's body, for a turn other than the bare [`prompt`].
+fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> serde_json::Value {
+    let encoded = wire.encode(request, mode).expect("the request encodes");
     let request = encoded
         .requests
         .first()
@@ -221,6 +226,18 @@ fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
         panic!("a Responses body is bytes");
     };
     serde_json::from_slice(body).expect("the body is JSON")
+}
+
+/// The bare [`prompt`] with a history of its own.
+fn turn(chat_history: Vec<Message>) -> CompletionRequest {
+    CompletionRequest {
+        chat_history,
+        ..prompt()
+    }
+}
+
+fn chatgpt() -> Responses {
+    ResponsesApi::with_dialect("test-token", &CHATGPT).responses("gpt-5.4")
 }
 
 #[test]
@@ -244,8 +261,7 @@ fn a_streamed_request_asks_for_a_stream_and_a_unary_one_does_not() {
 /// type.
 #[test]
 fn the_chatgpt_dialect_always_streams_and_relaxes_the_content_type() {
-    let wire = ResponsesApi::with_dialect("test-token", CHATGPT)
-        .responses("gpt-5.4");
+    let wire = chatgpt();
     let encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
@@ -263,8 +279,7 @@ fn the_chatgpt_dialect_always_streams_and_relaxes_the_content_type() {
 /// payload must be asked for because the gateway stores nothing.
 #[test]
 fn the_chatgpt_dialect_sends_only_the_codex_parameter_subset() {
-    let wire = ResponsesApi::with_dialect("test-token", CHATGPT)
-        .responses("gpt-5.4");
+    let wire = chatgpt();
     let body = encoded_body(&wire, Mode::Unary);
 
     assert_eq!(body.get("temperature"), None);
@@ -281,11 +296,124 @@ fn the_chatgpt_dialect_sends_only_the_codex_parameter_subset() {
     );
 }
 
+/// The gateway's own instructions lead, the caller's follow: a backend that
+/// expects instructions of its own gets them ahead of the turn's preamble
+/// rather than instead of it.
+#[test]
+fn the_chatgpt_dialect_merges_its_instructions_ahead_of_the_callers() {
+    let body = encoded_body_of(
+        &chatgpt(),
+        turn(vec![Message::system("Respond tersely."), Message::user("say hi")]),
+        Mode::Unary,
+    );
+
+    assert_eq!(
+        body.get("instructions").and_then(serde_json::Value::as_str),
+        Some("You are ChatGPT, a helpful AI assistant.\n\nRespond tersely.")
+    );
+}
+
+/// ...and they are not stated twice when the caller's preamble already
+/// carries them, which is what a replayed conversation's history looks like.
+#[test]
+fn the_chatgpt_dialect_does_not_repeat_instructions_the_caller_already_carries() {
+    let carried = "You are ChatGPT, a helpful AI assistant.\n\nRespond tersely.";
+    let body = encoded_body_of(
+        &chatgpt(),
+        turn(vec![Message::system(carried), Message::user("say hi")]),
+        Mode::Unary,
+    );
+
+    assert_eq!(
+        body.get("instructions").and_then(serde_json::Value::as_str),
+        Some(carried)
+    );
+}
+
+/// This gateway rejects the `system` role in `input` outright, so every
+/// system message is lifted — the leading run *and* the mid-conversation
+/// ones — leaving only the non-system turns as input items.
+#[test]
+fn the_chatgpt_dialect_lifts_every_system_message_into_instructions() {
+    let body = encoded_body_of(
+        &chatgpt(),
+        turn(vec![
+            Message::system("System one"),
+            Message::user("hi"),
+            Message::system("Mid-conversation instruction"),
+            Message::user("again"),
+        ]),
+        Mode::Unary,
+    );
+
+    assert_eq!(
+        body.get("instructions").and_then(serde_json::Value::as_str),
+        Some(
+            "You are ChatGPT, a helpful AI assistant.\n\nSystem one\n\nMid-conversation instruction"
+        )
+    );
+    assert_eq!(
+        body.get("input")
+            .and_then(serde_json::Value::as_array)
+            .map(Vec::len),
+        Some(2),
+        "only the two user turns remain as input: {body}"
+    );
+}
+
+/// A turn whose terminal event restates the assembled output.
+const CHATGPT_ASSEMBLED_OUTPUT: &str = r#"data: {"type":"response.output_text.delta","delta":"hi"}
+data: {"type":"response.completed","response":{"id":"resp_chatgpt_raw","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.4","service_tier":"default","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[{"type":"message","id":"msg_chatgpt_raw","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"hi"}]}],"tools":[]}}
+data: [DONE]"#;
+
+/// The same turn with an empty terminal `output`: the deltas are the only
+/// place the content exists. A recorded shape, not a synthetic one.
+const CHATGPT_EMPTY_OUTPUT: &str = r#"data: {"type":"response.output_text.delta","delta":"hi"}
+data: {"type":"response.completed","response":{"id":"resp_chatgpt_raw","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.4","service_tier":"default","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[],"tools":[]}}
+data: [DONE]"#;
+
+/// A gateway that answers every request with an event stream sends no reply
+/// document of its own, so the terminal `response.completed` *is* the
+/// document: `raw` must be that object — deserializable back into the wire
+/// type and re-serializing value-equal, carrying the fields rig does not
+/// normalize (`service_tier`) — whether or not its `output` restates the
+/// turn, and the choice comes from the deltas either way.
+#[tokio::test]
+async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
+    for (body, case) in [
+        (CHATGPT_ASSEMBLED_OUTPUT, "assembled output"),
+        (CHATGPT_EMPTY_OUTPUT, "empty output"),
+    ] {
+        let response = folded_unary(chatgpt(), body).await;
+
+        let typed: CompletionResponse = serde_json::from_value(response.raw.clone())
+            .expect("raw must deserialize back into the wire type");
+        assert_eq!(
+            serde_json::to_value(&typed).expect("re-serialize"),
+            response.raw,
+            "{case}: the capture must be exactly what the wire type serializes to"
+        );
+        assert_eq!(response.raw["service_tier"], "default", "{case}");
+        assert_eq!(typed.id, "resp_chatgpt_raw", "{case}");
+
+        assert_eq!(
+            response.choice,
+            vec![message::AssistantContent::text("hi")],
+            "{case}: the deltas are the content"
+        );
+        assert_eq!(response.usage.total_tokens, Some(2), "{case}");
+        assert_eq!(
+            response.identity().response_id.as_deref(),
+            Some("resp_chatgpt_raw"),
+            "{case}"
+        );
+    }
+}
+
 /// xAI's endpoint lives under `/v1` and takes its own input shape.
 #[test]
 fn the_xai_dialect_posts_its_own_request_shape() {
-    let wire =
-        ResponsesApi::with_dialect("test-key", XAI).responses("grok-4");
+    let wire = ResponsesApi::with_dialect("test-key", &XAI).responses("grok-4");
     let encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");

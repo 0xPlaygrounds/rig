@@ -324,10 +324,6 @@ impl Decoder<Completion> for InteractionsDecoder {
                 if let Some(model) = interaction.model.clone() {
                     span.record("gen_ai.response.model", model);
                 }
-                if let Some(usage) = interaction.usage.as_ref() {
-                    span.record_token_usage(&crate::completion::Usage::from(usage));
-                }
-
                 // A function-call step still open here was announced by
                 // `step.start` and — per this very event — belongs to a turn
                 // the provider COMPLETED: its `step.stop` was lost or

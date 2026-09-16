@@ -42,7 +42,7 @@ pub use modality::{
 };
 
 #[cfg(feature = "image")]
-pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesReply};
+pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesEvent, ImagesReply};
 #[cfg(feature = "audio")]
 pub use modality::{Speech, SpeechDecoder};
 
@@ -164,9 +164,19 @@ impl From<String> for SubRoute {
 }
 
 /// Which body an image-generation endpoint takes, and which reply it sends.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+///
+/// Request shape and reply shape are one fact, not two: each of these
+/// endpoints answers in the form its own request implies, and no dialect
+/// pairs one provider's request with another's reply. Keeping them in one
+/// value is what makes the impossible pairings unspellable — there is no
+/// way to declare an OpenAI request answered by raw bytes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ImageBody {
     /// OpenAI: `{model, prompt, size}`, answered with `data[].b64_json`.
+    ///
+    /// The default, because [`Quirks::openai`] is what every dialect starts
+    /// from and overrides only where it was measured to differ.
+    #[default]
     OpenAi,
     /// xAI: `{model, prompt, response_format, aspect_ratio}` and no `size`,
     /// answered with `data[].b64_json` and no `created`.
@@ -175,6 +185,11 @@ pub enum ImageBody {
     /// `model_name` and the size is two fields, not `"{w}x{h}"` — answered
     /// with `images[].image`.
     Hyperbolic,
+    /// Hugging Face's router: `{inputs, parameters: {width, height}}`, and
+    /// the model is the *path* ([`Quirks::model_is_modality_path`]) so the
+    /// body names none — answered with the image bytes themselves and no
+    /// JSON envelope at all.
+    HuggingFace,
 }
 
 /// Which body a speech endpoint takes.

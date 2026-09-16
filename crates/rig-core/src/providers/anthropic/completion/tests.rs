@@ -3482,21 +3482,22 @@ async fn completion_http_non_success_preserves_status_and_body() {
 }
 
 #[tokio::test]
-async fn completion_2xx_error_envelope_preserves_the_body() {
+async fn completion_2xx_error_envelope_preserves_status_and_body() {
     use crate::test_utils::RecordingHttpClient;
 
     // Anthropic answers an in-band failure with its top-level error
     // envelope, and it can arrive under a 200: the decoder models `error`
     // as an event of the Messages wire, so the envelope routes through the
     // same `ProviderResponse` funnel as a rejected status rather than
-    // reading as a corrupt frame. The whole envelope is the error body, so
-    // every provider field survives.
+    // reading as a corrupt frame.
     //
-    // No status accompanies it, unlike the non-success case above: the
-    // reply was a success at the transport layer, and the in-band funnel
-    // (`provider_response::completion_error_from_body`) records the body
-    // alone.
-    let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"model overloaded"}}"#;
+    // The body is asserted byte-for-byte, in the key order Anthropic's
+    // recorded replies use, and carries the top-level `request_id` the
+    // envelope type does not model: a preserved reply that Rig rebuilt from
+    // the fields it happens to parse is not the provider's reply. The
+    // status is the driver's — a success at the transport layer is still a
+    // status the caller must see.
+    let body = r#"{"error":{"message":"model overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
     let http = RecordingHttpClient::new(body); // 200 OK
     let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
 
@@ -3506,6 +3507,10 @@ async fn completion_2xx_error_envelope_preserves_the_body() {
 
     assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(error.provider_response_body(), Some(body));
+    assert_eq!(
+        error.provider_response_status(),
+        Some(http::StatusCode::OK)
+    );
 }
 
 #[tokio::test]

@@ -246,6 +246,29 @@ pub(crate) fn json(body: Option<&str>) -> Result<Option<serde_json::Value>, serd
         .transpose()
 }
 
+/// Preserve the error envelope a decoder read off a **2xx** body.
+///
+/// `body` is the reply's own bytes, verbatim. Never a re-serialization of a
+/// decoded event: re-encoding through `serde_json::Value` normalizes key
+/// order and silently drops every field the decoder's type does not model —
+/// Anthropic's top-level `request_id`, the one field a user quotes to
+/// provider support, is exactly such a field. A preserved provider response
+/// is the provider's response or it is a rendering of one, and only the
+/// former is worth preserving.
+///
+/// No status is attached here, and the name is literal rather than a
+/// shortfall: the decoder was handed a frame, not a reply, so it has none.
+/// On a unary call [`crate::driver::call`] decorates the fold failure with
+/// the reply's status, which is how a consumer ends up reading `Some(200)`
+/// off a 2xx envelope. A streamed reply is deliberately left alone — a
+/// preserved in-band error's status is the *classification* a wire read
+/// off the body there (Gemini's `error.code`), and stamping the transport's
+/// 200 over it would both overwrite that and flip a refusal's retry
+/// verdict.
+///
+/// A *non-success* reply never reaches this funnel: the transport rejects
+/// it before any frame is decoded, and it arrives as `ProviderResponse`
+/// with its own status already set.
 pub(crate) fn completion_error_from_body(
     body: impl Into<String>,
 ) -> crate::completion::CompletionError {

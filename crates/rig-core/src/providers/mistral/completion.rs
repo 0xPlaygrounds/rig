@@ -2,7 +2,7 @@
 //!
 //! Mistral is an OpenAI chat-completions dialect, so it has no client and no
 //! completion model of its own:
-//! [`openai::wire::MISTRAL`](crate::providers::openai::wire::MISTRAL) carries
+//! [`openai::wire::MISTRAL`] carries
 //! the base URL, the `MISTRAL_API_KEY` variable, the `mistral-correlation-id`
 //! request id, the `/v1`-prefixed paths, and the rewrite Mistral needs —
 //! `any` for a forced tool choice, a forced choice relaxed beside a structured

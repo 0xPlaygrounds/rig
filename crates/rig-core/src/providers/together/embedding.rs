@@ -1,10 +1,10 @@
-// ================================================================
-//! Together AI Embeddings Integration
-//! From [Together AI Reference](https://docs.together.ai/reference/embeddings)
-// ================================================================
-
-use super::client::Together;
-use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
+//! Together AI's embedding model identifiers.
+//!
+//! From [Together AI Reference](https://docs.together.ai/reference/embeddings).
+//! The requests run on the shared OpenAI embeddings wire, whose
+//! [`TOGETHER`](crate::providers::openai::wire::TOGETHER) dialect carries the
+//! `/v1/embeddings` path and the parameters Together does not accept there
+//! (`encoding_format`, `user`) so they are refused before a request is sent.
 
 // ================================================================
 // Together AI Embedding API
@@ -18,21 +18,3 @@ pub const M2_BERT_80M_2K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-2k-retr
 pub const M2_BERT_80M_8K_RETRIEVAL: &str = "togethercomputer/m2-bert-80M-8k-retrieval";
 pub const SENTENCE_BERT: &str = "sentence-transformers/msmarco-bert-base-dot-v5";
 pub const UAE_LARGE_V1: &str = "WhereIsAI/UAE-Large-V1";
-
-impl OpenAIEmbeddingsCompatible for Together {
-    const PROVIDER_NAME: &'static str = "together";
-    const REQUIRES_USAGE: bool = false;
-    const SUPPORTS_ENCODING_FORMAT: bool = false;
-    const SUPPORTS_USER: bool = false;
-
-    fn embeddings_path(&self) -> String {
-        "/v1/embeddings".to_string()
-    }
-}
-
-/// Together AI embedding model, driven by the shared OpenAI-compatible transport.
-pub type EmbeddingModel<H = crate::http_client::BoxedHttpClient> =
-    GenericEmbeddingModel<Together, H>;
-
-#[cfg(test)]
-mod tests;

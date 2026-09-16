@@ -1,11 +1,14 @@
-use crate::completion::Usage;
-use crate::http_client::HttpClientExt;
-use crate::providers::internal::transcription::send_json_transcription;
-use crate::transcription;
-use crate::transcription::{NormalizeTranscriptionResponse, TranscriptionError};
-use crate::wasm_compat::WasmCompatSend;
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
+//! OpenRouter's transcription model identifiers and its own view of a
+//! transcript.
+//!
+//! OpenRouter's speech-to-text route takes a JSON body carrying the audio as
+//! a base64 `input_audio` block rather than a multipart upload, and answers
+//! with the document [`TranscriptionResponse`] models — the text plus a usage
+//! block that reports audio seconds and the gateway's cost, neither of which
+//! rig's normalized
+//! [`TranscriptionResponse`](crate::transcription::TranscriptionResponse) has
+//! a field for.
+
 use serde::{Deserialize, Serialize};
 
 // ================================================================
@@ -48,159 +51,6 @@ pub struct TranscriptionUsage {
     pub output_tokens: Option<usize>,
     #[serde(default)]
     pub cost: Option<f64>,
-}
-
-impl NormalizeTranscriptionResponse for TranscriptionResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
-        let usage = self
-            .usage
-            .as_ref()
-            .map(|usage| Usage {
-                input_tokens: usage.input_tokens.map(|n| n as u64),
-                output_tokens: usage.output_tokens.map(|n| n as u64),
-                total_tokens: usage.total_tokens.map(|n| n as u64),
-                ..Default::default()
-            })
-            .unwrap_or_default();
-        Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))
-    }
-}
-
-pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
-    crate::providers::internal::transcription::GenericTranscriptionModel<
-        crate::providers::openrouter::client::OpenRouter,
-        T,
-    >;
-
-fn infer_format_from_filename(filename: &str) -> String {
-    std::path::Path::new(filename)
-        .extension()
-        .and_then(|e| e.to_str())
-        .and_then(|ext| match ext.to_lowercase().as_str() {
-            "wav" => Some("wav"),
-            "mp3" => Some("mp3"),
-            "flac" => Some("flac"),
-            "m4a" => Some("m4a"),
-            "ogg" => Some("ogg"),
-            "webm" => Some("webm"),
-            "aac" => Some("aac"),
-            _ => None,
-        })
-        .unwrap_or("wav")
-        .to_string()
-}
-
-impl<T> TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + 'static,
-{
-    /// Perform the transcription and return OpenRouter's native response
-    /// instead of the normalized [`transcription::TranscriptionResponse`].
-    /// Same request, transport, parser, and error path as
-    /// [`transcription::TranscriptionModel::transcription`].
-    pub async fn raw_transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<TranscriptionResponse, TranscriptionError> {
-        self.raw_transcription_with_request_id(request)
-            .await
-            .map(|(response, _)| response)
-    }
-
-    /// [`Self::raw_transcription`] plus the transport request id, when the
-    /// response carried one.
-    pub async fn raw_transcription_with_request_id(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<(TranscriptionResponse, Option<String>), TranscriptionError> {
-        if let Some(_prompt) = request.prompt {
-            return Err(TranscriptionError::RequestError(Box::new(
-                std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "OpenRouter STT does not support a top-level prompt field. \
-                     Provider-specific prompt options can be passed via `additional_params`. \
-                     Example: {\"provider\": {\"options\": {\"<provider>\": {\"prompt\": \"<text>\"}}}}",
-                ),
-            )));
-        }
-
-        let audio_b64 = STANDARD.encode(&request.data);
-        let format = infer_format_from_filename(&request.filename);
-
-        let mut body_map: serde_json::Map<String, serde_json::Value> = [
-            ("model".to_string(), serde_json::json!(self.model)),
-            (
-                "input_audio".to_string(),
-                serde_json::json!({
-                    "data": audio_b64,
-                    "format": format,
-                }),
-            ),
-        ]
-        .into_iter()
-        .collect();
-
-        if let Some(language) = request.language {
-            body_map.insert("language".to_string(), serde_json::json!(language));
-        }
-        if let Some(temperature) = request.temperature {
-            body_map.insert("temperature".to_string(), serde_json::json!(temperature));
-        }
-
-        if let Some(ref additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-            for (k, v) in params {
-                body_map.insert(k.clone(), v.clone());
-            }
-        }
-
-        let body = serde_json::to_vec(&serde_json::Value::Object(body_map))?;
-
-        send_json_transcription(
-            &self.client,
-            self.client
-                .post("/audio/transcriptions")?
-                .header("Content-Type", "application/json"),
-            body,
-            <super::client::OpenRouter as crate::providers::openai::completion::OpenAICompatibleProvider>::REQUEST_ID_HEADER,
-            |_, body_bytes| Ok(serde_json::from_slice::<TranscriptionResponse>(body_bytes)?),
-        )
-        .await
-    }
-}
-
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + 'static,
-{
-    async fn transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
-        crate::telemetry::instrument_modality(
-            super::completion::PROVIDER_NAME,
-            &self.model,
-            crate::telemetry::ModalityOperation::Transcription,
-            async {
-                let (response, provider_request_id) =
-                    self.raw_transcription_with_request_id(request).await?;
-                let captured = serde_json::to_value(&response)?;
-                Ok(response
-                    .normalize(super::completion::PROVIDER_NAME)?
-                    .with_optional_provider_request_id(provider_request_id)
-                    .with_raw(captured))
-            },
-        )
-        .await
-    }
 }
 
 #[cfg(test)]

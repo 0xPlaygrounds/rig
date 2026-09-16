@@ -404,17 +404,6 @@ impl ModelListingError {
         }
     }
 
-    pub(crate) fn api_error_with_context(
-        provider: &str,
-        path: &str,
-        status_code: u16,
-        body: &[u8],
-    ) -> Self {
-        let message =
-            format_response_context(provider, path, format_args!("status={status_code}"), body);
-        Self::api_error(status_code, message)
-    }
-
     pub(crate) fn parse_error_with_context(
         provider: &str,
         path: &str,

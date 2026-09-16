@@ -34,7 +34,7 @@ async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> R
     .await
     .expect("ChatGPT OAuth should resolve an access token");
 
-    let mut provider = ResponsesApi::with_dialect(context.access_token, chatgpt::DIALECT);
+    let mut provider = ResponsesApi::with_dialect(context.access_token, &chatgpt::DIALECT);
     if let Some(account_id) = context.account_id {
         provider = provider.with_account_id(account_id);
     }

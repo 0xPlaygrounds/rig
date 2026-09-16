@@ -215,7 +215,7 @@ impl Copilot {
 
     /// Copilot's Responses route, as a Responses-format configuration.
     fn responses_api(&self) -> responses_api::wire::ResponsesApi {
-        responses_api::wire::ResponsesApi::with_dialect(self.api_key.clone(), DIALECT)
+        responses_api::wire::ResponsesApi::with_dialect(self.api_key.clone(), &DIALECT)
             .with_base_url(self.base_url.clone())
     }
 

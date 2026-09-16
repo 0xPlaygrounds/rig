@@ -3,7 +3,7 @@
 //!
 //! llama.cpp is an OpenAI chat-completions dialect, so it has no client and
 //! no completion model of its own:
-//! [`openai::wire::LLAMACPP`](crate::providers::openai::wire::LLAMACPP)
+//! [`openai::wire::LLAMACPP`]
 //! carries the `http://localhost:8080/v1` default, the optional-bearer
 //! credential a server started without `--api-key` refuses to accept, the
 //! root-relative operational routes (`/props`, `/health`, `/slots`, …) that

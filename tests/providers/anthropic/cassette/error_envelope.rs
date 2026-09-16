@@ -37,6 +37,17 @@ async fn nonexistent_model_error_preserves_status_and_body() {
                 .expect("provider error body should be present");
             assert_eq!(body["type"], "error");
             assert_eq!(body["error"]["type"], "not_found_error");
+            // Anthropic puts its own correlation id at the top level of the
+            // envelope, beside `error` rather than inside it, and no typed
+            // envelope in the tree models that field. A non-success reply
+            // never reaches a decoder — `send` rejects it and the error
+            // carries the reply's bytes — so reading the id back is the
+            // cheapest proof this funnel hands over the body verbatim
+            // rather than anything's rendering of it.
+            assert_eq!(
+                body["request_id"], "req_REDACTED_1",
+                "the preserved body must be the reply's own envelope: {body}"
+            );
         },
     )
     .await;
@@ -73,6 +84,16 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
                 .expect("provider error body should be JSON")
                 .expect("provider error body should be present");
             assert_eq!(body["error"]["type"], "not_found_error");
+            // The 404 lands before the stream opens, so this is the same
+            // non-success funnel as the unary cell reached through
+            // `stream()` — not the SSE `error` event, which arrives on a
+            // 200 and is covered by
+            // `anthropic::streaming::tests::terminal_emission::streamed_error_envelope_preserves_the_verbatim_body`.
+            assert_eq!(
+                body["request_id"], "req_REDACTED_1",
+                "the streamed path's preserved body must keep the envelope's \
+                 own correlation id too: {body}"
+            );
         },
     )
     .await;

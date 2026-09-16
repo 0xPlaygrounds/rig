@@ -19,7 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use super::completion::{CohereCompletionRequest, PROVIDER_NAME};
 use super::embeddings::{
-    EmbeddingResponse as CohereEmbeddingResponse,
+    EmbeddingResponse as CohereEmbeddingResponse, ErrorEnvelope as CohereErrorEnvelope,
     ImageEmbeddingResponse as CohereImageEmbeddingResponse, image_data_url, validate_image,
 };
 use super::streaming::ChatDecoder;
@@ -176,6 +176,57 @@ const MAX_DOCUMENTS: usize = 96;
 /// The width Cohere's image embeddings come back at.
 const IMAGE_NDIMS: usize = 1_024;
 
+/// The top-level keys that recognize a `/v1/embed` reply: `embeddings`, the
+/// field every answer carries, and `message` — a 200 whose body is nothing
+/// but Cohere's error envelope is a reply too, and recognizing it here is
+/// what makes the answer's typed decode fail and hands the frame to the
+/// envelope classifier.
+const EMBED_REPLY_MARKERS: &[&str] = &["embeddings", "message"];
+
+/// The key that recognizes the error envelope on its own.
+const EMBED_ERROR_MARKERS: &[&str] = &["message"];
+
+/// One `/v1/embed` reply: the answer, or the error envelope Cohere can
+/// answer a **200** with instead.
+pub enum EmbedReply<T> {
+    /// The vectors Cohere returned.
+    Reply(T),
+    /// The provider's error envelope, verbatim.
+    Failure(String),
+}
+
+/// Classify one `/v1/embed` reply, on either embed route.
+///
+/// Two shapes on one decoder, composed through the classify layer's own
+/// combinator ([`classify_or`]) so no triage verdict is read here: the
+/// answer is the shape the wire mostly sends and stays the diagnostic when
+/// neither decodes, and the envelope is tried exactly when the answer's
+/// decode fails.
+///
+/// [`classify_or`]: crate::providers::internal::wire::classify_or
+fn classify_embed_reply<T>(data: &str) -> WireEvent<EmbedReply<T>>
+where
+    T: serde::de::DeserializeOwned,
+{
+    crate::providers::internal::wire::classify_or(
+        data,
+        |data| {
+            crate::providers::internal::wire::classify_marker_keyed_frame::<T>(
+                data,
+                EMBED_REPLY_MARKERS,
+            )
+            .map(EmbedReply::Reply)
+        },
+        |data| {
+            crate::providers::internal::wire::classify_marker_keyed_frame::<CohereErrorEnvelope>(
+                data,
+                EMBED_ERROR_MARKERS,
+            )
+            .map(|_| EmbedReply::Failure(data.to_owned()))
+        },
+    )
+}
+
 /// The text-embedding wire: `POST /v1/embed`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Embeddings {
@@ -238,16 +289,25 @@ impl Wire for Embeddings {
 pub struct EmbeddingsDecoder;
 
 impl Decoder<Embedding> for EmbeddingsDecoder {
-    type Event = CohereEmbeddingResponse;
+    type Event = EmbedReply<CohereEmbeddingResponse>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_marker_keyed_frame(
-            &frame.as_str(),
-            &["embeddings"],
-        )
+        classify_embed_reply(&frame.as_str())
     }
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<Embedding>) {
+        let reply = match reply {
+            EmbedReply::Reply(reply) => reply,
+            // A 200 that carried the error envelope instead of vectors: the
+            // provider's body verbatim, and the driver stamps the status it
+            // arrived under. Without this the frame read as an unmodeled
+            // event, the driver warn-skipped it, and the fold failed with
+            // "Expected 1 embeddings, got 0" — no status, no body.
+            EmbedReply::Failure(body) => {
+                out.push(Err(EmbeddingError::from_provider_body(body)));
+                return;
+            }
+        };
         let raw = match serde_json::to_value(&reply) {
             Ok(raw) => raw,
             Err(error) => {
@@ -341,16 +401,22 @@ impl Wire for ImageEmbeddings {
 pub struct ImageEmbeddingsDecoder;
 
 impl Decoder<ImageEmbedding> for ImageEmbeddingsDecoder {
-    type Event = CohereImageEmbeddingResponse;
+    type Event = EmbedReply<CohereImageEmbeddingResponse>;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        crate::providers::internal::wire::classify_marker_keyed_frame(
-            &frame.as_str(),
-            &["embeddings"],
-        )
+        classify_embed_reply(&frame.as_str())
     }
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<ImageEmbedding>) {
+        let reply = match reply {
+            EmbedReply::Reply(reply) => reply,
+            // Same 200-with-an-envelope reply as the text route: the body
+            // verbatim, with the driver stamping the status.
+            EmbedReply::Failure(body) => {
+                out.push(Err(EmbeddingError::from_provider_body(body)));
+                return;
+            }
+        };
         // One image per request, so one vector per reply: a second one is a
         // provider defect, and none means the request bought nothing.
         let [vector] = reply.embeddings.values.as_slice() else {

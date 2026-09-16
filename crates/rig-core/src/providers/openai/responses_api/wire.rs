@@ -23,7 +23,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use super::streaming::{ResponsesDecoder, ResponsesEvent, ResponsesStreamOptions};
 use super::{
-    CompletionRequest, CompletionResponse, Include, ResponseStatus, ResponsesRequestParams,
+    CompletionRequest, CompletionResponse, Include, ResponsesRequestParams,
     ResponsesToolDefinition, SystemInstructionsPlacement,
 };
 
@@ -215,11 +215,11 @@ pub struct ResponsesApi {
 impl ResponsesApi {
     /// OpenAI itself, with default settings.
     pub fn new(api_key: impl Into<Secret>) -> Self {
-        Self::with_dialect(api_key, OPENAI)
+        Self::with_dialect(api_key, &OPENAI)
     }
 
     /// A Responses-format provider with its dialect's default settings.
-    pub fn with_dialect(api_key: impl Into<Secret>, dialect: Dialect) -> Self {
+    pub fn with_dialect(api_key: impl Into<Secret>, dialect: &Dialect) -> Self {
         Self {
             api_key: api_key.into(),
             base_url: dialect.base_url.to_owned(),
@@ -229,17 +229,17 @@ impl ResponsesApi {
                 originator: identity.originator.to_owned(),
                 user_agent: default_user_agent(identity.originator),
             }),
-            dialect,
+            dialect: *dialect,
         }
     }
 
     /// OpenAI from `OPENAI_API_KEY` and `OPENAI_BASE_URL`.
     pub fn from_env() -> Result<Self, EnvError> {
-        Self::from_env_with(OPENAI)
+        Self::from_env_with(&OPENAI)
     }
 
     /// A Responses-format provider from the variables its dialect names.
-    pub fn from_env_with(dialect: Dialect) -> Result<Self, EnvError> {
+    pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
         let mut provider = Self::with_dialect(env::required(dialect.api_key_env)?, dialect);
         let quirks = &dialect.quirks;
         for name in [dialect.base_url_env, quirks.base_url_env_alias]
@@ -593,31 +593,6 @@ pub(crate) fn fold_body(
         fold.absorb(item?)?;
     }
     fold.finish(reply)
-}
-
-/// [`fold_body`] with the client layer's rejection of a contentless
-/// *completed* turn.
-///
-/// The wire path does not reject it: a streamed turn that ends
-/// `response.completed` with nothing in it folds to an empty choice, and the
-/// whole point of one decoder is that the unary twin agrees. The client
-/// layer's `normalize` still needs the error, because ChatGPT's
-/// empty-`output` fallback is driven by it, so the policy lives here — and
-/// dies with that layer.
-pub(crate) fn normalize_body(
-    provider: &str,
-    response: CompletionResponse,
-) -> Result<completion::CompletionResponse, CompletionError> {
-    // A contentless *incomplete* turn can be rig-induced — a truncated
-    // `function_call` whose arguments never parsed drops its item by the
-    // documented truncation policy — and its finish reason is the
-    // diagnostic the caller needs.
-    let incomplete = matches!(response.status, ResponseStatus::Incomplete);
-    let mut folded = fold_body(provider, response)?;
-    if !incomplete {
-        folded.choice = crate::message::require_non_empty_response(folded.choice)?;
-    }
-    Ok(folded)
 }
 
 // ── observation ────────────────────────────────────────────────────────

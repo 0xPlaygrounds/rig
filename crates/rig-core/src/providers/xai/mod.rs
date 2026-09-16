@@ -1,13 +1,23 @@
-//! xAI API client and Rig integration
+//! xAI's model identifiers, its Responses dialect, and its own request shape.
+//!
+//! xAI speaks the Responses API, so it has no client and no completion model
+//! of its own: [`DIALECT`] carries the base URL, the `XAI_API_KEY` variable,
+//! the `x-request-id` header and the quirks below, and
+//! [`api`] carries the one thing xAI does not share — its request input
+//! shape.
 //!
 //! # Example
 //! ```ignore
-//! use rig_core::{client::CompletionClient, providers::xai};
+//! use rig_core::prelude::*;
+//! use rig_core::providers::openai::responses_api::wire::ResponsesApi;
+//! use rig_core::providers::xai;
+//! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = xai::Client::new("YOUR_API_KEY")?;
-//!
-//! let grok = client.completion_model(xai::GROK_3);
+//! let grok = ResponsesApi::from_env_with(xai::DIALECT)?
+//!     .bound()?
+//!     .completion(xai::GROK_3);
+//! # let _ = grok;
 //! # Ok(())
 //! # }
 //! ```
@@ -15,17 +25,17 @@
 pub(crate) mod api;
 #[cfg(feature = "audio")]
 pub mod audio_generation;
-pub mod client;
 pub mod completion;
 #[cfg(feature = "image")]
 pub mod image_generation;
 
 #[cfg(feature = "audio")]
-pub use audio_generation::{AudioGenerationModel, TTS_1};
-pub use client::Client;
-pub use completion::{CompletionModel, CompletionResponse};
+pub use audio_generation::TTS_1;
+pub use completion::CompletionResponse;
 #[cfg(feature = "image")]
-pub use image_generation::{GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO, ImageGenerationModel};
+pub use image_generation::{
+    GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO, ImageGenerationData, ImageGenerationResponse,
+};
 
 /// xAI completion models.
 pub const GROK_2_1212: &str = "grok-2-1212";

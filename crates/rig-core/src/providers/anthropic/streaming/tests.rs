@@ -1618,15 +1618,20 @@ fn known_nested_delta_tag_with_defective_payload_is_corrupt() {
 
 /// Anthropic's top-level `{"type":"error"}` envelope (e.g.
 /// `overloaded_error`) is a Known event that surfaces as a provider error
-/// carrying the full envelope — never a warn-skipped unknown — and, since
-/// no `message_delta` follows, the stream ends with no terminal record.
+/// carrying the envelope verbatim — never a warn-skipped unknown — and,
+/// since no `message_delta` follows, the stream ends with no terminal
+/// record.
+///
+/// Byte-equality is the assertion, and the frame carries the top-level
+/// `request_id` recorded replies carry: an envelope re-encoded from the
+/// fields this client models loses every sibling key and normalizes the
+/// order, which is the provider's body rendered rather than preserved.
 #[test]
 fn top_level_error_event_surfaces_as_a_provider_error() {
+    const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
     let classifier = adapter();
-    let frame = WireFrame::Text(
-        r#"{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}"#.into(),
-    );
-    let crate::providers::internal::wire::WireEvent::Known(event) = classifier.classify(frame)
+    let crate::providers::internal::wire::WireEvent::Known(event) =
+        classifier.classify(WireFrame::Text(ENVELOPE.into()))
     else {
         panic!("the error envelope must classify as a Known event");
     };
@@ -1639,13 +1644,7 @@ fn top_level_error_event_surfaces_as_a_provider_error() {
     let Some(Err(error)) = out.into_items().pop() else {
         panic!("the error envelope must surface as an Err item");
     };
-    let body = error
-        .provider_response_body()
-        .expect("the provider's error payload must be preserved");
-    assert!(
-        body.contains("overloaded_error") && body.contains("Overloaded"),
-        "the full envelope must survive into the error body, got: {body}"
-    );
+    assert_eq!(error.provider_response_body(), Some(ENVELOPE));
 }
 
 /// Bedrock-compat quirk: `message_start` without a message body is a
@@ -1898,6 +1897,42 @@ mod terminal_emission {
             "a message_delta after an in-band provider error must not read as a completed turn"
         );
         assert!(stream.response.is_none());
+    }
+
+    /// The streamed surface preserves the in-band envelope with the same
+    /// fidelity as the unary one: the provider's own bytes, `request_id`
+    /// and key order included.
+    ///
+    /// No status is asserted, and none is stamped. A preserved in-band
+    /// error's `status` is the *classification* the wire read off the body
+    /// — Gemini's `error.code` is the case that made the rule, and
+    /// `gemini::streaming::tests::in_band_opaque_or_invalid_codes_do_not_invent_http_status`
+    /// pins it — so stamping the transport's 200 over every streamed frame
+    /// would overwrite that meaning and flip a refusal's retry verdict.
+    /// The unary driver's fold-failure decoration is scoped to one reply
+    /// and is where [`crate::driver::call`] supplies it.
+    #[tokio::test]
+    async fn streamed_error_envelope_preserves_the_verbatim_body() {
+        const ENVELOPE: &str = r#"{"error":{"message":"Overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
+        let bound = Anthropic::new("test-key")
+            .messages(CLAUDE_SONNET_4_6)
+            .bind(MockStreamingClient {
+                sse_bytes: sse(&[MESSAGE_START, ENVELOPE]),
+            });
+        let request = bound.completion_request("hello").build();
+        let mut stream = crate::completion::CompletionModel::stream(&bound, request)
+            .await
+            .expect("stream should open");
+
+        let error = loop {
+            match stream.next().await {
+                Some(Ok(_)) => continue,
+                Some(Err(error)) => break error,
+                None => panic!("the stream ended without the in-band error"),
+            }
+        };
+
+        assert_eq!(error.provider_response_body(), Some(ENVELOPE));
     }
 
     /// `input_tokens` precedence between `message_start` and the terminal

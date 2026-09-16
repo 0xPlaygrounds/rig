@@ -1,29 +1,17 @@
 //! The streaming module for the OpenAI Responses API.
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
-use crate::completion::{self, CompletionError};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::GenericEventSource;
+use crate::completion::CompletionError;
 use crate::operation::Completion;
-use crate::providers::internal::adapter::{
-    AdapterOutput, WireAdapter, WireFrame, run_wire_buffered,
-};
-use crate::providers::internal::sse_transport::{
-    FrameDisposition, OpenLog, SseTransportOptions, open_wire_stream, stamp_terminal_request_id,
-};
+use crate::providers::internal::adapter::{AdapterOutput, WireFrame};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
-use crate::streaming::{
-    self, BlockId, StreamEvent, StreamFinal, StreamingResult, ToolCallEnd, UnparseableToolInput,
-};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
-use crate::wasm_compat::WasmCompatSend;
+use crate::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
 use crate::wire::Decoder;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
-use super::{CompletionResponse, GenericResponsesCompletionModel, Output, ResponsesProviderExt};
+use super::{CompletionResponse, Output};
 
 // ================================================================
 // OpenAI Responses Streaming API
@@ -111,7 +99,7 @@ impl StreamingCompletionResponse {
 /// baked-in `"openai"` would mislabel them.
 ///
 /// The finish reason is left exactly as the provider reported it;
-/// [`streaming::StreamingCompletionResponse`] applies the tool-call
+/// [`crate::streaming::StreamingCompletionResponse`] applies the tool-call
 /// reconciliation afterwards, using the calls the stream actually emitted.
 ///
 /// The native record is serialized onto [`StreamFinal::raw`]; a
@@ -202,21 +190,6 @@ pub enum ResponseChunkKind {
     ResponseIncomplete,
 }
 
-fn provider_response_from_responses_error_value(
-    value: &serde_json::Value,
-    data: &str,
-) -> CompletionError {
-    if let Some(message) = value
-        .get("error")
-        .and_then(|error| error.get("message"))
-        .and_then(serde_json::Value::as_str)
-    {
-        tracing::warn!(message, "provider returned a streaming error event");
-    }
-
-    crate::provider_response::completion_error_from_body(data)
-}
-
 /// Whether `kind` is a Responses SSE event type this client models.
 ///
 /// The union of [`ResponseChunkKind`]'s and [`ItemChunkKind`]'s wire names: a
@@ -263,12 +236,6 @@ pub fn classify_responses_frame(data: &str) -> WireEvent<StreamingCompletionChun
     wire::classify_tagged_frame(data, "type", is_known_responses_event_type)
 }
 
-fn provider_response_from_responses_sse_data(data: &str) -> Option<CompletionError> {
-    let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
-    (value.get("type").and_then(serde_json::Value::as_str) == Some("error"))
-        .then(|| provider_response_from_responses_error_value(&value, data))
-}
-
 #[derive(Clone, Copy)]
 #[doc(hidden)]
 pub enum ResponsesStreamOptions {
@@ -289,76 +256,6 @@ impl ResponsesStreamOptions {
     const fn emits_completed_tool_calls_immediately(self) -> bool {
         matches!(self, Self::StrictWithImmediateToolCalls)
     }
-}
-
-/// The payload of every content-bearing `data:` line in a buffered SSE body.
-///
-/// Blank lines, non-`data:` fields (SSE comments, `event:`), and the `[DONE]`
-/// sentinel are skipped, so both buffered readers below see exactly the frame
-/// payloads a live transport would deliver.
-fn sse_data_frames(body: &str) -> impl Iterator<Item = &str> {
-    body.lines()
-        .map(|line| {
-            line.strip_prefix("data:")
-                .map(str::trim)
-                .unwrap_or_default()
-        })
-        .filter(|data| !data.is_empty() && *data != "[DONE]")
-}
-
-pub(crate) fn parse_sse_completion_body(
-    body: &str,
-    provider_name: &str,
-) -> Result<CompletionResponse, CompletionError> {
-    let mut completed = None;
-
-    for data in sse_data_frames(body) {
-        if let Ok(chunk) = serde_json::from_str::<StreamingCompletionChunk>(data) {
-            if let StreamingCompletionChunk::Response(chunk) = chunk {
-                let ResponseChunk { kind, response, .. } = chunk;
-                match kind {
-                    // `response.incomplete` is a genuine terminal; the unary
-                    // conversion maps its status to a finish reason.
-                    ResponseChunkKind::ResponseCompleted
-                    | ResponseChunkKind::ResponseIncomplete => {
-                        completed = Some(response);
-                        break;
-                    }
-                    ResponseChunkKind::ResponseFailed => {
-                        return Err(crate::provider_response::completion_error_from_body(data));
-                    }
-                    _ => {}
-                }
-            }
-            continue;
-        }
-
-        let Ok(value) = serde_json::from_str::<serde_json::Value>(data) else {
-            continue;
-        };
-
-        match value.get("type").and_then(serde_json::Value::as_str) {
-            Some("response.completed") | Some("response.incomplete") => {
-                if let Some(response) = value.get("response") {
-                    completed = Some(serde_json::from_value(response.clone())?);
-                    break;
-                }
-            }
-            Some("response.failed") => {
-                return Err(crate::provider_response::completion_error_from_body(data));
-            }
-            Some("error") => {
-                return Err(provider_response_from_responses_error_value(&value, data));
-            }
-            _ => {}
-        }
-    }
-
-    completed.ok_or_else(|| {
-        CompletionError::ProviderError(format!(
-            "{provider_name} stream did not yield a terminal response event (response.completed or response.incomplete)"
-        ))
-    })
 }
 
 #[doc(hidden)]
@@ -420,6 +317,15 @@ pub struct RawChoiceAccumulator {
     /// Deltas without an `item_id` (ChatGPT's envelope-less replays) extend
     /// the open block, or open a boundary-minted one in the output helper.
     current_text_item: Option<String>,
+}
+
+/// The assistant message ID (`msg_...`) a terminal response object carries,
+/// which is deliberately not the response's own `resp_...` id.
+fn message_id_from_response(response: &CompletionResponse) -> Option<String> {
+    response.output.iter().find_map(|item| match item {
+        Output::Message(message) => Some(message.id.clone()),
+        _ => None,
+    })
 }
 
 impl RawChoiceAccumulator {
@@ -1015,224 +921,6 @@ fn repair_envelope_less_frame(data: &str) -> Option<String> {
     serde_json::to_string(&value).ok()
 }
 
-pub(crate) fn stream_events_from_sse_body(
-    provider: &str,
-    body: &str,
-    initial_usage: Option<ResponsesUsage>,
-) -> Result<Vec<StreamEvent>, CompletionError> {
-    // Framing layer for the buffered (unary) Responses SSE body: line
-    // splitting, sentinel skipping, and the provider `error` envelope
-    // pre-check (which fails the operation, mirroring the live transport).
-    // Classification and policy live in the buffered driver.
-    let mut frames = Vec::new();
-    for data in sse_data_frames(body) {
-        if let Some(error) = provider_response_from_responses_sse_data(data) {
-            return Err(error);
-        }
-
-        frames.push(WireFrame::Text(data.to_owned()));
-    }
-
-    // The SAME interpreter as the live loop (`classify_responses_frame`
-    // feeding `RawChoiceAccumulator`), under [`run_wire_buffered`]'s
-    // no-stream policy: there is no stream to carry `Err` items, so `Corrupt`
-    // frames — and adapter-detected data errors like `response.failed` — fail
-    // the whole operation instead of returning a silently partial completion.
-    // A replayed body's frames may omit their envelope bookkeeping, so the
-    // salvage is on here; see [`repair_envelope_less_frame`].
-    run_wire_buffered(
-        frames,
-        ResponsesDecoder::new(provider, ResponsesStreamOptions::strict())
-            .with_envelope_repair()
-            .with_initial_usage(initial_usage),
-    )
-}
-
-pub(crate) async fn completion_response_from_sse_body(
-    provider: &str,
-    body: &str,
-    raw_response: CompletionResponse,
-) -> Result<completion::CompletionResponse, CompletionError> {
-    let events = stream_events_from_sse_body(provider, body, raw_response.usage)?;
-    completion_response_from_stream_events(provider, events, &raw_response)
-        .await?
-        .ok_or_else(|| CompletionError::ResponseError("Response contained no parts".to_owned()))
-}
-
-/// Replay accumulated stream events through
-/// [`streaming::StreamingCompletionResponse`] and merge the result with the
-/// parsed terminal response body.
-///
-/// The replayed stream is authoritative where it reported something; the
-/// terminal body fills any gap it left (usage, message ID, finish reason,
-/// model). Returns `Ok(None)` when the replay produced no content, leaving the
-/// caller to decide how to fall back.
-#[doc(hidden)]
-pub async fn completion_response_from_stream_events(
-    provider: &str,
-    events: Vec<StreamEvent>,
-    raw_response: &CompletionResponse,
-) -> Result<Option<completion::CompletionResponse>, CompletionError> {
-    let stream: StreamingResult = Box::pin(futures::stream::iter(
-        events.into_iter().map(Ok::<_, CompletionError>),
-    ));
-    let mut stream = streaming::StreamingCompletionResponse::stream(provider, stream);
-
-    while let Some(item) = stream.next().await {
-        // A replay of the provider's own events: an accumulator error here
-        // is a malformed response, reported as such.
-        item.map_err(|report| CompletionError::ResponseError(report.message))?;
-    }
-
-    let mut choice = stream.snapshot();
-    if choice_is_empty(&choice) {
-        return Ok(None);
-    }
-
-    // Merge per content kind: the replayed choice is authoritative for what it
-    // carried (reasoning, tool calls, streamed text), but some backends emit
-    // message text only in the terminal body while streaming other kinds as
-    // deltas. A replay with no message text takes the body's message content;
-    // everything replayed is kept.
-    // Presence of ANY streamed text — even whitespace — means the deltas were
-    // the content channel; merging the body then would duplicate it.
-    let replay_has_message_text = choice.iter().any(|content| {
-        matches!(
-            content,
-            completion::AssistantContent::Text(text) if !text.text.is_empty()
-        )
-    });
-    if !replay_has_message_text {
-        // Through the ONE interpreter, so this legacy merge cannot drift
-        // from the decoder's unary path: fold the body itself and keep the
-        // text parts, which are exactly what its message items produce.
-        choice.extend(
-            super::wire::fold_body(provider, raw_response.clone())?
-                .choice
-                .into_iter()
-                .filter(|content| matches!(content, completion::AssistantContent::Text(_))),
-        );
-    }
-
-    let terminal = stream.response.clone();
-    let usage = terminal.as_ref().map_or_else(
-        || usage_from_raw_response(raw_response),
-        |terminal| terminal.usage,
-    );
-    let message_id = stream
-        .message_id
-        .clone()
-        .or_else(|| message_id_from_response(raw_response));
-    let finish_reason = terminal
-        .as_ref()
-        .and_then(|terminal| terminal.finish_reason.clone())
-        .or_else(|| {
-            super::map_finish_reason(
-                &raw_response.status,
-                raw_response.incomplete_details.as_ref(),
-            )
-        });
-    let model = terminal
-        .as_ref()
-        .and_then(|terminal| terminal.model.clone())
-        .or_else(|| Some(raw_response.model.clone()).filter(|model| !model.is_empty()));
-
-    let response_id = stream
-        .response
-        .as_ref()
-        .and_then(|terminal| terminal.response_id.clone())
-        .or_else(|| Some(raw_response.id.clone()).filter(|id| !id.is_empty()));
-
-    Ok(Some(
-        completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_message_id(message_id)
-            .with_optional_response_id(response_id)
-            .with_optional_model(model)
-            .with_optional_finish_reason(finish_reason),
-    ))
-}
-
-fn choice_is_empty(choice: &[completion::AssistantContent]) -> bool {
-    choice.iter().all(|content| match content {
-        completion::AssistantContent::Text(text) => text.text.trim().is_empty(),
-        completion::AssistantContent::Reasoning(reasoning) => reasoning.content.is_empty(),
-        completion::AssistantContent::Image(_) => false,
-        completion::AssistantContent::ToolCall(_) => false,
-    })
-}
-
-fn message_id_from_response(response: &CompletionResponse) -> Option<String> {
-    response.output.iter().find_map(|item| match item {
-        Output::Message(message) => Some(message.id.clone()),
-        _ => None,
-    })
-}
-
-fn usage_from_raw_response(response: &CompletionResponse) -> completion::Usage {
-    response
-        .usage
-        .as_ref()
-        .map(completion::Usage::from)
-        .unwrap_or_default()
-}
-
-/// Open a Responses SSE stream for `provider`, as the grammar events
-/// [`completion::CompletionModel::stream`] wraps in a
-/// [`streaming::StreamingCompletionResponse`].
-pub(crate) fn responses_stream_from_event_source<HttpClient, RequestBody>(
-    provider: &str,
-    event_source: GenericEventSource<HttpClient, RequestBody>,
-    span: tracing::Span,
-) -> StreamingResult
-where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
-{
-    responses_stream_from_event_source_with_options(
-        provider,
-        event_source,
-        span,
-        ResponsesStreamOptions::strict(),
-    )
-}
-
-pub(crate) fn responses_stream_from_event_source_with_options<HttpClient, RequestBody>(
-    provider: &str,
-    event_source: GenericEventSource<HttpClient, RequestBody>,
-    span: tracing::Span,
-    options: ResponsesStreamOptions,
-) -> StreamingResult
-where
-    HttpClient: HttpClientExt + Clone + 'static,
-    RequestBody: Into<bytes::Bytes> + Clone + WasmCompatSend + 'static,
-{
-    // The wire's in-band provider `error` envelope is a terminal transport
-    // condition, detected pre-classification exactly as an HTTP failure
-    // would be.
-    open_wire_stream(
-        event_source,
-        SseTransportOptions {
-            open_log: OpenLog::Trace,
-            stream_ended_is_error: false,
-            log_transport_errors: true,
-        },
-        |data| {
-            if data.trim().is_empty() || data == "[DONE]" {
-                return FrameDisposition::Skip;
-            }
-            if let Some(error) = provider_response_from_responses_sse_data(&data) {
-                // A terminal failure: the driver flushes fully-delivered
-                // content, yields this error last, and emits no terminal
-                // record.
-                return FrameDisposition::Fail(error);
-            }
-            FrameDisposition::Frame(data)
-        },
-        ResponsesDecoder::new(provider, options),
-        span,
-    )
-}
-
 /// One classified Responses frame.
 ///
 /// The stream's SSE frames and the unary body are two shapes of the same
@@ -1506,49 +1194,6 @@ impl Decoder<Completion> for ResponsesDecoder {
     }
 }
 
-/// The client layer's spelling of the same decoder.
-///
-/// `run_wire_stream`/`run_wire_buffered` take a [`WireAdapter`] where the
-/// driver takes a [`Decoder`]; both are this one state machine, so the two
-/// surfaces cannot decode differently. Goes away with the client layer.
-impl WireAdapter for ResponsesDecoder {
-    type Frame = WireFrame;
-    type Event = ResponsesEvent;
-
-    fn classify(&self, frame: WireFrame) -> WireEvent<ResponsesEvent> {
-        <Self as Decoder<Completion>>::classify(self, frame)
-    }
-
-    fn interpret(&mut self, event: ResponsesEvent, out: &mut AdapterOutput) {
-        <Self as Decoder<Completion>>::interpret(self, event, out);
-    }
-
-    fn finish(&mut self, out: &mut AdapterOutput) {
-        let final_usage = self.accumulator.final_usage;
-        <Self as Decoder<Completion>>::finish(self, out);
-        // The client layer records the turn's usage off the adapter; the
-        // driver records it from the terminal record instead.
-        if let Some(final_usage) = final_usage {
-            let span = tracing::Span::current();
-            span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
-            span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
-            let cached_tokens = final_usage
-                .input_tokens_details
-                .as_ref()
-                .map_or(0, |d| d.cached_tokens);
-            span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
-        }
-    }
-
-    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
-        <Self as Decoder<Completion>>::flush_before_terminal_error(self, out);
-    }
-
-    fn is_finished(&self) -> bool {
-        self.finished
-    }
-}
-
 /// An item message chunk from OpenAI's Responses API.
 /// See
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1762,83 +1407,6 @@ pub struct SummaryTextChunk {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SummaryPartChunkPart {
     SummaryText { text: String },
-}
-
-impl<Ext, H> GenericResponsesCompletionModel<Ext, H>
-where
-    crate::client::Client<Ext, H>: HttpClientExt + Clone + WasmCompatSend + 'static,
-    Ext: crate::client::Provider + ResponsesProviderExt + Clone + 'static,
-    H: Clone + WasmCompatSend + 'static,
-{
-    /// Open a Responses stream with observation context owned by this
-    /// invocation.
-    ///
-    /// The terminal record's provider-native form — the escape hatch for
-    /// Responses-API terminal fields rig does not normalize — rides on
-    /// [`StreamFinal::raw`] as the serialized [`StreamingCompletionResponse`].
-    pub(crate) async fn stream_observed(
-        &self,
-        completion_request: crate::completion::CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let system_instructions = completion_request.system_instructions().map(str::to_owned);
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let (request_model, request) = self.create_provider_request(completion_request, true)?;
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Responses streaming completion request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post(Ext::RESPONSES_PATH)?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-        if let Some(observation) = observation {
-            crate::providers::openai::observation::attach_responses(
-                observation,
-                &mut req,
-                "/responses",
-            );
-        }
-
-        let span = CompletionSpanBuilder::new(
-            Ext::PROVIDER_NAME,
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-        let client = self.client.clone();
-        let event_source = GenericEventSource::new(client, req);
-        let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {
-            Some(header) => {
-                let (event_source, slot) = event_source.capture_request_id(header);
-                (event_source, Some(slot))
-            }
-            None => (event_source, None),
-        };
-
-        let options = if Ext::EMITS_COMPLETE_TOOL_CALLS_IMMEDIATELY {
-            ResponsesStreamOptions::strict_with_immediate_tool_calls()
-        } else {
-            ResponsesStreamOptions::strict()
-        };
-        let stream = responses_stream_from_event_source_with_options(
-            Ext::PROVIDER_NAME,
-            event_source,
-            span,
-            options,
-        );
-        Ok(streaming::StreamingCompletionResponse::stream(
-            Ext::PROVIDER_NAME,
-            stamp_terminal_request_id(stream, request_id_slot, Ext::REQUEST_ID_HEADER),
-        ))
-    }
 }
 
 #[cfg(test)]

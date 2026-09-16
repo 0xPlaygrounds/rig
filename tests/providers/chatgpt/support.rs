@@ -21,10 +21,7 @@ async fn chatgpt_cassette_with_default_instructions(
         "https://chatgpt.com/backend-api/codex",
     )
     .await;
-    let client = ResponsesApi::with_dialect(
-        cassette.api_key("CHATGPT_ACCESS_TOKEN"),
-        chatgpt::DIALECT,
-    )
+    let client = ResponsesApi::with_dialect(cassette.api_key("CHATGPT_ACCESS_TOKEN"), &chatgpt::DIALECT)
     .with_account_id(cassette.api_key("CHATGPT_ACCOUNT_ID"))
     .with_base_url(cassette.base_url())
     .with_instructions(default_instructions)
@@ -80,7 +77,7 @@ async fn chatgpt_noninteractive_oauth_cassette(
     .await
     .expect("non-interactive ChatGPT OAuth cassette credential should resolve");
 
-    let mut provider = ResponsesApi::with_dialect(context.access_token, chatgpt::DIALECT)
+    let mut provider = ResponsesApi::with_dialect(context.access_token, &chatgpt::DIALECT)
         .with_base_url(cassette.base_url())
         .with_instructions("");
     if let Some(account_id) = context.account_id {

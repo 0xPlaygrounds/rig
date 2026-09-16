@@ -53,7 +53,7 @@ struct CachedAuthRecord {
 /// names describe the provider outright.
 async fn live_provider(http: &BoxedHttpClient) -> ResponsesApi {
     if !has_usable_oauth_cache() && std::env::var_os("CHATGPT_ACCESS_TOKEN").is_some() {
-        return ResponsesApi::from_env_with(chatgpt::DIALECT)
+        return ResponsesApi::from_env_with(&chatgpt::DIALECT)
             .expect("the ChatGPT environment should describe a provider");
     }
 
@@ -67,7 +67,7 @@ async fn live_provider(http: &BoxedHttpClient) -> ResponsesApi {
     .await
     .expect("ChatGPT OAuth should resolve an access token");
 
-    let mut provider = ResponsesApi::with_dialect(context.access_token, chatgpt::DIALECT);
+    let mut provider = ResponsesApi::with_dialect(context.access_token, &chatgpt::DIALECT);
     if let Some(account_id) = context.account_id {
         provider = provider.with_account_id(account_id);
     }
