@@ -14,7 +14,7 @@ pub use crate::agent::{
     Agent, AgentHook, HookContext, ModelHandle, ModelRef, ModelSelection, ModelSelectionAction,
     MultiTurnStreamItem, RunEvents, StreamingResult,
 };
-pub use crate::client::{AgentClientExt, AgentModelExt};
+pub use crate::client::{AgentClientExt, AgentModelExt, AgentProviderExt};
 pub use crate::completion::{
     CompletionError, CompletionModel, Message, PromptError, StructuredOutputError,
 };

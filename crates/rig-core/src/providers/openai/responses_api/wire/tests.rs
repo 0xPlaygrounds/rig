@@ -7,6 +7,8 @@
 use super::*;
 use crate::completion::{CompletionModel, CompletionRequest};
 use crate::driver::Bound;
+use crate::providers::chatgpt::DIALECT as CHATGPT;
+use crate::providers::xai::DIALECT as XAI;
 use crate::message::{self, Message};
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::{Body, Mode};
@@ -180,7 +182,7 @@ async fn a_unary_tool_turn_and_its_stream_fold_alike() {
 #[tokio::test]
 async fn a_chatgpt_replayed_body_folds_the_same_unary_and_streamed() {
     let sse = cassette_body("chatgpt/codex_tool_args/zero_argument_tool_call_nonstreaming.yaml");
-    let wire = ResponsesApi::with_dialect("test-token", crate::providers::chatgpt::DIALECT)
+    let wire = ResponsesApi::with_dialect("test-token", CHATGPT)
         .responses("gpt-5.4");
 
     let buffered = folded_unary(wire.clone(), &sse).await;
@@ -242,7 +244,7 @@ fn a_streamed_request_asks_for_a_stream_and_a_unary_one_does_not() {
 /// type.
 #[test]
 fn the_chatgpt_dialect_always_streams_and_relaxes_the_content_type() {
-    let wire = ResponsesApi::with_dialect("test-token", crate::providers::chatgpt::DIALECT)
+    let wire = ResponsesApi::with_dialect("test-token", CHATGPT)
         .responses("gpt-5.4");
     let encoded = wire
         .encode(prompt(), Mode::Unary)
@@ -261,7 +263,7 @@ fn the_chatgpt_dialect_always_streams_and_relaxes_the_content_type() {
 /// payload must be asked for because the gateway stores nothing.
 #[test]
 fn the_chatgpt_dialect_sends_only_the_codex_parameter_subset() {
-    let wire = ResponsesApi::with_dialect("test-token", crate::providers::chatgpt::DIALECT)
+    let wire = ResponsesApi::with_dialect("test-token", CHATGPT)
         .responses("gpt-5.4");
     let body = encoded_body(&wire, Mode::Unary);
 
@@ -283,7 +285,7 @@ fn the_chatgpt_dialect_sends_only_the_codex_parameter_subset() {
 #[test]
 fn the_xai_dialect_posts_its_own_request_shape() {
     let wire =
-        ResponsesApi::with_dialect("test-key", crate::providers::xai::DIALECT).responses("grok-4");
+        ResponsesApi::with_dialect("test-key", XAI).responses("grok-4");
     let encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
@@ -309,7 +311,7 @@ fn the_xai_dialect_posts_its_own_request_shape() {
 #[tokio::test]
 async fn an_error_envelope_on_a_success_fails_the_xai_call() {
     let wire =
-        ResponsesApi::with_dialect("test-key", crate::providers::xai::DIALECT).responses("grok-4");
+        ResponsesApi::with_dialect("test-key", XAI).responses("grok-4");
     let error = Bound::new(
         wire,
         RecordingHttpClient::new(Bytes::from_static(
@@ -342,8 +344,8 @@ fn a_serialized_wire_carries_no_credential() {
 fn a_dialect_round_trips_by_name() {
     for dialect in [
         OPENAI,
-        crate::providers::chatgpt::DIALECT,
-        crate::providers::xai::DIALECT,
+        CHATGPT,
+        XAI,
     ] {
         let json = serde_json::to_string(&dialect).expect("a dialect serializes");
         assert_eq!(json, format!("\"{}\"", dialect.name));
@@ -361,7 +363,7 @@ fn each_dialect_names_the_environment_it_always_read() {
     assert_eq!(OPENAI.api_key_env, "OPENAI_API_KEY");
     assert_eq!(OPENAI.base_url_env, Some("OPENAI_BASE_URL"));
 
-    let chatgpt = crate::providers::chatgpt::DIALECT;
+    let chatgpt = CHATGPT;
     assert_eq!(chatgpt.api_key_env, "CHATGPT_ACCESS_TOKEN");
     assert_eq!(chatgpt.base_url_env, Some("CHATGPT_API_BASE"));
     assert_eq!(
@@ -370,5 +372,5 @@ fn each_dialect_names_the_environment_it_always_read() {
     );
     assert_eq!(chatgpt.quirks.account_id_env, Some("CHATGPT_ACCOUNT_ID"));
 
-    assert_eq!(crate::providers::xai::DIALECT.api_key_env, "XAI_API_KEY");
+    assert_eq!(XAI.api_key_env, "XAI_API_KEY");
 }

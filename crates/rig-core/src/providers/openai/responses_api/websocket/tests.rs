@@ -3,12 +3,13 @@ use crate::http_client::{HeaderMap, StatusCode};
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ResponseError, ResponseObject, ResponsesUsage,
 };
+use crate::providers::openai::responses_api::wire::ResponsesApi;
 use crate::ws_client::CloseFrame;
 use serde_json::json;
 
 /// The wire a session is opened over.
 fn test_wire(base_url: &str) -> Responses {
-    crate::providers::openai::responses_api::wire::ResponsesApi::new("test-key")
+    ResponsesApi::new("test-key")
         .with_base_url(base_url)
         .responses("gpt-5.4")
 }

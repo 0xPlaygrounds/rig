@@ -1,31 +1,37 @@
 //! Provider bindings as data: a [`ProviderBinding`] component says *which*
-//! provider client serves a key — kind, model, base URL, a credential
-//! *reference* — and nothing executable. A scene saves it beside the
-//! handler's [`Bound`]; loading it spawns the same data and makes no
-//! network call and no credential lookup. The executable half is built
-//! later, on the host's word: [`materialize_bindings`] reads the
-//! host-installed [`Materializer`] (a credential resolver and a transport
-//! factory — rig-ecs reads no environment variable itself), builds the
-//! rig-core client for every binding that nothing serves yet, and registers
-//! a `CompletionAdapter` under the binding's key through the same
-//! [`Handlers`] API a hand-registered adapter goes through — so the bound
-//! descriptor, and with it the policy hash, is the one a hand-registered
-//! adapter would produce.
+//! provider serves a key — kind, model, base URL, a credential *reference*
+//! — and nothing executable. A scene saves it beside the handler's
+//! [`Bound`]; loading it spawns the same data and makes no network call and
+//! no credential lookup. The executable half is built later, on the host's
+//! word: [`materialize_bindings`] reads the host-installed [`Materializer`]
+//! (a credential resolver and a transport factory — rig-ecs reads no
+//! environment variable itself), builds the provider's completion wire for
+//! every binding that nothing serves yet, binds it to the host's transport,
+//! and registers a `CompletionAdapter` under the binding's key through the
+//! same [`Handlers`] API a hand-registered adapter goes through — so the
+//! bound descriptor, and with it the policy hash, is the one a
+//! hand-registered adapter would produce.
+//!
+//! A binding was always the wish to build a provider from data, which is
+//! what a [`Wire`](rig_core::wire::Wire) is: the kind names the config
+//! struct, the binding's own fields and the resolved secret fill it in, and
+//! [`Bind::bind`] pairs it with the transport. Nothing is constructed that
+//! could fail.
 //!
 //! Secrets never enter the world: the component holds a [`CredentialRef`]
 //! (a name — an environment variable, a key id in the host's vault), the
-//! resolver returns a [`Secret`] whose `Debug` is redacted, and the secret
-//! lives only inside the built client.
+//! resolver returns a [`Secret`] whose `Debug` and serialized form are
+//! redacted, and the secret lives only inside the bound wire.
 
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use rig_core::{
-    client::{CompletionClient, Provider},
+    driver::Bind,
     effect::{HandlerDescriptor, HandlerKey},
     http_client::BoxedHttpClient,
-    markers::Missing,
-    providers::{anthropic, deepseek, gemini, openai},
+    providers::{anthropic, gemini, openai},
     serve::{ErasedHandler, adapters::CompletionAdapter},
+    wire::Secret,
 };
 use serde::{Deserialize, Serialize};
 
@@ -95,31 +101,6 @@ impl From<&str> for CredentialRef {
 impl std::fmt::Display for CredentialRef {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
-    }
-}
-
-/// A resolved credential: what the host's resolver returns and the built
-/// client consumes. `Debug` and `Display` are redacted; the only way out
-/// is [`expose`](Self::expose), which the materializer calls once, inside
-/// the client builder.
-#[derive(Clone, PartialEq, Eq)]
-pub struct Secret(String);
-
-impl Secret {
-    /// Wrap a resolved secret.
-    pub fn new(secret: impl Into<String>) -> Self {
-        Self(secret.into())
-    }
-
-    /// The secret, for the client builder and nothing else.
-    pub fn expose(&self) -> &str {
-        &self.0
-    }
-}
-
-impl std::fmt::Debug for Secret {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Secret(<redacted>)")
     }
 }
 
@@ -257,16 +238,6 @@ pub enum MaterializeError {
         /// The kind.
         kind: ProviderKind,
         /// What was wrong.
-        detail: String,
-    },
-    /// The rig-core client builder refused.
-    #[error("`{key}`: the {kind} client did not build: {detail}")]
-    Client {
-        /// The key.
-        key: HandlerKey,
-        /// The kind.
-        kind: ProviderKind,
-        /// The builder's reason.
         detail: String,
     },
     /// The bus refused the registration.

@@ -1,4 +1,6 @@
-use super::super::adapter::{AdapterOutput, WireAdapter, run_wire_buffered};
+use super::super::adapter::{AdapterOutput, run_wire_buffered};
+use crate::operation::Completion;
+use crate::wire::Decoder;
 use super::super::wire::WireEvent;
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, ToolCallEnd};
 
@@ -7,8 +9,7 @@ struct Scripted {
     batches: Vec<Vec<StreamEvent>>,
 }
 
-impl WireAdapter for Scripted {
-    type Frame = usize;
+impl Decoder<Completion, usize> for Scripted {
     type Event = usize;
 
     fn classify(&self, frame: usize) -> WireEvent<usize> {

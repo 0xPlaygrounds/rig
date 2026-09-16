@@ -175,15 +175,17 @@ pub mod prelude {
     // impl Tool for X {…}` keeps working.
     #[cfg(feature = "agent")]
     pub use crate::tool::{Tool, ToolContext};
-    // The classic construction extension `AgentClientExt` (adding `agent()` /
-    // `extractor()`) sits alongside the canonical `CompletionClient` brought in
-    // by the `rig_core::prelude::*` glob below. The two traits share no method
-    // names, so both resolve without ambiguity and together restore the
-    // pre-split `client.completion_model(m)` / `client.agent(m)` surface.
+    // The classic construction extensions: `AgentClientExt` on a provider
+    // client and `AgentProviderExt` on a `Bound<P, H>` (both adding `agent()`
+    // / `extractor()`), alongside the canonical `CompletionClient` brought in
+    // by the `rig_core::prelude::*` glob below. None of the three share a
+    // method name with another, so all resolve without ambiguity and together
+    // restore the pre-split `client.completion_model(m)` / `client.agent(m)`
+    // surface as well as `provider.bound()?.agent(m)`.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, AgentModelExt, MultiTurnStreamItem, PromptError, RunEvents,
-        StreamingResult, StructuredOutputError, ToolSet,
+        Agent, AgentClientExt, AgentModelExt, AgentProviderExt, MultiTurnStreamItem, PromptError,
+        RunEvents, StreamingResult, StructuredOutputError, ToolSet,
     };
     pub use rig_core::prelude::*;
     // Default-transport construction traits: `Client::new(..)` / `from_env()` /

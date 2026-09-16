@@ -15,7 +15,7 @@ use super::*;
 use crate::completion::{CompletionModel as _, FinishReason};
 use crate::driver::Bound;
 use crate::message::AssistantContent;
-use crate::providers::openai::wire::{OPENAI, OpenAI};
+use crate::providers::openai::wire::{GROQ, OPENAI, OpenAI};
 use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 
 use super::super::tests::{recorded, recorded_json};
@@ -296,7 +296,7 @@ fn the_output_cap_spelling_follows_the_model_family() {
     // A dialect whose endpoint was never observed to reject the legacy field
     // keeps sending it, whatever the model is called.
     let groq = OpenAI::new("gsk-test")
-        .with_dialect(&crate::providers::openai::wire::GROQ)
+        .with_dialect(&GROQ)
         .chat("gpt-5.2")
         .encode(prompt("hi"), Mode::Unary)
         .expect("encodes");

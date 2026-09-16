@@ -7,9 +7,8 @@ use futures::StreamExt;
 use serde_json::{Map, Value};
 
 use rig_core::completion::{CompletionError, CompletionRequest};
-use rig_core::providers::internal::adapter::{
-    AdapterOutput, WireAdapter, run_wire_stream, warn_unmodeled,
-};
+use rig_core::operation::Completion;
+use rig_core::providers::internal::adapter::{AdapterOutput, run_wire_stream, warn_unmodeled};
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming;
@@ -22,9 +21,10 @@ use super::proto;
 
 pub type StreamingCompletionResponse = GenerateContentResponse;
 
-/// The Gemini gRPC typed wire as a [`WireAdapter`]: the chunk carrying a
-/// finish reason is the terminal, and the per-stream state is the thought
-/// block's lifecycle plus the tool-key minter.
+/// The Gemini gRPC typed wire as a [`Decoder`](rig_core::wire::Decoder) over
+/// protobuf frames: the chunk carrying a finish reason is the terminal, and
+/// the per-stream state is the thought block's lifecycle plus the tool-key
+/// minter.
 struct GrpcAdapter {
     /// Owns the constant-key thought lifecycle. Thought parts carry no wire id
     /// and this wire announces no block boundaries, so the shared derivation
@@ -51,11 +51,10 @@ impl Default for GrpcAdapter {
     }
 }
 
-impl WireAdapter for GrpcAdapter {
-    type Frame = proto::GenerateContentResponse;
+impl rig_core::wire::Decoder<Completion, proto::GenerateContentResponse> for GrpcAdapter {
     type Event = proto::GenerateContentResponse;
 
-    fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
+    fn classify(&self, frame: proto::GenerateContentResponse) -> WireEvent<Self::Event> {
         // prost/tonic already deserialized the frame, and a gRPC decode
         // failure surfaces as a transport `Status` error, so every frame is a
         // modeled event here. The wire's unknown-variant signal is per-part

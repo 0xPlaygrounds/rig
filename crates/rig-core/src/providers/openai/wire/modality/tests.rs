@@ -5,7 +5,10 @@ use super::*;
 use crate::driver::Bound;
 use crate::embeddings::EmbeddingModel as _;
 use crate::model::ModelLister as _;
-use crate::providers::openai::wire::{Dialect, OpenAI};
+use crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002;
+use crate::providers::openai::wire::{
+    AZURE, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OpenAI, TOGETHER,
+};
 use crate::test_utils::RecordingHttpClient;
 
 /// The batch the embedding cassettes were recorded against.
@@ -123,15 +126,15 @@ fn the_dialect_decides_the_width_field() {
     }
 
     assert_eq!(
-        width_field(&crate::providers::openai::wire::OPENAI, "text-embedding-3-small"),
+        width_field(&OPENAI, "text-embedding-3-small"),
         Some("dimensions".to_owned())
     );
     assert_eq!(
-        width_field(&crate::providers::openai::wire::MISTRAL, "codestral-embed"),
+        width_field(&MISTRAL, "codestral-embed"),
         Some("output_dimension".to_owned())
     );
     assert_eq!(
-        width_field(&crate::providers::openai::wire::LLAMACPP, "nomic-embed"),
+        width_field(&LLAMACPP, "nomic-embed"),
         None,
         "`llama-server` ignores a width field, so sending one would leave \
          `ndims()` describing vectors it never returned"
@@ -139,8 +142,8 @@ fn the_dialect_decides_the_width_field() {
     // OpenAI's legacy Ada model rejects the field outright.
     assert_eq!(
         width_field(
-            &crate::providers::openai::wire::OPENAI,
-            crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002
+            &OPENAI,
+            TEXT_EMBEDDING_ADA_002
         ),
         None
     );
@@ -149,7 +152,7 @@ fn the_dialect_decides_the_width_field() {
 /// Azure addresses a deployment in the URL and therefore sends no `model`.
 #[test]
 fn azure_sends_no_model_field() {
-    let encoded = OpenAI::with_key(&crate::providers::openai::wire::AZURE, "k")
+    let encoded = OpenAI::with_key(&AZURE, "k")
         .with_base_url("https://example.openai.azure.com")
         .with_api_version("2024-10-21")
         .embeddings("my-deployment", None)
@@ -185,7 +188,7 @@ async fn a_usage_less_reply_fails_a_dialect_that_requires_usage() {
 
     // Together does not guarantee it, so the same reply succeeds there.
     let response = Bound::new(
-        OpenAI::with_key(&crate::providers::openai::wire::TOGETHER, "k")
+        OpenAI::with_key(&TOGETHER, "k")
             .embeddings("togethercomputer/m2-bert-80M-8k-retrieval", None),
         RecordingHttpClient::new(reply),
     )
@@ -215,7 +218,7 @@ async fn a_recorded_model_listing_decodes() {
 async fn a_listing_entry_keeps_the_limits_a_dialect_reports() {
     let reply = r#"{"object":"list","data":[{"id":"llama-3.3-70b","object":"model","created":1,"owned_by":"Meta","context_window":131072,"max_completion_tokens":32768}]}"#;
     let models = Bound::new(
-        OpenAI::with_key(&crate::providers::openai::wire::GROQ, "k").models(),
+        OpenAI::with_key(&GROQ, "k").models(),
         RecordingHttpClient::new(reply),
     )
     .list_all()

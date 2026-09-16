@@ -39,7 +39,7 @@ pub use transcription::TranscriptionModel;
 
 use crate::client::env::{self, EnvError};
 use crate::driver::{
-    Bound, HasCompletion, HasEmbedding, HasModelListing, HasTranscription, HasVerify, Socket,
+    HasCompletion, HasEmbedding, HasModelListing, HasTranscription, HasVerify,
 };
 use crate::wire::Secret;
 
@@ -169,12 +169,6 @@ impl Gemini {
     /// endpoint, authenticated the way Interactions authenticates.
     pub fn interactions_models(&self) -> model_listing::InteractionsModels {
         model_listing::InteractionsModels::new(self.clone())
-    }
-
-    /// Bind this config to a transport, so `Bound<Gemini, H>` offers every
-    /// operation's constructor.
-    pub fn bind<H: Socket>(&self, http: H) -> Bound<Self, H> {
-        Bound::new(self.clone(), http)
     }
 }
 
