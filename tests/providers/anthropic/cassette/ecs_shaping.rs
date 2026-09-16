@@ -9,7 +9,6 @@ use crate::support::{Adder, BASIC_PREAMBLE, TOOLS_PREAMBLE};
 use bevy_ecs::prelude::*;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig_ecs::{
     agent::*,

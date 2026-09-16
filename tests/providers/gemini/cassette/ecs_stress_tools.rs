@@ -6,7 +6,7 @@ use super::super::{
 };
 use super::ecs_stress_tools_runtime as runtime;
 use crate::support::assert_nonempty_response;
-use rig::{completion::PromptError, prelude::*, providers::gemini};
+use rig::{completion::PromptError, providers::gemini};
 use rig_agent::test_utils::{
     validate_cancelled_failure, validate_result_redaction, validate_rewritten_arguments,
 };

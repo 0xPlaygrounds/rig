@@ -6,7 +6,6 @@ use crate::goldens::{event_schema, families};
 use crate::support::{Adder, BASIC_PREAMBLE, STRUCTURED_OUTPUT_PROMPT, TOOLS_PREAMBLE};
 use rig::effect::EffectFamily;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_ecs::agent::*;
 

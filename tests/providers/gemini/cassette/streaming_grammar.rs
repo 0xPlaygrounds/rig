@@ -16,7 +16,6 @@ use rig::message::{
     AssistantContent, Message, Reasoning, ReasoningContent, ToolCall, ToolChoice,
     ToolResultContent, UserContent,
 };
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig, ThinkingConfig, ThinkingLevel,

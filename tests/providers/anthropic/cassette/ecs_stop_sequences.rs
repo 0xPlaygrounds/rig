@@ -3,7 +3,6 @@ use super::{empty_stop_sequence_matrix as empty, stop_sequence_terminal_matrix a
 use crate::{ecs_agent::EcsAgent, ecs_lifecycle};
 use rig::{
     completion::{CompletionModel, FinishReason},
-    prelude::*,
     providers::anthropic,
 };
 use rig_ecs::agent::{AdditionalParams, MaxTokens};

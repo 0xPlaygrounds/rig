@@ -742,6 +742,81 @@ async fn a_gateway_may_answer_with_a_bare_string() {
     assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR);
 }
 
+/// One unary `chat.completion` body whose single choice is empty, ending
+/// for `finish_reason` (absent when `None`).
+fn empty_turn_body(finish_reason: Option<&str>) -> String {
+    let reason = finish_reason.map_or(serde_json::Value::Null, |reason| {
+        serde_json::Value::String(reason.to_owned())
+    });
+    serde_json::json!({
+        "id": "chatcmpl-empty",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "gpt-4.1-nano",
+        "choices": [{
+            "index": 0,
+            "finish_reason": reason,
+            "message": {"role": "assistant", "content": ""},
+        }],
+        "usage": {"prompt_tokens": 900, "completion_tokens": 32, "total_tokens": 932},
+    })
+    .to_string()
+}
+
+/// An empty turn the provider CUT SHORT is kept, because the reason is the
+/// only diagnostic the caller has and the usage is what it is billed for.
+///
+/// The accepting half of [`FinishReason::truncated_output`], which is the
+/// one statement of the rule; this wire routes through it rather than
+/// restating which reasons are legally empty. Live traffic cannot enumerate
+/// the vocabulary — no prompt reliably produces an empty `content_filter`
+/// turn — so the boundary is asserted here and the recorded matrices
+/// (`tests/providers/openai/cassette/truncated_turn_matrix.rs`) confirm the
+/// `length` half against real bytes.
+#[tokio::test]
+async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
+    for (reason, expected) in [
+        ("length", FinishReason::Length),
+        ("content_filter", FinishReason::ContentFilter),
+    ] {
+        let response = Bound::new(wire(), RecordingHttpClient::new(empty_turn_body(Some(reason))))
+            .completion(prompt("ask"))
+            .await
+            .unwrap_or_else(|error| panic!("`{reason}` is a cut-short turn, not a defect: {error}"));
+
+        assert!(response.choice.is_empty(), "{reason}: {:?}", response.choice);
+        assert_eq!(response.finish_reason(), Some(expected), "{reason}");
+        // Raising would have thrown these away, which is the whole reason
+        // the cut-short turn is kept.
+        assert_eq!(response.usage.input_tokens, Some(900), "{reason}");
+        assert_eq!(response.usage.output_tokens, Some(32), "{reason}");
+        assert_eq!(response.usage.total_tokens, Some(932), "{reason}");
+    }
+}
+
+/// An empty turn that RAN TO COMPLETION is a provider defect, and so is one
+/// that named no terminal at all.
+///
+/// The rejecting half of the same predicate. `stop` is the case worth
+/// naming twice: a provider that says the model finished and hands back
+/// nothing has misbehaved, so `stop` must stay out of the legal set even
+/// though a stop sequence can consume a whole answer — which is exactly
+/// what `tests/providers/llamacpp/cassette/content_matrix.rs`'s
+/// stop-sequence cell records.
+#[tokio::test]
+async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {
+    for reason in [Some("stop"), Some("tool_calls"), Some("bespoke_reason"), None] {
+        let folded = Bound::new(wire(), RecordingHttpClient::new(empty_turn_body(reason)))
+            .completion(prompt("ask"))
+            .await;
+
+        let Err(CompletionError::ResponseError(message)) = &folded else {
+            panic!("`{reason:?}` does not license an empty turn: {folded:?}");
+        };
+        assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR, "{reason:?}");
+    }
+}
+
 /// Mistral validates message content as a tagged union of its own chunks, so
 /// an OpenAI content part has to be rebuilt rather than forwarded — and a
 /// part it has no chunk for must fail loudly rather than be dropped.

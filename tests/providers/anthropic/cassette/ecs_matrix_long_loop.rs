@@ -8,7 +8,6 @@
 
 use rig::completion::CompletionModel;
 use rig::driver::{Bind, Bound};
-use rig::prelude::*;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 

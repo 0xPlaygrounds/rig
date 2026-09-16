@@ -6,7 +6,7 @@ use rig::message::{Message, ToolChoice};
 const CODEWORD: &str = "ZULU-99";
 use super::super::support::with_gemini_cassette;
 use crate::support::assert_nonempty_response;
-use rig::{prelude::*, providers::gemini};
+use rig::providers::gemini;
 #[tokio::test]
 async fn preamble_override_forces_codeword_blocking() {
     with_gemini_cassette(

@@ -1,6 +1,5 @@
 //! Focused Gemini cassette coverage for request document ordering.
 use rig::completion::{AssistantContent, CompletionModel, Document, Message};
-use rig::prelude::*;
 use rig::providers::gemini;
 use serde::Deserialize;
 use serde_json::Value;

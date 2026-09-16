@@ -144,6 +144,11 @@ const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
 /// the streaming wire needs it, deferred to EOF (see [`Self::finish`]),
 /// which for a one-frame unary reply fires immediately after that frame.
 ///
+/// The one difference the two modes cannot share is what an EOF *means*,
+/// and that is not a mode but the reply's shape: the driver states it
+/// through [`Decoder::whole_reply`], which is the only thing this decoder
+/// knows about how its bytes arrived.
+///
 /// Holds the per-reply state (thought lifecycle, tool-id minter, terminal
 /// metadata); frame-triage policy is the driver's.
 pub struct GenerateContentDecoder {
@@ -177,14 +182,19 @@ pub struct GenerateContentDecoder {
     saw_finish_reason: bool,
     /// Whether any part of the turn mapped to assistant content.
     ///
-    /// A turn the provider COMPLETED that produced none is not a blank
-    /// successful answer: the unary mapper this decoder replaced ended with
+    /// A *whole* reply that produced none is not a blank successful answer:
+    /// the unary mapper this decoder replaced ended with
     /// `require_non_empty_response`, and a caller reading `choice: []` as an
     /// answer is the outcome that rule exists to prevent. Checked in
-    /// `finish`, so a turn whose only parts were `executableCode` /
-    /// `codeExecutionResult` fails on both transports instead of only on the
-    /// one that used to have the rule.
+    /// `finish` against [`Self::whole`], so a reply whose only parts were
+    /// `executableCode` / `codeExecutionResult` is rejected exactly where
+    /// the deleted mapper rejected it, while a stream that ends undelivered
+    /// keeps reporting truncation the way it always has — by carrying no
+    /// terminal record.
     delivered: bool,
+    /// The driver read this reply whole, so its EOF ends an answer rather
+    /// than a stream (see [`Decoder::whole_reply`]).
+    whole: bool,
     /// A tool-protocol finish reason or a blocked prompt ended the turn; later frames are dead —
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn.
@@ -206,6 +216,7 @@ impl Default for GenerateContentDecoder {
             final_response_id: None,
             saw_finish_reason: false,
             delivered: false,
+            whole: false,
             failed: false,
         }
     }
@@ -329,23 +340,51 @@ impl Decoder<Completion> for GenerateContentDecoder {
         }
     }
 
+    fn whole_reply(&mut self) {
+        self.whole = true;
+    }
+
     fn finish(&mut self, out: &mut Output<Completion>) {
+        // A whole reply is the entire turn, so reaching its end having
+        // mapped no assistant content is the provider answering with
+        // nothing — the rejection `require_non_empty_response` gave the
+        // deleted unary mapper, stated here because this decoder replaced
+        // it. It runs before the `finishReason` gate below: a reply with no
+        // candidates at all names no reason to finish, and that is the
+        // shape the mapper rejected most often.
+        //
+        // Except where the reply named a terminal that cut the turn short
+        // (see `crate::message::EMPTY_RESPONSE_ERROR` for the rule and
+        // `FinishReason::truncated_output` for the set): `MAX_TOKENS`
+        // normalizes to `Length`, and Gemini's filter reasons to
+        // `ContentFilter`. A turn the cap or the filter emptied is a real
+        // answer carrying a real usage report, not a defect, so it falls
+        // through to the terminal below and yields an empty choice with
+        // that reason. The predicate is shared rather than re-derived, so
+        // this wire cannot disagree with the rest about which reasons
+        // legalize emptiness.
+        //
+        // A streamed reply reaching EOF undelivered stopped early instead,
+        // and truncation is reported by the absent terminal record (see
+        // below), never by an error — so this guard is the whole reply's
+        // alone, and widening it to the stream would turn every truncated
+        // turn into an empty-answer error.
+        let cut_short = self
+            .final_finish_reason
+            .as_ref()
+            .and_then(map_finish_reason)
+            .is_some_and(|reason| reason.truncated_output());
+        if self.whole && !self.delivered && !cut_short {
+            out.error(CompletionError::ResponseError(
+                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
+            ));
+            return;
+        }
+
         // EOF without a `finishReason` chunk is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
         if !self.saw_finish_reason {
-            return;
-        }
-
-        // The provider completed the turn and it carried no assistant
-        // content: the same rejection `require_non_empty_response` gave the
-        // blocking path, now on both transports. Pushed instead of the
-        // terminal, because a terminal here is the blank successful answer
-        // this refuses to report.
-        if !self.delivered {
-            out.error(CompletionError::ResponseError(
-                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
-            ));
             return;
         }
 

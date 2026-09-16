@@ -431,6 +431,17 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
     /// truncation.
     fn finish(&mut self, _out: &mut Output<Op>) {}
 
+    /// This reply arrives whole rather than as a stream.
+    ///
+    /// [`crate::driver::call`] states it before the first frame; a streamed
+    /// reply never does. A decoder whose terminal is deferred to EOF needs
+    /// the difference, and it is the reply's shape rather than a mode:
+    /// a stream that reaches EOF without the provider's terminal stopped
+    /// early, and [`Self::finish`] must stay silent about it because the
+    /// missing terminal record is the report; a whole reply is the entire
+    /// answer, so the same EOF says the provider answered with nothing.
+    fn whole_reply(&mut self) {}
+
     /// Flush content the provider fully delivered before a terminal error
     /// reaches the consumer. Must not push a terminal.
     fn flush_before_terminal_error(&mut self, _out: &mut Output<Op>) {}

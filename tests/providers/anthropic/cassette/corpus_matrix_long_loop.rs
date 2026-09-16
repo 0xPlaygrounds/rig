@@ -8,7 +8,6 @@ use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop};
 use rig::completion::CompletionModel;
 use rig::driver::Bound;
-use rig::prelude::*;
 use rig::providers::anthropic::wire::Anthropic;
 
 fn wire(

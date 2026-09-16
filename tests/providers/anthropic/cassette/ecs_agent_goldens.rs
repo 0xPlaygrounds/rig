@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use rig::{
-    effect::EffectFamily, memory::InMemoryConversationMemory, prelude::*,
+    effect::EffectFamily, memory::InMemoryConversationMemory,
     providers::anthropic::completion::CLAUDE_SONNET_4_6, serve::adapters::MemoryAdapter,
 };
 use rig_ecs::{

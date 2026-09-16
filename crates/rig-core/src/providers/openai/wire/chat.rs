@@ -928,6 +928,10 @@ pub struct ChatDecoder {
     saw_any_valid_frame: bool,
     /// Whether the wire's own in-band failure was consumed.
     failed: bool,
+    /// Whether this reply arrives whole rather than as a stream
+    /// ([`Decoder::whole_reply`]): a buffered reply's EOF is the end of
+    /// the answer, a stream's may be truncation.
+    whole_reply: bool,
 }
 
 impl ChatDecoder {
@@ -946,6 +950,7 @@ impl ChatDecoder {
             saw_terminal: false,
             saw_any_valid_frame: false,
             failed: false,
+            whole_reply: false,
         }
     }
 
@@ -1318,18 +1323,23 @@ impl ChatDecoder {
         }
 
         let reasoning = reasoning.filter(|reasoning| !reasoning.is_empty());
-        // The buffered body IS the whole turn, so a decode that delivered
-        // no content at all is the provider defect `EMPTY_RESPONSE_ERROR`
-        // names, and this is this wire's unary entry point where that is
-        // decidable. There is deliberately no carve-out for a natural
-        // terminal here: `finish_reason: "stop"` with empty content is what
-        // a stop sequence that ate the whole answer leaves behind AND what
-        // a gateway that dropped the content leaves behind, and nothing on
-        // this wire tells the two apart — llama.cpp's recorded case
-        // (`tests/cassettes/llamacpp/content_matrix/empty_answer_with_stop.yaml`)
-        // names no matched sequence. Anthropic carves its empty turn out
-        // only because its terminal does name one.
-        if text.is_empty() && tool_events.is_empty() && reasoning.is_none() {
+        // An empty turn is legal exactly where the reply named a terminal
+        // that CUT IT SHORT — `FinishReason::truncated_output`, the one
+        // statement of that set (`completion::request`). A cap consumed
+        // entirely by hidden reasoning, or a filter that removed
+        // everything, leaves nothing to deliver and the reason is then the
+        // caller's only diagnostic; rejecting it would also discard the
+        // usage the caller is billed for (the recorded contract in
+        // `deepseek_long_loop_output_cap_midway`, record 4: an empty
+        // choice, `Length`, and 900 in / 32 out / 766 cached). `stop` and
+        // `tool_calls` describe a turn that RAN TO COMPLETION, so an empty
+        // one is the provider defect `EMPTY_RESPONSE_ERROR` names, and so
+        // is a body that named no terminal at all.
+        let cut_short = self
+            .final_finish_reason
+            .as_ref()
+            .is_some_and(FinishReason::truncated_output);
+        if text.is_empty() && tool_events.is_empty() && reasoning.is_none() && !cut_short {
             out.error(CompletionError::ResponseError(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
@@ -1466,6 +1476,10 @@ impl Decoder<Completion> for ChatDecoder {
         }
     }
 
+    fn whole_reply(&mut self) {
+        self.whole_reply = true;
+    }
+
     fn finish(&mut self, out: &mut Output<Completion>) {
         // Tool calls the provider fully delivered are content, so a truncated
         // reply still flushes them. Partial calls drop in the accumulator.
@@ -1492,17 +1506,19 @@ impl Decoder<Completion> for ChatDecoder {
             out.push(Ok(slot.end_event(on_unparseable)));
         }
 
-        // A reply in which this wire recognized NOTHING — no chunk, no
-        // whole body, no `[DONE]`, no error envelope — delivered no turn
-        // and reported no defect either: the classifier warn-skips an
-        // unmodeled frame (a gateway answering with a bare JSON string on
-        // a dialect without that quirk) so nothing else will speak. That
-        // is the same nothing-delivered `EMPTY_RESPONSE_ERROR` names, and
-        // reporting it is what keeps such a reply a failed call rather
-        // than a silent, contentless success. A corrupt frame does not
-        // reach here as silence: its parse error was already yielded and
-        // is what the caller sees.
-        if !self.saw_any_valid_frame && !self.saw_terminal {
+        // A WHOLE reply in which this wire recognized nothing — no chunk,
+        // no completion body, no `[DONE]`, no error envelope — delivered
+        // no turn and reported no defect either: the classifier
+        // warn-skips an unmodeled frame (a gateway answering with a bare
+        // JSON string on a dialect without that quirk) so nothing else
+        // will speak. That is the nothing-delivered state
+        // `EMPTY_RESPONSE_ERROR` names, and reporting it keeps such a
+        // reply a failed call rather than a silent, contentless success.
+        // Scoped to a whole reply because the same EOF on a *stream* is
+        // truncation, reported by the missing terminal record. A corrupt
+        // frame never reaches here as silence: its parse error was
+        // already yielded and is what the caller sees.
+        if self.whole_reply && !self.saw_any_valid_frame && !self.saw_terminal {
             out.error(CompletionError::ResponseError(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));

@@ -28,7 +28,6 @@ mod typed_prompt_tools;
 use assert_fs::TempDir;
 use rig::driver::{Bind, Bound};
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::prelude::*;
 use rig::providers::copilot;
 use rig::providers::copilot::auth::{AuthError, AuthSource, Authenticator, DeviceCodeHandler};
 use rig::providers::copilot::wire::Copilot;

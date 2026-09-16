@@ -34,26 +34,45 @@ pub enum Message {
 
 /// The shared wording for a response whose converted choice is empty.
 ///
-/// **The rule, stated here once.** A reply that delivered no assistant
-/// content and reported no error is rejected with this wording; a reply
-/// that delivered content and then ended without its terminal is a
-/// truncation, reported by the missing terminal record rather than by an
-/// error. Where the decoder has a *unary* entry point the rejection sits
-/// there, because the buffered reply is the whole turn
-/// (`providers::anthropic::streaming`'s whole-message path,
-/// `providers::openai::wire::chat`'s whole-body path); where one decoder
-/// serves both transports and the mode is not knowable from a frame
-/// (`providers::gemini::streaming`), it sits at end of reply under the
-/// same nothing-delivered-and-nothing-reported condition, so a caller
-/// whose turn produced nothing at all learns it instead of reading an
-/// empty success.
+/// **The rule, stated here once.** An empty choice is an error EXCEPT
+/// where the reply named a terminal that CUT THE TURN SHORT. That set is
+/// [`FinishReason::truncated_output`](crate::completion::FinishReason::truncated_output)
+/// — `length` and `content_filter` — plus the per-provider terminals a
+/// provider documents as legally empty, which today is Anthropic's
+/// `end_turn` and its `stop_sequence` with a sequence named. On one of
+/// those the fold yields an empty choice with that finish reason and the
+/// usage the reply carried; it does not raise. A reply that delivered no
+/// assistant content and named no such terminal — including one that ran
+/// to completion (`stop`, `tool_calls`), one whose reason is unclassified
+/// (`Other`), and one that named nothing at all — is rejected with this
+/// wording. A reply that delivered content and then ended without its
+/// terminal is neither: it is a truncation, reported by the missing
+/// terminal record.
 ///
-/// The only legal empty turns are the ones the provider's own terminal
-/// *names*: Anthropic's `end_turn`, and its `stop_sequence` when the
-/// matched sequence is named. A terminal that merely says the turn
-/// stopped is not such a name — the chat wire's `finish_reason: "stop"`
-/// with empty content is indistinguishable from a gateway that dropped
-/// the answer — so those wires carve nothing out.
+/// Raising on a cut-short turn is what the carve-out prevents, and the
+/// cost is concrete: a budget-exhausted turn whose only tool call was cut
+/// mid-arguments has an empty choice, `FinishReason::Length`, and the
+/// usage a caller is billed for (`deepseek_long_loop_output_cap_midway`,
+/// record 4: 900 in / 32 out / 766 cached). "The provider sent a choice
+/// we could not read" and "the provider sent a choice it cut off at the
+/// cap it told us about" are different facts, and the finish reason is
+/// the discriminator the reply itself hands over. The reverse carve-out
+/// is not available on this evidence: `stop` says the model finished, so
+/// an empty `stop` turn is the defect this wording names, which is why
+/// `truncated_output` excludes it and why rig-agent has a remedy for the
+/// cut-short reasons and none for the rest.
+///
+/// Where the decoder has a *unary* entry point the rejection sits there,
+/// because the buffered reply is the whole turn
+/// (`providers::anthropic::streaming`'s whole-message path,
+/// `providers::openai::wire::chat`'s whole-body path). Where one decoder
+/// serves both transports, [`crate::wire::Decoder::whole_reply`] is what
+/// the buffered driver states before the first frame, and the guard runs
+/// at end of reply under it (`providers::gemini::streaming`,
+/// `providers::openai::wire::chat`'s nothing-recognized case) — so a
+/// stream that stopped early stays a truncation while a whole reply that
+/// produced nothing at all is reported instead of read as an empty
+/// success.
 ///
 /// Every provider decode rejects that state through
 /// [`require_non_empty_response`]; sharing the literal keeps a wording

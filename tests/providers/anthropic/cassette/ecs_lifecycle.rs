@@ -1,7 +1,6 @@
 //! Native anthropic lifecycle counterparts with shared original transport/assertion helpers.
 //! Entry storage, startup rewrites and settlement observations run in native systems.
 
-use rig::prelude::*;
 use rig::providers::anthropic;
 
 use super::super::support::with_anthropic_lifecycle_cassette;

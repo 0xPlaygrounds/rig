@@ -247,12 +247,22 @@ async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_reques
             observation.event.clone()
         })
         .collect();
+    // The route is the request's own path: the deleted client layer passed a
+    // hand-written `"/models/{model}:generateContent"` template to
+    // `observation::attach`, and with the driver owning observation there is
+    // no template to pass — the boundary it reports is the one it sent.
+    //
+    // `TransportEof` is the driver reading the buffered reply as the stream
+    // of one frame it is: `Framing::Whole` yields that frame and then the
+    // end of the body, so the ending is the provider's own `Terminal`
+    // (recorded as the terminal passes) and not the client layer's
+    // hand-rolled `Decoded`.
     assert_eq!(
         events,
         [
             AdapterEvent::Started {
                 method: "POST".into(),
-                route: "/models/{model}:generateContent".into()
+                route: "/v1beta/models/gemini-test:generateContent".into()
             },
             AdapterEvent::Response { status: 200 },
             AdapterEvent::Provider {
@@ -261,8 +271,12 @@ async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_reques
                     ..AdapterVerdict::default()
                 }
             },
+            AdapterEvent::TransportEof {
+                after: 1,
+                partial_bytes: 0
+            },
             AdapterEvent::Finished {
-                ending: AdapterEnding::Decoded
+                ending: AdapterEnding::Terminal
             },
         ]
     );
@@ -636,11 +650,13 @@ async fn stream_terminal_eof_error_and_drop_have_distinct_closures() {
                 &observation.event
             })
             .collect();
+        // The path the driver sent, not the template the deleted
+        // `observation::attach` callsite spelled out per provider.
         assert_eq!(
             events[0],
             &AdapterEvent::Started {
                 method: "POST".into(),
-                route: "/models/{model}:streamGenerateContent".into()
+                route: "/v1beta/models/gemini-test:streamGenerateContent".into()
             }
         );
         assert_eq!(events[1], &AdapterEvent::Response { status: 200 });

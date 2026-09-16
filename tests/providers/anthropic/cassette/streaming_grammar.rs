@@ -14,7 +14,6 @@
 use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, Reasoning, ToolCall};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 

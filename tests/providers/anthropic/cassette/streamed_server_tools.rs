@@ -18,7 +18,6 @@
 use futures::StreamExt;
 use rig::completion::{CompletionModel, ProviderToolDefinition};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
 use rig::streaming::{BlockKind, StreamEvent};
 use serde_json::json;

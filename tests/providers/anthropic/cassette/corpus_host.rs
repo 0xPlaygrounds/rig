@@ -12,7 +12,6 @@ use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
 use rig::driver::Bound;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;

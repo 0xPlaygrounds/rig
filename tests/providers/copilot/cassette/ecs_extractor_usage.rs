@@ -3,7 +3,6 @@ use super::extractor_usage::{Address, Person, assert_compatible_professions};
 use crate::copilot::{LIVE_LIGHT_MODEL, with_copilot_cassette_result};
 use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
-use rig::prelude::*;
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {
     with_copilot_cassette_result(

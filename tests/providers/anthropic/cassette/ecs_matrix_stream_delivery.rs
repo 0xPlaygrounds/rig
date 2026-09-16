@@ -4,7 +4,7 @@ use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
-use rig::{completion::CompletionModel, prelude::*};
+use rig::completion::CompletionModel;
 
 fn wire(
     client: &Bound<Anthropic>,

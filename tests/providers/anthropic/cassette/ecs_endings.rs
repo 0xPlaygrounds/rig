@@ -15,7 +15,7 @@ use bevy_ecs::prelude::*;
 use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::{
-    effect::EffectFamily, error::ErrorKind, prelude::*,
+    effect::EffectFamily, error::ErrorKind,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
 };
 use rig_ecs::{

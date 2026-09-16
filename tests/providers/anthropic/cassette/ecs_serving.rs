@@ -15,7 +15,6 @@ use bevy_ecs::prelude::*;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::{EffectFamily, HandlerKey},
-    prelude::*,
     providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6},
     serve::adapters::{CompletionAdapter, MemoryAdapter},
 };

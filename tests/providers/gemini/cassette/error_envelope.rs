@@ -10,7 +10,6 @@
 use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::error::ErrorReport;
-use rig::prelude::*;
 
 use super::super::support::with_gemini_cassette;
 

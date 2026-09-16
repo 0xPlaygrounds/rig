@@ -13,7 +13,7 @@ use rig::completion::{CompletionError, CompletionRequestBuilder};
 use rig::message::{Document, DocumentSourceKind, Message, UserContent as RigUserContent};
 use rig::providers::openai::wire::{OPENROUTER, OpenAI};
 use rig::providers::openai::{FileData as OpenAiFileData, UserContent as OpenAiUserContent};
-use rig::wire::{Body, Mode, Wire};
+use rig::wire::{Body, Encoded, Mode, Wire};
 use serde_json::Value;
 
 const MODEL: &str = "openai/gpt-4o-mini";
@@ -27,6 +27,14 @@ fn encoded_body(message: Message) -> Result<Value, CompletionError> {
     let encoded = OpenAI::with_key(&OPENROUTER, "k")
         .chat(MODEL)
         .encode(CompletionRequestBuilder::unbound(message).build(), Mode::Unary)?;
+    Ok(sole_body(encoded))
+}
+
+/// The one serialized chat body `encoded` carries, as JSON. Separate from
+/// [`encoded_body`] because these are test invariants rather than encode
+/// failures: a second request or a multipart body is a bug in the wire, not an
+/// error the refusal cells may accept as their expected `Err`.
+fn sole_body(encoded: Encoded) -> Value {
     assert_eq!(
         encoded.requests.len(),
         1,
@@ -35,7 +43,7 @@ fn encoded_body(message: Message) -> Result<Value, CompletionError> {
     let Body::Bytes(bytes) = encoded.requests[0].body() else {
         panic!("the chat wire sends a serialized body, not a multipart form")
     };
-    Ok(serde_json::from_slice(bytes).expect("the chat body is JSON"))
+    serde_json::from_slice(bytes).expect("the chat body is JSON")
 }
 
 #[test]

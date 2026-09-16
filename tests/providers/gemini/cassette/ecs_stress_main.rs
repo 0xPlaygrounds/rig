@@ -5,7 +5,7 @@ use super::super::{
 };
 use super::ecs_stress_main_runtime::{self as runtime, LifecycleRecorder, ScratchpadReader};
 use crate::support::assert_nonempty_response;
-use rig::{prelude::*, providers::gemini, tool::Tool};
+use rig::{providers::gemini, tool::Tool};
 use std::collections::BTreeMap;
 /// Preamble that forces tool use and a dependent two-step chain so the model
 /// takes at least two turns (compute A, then use A to compute B).

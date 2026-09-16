@@ -6,7 +6,6 @@
 
 use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_ecs::agent::{Role, Temperature};
 

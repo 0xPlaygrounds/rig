@@ -9,7 +9,6 @@
 
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 

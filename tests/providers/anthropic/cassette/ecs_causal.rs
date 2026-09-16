@@ -11,7 +11,6 @@ use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::{EffectFamily, HandlerKey},
-    prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
     serve::{Serve, ServingPolicy},
 };

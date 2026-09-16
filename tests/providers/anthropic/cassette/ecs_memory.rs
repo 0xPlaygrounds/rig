@@ -10,7 +10,6 @@ use crate::support::{
 };
 use rig::driver::Bound;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, MemoryOp};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig_ecs::{

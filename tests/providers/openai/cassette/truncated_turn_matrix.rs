@@ -53,10 +53,16 @@
 //! Unit cells — the accept/reject rule across the whole finish-reason
 //! vocabulary, which live traffic cannot enumerate (no prompt reliably
 //! produces an empty `content_filter` or an empty `tool_calls` turn) — live
-//! beside the fix in
-//! `crates/rig-core/src/providers/internal/openai_chat_completions_compatible.rs`
-//! (`empty_choice_*`) and `crates/rig-core/src/completion/request.rs`
-//! (`truncated_output_*`).
+//! beside the predicate itself
+//! (`crates/rig-core/src/providers/internal/openai_chat_completions_compatible/tests.rs`,
+//! `truncated_output_covers_only_the_cut_short_reasons`) and beside the
+//! wire that consumes it in
+//! `crates/rig-core/src/providers/openai/wire/chat/tests.rs`
+//! (`an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage`,
+//! `an_empty_turn_that_ran_to_completion_is_a_provider_defect`). They moved
+//! there with the wire cutover: the guard that used to live in the client
+//! layer's normalizer is now the chat decoder's whole-body entry point, and
+//! it reads the same predicate rather than restating the set.
 //!
 //! Every cell re-reads its own fixture and fails if the recorded turn stopped
 //! having the shape the cell is about.

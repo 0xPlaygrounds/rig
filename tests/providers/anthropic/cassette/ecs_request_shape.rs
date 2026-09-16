@@ -7,7 +7,6 @@ use rig_ecs::{agent::*, systems::RunCommands};
 
 use rig::effect::EffectFamily;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 
 use super::super::support::with_anthropic_corpus_request_shape_cassette;

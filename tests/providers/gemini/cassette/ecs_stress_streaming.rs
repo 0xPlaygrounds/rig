@@ -6,7 +6,7 @@ use super::super::{
 };
 use super::ecs_stress_streaming_runtime::{self as runtime, EventTap};
 use crate::support::{assert_mentions_expected_number, assert_nonempty_response};
-use rig::{prelude::*, providers::gemini};
+use rig::providers::gemini;
 #[tokio::test]
 async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
     let tap = EventTap::default();

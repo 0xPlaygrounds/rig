@@ -5,7 +5,6 @@ use crate::{
     support::BASIC_PREAMBLE,
 };
 use bevy_ecs::prelude::*;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig_core::{

@@ -9,7 +9,6 @@
 
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::tool::Tool;
 

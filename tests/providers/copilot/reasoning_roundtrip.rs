@@ -8,7 +8,6 @@ use rig::completion::{
     CompletionError, CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
 };
 use rig::driver::Bound;
-use rig::prelude::*;
 use rig::providers::copilot;
 use rig::streaming::{StreamEvent, StreamingCompletionResponse};
 

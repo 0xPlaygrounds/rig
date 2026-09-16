@@ -4,7 +4,7 @@ use super::reasoning_usage_matrix::{
 };
 use crate::ecs_agent::EcsAgent;
 use bevy_ecs::prelude::*;
-use rig::{effect::Outcome, prelude::*, providers::anthropic};
+use rig::{effect::Outcome, providers::anthropic};
 use rig_ecs::{
     agent::{AdditionalParams, DefaultMaxTurns, MaxTokens, Turn},
     bus::EffectOutcome,

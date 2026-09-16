@@ -11,7 +11,6 @@ use crate::support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE};
 use bevy_ecs::prelude::*;
 use rig::effect::{EffectFamily, Outcome};
 use rig::message::{AssistantContent, Message};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_ecs::{
     agent::*,

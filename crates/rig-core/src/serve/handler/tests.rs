@@ -448,7 +448,7 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
     use crate::{
         completion::CompletionModel as _,
         driver::Bind as _,
-        observe::{Action, AdapterContext, ObservationLog, Subject},
+        observe::{Action, AdapterContext, AdapterEnding, AdapterEvent, ObservationLog, Subject},
         test_utils::RecordingHttpClient,
     };
     let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
@@ -486,7 +486,39 @@ async fn provider_context_survives_inner_dispatch_and_explicit_call_context_wins
         (direct_log, "explicit-operation"),
     ] {
         let trace = log.trace();
-        assert_eq!(trace.observations.len(), 4);
+        // The five facts one unary attempt reports, in order. The driver
+        // reads a buffered reply as the stream of one frame it is, so the
+        // frame is followed by the end of the body, and the provider's own
+        // terminal — not a decode verdict — closes the attempt.
+        let kinds: Vec<_> = trace
+            .observations
+            .iter()
+            .map(|o| {
+                let Action::Adapter { observation } = &o.action else {
+                    panic!("adapter fact")
+                };
+                match &observation.event {
+                    AdapterEvent::Started { .. } => "started",
+                    AdapterEvent::Response { .. } => "response",
+                    AdapterEvent::Provider { .. } => "provider",
+                    AdapterEvent::TransportEof { .. } => "transport-eof",
+                    AdapterEvent::Finished {
+                        ending: AdapterEnding::Terminal,
+                    } => "finished(terminal)",
+                    other => panic!("unexpected fact {other:?}"),
+                }
+            })
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                "started",
+                "response",
+                "provider",
+                "transport-eof",
+                "finished(terminal)"
+            ]
+        );
         assert!(trace.observations.iter().all(|o| matches!(&o.action,
             Action::Adapter { observation } if observation.operation == operation && observation.attempt == Some(1)
         )));

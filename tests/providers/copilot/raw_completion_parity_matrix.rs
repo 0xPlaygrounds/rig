@@ -44,12 +44,10 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test copilot copilot::raw_completion_parity_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/copilot/raw_completion_parity_matrix/`.
 
-use rig::completion::NormalizeCompletionResponse as _;
 use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
 };
 use rig::driver::Bound;
-use rig::prelude::*;
 use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::copilot;
 use rig::providers::openai::responses_api;

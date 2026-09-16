@@ -96,6 +96,13 @@ where
         self.done
     }
 
+    /// State that this reply arrives whole, before its first frame (see
+    /// [`Decoder::whole_reply`]). [`call`] states it for every page it
+    /// reads; a streamed reply never does.
+    pub fn whole_reply(&mut self) {
+        self.decoder.whole_reply();
+    }
+
     /// Feed one frame.
     pub fn push(&mut self, frame: F) {
         if self.done {
@@ -106,7 +113,7 @@ where
         // Never exempt a corrupt frame, even when the provider's metadata
         // predicate accepts its shape.
         let corrupt = matches!(classified, WireEvent::Corrupt(_));
-        if self.observation.is_some() && !(analysis_only && !corrupt) {
+        if (corrupt || !analysis_only) && self.observation.is_some() {
             self.frames += 1;
         }
         match classified {
@@ -259,6 +266,9 @@ where
             observation.install(attempt);
         }
         let mut page = WireDriver::<W::Op, _>::observed(wire.decoder(), observation.clone());
+        // Every page this loop reads is read to its end, so the decoder's
+        // EOF is the end of an answer rather than a stream stopping early.
+        page.whole_reply();
         let sent = tracing::Instrument::instrument(
             send::<W::Op, H>(http, http_request, request_id_header, observation.as_ref()),
             span.clone(),

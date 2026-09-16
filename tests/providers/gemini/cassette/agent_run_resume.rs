@@ -4,7 +4,6 @@
 
 use rig::agent::InvalidToolCallAction;
 use rig::agent::run::{AgentRun, AgentRunStep, ModelTurnOutcome};
-use rig::prelude::*;
 use rig::providers::gemini;
 
 use super::super::agent_run_support::{

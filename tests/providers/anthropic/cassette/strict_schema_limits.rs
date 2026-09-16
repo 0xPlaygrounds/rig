@@ -2,7 +2,6 @@
 
 use rig::completion::{CompletionError, CompletionModel, ToolDefinition};
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::anthropic;
 use serde_json::{Map, Value, json};
 

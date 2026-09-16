@@ -17,7 +17,6 @@ use rig::driver::Bound;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::{EffectFamily, EffectKind},
-    prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
     serve::{
         ErasedHandler,

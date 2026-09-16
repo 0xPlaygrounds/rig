@@ -13,7 +13,6 @@ use bevy_ecs::prelude::*;
 pub(super) use delivery::FirstDelta;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::streaming::{Delta, StreamEvent};
 use rig_ecs::{

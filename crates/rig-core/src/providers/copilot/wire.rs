@@ -49,7 +49,13 @@ const REQUEST_ID_HEADER: Option<&str> = Some("x-request-id");
 
 /// The credential, in order of precedence. Both spellings are documented, so
 /// both are read.
-const API_KEY_ENV: &[&str] = &["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"];
+/// The variable a missing-credential error names.
+const PRIMARY_API_KEY_ENV: &str = "GITHUB_COPILOT_API_KEY";
+
+/// The credential variables, in precedence order. A fixed-size array so the
+/// first name — the one a missing-variable error reports — is reachable
+/// without indexing.
+const API_KEY_ENV: [&str; 2] = ["GITHUB_COPILOT_API_KEY", "COPILOT_API_KEY"];
 
 /// The base-URL override, in order of precedence.
 const BASE_URL_ENV: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
@@ -147,9 +153,9 @@ impl Copilot {
     /// access token or a device-code login is a conversation, not a value:
     /// run [`super::auth`] and build the provider with [`Self::from_auth`].
     pub fn from_env() -> Result<Self, EnvError> {
-        let Some(api_key) = first_env(API_KEY_ENV)? else {
+        let Some(api_key) = first_env(&API_KEY_ENV)? else {
             return Err(EnvError::Variable {
-                name: API_KEY_ENV[0],
+                name: PRIMARY_API_KEY_ENV,
                 source: std::env::VarError::NotPresent,
             });
         };

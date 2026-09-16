@@ -328,7 +328,8 @@ impl AdapterContext {
         ));
     }
 
-    /// Begin an actual send with a static route template, excluding query data.
+    /// Begin an actual send with the request's path, excluding query data
+    /// (which is where a provider may carry its credential).
     /// Exhaustion is observed and disables further sends' correlation without
     /// changing the provider operation or reusing an attempt identity.
     pub(crate) fn begin(&self, method: &http::Method, route: &str) -> Option<AdapterAttempt> {

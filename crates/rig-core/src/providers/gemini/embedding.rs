@@ -92,13 +92,13 @@ impl Wire for Embeddings {
 
         // Pretty-printing a whole batch costs more than the request itself,
         // so it happens only when a subscriber is listening for it.
-        if tracing::enabled!(target: "rig::embedding", tracing::Level::TRACE) {
-            if let Ok(pretty_body) = serde_json::to_string_pretty(&body) {
-                tracing::trace!(
-                    target: "rig::embedding",
-                    "Sending embedding request to Gemini API {pretty_body}"
-                );
-            }
+        if tracing::enabled!(target: "rig::embedding", tracing::Level::TRACE)
+            && let Ok(pretty_body) = serde_json::to_string_pretty(&body)
+        {
+            tracing::trace!(
+                target: "rig::embedding",
+                "Sending embedding request to Gemini API {pretty_body}"
+            );
         }
 
         let request = http::Request::post(format!(

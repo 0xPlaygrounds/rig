@@ -4,7 +4,7 @@ use super::super::support::with_gemini_cassette;
 use super::super::tools_support::{CountingAdd, CountingSubtract};
 use super::ecs_stress_runtime::{self as runtime, EventTap, ScratchpadReader};
 use crate::support::assert_nonempty_response;
-use rig::{prelude::*, providers::gemini};
+use rig::providers::gemini;
 #[tokio::test]
 async fn hook_context_identity_stable_and_turn_advances_blocking() {
     let add = CountingAdd::default();

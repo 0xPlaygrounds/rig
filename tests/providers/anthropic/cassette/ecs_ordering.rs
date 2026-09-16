@@ -12,7 +12,7 @@ use crate::{
         TWO_TOOL_STREAM_PROMPT, assert_contains_all_case_insensitive,
     },
 };
-use rig::{prelude::*, providers::anthropic};
+use rig::providers::anthropic;
 
 #[tokio::test]
 async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message() {

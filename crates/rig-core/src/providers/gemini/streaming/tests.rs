@@ -824,6 +824,81 @@ mod terminal_emission {
         );
         assert_eq!(terminal.response_id.as_deref(), Some("resp-1"));
     }
+
+    /// What an *undelivered* reply means depends on how it arrived, which is
+    /// the only thing `Decoder::whole_reply` tells this decoder.
+    ///
+    /// A buffered reply is the whole turn: one that names no terminal and
+    /// carried no content is the provider answering with nothing, and the
+    /// rejection the deleted unary mapper's `require_non_empty_response`
+    /// gave is still what a caller gets. The carve-out is the terminal set
+    /// that cut the turn short (`FinishReason::truncated_output`): the cap
+    /// and the filter hand back the empty choice with their reason and the
+    /// usage the reply carried instead of raising, while a turn that ran to
+    /// completion (`STOP`) and delivered nothing is still the defect. A
+    /// *stream* that ends undelivered is neither: it stopped early, and
+    /// that is reported by the absent terminal record.
+    #[tokio::test]
+    async fn an_undelivered_reply_is_rejected_only_when_it_arrived_whole_and_named_no_terminal() {
+        use crate::completion::FinishReason;
+        use crate::test_utils::RecordingHttpClient;
+
+        const SILENT: &str = r#"{"candidates":[],"usageMetadata":{"promptTokenCount":9}}"#;
+
+        for (reason, normalized) in [
+            ("MAX_TOKENS", FinishReason::Length),
+            ("SAFETY", FinishReason::ContentFilter),
+        ] {
+            let body = format!(
+                r#"{{"candidates":[{{"finishReason":"{reason}","index":0}}],"usageMetadata":{{"promptTokenCount":9,"candidatesTokenCount":32,"totalTokenCount":41}}}}"#
+            );
+            let model = Bound::new(wire(), RecordingHttpClient::new(body));
+            let response =
+                crate::completion::CompletionModel::completion(&model, super::streaming_request())
+                    .await
+                    .expect("a terminal that cut the turn short legalizes an empty choice");
+            assert!(response.choice.is_empty());
+            assert_eq!(response.finish_reason(), Some(normalized));
+            assert_eq!(response.usage.output_tokens, Some(32));
+        }
+
+        let completed = Bound::new(
+            wire(),
+            RecordingHttpClient::new(
+                r#"{"candidates":[{"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":9}}"#,
+            ),
+        );
+        let error =
+            crate::completion::CompletionModel::completion(&completed, super::streaming_request())
+                .await
+                .expect_err("a turn that ran to completion and delivered nothing is a defect");
+        assert!(
+            error
+                .to_string()
+                .contains(crate::message::EMPTY_RESPONSE_ERROR),
+            "{error}"
+        );
+
+        let silent = Bound::new(wire(), RecordingHttpClient::new(SILENT));
+        let error =
+            crate::completion::CompletionModel::completion(&silent, super::streaming_request())
+                .await
+                .expect_err("a whole reply that named no terminal and delivered nothing");
+        assert!(
+            error
+                .to_string()
+                .contains(crate::message::EMPTY_RESPONSE_ERROR),
+            "{error}"
+        );
+
+        // The same undelivered bytes on the streamed path: no error, and the
+        // missing terminal record is the truncation report.
+        let (texts, saw_error, saw_terminal, stream) = collect(sse(&[SILENT])).await;
+        assert!(texts.is_empty());
+        assert!(!saw_error, "a stream that delivered nothing is truncation");
+        assert!(!saw_terminal);
+        assert!(stream.response.is_none());
+    }
 }
 
 /// Open a `streamGenerateContent` stream over the given SSE frames and

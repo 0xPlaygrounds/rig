@@ -1,7 +1,7 @@
 //! Provider-adapter execution through native ECS, using the original agent
 //! fixtures. The original tests remain independent baseline executions.
 
-use rig::{prelude::*, providers::anthropic};
+use rig::providers::anthropic;
 use rig_ecs::bus::Streamed;
 
 use super::super::support::with_anthropic_cassette;

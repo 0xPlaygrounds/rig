@@ -1342,13 +1342,25 @@ mod raw_capture {
         ollama_model(RecordingHttpClient::new(BODY))
     }
 
-    /// The load-bearing capture property: `raw` is Ollama's
-    /// `CompletionResponse` as rig parsed it — it deserializes back into
-    /// that type and re-serializes to the identical value — and
+    /// The load-bearing capture property: `raw` is the `/api/chat` reply
+    /// **verbatim** — the body's own document, not a re-serialization of
+    /// the typed parse — it still deserializes back into Ollama's
+    /// `CompletionResponse` with every field the body carried intact, and
     /// re-normalizing that capture through the same `TryFrom` reproduces
     /// every normalized field. Also reads `total_duration` and
     /// `eval_duration` off the capture, which the normalized response
     /// provably lacks.
+    ///
+    /// Compared against the body rather than against
+    /// `to_value(&typed)`: that equality was the *old* contract, where
+    /// `raw` was precisely that serialization, so it asserted nothing —
+    /// and it is false of a verbatim capture the moment the DTO spells
+    /// out a default the body omitted. Ollama's assistant message has
+    /// exactly one such field, `tool_calls`, which is the lone member of
+    /// that variant without `skip_serializing_if` because the recorded
+    /// request bodies carry it. So the re-serialization is compared to
+    /// the body with that one default filled in: any *other* drift — a
+    /// dropped timing field, a reshaped message — still fails.
     #[tokio::test]
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
         let model = model();
@@ -1359,12 +1371,20 @@ mod raw_capture {
             .expect("completion");
 
         let raw = &response.raw;
+        assert_eq!(
+            *raw,
+            serde_json::from_str::<serde_json::Value>(BODY).expect("the recorded body is JSON"),
+            "the capture is the reply document verbatim"
+        );
         let typed: CompletionResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        let reserialized = serde_json::to_value(&typed).expect("re-serialize");
+        let mut with_defaults = raw.clone();
+        with_defaults["message"]["tool_calls"] = serde_json::json!([]);
         assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the wire type serializes to"
+            reserialized, with_defaults,
+            "the wire type round-trips the whole document, up to the empty \
+             `tool_calls` the body omitted and the DTO always writes"
         );
         assert_eq!(typed.total_duration, Some(5_043_500_667));
         assert_eq!(typed.eval_duration, Some(4_709_213_000));
