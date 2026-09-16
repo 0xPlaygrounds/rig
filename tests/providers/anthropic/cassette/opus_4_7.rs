@@ -219,7 +219,7 @@ async fn messages_adaptive_thinking_nonstreaming_smoke() {
         "opus_4_7/messages_adaptive_thinking_nonstreaming_smoke",
         |client| async move {
             reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-                client.completion_model(CLAUDE_OPUS_4_7),
+                client.completion(CLAUDE_OPUS_4_7),
                 Some(opus_4_7_thinking_params()),
             ))
             .await;
@@ -248,7 +248,7 @@ async fn messages_adaptive_thinking_streaming_smoke() {
         |client| async move {
             reasoning::run_reasoning_roundtrip_streaming(
                 ReasoningRoundtripAgent::new(
-                    client.completion_model(CLAUDE_OPUS_4_7),
+                    client.completion(CLAUDE_OPUS_4_7),
                     Some(opus_4_7_thinking_params()),
                 )
                 .expecting_signed_reasoning_block(),

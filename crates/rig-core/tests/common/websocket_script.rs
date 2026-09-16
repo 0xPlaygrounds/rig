@@ -14,8 +14,11 @@
 
 #![allow(dead_code)]
 
+use rig_core::driver::Bound;
 use rig_core::http_client;
+use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketSession;
+use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_core::wasm_compat::WasmBoxedFuture;
 use rig_core::ws_client::{BoxedWebSocketConnection, CloseFrame, Frame, WebSocketConnection};
@@ -23,13 +26,12 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-/// The provider client these sessions wrap. The HTTP transport is never
-/// exercised — a websocket session only borrows the model for its request
-/// mapping — so a recording stub stands in for it.
-pub type TestClient = rig_core::providers::openai::Client<RecordingHttpClient>;
-pub type TestModel =
-    rig_core::providers::openai::responses_api::ResponsesCompletionModel<RecordingHttpClient>;
-pub type TestSession = ResponsesWebSocketSession<RecordingHttpClient>;
+/// The bound wire these sessions are opened from — which is also the model
+/// the tests build requests with. Its HTTP transport is never exercised (a
+/// websocket session borrows the wire only for its request mapping), so a
+/// recording stub stands in for it.
+pub type TestClient = Bound<Responses, RecordingHttpClient>;
+pub type TestSession = ResponsesWebSocketSession;
 
 /// What a scripted connection does once its scripted frames run out.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -149,20 +151,12 @@ impl WebSocketConnection for ScriptedConnection {
     }
 }
 
-/// A client whose HTTP transport is a stub: these tests never send one.
+/// A bound wire whose HTTP transport is a stub: these tests never send one.
 pub fn test_client() -> TestClient {
-    rig_core::providers::openai::Client::builder()
-        .api_key("test-key")
-        .base_url("https://api.openai.com/v1")
-        .http_client(RecordingHttpClient::new("{}"))
-        .build()
-        .expect("client should build")
-}
-
-/// The model a session wraps, for building completion requests in tests.
-pub fn test_model(client: &TestClient) -> TestModel {
-    use rig_core::client::CompletionClient as _;
-    client.completion_model("gpt-4o")
+    Bound::new(
+        OpenAI::new("test-key").responses("gpt-4o"),
+        RecordingHttpClient::new("{}"),
+    )
 }
 
 /// A session over `script`, with no event timeout.
@@ -177,7 +171,7 @@ pub fn session_with_timeout(
     event_timeout: Option<Duration>,
 ) -> TestSession {
     ResponsesWebSocketSession::from_connection(
-        test_model(client),
+        client.wire.clone(),
         script.connection(),
         event_timeout,
     )

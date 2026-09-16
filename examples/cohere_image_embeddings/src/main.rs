@@ -9,7 +9,7 @@
 use anyhow::{Context, Result};
 use rig::embeddings::ImageEmbeddingModel;
 use rig::prelude::*;
-use rig::providers::cohere::Client;
+use rig::providers::cohere::Cohere;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -19,8 +19,10 @@ async fn main() -> Result<()> {
     let image = std::fs::read(&path)
         .with_context(|| format!("failed to read image at {}", path.to_string_lossy()))?;
 
-    let client = Client::from_env()?;
-    let model = client.image_embedding_model();
+    let cohere = Cohere::from_env()?.bound()?;
+    // Embed v3 embeds images with one fixed model at one fixed width, so the
+    // image-embedding wire takes neither a model name nor a dimension count.
+    let model = cohere.image_embedding("", None);
     let embedding = model.embed_image(&image).await?;
 
     println!(

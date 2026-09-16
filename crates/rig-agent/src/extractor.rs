@@ -8,11 +8,11 @@
 //! # Example
 //! ```no_run
 //! use rig_agent::prelude::*;
-//! use rig_core::providers::openai;
+//! use rig_core::providers::openai::{self, OpenAI};
 //! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let openai = openai::Client::new("your-open-ai-api-key")?;
+//! let openai = OpenAI::new("your-open-ai-api-key").bound()?;
 //!
 //! #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
 //! struct Person {

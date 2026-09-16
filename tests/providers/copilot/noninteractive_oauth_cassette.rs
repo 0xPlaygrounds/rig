@@ -10,10 +10,11 @@ async fn cached_oauth_allows_noninteractive_completion() {
     with_copilot_noninteractive_oauth_cassette(
         "noninteractive_oauth/cached_oauth_allows_noninteractive_completion",
         |client| async move {
-            client
-                .authorize()
-                .await
-                .expect("cached OAuth auth should not require device flow");
+            // Reaching the closure at all is the assertion the deleted
+            // `Client::authorize()` made: the harness resolved the cached
+            // API key through `copilot::auth` with `allow_device_flow =
+            // false`, so a credential that needed a device flow would have
+            // failed there rather than prompting.
 
             let response = client
                 .agent(LIVE_MODEL)

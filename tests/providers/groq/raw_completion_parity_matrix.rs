@@ -1,37 +1,49 @@
-//! Typed-route parity on Groq: `raw_completion_with_request_id` →
-//! `normalize` → `with_optional_provider_request_id` reproduces everything
-//! `CompletionModel::completion` reports.
+//! Parity between Groq's captured reply document and the normalized response
+//! it rode on.
 //!
-//! **The contract.** Groq is a compatible provider that reuses the shared
-//! [`openai::CompletionResponse`] wire type, so the transport request id —
-//! Groq's `x-request-id`, contracted by `Groq::REQUEST_ID_HEADER` — cannot
-//! live on the raw type. `raw_completion` therefore drops it, and a caller
-//! reassembling a normalized response from the typed escape hatch would
-//! silently lack the `provider_request_id` that `completion` reports.
-//! `raw_completion_with_request_id` returns the pair so the typed route can
-//! reproduce the normalized one exactly.
+//! **The contract.** There is exactly one unary seam: `Chat::encode` builds
+//! the request, the driver carries it, and `ChatDecoder` folds the reply into
+//! a [`rig::completion::CompletionResponse`] whose `raw` holds Groq's own
+//! reply *document* verbatim. Two things follow, and these cells pin both.
+//!
+//! 1. **`encode` is deterministic.** The same built request produces the same
+//!    request bytes every time, so a caller can replay it — and the two
+//!    recorded turns of cell 1 must therefore be byte-identical on the
+//!    request side.
+//! 2. **`raw` is a faithful second view, not a summary.** Every field the
+//!    normalized response reports is the field the document carries, for the
+//!    very reply it came attached to.
+//!
+//! The transport request id is the interesting case here and is what cell 2
+//! is about. It arrives on a *header* — Groq contracts `x-request-id`, which
+//! is the dialect datum `GROQ.request_id_header`, and the driver stamps
+//! `provider_request_id` from it. The reply document has no field for it in
+//! the shared chat-completions shape; Groq happens to mirror it in its own
+//! `x_groq.id` envelope, which no shared type models and which reaches a
+//! caller only because `raw` is the document. So the header and the body
+//! agree, and the cells assert that they do rather than assuming it.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_with_request_id_reproduces_completion` | typed route vs `completion` | both reproduce their own fixture's identity, finish reason, model and usage; the typed route's id is the recorded `x-request-id` | recorded |
-//! | 2 | `plain_raw_completion_lacks_request_id` | `raw_completion` + `normalize` | `provider_request_id == None` although the recorded response carries `x-request-id` | recorded |
+//! | 1 | `encode_is_deterministic_and_raw_is_faithful` | two turns, one seam | both turns send identical request bytes; each response reproduces *its own* interaction's body and `x-request-id`, and its `raw["x_groq"]["id"]` is that same id | recorded |
+//! | 2 | `the_transport_id_comes_from_the_header_not_the_body` | header vs document | `provider_request_id` is populated from the header; the shared typed view of `raw` has no slot for it, and the document carries it only in Groq's own envelope | recorded |
 //!
-//! Both cells are recorded. Cell 1 records the `completion` turn and the
-//! `raw_completion_with_request_id` turn as two interactions of one scenario;
-//! since two live turns carry two different ids, each side is compared with
-//! *its own* interaction's recorded body and `x-request-id` header, and the
-//! two sides are then compared field for field where the wire makes them
-//! equal (provider, model, finish reason). The premise both cells re-derive
-//! from their fixture is that Groq's recorded responses carry the
-//! `x-request-id` header at all — otherwise the reassembly step would be
-//! vacuous.
+//! The scenario literals — and therefore the fixture filenames — keep the
+//! names they were recorded under; the cell names describe what the cells now
+//! assert.
+//!
+//! Both cells are recorded. Cell 1's scenario holds **two** interactions,
+//! because the cell needs two independent replies to separate "the same bytes
+//! went out twice" from "one reply agreed with itself"; the harness replays
+//! interactions in order, and two live turns carry two different ids, so each
+//! side is compared with its own interaction's recorded body and header. The
+//! premise both cells re-derive from their fixture is that Groq's recorded
+//! responses carry the `x-request-id` header at all.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, FinishReason, NormalizeCompletionResponse,
-};
-use rig::prelude::*;
-use rig::providers::groq;
-use rig::providers::openai::completion::OpenAICompatibleProvider;
+use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
+use rig::providers::openai;
+use rig::providers::openai::wire::GROQ;
+use serde::Deserialize;
 use serde_json::Value;
 
 use super::RAW_CAPTURE_MODEL;
@@ -42,7 +54,7 @@ use super::support::{
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &groq::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
@@ -123,102 +135,154 @@ fn assert_reproduces_fixture(
     );
 }
 
+/// The reply document's own view of the same turn, for the fields the
+/// document holds: it must be the recorded body, and its `x_groq` envelope
+/// must mirror the transport id the header carried.
+fn assert_raw_is_the_reply_document(
+    response: &rig::completion::CompletionResponse,
+    body: &Value,
+    request_id: &str,
+    context: &str,
+) {
+    let raw = &response.raw;
+    assert_matches_recorded_token(
+        raw["id"].as_str(),
+        body["id"].as_str(),
+        &format!("{context}: raw's own response id"),
+    );
+    assert_eq!(
+        raw.get("usage"),
+        body.get("usage"),
+        "{context}: raw carries the provider's usage block unchanged"
+    );
+    assert_eq!(
+        raw["choices"][0]["message"]["content"], body["choices"][0]["message"]["content"],
+        "{context}: and the answer it reported"
+    );
+    assert_matches_recorded_token(
+        raw["x_groq"]["id"].as_str(),
+        Some(request_id),
+        &format!("{context}: Groq mirrors the transport id in its own envelope"),
+    );
+}
+
 // ================================================================
-// 1. The typed route reproduces the normalized one
+// 1. Two turns, one seam: deterministic bytes, faithful documents
 // ================================================================
 
 #[tokio::test]
-async fn raw_with_request_id_reproduces_completion() {
+async fn encode_is_deterministic_and_raw_is_faithful() {
     const SCENARIO: &str = "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
     with_groq_cassette_result(
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
         |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MODEL);
-            let normalized = model.completion(request(&model)).await?;
-            let (raw, request_id) = model
-                .raw_completion_with_request_id(request(&model))
-                .await?;
-            let reassembled = raw
-                .normalize(PROVIDER)?
-                .with_optional_provider_request_id(request_id.clone());
-            *sink.lock().expect("observation lock") = Some((normalized, reassembled, request_id));
+            let model = client.completion(RAW_CAPTURE_MODEL);
+            let first = model.completion(request(&model)).await?;
+            let second = model.completion(request(&model)).await?;
+            *sink.lock().expect("observation lock") = Some((first, second));
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("raw_with_request_id_reproduces_completion should replay from its cassette");
 
-    let (normalized, reassembled, request_id) = observed
+    let (first, second) = observed
         .lock()
         .expect("observation lock")
         .take()
-        .expect("the cell should observe both routes");
+        .expect("the cell should observe both turns");
     let interactions = recorded_json(SCENARIO);
-    assert_eq!(interactions.len(), 2, "one completion turn, one typed turn");
+    assert_eq!(
+        interactions.len(),
+        2,
+        "the cell records a turn and its twin"
+    );
     assert_eq!(
         interactions[0].0, interactions[1].0,
-        "both routes build the same request body"
+        "`encode` is deterministic, so both turns must send the same request bytes"
     );
 
     assert_eq!(
-        <groq::Groq as OpenAICompatibleProvider>::REQUEST_ID_HEADER,
+        GROQ.request_id_header,
         Some("x-request-id"),
         "Groq contracts x-request-id"
     );
-    let completion_id = recorded_request_id(SCENARIO, 0);
-    let typed_id = recorded_request_id(SCENARIO, 1);
-    assert_matches_recorded_token(
-        request_id.as_deref(),
-        Some(typed_id.as_str()),
-        "the id raw_completion_with_request_id returned is the recorded header",
-    );
+    let first_id = recorded_request_id(SCENARIO, 0);
+    let second_id = recorded_request_id(SCENARIO, 1);
 
-    assert_reproduces_fixture(
-        &normalized,
-        &interactions[0].1,
-        &completion_id,
-        "completion",
-    );
-    assert_reproduces_fixture(&reassembled, &interactions[1].1, &typed_id, "typed route");
-    // Where the wire makes the two turns equal, the two routes agree.
-    assert_eq!(reassembled.provider, normalized.provider);
-    assert_eq!(reassembled.model, normalized.model);
-    assert_eq!(reassembled.finish_reason(), normalized.finish_reason());
-    assert_eq!(
-        reassembled.identity().message_id,
-        normalized.identity().message_id
-    );
-    assert!(reassembled.identity().provider_request_id.is_some());
-    assert!(normalized.identity().provider_request_id.is_some());
+    // Each reply is checked against its own interaction: two live turns carry
+    // two different ids, so a cross-comparison would prove nothing.
+    assert_reproduces_fixture(&first, &interactions[0].1, &first_id, "first turn");
+    assert_reproduces_fixture(&second, &interactions[1].1, &second_id, "second turn");
+    assert_raw_is_the_reply_document(&first, &interactions[0].1, &first_id, "first turn");
+    assert_raw_is_the_reply_document(&second, &interactions[1].1, &second_id, "second turn");
+
+    // Where the wire makes the two turns equal, they are equal.
+    assert_eq!(second.provider, first.provider);
+    assert_eq!(second.model, first.model);
+    assert_eq!(second.finish_reason(), first.finish_reason());
+    assert_eq!(second.identity().message_id, first.identity().message_id);
+    // Identical request bytes tokenize identically; the output side is the
+    // model's to vary.
+    assert_eq!(second.usage.input_tokens, first.usage.input_tokens);
 }
 
 // ================================================================
-// 2. Plain raw_completion drops the id; completion keeps it
+// 2. The transport id is a header, not a body field
 // ================================================================
 
 #[tokio::test]
-async fn plain_raw_completion_lacks_request_id() {
+async fn the_transport_id_comes_from_the_header_not_the_body() {
     const SCENARIO: &str = "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id";
+    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let sink = observed.clone();
     with_groq_cassette_result(
         "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id",
         |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MODEL);
-            let raw = model.raw_completion(request(&model)).await?;
-            let normalized = raw.normalize(PROVIDER)?;
-            assert_eq!(
-                normalized.provider_request_id, None,
-                "the wire type has no slot for the transport id, so plain raw_completion drops it"
-            );
-            assert!(normalized.response_id.is_some());
+            let model = client.completion(RAW_CAPTURE_MODEL);
+            let response = model.completion(request(&model)).await?;
+            *sink.lock().expect("observation lock") = Some(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("plain_raw_completion_lacks_request_id should replay from its cassette");
 
-    // The premise: the header was there to drop.
+    let response = observed
+        .lock()
+        .expect("observation lock")
+        .take()
+        .expect("the cell should observe a response");
+
+    // The premise: the header was there to read.
     let request_id = recorded_request_id(SCENARIO, 0);
     assert!(!request_id.trim().is_empty());
+
+    assert_matches_recorded_token(
+        response.provider_request_id.as_deref(),
+        Some(request_id.as_str()),
+        "the driver stamps the transport id from the header Groq contracts",
+    );
+    assert!(response.response_id.is_some());
+
+    // The shared typed view of the document has no slot for a transport id —
+    // which is why reading it off the header is the only way to have it.
+    let typed = openai::CompletionResponse::deserialize(&response.raw)
+        .expect("raw is the shared OpenAI chat-completions reply Groq sends");
+    let typed_document = serde_json::to_value(&typed).expect("typed serializes");
+    assert!(
+        typed_document.get("x-request-id").is_none()
+            && typed_document.get("provider_request_id").is_none()
+            && typed_document.get("x_groq").is_none(),
+        "no shared chat-completions field carries the transport id: {typed_document}"
+    );
+    // The document itself carries it only in Groq's own envelope, and that
+    // reaches the caller because `raw` is the body rather than the parse.
+    assert_matches_recorded_token(
+        response.raw["x_groq"]["id"].as_str(),
+        Some(request_id.as_str()),
+        "Groq's own envelope mirrors the transport id",
+    );
 }

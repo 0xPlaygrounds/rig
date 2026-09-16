@@ -3,7 +3,7 @@
 //! Run it to compare `top_n` results with `top_n_ids`.
 
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, wire::OpenAI};
 use serde::{Deserialize, Serialize};
 
 type SearchMatch = (f64, String, String);
@@ -63,8 +63,8 @@ fn print_id_matches(label: &str, matches: &[(f64, String)]) {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let openai_client = openai::Client::from_env()?;
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let openai_client = OpenAI::from_env()?.bound()?;
+    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(sample_documents())?
         .build()

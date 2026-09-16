@@ -90,7 +90,7 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_retrieval_cassette(
         "corpus_retrieval/dynamic_context_one",
         |client| async move {
-            let index = facts_index(client.embedding_model(EMBEDDING), &FACTS).await;
+            let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
             let agent = client
                 .agent(MODEL)
                 .name("golden")
@@ -131,7 +131,7 @@ async fn dynamic_context_two_streamed_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_retrieval_cassette(
         "corpus_retrieval/dynamic_context_two_streamed",
         |client| async move {
-            let index = facts_index(client.embedding_model(EMBEDDING), &FACTS).await;
+            let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
             let agent = client
                 .agent(MODEL)
                 .name("golden")
@@ -164,7 +164,7 @@ async fn dynamic_context_over_sampled_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_retrieval_cassette(
         "corpus_retrieval/dynamic_context_over_sampled",
         |client| async move {
-            let index = facts_index(client.embedding_model(EMBEDDING), &FACTS).await;
+            let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
             let agent = client
                 .agent(MODEL)
                 .name("golden")
@@ -194,7 +194,7 @@ async fn dynamic_context_empty_index_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_retrieval_cassette(
         "corpus_retrieval/dynamic_context_empty_index",
         |client| async move {
-            let index = facts_index(client.embedding_model(EMBEDDING), &[]).await;
+            let index = facts_index(client.embedding(EMBEDDING, None), &[]).await;
             let agent = client
                 .agent(MODEL)
                 .name("golden")
@@ -230,7 +230,7 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/retrieved_tools_one",
         |client| async move {
             let toolset = retrievable_toolset();
-            let index = tool_index(client.embedding_model(EMBEDDING), &toolset).await;
+            let index = tool_index(client.embedding(EMBEDDING, None), &toolset).await;
             let agent = client
                 .agent(MODEL)
                 .name("golden")
@@ -281,7 +281,7 @@ async fn retrieved_tools_with_static_effect_log_is_the_golden_fixture() {
             toolset
                 .add_retrieved_tool(EmbedSubtract)
                 .expect("the tool context serializes");
-            let index = tool_index(client.embedding_model(EMBEDDING), &toolset).await;
+            let index = tool_index(client.embedding(EMBEDDING, None), &toolset).await;
             let agent = client
                 .agent(MODEL)
                 .name("golden")
@@ -324,9 +324,9 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_retrieval_cassette(
         "corpus_retrieval/context_and_tools",
         |client| async move {
-            let facts = facts_index(client.embedding_model(EMBEDDING), &FACTS).await;
+            let facts = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
             let toolset = retrievable_toolset();
-            let tools = tool_index(client.embedding_model(EMBEDDING), &toolset).await;
+            let tools = tool_index(client.embedding(EMBEDDING, None), &toolset).await;
             let agent = client
                 .agent(MODEL)
                 .name("golden")

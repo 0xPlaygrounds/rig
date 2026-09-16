@@ -1,12 +1,14 @@
 //! Cassette-backed OpenRouter coverage for PDF `file_data` document messages.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::completion::CompletionRequestBuilder;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
 use rig::prelude::*;
-use rig::providers::openrouter::Message as OpenRouterMessage;
+use rig::providers::openai::wire::{OPENROUTER, OpenAI};
+use rig::wire::{Body, Mode, Wire};
 use serde_json::Value;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
@@ -63,14 +65,26 @@ fn message_contains_base64_document(message: &RigMessage) -> bool {
     })
 }
 
+/// The `messages` array the `OPENROUTER` dialect sends for one rig message.
+///
+/// `encode` touches no socket, so the outbound bytes are inspectable beside
+/// the recorded turns without spending a cassette interaction.
 fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
-    let messages: Vec<OpenRouterMessage> =
-        rig::providers::openrouter::messages_from_rig_message(message)
-            .expect("generic message should convert to OpenRouter messages");
-    messages
-        .into_iter()
-        .map(|message| serde_json::to_value(message).expect("message should serialize"))
-        .collect()
+    let encoded = OpenAI::with_key(&OPENROUTER, "k")
+        .chat(DOCUMENT_MODEL)
+        .encode(
+            CompletionRequestBuilder::unbound(message).build(),
+            Mode::Unary,
+        )
+        .expect("a history message should encode");
+    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+        panic!("the chat wire sends a serialized body, not a multipart form")
+    };
+    let body: Value = serde_json::from_slice(bytes).expect("the chat body is JSON");
+    body["messages"]
+        .as_array()
+        .unwrap_or_else(|| panic!("expected a messages array, got {body:#}"))
+        .clone()
 }
 
 fn assert_openrouter_wire_file_data(message: RigMessage) {

@@ -5,7 +5,7 @@ use std::future::IntoFuture;
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
 use rig::prelude::*;
-use rig::providers::mistral;
+use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -75,7 +75,10 @@ fn assert_sentiment_shape(extract: &CombinedExtract) {
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = mistral::Client::from_env().expect("client should build");
+    let client = OpenAI::from_env_with(&MISTRAL)
+        .expect("MISTRAL_API_KEY should be set")
+        .bound()
+        .expect("client should build");
     let names_extractor = client
         .extractor::<Names>(DEFAULT_MODEL)
         .append_preamble("Extract names from the given text.")

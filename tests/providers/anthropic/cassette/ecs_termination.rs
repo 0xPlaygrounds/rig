@@ -14,7 +14,6 @@ use crate::{
     support::Adder,
 };
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use rig::providers::anthropic;
 use rig_ecs::agent::{MaxTokens, Temperature};
 
@@ -30,7 +29,7 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
             "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
             |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                     CONCISE_PREAMBLE,
                     1,
                 );
@@ -78,7 +77,7 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
             "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
             |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                     CONCISE_PREAMBLE,
                     1,
                 );
@@ -116,7 +115,7 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
             "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
             |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                     CONCISE_PREAMBLE,
                     1,
                 );
@@ -154,7 +153,7 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
             "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
             |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                     CONCISE_PREAMBLE,
                     1,
                 );
@@ -185,7 +184,7 @@ async fn blocking_tool_turn_reports_tool_calls() {
             "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
             |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                     TOOL_PREAMBLE,
                     1,
                 );
@@ -227,7 +226,7 @@ async fn streaming_tool_turn_reports_tool_calls() {
             "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
             |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                     TOOL_PREAMBLE,
                     1,
                 );
@@ -266,7 +265,7 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
             "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                     CONCISE_PREAMBLE,
                     1,
                 );
@@ -316,7 +315,7 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
             "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                     CONCISE_PREAMBLE,
                     1,
                 );

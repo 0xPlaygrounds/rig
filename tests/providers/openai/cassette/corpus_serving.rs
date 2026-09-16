@@ -22,6 +22,7 @@ const CHAIN_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 
 async fn two_turns_concurrency_two_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/tool_call_turns", |client| async move {
         let agent = client
+            .openai
             .agent(openai::GPT_4O)
             .name("golden")
             .preamble(CHAIN_PREAMBLE)

@@ -6,7 +6,7 @@ use crate::{
     streaming::{StreamFinal, ToolCallEnd, UnparseableToolInput},
 };
 
-use crate::providers::internal::adapter::AdapterOutput;
+use crate::operation::AdapterOutput;
 
 /// Provider descriptor name reported by the test doubles.
 pub const MOCK_PROVIDER: &str = "mock";

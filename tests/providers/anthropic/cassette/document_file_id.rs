@@ -345,7 +345,7 @@ async fn messages_document_file_id_roundtrip_live() {
         "document_file_id/messages_document_file_id_roundtrip_live",
         ANTHROPIC_FILES_BETA,
         |parts| async move {
-            let client = parts.client;
+            let client = parts.bound;
             let base_url = parts.base_url;
             let api_key = parts.api_key;
             with_uploaded_pdf(&base_url, &api_key, |file_id| async move {
@@ -407,7 +407,7 @@ async fn streaming_document_file_id_roundtrip_live() {
         "document_file_id/streaming_document_file_id_roundtrip_live",
         ANTHROPIC_FILES_BETA,
         |parts| async move {
-            let client = parts.client;
+            let client = parts.bound;
             let base_url = parts.base_url;
             let api_key = parts.api_key;
             with_uploaded_pdf(&base_url, &api_key, |file_id| async move {

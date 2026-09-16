@@ -41,14 +41,15 @@ use std::sync::{
 
 use anyhow::{Result, ensure};
 use futures::StreamExt as _;
-use rig::completion::{AssistantContent, CompletionModel, NormalizeCompletionResponse};
+use rig::completion::{AssistantContent, CompletionModel};
 use rig::prelude::*;
-use rig::providers::openrouter;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_reasoning_tool_order_cassette_result;
+use super::super::support::{
+    BoundOpenRouter, with_openrouter_reasoning_tool_order_cassette_result,
+};
 
 const MODEL: &str = "anthropic/claude-haiku-4.5";
 
@@ -142,7 +143,10 @@ fn prompt(shape: Shape) -> &'static str {
     }
 }
 
-fn request(model: &openrouter::CompletionModel, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl CompletionModel + Clone),
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     let mut builder = model
         .completion_request(prompt(cell.shape))
         .preamble("Reason first, then obey the requested tool calls exactly.".to_owned())
@@ -158,16 +162,10 @@ fn request(model: &openrouter::CompletionModel, cell: Cell) -> rig::completion::
     builder.build()
 }
 
-async fn run_cell(client: openrouter::Client, cell: Cell, observed: SharedChoice) -> Result<()> {
-    let model = client.completion_model(MODEL);
+async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedChoice) -> Result<()> {
+    let model = client.completion(MODEL);
     let choice = match cell.transport {
-        Transport::Blocking => {
-            model
-                .raw_completion(request(&model, cell))
-                .await?
-                .normalize("openrouter")?
-                .choice
-        }
+        Transport::Blocking => model.completion(request(&model, cell)).await?.choice,
         Transport::Streaming => {
             let raw = model.stream(request(&model, cell)).await?;
             let mut stream = raw;
@@ -183,7 +181,7 @@ async fn run_cell(client: openrouter::Client, cell: Cell, observed: SharedChoice
 }
 
 async fn run_signed_agent(
-    client: openrouter::Client,
+    client: BoundOpenRouter,
     transport: Transport,
     invocations: Arc<AtomicUsize>,
 ) -> Result<()> {

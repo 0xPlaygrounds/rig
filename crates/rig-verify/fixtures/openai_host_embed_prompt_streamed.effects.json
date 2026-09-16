@@ -1598,16 +1598,15 @@
             ],
             "usage": {
               "input_tokens": 8,
+              "output_tokens": 0,
               "total_tokens": 8
             },
             "provider": "openai",
             "model": "text-embedding-3-small",
             "provider_request_id": "req_REDACTED_1",
             "raw": {
-              "object": "list",
               "data": [
                 {
-                  "object": "embedding",
                   "embedding": [
                     0.022735595703125,
                     0.0142059326171875,
@@ -3146,10 +3145,12 @@
                     0.0204315185546875,
                     -0.0026149749755859375
                   ],
-                  "index": 0
+                  "index": 0,
+                  "object": "embedding"
                 }
               ],
               "model": "text-embedding-3-small",
+              "object": "list",
               "usage": {
                 "prompt_tokens": 8,
                 "total_tokens": 8

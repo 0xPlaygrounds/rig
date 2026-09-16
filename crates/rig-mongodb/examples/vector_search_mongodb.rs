@@ -9,9 +9,9 @@ use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 use std::env;
 
-use rig_core::client::EmbeddingsClient;
 use rig_core::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai::Client, vector_store::VectorStoreIndex,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai::wire::OpenAI,
+    vector_store::VectorStoreIndex,
 };
 use rig_mongodb::{MongoDbVectorIndex, SearchParams};
 
@@ -49,8 +49,8 @@ where
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client
-    let openai_client = Client::from_env()?;
+    // Bind the OpenAI embeddings endpoint
+    let openai_client = OpenAI::from_env()?.bound()?;
 
     // Initialize MongoDB client
     let mongodb_connection_string = env::var("MONGODB_CONNECTION_STRING")?;
@@ -64,7 +64,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .collection("context");
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let words = vec![
         Word {

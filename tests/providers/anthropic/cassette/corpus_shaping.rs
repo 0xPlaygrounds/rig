@@ -237,7 +237,7 @@ async fn route_on_first_turn_effect_log_is_the_golden_fixture() {
             let agent = client
                 .agent(CLAUDE_SONNET_4_6)
                 .name("golden")
-                .model_route("fast", client.completion_model(CLAUDE_HAIKU_4_5))
+                .model_route("fast", client.completion(CLAUDE_HAIKU_4_5))
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(Adder)
@@ -271,7 +271,7 @@ async fn late_route_effect_log_is_the_golden_fixture() {
             .add_hook(SelectLate)
             .record_effects()
             .build();
-        agent.register_model(LATE_ROUTE, client.completion_model(CLAUDE_HAIKU_4_5));
+        agent.register_model(LATE_ROUTE, client.completion(CLAUDE_HAIKU_4_5));
         let output = answer(&agent, ADD_PROMPT).await;
         assert!(output.contains("42"), "{output}");
         let log = agent.take_effect_log().expect("recording");

@@ -109,8 +109,8 @@ fn portable_contract_paths_resolve() {
     assert_portable_facade::<PortableAdder>();
 }
 
-/// A single `use rig::prelude::*` provides `completion_model`,
-/// `agent`, and `extractor` — the full pre-split client surface from one import.
+/// A single `use rig::prelude::*` provides `bound`, `completion`, `agent` and
+/// `extractor` — the whole construction surface from one import.
 #[test]
 fn completion_client_single_import_surface() {
     use rig::prelude::*;
@@ -120,34 +120,43 @@ fn completion_client_single_import_surface() {
         value: String,
     }
 
-    // `openai::Client::new` builds without any network call, so the three
-    // builders reachable through the single `rig::prelude::*` import each run
-    // to completion offline. A regression in any builder itself (not merely its
-    // signature) now fails this test, unlike the previous compile-only check.
-    let client = rig::providers::openai::Client::new("test-key").expect("client builds");
-    let _model = client.completion_model("gpt-4o");
-    let _agent = client.agent("gpt-4o").build();
-    let _extractor = client.extractor::<Extracted>("gpt-4o").build();
+    // Binding a provider config to the bundled transport performs no network
+    // call, so all four spellings reachable through the single
+    // `rig::prelude::*` import run to completion offline. A regression in any
+    // of them fails here, not merely a signature change.
+    let bound = rig::providers::openai::wire::OpenAI::with_key(
+        &rig::providers::openai::wire::OPENAI,
+        "test-key",
+    )
+    .bound()
+    .expect("the bundled transport builds");
+    let _model = bound.completion("gpt-4o");
+    let _agent = bound.agent("gpt-4o").build();
+    let _extractor = bound.extractor::<Extracted>("gpt-4o").build();
 }
 
-/// The explicit facade imports `rig::client::{CompletionClient, AgentClientExt,
-/// DefaultTransportClient}` expose the same surface as the prelude (`new`,
-/// `completion_model`, `agent`, `extractor`) without depending on `rig-core`.
-/// Guards the restored `rig::client::CompletionClient` path (documented in
-/// `README.md` / `MIGRATING.md`) and the bundled-transport constructor.
+/// The same surface is reachable through explicit imports, without the
+/// prelude glob: `Bind`/`DefaultTransport` for construction and
+/// `AgentProviderExt` for the agent sugar.
 #[test]
-fn completion_client_explicit_facade_import_surface() {
-    use rig::client::{AgentClientExt, CompletionClient, DefaultTransportClient};
+fn completion_provider_explicit_facade_import_surface() {
+    use rig::client::AgentProviderExt;
+    use rig_reqwest::client::DefaultTransport;
 
     #[derive(serde::Deserialize, serde::Serialize, schemars::JsonSchema)]
     struct Extracted {
         value: String,
     }
 
-    let client = rig::providers::openai::Client::new("test-key").expect("client builds");
-    let _model = client.completion_model("gpt-4o"); // CompletionClient
-    let _agent = client.agent("gpt-4o").build(); // AgentClientExt
-    let _extractor = client.extractor::<Extracted>("gpt-4o").build(); // AgentClientExt
+    let bound = rig::providers::openai::wire::OpenAI::with_key(
+        &rig::providers::openai::wire::OPENAI,
+        "test-key",
+    )
+    .bound() // DefaultTransport
+    .expect("the bundled transport builds");
+    let _model = bound.completion("gpt-4o"); // Bound::completion
+    let _agent = bound.agent("gpt-4o").build(); // AgentProviderExt
+    let _extractor = bound.extractor::<Extracted>("gpt-4o").build(); // AgentProviderExt
 }
 
 /// `use rig::prelude::*` still brings the classic contextual `Tool` and

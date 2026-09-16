@@ -164,78 +164,60 @@ fn response_parsing_rejects_text_only_response() {
     assert!(err.to_string().contains("did not include image data"));
 }
 
+/// A blocked prompt is a *successful* `generateContent` document: no
+/// candidates, only `promptFeedback`. Every field of the response type is
+/// optional or defaulted so that a reply carrying nothing but the block
+/// still parses and the block can be reported, instead of the parse failing
+/// and hiding the reason.
 #[test]
-fn api_response_parsing_keeps_blocked_prompt_as_success() {
-    let response: ApiResponse<GenerateContentResponse> = serde_json::from_value(json!({
+fn a_blocked_prompt_reply_parses_as_a_candidate_less_response() {
+    let response: GenerateContentResponse = serde_json::from_value(json!({
         "promptFeedback": {
             "blockReason": "SAFETY"
         }
     }))
     .expect("blocked prompt response should deserialize");
 
-    match response {
-        ApiResponse::Ok(response) => assert!(response.candidates.is_empty()),
-        ApiResponse::Err(err) => panic!("expected success envelope, got error: {err:?}"),
-    }
+    assert!(response.candidates.is_empty());
+    assert!(response.prompt_feedback.is_some());
 }
 
-#[tokio::test]
-async fn image_generation_non_success_preserves_status_and_body() {
-    use crate::client::image_generation::ImageGenerationClient;
-    use crate::image_generation::ImageGenerationModel as _;
-    use crate::test_utils::RecordingHttpClient;
+/// The 200 reply recorded in
+/// `tests/cassettes/gemini/image_generation/nano_banana_image_generation_smoke.yaml`,
+/// verbatim except for `inlineData.data`: the recorded PNG is 1 MB of base64,
+/// so only its first four base64 groups — the PNG signature and the start of
+/// the `IHDR` chunk — are kept here.
+const RECORDED_IMAGE_REPLY: &str = r#"{"candidates":[{"content":{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAA","mimeType":"image/png"}}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-image","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1290,"candidatesTokensDetails":[{"modality":"IMAGE","tokenCount":1290}],"promptTokenCount":15,"promptTokensDetails":[{"modality":"TEXT","tokenCount":15}],"serviceTier":"standard","totalTokenCount":1305}}"#;
 
-    let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
-    let http_client =
-        RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.image_generation_model(GEMINI_2_5_FLASH_IMAGE);
-
-    let error = model
-        .image_generation(image_generation_request("draw a cat"))
-        .await
-        .expect_err("should fail with non-success status");
-
-    assert!(matches!(error, ImageGenerationError::ProviderResponse(_)));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::SERVICE_UNAVAILABLE)
+#[test]
+fn the_wire_decodes_a_recorded_image_reply() {
+    let wire = Images::new(
+        crate::providers::gemini::Gemini::new("test-key"),
+        GEMINI_2_5_FLASH_IMAGE,
     );
-    assert_eq!(error.provider_response_body(), Some(body));
-}
 
-#[tokio::test]
-async fn image_generation_2xx_error_envelope_preserves_status_and_body() {
-    use crate::client::image_generation::ImageGenerationClient;
-    use crate::image_generation::ImageGenerationModel as _;
-    use crate::test_utils::RecordingHttpClient;
+    let mut driver = crate::driver::WireDriver::<ImageGeneration, _>::new(
+        wire.decoder(crate::wire::Mode::Unary),
+    );
+    driver.push(WireFrame::Text(RECORDED_IMAGE_REPLY.to_string()));
+    let decoded: Vec<_> = driver.drain().collect();
 
-    // 200 OK carrying Gemini's standard nested error envelope. The error
-    // variant must be tried first because all identifying fields in
-    // `GenerateContentResponse` can be omitted.
-    let body = r#"{"error":{"code":503,"message":"boom","status":"UNAVAILABLE"}}"#;
-    let http_client = RecordingHttpClient::new(body); // 200 OK
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.image_generation_model(GEMINI_2_5_FLASH_IMAGE);
-
-    let error = model
-        .image_generation(image_generation_request("draw a cat"))
-        .await
-        .expect_err("should fail with provider error envelope");
-
-    match &error {
-        ImageGenerationError::ProviderResponse(stored) => {
-            assert_eq!(stored.body, body);
-            assert_eq!(stored.status, Some(http::StatusCode::OK));
-        }
-        other => panic!("expected ProviderResponse, got {other:?}"),
-    }
+    let [Ok(response)] = decoded.as_slice() else {
+        panic!("one whole reply decodes to one response, got {decoded:?}")
+    };
+    // The base64 the cassette carries, decoded: `\x89PNG\r\n\x1a\n` then the
+    // 13-byte-length `IHDR` chunk header.
+    assert_eq!(
+        response.image,
+        [
+            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H',
+            b'D', b'R', 0x00, 0x00
+        ]
+    );
+    assert_eq!(response.provider, super::super::completion::PROVIDER_NAME);
+    assert_eq!(response.model.as_deref(), Some("gemini-2.5-flash-image"));
+    assert_eq!(response.response_id.as_deref(), Some("id_REDACTED_1"));
+    assert_eq!(response.usage.input_tokens, Some(15));
+    assert_eq!(response.usage.output_tokens, Some(1290));
+    assert_eq!(response.usage.total_tokens, Some(1305));
 }

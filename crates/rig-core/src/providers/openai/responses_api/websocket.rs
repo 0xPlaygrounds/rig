@@ -7,21 +7,25 @@
 //! The session is transport-agnostic: it drives a
 //! [`crate::ws_client::WebSocketConnection`] supplied by a
 //! backend such as `rig-tungstenite`, exactly as the rest of this provider
-//! drives an [`HttpClientExt`]. The protocol — the event envelopes, the
-//! `previous_response_id` chaining, the terminal-record rules — lives here with
-//! the provider rather than in whichever crate owns the socket library.
+//! drives an [`HttpClientExt`](crate::http_client::HttpClientExt). The
+//! protocol — the event envelopes, the `previous_response_id` chaining, the
+//! terminal-record rules — lives here with the provider rather than in
+//! whichever crate owns the socket library.
 
-use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
-use crate::http_client::{self, HttpClientExt, NoBody};
-use crate::providers::internal::adapter::{AdapterOutput, TriagedFrame, triage_frame};
-use crate::providers::openai::Client as OpenAIClient;
+use crate::driver::{Bound, WireDriver};
+use crate::driver::{TriagedFrame, triage_frame};
+use crate::http_client::{self, NoBody};
+use crate::operation::Completion;
 use crate::providers::openai::responses_api::streaming::{
-    ItemChunk, RawChoiceAccumulator, ResponseChunk, ResponseChunkKind, ResponsesStreamOptions,
-    StreamingCompletionChunk, classify_responses_frame, completion_response_from_stream_events,
+    ItemChunk, ResponseChunk, ResponseChunkKind, ResponsesDecoder, StreamingCompletionChunk,
+    classify_responses_frame,
 };
+use crate::providers::openai::responses_api::wire::Responses;
 use crate::streaming::StreamEvent;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wire::WireFrame;
+use crate::wire::{Fold, Mode, Operation, Reply, Wire};
 use crate::ws_client::{
     BoxedWebSocketConnection, ConnectOptions, Frame, WebSocketClientExt, WebSocketConnection,
 };
@@ -29,9 +33,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::time::Duration;
 
-use crate::providers::openai::responses_api::{
-    CompletionResponse, ResponseStatus, ResponsesCompletionModel,
-};
+use crate::providers::openai::responses_api::{CompletionResponse, ResponseStatus};
 
 /// The websocket endpoint's path, appended to the client's configured base URL.
 const WEBSOCKET_PATH: &str = "responses";
@@ -39,10 +41,10 @@ const WEBSOCKET_PATH: &str = "responses";
 const DEFAULT_CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// The transport request-id header this endpoint reports, shared with the
-/// HTTP twins through [`ResponsesProviderExt::REQUEST_ID_HEADER`](crate::providers::openai::responses_api::ResponsesProviderExt::REQUEST_ID_HEADER) — the
-/// websocket upgrade is answered by the same service and reports the same id.
+/// HTTP twin through the dialect — the websocket upgrade is answered by the
+/// same service and reports the same id.
 const REQUEST_ID_HEADER: Option<&'static str> =
-    <crate::providers::openai::OpenAIResponses as crate::providers::openai::responses_api::ResponsesProviderExt>::REQUEST_ID_HEADER;
+    crate::providers::openai::wire::OPENAI.request_id_header;
 
 /// Options for a `response.create` message sent over OpenAI WebSocket mode.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -212,16 +214,16 @@ impl ResponsesWebSocketEvent {
 ///
 /// The default builder applies a 30 second connection timeout and leaves the
 /// per-event timeout disabled.
-pub struct ResponsesWebSocketSessionBuilder<H = crate::http_client::BoxedHttpClient> {
-    model: ResponsesCompletionModel<H>,
+pub struct ResponsesWebSocketSessionBuilder {
+    wire: Responses,
     connect_timeout: Option<Duration>,
     event_timeout: Option<Duration>,
 }
 
-impl<H> ResponsesWebSocketSessionBuilder<H> {
-    pub(crate) fn new(model: ResponsesCompletionModel<H>) -> Self {
+impl ResponsesWebSocketSessionBuilder {
+    pub(crate) fn new(wire: Responses) -> Self {
         Self {
-            model,
+            wire,
             connect_timeout: Some(DEFAULT_CONNECT_TIMEOUT),
             event_timeout: None,
         }
@@ -256,10 +258,7 @@ impl<H> ResponsesWebSocketSessionBuilder<H> {
     }
 }
 
-impl<H> ResponsesWebSocketSessionBuilder<H>
-where
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
+impl ResponsesWebSocketSessionBuilder {
     /// Opens the websocket session over `backend`, using the configured
     /// builder options.
     ///
@@ -270,13 +269,13 @@ where
     pub async fn connect_with<W>(
         self,
         backend: &W,
-    ) -> Result<ResponsesWebSocketSession<H>, CompletionError>
+    ) -> Result<ResponsesWebSocketSession, CompletionError>
     where
         W: WebSocketClientExt,
     {
         ResponsesWebSocketSession::connect_with_timeouts(
             backend,
-            self.model,
+            self.wire,
             self.connect_timeout,
             self.event_timeout,
         )
@@ -292,8 +291,8 @@ where
 ///
 /// Call [`ResponsesWebSocketSession::close`] when you are finished with the
 /// session so the websocket can complete a close handshake cleanly.
-pub struct ResponsesWebSocketSession<H = crate::http_client::BoxedHttpClient> {
-    model: ResponsesCompletionModel<H>,
+pub struct ResponsesWebSocketSession {
+    wire: Responses,
     previous_response_id: Option<String>,
     pending_done_response_id: Option<String>,
     socket: BoxedWebSocketConnection,
@@ -303,26 +302,23 @@ pub struct ResponsesWebSocketSession<H = crate::http_client::BoxedHttpClient> {
     failed: bool,
 }
 
-impl<H> ResponsesWebSocketSession<H>
-where
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
+impl ResponsesWebSocketSession {
     async fn connect_with_timeouts<W>(
         backend: &W,
-        model: ResponsesCompletionModel<H>,
+        wire: Responses,
         connect_timeout: Option<Duration>,
         event_timeout: Option<Duration>,
     ) -> Result<Self, CompletionError>
     where
         W: WebSocketClientExt,
     {
-        let request = websocket_request(model.client().base_url(), model.client().headers())?;
+        let request = websocket_request(&wire)?;
         let socket = backend
             .connect(request, ConnectOptions::new().with_timeout(connect_timeout))
             .await
             .map_err(websocket_provider_error)?;
 
-        Ok(Self::from_connection(model, socket, event_timeout))
+        Ok(Self::from_connection(wire, socket, event_timeout))
     }
 
     /// Build a session over an already-open connection.
@@ -333,12 +329,12 @@ where
     /// [`ResponsesWebSocketSessionBuilder::event_timeout`]; `None` waits
     /// indefinitely for each event.
     pub fn from_connection(
-        model: ResponsesCompletionModel<H>,
+        wire: Responses,
         connection: BoxedWebSocketConnection,
         event_timeout: Option<Duration>,
     ) -> Self {
         Self {
-            model,
+            wire,
             previous_response_id: None,
             pending_done_response_id: None,
             socket: connection,
@@ -389,8 +385,8 @@ where
         // The session takes a raw `CompletionRequest`, bypassing the builder's
         // `send`/`stream` — so this is a direct-to-model surface and validates
         // here, per `validate_message_content`'s own contract. Every session
-        // entry point (`send`, `warmup`, `completion`, `raw_completion`)
-        // funnels through this method.
+        // entry point (`send`, `warmup`, `completion`) funnels through this
+        // method.
         completion_request.validate_message_content()?;
 
         let payload = ResponsesWebSocketClientEvent {
@@ -417,6 +413,18 @@ where
 
     /// Reads the next server event for the current in-flight turn.
     pub async fn next_event(&mut self) -> Result<ResponsesWebSocketEvent, CompletionError> {
+        self.next_event_with_payload().await.map(|(event, _)| event)
+    }
+
+    /// [`Self::next_event`], keeping the frame's payload for the decoder.
+    ///
+    /// The session's own view of an event (the turn lifecycle: which
+    /// response id, whether the turn ended) is not the content decode — that
+    /// is the wire's [`ResponsesDecoder`], which the turn loop feeds these
+    /// bytes to.
+    async fn next_event_with_payload(
+        &mut self,
+    ) -> Result<(ResponsesWebSocketEvent, String), CompletionError> {
         self.ensure_open()?;
 
         if !self.in_flight {
@@ -457,7 +465,7 @@ where
                 }
             }
             self.update_state_for_event(&event);
-            return Ok(event);
+            return Ok((event, payload));
         }
     }
 
@@ -476,39 +484,23 @@ where
     }
 
     /// Sends a completion turn and collects the final OpenAI response,
-    /// normalized.
-    ///
-    /// Use [`ResponsesWebSocketSession::raw_completion`] when the provider's own
-    /// wire response is needed.
+    /// normalized; its `raw` is the provider's own terminal response object.
     pub async fn completion(
         &mut self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<completion::CompletionResponse, CompletionError> {
-        let provider = self.model.provider_name();
+        let provider = self.wire.name().to_owned();
         self.send(completion_request).await?;
         let (response, events) = self.wait_for_terminal_response().await?;
-        // Replay the accumulated deltas through the shared normalization
-        // pipeline so streamed partial output survives even when the terminal
-        // body's `output` is empty (e.g. an incomplete turn). A turn that
-        // carried no deltas (e.g. a `response.done`-only turn) falls back to
-        // normalizing the terminal body itself.
-        match completion_response_from_stream_events(provider, events, &response).await? {
-            Some(normalized) => Ok(normalized),
-            None => response.normalize(provider),
+        let folded = fold_events(&provider, events, &response)?;
+        if folded.choice.is_empty() {
+            // The turn carried no content events but its terminal body
+            // restates `output[]` (the shape a warmed-up or replayed session
+            // answers with): fold that body, through the same decoder's
+            // unary variant.
+            return super::wire::fold_body(&provider, response);
         }
-    }
-
-    /// Sends a completion turn and returns the provider's own wire response.
-    ///
-    /// Shares the send/receive path with
-    /// [`ResponsesWebSocketSession::completion`], which calls it and then
-    /// applies the provider-local mapping — one websocket turn either way.
-    pub async fn raw_completion(
-        &mut self,
-        completion_request: crate::completion::CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        self.send(completion_request).await?;
-        self.wait_for_completed_response().await
+        Ok(folded)
     }
 
     /// Closes the websocket connection.
@@ -533,7 +525,7 @@ where
         &self,
         completion_request: crate::completion::CompletionRequest,
     ) -> Result<crate::providers::openai::responses_api::CompletionRequest, CompletionError> {
-        let mut request = self.model.create_completion_request(completion_request)?;
+        let mut request = self.wire.responses_request(completion_request, false)?;
 
         // WebSocket mode is always event-driven, so these HTTP/SSE-specific flags
         // are ignored by the provider and only add noise to the payload.
@@ -554,51 +546,84 @@ where
         Ok(self.wait_for_terminal_response().await?.0)
     }
 
-    /// Drives the shared [`RawChoiceAccumulator`] over the websocket events —
-    /// the same decode state machine the SSE path uses, fed by a different
-    /// transport — so streamed deltas survive alongside the terminal body.
+    /// Drives the wire's own [`ResponsesDecoder`] over the websocket
+    /// messages — the same decoder the SSE stream and the unary body go
+    /// through, fed by a different transport — so streamed deltas survive
+    /// alongside the terminal body.
     ///
     /// **A failed turn discards the events collected so far, deliberately
-    /// (#2258 G3).** Every error exit below — the `?` on `next_event()`, the
-    /// `response.done`-without-a-body branch, and the provider `error` event —
-    /// returns `Err` and drops `accumulator`/`out` with whatever text,
-    /// reasoning and tool calls had already arrived.
+    /// (#2258 G3).** Every error exit below — the `?` on
+    /// `next_event_with_payload()`, the `response.done`-without-a-body
+    /// branch, and the provider `error` event — returns `Err` and drops the
+    /// driver with whatever text, reasoning and tool calls had arrived.
     ///
-    /// That is not a divergence from the SSE side: the right comparison is the
-    /// *buffered* SSE path, `run_wire_buffered`, which likewise fails the whole
-    /// operation on the first `Err` rather than returning partial content plus
-    /// an error. Only the *live* SSE surface can do better, and only because it
-    /// is a `Stream`: it yields the partial items first and the `Err` as a
-    /// later element. This session exposes a unary surface —
-    /// [`completion()`](Self::wait_for_completed_response) /
-    /// `raw_completion()` return one `Result<CompletionResponse, _>` — and a
-    /// unary return type cannot express partial-content-plus-error without
-    /// inventing a second channel. Keeping the failed turn's fragments would
-    /// mean returning a `CompletionResponse` that never completed, which is the
-    /// exact fabrication the terminal-record rules exist to prevent.
+    /// That is not a divergence from the SSE side: the right comparison is a
+    /// buffered (unary) reply, which likewise fails the whole operation on
+    /// the first `Err` rather than returning partial content plus an error.
+    /// Only the *live* SSE surface can do better, and only because it is a
+    /// `Stream`: it yields the partial items first and the `Err` as a later
+    /// element. This session exposes a unary surface —
+    /// [`completion()`](Self::completion) returns one
+    /// `Result<CompletionResponse, _>` — and a unary return type
+    /// cannot express partial-content-plus-error without inventing a second
+    /// channel. Keeping the failed turn's fragments would mean returning a
+    /// `CompletionResponse` that never completed, which is the exact
+    /// fabrication the terminal-record rules exist to prevent.
     ///
     /// If a caller needs the partial content of a failed websocket turn, the
     /// fix is a streaming websocket surface, not a partial unary response.
     async fn wait_for_terminal_response(
         &mut self,
     ) -> Result<(CompletionResponse, Vec<StreamEvent>), CompletionError> {
-        let mut accumulator = RawChoiceAccumulator::new(self.model.provider_name(), None);
-        let mut out = AdapterOutput::new();
+        // A session is a stream of messages, not a buffered reply: the
+        // decoder is fed the same deltas the SSE transport feeds it, one
+        // message at a time, and this loop only ever reaches `finish()`
+        // after the provider's own terminal event. So its EOF can never be
+        // "the provider answered with nothing" — the state a whole reply's
+        // EOF reports — and the mode it is built for is `Streaming` even
+        // though the surface above it returns one response.
+        let mut driver = WireDriver::<Completion, _>::new(self.wire.decoder(Mode::Streaming));
+        let mut events = Vec::new();
         loop {
-            match self.next_event().await? {
+            let (event, payload) = self.next_event_with_payload().await?;
+            match event {
                 ResponsesWebSocketEvent::Response(chunk) => {
-                    if matches!(
+                    let terminal = matches!(
                         chunk.kind,
                         ResponseChunkKind::ResponseCompleted
                             | ResponseChunkKind::ResponseFailed
                             | ResponseChunkKind::ResponseIncomplete
-                    ) {
-                        return finish_terminal_response(accumulator, chunk.response, out);
+                    );
+                    if !terminal {
+                        drain(&mut driver, &mut events, payload)?;
+                        continue;
                     }
+                    // A failed turn is reported from its own envelope; only a
+                    // completed or incomplete one reaches the decoder, whose
+                    // terminal record closes the turn.
+                    let response = terminal_response_result(chunk.response)?;
+                    drain(&mut driver, &mut events, payload)?;
+                    driver.finish();
+                    for item in driver.drain() {
+                        events.push(item?);
+                    }
+                    return Ok((response, events));
                 }
                 ResponsesWebSocketEvent::Done(done) => {
                     if let Some(response) = done.as_completion_response() {
-                        return finish_terminal_response(accumulator, response, out);
+                        // A failed turn is reported from its own envelope, as
+                        // on the `response.failed` path.
+                        let response = terminal_response_result(response)?;
+                        // `response.done` carries the response object itself,
+                        // which is the decoder's unary shape: hand it over as
+                        // the frame it is.
+                        let body = serde_json::to_string(&done.response)?;
+                        drain(&mut driver, &mut events, body)?;
+                        driver.finish();
+                        for item in driver.drain() {
+                            events.push(item?);
+                        }
+                        return Ok((response, events));
                     }
 
                     let message = if let Some(response_id) = done.response_id() {
@@ -619,18 +644,11 @@ where
                     // the websocket stream, so status: None.
                     return Err(provider_error_from_event(&error));
                 }
-                ResponsesWebSocketEvent::Item(chunk) => {
-                    accumulator.decode_item_chunk(
-                        chunk,
-                        ResponsesStreamOptions::strict(),
-                        &mut out,
-                    );
-                }
-                ResponsesWebSocketEvent::Unknown(value) => {
-                    // Semantic skip, raw passthrough: the accumulator never
-                    // sees the frame, but the streaming surface still yields
-                    // it verbatim.
-                    out.unknown(value);
+                // Every other message — deltas, completed items, and frames
+                // this client does not model (whose raw payload the decoder
+                // forwards on the passthrough channel) — is the decoder's.
+                ResponsesWebSocketEvent::Item(_) | ResponsesWebSocketEvent::Unknown(_) => {
+                    drain(&mut driver, &mut events, payload)?;
                 }
             }
         }
@@ -734,7 +752,7 @@ where
     }
 }
 
-impl<H> Drop for ResponsesWebSocketSession<H> {
+impl Drop for ResponsesWebSocketSession {
     fn drop(&mut self) {
         if !self.closed {
             tracing::warn!(
@@ -746,31 +764,41 @@ impl<H> Drop for ResponsesWebSocketSession<H> {
     }
 }
 
-/// Records the terminal event into the accumulator and drains it, so the
-/// events end with the terminal record exactly as the SSE path produces them.
-/// This surface is unary, so an in-band error item the accumulator pushed
-/// (a terminal record that failed to serialize) fails the turn.
-fn finish_terminal_response(
-    mut accumulator: RawChoiceAccumulator,
-    response: CompletionResponse,
-    mut out: AdapterOutput,
-) -> Result<(CompletionResponse, Vec<StreamEvent>), CompletionError> {
-    let response = terminal_response_result(response)?;
-    // Only completed/incomplete get through `terminal_response_result`, so the
-    // accumulator's failed-event error mapping (which needs the raw event
-    // bytes this path no longer has) is unreachable here.
-    let kind = if matches!(response.status, ResponseStatus::Incomplete) {
-        ResponseChunkKind::ResponseIncomplete
-    } else {
-        ResponseChunkKind::ResponseCompleted
-    };
-    accumulator.record_response_chunk(kind, response.clone(), "")?;
-    accumulator.finish(&mut out);
-    let events = out
-        .into_items()
-        .into_iter()
-        .collect::<Result<Vec<_>, _>>()?;
-    Ok((response, events))
+/// Feed one message to the wire's decoder and take what it produced.
+///
+/// This surface is unary, so an `Err` item the decoder pushed (a corrupt
+/// frame, a terminal record that failed to serialize) fails the turn, as it
+/// would on a buffered HTTP reply.
+fn drain(
+    driver: &mut WireDriver<Completion, ResponsesDecoder>,
+    events: &mut Vec<StreamEvent>,
+    payload: String,
+) -> Result<(), CompletionError> {
+    driver.push(WireFrame::Text(payload));
+    for item in driver.drain() {
+        events.push(item?);
+    }
+    Ok(())
+}
+
+/// Fold one turn's events into the response — the same fold
+/// [`crate::driver::call`] applies to a unary reply, so a websocket turn and
+/// an HTTP one of the same content agree.
+fn fold_events(
+    provider: &str,
+    events: Vec<StreamEvent>,
+    response: &CompletionResponse,
+) -> Result<completion::CompletionResponse, CompletionError> {
+    let mut fold = <Completion as Operation>::Fold::default();
+    for event in events {
+        fold.absorb(event)?;
+    }
+    fold.finish(Reply {
+        provider: provider.to_owned(),
+        raw: serde_json::to_value(response)?,
+        // The websocket carries no reply headers past the handshake.
+        provider_request_id: None,
+    })
 }
 
 fn terminal_response_result(
@@ -890,19 +918,15 @@ fn websocket_frame_to_text(frame: Frame) -> Result<Option<String>, CompletionErr
 ///
 /// The backend supplies the websocket-specific handshake headers; this only
 /// states where to connect and who is connecting.
-fn websocket_request(
-    base_url: &str,
-    headers: &http::HeaderMap,
-) -> Result<http_client::Request<NoBody>, CompletionError> {
-    let url = crate::ws_client::websocket_url(base_url, WEBSOCKET_PATH)
+fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, CompletionError> {
+    let url = crate::ws_client::websocket_url(&wire.provider.base_url, WEBSOCKET_PATH)
         .map_err(CompletionError::HttpError)?;
 
-    let mut request = http_client::Request::builder()
-        .method(http::Method::GET)
-        .uri(url);
-    if let Some(request_headers) = request.headers_mut() {
-        *request_headers = headers.clone();
-    }
+    let request = wire.provider.headers(
+        http_client::Request::builder()
+            .method(http::Method::GET)
+            .uri(url),
+    );
 
     request.body(NoBody).map_err(|error| {
         CompletionError::ProviderError(format!("Failed to build OpenAI websocket request: {error}"))
@@ -933,57 +957,45 @@ fn websocket_provider_error(error: http_client::Error) -> CompletionError {
     CompletionError::from_transport_error(error).with_provider_request_id(provider_request_id)
 }
 
-/// OpenAI Responses websocket mode on an OpenAI client.
+/// OpenAI Responses websocket mode on a bound [`Responses`] wire.
 ///
-/// `H` is the client's HTTP transport, used for the completion model the
-/// session wraps; the websocket itself comes from the `W` backend passed at
-/// connect time. A caller using the bundled backend gets a no-argument
-/// `responses_websocket(model)` from that crate's own extension trait, the
-/// way `DefaultTransportClient` supplies `from_env()` over the bundled HTTP
-/// transport. Bring this trait into scope with `use rig::prelude::*`.
-pub trait ResponsesWebSocketExt<H> {
-    /// Start configuring a websocket session for `model`.
-    fn responses_websocket_builder(
-        &self,
-        model: impl Into<String>,
-    ) -> ResponsesWebSocketSessionBuilder<H>;
+/// The wire says who to talk to and which model to address; the websocket
+/// itself comes from the `W` backend passed at connect time, exactly as the
+/// HTTP half takes its transport from the caller. A caller using the bundled
+/// backend gets a no-argument `responses_websocket()` from that crate's own
+/// extension trait, the way `DefaultTransportClient` supplies `from_env()`
+/// over the bundled HTTP transport. Bring this trait into scope with
+/// `use rig::prelude::*`.
+pub trait ResponsesWebSocketExt {
+    /// Start configuring a websocket session for this wire's model.
+    fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder;
 
-    /// Open a websocket session for `model` over `backend`, with default
-    /// options.
+    /// Open a websocket session over `backend`, with default options.
     fn responses_websocket_with<W>(
         &self,
-        model: impl Into<String>,
         backend: &W,
-    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession<H>, CompletionError>>
+    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, CompletionError>>
     + WasmCompatSend
     where
         W: WebSocketClientExt + WasmCompatSync,
         Self: WasmCompatSync;
 }
 
-impl<H> ResponsesWebSocketExt<H> for OpenAIClient<H>
-where
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    fn responses_websocket_builder(
-        &self,
-        model: impl Into<String>,
-    ) -> ResponsesWebSocketSessionBuilder<H> {
-        use crate::client::CompletionClient as _;
-        ResponsesWebSocketSessionBuilder::new(self.completion_model(model))
+impl<H> ResponsesWebSocketExt for Bound<Responses, H> {
+    fn responses_websocket_builder(&self) -> ResponsesWebSocketSessionBuilder {
+        ResponsesWebSocketSessionBuilder::new(self.wire.clone())
     }
 
     fn responses_websocket_with<W>(
         &self,
-        model: impl Into<String>,
         backend: &W,
-    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession<H>, CompletionError>>
+    ) -> impl std::future::Future<Output = Result<ResponsesWebSocketSession, CompletionError>>
     + WasmCompatSend
     where
         W: WebSocketClientExt + WasmCompatSync,
         Self: WasmCompatSync,
     {
-        let builder = self.responses_websocket_builder(model);
+        let builder = self.responses_websocket_builder();
         async move { builder.connect_with(backend).await }
     }
 }
@@ -995,14 +1007,8 @@ where
 #[cfg(not(target_family = "wasm"))]
 const _: fn() = || {
     fn assert_send_sync<T: Send + Sync>() {}
-    fn probe<H>()
-    where
-        H: HttpClientExt + Clone + Send + Sync + 'static,
-    {
-        assert_send_sync::<ResponsesWebSocketSession<H>>();
-        assert_send_sync::<ResponsesWebSocketSessionBuilder<H>>();
-    }
-    let _ = probe::<crate::http_client::BoxedHttpClient>;
+    assert_send_sync::<ResponsesWebSocketSession>();
+    assert_send_sync::<ResponsesWebSocketSessionBuilder>();
 };
 
 #[cfg(test)]

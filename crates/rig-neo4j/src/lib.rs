@@ -42,7 +42,7 @@
 //! ```ignore
 //! use rig_neo4j::{vector_index::*, Neo4jClient};
 //! use neo4rs::ConfigBuilder;
-//! use rig_core::{providers::openai::*, vector_store::VectorStoreIndex};
+//! use rig_core::{providers::openai::{self, wire::OpenAI}, vector_store::VectorStoreIndex};
 //! use rig_reqwest::prelude::*;
 //! use serde::Deserialize;
 //! use std::env;
@@ -50,8 +50,8 @@
 //! #[tokio::main]
 //! async fn main() {
 //!     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-//!     let openai_client = Client::new(&openai_api_key);
-//!     let model = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002);
+//!     let openai = OpenAI::new(&openai_api_key).bound().unwrap();
+//!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 //!
 //!
 //!     const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";

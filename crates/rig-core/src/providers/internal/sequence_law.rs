@@ -75,7 +75,7 @@ fn is_boundary_content(event: &StreamEvent) -> bool {
 
 /// Cross-frame validator state: which minted reasoning keys are open.
 #[derive(Default)]
-pub(crate) struct SequenceLaws {
+pub struct SequenceLaws {
     open_minted_reasoning: std::collections::HashSet<crate::streaming::BlockId>,
 }
 
@@ -83,7 +83,7 @@ impl SequenceLaws {
     /// Check one `interpret` batch (the `out` buffer for a single frame)
     /// against the boundary law, updating cross-frame state. Violations log
     /// always and panic only in rig's own harness builds (see `violation`).
-    pub(crate) fn check_batch(&mut self, batch: &super::adapter::AdapterOutput) {
+    pub fn check_batch(&mut self, batch: &crate::operation::AdapterOutput) {
         for item in batch.iter() {
             let Ok(choice) = item else { continue };
 

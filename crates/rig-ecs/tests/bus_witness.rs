@@ -125,8 +125,8 @@ fn empty_and_error_first_streams_keep_error_outcomes() {
 #[test]
 fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
     use rig_core::{
-        client::CompletionClient,
         completion::CompletionModel as _,
+        driver::Bind,
         observe::{AdapterContext, AdapterEvent},
         serve::adapters::CompletionAdapter,
         test_utils::RecordingHttpClient,
@@ -136,12 +136,9 @@ fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
     let http = RecordingHttpClient::new(
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
     );
-    let client = rig_core::providers::gemini::Client::builder()
-        .api_key("test-key")
-        .http_client(http.clone())
-        .build()
-        .unwrap();
-    let model = client.completion_model("test-model");
+    let model = rig_core::providers::gemini::Gemini::new("test-key")
+        .bind(http.clone())
+        .completion("test-model");
     let request = model.completion_request("identical call").build();
     register(
         &mut app,
@@ -201,9 +198,25 @@ fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
                 Some(observation)
             })
             .collect();
-        assert_eq!(facts.len(), 4);
+        // The driver's unary path frames the whole reply and drives it
+        // through the same decoder a stream would, so a buffered reply
+        // reports its EOF too: Started, Response, the provider's verdict,
+        // TransportEof over the one frame, Finished.
+        assert_eq!(
+            facts.len(),
+            5,
+            "{:#?}",
+            facts.iter().map(|f| &f.event).collect::<Vec<_>>()
+        );
         assert!(matches!(facts[0].event, AdapterEvent::Started { .. }));
-        assert!(matches!(facts[3].event, AdapterEvent::Finished { .. }));
+        assert!(matches!(
+            facts[3].event,
+            AdapterEvent::TransportEof {
+                after: 1,
+                partial_bytes: 0
+            }
+        ));
+        assert!(matches!(facts[4].event, AdapterEvent::Finished { .. }));
     }
     let parallel: Vec<_> = ["duplicate/1", "duplicate/2"]
         .into_iter()
@@ -248,7 +261,7 @@ fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
                 (o.subject.effect == Some(id)).then_some(observation)
             })
             .collect();
-        assert_eq!(facts.len(), 4);
+        assert_eq!(facts.len(), 5);
         assert!(facts.iter().all(|f| f.operation == name
             && f.attempt == Some(1)
             && f.host_attempt == Some(1.try_into().unwrap())));
@@ -1326,8 +1339,8 @@ fn despawning_a_held_intent_is_a_cancellation_not_a_release() {
 #[test]
 fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
     use rig_core::{
-        client::CompletionClient, completion::CompletionModel as _,
-        serve::adapters::CompletionAdapter, test_utils::RecordingHttpClient,
+        completion::CompletionModel as _, driver::Bind, serve::adapters::CompletionAdapter,
+        test_utils::RecordingHttpClient,
     };
     let mut app = app();
     let log = witnessed(&mut app);
@@ -1336,12 +1349,9 @@ fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
     let http = RecordingHttpClient::new(
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
     );
-    let client = rig_core::providers::gemini::Client::builder()
-        .api_key("test-key")
-        .http_client(http)
-        .build()
-        .unwrap();
-    let model = client.completion_model("test-model");
+    let model = rig_core::providers::gemini::Gemini::new("test-key")
+        .bind(http)
+        .completion("test-model");
     let request = model.completion_request("same pass").build();
     register(
         &mut app,

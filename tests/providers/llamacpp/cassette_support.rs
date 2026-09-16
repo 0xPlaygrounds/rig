@@ -7,13 +7,14 @@
 //!
 //! # One suite, one provider
 //!
-//! This suite drives `providers::llamacpp` — the provider a user reaches for.
-//! It is the merge of two suites that previously recorded the same scenarios
-//! twice, once through a bare `openai::Client` and once through the
-//! now-deleted `providers::llamafile`; 19 of the 61 fixtures were duplicates
-//! and the provider path is the copy that survived.
+//! This suite drives the `LLAMACPP` dialect of the OpenAI wire — the
+//! provider a user reaches for. It is the merge of two suites that previously
+//! recorded the same scenarios twice, once through an unconfigured OpenAI
+//! client and once through the now-deleted `providers::llamafile`; 19 of the
+//! 61 fixtures were duplicates and the provider path is the copy that
+//! survived.
 //!
-//! The bare-`openai::Client`-against-a-local-server path is still covered, by
+//! The plain-OpenAI-against-a-local-server path is still covered, by
 //! [`with_llamacpp_bare_openai_cassette`] and the cells in
 //! `cassette/bare_openai_client.rs` — deliberately small. It exists to pin
 //! what genuinely differs between the two paths (base-URL composition, the
@@ -43,12 +44,23 @@
 //! with this name and these arguments) rather than on prose.
 
 use futures::FutureExt;
-use rig::client::DefaultTransportBuilder as _;
-use rig::providers::{llamacpp, openai};
+use rig::driver::{Bind, Bound};
+use rig::http_client::{BoxedHttpClient, ReqwestClient};
+use rig::providers::openai::wire::{LLAMACPP, OpenAI, Route};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
+
+/// The llama.cpp dialect of the OpenAI configuration, bound to the bundled
+/// transport — what a cassette cell builds its models from, now that a model
+/// is a bound wire rather than a client's associated type.
+///
+/// `cassette/bare_openai_client.rs` hands out the same type holding the
+/// `OPENAI` dialect instead: after the unification the two paths differ only
+/// in the [`Dialect`](rig::providers::openai::wire::Dialect) the
+/// configuration carries, which is itself what that file measures.
+pub(super) type BoundLlamacpp = Bound<OpenAI, BoxedHttpClient>;
 
 /// The chat model the recorded cassettes were made against.
 pub(super) const CASSETTE_MODEL: &str = "Qwen3-1.7B-Q4_K_M";
@@ -84,10 +96,26 @@ fn record_upstream() -> String {
     upstream("LLAMACPP_CASSETTE_UPSTREAM", 8080)
 }
 
+/// The base URL an OpenAI-shaped configuration needs for this server.
+///
+/// `llama-server`'s OpenAI-compatible routes live under `/v1`, and the
+/// [`LLAMACPP`] dialect's own default base URL
+/// (`http://localhost:8080/v1`) carries that prefix — so a cassette proxy's
+/// root, which does not, has to be given it here.
+fn versioned(base_url: &str) -> String {
+    format!("{}/v1", base_url.trim_end_matches('/'))
+}
+
+/// A fresh bundled transport, erased — the socket every wrapper's
+/// configuration is bound to.
+fn socket() -> BoxedHttpClient {
+    BoxedHttpClient::from(ReqwestClient::default())
+}
+
 async fn llamacpp_cassette_on(
     spec: impl Into<CassetteSpec>,
     upstream: &str,
-) -> (ProviderCassette, llamacpp::Client) {
+) -> (ProviderCassette, BoundLlamacpp) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "llamacpp",
@@ -96,22 +124,22 @@ async fn llamacpp_cassette_on(
     )
     .await;
     // No credential: `llama-server` needs none unless started with
-    // `--api-key`, and the provider's default is a genuinely absent header
-    // rather than a placeholder one. The `--api-key` half is pinned by
-    // `cassette/error_matrix.rs`, which launches a server that requires it.
-    let client = llamacpp::Client::from_url_with(
-        &cassette.base_url(),
-        rig::http_client::BoxedHttpClient::from(rig::http_client::ReqwestClient::default()),
-    )
-    .expect("client should build");
+    // `--api-key`, and an empty key under the dialect's
+    // [`Auth::OptionalBearer`](rig::providers::openai::wire::Auth) is a
+    // genuinely absent header rather than a placeholder one. The `--api-key`
+    // half is pinned by `cassette/error_matrix.rs`, which launches a server
+    // that requires it.
+    let llamacpp = OpenAI::with_key(&LLAMACPP, "")
+        .with_base_url(versioned(&cassette.base_url()))
+        .bind(socket());
 
-    (cassette, client)
+    (cassette, llamacpp)
 }
 
 /// Drive a scenario against the default recording server.
 pub(super) async fn with_llamacpp_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(llamacpp::Client) -> Fut,
+    F: FnOnce(BoundLlamacpp) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = llamacpp_cassette_on(spec, &record_upstream()).await;
@@ -125,7 +153,7 @@ pub(super) async fn with_llamacpp_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(llamacpp::Client) -> Fut,
+    F: FnOnce(BoundLlamacpp) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = llamacpp_cassette_on(spec, &record_upstream()).await;
@@ -144,7 +172,7 @@ macro_rules! server_config_wrapper {
         $(#[$meta])*
         pub(super) async fn $name<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
         where
-            F: FnOnce(llamacpp::Client) -> Fut,
+            F: FnOnce(BoundLlamacpp) -> Fut,
             Fut: Future<Output = ()>,
         {
             let (cassette, client) = llamacpp_cassette_on(spec, &upstream($var, $port)).await;
@@ -265,8 +293,8 @@ pub(super) const CASSETTE_LLAMA_MODEL: &str = "Llama-3.2-3B-Instruct-Q4_K_M";
 pub(super) const CASSETTE_MISTRAL_MODEL: &str = "Mistral-Small-3.2-24B-Instruct-2506-Q4_K_M";
 pub(super) const CASSETTE_GEMMA_MODEL: &str = "gemma-3-12b-it-Q4_K_M";
 
-/// A server started with `--api-key`, driven by a client that presents the
-/// matching key.
+/// A server started with `--api-key`, driven by a configuration that
+/// presents the matching key.
 ///
 /// The key is a literal placeholder rather than a credential: it is what the
 /// recording server was started with, so record and replay send identical
@@ -276,7 +304,7 @@ pub(super) async fn with_llamacpp_api_key_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(llamacpp::Client) -> Fut,
+    F: FnOnce(BoundLlamacpp) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -286,21 +314,24 @@ pub(super) async fn with_llamacpp_api_key_cassette<F, Fut>(
         &upstream("LLAMACPP_API_KEY_UPSTREAM", 8089),
     )
     .await;
-    let client = llamacpp::Client::builder()
-        .api_key(CASSETTE_API_KEY)
-        .base_url(cassette.base_url())
-        .build()
-        .expect("client should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let llamacpp = OpenAI::with_key(&LLAMACPP, CASSETTE_API_KEY)
+        .with_base_url(versioned(&cassette.base_url()))
+        .bind(socket());
+    let result = AssertUnwindSafe(test_body(llamacpp)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
-/// The same `--api-key` server, driven by a client that presents **no** key.
+/// The same `--api-key` server, driven by a configuration that presents
+/// **no** key.
+///
+/// The default wrapper's configuration already holds an empty key, which is
+/// exactly the absent-`Authorization` request this scenario recorded, so the
+/// only difference is which server it is pointed at.
 pub(super) async fn with_llamacpp_missing_api_key_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(llamacpp::Client) -> Fut,
+    F: FnOnce(BoundLlamacpp) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) =
@@ -370,7 +401,7 @@ pub(super) async fn with_llamacpp_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(llamacpp::Client) -> Fut,
+    F: FnOnce(BoundLlamacpp) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_llamacpp_cassette(spec, test_body).await;
@@ -404,19 +435,20 @@ pub(super) async fn with_llamacpp_raw_http_cassette<F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
-/// Drive a scenario through a **bare `openai::Client`** pointed at the local
-/// server, which is what a caller does with any OpenAI-compatible server rig
-/// has no provider for.
+/// Drive a scenario through a **plain OpenAI configuration** pointed at the
+/// local server, which is what a caller does with any OpenAI-compatible
+/// server rig has no dialect for.
 ///
-/// Deliberately narrow — see this module's header. The client is given a
-/// literal placeholder key because `openai::Client` has no optional-key form
-/// and llama.cpp accepts any bearer token when it was not started with
-/// `--api-key`; that difference is itself one of the things this path pins.
+/// Deliberately narrow — see this module's header. The configuration is
+/// given a literal placeholder key because the `OPENAI` dialect authenticates
+/// with an unconditional bearer token, and llama.cpp accepts any bearer token
+/// when it was not started with `--api-key`; that difference between the two
+/// dialects is itself one of the things this path pins.
 pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(BoundLlamacpp) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -426,14 +458,14 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
         &record_upstream(),
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key("llamacpp-local")
-        // Note the `/v1`: a bare `openai::Client` composes paths straight onto
-        // its base URL, so the caller supplies the prefix that
-        // `llamacpp::Client` supplies for them.
-        .base_url(format!("{}/v1", cassette.base_url().trim_end_matches('/')))
-        .build()
-        .expect("client should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    // Note the `/v1`: the `OPENAI` dialect composes paths straight onto its
+    // base URL and its own default already carries the prefix, so a caller
+    // aiming it at `llama-server` supplies that prefix themselves — and,
+    // the dialect's flagship being `/responses`, routes it to Chat once.
+    let bare = OpenAI::new("llamacpp-local")
+        .with_base_url(versioned(&cassette.base_url()))
+        .with_route(Route::Chat)
+        .bind(socket());
+    let result = AssertUnwindSafe(test_body(bare)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }

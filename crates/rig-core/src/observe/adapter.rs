@@ -131,6 +131,15 @@ pub struct AdapterErrorEnvelope {
     pub message: Option<String>,
 }
 
+/// Deserialize one [`AdapterUsage`] counter a provider may send as a number,
+/// a string or `null`: anything that is not a `u64` stays unknown rather
+/// than failing the payload that carried it.
+pub(crate) fn lenient_count<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error> {
+    Ok(serde_json::Value::deserialize(deserializer)?.as_u64())
+}
+
 /// A provider's cumulative usage snapshot for one HTTP attempt.
 ///
 /// Missing, invalid or negative counts remain unknown. A present zero is a
@@ -153,10 +162,6 @@ pub struct AdapterUsage {
     pub tool_input_tokens: Option<u64>,
 }
 
-/// Provider-local projection, invoked only when observations are installed.
-#[derive(Clone, Copy)]
-pub(crate) struct PayloadObserver(pub fn(&[u8], &mut AdapterAttempt));
-
 /// Boundary identified by the adapter's original typed error, not its message.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -175,16 +180,6 @@ pub enum AdapterErrorBoundary {
 }
 
 impl AdapterErrorBoundary {
-    pub(crate) fn from_completion(error: &crate::completion::CompletionError) -> Self {
-        use crate::completion::CompletionError as C;
-        match error {
-            C::HttpError(error) => Self::from_http(error),
-            C::JsonError(_) | C::ResponseError(_) => Self::Decode,
-            C::UrlError(_) | C::RequestError(_) => Self::Request,
-            C::ProviderError(_) | C::ProviderResponse(_) => Self::ProviderResponse,
-        }
-    }
-
     pub(crate) fn from_http(error: &crate::http_client::Error) -> Self {
         use crate::http_client::Error as H;
         match error {
@@ -302,20 +297,19 @@ impl AdapterContext {
         }
     }
 
-    /// Attach observation context to a transport request without touching its payload.
-    pub(crate) fn attach<B>(&self, request: &mut http::Request<B>, route: &'static str) {
-        request.extensions_mut().insert((self.clone(), route));
-    }
-
-    pub(crate) fn slot_for_request<B>(request: &http::Request<B>) -> Option<AdapterSlot> {
-        request.extensions().get::<(Self, &'static str)>()?;
-        Some(AdapterSlot::default())
-    }
-
-    pub(crate) fn from_request<B>(request: &http::Request<B>) -> Option<AdapterAttempt> {
-        let (context, route) = request.extensions().get::<(Self, &'static str)>()?;
-        let mut attempt = context.begin(request.method(), route)?;
-        attempt.payload_observer = request.extensions().get::<PayloadObserver>().copied();
+    /// Begin one send of this operation: the attempt guard that carries its
+    /// facts, with the request's credential values captured for scrubbing.
+    ///
+    /// `route` is the provider-declared route template
+    /// ([`Wire::route`](crate::wire::Wire::route)), never a resolved URI: no
+    /// base-URL prefix and no query data, which is where a provider may carry
+    /// its credential (Gemini puts its API key there).
+    pub(crate) fn attempt_for<B>(
+        &self,
+        request: &http::Request<B>,
+        route: &str,
+    ) -> Option<AdapterAttempt> {
+        let mut attempt = self.begin(request.method(), route)?;
         attempt.secrets = scrub::request_secrets(request);
         Some(attempt)
     }
@@ -346,14 +340,14 @@ impl AdapterContext {
         ));
     }
 
-    /// Begin an actual send with a static route template, excluding query data.
+    /// Begin an actual send, under the provider-declared route template
+    /// rather than the resolved URL. The template excludes the base URL's own
+    /// path — so grouping attempts by route does not fragment when a caller
+    /// repoints the endpoint — and excludes query data, which is where a
+    /// provider may carry its credential (Gemini puts its API key there).
     /// Exhaustion is observed and disables further sends' correlation without
     /// changing the provider operation or reusing an attempt identity.
-    pub(crate) fn begin(
-        &self,
-        method: &http::Method,
-        route: &'static str,
-    ) -> Option<AdapterAttempt> {
+    pub(crate) fn begin(&self, method: &http::Method, route: &str) -> Option<AdapterAttempt> {
         let number = {
             let mut next = self
                 .inner
@@ -379,8 +373,7 @@ impl AdapterContext {
             number,
             closed: false,
             response_seen: false,
-            sse_tail: crate::http_client::sse::tail::SseTail::default(),
-            payload_observer: None,
+            sse_tail: crate::http_client::tail::SseTail::default(),
             secrets: Vec::new(),
             pending_response_id: None,
             error_boundary: None,
@@ -394,8 +387,7 @@ pub(crate) struct AdapterAttempt {
     number: u64,
     closed: bool,
     response_seen: bool,
-    sse_tail: crate::http_client::sse::tail::SseTail,
-    payload_observer: Option<PayloadObserver>,
+    sse_tail: crate::http_client::tail::SseTail,
     secrets: Vec<String>,
     pending_response_id: Option<String>,
     error_boundary: Option<AdapterErrorBoundary>,
@@ -416,10 +408,9 @@ impl AdapterAttempt {
         self.context.emit(Some(self.number), event);
     }
 
-    pub(crate) fn payload(&mut self, bytes: &[u8]) {
-        if let Some(observer) = self.payload_observer {
-            (observer.0)(bytes, self);
-        }
+    /// Project a payload's facts through the decoder that understands it.
+    pub(crate) fn project(&mut self, project: impl FnOnce(&mut dyn crate::wire::ObservationSink)) {
+        project(self);
     }
 
     pub(crate) fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>) {
@@ -438,10 +429,6 @@ impl AdapterAttempt {
                 },
             );
         }
-    }
-
-    pub(crate) fn response(&mut self, status: http::StatusCode) {
-        self.response_with_headers(status, None);
     }
 
     pub(crate) fn response_with_headers(
@@ -484,6 +471,21 @@ impl Drop for AdapterAttempt {
     }
 }
 
+/// The projection surface a decoder writes its observation facts through.
+impl crate::wire::ObservationSink for AdapterAttempt {
+    fn emit(&mut self, event: AdapterEvent) {
+        AdapterAttempt::emit(self, event);
+    }
+
+    fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>) {
+        AdapterAttempt::provider(self, verdict, response_id);
+    }
+
+    fn scrub(&self, value: &str) -> String {
+        self.text(value)
+    }
+}
+
 /// Shared by the SSE transport and frame driver, which own different boundaries.
 #[derive(Clone, Default)]
 pub(crate) struct AdapterSlot(Arc<Mutex<Option<AdapterAttempt>>>);
@@ -503,23 +505,25 @@ impl AdapterSlot {
         }
     }
 
-    pub(crate) fn payload(&self, bytes: &[u8]) {
+    /// Project a reply payload's facts through the decoder that understands
+    /// it.
+    pub(crate) fn project(&self, project: impl FnOnce(&mut dyn crate::wire::ObservationSink)) {
         if let Some(attempt) = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_mut()
         {
-            attempt.payload(bytes);
+            attempt.project(project);
         }
     }
 
-    pub(crate) fn start<B>(&self, request: &http::Request<B>) {
+    /// Install the attempt this send's facts belong to.
+    pub(crate) fn install(&self, attempt: Option<AdapterAttempt>) {
         *self
             .0
             .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            AdapterContext::from_request(request);
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = attempt;
     }
 
     pub(crate) fn response(&self, status: http::StatusCode) {
@@ -564,18 +568,18 @@ impl AdapterSlot {
         }
     }
 
-    pub(crate) fn fail(&self, error: &crate::completion::CompletionError) {
+    pub(crate) fn fail<E: crate::wire::WireError>(&self, error: &E) {
         if let Some(status) = error.provider_response_status() {
             self.response(status);
         }
-        let report = crate::error::ErrorReport::from(error);
+        let report = error.report();
         let boundary = self
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .and_then(|attempt| attempt.error_boundary)
-            .unwrap_or_else(|| AdapterErrorBoundary::from_completion(error));
+            .unwrap_or_else(|| error.boundary());
         self.finish(AdapterEnding::Error {
             boundary,
             kind: report.kind.code().to_owned(),

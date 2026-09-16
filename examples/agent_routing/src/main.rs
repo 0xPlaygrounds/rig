@@ -3,9 +3,10 @@
 //! Run it to see a classifier agent choose which second prompt should run.
 
 use anyhow::{Result, bail};
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
-use rig::providers::openai;
-use rig::providers::openai::Client;
+use rig::providers::openai::{self, OpenAI};
 
 const INPUT_PROMPT: &str = "Sheep can self-medicate";
 const ROUTER_PREAMBLE: &str = "
@@ -13,15 +14,15 @@ const ROUTER_PREAMBLE: &str = "
     Return only the category.
 ";
 
-fn build_router_agent(client: &Client) -> rig::agent::Agent {
-    client
+fn build_router_agent(openai: &Bound<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
+    openai
         .agent(openai::GPT_4)
         .preamble(ROUTER_PREAMBLE)
         .build()
 }
 
-fn build_response_agent(client: &Client) -> rig::agent::Agent {
-    client.agent(openai::GPT_4).build()
+fn build_response_agent(openai: &Bound<OpenAI, BoxedHttpClient>) -> rig::agent::Agent {
+    openai.agent(openai::GPT_4).build()
 }
 
 fn follow_up_prompt(category: &str) -> Result<&'static str> {
@@ -35,13 +36,13 @@ fn follow_up_prompt(category: &str) -> Result<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Client::from_env()?;
-    let category = build_router_agent(&client)
+    let openai = OpenAI::from_env()?.bound()?;
+    let category = build_router_agent(&openai)
         .prompt(INPUT_PROMPT)
         .await?
         .output;
     let follow_up = follow_up_prompt(category.trim())?;
-    let response = build_response_agent(&client)
+    let response = build_response_agent(&openai)
         .prompt(follow_up)
         .await?
         .output;

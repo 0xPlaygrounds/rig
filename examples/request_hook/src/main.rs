@@ -28,7 +28,7 @@ use rig::agent::{
 use rig::completion::{Document, Message};
 use rig::message::UserContent;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 
 // ---------------------------------------------------------------------------
 // Hook 1: LoggingHook — observe-only. Reads run-scoped identity from the context.
@@ -150,7 +150,8 @@ impl AgentHook for TurnCounterHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()?
+    let agent = OpenAI::from_env()?
+        .bound()?
         .agent(openai::GPT_4O)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();

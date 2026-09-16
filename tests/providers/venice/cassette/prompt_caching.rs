@@ -6,9 +6,9 @@
 //! possibility that it does not cache at all, which is recorded rather than
 //! assumed.
 //!
-//! Venice exposes an explicit `prompt_cache_key` on its request
-//! (`crates/rig-core/src/providers/venice/completion.rs`), which nothing pinned
-//! on the wire before this suite.
+//! Venice exposes an explicit `prompt_cache_key` on its request, carried
+//! through `additional_params`, which nothing pinned on the wire before this
+//! suite.
 //!
 //! # Recording
 //!
@@ -17,8 +17,8 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::client::CompletionClient as _;
 use rig::prelude::*;
+use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice;
 
 use crate::cache_conformance::{
@@ -57,7 +57,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_venice_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion_model(CACHE_MODEL);
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "blocking probe");
     })
@@ -72,7 +72,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_venice_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion_model(CACHE_MODEL);
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_conformance(&observation, &VENICE_CACHE_SUPPORT, "streaming probe");
     })
@@ -84,9 +84,9 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
 
 /// Venice's `prompt_cache_key` must reach the wire and stay identical across turns.
 ///
-/// The field exists on Venice's request type
-/// (`crates/rig-core/src/providers/venice/completion.rs`) and nothing pinned it
-/// on the wire before this cell. A key that changes between turns partitions the
+/// The field is Venice's own request extension, reaching the wire through
+/// `additional_params`, and nothing pinned it on the wire before this cell. A
+/// key that changes between turns partitions the
 /// cache and guarantees a miss, which is indistinguishable from "caching is off"
 /// in the usage numbers alone — so it is asserted against the recorded request
 /// bodies rather than the response.
@@ -95,7 +95,7 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
     const SCENARIO: &str = "prompt_caching/cache_key_stable";
 
     with_venice_prompt_caching_cassette("prompt_caching/cache_key_stable", |client| async move {
-        let model = client.completion_model(CACHE_MODEL);
+        let model = client.completion(CACHE_MODEL);
         let probe = probe().with_additional_params(serde_json::json!({
             "prompt_cache_key": "rig-cache-conformance-venice",
         }));
@@ -119,8 +119,11 @@ async fn prompt_cache_key_reaches_the_wire_and_is_stable() {
 #[tokio::test]
 #[ignore = "requires VENICE_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
-    let client = venice::Client::from_env().expect("VENICE_API_KEY");
-    let model = client.completion_model(CACHE_MODEL);
+    let client = OpenAI::from_env_with(&VENICE)
+        .expect("VENICE_API_KEY")
+        .bound()
+        .expect("transport should build");
+    let model = client.completion(CACHE_MODEL);
     let observation = run_cache_probe(&model, &probe()).await;
     report_and_assert_live(&observation, &VENICE_CACHE_SUPPORT, "live_cache_economics");
 }

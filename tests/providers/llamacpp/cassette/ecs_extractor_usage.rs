@@ -11,7 +11,6 @@ use super::super::cassette_support::*;
 use super::extractor_usage::{Address, EXTRACTOR_PREAMBLE, Person, assert_compatible_professions};
 use crate::ecs_extractor::{EcsExtractor, Extracted as TypedPromptResponse};
 use anyhow::Result;
-use rig::prelude::*;
 use serde_json::json;
 #[tokio::test]
 async fn extract_backward_compatibility() -> Result<()> {
@@ -20,7 +19,7 @@ async fn extract_backward_compatibility() -> Result<()> {
         |client| async move {
             let model = CASSETTE_MODEL;
             let mut extractor = EcsExtractor::<Person>::new(
-                client.completion_model(model),
+                client.completion(model),
                 Some(EXTRACTOR_PREAMBLE),
                 Some(json!({ "temperature" : 0.0 })),
             );
@@ -43,7 +42,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         |client| async move {
             let model = CASSETTE_MODEL;
             let mut extractor = EcsExtractor::<Person>::new(
-                client.completion_model(model),
+                client.completion(model),
                 Some(EXTRACTOR_PREAMBLE),
                 Some(json!({ "temperature" : 0.0 })),
             );
@@ -69,7 +68,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
             use rig::message::Message;
             let model = CASSETTE_MODEL;
             let mut extractor = EcsExtractor::<Address>::new(
-                client.completion_model(model),
+                client.completion(model),
                 Some(EXTRACTOR_PREAMBLE),
                 Some(json!({ "temperature" : 0.0 })),
             );
@@ -100,7 +99,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
         |client| async move {
             let model = CASSETTE_MODEL;
             let mut extractor = EcsExtractor::<Person>::new(
-                client.completion_model(model),
+                client.completion(model),
                 Some(EXTRACTOR_PREAMBLE),
                 Some(json!({ "temperature" : 0.0 })),
             );
@@ -131,7 +130,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         |client| async move {
             let model = CASSETTE_MODEL;
             let mut person_extractor = EcsExtractor::<Person>::new(
-                client.completion_model(model),
+                client.completion(model),
                 Some(EXTRACTOR_PREAMBLE),
                 Some(json!({ "temperature" : 0.0 })),
             );
@@ -140,7 +139,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
                 .await?;
             anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
             let mut address_extractor = EcsExtractor::<Address>::new(
-                client.completion_model(model),
+                client.completion(model),
                 Some(EXTRACTOR_PREAMBLE),
                 Some(json!({ "temperature" : 0.0 })),
             );

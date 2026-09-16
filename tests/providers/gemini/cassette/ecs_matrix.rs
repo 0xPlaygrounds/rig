@@ -7,7 +7,8 @@
 //! literals, the wire's models and the wire's `#[ignore]` reasons.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
+use rig::driver::{Bound, Socket};
+use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{
     GEMINI_2_5_FLASH, GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW,
 };
@@ -15,11 +16,11 @@ use rig::providers::gemini::completion::{
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
-        route: Some(client.completion_model(GEMINI_3_1_FLASH_LITE_PREVIEW)),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -27,10 +28,10 @@ fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + 
 
 /// The recording's own model: a cell that reuses a recording the corpus
 /// already had runs under the model and settings that recorded it.
-fn legacy(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn legacy<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion_model(GEMINI_2_5_FLASH),
+        model: client.completion(GEMINI_2_5_FLASH),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -267,12 +268,12 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(
-    client: &rig::providers::gemini::Client,
+fn reasoning_wire<H: Socket>(
+    client: &Bound<Gemini, H>,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion_model("gemini-3-flash-preview"),
+        model: client.completion("gemini-3-flash-preview"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

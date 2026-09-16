@@ -2,14 +2,13 @@
 use crate::deepseek::support::with_deepseek_cassette;
 use crate::ecs_agent::EcsAgent;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::prelude::*;
 use rig::providers::deepseek;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {
     with_deepseek_cassette("agent/completion_smoke", |client| async move {
         let mut ecs = EcsAgent::new(
-            client.completion_model(deepseek::DEEPSEEK_V4_FLASH),
+            client.completion(deepseek::DEEPSEEK_V4_FLASH),
             BASIC_PREAMBLE,
             1,
         );

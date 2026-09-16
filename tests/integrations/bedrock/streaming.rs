@@ -36,7 +36,7 @@ async fn streaming_tools_smoke() {
 #[tokio::test]
 #[ignore = "requires AWS credentials and Bedrock model access"]
 async fn raw_streaming_tool_call_smoke() {
-    let model = client().completion_model(BEDROCK_COMPLETION_MODEL);
+    let model = client().completion(BEDROCK_COMPLETION_MODEL);
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

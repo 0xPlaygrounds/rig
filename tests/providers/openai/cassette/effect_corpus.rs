@@ -61,6 +61,7 @@ fn assert_dual_ids(calls: &[rig::message::ToolCall]) {
 async fn streaming_with_events_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/streaming_with_events", |client| async move {
         let agent = client
+            .openai
             .agent(openai::GPT_4O)
             .name("golden")
             .preamble(STREAMING_TOOLS_PREAMBLE)
@@ -108,6 +109,7 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
 async fn tool_call_turns_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/tool_call_turns", |client| async move {
         let agent = client
+            .openai
             .agent(openai::GPT_4O)
             .name("golden")
             .preamble(CHAIN_PREAMBLE)

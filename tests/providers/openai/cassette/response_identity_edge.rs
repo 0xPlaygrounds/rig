@@ -25,7 +25,7 @@ async fn structured_output_and_identity() {
     with_openai_cassette(
         "response_identity_edge/structured_output_and_identity",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let schema = schemars::schema_for!(Sum);
             let response = model
                 .completion_request("What is 2 + 3? Respond with the JSON object.")
@@ -50,7 +50,7 @@ async fn previous_response_id_chain_keeps_axes_distinct() {
     with_openai_cassette(
         "response_identity_edge/previous_response_id_chain_keeps_axes_distinct",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let first = model
                 .completion_request(
                     "Remember the code word 'heliotrope'. Reply with exactly: noted",
@@ -125,6 +125,7 @@ async fn blocking_hook_retry_uses_second_attempts_id() {
         |client| async move {
             let hook = RetryOnce::default();
             let agent = client
+                .openai
                 .agent(openai::GPT_4O)
                 .preamble("You are a terse assistant.")
                 .add_hook(hook.clone())
@@ -154,7 +155,9 @@ async fn provider_error_response_carries_request_id() {
     with_openai_cassette(
         "response_identity_edge/provider_error_response_surfaces_cleanly",
         |client| async move {
-            let model = client.completion_model("gpt-nonexistent-model-for-identity-edge");
+            let model = client
+                .openai
+                .completion("gpt-nonexistent-model-for-identity-edge");
             let error = model
                 .completion_request("Never answered")
                 .send()
@@ -171,32 +174,39 @@ async fn provider_error_response_carries_request_id() {
     .await;
 }
 
-/// Family D: one interaction, two views — the raw Responses wire value and
-/// its normalized form agree on the transport id.
+/// Family D: one interaction, two views — the provider-native Responses reply
+/// carried in [`rig::completion::CompletionResponse::raw`] and the normalized
+/// response describe the same interaction. The transport id rides the
+/// normalized view alone, because `x-request-id` is a response *header* and
+/// never part of the provider's body.
 #[tokio::test]
 async fn raw_and_normalized_views_agree_on_identity() {
-    use rig::completion::NormalizeCompletionResponse;
+    use rig::providers::openai::responses_api::CompletionResponse as ResponsesReply;
+    use serde::Deserialize;
 
     with_openai_cassette(
         "response_identity_edge/raw_and_normalized_views_agree_on_identity",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let request = model
                 .completion_request("Reply with exactly: two views probe")
                 .build();
-            let raw = model
-                .raw_completion(request)
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw completion should succeed");
-            let raw_id = raw.provider_request_id.clone();
-            assert_transport_request_id(raw_id.as_deref(), "raw view");
+                .expect("completion should succeed");
+            assert_transport_request_id(response.provider_request_id.as_deref(), "normalized view");
 
-            let normalized = raw
-                .normalize("openai")
-                .expect("raw response should normalize");
+            let reply = ResponsesReply::deserialize(&response.raw)
+                .expect("`raw` is the serialized responses_api::CompletionResponse");
             assert_eq!(
-                normalized.provider_request_id, raw_id,
+                Some(reply.id.as_str()),
+                response.response_id.as_deref(),
                 "raw and normalized views describe the same interaction"
+            );
+            assert!(
+                reply.provider_request_id.is_none(),
+                "the transport id is an `x-request-id` header, not a body field"
             );
         },
     )

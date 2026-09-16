@@ -3,9 +3,10 @@
 //! The complete recorded space is 2 transports × 2 models × 3 call shapes ×
 //! 2 public surfaces = 24 cells. The shapes cover a deliberate zero-argument
 //! call, a nested object containing an array and Unicode, and two parallel
-//! calls. Model cells deserialize the provider-native response and normalize
-//! it; agent cells prove exact-once invocation. Streaming cells additionally
-//! reassemble every id, name, and argument fragment from their fixtures.
+//! calls. Model cells assert on the normalized response the wire's decoder
+//! folds the reply into; agent cells prove exact-once invocation. Streaming
+//! cells additionally reassemble every id, name, and argument fragment from
+//! their fixtures.
 //!
 //! Auto/none/specific tool-choice controls are assigned to the separate
 //! request-shape matrix; this matrix fixes choice to `any` so call shape
@@ -17,7 +18,7 @@
 //! | transport | blocking, streaming |
 //! | model | `mistral-small-latest`, `ministral-3b-latest` |
 //! | call shape | zero arguments, nested Unicode/array object, parallel pair |
-//! | surface | raw/normalized model, one-turn agent |
+//! | surface | model, one-turn agent |
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and every cell is
 //! recorded; none is unit-only. Each explicit test maps to
@@ -36,17 +37,14 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::{
-    AssistantContent, CompletionModel, FinishReason, NormalizeCompletionResponse,
-};
+use rig::completion::{AssistantContent, CompletionModel, FinishReason};
 use rig::prelude::*;
-use rig::providers::mistral;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::support::with_mistral_tool_lifecycle_cassette_result;
+use super::support::{BoundMistral, with_mistral_tool_lifecycle_cassette_result};
 
 const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
@@ -155,7 +153,10 @@ fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &mistral::CompletionModel, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl CompletionModel + Clone),
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     let mut builder = model
         .completion_request(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())
@@ -259,26 +260,20 @@ impl_matrix_tool!(RecordPayload, "record_payload", PayloadArgs);
 impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
-async fn run_model(client: mistral::Client, cell: Cell) -> Observation {
-    let model = client.completion_model(model_name(cell.model));
+async fn run_model(client: BoundMistral, cell: Cell) -> Observation {
+    let model = client.completion(model_name(cell.model));
     match cell.transport {
-        Transport::Blocking => match model.raw_completion(request(&model, cell)).await {
-            Ok(raw) => match raw.normalize("mistral") {
-                Ok(response) => {
-                    let (names, ids, arguments) = normalized_calls(&response.choice);
-                    Observation {
-                        finish_reason: response.finish_reason(),
-                        names,
-                        ids,
-                        arguments,
-                        ..Default::default()
-                    }
-                }
-                Err(error) => Observation {
-                    errors: vec![error.to_string()],
+        Transport::Blocking => match model.completion(request(&model, cell)).await {
+            Ok(response) => {
+                let (names, ids, arguments) = normalized_calls(&response.choice);
+                Observation {
+                    finish_reason: response.finish_reason(),
+                    names,
+                    ids,
+                    arguments,
                     ..Default::default()
-                },
-            },
+                }
+            }
             Err(error) => Observation {
                 errors: vec![error.to_string()],
                 ..Default::default()
@@ -318,7 +313,7 @@ async fn run_model(client: mistral::Client, cell: Cell) -> Observation {
     }
 }
 
-async fn run_agent(client: mistral::Client, cell: Cell) -> Observation {
+async fn run_agent(client: BoundMistral, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
     let builder = client
         .agent(model_name(cell.model))
@@ -373,7 +368,7 @@ async fn run_agent(client: mistral::Client, cell: Cell) -> Observation {
     }
 }
 
-async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedObservation) -> Result<()> {
+async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
         Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,

@@ -5,19 +5,19 @@
 //!
 //! Two dimensions every mature suite in this tree carries and llama.cpp did
 //! not: what `provider_request_id` and `response_id` are worth here, and
-//! whether `raw_completion` → `normalize` reproduces what `completion`
-//! reports.
+//! whether the one seam's normalized view and its captured `raw` tell the
+//! same story.
 //!
 //! | Cell | Dimension | Pinned |
 //! | --- | --- | --- |
 //! | [`the_transport_request_id_is_absent_because_the_server_sends_none`] | `provider_request_id` | `None`, and the recorded headers show why |
 //! | [`the_response_id_reaches_the_caller_on_both_transports`] | `response_id` | llama.cpp's `chatcmpl-…`, blocking and streaming |
-//! | [`the_typed_route_reproduces_the_normalized_one`] | `raw_completion` parity | provider, model, finish reason, usage and the absence of a transport id |
+//! | [`the_typed_route_reproduces_the_normalized_one`] | `raw` parity | provider, model, finish reason, usage, the absence of a transport id, and a deterministic `encode` |
 //!
 //! # `provider_request_id` is `None`, and that is a measurement
 //!
-//! `Llamacpp` leaves `OpenAICompatibleProvider::REQUEST_ID_HEADER` at its
-//! `None` default, so rig never looks for a transport id. Declaring a contract
+//! The `LLAMACPP` dialect leaves `Dialect::request_id_header` at its `None`
+//! default, so rig never looks for a transport id. Declaring a contract
 //! it does not have would reclassify every non-success status from `HttpError`
 //! to `ProviderResponse` provider-wide, so "no contract" needs to be right
 //! rather than merely convenient.
@@ -42,8 +42,9 @@
 //! different lifetimes: one is a transport correlator a proxy can add, the
 //! other is the provider's own handle for the turn.
 
-use rig::completion::{CompletionModel, NormalizeCompletionResponse};
-use rig::prelude::*;
+use rig::completion::CompletionModel;
+use rig::providers::llamacpp;
+use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::{CassetteMode, recorded_statuses_and_bodies};
@@ -66,7 +67,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
     with_llamacpp_cassette(
         "response_identity_matrix/blocking_identity",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(model.completion_request(PROBE).max_tokens(256).build())
                 .await
@@ -85,7 +86,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
     with_llamacpp_cassette(
         "response_identity_matrix/streaming_identity",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
                 .stream(model.completion_request(PROBE).max_tokens(256).build())
                 .await
@@ -147,7 +148,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
     with_llamacpp_cassette(
         "response_identity_matrix/blocking_response_id",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(model.completion_request(PROBE).max_tokens(256).build())
                 .await
@@ -167,7 +168,7 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
     with_llamacpp_cassette(
         "response_identity_matrix/streaming_response_id",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
                 .stream(model.completion_request(PROBE).max_tokens(256).build())
                 .await
@@ -218,58 +219,89 @@ async fn the_response_id_reaches_the_caller_on_both_transports() {
     }
 }
 
-/// `raw_completion` → `normalize` reproduces `completion`, field for field.
+/// The normalized view and the captured `raw` of one reply tell the same
+/// story, and `encode` is deterministic.
 ///
-/// llama.cpp sends no transport request id, so — unlike Groq or xAI, where
-/// `raw_completion` necessarily drops one the normalized path reports — the
-/// plain typed route is *already* complete here. That is the parity claim, and
-/// it is worth recording rather than assuming: it is the reason this provider
-/// needs no `raw_completion_with_request_id` dance.
+/// This cell used to compare two *mappings* of the same document —
+/// `raw_completion` normalized by hand against `completion`. There is one
+/// decoder now, so that comparison would be a copy of itself. What is left is
+/// the pair of claims the seam actually owes a caller, and both need the two
+/// recorded turns this scenario holds:
+///
+/// 1. **`encode` is deterministic.** The same built request produces the same
+///    request bytes every time, so a caller can replay it.
+/// 2. **`raw` is a faithful second view of the reply it rode on.** Read back
+///    through `llamacpp::CompletionResponse`, its provider-native fields
+///    reproduce the normalized response's.
+///
+/// llama.cpp sends no transport request id, so — unlike Groq or xAI, where a
+/// captured body necessarily drops one the normalized path reports — `raw` is
+/// *already* complete here. That is worth recording rather than assuming: it
+/// is the reason this provider needs no request-id reconciliation dance.
 ///
 /// The two turns are separate calls against a sampling server, so what is
-/// compared is everything the wire makes equal — provider, model, finish
-/// reason, prompt usage, and the absence of a transport id — plus the presence
-/// of a response id on each side. The answer *text* is deliberately not
-/// compared: two calls need not produce the same tokens, and requiring it
+/// compared across them is everything the wire makes equal — provider, model,
+/// finish reason, prompt usage, and the absence of a transport id — plus the
+/// presence of a response id on each side. The answer *text* is deliberately
+/// not compared: two calls need not produce the same tokens, and requiring it
 /// would make the cell a flake rather than a parity check.
 #[tokio::test]
 async fn the_typed_route_reproduces_the_normalized_one() {
     with_llamacpp_cassette(
         "response_identity_matrix/typed_route_parity",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
+            let request = || model.completion_request(PROBE).max_tokens(256).build();
 
-            let normalized = model
-                .completion(model.completion_request(PROBE).max_tokens(256).build())
+            let first = model
+                .completion(request())
                 .await
                 .expect("completion should succeed");
-            let raw = model
-                .raw_completion(model.completion_request(PROBE).max_tokens(256).build())
+            let second = model
+                .completion(request())
                 .await
-                .expect("raw completion should succeed");
-            let from_raw: rig::completion::CompletionResponse = raw
-                .normalize("llamacpp")
-                .expect("the raw response should normalize");
+                .expect("the same request should succeed again");
 
-            // The two turns are separate calls with separate ids, so identity is
-            // compared for *shape* and everything the wire makes equal is compared
-            // exactly.
-            assert_eq!(from_raw.provider, normalized.provider);
-            assert_eq!(from_raw.model, normalized.model);
-            assert_eq!(from_raw.finish_reason(), normalized.finish_reason());
+            // Across the two turns: everything the wire makes equal.
+            assert_eq!(first.provider, second.provider);
+            assert_eq!(first.model, second.model);
+            assert_eq!(first.finish_reason(), second.finish_reason());
             assert_eq!(
-                from_raw.provider_request_id, normalized.provider_request_id,
-                "both are None, and neither route may invent one"
+                first.provider_request_id, second.provider_request_id,
+                "both are None, and neither turn may invent one"
+            );
+            assert_eq!(
+                first.provider_request_id, None,
+                "the dialect contracts no request-id header, so the driver \
+                 reports None by design"
             );
             assert!(
-                from_raw.response_id.is_some() && normalized.response_id.is_some(),
-                "both routes must carry the provider's own id: {:?} vs {:?}",
-                from_raw.response_id,
-                normalized.response_id
+                first.response_id.is_some() && second.response_id.is_some(),
+                "both turns must carry the provider's own id: {:?} vs {:?}",
+                first.response_id,
+                second.response_id
             );
             assert_eq!(
-                from_raw.usage.input_tokens, normalized.usage.input_tokens,
+                first.usage.input_tokens, second.usage.input_tokens,
                 "the same prompt bills the same either way"
+            );
+
+            // Same reply, two views: the captured document read back through
+            // llama.cpp's own type reproduces the normalized fields.
+            let typed = llamacpp::CompletionResponse::deserialize(&second.raw)
+                .expect("raw is llama.cpp's own response type");
+            assert_eq!(
+                second.response_id.as_deref(),
+                Some(typed.openai.id.as_str())
+            );
+            assert_eq!(second.model.as_deref(), Some(typed.openai.model.as_str()));
+            assert_eq!(
+                second.usage.input_tokens,
+                typed
+                    .openai
+                    .usage
+                    .as_ref()
+                    .map(|usage| usage.prompt_tokens as u64),
             );
         },
     )
@@ -281,5 +313,18 @@ async fn the_typed_route_reproduces_the_normalized_one() {
         recorded.len(),
         2,
         "the scenario records both turns so the comparison is against real bytes"
+    );
+
+    // Claim 1, against the recorded bytes: the same built request encoded to
+    // the same body both times.
+    let bodies = crate::cassettes::recorded_interaction_bodies(
+        "llamacpp",
+        "response_identity_matrix/typed_route_parity",
+    );
+    assert_eq!(bodies.len(), 2, "both turns are recorded");
+    assert_eq!(
+        bodies[0].0, bodies[1].0,
+        "`encode` is deterministic: the same request must produce the same \
+         request body both times"
     );
 }

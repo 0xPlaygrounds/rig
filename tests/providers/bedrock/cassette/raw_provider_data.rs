@@ -28,7 +28,7 @@ async fn guardrail_trace_survives_into_raw_completion() {
         "raw_provider_data/guardrail_trace_survives_into_raw_completion",
         |client| async move {
             let model = client
-                .completion_model(bedrock::completion::AMAZON_NOVA_LITE)
+                .completion(bedrock::completion::AMAZON_NOVA_LITE)
                 .with_guardrail(
                     GUARDRAIL_ID,
                     GUARDRAIL_VERSION,
@@ -91,7 +91,7 @@ async fn request_id_survives_into_streamed_terminal() {
     with_bedrock_cassette(
         "raw_provider_data/request_id_survives_into_streamed_terminal",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request("Reply with the single word: ready.")
                 .max_tokens(16)
@@ -126,7 +126,7 @@ async fn request_id_survives_into_raw_completion() {
     with_bedrock_cassette(
         "raw_provider_data/request_id_survives_into_raw_completion",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request("Reply with the single word: ready.")
                 .max_tokens(16)

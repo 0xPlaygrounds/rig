@@ -1,123 +1,62 @@
-//! Moonshot AI (Kimi) API client and Rig integration
+//! Moonshot AI (Kimi) endpoints and model identifiers.
 //!
-//! # Example
-//! ```ignore
+//! Moonshot serves the same models over two wires from two regions, so this
+//! module is data for all four combinations and nothing else:
+//!
+//! - the OpenAI chat-completions wire, as
+//!   [`openai::wire::MOONSHOT`](crate::providers::openai::wire::MOONSHOT)
+//!   (global) and
+//!   [`openai::wire::MOONSHOT_CHINA`](crate::providers::openai::wire::MOONSHOT_CHINA)
+//!   — one dialect at two base URLs, also serving the model listing
+//!   (`GET /models`). Its quirks are Moonshot's: `json_schema` response
+//!   formats are refused, a forced specific tool is an error, and
+//!   `tool_choice: "required"` is coerced to `auto` with a steering message;
+//! - the Anthropic Messages wire, as
+//!   [`anthropic::wire::MOONSHOT`](crate::providers::anthropic::wire::MOONSHOT),
+//!   whose China endpoint is [`CHINA_ANTHROPIC_API_BASE_URL`].
+//!
+//! Every combination reads `MOONSHOT_API_KEY`.
+//!
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
+//!
+//! # OpenAI-compatible example
+//! ```no_run
 //! use rig_core::providers::moonshot;
-//! use rig_core::client::CompletionClient;
+//! use rig_core::providers::openai::wire::{MOONSHOT, MOONSHOT_CHINA, OpenAI};
 //!
-//! let client = moonshot::Client::new("YOUR_API_KEY").expect("Failed to build client");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let kimi = OpenAI::from_env_with(&MOONSHOT)?.chat(moonshot::KIMI_K3);
 //!
-//! let kimi_model = client.completion_model(moonshot::KIMI_K3);
+//! // The China entrypoint is the same dialect at `CHINA_API_BASE_URL`.
+//! let china = OpenAI::from_env_with(&MOONSHOT_CHINA)?.chat(moonshot::KIMI_K3);
+//! # let _ = (kimi, china);
+//! # Ok(())
+//! # }
 //! ```
 //!
-//! # Custom base URL
-//! The default base URL is `https://api.moonshot.ai/v1`. For China access,
-//! use `https://api.moonshot.cn/v1`:
-//! ```ignore
+//! # Anthropic-compatible example
+//! ```no_run
+//! use rig_core::providers::anthropic::wire::{Anthropic, MOONSHOT};
 //! use rig_core::providers::moonshot;
 //!
-//! let client = moonshot::Client::builder()
-//!     .api_key("YOUR_API_KEY")
-//!     .base_url("https://api.moonshot.ai/v1")
-//!     .build()
-//!     .expect("Failed to build Moonshot client");
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let kimi = Anthropic::from_env_with(&MOONSHOT)?
+//!     .with_base_url(moonshot::CHINA_ANTHROPIC_API_BASE_URL)
+//!     .messages(moonshot::KIMI_K3);
+//! # let _ = kimi;
+//! # Ok(())
+//! # }
 //! ```
-use crate::client;
-use crate::providers::internal::anthropic_compatible::{
-    AnthropicBaseUrl, impl_dual_dialect_provider,
-};
-use crate::{completion::CompletionError, providers::openai};
 
-// ================================================================
-// Main Moonshot Client
-// ================================================================
 /// Global OpenAI-compatible base URL.
 pub const GLOBAL_API_BASE_URL: &str = "https://api.moonshot.ai/v1";
 /// China OpenAI-compatible base URL.
 pub const CHINA_API_BASE_URL: &str = "https://api.moonshot.cn/v1";
 /// Anthropic-compatible base URL.
 pub const ANTHROPIC_API_BASE_URL: &str = "https://api.moonshot.ai/anthropic";
-
-impl_dual_dialect_provider!(
-    provider = Moonshot,
-    anthropic_provider = MoonshotAnthropic,
-    client_input = String,
-    name = "moonshot",
-    api_key_env = "MOONSHOT_API_KEY",
-    base_url = GLOBAL_API_BASE_URL,
-    base_url_env = "MOONSHOT_API_BASE",
-    anthropic_provider_name = "moonshot",
-    anthropic_base_url = ANTHROPIC_API_BASE_URL,
-    anthropic_base_url_env = "MOONSHOT_ANTHROPIC_API_BASE",
-);
-
-impl client::HasCompletion for Moonshot {
-    type Model<H>
-        = CompletionModel<H>
-    where
-        H: client::ModelTransport;
-
-    fn completion_model<H: client::ModelTransport>(
-        client: &Client<H>,
-        model: String,
-    ) -> Self::Model<H> {
-        CompletionModel::new(client.clone(), model)
-    }
-}
-
-impl client::HasModelListing for Moonshot {
-    type Lister<H>
-        = MoonshotModelLister<H>
-    where
-        H: client::ModelTransport;
-
-    fn model_lister<H: client::ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
-        MoonshotModelLister::new(client.clone())
-    }
-}
-
-crate::providers::internal::model_listing::impl_model_lister!(
-    /// [`ModelLister`](crate::client::ModelLister) implementation for the
-    /// Moonshot API (`GET /models`).
-    ///
-    /// Moonshot documents the OpenAI-style `{"object":"list","data":[…]}`
-    /// envelope; its entries carry extra fields (`context_length`,
-    /// `supports_image_in`, …) that the shared entry ignores.
-    MoonshotModelLister,
-    Client<H>,
-    crate::providers::internal::model_listing::ListModelEntry,
-    "Moonshot",
-    "/models"
-);
-
-impl<H> ClientBuilder<H> {
-    pub fn global(self) -> Self {
-        self.base_url(GLOBAL_API_BASE_URL)
-    }
-
-    pub fn china(self) -> Self {
-        self.base_url(CHINA_API_BASE_URL)
-    }
-}
-
-impl<H> AnthropicClientBuilder<H> {
-    pub fn global(self) -> Self {
-        self.base_url(ANTHROPIC_API_BASE_URL)
-    }
-}
-
-const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
-    &[
-        (GLOBAL_API_BASE_URL, ANTHROPIC_API_BASE_URL),
-        (CHINA_API_BASE_URL, "https://api.moonshot.cn/anthropic"),
-    ],
-    &["/v1", "/v1/"],
-    "/anthropic",
-);
-
-// ================================================================
-// Moonshot Completion API
-// ================================================================
+/// China Anthropic-compatible base URL.
+pub const CHINA_ANTHROPIC_API_BASE_URL: &str = "https://api.moonshot.cn/anthropic";
 
 // Model IDs follow <https://platform.kimi.ai/docs/models>, which also lists the
 // discontinued `moonshot-v1-*`, `kimi-k2*` and `kimi-k2.5` IDs.
@@ -133,61 +72,3 @@ pub const KIMI_K2_7_CODE_HIGHSPEED: &str = "kimi-k2.7-code-highspeed";
 
 /// Kimi K2.6 — general-purpose multimodal model with thinking and non-thinking modes, 256K context.
 pub const KIMI_K2_6: &str = "kimi-k2.6";
-
-/// Moonshot completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<Moonshot, H>;
-
-impl openai::completion::OpenAICompatibleProvider for Moonshot {
-    const PROVIDER_NAME: &'static str = "moonshot";
-
-    type StreamingUsage = openai::Usage;
-
-    // Moonshot's API rejects the `json_schema` response format; keep the
-    // pre-migration behavior of dropping `output_schema` with a warning.
-    const SUPPORTS_RESPONSE_FORMAT: bool = false;
-
-    type Response = openai::CompletionResponse;
-
-    fn prepare_request(
-        &self,
-        request: &mut openai::completion::CompletionRequest,
-    ) -> Result<(), CompletionError> {
-        // Moonshot only supports `auto`/`none` tool choices. Forcing one
-        // specific tool has no workaround; fail fast like the pre-migration
-        // conversion did (on main, `openai::ToolChoice::try_from` returned
-        // "Provider doesn't support only using specific tools" for every
-        // `ToolChoice::Specific`, single- or multi-name).
-        if matches!(
-            request.tool_choice,
-            Some(openai::completion::ToolChoice::Function { .. })
-        ) {
-            return Err(CompletionError::ProviderError(
-                "Moonshot does not support forcing a specific tool".to_string(),
-            ));
-        }
-
-        // Moonshot does not support `tool_choice: "required"`; coerce it to
-        // `auto` and steer the model with an extra user message instead.
-        if matches!(
-            request.tool_choice,
-            Some(openai::completion::ToolChoice::Required)
-        ) {
-            tracing::warn!(
-                "Moonshot does not support tool_choice=required; coercing to auto with an additional steering message"
-            );
-            request.tool_choice = Some(openai::completion::ToolChoice::Auto);
-            request.messages.push(openai::Message::User {
-                content: vec![openai::UserContent::Text {
-                    text: "Please select a tool to handle the current issue.".to_string(),
-                }],
-                name: None,
-            });
-        }
-
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests;

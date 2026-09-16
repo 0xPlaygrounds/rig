@@ -1,54 +1,56 @@
 //! Raw provider response capture on Groq's blocking chat-completions path.
 //!
-//! **The feature.** Every blocking completion attaches the value the model's
-//! inherent `raw_completion` returned onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
-//! no flag to request it, nothing about it reaches the wire, and a
-//! `Value::Null` only ever means a response built by hand with no provider
-//! payload behind it. Groq reuses the shared [`openai::CompletionResponse`]
-//! wire type rather than declaring its own, so the raw view is that type
-//! serialized — and it is what makes Groq's timing accounting
-//! (`usage.queue_time`, `prompt_time`, `completion_time`, `total_time`)
-//! reachable: the shared usage type models them, the normalized `Usage` has no
-//! slot for any of them. `raw` is a second view of the same response, never a
-//! substitute for a normalized field.
+//! **The feature.** Every blocking completion attaches the provider's own
+//! reply to the normalized [`rig::completion::CompletionResponse::raw`].
+//! Capture is always on: there is no flag to request it, nothing about it
+//! reaches the wire, and a `Value::Null` only ever means a response built by
+//! hand with no provider payload behind it.
+//!
+//! **What `raw` is.** The driver sets it from the reply's bytes
+//! (`driver::call`), so it is the provider's response *document* rather than a
+//! round-trip through whatever type the decoder parsed. Two things follow for
+//! Groq specifically. Its timing accounting (`usage.queue_time`,
+//! `prompt_time`, `completion_time`, `total_time`) is reachable through the
+//! typed escape hatch — [`openai::CompletionResponse`] models those fields and
+//! the normalized [`rig::completion::Usage`] has no slot for any of them. And
+//! its `x_groq` envelope, which *no* shared chat-completions type models,
+//! reaches a caller anyway, precisely because `raw` is the body. `raw` is a
+//! second view of the same response, never a substitute for a normalized
+//! field.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_openai_type` | typed round trip | `raw` deserializes into `openai::CompletionResponse` and re-serializes equal | recorded |
-//! | 2 | `raw_exposes_queue_time` | provider-only field | `raw.usage.queue_time` and `raw.system_fingerprint` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (body and `x-request-id` header) and equals its own `raw` re-normalized | recorded |
+//! | 1 | `raw_is_the_verbatim_response_body` | body fidelity | `raw` reproduces the recorded reply field for field, reads back as `openai::CompletionResponse`, and still carries the unmodelled `x_groq` | recorded |
+//! | 2 | `raw_exposes_queue_time` | provider-only fields | `raw`'s `usage.queue_time`/`prompt_time` and `system_fingerprint` equal the fixture body, and none of them has a normalized slot | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (body and `x-request-id` header), and the same checks hold against its own `raw` | recorded |
+//!
+//! The scenario literals — and therefore the fixture filenames — keep the
+//! names they were recorded under; the cell names describe what the cells now
+//! assert.
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the queue time out of the recorded
 //! body rather than trusting the number the typed view reports, and cell 3
 //! checks the normalized fields against the recorded body and header before
-//! comparing them with the re-normalized `raw`, so a recording that stopped
-//! carrying usage, a finish reason, or the request-id header fails loudly
-//! instead of covering nothing. Groq's `x_groq` envelope is *not* on the
-//! shared wire type, so it is absent from `raw` by design (the docs say so:
-//! fields the wire type does not model are not there); the cells pin the
-//! fields the type does model.
+//! checking them against `raw`, so a recording that stopped carrying usage, a
+//! finish reason, or the request-id header fails loudly instead of covering
+//! nothing.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse,
-};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
 use rig::message::AssistantContent;
-use rig::prelude::*;
-use rig::providers::{groq, openai};
+use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
 use super::support::{
-    assert_matches_recorded_token, recorded_response_headers, with_groq_cassette_result,
+    BoundGroq, assert_matches_recorded_token, recorded_response_headers, with_groq_cassette_result,
 };
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &groq::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
@@ -145,66 +147,114 @@ fn assert_reproduces_fixture(
     );
 }
 
+/// Where a cell parks the response its recorded turn produced.
+///
+/// The wrapper call stays inline in every cell with its own scenario
+/// literal — the fixture scan reads that literal out of the AST — so what is
+/// shared here is the turn's body, not the call.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
+
+/// Run one recorded turn and park the response it produced.
+async fn run(client: BoundGroq, sink: Observed) -> Result<(), anyhow::Error> {
+    let model = client.completion(RAW_CAPTURE_MATRIX_MODEL);
+    let response = model.completion(request(&model)).await?;
+    *sink.lock().expect("observation lock") = Some(response);
+    Ok(())
+}
+
+fn observed(sink: &Observed) -> CompletionResponse {
+    sink.lock()
+        .expect("observation lock")
+        .take()
+        .expect("the cell should observe a response")
+}
+
 // ================================================================
-// 1. raw round-trips the shared OpenAI type
+// 1. raw is the reply document
 // ================================================================
 
 #[tokio::test]
-async fn raw_round_trips_openai_type() {
+async fn raw_is_the_verbatim_response_body() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
-    with_groq_cassette_result(
-        "raw_capture_matrix/raw_round_trips_openai_type",
-        |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
-            let response = model.completion(request(&model)).await?;
-            let raw = &response.raw;
-            let typed = openai::CompletionResponse::deserialize(raw)
-                .expect("raw is the shared OpenAI CompletionResponse Groq parses into");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed view serialized, nothing more"
-            );
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            Ok::<(), anyhow::Error>(())
-        },
-    )
+    let sink = Observed::default();
+    with_groq_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_round_trips_openai_type should replay from its cassette");
+    let response = observed(&sink);
 
-    let (_, response_body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json(SCENARIO);
     assert!(
-        response_body["choices"][0]["message"]["content"].is_string(),
+        body["choices"][0]["message"]["content"].is_string(),
         "the recorded turn should be a plain text answer"
+    );
+
+    // The reply document, not a projection of it: every top-level key the
+    // provider sent is reachable and holds the recorded value. The generated
+    // id goes through the token helper because a recording pass mints a live
+    // one while replay serves the scrubbed fixture back.
+    let raw = &response.raw;
+    assert_matches_recorded_token(
+        raw["id"].as_str(),
+        body["id"].as_str(),
+        "raw's own response id",
+    );
+    for key in body
+        .as_object()
+        .expect("the recorded reply is a JSON object")
+        .keys()
+        .filter(|key| key.as_str() != "id")
+    {
+        assert_eq!(
+            raw.get(key),
+            body.get(key),
+            "raw should carry the provider's `{key}` unchanged"
+        );
+    }
+
+    // And it is still the shared chat-completions shape: the typed escape
+    // hatch reads it back, and agrees with the normalized identity.
+    let typed = openai::CompletionResponse::deserialize(raw)
+        .expect("raw is the shared OpenAI chat-completions reply Groq sends");
+    assert_matches_recorded_token(
+        Some(typed.id.as_str()),
+        response.response_id.as_deref(),
+        "typed response id",
+    );
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    // `x_groq` is Groq's own envelope and no shared type models it — which is
+    // exactly why `raw` being the document rather than the parse is the
+    // difference between a caller reaching it and losing it.
+    assert!(
+        serde_json::to_value(&typed)
+            .expect("typed serializes")
+            .get("x_groq")
+            .is_none(),
+        "no shared chat-completions type models Groq's envelope"
+    );
+    assert_eq!(
+        raw.get("x_groq"),
+        body.get("x_groq"),
+        "x_groq reaches the caller through raw: {raw}"
     );
 }
 
 // ================================================================
-// 2. A field the normalized response provably lacks
+// 2. Fields the normalized response provably lacks
 // ================================================================
 
 #[tokio::test]
 async fn raw_exposes_queue_time() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_queue_time";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_groq_cassette_result(
-        "raw_capture_matrix/raw_exposes_queue_time",
-        |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
-            let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
-            Ok::<(), anyhow::Error>(())
-        },
-    )
+    let sink = Observed::default();
+    with_groq_cassette_result("raw_capture_matrix/raw_exposes_queue_time", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_exposes_queue_time should replay from its cassette");
+    let response = observed(&sink);
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
     let (_, body) = recorded_json(SCENARIO);
     let recorded_queue_time = body["usage"]["queue_time"]
         .as_f64()
@@ -224,6 +274,13 @@ async fn raw_exposes_queue_time() {
         Some(recorded_fingerprint),
         "system fingerprint",
     );
+    // The typed view models Groq's timings, so the escape hatch is typed
+    // rather than a hand-indexed JSON walk.
+    let typed = openai::CompletionResponse::deserialize(raw).expect("raw reads back typed");
+    let usage = typed.usage.expect("the recorded turn reports usage");
+    assert_eq!(usage.queue_time, Some(recorded_queue_time));
+    assert_eq!(usage.prompt_time, Some(recorded_prompt_time));
+
     // And the normalized view has no slot for any of them.
     let normalized_usage = serde_json::to_value(response.usage).expect("usage serializes");
     assert!(
@@ -242,43 +299,46 @@ async fn raw_exposes_queue_time() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_groq_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
-            let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| run(client, sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = observed(&sink);
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
     let (_, body) = recorded_json(SCENARIO);
-    assert_reproduces_fixture(&response, &body, recorded_request_id(SCENARIO).as_deref());
+    let request_id = recorded_request_id(SCENARIO);
+    assert_reproduces_fixture(&response, &body, request_id.as_deref());
 
-    // The normalized fields are exactly what the response's own raw
-    // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = &response.raw;
-    let renormalized = openai::CompletionResponse::deserialize(raw)
-        .expect("raw is the shared OpenAI type")
-        .normalize(PROVIDER)
-        .expect("raw normalizes")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
-    assert_eq!(renormalized.identity(), response.identity());
-    assert_eq!(renormalized.finish_reason(), response.finish_reason());
-    assert_eq!(renormalized.model, response.model);
-    assert_eq!(renormalized.usage, response.usage);
-    assert_eq!(renormalized.choice, response.choice);
-    assert!(
-        renormalized.raw.is_null(),
-        "normalizing a hand-fed typed value attaches no raw of its own"
+    // One seam, two views: the normalized fields hold against the response's
+    // own `raw` exactly as they hold against the fixture bytes, because `raw`
+    // *is* those bytes. Capture adds a view; it never changes the mapping.
+    let raw = response.raw.clone();
+    assert_reproduces_fixture(&response, &raw, request_id.as_deref());
+
+    // The provider-native view of the same reply, through the typed escape
+    // hatch: its own fields are what the decoder mapped from.
+    let typed = openai::CompletionResponse::deserialize(&raw).expect("raw reads back typed");
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    let choice = typed.choices.first().expect("the reply carries a choice");
+    assert_eq!(
+        choice.finish_reason.as_str(),
+        body["choices"][0]["finish_reason"]
+            .as_str()
+            .expect("recorded finish reason"),
+        "the native finish reason is what the normalized one was mapped from"
+    );
+    let usage = typed.usage.expect("the recorded turn reports usage");
+    assert_eq!(
+        Some(usage.prompt_tokens as u64),
+        response.usage.input_tokens,
+        "the native prompt count is what the normalized input count was mapped from"
+    );
+    assert_eq!(
+        Some(usage.total_tokens as u64),
+        response.usage.total_tokens,
+        "and so is the total"
     );
 }

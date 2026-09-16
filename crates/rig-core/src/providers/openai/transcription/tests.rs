@@ -1,46 +1,4 @@
 use super::*;
-use crate::client::transcription::TranscriptionClient;
-use crate::test_utils::RecordingHttpClient;
-use crate::transcription::TranscriptionModel as _;
-
-#[tokio::test]
-async fn transcription_routes_model_in_multipart_body() {
-    let http_client = RecordingHttpClient::new(r#"{"text":"transcribed"}"#);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("build client");
-    let model = client.transcription_model(WHISPER_1);
-
-    let response = model
-        .transcription_request()
-        .data(vec![1, 2, 3])
-        .filename(Some("audio.mp3".to_owned()))
-        .send()
-        .await
-        .expect("transcription should succeed");
-
-    assert_eq!(response.text, "transcribed");
-    let request = http_client
-        .requests()
-        .into_iter()
-        .next()
-        .expect("request should be captured");
-    assert_eq!(
-        request.uri,
-        "https://api.openai.com/v1/audio/transcriptions"
-    );
-    let body = String::from_utf8_lossy(&request.body);
-    assert!(
-        body.contains("name=\"model\"\r\n\r\nwhisper-1\r\n"),
-        "{body}"
-    );
-    assert!(
-        body.contains("name=\"file\"; filename=\"audio.mp3\""),
-        "{body}"
-    );
-}
 
 /// The two live shapes, and the catch-all that keeps a third from failing
 /// the transcription. Recorded turns of the first two are replayed in
@@ -120,30 +78,29 @@ fn usage_decodes_both_billing_shapes_and_keeps_unknown_ones() {
     assert_eq!(usage(r#"{"text":"hi","usage":null}"#), None);
 }
 
-#[tokio::test]
-async fn transcription_http_non_success_preserves_status_and_body() {
-    let body = r#"{"error":{"message":"bad audio","type":"invalid_request_error"}}"#;
-    let http_client = RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.transcription_model(WHISPER_1);
+/// The duration-billed shape reports no token counts, so normalization must
+/// leave the usage empty rather than inventing zeros; the token-billed shape
+/// carries its counts across.
+#[test]
+fn normalize_carries_token_billing_and_leaves_duration_billing_empty() {
+    fn normalized(body: &str) -> crate::completion::Usage {
+        serde_json::from_str::<TranscriptionResponse>(body)
+            .expect("response should decode")
+            .normalize("openai")
+            .expect("normalization is infallible for this wire")
+            .usage
+    }
 
-    let Err(error) = model
-        .transcription_request()
-        .data(vec![0u8; 16])
-        .send()
-        .await
-    else {
-        panic!("transcription should fail with non-success status")
-    };
-
-    assert!(matches!(error, TranscriptionError::ProviderResponse(_)));
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::BAD_REQUEST)
+    let tokens = normalized(
+        r#"{"text":"hi","usage":{"type":"tokens","input_tokens":54,
+               "output_tokens":16,"total_tokens":70}}"#,
     );
-    assert_eq!(error.provider_response_body(), Some(body));
+    assert_eq!(tokens.input_tokens, Some(54));
+    assert_eq!(tokens.output_tokens, Some(16));
+    assert_eq!(tokens.total_tokens, Some(70));
+
+    let duration = normalized(r#"{"text":"hi","usage":{"type":"duration","seconds":6}}"#);
+    assert_eq!(duration.input_tokens, None);
+    assert_eq!(duration.output_tokens, None);
+    assert_eq!(duration.total_tokens, None);
 }

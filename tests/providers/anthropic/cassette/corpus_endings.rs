@@ -10,10 +10,12 @@
 use futures::StreamExt;
 use rig::agent::{AgentHook, MultiTurnStreamItem, StreamingError};
 use rig::completion::PromptError;
+use rig::driver::Bound;
 use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::providers::anthropic::wire::Anthropic;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_endings_cassette};
 use crate::goldens::{
@@ -71,7 +73,7 @@ fn assert_settled_error(settled: &RecordSettled) {
 /// A unary tool program under `hook`, expected to end cancelled with
 /// `reason`; the log's families are `shape`.
 async fn unary_tool_run(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     hook: impl AgentHook + 'static,
     reason: &str,
     shape: &[EffectFamily],
@@ -124,7 +126,7 @@ enum Streamed {
 }
 
 async fn streamed_run(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     hook: impl AgentHook + 'static,
     reason: &str,
     program: Streamed,

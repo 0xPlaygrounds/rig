@@ -1,14 +1,13 @@
-use crate::http_client::sse::BoxedStream;
 use bytes::Bytes;
 use http::HeaderName;
 pub use http::{
     HeaderMap, HeaderValue, Method, Request, Response, StatusCode, Uri, request::Builder,
 };
 mod erased;
+pub mod framing;
 pub mod middleware;
 pub mod multipart;
-pub mod retry;
-pub mod sse;
+pub(crate) mod tail;
 use crate::wasm_compat::*;
 pub use erased::BoxedHttpClient;
 pub use middleware::HttpMiddleware;
@@ -91,11 +90,11 @@ impl Error {
     /// Rig's bundled HTTP clients capture the full [`HeaderMap`] whenever a
     /// non-success status error is built from a live response, so rate-limit
     /// metadata such as `Retry-After` or `x-ratelimit-*` stays readable
-    /// (rig#2210). This is the accessor a [`retry::RetryPolicy`] uses to honor
+    /// (rig#2210). This is the accessor a caller's retry policy uses to honor
     /// a server-supplied backoff, since it is handed this error directly:
     ///
     /// ```
-    /// # use rig_core::http_client::{Error, retry::RetryPolicy};
+    /// # use rig_core::http_client::Error;
     /// # use std::time::Duration;
     /// fn retry_after(error: &Error) -> Option<Duration> {
     ///     let seconds = error
@@ -140,6 +139,9 @@ impl Error {
 
 pub type LazyBytes = WasmBoxedFuture<'static, Result<Bytes>>;
 pub type LazyBody<T> = WasmBoxedFuture<'static, Result<T>>;
+
+/// The body of a streaming response: the transport's own chunks, boxed.
+pub type BoxedStream = std::pin::Pin<Box<dyn WasmCompatSendStream<InnerItem = Result<Bytes>>>>;
 
 pub type StreamingResponse = Response<BoxedStream>;
 

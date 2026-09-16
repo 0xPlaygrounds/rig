@@ -5,16 +5,17 @@
 //! cell's own test.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
+use rig::driver::{Bound, Socket};
+use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::GEMINI_3_FLASH_PREVIEW;
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
-fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -22,12 +23,10 @@ fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + 
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &rig::providers::gemini::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion_model("gemini-nonexistent-rig-test"),
+        model: client.completion("gemini-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

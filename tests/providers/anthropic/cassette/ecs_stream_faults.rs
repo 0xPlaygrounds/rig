@@ -6,7 +6,6 @@
 
 use rig::error::ErrorKind;
 use rig::observe::{AdapterEnding, AdapterErrorBoundary, AdapterEvent};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_ecs::agent::{Role, Temperature};
 
@@ -38,7 +37,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             "corpus_outcome/model_error_streamed",
             |client| async move {
                 let run = native_run(
-                    client.completion_model(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6),
                     BASIC_PREAMBLE,
                     BASIC_PROMPT,
                     witness,

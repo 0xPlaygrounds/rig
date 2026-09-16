@@ -1,19 +1,16 @@
 //! Read a provider-specific field off the provider's own response, from a hook.
 //!
-//! An agent erases its model behind `ModelHandle`, so the typed escape hatch
-//! every provider offers — `raw_completion` / `raw_stream`, which hand back the
-//! provider's own response type — is unreachable from an agent run. The
-//! normalized `CompletionResponse` deliberately carries only what every
-//! provider has in common, and some of what a provider says is only there:
+//! An agent erases its model behind `ModelHandle`, and the normalized
+//! `CompletionResponse` deliberately carries only what every provider has in
+//! common — so some of what a provider says would have nowhere to land:
 //! OpenAI's `system_fingerprint` and `service_tier`, Anthropic's
 //! `stop_sequence`, Ollama's timings, and so on.
 //!
-//! So every attempt's provider response — the value `raw_completion` /
-//! `raw_stream` would have returned, serialized — travels as `raw` on the
-//! `CompletionResponse` an `on_outcome` hook sees for a completion effect
-//! (fired on both the blocking and the streamed surface), on the
-//! medium-neutral `ModelTurnFinished` event, and on each `CompletionCall` in
-//! the run's record. Nothing to switch on: it is the
+//! It lands anyway: the provider's own response for every attempt, serialized,
+//! arrives as `CompletionResponse::raw` — on the response an `on_outcome` hook
+//! sees for a completion effect (fired on both the blocking and the streamed
+//! surface), on the medium-neutral `ModelTurnFinished` event, and on each
+//! `CompletionCall` in the run's record. Nothing to switch on: it is the
 //! same parity the pre-normalization `raw_response` had.
 //!
 //! The hook below runs unchanged on both surfaces. It recovers OpenAI's own
@@ -33,6 +30,7 @@ use rig_agent::{
     prelude::*,
 };
 use rig_core::providers::openai;
+use rig_core::providers::openai::wire::{OpenAI, Route};
 use rig_reqwest::prelude::*;
 use serde::Deserialize;
 
@@ -51,7 +49,9 @@ impl AgentHook for PrintOpenAiFields {
             return OutcomeAction::proceed();
         };
         if ctx.is_streaming() {
-            match openai::StreamingCompletionResponse::<openai::Usage>::deserialize(&response.raw) {
+            match openai::wire::StreamingCompletionResponse::<openai::Usage>::deserialize(
+                &response.raw,
+            ) {
                 Ok(terminal) => {
                     let extra = |key: &str| {
                         terminal
@@ -84,8 +84,10 @@ impl AgentHook for PrintOpenAiFields {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // The Chat Completions route, whose response carries `system_fingerprint`.
-    let client = openai::Client::from_env()?.completions_api();
+    // The Chat Completions route, whose response carries `system_fingerprint`;
+    // OpenAI's default route is the Responses API, so the configuration is
+    // routed once and the agent follows.
+    let client = OpenAI::from_env()?.with_route(Route::Chat).bound()?;
     let agent = client
         .agent(openai::GPT_5_2)
         .preamble("Answer in one short sentence.")

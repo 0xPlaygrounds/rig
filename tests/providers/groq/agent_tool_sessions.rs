@@ -9,11 +9,10 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt;
-use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
-use rig::providers::{groq, openai};
+use rig::providers::openai;
 use rig::streaming::{Delta, StreamEvent};
 use rig::tool::Tool;
 use schemars::JsonSchema;
@@ -451,8 +450,8 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
 
 /// The Groq wire metadata the normalized response deliberately does not carry.
 ///
-/// The provider-local conversion consumes the raw response and Groq's wire type
-/// is not `Clone`, so the fields the parity assertions need are captured first.
+/// The typed view of the reply document is local to the helper that reads it,
+/// so the fields the parity assertions need are captured out of it first.
 struct RawResponseMetadata {
     id: String,
     model: String,
@@ -477,20 +476,23 @@ impl RawResponseMetadata {
     }
 }
 
-/// Run one completion and return both Groq's own wire metadata and the
-/// normalized response the completion path derives from the same wire response.
+/// Run one completion and return both Groq's own wire metadata — read back
+/// out of the reply document the driver captured — and the normalized
+/// response the same reply folded into.
 ///
-/// `raw_completion` is the escape hatch for the provider-specific fields the
-/// normalized response no longer carries (`system_fingerprint`, Groq's queue and
-/// total timings); converting its result locally keeps the raw-vs-normalized
-/// parity checks below on a single cassette interaction.
+/// [`rig::completion::CompletionResponse::raw`] is the escape hatch for the
+/// provider-specific fields the normalized response does not carry
+/// (`system_fingerprint`, Groq's queue and total timings): it holds the
+/// provider's reply verbatim, so reading it back as the shared OpenAI type
+/// keeps both views on a single cassette interaction.
 async fn raw_and_normalized_completion(
-    model: &groq::CompletionModel,
+    model: &(impl CompletionModel + Clone),
     request: rig::completion::CompletionRequest,
 ) -> Result<(RawResponseMetadata, rig::completion::CompletionResponse)> {
-    let raw = model.raw_completion(request).await?;
+    let normalized = model.completion(request).await?;
+    let raw = openai::CompletionResponse::deserialize(&normalized.raw)
+        .map_err(|error| anyhow::anyhow!("captured raw is the shared OpenAI reply: {error}"))?;
     let metadata = RawResponseMetadata::capture(&raw);
-    let normalized: rig::completion::CompletionResponse = raw.normalize("groq")?;
     Ok((metadata, normalized))
 }
 
@@ -552,7 +554,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -597,7 +599,7 @@ async fn tool_choice_auto_required_specific_and_none() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/tool_choice_auto_required_specific_and_none",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
 
             let auto = model
                 .completion(
@@ -692,7 +694,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.completion_model(JSON_OBJECT_MODEL);
+            let model = client.completion(JSON_OBJECT_MODEL);
             let request = model
                 .completion_request(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
@@ -738,7 +740,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
-            let model = client.completion_model(JSON_SCHEMA_MODEL);
+            let model = client.completion(JSON_SCHEMA_MODEL);
             let request = model
                 .completion_request(
                     "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",
@@ -770,7 +772,7 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
     with_groq_cassette_result(
         "agent_tool_sessions/low_latency_streaming_text_surfaces_final_usage",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let mut stream = model
                 .stream(
                     model

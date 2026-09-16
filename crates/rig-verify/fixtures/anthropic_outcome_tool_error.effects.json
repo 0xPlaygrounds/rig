@@ -145,31 +145,37 @@
           "raw": {
             "content": [
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_1",
-                "name": "add",
                 "input": {
                   "x": 17,
                   "y": 25
-                }
+                },
+                "name": "add",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 611,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 69
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 611,
+              "output_tokens": 69,
+              "service_tier": "standard"
+            }
           }
         }
       }
@@ -331,26 +337,29 @@
           "raw": {
             "content": [
               {
-                "type": "text",
-                "text": "I'm sorry, but it seems the addition tool is currently experiencing an issue and returned an error. Please try again later!"
+                "text": "I'm sorry, but it seems the addition tool is currently experiencing an issue and returned an error. Please try again later!",
+                "type": "text"
               }
             ],
             "id": "msg_REDACTED_2",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "end_turn",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 697,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 28
-            },
-            "provider_request_id": "req_REDACTED_2"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 697,
+              "output_tokens": 28,
+              "service_tier": "standard"
+            }
           }
         }
       }

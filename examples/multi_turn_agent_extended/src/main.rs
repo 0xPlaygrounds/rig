@@ -1,5 +1,6 @@
 use rig::prelude::*;
-use rig::{providers::anthropic, tool::Tool};
+use rig::providers::anthropic::{self, wire::Anthropic};
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -10,8 +11,8 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
-    let openai_client = anthropic::Client::from_env()?;
+    // Create Anthropic client
+    let openai_client = Anthropic::from_env()?.bound()?;
 
     // Create RAG agent with a single context prompt and a dynamic tool source
     let agent = openai_client

@@ -9,7 +9,9 @@
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
 use rig::completion::CompletionModel;
+use rig::driver::{Bound, Socket};
 use rig::prelude::*;
+use rig::providers::gemini::Gemini;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::Gemini;
@@ -17,10 +19,10 @@ const THINKING: cells::ThinkingWire = cells::ThinkingWire::Gemini;
 // gemini-2.5-flash, not flash-lite: at temperature 0 flash-lite answered the
 // `list_files` functionResponse with an empty candidate (no parts,
 // finishReason STOP) on both endpoints, 3 attempts, first recording round.
-fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion_model("gemini-2.5-flash"),
+        model: client.completion("gemini-2.5-flash"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -34,14 +36,10 @@ const SCRIPTED_KEY: &str = "scripted-fault-key-7f3a9c";
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
 fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = rig::providers::gemini::Client::builder()
-        .api_key(SCRIPTED_KEY)
-        .http_client(SequencedHttpClient::new(replies))
-        .build()
-        .expect("client should build");
+    let client = Gemini::new(SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
     Wire {
         thinking: THINKING,
-        model: client.completion_model("gemini-2.5-flash"),
+        model: client.completion("gemini-2.5-flash"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

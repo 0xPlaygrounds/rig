@@ -7,18 +7,17 @@
 //! scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
+use rig::driver::Bound;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::providers::anthropic::wire::Anthropic;
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
 
-fn wire(
-    client: &rig::providers::anthropic::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client.completion_model(CLAUDE_SONNET_4_6),
+        model: client.completion(CLAUDE_SONNET_4_6),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -3,12 +3,13 @@ use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use rig_core::http_client::{Request, Response, StatusCode};
 use rig_core::{
-    client::CompletionClient,
     completion::CompletionModel,
-    http_client::{
-        self, HttpClientExt, LazyBody, MultipartForm, StreamingResponse, sse::BoxedStream,
+    http_client::{self, BoxedStream, HttpClientExt, LazyBody, MultipartForm, StreamingResponse},
+    prelude::*,
+    providers::{
+        anthropic::wire::Anthropic,
+        openai::wire::{DEEPSEEK, OPENAI, OpenAI},
     },
-    providers::{anthropic, deepseek, openai},
     streaming::{StreamEvent, StreamEvents},
     wasm_compat::WasmCompatSend,
 };
@@ -131,28 +132,27 @@ async fn stream(provider: &str, http: Replay, direct: bool) -> StreamEvents {
     match provider {
         "openai" => {
             adapted(
-                openai::Client::new_with("test-not-a-key", http)
-                    .unwrap()
-                    .completions_api()
-                    .completion_model("gpt-4o"),
+                OpenAI::with_key(&OPENAI, "test-not-a-key")
+                    .bind(http)
+                    .chat("gpt-4o"),
                 direct,
             )
             .await
         }
         "deepseek" => {
             adapted(
-                deepseek::Client::new_with("test-not-a-key", http)
-                    .unwrap()
-                    .completion_model("deepseek-reasoner"),
+                OpenAI::with_key(&DEEPSEEK, "test-not-a-key")
+                    .bind(http)
+                    .completion("deepseek-reasoner"),
                 direct,
             )
             .await
         }
         "anthropic" => {
             adapted(
-                anthropic::Client::new_with("test-not-a-key", http)
-                    .unwrap()
-                    .completion_model("claude-sonnet-4-5"),
+                Anthropic::new("test-not-a-key")
+                    .bind(http)
+                    .completion("claude-sonnet-4-5"),
                 direct,
             )
             .await

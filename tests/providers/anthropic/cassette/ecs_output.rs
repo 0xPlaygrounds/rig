@@ -6,18 +6,14 @@ use crate::goldens::{event_schema, families};
 use crate::support::{Adder, BASIC_PREAMBLE, STRUCTURED_OUTPUT_PROMPT, TOOLS_PREAMBLE};
 use rig::effect::EffectFamily;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_ecs::agent::*;
 
 #[tokio::test]
 async fn tool_unary_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
         ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
             mode: OutputKind::Tool,
             schema: Some(event_schema().into()),
@@ -55,11 +51,8 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn tool_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_streamed", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            true,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, true);
         ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
             mode: OutputKind::Tool,
             schema: Some(event_schema().into()),
@@ -88,11 +81,8 @@ async fn tool_streamed_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
         ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
             mode: OutputKind::Prompted,
             schema: Some(event_schema().into()),
@@ -127,11 +117,8 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn prompted_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/prompted_streamed", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            true,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, true);
         ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
             mode: OutputKind::Prompted,
             schema: Some(event_schema().into()),
@@ -161,11 +148,8 @@ async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/tool_with_real_tool",
         |client| async move {
-            let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
-                TOOLS_PREAMBLE,
-                false,
-            );
+            let mut ecs =
+                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
             ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
                 mode: OutputKind::Tool,
                 schema: Some(event_schema().into()),
@@ -204,11 +188,8 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/prompted_with_real_tool",
         |client| async move {
-            let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
-                TOOLS_PREAMBLE,
-                false,
-            );
+            let mut ecs =
+                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
             ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
                 mode: OutputKind::Prompted,
                 schema: Some(event_schema().into()),
@@ -247,11 +228,8 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/tool_choice_specific_output",
         |client| async move {
-            let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
-                BASIC_PREAMBLE,
-                false,
-            );
+            let mut ecs =
+                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
             ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
                 mode: OutputKind::Tool,
                 schema: Some(event_schema().into()),
@@ -292,11 +270,8 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/tool_choice_required",
         |client| async move {
-            let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
-                BASIC_PREAMBLE,
-                false,
-            );
+            let mut ecs =
+                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
             ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
                 mode: OutputKind::Tool,
                 schema: Some(event_schema().into()),
@@ -331,11 +306,8 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette(
         "corpus_output/tool_under_none_degrades",
         |client| async move {
-            let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
-                BASIC_PREAMBLE,
-                false,
-            );
+            let mut ecs =
+                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
             ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
                 mode: OutputKind::Tool,
                 schema: Some(event_schema().into()),
@@ -373,11 +345,8 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn tool_thinking_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_thinking", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
         ecs.app.world_mut().entity_mut(ecs.agent).insert(Output {
             mode: OutputKind::Tool,
             schema: Some(event_schema().into()),

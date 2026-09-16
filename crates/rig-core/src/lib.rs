@@ -25,17 +25,19 @@
 //! # Simple example
 //! ```ignore
 //! use rig_core::{
-//!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
-//!     providers::openai,
+//!     providers::openai::{self, OpenAI},
 //! };
+//! // rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
+//! use rig_reqwest::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create an OpenAI client and completion model.
-//!     // This requires the `OPENAI_API_KEY` environment variable to be set.
-//!     let openai_client = openai::Client::from_env()?;
-//!     let model = openai_client.completion_model(openai::GPT_5_2);
+//!     // Read `OPENAI_API_KEY` into the provider's configuration, bind it to a
+//!     // transport, and pick a model: a model is a wire plus its socket.
+//!     // OpenAI's default completion route is the Responses API;
+//!     // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
+//!     let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
 //!
 //!     let request = model.completion_request("Who are you?").build();
 //!     let response = model.completion(request).await?;
@@ -52,12 +54,29 @@
 //! or just `full` to enable all features (`cargo add tokio --features macros,rt-multi-thread`).
 //!
 //! # Core concepts
-//! ## Completion and embedding models
-//! Rig provides a consistent API for working with LLMs and embeddings. Specifically,
-//! each provider (e.g. OpenAI, Cohere) has a `Client` struct that can be used to initialize completion
-//! and embedding models. These models implement the [CompletionModel](crate::completion::CompletionModel)
-//! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
-//! low-level interface for creating completion and embedding requests and executing them.
+//! ## Providers, wires, and models
+//! Rig provides a consistent API for working with LLMs and embeddings. A
+//! provider is plain configuration data (`openai::wire::OpenAI`,
+//! `anthropic::wire::Anthropic`, `cohere::Cohere`, …) — its base URL, its
+//! credential, its dialect — plus one *wire* per API endpoint, saying what to
+//! send and how to read the reply. Nothing generic sits between the two.
+//!
+//! Binding a provider to an HTTP transport yields a
+//! [`Bound`](crate::driver::Bound): `provider.bound()?` builds the bundled
+//! `reqwest` transport (from `rig-reqwest`, whose prelude the `rig` facade
+//! re-exports), and `provider.bind(transport)` takes one you already own.
+//! Every capability hangs off that `Bound` — `completion(model)`,
+//! `embedding(model, ndims)`, `verify()`, one method per capability the
+//! provider declares a wire for. A capability it has no wire for is a method
+//! that does not exist, and the compiler says so.
+//!
+//! `Bound` is the single implementor of
+//! [CompletionModel](crate::completion::CompletionModel),
+//! [EmbeddingModel](crate::embeddings::EmbeddingModel) and their siblings,
+//! which provide a common, low-level interface for creating completion and
+//! embedding requests and executing them; one driver ([`driver`]) runs all of
+//! them, so a provider never restates request plumbing, retry classification,
+//! or telemetry.
 //!
 //! ## Agent runtimes
 //! This crate owns the provider-agnostic model, message, tool, and storage
@@ -92,7 +111,7 @@
 //! Rig natively supports the following completion and embedding model provider integrations:
 //! - Anthropic
 //! - Azure OpenAI
-//! - ChatGPT and GitHub Copilot auth-backed clients
+//! - ChatGPT and GitHub Copilot (OAuth-backed)
 //! - Cohere
 //! - DeepSeek
 //! - Gemini
@@ -149,6 +168,7 @@ extern crate self as rig;
 pub mod audio_generation;
 pub mod client;
 pub mod completion;
+pub mod driver;
 pub mod effect;
 pub mod embeddings;
 pub mod error;
@@ -166,6 +186,7 @@ pub mod markers;
 pub mod memory;
 pub mod model;
 pub mod observe;
+pub mod operation;
 pub mod prelude;
 pub(crate) mod provider_response;
 pub mod providers;
@@ -181,6 +202,7 @@ pub mod transcript;
 pub mod transcription;
 pub mod vector_store;
 pub mod wasm_compat;
+pub mod wire;
 #[cfg(feature = "websocket")]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod ws_client;
@@ -227,7 +249,7 @@ const _: fn() = || {
     // The serializable identity a typed view is resolved from.
     assert_send_sync_static::<completion::ModelRef>();
     assert_send_sync_static::<tool::DynamicTool>();
-    // One erased transport shared by every provider client a host builds.
+    // One erased transport, shared by every provider a host binds.
     assert_send_sync_static::<http_client::BoxedHttpClient>();
     // A live stream is owned by one poller: `Send` so it can move to a worker,
     // not `Sync`.

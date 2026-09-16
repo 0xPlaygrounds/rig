@@ -145,7 +145,6 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_1",
             "candidates": [
               {
                 "content": {
@@ -157,29 +156,24 @@
                   "role": "model"
                 },
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": null
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_1",
             "usageMetadata": {
-              "promptTokenCount": 130,
               "candidatesTokenCount": 27,
-              "totalTokenCount": 253,
-              "thoughtsTokenCount": 96,
+              "promptTokenCount": 130,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 130
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 96,
+              "totalTokenCount": 253
+            }
           }
         }
       }

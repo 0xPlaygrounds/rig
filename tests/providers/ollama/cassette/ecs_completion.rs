@@ -2,13 +2,12 @@
 use crate::ecs_agent::EcsAgent;
 use crate::ollama::support::with_ollama_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::prelude::*;
 use rig_ecs::agent::DefaultMaxTurns;
 const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn completion_smoke() {
     with_ollama_cassette("agent/completion_smoke", |client| async move {
-        let mut ecs = EcsAgent::new(client.completion_model(MODEL), BASIC_PREAMBLE, 1);
+        let mut ecs = EcsAgent::new(client.completion(MODEL), BASIC_PREAMBLE, 1);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -39,7 +38,7 @@ async fn completion_smoke() {
 #[tokio::test]
 async fn completion_respects_max_tokens() {
     with_ollama_cassette("agent/max_tokens", |client| async move {
-        let mut ecs = EcsAgent::new(client.completion_model(MODEL), BASIC_PREAMBLE, 1);
+        let mut ecs = EcsAgent::new(client.completion(MODEL), BASIC_PREAMBLE, 1);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)

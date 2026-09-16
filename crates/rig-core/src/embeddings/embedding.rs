@@ -67,7 +67,8 @@ crate::provider_response::provider_error_enum!(
 
     /// The provider returned vectors of a width other than the one the caller
     /// declared through
-    /// [`embedding_model_with_ndims`](crate::client::EmbeddingsClient::embedding_model_with_ndims).
+    /// [`embedding`](crate::driver::HasEmbedding::embedding)'s `ndims`
+    /// argument.
     ///
     /// Raised only when the width was set *explicitly*: a model handle built
     /// without one reports whatever the provider's own table says and has
@@ -87,7 +88,12 @@ crate::provider_response::provider_error_enum!(
     )]
     MismatchedDimensions {
         /// Provider whose response disagreed with the declared width.
-        provider: &'static str,
+        ///
+        /// Owned, unlike the `&'static str` the request-shaped variants
+        /// above carry: this one is raised by the shared driver from a
+        /// [`Wire`](crate::wire::Wire)'s name, and the wire model erases the
+        /// provider's `'static` descriptor to `&str` at that seam.
+        provider: String,
         /// Width the caller declared.
         requested: usize,
         /// Width the provider actually returned.
@@ -390,3 +396,39 @@ impl Eq for Embedding {}
 
 #[cfg(test)]
 mod provider_response_tests;
+
+/// The media type of an encoded image, sniffed from its magic bytes.
+///
+/// The image-embedding wires need it twice: once to reject a format the
+/// provider does not accept, and once to name the vector's input.
+pub fn image_media_type(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
+        Some("image/png")
+    } else if bytes.starts_with(b"\xff\xd8\xff") {
+        Some("image/jpeg")
+    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
+        Some("image/gif")
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()) {
+        Some("image/webp")
+    } else {
+        None
+    }
+}
+
+/// The identifier an image embedding's [`Embedding::document`] carries.
+///
+/// An image has no text to name it and its bytes must never travel back in
+/// a response, so the identity is its media type and a digest — enough to
+/// pair a vector with its input and to tell two inputs apart, and not
+/// reversible. An unsniffable format is named as such rather than guessed;
+/// a wire rejects it before the request is sent.
+pub fn image_document(bytes: &[u8]) -> String {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+    let media_type = image_media_type(bytes).unwrap_or("application/octet-stream");
+    let digest = sha2::Sha256::digest(bytes);
+    format!(
+        "{media_type};sha256={}",
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(digest)
+    )
+}

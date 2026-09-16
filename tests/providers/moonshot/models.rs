@@ -5,15 +5,18 @@
 //! the OpenAI-style `{"object":"list","data":[…]}` envelope this decodes
 //! (rig#2079).
 
-use rig::client::DefaultTransportClient as _;
-use rig::client::ModelListingClient;
-use rig::providers::moonshot;
+use rig::model::ModelLister;
+use rig::prelude::*;
+use rig::providers::openai::wire::{self as openai_wire, OpenAI};
 
 #[tokio::test]
 #[ignore = "requires MOONSHOT_API_KEY"]
 async fn list_models_smoke() {
-    let client = moonshot::Client::from_env().expect("client should build");
-    let models = match client.list_models().await {
+    let client = OpenAI::from_env_with(&openai_wire::MOONSHOT)
+        .expect("MOONSHOT_API_KEY should be set")
+        .bound()
+        .expect("client should build");
+    let models = match client.models().list_all().await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Moonshot models should succeed\nDisplay: {error}\nDebug: {error:#?}")

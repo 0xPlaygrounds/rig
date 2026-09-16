@@ -25,7 +25,7 @@ use rig::agent::{AgentHook, CompletionCallAction, CompletionCallEvent, HookConte
 use rig::completion::PromptError;
 use rig::message::ToolChoice;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
@@ -121,7 +121,7 @@ impl AgentHook for ForceToolOnFirstTurn {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
+    let client = OpenAI::from_env()?.bound()?;
     // A fresh agent per run (both share the same tool and preamble).
     let make_agent = || {
         client

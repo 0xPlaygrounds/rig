@@ -1,20 +1,13 @@
 //! Anthropic completion api implementation
 
 use crate::completion::CompletionRequest;
-use crate::completion::NormalizeCompletionResponse;
 use crate::json_utils::string_or_vec;
-use crate::providers::internal::completion_send::send_completion;
 use crate::{
-    client::Provider,
     completion::{self, CompletionError},
-    http_client::HttpClientExt,
-    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType, Reasoning},
-    telemetry::{CompletionOperation, CompletionSpanBuilder, ProviderResponseExt, SpanCombinator},
-    wasm_compat::*,
+    message::{self, DocumentMediaType, DocumentSourceKind, MessageError, MimeType},
 };
 use serde::{Deserialize, Serialize};
 use std::{convert::Infallible, str::FromStr};
-use tracing::Instrument;
 
 // ================================================================
 // Anthropic Completion API
@@ -43,41 +36,6 @@ pub const ANTHROPIC_VERSION_2023_01_01: &str = "2023-01-01";
 pub const ANTHROPIC_VERSION_2023_06_01: &str = "2023-06-01";
 pub const ANTHROPIC_VERSION_LATEST: &str = ANTHROPIC_VERSION_2023_06_01;
 pub(crate) const ANTHROPIC_RAW_CONTENT_KEY: &str = "anthropic_content";
-
-pub trait AnthropicCompatibleProvider: Provider {
-    const PROVIDER_NAME: &'static str;
-
-    /// Response header carrying the provider's transport request id, when the
-    /// provider reports one. Anthropic sends `request-id`; compatible gateways
-    /// that mirror Anthropic's shape usually do too, and one that doesn't
-    /// simply yields `None` — never an error.
-    const REQUEST_ID_HEADER: Option<&'static str> = Some("request-id");
-
-    fn default_max_tokens(model: &str) -> Option<u64> {
-        let _ = model;
-        None
-    }
-
-    /// Apply provider-specific strict tool-use behavior to a Rig-generated tool.
-    ///
-    /// Anthropic-compatible gateways do not necessarily implement Anthropic's
-    /// constrained tool schemas, so the default deliberately leaves tools
-    /// unchanged.
-    fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
-}
-
-impl AnthropicCompatibleProvider for super::client::Anthropic {
-    const PROVIDER_NAME: &'static str = "anthropic";
-
-    fn default_max_tokens(model: &str) -> Option<u64> {
-        default_max_tokens_for_model(model)
-    }
-
-    fn enable_strict_tool_use(tool: &mut ToolDefinition) {
-        sanitize_strict_tool_schema(&mut tool.input_schema);
-        tool.strict = true;
-    }
-}
 
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
@@ -116,38 +74,6 @@ pub(crate) fn map_finish_reason(stop_reason: &str) -> completion::FinishReason {
     }
 }
 
-impl ProviderResponseExt for CompletionResponse {
-    type Usage = Usage;
-
-    fn response_id(&self) -> Option<&str> {
-        Some(self.id.as_str())
-    }
-
-    fn response_model_name(&self) -> Option<&str> {
-        Some(self.model.as_str())
-    }
-
-    fn text_response(&self) -> Option<String> {
-        let res = self
-            .content
-            .iter()
-            .filter_map(|x| {
-                if let Content::Text { text, .. } = x {
-                    Some(text.as_str())
-                } else {
-                    None
-                }
-            })
-            .collect::<String>();
-
-        if res.is_empty() { None } else { Some(res) }
-    }
-
-    fn usage(&self) -> Option<Self::Usage> {
-        Some(self.usage)
-    }
-}
-
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub input_tokens: u64,
@@ -182,7 +108,8 @@ pub struct OutputTokensDetails {
 ///
 /// Distinguishes 1-hour cache writes (~2x base input token price) from
 /// 5-minute writes (~1.25x), which is what makes a mixed-TTL configuration
-/// (see [`CompletionModel::with_static_prefix_cache_ttl`]) observable.
+/// (see [`Messages::with_static_prefix_cache_ttl`](super::wire::Messages::with_static_prefix_cache_ttl))
+/// observable.
 /// Unknown buckets a provider may add later are ignored on deserialization.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq)]
 pub struct CacheCreation {
@@ -325,76 +252,6 @@ pub enum SystemContent {
         #[serde(skip_serializing_if = "Option::is_none")]
         cache_control: Option<CacheControl>,
     },
-}
-
-/// Normalize an Anthropic Messages response.
-///
-/// The provider descriptor name is an *input* rather than a constant: this same
-/// wire shape is served by every Anthropic-compatible provider (MiniMax, Z.ai,
-/// Moonshot, Xiaomi MiMo), so baking in `"anthropic"` here would mislabel all of
-/// them. Taking it as part of the conversion makes the correct name impossible
-/// to forget.
-impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
-    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
-        let mut response = self;
-        let mut content = std::mem::take(&mut response.content)
-            .into_iter()
-            .map(TryInto::try_into)
-            .collect::<Result<Vec<_>, _>>()?;
-
-        crate::message::normalize_missing_tool_call_ids(&mut content);
-
-        // Anthropic has two ways to end a turn that genuinely carried no
-        // content, and an empty list says exactly that:
-        //
-        // - `end_turn` after a tool-result round trip — documented, and it
-        //   used to be normalized into a fabricated empty-text part.
-        // - `stop_sequence` when the matched sequence is the first thing the
-        //   model emits. Anthropic strips the sequence it stopped on, so a
-        //   turn that produced nothing before it arrives with `content: []`
-        //   and a 200. Rejecting that turned a completed provider turn into
-        //   `EMPTY_RESPONSE_ERROR`, and diverged from the streamed twin,
-        //   which finishes the same turn with an empty choice and no error.
-        //
-        // The `stop_sequence` arm additionally requires the sequence itself.
-        // Every recorded stop-sequence turn names the sequence that fired, so
-        // that is the full extent of the evidence; a turn claiming to have
-        // stopped on a sequence while naming none is the malformed shape this
-        // guard exists for, not a legal empty turn. This matters most for the
-        // Anthropic-compatible gateways sharing this mapping, which are the
-        // likeliest to report a stop reason without its companion field.
-        //
-        // Note this narrow shape — empty, `stop_sequence`, no sequence named —
-        // is one the streaming path still finishes cleanly, since it has no
-        // equivalent guard. That asymmetry is deliberate: the parity this
-        // carve-out restores is for *legal* turns, and widening it to keep a
-        // malformed one symmetric would trade a real guard for a cosmetic
-        // match.
-        //
-        // Any *other* empty response is the shared provider defect.
-        let legal_empty_turn = match response.stop_reason.as_deref() {
-            Some("end_turn") => true,
-            Some("stop_sequence") => response.stop_sequence.is_some(),
-            _ => false,
-        };
-        let choice = if content.is_empty() && legal_empty_turn {
-            Vec::new()
-        } else {
-            crate::message::require_non_empty_response(content)?
-        };
-
-        let finish_reason = response.stop_reason.as_deref().map(map_finish_reason);
-
-        Ok(completion::CompletionResponse::new(
-            choice,
-            crate::completion::Usage::from(&response.usage),
-            provider,
-        )
-        .with_optional_message_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
-        .with_optional_provider_request_id(response.provider_request_id)
-        .with_model(response.model.as_str())
-        .with_optional_finish_reason(finish_reason))
-    }
 }
 
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
@@ -844,20 +701,6 @@ fn extract_anthropic_raw_content(text: &message::Text) -> Result<Option<Content>
     }
 }
 
-fn anthropic_raw_content_to_message_text(content: Content) -> Result<message::Text, MessageError> {
-    let raw_content = serde_json::to_value(content).map_err(|err| {
-        MessageError::ConversionError(format!("Failed to preserve Anthropic content block: {err}"))
-    })?;
-
-    Ok(message::Text {
-        text: String::new(),
-        additional_params: message::AdditionalParams::from_entries([(
-            ANTHROPIC_RAW_CONTENT_KEY,
-            raw_content,
-        )]),
-    })
-}
-
 #[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ToolResultContent {
@@ -955,14 +798,6 @@ pub enum PlainTextMediaType {
     Plain,
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq)]
-#[serde(rename_all = "lowercase")]
-pub enum SourceType {
-    BASE64,
-    URL,
-    TEXT,
-}
-
 impl From<String> for Content {
     fn from(text: String) -> Self {
         Content::Text {
@@ -976,28 +811,6 @@ impl From<String> for Content {
 impl From<String> for ToolResultContent {
     fn from(text: String) -> Self {
         ToolResultContent::Text { text }
-    }
-}
-
-impl TryFrom<message::ContentFormat> for SourceType {
-    type Error = MessageError;
-
-    fn try_from(format: message::ContentFormat) -> Result<Self, Self::Error> {
-        match format {
-            message::ContentFormat::Base64 => Ok(SourceType::BASE64),
-            message::ContentFormat::Url => Ok(SourceType::URL),
-            message::ContentFormat::String => Ok(SourceType::TEXT),
-        }
-    }
-}
-
-impl From<SourceType> for message::ContentFormat {
-    fn from(source_type: SourceType) -> Self {
-        match source_type {
-            SourceType::BASE64 => message::ContentFormat::Base64,
-            SourceType::URL => message::ContentFormat::Url,
-            SourceType::TEXT => message::ContentFormat::String,
-        }
     }
 }
 
@@ -1016,30 +829,6 @@ impl TryFrom<message::ImageMediaType> for ImageFormat {
                 )));
             }
         })
-    }
-}
-
-impl From<ImageFormat> for message::ImageMediaType {
-    fn from(format: ImageFormat) -> Self {
-        match format {
-            ImageFormat::JPEG => message::ImageMediaType::JPEG,
-            ImageFormat::PNG => message::ImageMediaType::PNG,
-            ImageFormat::GIF => message::ImageMediaType::GIF,
-            ImageFormat::WEBP => message::ImageMediaType::WEBP,
-        }
-    }
-}
-
-impl TryFrom<DocumentMediaType> for DocumentFormat {
-    type Error = MessageError;
-    fn try_from(value: DocumentMediaType) -> Result<Self, Self::Error> {
-        match value {
-            DocumentMediaType::PDF => Ok(DocumentFormat::PDF),
-            other => Err(MessageError::ConversionError(format!(
-                "DocumentFormat only supports PDF for base64 sources, got: {}",
-                other.to_mime_type()
-            ))),
-        }
     }
 }
 
@@ -1316,348 +1105,10 @@ impl TryFrom<message::Message> for Message {
     }
 }
 
-impl TryFrom<Content> for message::AssistantContent {
-    type Error = MessageError;
-
-    fn try_from(content: Content) -> Result<Self, Self::Error> {
-        Ok(match content {
-            // Keep this destructuring exhaustive so new wire fields force an
-            // explicit capture-or-drop decision. `cache_control` is a
-            // request-side directive, deliberately dropped on response
-            // ingest.
-            Content::Text {
-                text,
-                citations,
-                cache_control: _,
-            } => {
-                // Preserve citation metadata on the generic text block via
-                // `additional_params` so callers going through the generic
-                // `AssistantContent` surface can still recover them (see
-                // [`anthropic_citations`]).
-                let additional_params = message::AdditionalParams::from_entries(
-                    (!citations.is_empty()).then(|| ("citations", serde_json::json!(citations))),
-                );
-                message::AssistantContent::Text(message::Text {
-                    text,
-                    additional_params,
-                })
-            }
-            Content::ToolUse { id, name, input } => {
-                message::AssistantContent::tool_call(id, name, input)
-            }
-            raw @ (Content::ServerToolUse { .. }
-            | Content::WebSearchToolResult { .. }
-            | Content::CodeExecutionToolResult { .. }) => {
-                message::AssistantContent::Text(anthropic_raw_content_to_message_text(raw)?)
-            }
-            Content::Thinking {
-                thinking,
-                signature,
-            } => message::AssistantContent::Reasoning(Reasoning::new_with_signature(
-                &thinking, signature,
-            )),
-            Content::RedactedThinking { data } => {
-                message::AssistantContent::Reasoning(Reasoning::redacted(data))
-            }
-            _ => {
-                return Err(MessageError::ConversionError(
-                    "Content did not contain a message, tool call, or reasoning".to_owned(),
-                ));
-            }
-        })
-    }
-}
-
-impl From<ToolResultContent> for message::ToolResultContent {
-    fn from(content: ToolResultContent) -> Self {
-        match content {
-            ToolResultContent::Text { text, .. } => message::ToolResultContent::text(text),
-            ToolResultContent::Image { source } => match source {
-                ImageSource::Base64 { data, media_type } => {
-                    message::ToolResultContent::image_base64(data, Some(media_type.into()), None)
-                }
-                ImageSource::Url { url } => message::ToolResultContent::image_url(url, None, None),
-            },
-        }
-    }
-}
-
-#[doc(hidden)]
-#[derive(Clone)]
-pub struct GenericCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> {
-    pub(crate) client: crate::client::Client<Ext, H>,
-    pub model: String,
-    pub default_max_tokens: Option<u64>,
-    /// Enable manual prompt caching (adds cache_control breakpoints to system prompt,
-    /// tools, and messages)
-    pub prompt_caching: bool,
-    /// Enable Anthropic's automatic prompt caching (adds a top-level `cache_control` field to the
-    /// request). The API automatically places the breakpoint on the last cacheable block and moves
-    /// it forward as the conversation grows. No beta header is required.
-    pub automatic_caching: bool,
-    /// TTL for automatic caching. `None` uses the API default (5 minutes).
-    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
-    pub automatic_caching_ttl: Option<CacheTtl>,
-    /// TTL for the static prefix (tool definitions + system prompt),
-    /// independent of the conversation-tail breakpoint. `None` inherits the
-    /// top-level/automatic TTL.
-    pub static_prefix_cache_ttl: Option<CacheTtl>,
-    /// Whether Rig-generated tools request provider-supported strict validation.
-    pub strict_tools: bool,
-}
-
-/// Anthropic completion model.
-///
-/// This preserves the historical public generic shape where the first generic
-/// parameter is the HTTP client type.
-pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    GenericCompletionModel<super::client::Anthropic, H>;
-
-impl<Ext, H> GenericCompletionModel<Ext, H> {
-    /// The provider client this model sends through.
-    pub fn client(&self) -> &crate::client::Client<Ext, H> {
-        &self.client
-    }
-}
-
-impl<Ext, H> GenericCompletionModel<Ext, H>
-where
-    H: HttpClientExt,
-    Ext: AnthropicCompatibleProvider + Clone + 'static,
-{
-    /// The request prelude both the unary and the streaming path run: resolve
-    /// the model, open the telemetry span, default `max_tokens`, and build the
-    /// typed request.
-    ///
-    /// The span is built *before* `max_tokens` defaulting so a request rejected
-    /// for a missing limit is still attributable to a model and operation. The
-    /// caller applies the span its own way — `.instrument(..)` around the unary
-    /// send, handed to the SSE transport when streaming.
-    ///
-    /// Each caller TRACE-logs its own final body rather than this typed request:
-    /// the streaming body is this request plus `stream` and a reconciled
-    /// `tool_choice`, and those two fields are the whole reason the streaming
-    /// path logs at all.
-    pub(super) fn prepare_request(
-        &self,
-        mut completion_request: completion::CompletionRequest,
-        operation: CompletionOperation,
-    ) -> Result<(tracing::Span, AnthropicCompletionRequest), CompletionError> {
-        let request_model = completion_request
-            .model
-            .clone()
-            .unwrap_or_else(|| self.model.clone());
-        let span = CompletionSpanBuilder::new(Ext::PROVIDER_NAME, &request_model, operation)
-            .system_instructions(
-                completion_request.system_instructions(),
-                completion_request.record_telemetry_content,
-            )
-            .build();
-
-        if completion_request.max_tokens.is_none() {
-            let Some(tokens) = self.default_max_tokens else {
-                return Err(CompletionError::RequestError(
-                    "`max_tokens` must be set for Anthropic".into(),
-                ));
-            };
-            completion_request.max_tokens = Some(tokens);
-        }
-
-        let request = AnthropicCompletionRequest::try_from_params::<Ext>(
-            AnthropicRequestParams {
-                model: &request_model,
-                request: completion_request,
-                prompt_caching: self.prompt_caching,
-                automatic_caching: self.automatic_caching,
-                automatic_caching_ttl: self.automatic_caching_ttl.clone(),
-                static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
-            },
-            self.strict_tools,
-        )?;
-
-        Ok((span, request))
-    }
-
-    /// A model with every caching / strictness knob off, differing from its
-    /// siblings only in how `default_max_tokens` was resolved.
-    fn with_defaults(
-        client: crate::client::Client<Ext, H>,
-        model: String,
-        default_max_tokens: Option<u64>,
-    ) -> Self {
-        Self {
-            client,
-            model,
-            default_max_tokens,
-            prompt_caching: false,
-            automatic_caching: false,
-            automatic_caching_ttl: None,
-            static_prefix_cache_ttl: None,
-            strict_tools: false,
-        }
-    }
-
-    pub fn new(client: crate::client::Client<Ext, H>, model: impl Into<String>) -> Self {
-        let model = model.into();
-        let default_max_tokens = Ext::default_max_tokens(&model);
-
-        Self::with_defaults(client, model, default_max_tokens)
-    }
-
-    pub fn with_model(client: crate::client::Client<Ext, H>, model: &str) -> Self {
-        let default_max_tokens = Ext::default_max_tokens(model)
-            .or_else(|| Some(default_max_tokens_with_fallback(model)));
-
-        Self::with_defaults(client, model.to_string(), default_max_tokens)
-    }
-
-    /// Enable manual prompt caching.
-    ///
-    /// When enabled, cache_control breakpoints are automatically added to:
-    /// - The system prompt (marked with ephemeral cache)
-    /// - The final tool definition, when tools are present (marked with ephemeral cache)
-    /// - The last content block of the last message (marked with ephemeral cache)
-    ///
-    /// This allows Anthropic to cache the system prompt, tools layer, and conversation
-    /// history for cost savings. Use [`with_automatic_caching`] when you want Anthropic
-    /// to choose and advance a single top-level cache breakpoint automatically.
-    /// When combined with [`with_automatic_caching`], the top-level automatic breakpoint
-    /// owns the moving message cache point while Rig still marks tools and system prompt
-    /// blocks when budget permits.
-    /// Existing `cache_control` markers in provider-specific tool definitions are preserved
-    /// and count toward Anthropic's request limit of 4 cache breakpoints.
-    ///
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
-    pub fn with_prompt_caching(mut self) -> Self {
-        self.prompt_caching = true;
-        self
-    }
-
-    /// Enable Anthropic's automatic prompt caching.
-    ///
-    /// When enabled, a top-level `cache_control: { "type": "ephemeral" }` field is added to every
-    /// request. Anthropic's API automatically applies the cache breakpoint to the last cacheable
-    /// block and moves it forward as the conversation grows — no beta header and no manual
-    /// breakpoint management are required.
-    ///
-    /// This is the recommended approach for multi-turn conversations. Use [`with_prompt_caching`]
-    /// instead when you need fine-grained, per-block control over what is cached.
-    ///
-    /// To use a one-hour TTL instead of the default five minutes, use
-    /// [`with_automatic_caching_1h`] or pass top-level `cache_control` with
-    /// `ttl: "1h"` via `additional_params`. Rig normalizes raw top-level
-    /// `cache_control` before budgeting and ordering manual prompt cache markers.
-    ///
-    /// ```ignore
-    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching();
-    /// ```
-    ///
-    /// ## Minimum cacheable prompt length
-    ///
-    /// The combined prompt (tools + system + messages up to the automatically chosen breakpoint)
-    /// must meet the model-specific minimum or caching is silently skipped by the API:
-    ///
-    /// | Model | Minimum tokens |
-    /// |-------|---------------|
-    /// | `claude-opus-4-7`, `claude-opus-4-6`, `claude-opus-4-5` | 4 096 |
-    /// | `claude-sonnet-4-6` | 2 048 |
-    /// | `claude-sonnet-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4` | 1 024 |
-    /// | `claude-haiku-4-5` | 4 096 |
-    ///
-    /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
-    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
-    pub fn with_automatic_caching(mut self) -> Self {
-        self.automatic_caching = true;
-        self
-    }
-
-    /// Enable Anthropic's automatic prompt caching with a 1-hour TTL.
-    ///
-    /// Identical to [`with_automatic_caching`] but sets `ttl: "1h"` on the
-    /// top-level `cache_control` field:
-    ///
-    /// ```ignore
-    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching_1h();
-    /// ```
-    ///
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
-    pub fn with_automatic_caching_1h(mut self) -> Self {
-        self.automatic_caching = true;
-        self.automatic_caching_ttl = Some(CacheTtl::OneHour);
-        self
-    }
-
-    /// Set the cache TTL for the static prefix (tool definitions + system
-    /// prompt), independent of the moving conversation-tail breakpoint.
-    ///
-    /// An agent's prompt has two parts with very different volatility: the
-    /// system prompt and tool definitions are byte-identical across sessions,
-    /// while the conversation tail changes every turn and is worthless an hour
-    /// later. A 1-hour cache write costs ~2x base input tokens where a
-    /// 5-minute write costs ~1.25x, so the optimal configuration is usually
-    /// mixed — `1h` on the prefix, the 5-minute default on the tail:
-    ///
-    /// ```ignore
-    /// let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-    ///     .with_automatic_caching()
-    ///     .with_static_prefix_cache_ttl(CacheTtl::OneHour);
-    /// ```
-    ///
-    /// Rig places explicit `cache_control` markers on the final tool
-    /// definition and the system prompt at this TTL. The conversation tail is
-    /// unaffected: it follows the automatic/top-level TTL (Anthropic's moving
-    /// breakpoint in automatic mode, Rig's last-message marker in manual
-    /// [`with_prompt_caching`] mode). When this knob is unset, the prefix
-    /// inherits the top-level TTL exactly as before.
-    ///
-    /// Anthropic requires 1-hour markers to precede 5-minute ones. The static
-    /// prefix precedes the tail, so `OneHour` here composes with a 5-minute
-    /// tail — but setting `FiveMinutes` here alongside
-    /// [`with_automatic_caching_1h`] is the illegal inversion and fails before
-    /// any request is sent. The model-specific minimum cacheable prompt
-    /// lengths tabulated on [`with_automatic_caching`] apply to each marker;
-    /// below the minimum, Anthropic silently skips caching.
-    ///
-    /// [`with_prompt_caching`]: CompletionModel::with_prompt_caching
-    /// [`with_automatic_caching`]: CompletionModel::with_automatic_caching
-    /// [`with_automatic_caching_1h`]: CompletionModel::with_automatic_caching_1h
-    pub fn with_static_prefix_cache_ttl(mut self, ttl: CacheTtl) -> Self {
-        self.static_prefix_cache_ttl = Some(ttl);
-        self
-    }
-}
-
-impl<H> GenericCompletionModel<super::client::Anthropic, H>
-where
-    H: HttpClientExt,
-{
-    /// Enable Anthropic strict tool use for every Rig-generated tool.
-    ///
-    /// Anthropic constrains tool inputs to the supported JSON Schema subset
-    /// when `strict: true` is present on a tool definition. Rig sanitizes each
-    /// generated tool schema for that subset and leaves provider-specific tools
-    /// supplied through `additional_params` unchanged. Unsupported validation
-    /// keywords are retained only as model guidance in schema descriptions;
-    /// neither Anthropic nor Rig enforces those original constraints, so
-    /// validate tool inputs before execution when those constraints matter.
-    ///
-    /// Anthropic caches compiled schemas for up to 24 hours. Do not include PHI
-    /// in schema property names, enum or const values, or regex patterns. See
-    /// Anthropic's [structured output retention guidance](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#data-retention).
-    /// Anthropic also limits each request to 20 strict tools and applies
-    /// additional schema-complexity limits; see [schema complexity limits](https://platform.claude.com/docs/en/build-with-claude/structured-outputs#schema-complexity-limits).
-    pub fn with_strict_tools(mut self) -> Self {
-        self.strict_tools = true;
-        self
-    }
-}
-
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
-fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-fable-5")
         || model.starts_with("claude-opus-5")
         || model.starts_with("claude-sonnet-5")
@@ -1677,21 +1128,12 @@ fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     }
 }
 
-fn default_max_tokens_with_fallback(model: &str) -> u64 {
-    default_max_tokens_for_model(model).unwrap_or(2_048)
-}
-
 /// Per Anthropic's mid-conversation system messages docs: Fable 5.x, Opus 4.8 and
 /// Opus 5 accept `role: "system"` inside `messages`; Sonnet 5 does not.
 pub(super) fn supports_mid_conversation_system_messages(model: &str) -> bool {
     model.starts_with(CLAUDE_FABLE_5)
         || model.starts_with(CLAUDE_OPUS_5)
         || model.starts_with(CLAUDE_OPUS_4_8)
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-pub struct Metadata {
-    user_id: Option<String>,
 }
 
 #[derive(Default, Debug, Serialize, Deserialize)]
@@ -1755,7 +1197,7 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 /// Strict tools support optional parameters, so declared `required` lists are
 /// preserved. Unsupported validation keywords are moved into descriptions as
 /// model guidance instead of reaching the constrained-decoding compiler.
-fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
+pub(super) fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
     flatten_root_all_of(&mut original);
@@ -2666,13 +2108,15 @@ pub struct AnthropicRequestParams<'a> {
 }
 
 impl AnthropicCompletionRequest {
-    pub(super) fn try_from_params<Ext>(
+    /// The typed request, with `strict` naming the provider's strict-tool
+    /// transform when it implements one. A function pointer rather than a
+    /// type parameter: whether a provider constrains tool schemas is data
+    /// (`Dialect::strict_tool_schemas`), and the transform itself is one
+    /// function either way.
+    pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
-        strict_tools: bool,
-    ) -> Result<Self, CompletionError>
-    where
-        Ext: AnthropicCompatibleProvider,
-    {
+        strict: Option<fn(&mut ToolDefinition)>,
+    ) -> Result<Self, CompletionError> {
         let AnthropicRequestParams {
             model,
             request: mut req,
@@ -2740,8 +2184,7 @@ impl AnthropicCompletionRequest {
             automatic_caching_ttl.as_ref(),
             &mut additional_params_payload,
         )?;
-        let mut tools =
-            build_tool_definitions::<Ext>(req.tools, &mut additional_params_payload, strict_tools)?;
+        let mut tools = build_tool_definitions(req.tools, &mut additional_params_payload, strict)?;
 
         // System prompt in array format for cache_control support
         let mut system = history_system;
@@ -2791,7 +2234,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
-        Self::try_from_params::<super::client::Anthropic>(params, false)
+        Self::try_from_params(params, None)
     }
 }
 
@@ -2811,14 +2254,11 @@ pub(super) fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
-pub(super) fn build_tool_definitions<Ext>(
+pub(super) fn build_tool_definitions(
     tools: Vec<completion::ToolDefinition>,
     additional_params_payload: &mut serde_json::Value,
-    strict_tools: bool,
-) -> Result<Vec<serde_json::Value>, CompletionError>
-where
-    Ext: AnthropicCompatibleProvider,
-{
+    strict: Option<fn(&mut ToolDefinition)>,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
     let mut additional_tools = extract_tools_from_additional_params(additional_params_payload)?;
 
     let mut tools = tools
@@ -2832,8 +2272,8 @@ where
                 strict: false,
                 cache_control: None,
             };
-            if strict_tools {
-                Ext::enable_strict_tool_use(&mut tool);
+            if let Some(strict) = strict {
+                strict(&mut tool);
             }
 
             tool
@@ -2843,140 +2283,6 @@ where
     tools.append(&mut additional_tools);
 
     Ok(tools)
-}
-
-impl<Ext, H> GenericCompletionModel<Ext, H>
-where
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    /// Execute a completion and return Anthropic's own wire response.
-    ///
-    /// This is the escape hatch for provider-specific fields rig does not
-    /// normalize. It shares the request builder, transport, telemetry, and
-    /// error handling with
-    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
-    /// which calls it and then applies the provider-local mapping — one network
-    /// request either way.
-    pub async fn raw_completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        self.raw_completion_observed(completion_request, None).await
-    }
-
-    /// [`Self::raw_completion`] with observation context owned by this
-    /// invocation.
-    async fn raw_completion_observed(
-        &self,
-        completion_request: completion::CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<CompletionResponse, CompletionError> {
-        let (span, request) =
-            self.prepare_request(completion_request, CompletionOperation::Chat)?;
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Anthropic completion request",
-            &request,
-        );
-
-        let request: Vec<u8> = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post("/v1/messages")?
-            .body(request)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-        if let Some(observation) = observation {
-            super::observation::attach(observation, &mut req, "/v1/messages");
-        }
-
-        let (mut completion, provider_request_id) =
-            send_completion::<_, ApiResponse<CompletionResponse>, _>(
-                &self.client,
-                req,
-                "Anthropic completion",
-                Ext::REQUEST_ID_HEADER,
-                |completion| {
-                    let span = tracing::Span::current();
-                    span.record_response_metadata(completion);
-                    span.record_token_usage(&crate::completion::Usage::from(&completion.usage));
-                },
-            )
-            .instrument(span)
-            .await?;
-        completion.provider_request_id = provider_request_id;
-        Ok(completion)
-    }
-}
-
-impl<Ext, H> completion::CompletionModel for GenericCompletionModel<Ext, H>
-where
-    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
-    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    // Anthropic's native structured outputs (constrained decoding) are designed
-    // to compose with strict tool use, so the schema constraint does not suppress
-    // tool calls. See issue #1928.
-    fn capabilities(&self) -> completion::ProviderCapabilities {
-        completion::ProviderCapabilities::default().with_native_output_tool_composition(true)
-    }
-
-    async fn completion(
-        &self,
-        completion_request: completion::CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.completion_with_context(completion_request, None).await
-    }
-
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        self.stream_with_context(request, None).await
-    }
-
-    async fn completion_with_context(
-        &self,
-        completion_request: completion::CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `normalize` consumes the raw value.
-        let response = self
-            .raw_completion_observed(completion_request, context)
-            .await?;
-        let captured = serde_json::to_value(&response)?;
-        Ok(response.normalize(Ext::PROVIDER_NAME)?.with_raw(captured))
-    }
-
-    async fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        GenericCompletionModel::stream_observed(self, request, context).await
-    }
-}
-
-use crate::providers::internal::envelope::ApiErrorResponse;
-
-#[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "snake_case")]
-enum ApiResponse<T> {
-    Message(T),
-    Error(ApiErrorResponse),
-}
-
-impl<T> crate::providers::internal::envelope::ProviderEnvelope for ApiResponse<T> {
-    type Payload = T;
-
-    fn into_payload(self) -> Result<T, String> {
-        match self {
-            Self::Message(payload) => Ok(payload),
-            Self::Error(ApiErrorResponse { message }) => Err(message),
-        }
-    }
 }
 
 #[cfg(test)]

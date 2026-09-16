@@ -2,13 +2,12 @@
 use super::support::with_deepseek_cassette;
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
-use rig::prelude::*;
 use rig::providers::deepseek;
 #[tokio::test]
 async fn extractor_smoke() {
     with_deepseek_cassette("extractor/extractor_smoke", |client| async move {
         let mut extractor = EcsExtractor::<SmokePerson>::new(
-            client.completion_model(deepseek::DEEPSEEK_V4_FLASH),
+            client.completion(deepseek::DEEPSEEK_V4_FLASH),
             None,
             None,
         );

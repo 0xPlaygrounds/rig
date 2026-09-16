@@ -2,6 +2,45 @@ use super::*;
 use crate::streaming::Delta;
 use serde_json::json;
 
+/// The request every stream test below sends. The decoder is what they
+/// exercise, so the request only has to be well-formed.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn interactions_request() -> crate::completion::CompletionRequest {
+    crate::completion::CompletionRequest {
+        model: None,
+        chat_history: vec![crate::message::Message::user("hello")],
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}
+
+/// The Interactions wire bound to a transport answering with `frames` as
+/// one SSE body.
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn interactions_stream(
+    frames: &[&str],
+) -> crate::driver::Bound<
+    crate::providers::gemini::interactions_api::Interactions,
+    crate::test_utils::MockStreamingClient,
+> {
+    let sse_bytes = bytes::Bytes::from(
+        frames
+            .iter()
+            .map(|event| format!("data: {event}\n\n"))
+            .collect::<String>(),
+    );
+    crate::driver::Bound::new(
+        crate::providers::gemini::Gemini::new("test-key").interactions("gemini-2.5-pro"),
+        crate::test_utils::MockStreamingClient { sse_bytes },
+    )
+}
+
 #[test]
 fn test_streaming_completion_response_has_model_version() {
     let response = StreamingCompletionResponse {
@@ -48,32 +87,16 @@ fn test_content_delta_text_event() {
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 #[tokio::test]
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::gemini::Client;
     use crate::streaming::StreamEvent;
-    use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
     // Content deltas then EOF without `interaction.completed`: the
     // truncated stream must deliver its content but never a synthesized
     // terminal record.
-    let sse_bytes = bytes::Bytes::from(
-        [r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#]
-            .iter()
-            .map(|event| format!("data: {event}\n\n"))
-            .collect::<String>(),
-    );
-
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient { sse_bytes })
-        .build()
-        .expect("build client")
-        .interactions_api();
-    let model = client.completion_model("gemini-2.5-pro");
-    let request = model.completion_request("hello").build();
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
+    let model = interactions_stream(&[
+        r#"{"event_type":"step.delta","index":0,"delta":{"type":"text","text":"hi"}}"#,
+    ]);
+    let mut stream = crate::completion::CompletionModel::stream(&model, interactions_request())
         .await
         .expect("stream should open");
 
@@ -107,27 +130,10 @@ async fn drive_frames(
     Vec<Result<crate::streaming::StreamEvent, String>>,
     crate::streaming::StreamingCompletionResponse,
 ) {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::gemini::Client;
-    use crate::test_utils::MockStreamingClient;
     use futures::StreamExt;
 
-    let sse_bytes = bytes::Bytes::from(
-        frames
-            .iter()
-            .map(|event| format!("data: {event}\n\n"))
-            .collect::<String>(),
-    );
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient { sse_bytes })
-        .build()
-        .expect("build client")
-        .interactions_api();
-    let model = client.completion_model("gemini-2.5-pro");
-    let request = model.completion_request("hello").build();
-    let mut stream = crate::completion::CompletionModel::stream(&model, request)
+    let model = interactions_stream(frames);
+    let mut stream = crate::completion::CompletionModel::stream(&model, interactions_request())
         .await
         .expect("stream should open");
 

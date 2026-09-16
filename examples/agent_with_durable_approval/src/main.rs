@@ -33,7 +33,7 @@ use rig::agent::run::{AgentRun, AgentRunStep, ModelTurn, ModelTurnOutcome};
 use rig::completion::CompletionModel;
 use rig::message::{ToolResultContent, UserContent};
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 use rig::tool::{Tool, ToolSet};
 use serde::Deserialize;
 use serde_json::json;
@@ -148,7 +148,7 @@ async fn main() -> Result<()> {
     // A serializable `AgentRun` is a sans-IO protocol primitive. This example
     // intentionally supplies raw model transport and tool dispatch explicitly;
     // configured `Agent` execution instead always goes through `AgentRunner`.
-    let model = openai::Client::from_env()?.completion_model(openai::GPT_4O);
+    let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_4O);
     let preamble = "You are a banking assistant. Use the tools to carry out the user's request. \
                     Call one tool at a time.";
     let mut tools = ToolSet::default();

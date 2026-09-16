@@ -14,12 +14,16 @@
 //!   transcript, sitting in parts[1], was dropped. A transcript split across
 //!   several text parts lost everything after the first, too.
 //! * `ProviderResponseExt::text_response` collected *every* text part,
-//!   gluing the chain-of-thought onto the answer. Rig's other Gemini
-//!   transport (the Interactions API) and Anthropic both exclude reasoning
-//!   from that method, so the REST wire was the odd one out.
+//!   gluing the chain-of-thought onto the answer — a second reader of the
+//!   same document, disagreeing with the first.
 //!
-//! Both now go through `visible_text_parts`, the one place the skip rule
-//! lives.
+//! The transcription reader goes through `visible_text_parts`, the one place
+//! the skip rule lives. The second reader is gone with the client layer:
+//! `text_response` had no caller left once the driver started recording
+//! telemetry off the normalized response. So the cells that held the two
+//! readers to each other now hold the one that remains — the GenerateContent
+//! decoder — to the same rule: **the normalized text of a turn is exactly
+//! its visible text parts, and carries no thought text.**
 //!
 //! # The matrix
 //!
@@ -52,7 +56,7 @@
 //! | 21 | `transcription_rejects_a_thought_only_candidate` (unit) | transcription | see below |
 //! | 22 | `transcription_rejects_a_candidate_with_no_text_part` (unit) | transcription | see below |
 //! | 23 | `text_response_is_none_for_a_thought_only_candidate` (unit) | `text_response` | see below |
-//! | 24 | `text_response_still_ignores_non_model_roles` (unit) | `text_response` | see below |
+//! | 24 | — | — | deleted with the reader it tested; see below |
 //! | 25 | `transcription_keeps_an_empty_visible_text_part` (unit) | transcription | see below |
 //! | 26 | `blocking_keeps_a_trailing_thought_signature` | blocking choice | Gemini 3's no-`thought`-flag signature |
 //! | 27 | `streaming_twin_agrees_on_a_trailing_thought_signature` | stream | the same bytes, the same choice |
@@ -82,19 +86,31 @@
 //!
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record GEMINI_API_KEY=... cargo test -p rig --all-features --test gemini thought_text_matrix -- --test-threads=1`
+//!
+//! The `reader` column's `text_response` entries name the cells (whose
+//! function names are frozen), not a surviving method: on those cells the
+//! reader under test is now the decoder's normalized `choice`.
+//!
+//! Cell 24, `text_response_still_ignores_non_model_roles`, is deleted rather
+//! than restated. The role filter it pinned existed only inside
+//! `ProviderResponseExt::text_response` (`content.role != Role::Model` →
+//! contribute nothing); the decoder reads the first candidate's parts without
+//! consulting `role`, and `visible_text_parts` — the surviving skip rule —
+//! never filtered on it either. Nothing replaces the cell because nothing
+//! replaces the filter.
 
 use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::gemini;
+use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
-use rig::telemetry::ProviderResponseExt;
 use rig::transcription::TranscriptionModel;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    assert_recorded_response_contains, assert_recorded_response_excludes,
+    BoundGemini, assert_recorded_response_contains, assert_recorded_response_excludes,
     with_gemini_thought_text_cassette,
 };
 use crate::support::AUDIO_FIXTURE_PATH;
@@ -129,6 +145,9 @@ fn completion_thinking(budget: u32, include: bool) -> Value {
     })
 }
 
+/// The text of a normalized choice, concatenated: the decoder's text blocks
+/// are the turn's text parts, and a part boundary is not a separator the
+/// provider sent.
 fn choice_text(choice: &[AssistantContent]) -> String {
     choice
         .iter()
@@ -136,8 +155,7 @@ fn choice_text(choice: &[AssistantContent]) -> String {
             AssistantContent::Text(text) => Some(text.text.as_str()),
             _ => None,
         })
-        .collect::<Vec<_>>()
-        .join("\n")
+        .collect()
 }
 
 fn has_reasoning(choice: &[AssistantContent]) -> bool {
@@ -163,9 +181,7 @@ fn assert_thought_parts_recorded(scenario: &str, expected: bool) {
 /// Derived from the payload the cell actually recorded, so every assertion
 /// below is re-derivable from the fixture rather than from an expectation
 /// about what the model chose to say.
-fn split_parts(
-    response: &rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse,
-) -> (String, Vec<String>) {
+fn split_parts(response: &GenerateContentResponse) -> (String, Vec<String>) {
     use rig::providers::gemini::completion::gemini_api_types::PartKind;
 
     let mut visible = String::new();
@@ -199,7 +215,7 @@ fn split_parts(
 /// provided audio exactly…") as an instruction to *translate*, so that cell
 /// pins the mapping without pinning the language.
 async fn transcription_body(
-    client: gemini::Client,
+    client: BoundGemini,
     scenario: &'static str,
     model_id: &'static str,
     params: Option<Value>,
@@ -207,7 +223,7 @@ async fn transcription_body(
     thoughts_expected: bool,
     expected_words: Option<&'static str>,
 ) {
-    let model = client.transcription_model(model_id);
+    let model = client.transcription(model_id);
     let mut request = model
         .transcription_request()
         .load_file(AUDIO_FIXTURE_PATH)
@@ -220,9 +236,8 @@ async fn transcription_body(
     }
 
     let response = request.send().await.expect("transcription should succeed");
-    let raw: rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse =
-        serde_json::from_value(response.raw.clone())
-            .expect("raw payload should round-trip to Gemini's own response type");
+    let raw: GenerateContentResponse = serde_json::from_value(response.raw.clone())
+        .expect("raw payload should round-trip to Gemini's own response type");
     let (visible, thoughts) = split_parts(&raw);
 
     assert_eq!(
@@ -426,11 +441,7 @@ struct TextResponseCell {
     thoughts_expected: bool,
 }
 
-async fn text_response_body(
-    client: gemini::Client,
-    scenario: &'static str,
-    cell: TextResponseCell,
-) {
+async fn text_response_body(client: BoundGemini, scenario: &'static str, cell: TextResponseCell) {
     let TextResponseCell {
         model_id,
         prompt,
@@ -440,7 +451,7 @@ async fn text_response_body(
         thoughts_expected,
     } = cell;
 
-    let model = client.completion_model(model_id);
+    let model = client.completion(model_id);
     let mut request = model.completion_request(prompt).temperature(0.0);
     if let Some(preamble) = preamble {
         request = request.preamble(preamble.to_string());
@@ -453,30 +464,14 @@ async fn text_response_body(
     }
     let request = request.build();
 
-    let raw = model
-        .raw_completion(request)
+    let response = model
+        .completion(request)
         .await
-        .expect("raw_completion should succeed");
+        .expect("completion should succeed");
 
-    // The first candidate only — the one the mapper reads.
-    let raw_parts: Vec<_> = raw
-        .candidates
-        .first()
-        .and_then(|candidate| candidate.content.as_ref())
-        .into_iter()
-        .flat_map(|content| content.parts.iter())
-        .cloned()
-        .collect();
-    let recorded_thoughts: Vec<String> = raw_parts
-        .iter()
-        .filter(|part| part.thought.unwrap_or(false))
-        .filter_map(|part| match &part.part {
-            rig::providers::gemini::completion::gemini_api_types::PartKind::Text(text) => {
-                Some(text.clone())
-            }
-            _ => None,
-        })
-        .collect();
+    let document = GenerateContentResponse::deserialize(&response.raw)
+        .expect("raw is Gemini's own generateContent document");
+    let (visible, recorded_thoughts) = split_parts(&document);
     assert_eq!(
         !recorded_thoughts.is_empty(),
         thoughts_expected,
@@ -488,36 +483,37 @@ async fn text_response_body(
         }
     );
 
-    let text_response = raw.text_response();
+    // The one reader: the normalized text of the turn is exactly its visible
+    // text parts, and none of the chain-of-thought.
+    let text = choice_text(&response.choice);
     for thought in &recorded_thoughts {
-        if let Some(text) = text_response.as_deref() {
-            assert!(
-                !text.contains(thought.as_str()),
-                "{scenario}: text_response must not carry the chain-of-thought"
-            );
-        }
+        assert!(
+            !text.contains(thought.as_str()),
+            "{scenario}: the turn's text must not carry the chain-of-thought"
+        );
     }
-
-    // The two readers of one payload must agree. `choice_text` joins the
-    // normalized text blocks the same way `text_response` joins parts.
-    let normalized: rig::completion::CompletionResponse =
-        raw.try_into().expect("payload should normalize");
     assert_eq!(
-        text_response.as_deref().unwrap_or_default(),
-        choice_text(&normalized.choice),
-        "{scenario}: the provider-native text reader and the normalized choice disagree"
+        text, visible,
+        "{scenario}: the normalized text must be every visible text part and only those"
     );
+
     // Reasoning blocks come from two distinct wire facts, and the assertion
     // has to name both or it mislabels one as the other: a `thought: true`
     // text part, and a trailing `thoughtSignature` on a part with no
-    // `thought` flag (Gemini 3's shape), which normalizes to a
-    // signature-only reasoning block so the replay-required signature is not
-    // dropped.
-    let signature_recorded = raw_parts
-        .iter()
-        .any(|part| part.thought_signature.is_some());
+    // `thought` flag (Gemini 3's shape), which becomes a signature-only
+    // reasoning block so the replay-required signature is not dropped.
+    let signature_recorded = document
+        .candidates
+        .first()
+        .and_then(|candidate| candidate.content.as_ref())
+        .is_some_and(|content| {
+            content
+                .parts
+                .iter()
+                .any(|part| part.thought_signature.is_some())
+        });
     assert_eq!(
-        has_reasoning(&normalized.choice),
+        has_reasoning(&response.choice),
         thoughts_expected || signature_recorded,
         "{scenario}: reasoning blocks must appear exactly when the turn carried thought text \
          or a thought signature (thought text: {thoughts_expected}, signature: \
@@ -734,7 +730,7 @@ async fn text_response_on_a_tool_call_turn() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_on_a_tool_call_turn",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request("What is 41 plus 1? Use the add tool.")
                 .temperature(0.0)
@@ -754,23 +750,23 @@ async fn text_response_on_a_tool_call_turn() {
                 .additional_params(completion_thinking(512, true))
                 .build();
 
-            let raw = model
-                .raw_completion(request)
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw_completion should succeed");
+                .expect("completion should succeed");
 
-            // A tool-call turn's *text* is whatever visible text parts it has —
-            // never the reasoning that preceded the call.
-            let text_response = raw.text_response().unwrap_or_default();
-            let normalized: rig::completion::CompletionResponse =
-                raw.try_into().expect("payload should normalize");
+            // A tool-call turn's *text* is whatever visible text parts it has
+            // — never the reasoning that preceded the call.
+            let document = GenerateContentResponse::deserialize(&response.raw)
+                .expect("raw is Gemini's own generateContent document");
+            let (visible, _) = split_parts(&document);
             assert_eq!(
-                text_response,
-                choice_text(&normalized.choice),
-                "the two readers must agree on a tool-call turn too"
+                choice_text(&response.choice),
+                visible,
+                "the turn's text is its visible text parts on a tool-call turn too"
             );
             assert!(
-                normalized
+                response
                     .choice
                     .iter()
                     .any(|content| matches!(content, AssistantContent::ToolCall(_))),
@@ -831,14 +827,13 @@ async fn text_response_with_structured_output() {
 async fn text_response_across_two_candidates() {
     const SCENARIO: &str = "thought_text_matrix/text_response_across_two_candidates";
 
-    // `candidateCount: 2` is the one shape where the two readers legitimately
-    // differ: `text_response` folds every candidate, while the normalized
-    // choice is candidate 0 alone. The thought filter must still apply per
-    // candidate rather than only to the first.
+    // `candidateCount: 2` is where a folding reader and the normalized choice
+    // legitimately differ: the choice is candidate 0 alone. The thought
+    // filter must still apply, and no second candidate may be folded in.
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_across_two_candidates",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request("Name one primary colour. Answer with the single word.")
                 .temperature(0.0)
@@ -851,32 +846,26 @@ async fn text_response_across_two_candidates() {
                 }))
                 .build();
 
-            let raw = model
-                .raw_completion(request)
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw_completion should succeed");
+                .expect("completion should succeed");
 
+            let document = GenerateContentResponse::deserialize(&response.raw)
+                .expect("raw is Gemini's own generateContent document");
             assert_eq!(
-                raw.candidates.len(),
+                document.candidates.len(),
                 2,
                 "this cell's premise is a two-candidate turn"
             );
-            let (_, thoughts) = split_parts(&raw);
+            let (_, thoughts) = split_parts(&document);
             assert!(
                 !thoughts.is_empty(),
                 "the recorded turn should carry thought parts"
             );
 
-            let text_response = raw.text_response().expect("a two-candidate turn has text");
-            for thought in &thoughts {
-                assert!(
-                    !text_response.contains(thought.as_str()),
-                    "no candidate's reasoning may reach the folded text response"
-                );
-            }
-
-            // Every candidate's visible text is represented, and only that.
-            let per_candidate: Vec<String> = raw
+            // Every candidate's visible text, per candidate.
+            let per_candidate: Vec<String> = document
                 .candidates
                 .iter()
                 .filter_map(|candidate| candidate.content.as_ref())
@@ -893,23 +882,31 @@ async fn text_response_across_two_candidates() {
                         _ => None,
                     }
                         })
-                        .collect::<Vec<_>>()
-                        .join("\n")
+                        .collect::<String>()
                 })
                 .collect();
-            assert_eq!(
-                text_response,
-                per_candidate.join("\n"),
-                "the folded text response must be exactly every candidate's visible text"
+            assert!(
+                per_candidate.len() == 2 && !per_candidate[1].is_empty(),
+                "premise: the second candidate carries visible text of its own, got \
+                 {per_candidate:?}"
             );
 
-            // And rig's documented normalization still keeps candidate 0 only.
-            let normalized: rig::completion::CompletionResponse =
-                raw.try_into().expect("payload should normalize");
+            let text = choice_text(&response.choice);
+            for thought in &thoughts {
+                assert!(
+                    !text.contains(thought.as_str()),
+                    "no candidate's reasoning may reach the turn's text"
+                );
+            }
             assert_eq!(
-                choice_text(&normalized.choice),
-                per_candidate[0],
-                "the normalized choice is the first candidate"
+                text, per_candidate[0],
+                "the normalized choice is the first candidate's visible text"
+            );
+            assert_ne!(
+                text,
+                per_candidate.concat(),
+                "and it is candidate 0 alone — a reader that folded every candidate would land \
+                 here"
             );
         },
     )
@@ -925,7 +922,7 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/text_response_is_none_when_the_turn_is_all_thought",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             // A budget large enough to start thinking and far too small to answer:
             // the turn truncates with reasoning and no visible text.
             let request = model
@@ -937,28 +934,31 @@ async fn text_response_is_none_when_the_turn_is_all_thought() {
                 .additional_params(completion_thinking(512, true))
                 .build();
 
-            let raw = model
-                .raw_completion(request)
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw_completion should succeed");
+                .expect("completion should succeed");
 
-            let visible: Vec<&rig::providers::gemini::completion::gemini_api_types::Part> = raw
-                .candidates
-                .iter()
-                .filter_map(|candidate| candidate.content.as_ref())
-                .flat_map(|content| content.parts.iter())
-                .filter(|part| !part.thought.unwrap_or(false))
-                .collect();
-
+            let document = GenerateContentResponse::deserialize(&response.raw)
+                .expect("raw is Gemini's own generateContent document");
+            let (visible, thoughts) = split_parts(&document);
             assert!(
                 visible.is_empty(),
                 "this cell's premise is a turn whose parts are all thoughts; got {visible:?}"
             );
+            assert!(
+                !thoughts.is_empty(),
+                "the recorded turn should carry thought parts"
+            );
             assert_eq!(
-                raw.text_response(),
-                None,
-                "a turn that produced no visible text has no text response — returning the \
-             chain-of-thought here is exactly the bug"
+                choice_text(&response.choice),
+                "",
+                "a turn that produced no visible text has no text — returning the \
+                 chain-of-thought here is exactly the bug"
+            );
+            assert!(
+                has_reasoning(&response.choice),
+                "the thoughts reach the caller as reasoning, not as the answer"
             );
         },
     )
@@ -976,7 +976,7 @@ async fn streaming_twin_keeps_reasoning_out_of_the_text() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/streaming_twin_keeps_reasoning_out_of_the_text",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .temperature(0.0)
@@ -1053,21 +1053,23 @@ async fn blocking_keeps_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/blocking_keeps_a_trailing_thought_signature",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+            let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
             let request = model
                 .completion_request(SIGNATURE_PROMPT)
                 .temperature(0.0)
                 .max_tokens(1000)
                 .build();
 
-            let raw = model
-                .raw_completion(request)
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw_completion should succeed");
+                .expect("completion should succeed");
 
             // The premise, from the recorded bytes: a text part with a
             // signature and no `thought` flag at all.
-            let signed_text_part = raw
+            let document = GenerateContentResponse::deserialize(&response.raw)
+                .expect("raw is Gemini's own generateContent document");
+            let signed_text_part = document
                 .candidates
                 .first()
                 .and_then(|candidate| candidate.content.as_ref())
@@ -1081,17 +1083,15 @@ async fn blocking_keeps_a_trailing_thought_signature() {
                 "this cell's premise is a signed part with no thought flag"
             );
 
-            let normalized: rig::completion::CompletionResponse =
-                raw.try_into().expect("payload should normalize");
             assert!(
-                signature_of(&normalized.choice).is_some(),
+                signature_of(&response.choice).is_some(),
                 "the trailing signature is replay-required state and must survive as a \
                  reasoning block; dropping it is the bug"
             );
             assert!(
-                choice_text(&normalized.choice).contains("289"),
+                choice_text(&response.choice).contains("289"),
                 "the answer must still be there, got {:?}",
-                choice_text(&normalized.choice)
+                choice_text(&response.choice)
             );
         },
     )
@@ -1103,7 +1103,7 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
     with_gemini_thought_text_cassette(
         "thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_3_FLASH_PREVIEW);
+            let model = client.completion(gemini::completion::GEMINI_3_FLASH_PREVIEW);
             let request = model
                 .completion_request(SIGNATURE_PROMPT)
                 .temperature(0.0)
@@ -1135,8 +1135,12 @@ async fn streaming_twin_agrees_on_a_trailing_thought_signature() {
 // --- unit cells: states a live turn cannot be made to produce -------------
 
 mod unit {
+    use rig::completion::{CompletionModel, CompletionResponse};
+    use rig::message::{AssistantContent, ReasoningContent};
+    use rig::prelude::*;
+    use rig::providers::gemini::Gemini;
     use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
-    use rig::telemetry::ProviderResponseExt;
+    use rig::test_utils::RecordingHttpClient;
     use rig::transcription::{NormalizeTranscriptionResponse, TranscriptionResponse};
     use serde_json::{Value, json};
 
@@ -1150,8 +1154,9 @@ mod unit {
         json!({ "text": text })
     }
 
-    fn response_with(parts: Vec<Value>, role: &str) -> GenerateContentResponse {
-        serde_json::from_value(json!({
+    /// The recorded reply shape, with `parts` as the candidate's content.
+    fn reply_with(parts: Vec<Value>, role: &str) -> Value {
+        json!({
             "candidates": [{
                 "content": { "parts": parts, "role": role },
                 "finishReason": "STOP",
@@ -1160,15 +1165,50 @@ mod unit {
             "modelVersion": "gemini-2.5-flash",
             "responseId": "unit-response",
             "usageMetadata": { "promptTokenCount": 190, "candidatesTokenCount": 14, "totalTokenCount": 228 }
-        }))
-        .expect("recorded-shape payload should deserialize")
+        })
+    }
+
+    fn response_with(parts: Vec<Value>, role: &str) -> GenerateContentResponse {
+        serde_json::from_value(reply_with(parts, role))
+            .expect("recorded-shape payload should deserialize")
+    }
+
+    /// One completion turn through the one seam, answered by a stub transport
+    /// with `parts`.
+    ///
+    /// These part layouts cannot be produced live, so the bytes are stated
+    /// here and carried by the real wire, driver and decoder — the same path
+    /// every recorded cell above runs, with the reply substituted.
+    async fn completion_of(parts: Vec<Value>, role: &str) -> CompletionResponse {
+        let model = Gemini::new("unit-key")
+            .bind(RecordingHttpClient::new(
+                reply_with(parts, role).to_string(),
+            ))
+            .completion("gemini-2.5-flash");
+        let request = model.completion_request("unit").build();
+        model
+            .completion(request)
+            .await
+            .expect("the stubbed reply should convert")
+    }
+
+    fn choice_text(response: &CompletionResponse) -> String {
+        response
+            .choice
+            .iter()
+            .filter_map(|content| match content {
+                AssistantContent::Text(text) => Some(text.text.as_str()),
+                _ => None,
+            })
+            .collect()
     }
 
     /// Not a recording: a live turn produces one part layout, and the claim
-    /// under test is that the transcription reader and the text reader agree
-    /// on *every* layout of the same two part kinds.
-    #[test]
-    fn text_response_matches_the_choice_text() {
+    /// under test is that the decoder applies the skip rule to *every* layout
+    /// of the same two part kinds. Each layout's visible parts spell
+    /// `answer`.
+    #[tokio::test]
+    async fn text_response_matches_the_choice_text() {
         let layouts = [
             vec![thought_part("reasoning"), text_part("answer")],
             vec![text_part("answer"), thought_part("reasoning")],
@@ -1181,31 +1221,15 @@ mod unit {
         ];
 
         for (index, parts) in layouts.into_iter().enumerate() {
-            let response = response_with(parts, "model");
-            let text_response = response.text_response();
-            let normalized: rig::completion::CompletionResponse =
-                response.try_into().expect("payload should normalize");
-            let choice_text = normalized
-                .choice
-                .iter()
-                .filter_map(|content| match content {
-                    rig::message::AssistantContent::Text(text) => Some(text.text.as_str()),
-                    _ => None,
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
-
+            let response = completion_of(parts, "model").await;
+            let text = choice_text(&response);
             assert_eq!(
-                text_response.as_deref().unwrap_or_default(),
-                choice_text,
-                "layout {index}: readers disagree"
+                text, "answer",
+                "layout {index}: the turn's text is its visible parts, in order"
             );
             assert!(
-                !text_response
-                    .as_deref()
-                    .unwrap_or_default()
-                    .contains("reasoning"),
-                "layout {index}: reasoning leaked into the text response"
+                !text.contains("reasoning"),
+                "layout {index}: reasoning leaked into the turn's text"
             );
         }
     }
@@ -1316,127 +1340,115 @@ mod unit {
 
     /// Not a recording: the live counterpart (cell 17) needs the model to
     /// truncate mid-thought, which is timing-dependent. This states the same
-    /// rule directly.
-    #[test]
-    fn text_response_is_none_for_a_thought_only_candidate() {
-        let response = response_with(vec![thought_part("Still working it out...")], "model");
+    /// rule directly: a candidate with no visible text contributes no text,
+    /// and its thoughts arrive as reasoning.
+    #[tokio::test]
+    async fn text_response_is_none_for_a_thought_only_candidate() {
+        let response = completion_of(vec![thought_part("Still working it out...")], "model").await;
         assert_eq!(
-            response.text_response(),
-            None,
-            "a candidate with no visible text has no text response"
+            choice_text(&response),
+            "",
+            "a candidate with no visible text has no text"
+        );
+        assert!(
+            response
+                .choice
+                .iter()
+                .any(|content| matches!(content, AssistantContent::Reasoning(_))),
+            "the thought reaches the caller as reasoning, got {:?}",
+            response.choice
         );
     }
 
     /// Not a recording: one live turn emits one part ordering. When a
     /// visible thought part precedes the signed text, the signature belongs
     /// to *that* block — it is what the signature signs — rather than to a
-    /// new empty sibling. This mirrors the streaming accumulator exactly
-    /// (`streaming/parts.rs::a_trailing_signature_signs_the_finished_block`),
-    /// which is the whole point: the same bytes normalize to the same choice
-    /// on both transports, so a turn replayed from either sends the
-    /// signature back the same way.
-    #[test]
-    fn a_trailing_signature_signs_the_chain_of_thought_before_it() {
-        let response = response_with(
+    /// new empty sibling.
+    #[tokio::test]
+    async fn a_trailing_signature_signs_the_chain_of_thought_before_it() {
+        let response = completion_of(
             vec![
                 json!({ "text": "the chain", "thought": true }),
                 json!({ "text": "answer", "thoughtSignature": "sig-trailing" }),
             ],
             "model",
-        );
-        let normalized: rig::completion::CompletionResponse =
-            response.try_into().expect("payload should normalize");
+        )
+        .await;
         assert_eq!(
-            normalized.choice.len(),
+            response.choice.len(),
             2,
             "no empty sibling: the existing reasoning block takes the signature, got {:?}",
-            normalized.choice
+            response.choice
         );
         assert!(
             matches!(
-                normalized.choice.first(),
-                Some(rig::message::AssistantContent::Reasoning(reasoning))
+                response.choice.first(),
+                Some(AssistantContent::Reasoning(reasoning))
                     if matches!(reasoning.content.first(),
-                        Some(rig::message::ReasoningContent::Text { text, signature })
+                        Some(ReasoningContent::Text { text, signature })
                             if text == "the chain" && signature.as_deref() == Some("sig-trailing"))
             ),
             "the chain-of-thought block must carry the signature, got {:?}",
-            normalized.choice
+            response.choice
         );
     }
 
     /// Not a recording: one live turn emits one part ordering, and with no
     /// reasoning block to sign, the signature becomes a signature-only
-    /// reasoning part — what the streaming accumulator records when nothing
-    /// streamed as reasoning.
-    #[test]
-    fn a_trailing_signature_becomes_a_signature_only_reasoning_block() {
-        let response = response_with(
+    /// reasoning part — what the accumulator records when nothing streamed as
+    /// reasoning.
+    #[tokio::test]
+    async fn a_trailing_signature_becomes_a_signature_only_reasoning_block() {
+        let response = completion_of(
             vec![json!({ "text": "17 squared is 289.", "thoughtSignature": "sig-trailing" })],
             "model",
-        );
-        let normalized: rig::completion::CompletionResponse =
-            response.try_into().expect("payload should normalize");
-        assert_eq!(normalized.choice.len(), 2, "text then signature block");
+        )
+        .await;
+        assert_eq!(response.choice.len(), 2, "text then signature block");
         assert!(matches!(
-            normalized.choice.first(),
-            Some(rig::message::AssistantContent::Text(text)) if text.text == "17 squared is 289."
+            response.choice.first(),
+            Some(AssistantContent::Text(text)) if text.text == "17 squared is 289."
         ));
         assert!(matches!(
-            normalized.choice.get(1),
-            Some(rig::message::AssistantContent::Reasoning(reasoning))
+            response.choice.get(1),
+            Some(AssistantContent::Reasoning(reasoning))
                 if matches!(reasoning.content.first(),
-                    Some(rig::message::ReasoningContent::Text { text, signature })
+                    Some(ReasoningContent::Text { text, signature })
                         if text.is_empty() && signature.as_deref() == Some("sig-trailing"))
         ));
     }
 
     /// Not a recording: the counterpart ordering. A `thought: true` part signs
     /// its own reasoning block and must not also grow a sibling.
-    #[test]
-    fn a_thought_flagged_part_still_signs_its_own_reasoning() {
-        let response = response_with(
+    #[tokio::test]
+    async fn a_thought_flagged_part_still_signs_its_own_reasoning() {
+        let response = completion_of(
             vec![
                 json!({ "text": "thinking", "thought": true, "thoughtSignature": "sig-own" }),
                 json!({ "text": "answer" }),
             ],
             "model",
-        );
-        let normalized: rig::completion::CompletionResponse =
-            response.try_into().expect("payload should normalize");
-        assert_eq!(normalized.choice.len(), 2, "one reasoning block, one text");
+        )
+        .await;
+        assert_eq!(response.choice.len(), 2, "one reasoning block, one text");
         assert!(matches!(
-            normalized.choice.first(),
-            Some(rig::message::AssistantContent::Reasoning(reasoning))
+            response.choice.first(),
+            Some(AssistantContent::Reasoning(reasoning))
                 if matches!(reasoning.content.first(),
-                    Some(rig::message::ReasoningContent::Text { text, signature })
+                    Some(ReasoningContent::Text { text, signature })
                         if text == "thinking" && signature.as_deref() == Some("sig-own"))
         ));
     }
 
     /// Not a recording: the negative case. No signature, no reasoning block —
     /// the fix must not manufacture one for every text part.
-    #[test]
-    fn a_text_part_without_a_signature_yields_no_reasoning() {
-        let response = response_with(vec![text_part("plain answer")], "model");
-        let normalized: rig::completion::CompletionResponse =
-            response.try_into().expect("payload should normalize");
-        assert_eq!(normalized.choice.len(), 1);
+    #[tokio::test]
+    async fn a_text_part_without_a_signature_yields_no_reasoning() {
+        let response = completion_of(vec![text_part("plain answer")], "model").await;
+        assert_eq!(response.choice.len(), 1);
         assert!(matches!(
-            normalized.choice.first(),
-            Some(rig::message::AssistantContent::Text(_))
+            response.choice.first(),
+            Some(AssistantContent::Text(_))
         ));
-    }
-
-    /// Not a recording: `generateContent` never labels a candidate with the
-    /// user role. The role filter predates this fix and must not be lost.
-    #[test]
-    fn text_response_still_ignores_non_model_roles() {
-        let response = response_with(vec![text_part("answer")], "user");
-        assert_eq!(
-            response.text_response(),
-            None,
-            "only model-role candidates contribute text"
-        );
     }
 }

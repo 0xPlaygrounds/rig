@@ -15,13 +15,12 @@
 //! Doubleword rejects `chat_template_kwargs.enable_thinking` and directs
 //! callers to `reasoning_effort`; `"none"` disables reasoning on Qwen 3.5.
 
-use rig::completion::{CompletionModel, FinishReason, NormalizeCompletionResponse};
+use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::doubleword;
 use serde_json::json;
 
-use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
+use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
 use crate::support::{collect_text_and_terminal, zero_arg_tool_definition};
 
 const STOP_PROMPT: &str = "Reply with exactly: done";
@@ -49,10 +48,10 @@ fn recorded_finish_reason(scenario: &str, streaming: bool) -> String {
     }
 }
 
-async fn blocking_stop(client: doubleword::Client) {
-    let model = client.completion_model(doubleword::QWEN3_5_9B);
-    let raw = model
-        .raw_completion(
+async fn blocking_stop(client: BoundDoubleword) {
+    let model = client.completion(doubleword::QWEN3_5_9B);
+    let response = model
+        .completion(
             model
                 .completion_request(STOP_PROMPT)
                 .additional_params(json!({ "reasoning_effort": "none" }))
@@ -61,31 +60,27 @@ async fn blocking_stop(client: doubleword::Client) {
         )
         .await
         .expect("blocking stop probe");
-    let normalized = raw.normalize("doubleword").expect("normalize stop turn");
-    assert_eq!(normalized.finish_reason(), Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 }
 
-async fn blocking_length(client: doubleword::Client) {
-    let model = client.completion_model(doubleword::QWEN3_5_9B);
-    let raw = model
-        .raw_completion(
+async fn blocking_length(client: BoundDoubleword) {
+    let model = client.completion(doubleword::QWEN3_5_9B);
+    let response = model
+        .completion(
             model
                 .completion_request(LENGTH_PROMPT)
                 .max_tokens(1)
                 .build(),
         )
         .await
-        .expect("blocking length probe should still decode");
-    let normalized = raw
-        .normalize("doubleword")
         .expect("a contentless truncated turn is still a completion");
-    assert_eq!(normalized.finish_reason(), Some(FinishReason::Length));
+    assert_eq!(response.finish_reason(), Some(FinishReason::Length));
 }
 
-async fn blocking_tool_calls_body(client: doubleword::Client) {
-    let model = client.completion_model(doubleword::QWEN3_5_397B_A17B);
-    let raw = model
-        .raw_completion(
+async fn blocking_tool_calls_body(client: BoundDoubleword) {
+    let model = client.completion(doubleword::QWEN3_5_397B_A17B);
+    let response = model
+        .completion(
             model
                 .completion_request(TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
@@ -95,12 +90,9 @@ async fn blocking_tool_calls_body(client: doubleword::Client) {
         )
         .await
         .expect("blocking tool-call probe");
-    let normalized = raw
-        .normalize("doubleword")
-        .expect("normalize tool-call turn");
-    assert_eq!(normalized.finish_reason(), Some(FinishReason::ToolCalls));
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
     assert!(
-        normalized
+        response
             .choice
             .iter()
             .any(|part| matches!(part, AssistantContent::ToolCall(_)))
@@ -108,12 +100,12 @@ async fn blocking_tool_calls_body(client: doubleword::Client) {
 }
 
 async fn streaming_reason(
-    client: doubleword::Client,
+    client: BoundDoubleword,
     prompt: &'static str,
     max_tokens: u64,
     stop_probe: bool,
 ) -> FinishReason {
-    let model = client.completion_model(doubleword::QWEN3_5_9B);
+    let model = client.completion(doubleword::QWEN3_5_9B);
     let mut builder = model.completion_request(prompt).max_tokens(max_tokens);
     if stop_probe {
         builder = builder.additional_params(json!({ "reasoning_effort": "none" }));
@@ -189,7 +181,7 @@ async fn streaming_tool_calls() {
     with_doubleword_cassette(
         "finish_reason_matrix/streaming_tool_calls",
         |client| async move {
-            let model = client.completion_model(doubleword::QWEN3_5_397B_A17B);
+            let model = client.completion(doubleword::QWEN3_5_397B_A17B);
             let stream = model
                 .stream(
                     model

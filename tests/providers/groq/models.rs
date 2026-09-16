@@ -1,23 +1,24 @@
 //! Groq model listing, recorded from the real API.
 //!
-//! Groq serves `GET /models` — the same path its client already uses for
-//! `VerifyClient::verify` — but declared no `model_listing` capability, so
-//! `list_models()` was unavailable (rig#2079). Recording the endpoint proves
-//! the shared OpenAI-style envelope actually decodes against Groq's wire,
-//! rather than assuming it because Groq is OpenAI-compatible.
+//! Groq serves `GET /models` — the same path its credential check reads —
+//! but for a long time rig declared no model-listing capability for it, so
+//! listing Groq's catalogue was impossible (rig#2079). Recording the endpoint
+//! proves the shared OpenAI-style envelope actually decodes against Groq's
+//! wire, rather than assuming it because Groq is OpenAI-compatible.
 //!
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
-use rig::client::ModelListingClient;
+use rig::model::ModelLister;
+use rig::providers::openai::wire::GROQ;
 
 use super::support::{with_groq_cassette_bogus_key_result, with_groq_cassette_result};
 
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
     with_groq_cassette_result("models/list_models_smoke", |client| async move {
-        let models = client.list_models().await?;
+        let models = client.models().list_all().await?;
 
         anyhow::ensure!(
             !models.data.is_empty(),
@@ -56,8 +57,13 @@ async fn list_models_smoke() -> Result<()> {
 /// rig#2079 — the shared fetch path classifies a rejected listing as
 /// `ApiError` carrying provider, path, status and a body preview.
 ///
-/// Pins that the newly added Groq lister routes its failures through the same
-/// triage as every other provider, not just its successes.
+/// Pins that the Groq lister routes its failures through the same triage as
+/// every other provider, not just its successes. The provider name and the
+/// endpoint come from the dialect constant rather than from literals, so a
+/// dialect that was renamed or repointed fails this cell instead of quietly
+/// mislabelling its own errors. The recorded path carries the cassette
+/// proxy's own prefix ahead of the endpoint, so the endpoint is matched as a
+/// suffix.
 #[tokio::test]
 async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()> {
     use rig::model::ModelListingError;
@@ -66,7 +72,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .list_models()
+                .models()
+                .list_all()
                 .await
                 .expect_err("a bogus key must not list models");
 
@@ -82,7 +89,13 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
             };
 
             anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
-            for expected in ["provider=Groq", "path=/models", "status=401"] {
+            let provider = format!("provider={}", GROQ.name);
+            for expected in [
+                provider.as_str(),
+                GROQ.quirks.models_path,
+                "status=401",
+                "Invalid API Key",
+            ] {
                 anyhow::ensure!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

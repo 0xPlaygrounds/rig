@@ -1,11 +1,12 @@
 //! Demonstrates supplying a custom reqwest client with retry middleware.
 //! Requires `ANTHROPIC_API_KEY` and the `reqwest-middleware` feature.
-//! Run it to verify the provider client can use your preconfigured HTTP stack.
+//! Run it to verify a wire can be bound to your preconfigured HTTP stack.
 
 use anyhow::{Context, Result};
 use reqwest_middleware::ClientBuilder;
 use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
-use rig::{prelude::*, providers::anthropic};
+use rig::driver::Bind;
+use rig::{prelude::*, providers::anthropic, providers::anthropic::wire::Anthropic};
 
 fn build_http_client() -> rig::rig_reqwest::ReqwestMiddlewareClient {
     let retry_policy = ExponentialBackoff::builder().build_with_max_retries(5);
@@ -19,12 +20,8 @@ fn build_http_client() -> rig::rig_reqwest::ReqwestMiddlewareClient {
 async fn main() -> Result<()> {
     let api_key = std::env::var("ANTHROPIC_API_KEY").context("ANTHROPIC_API_KEY is not set")?;
     let http_client = build_http_client();
-    let client = anthropic::Client::builder()
-        .http_client(http_client)
-        .api_key(api_key)
-        .build()?;
-
-    let agent = client
+    let agent = Anthropic::new(api_key)
+        .bind(http_client)
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You are a helpful assistant.")
         .build();

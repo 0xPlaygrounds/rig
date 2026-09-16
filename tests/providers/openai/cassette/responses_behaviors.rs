@@ -6,13 +6,13 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
-use rig::completion::NormalizeCompletionResponse;
+use rig::agent::AgentBuilder;
 use rig::completion::{CompletionModel, FinishReason, Message};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::ResponseStatus;
+use rig::providers::openai::responses_api::{CompletionResponse as ResponsesReply, ResponseStatus};
 use rig::tool::Tool;
+use serde::Deserialize;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{Adder, TOOLS_PREAMBLE};
@@ -25,7 +25,10 @@ async fn strict_tools_opt_in_roundtrip() {
             // The recorded request body locks the strict-tools contract:
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the API.
-            let model = client.completion_model(openai::GPT_4O).with_strict_tools();
+            let model = client
+                .openai
+                .completion(openai::GPT_4O)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -76,7 +79,7 @@ async fn incomplete_response_surfaces_partial_output() {
     with_openai_cassette(
         "responses_behaviors/incomplete_response_surfaces_partial_output",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let request = model
                 .completion_request(
                     "Write a story of at least 150 words about a lighthouse keeper.",
@@ -85,21 +88,23 @@ async fn incomplete_response_surfaces_partial_output() {
                 .max_tokens(16)
                 .build();
 
-            // `status` and `incomplete_details` are Responses-API wire fields, so
-            // they are read off the provider's own response type. The cassette
-            // records a single interaction, so the normalized response is derived
-            // from that same raw response rather than re-requested.
-            let raw = model
-                .raw_completion(request)
+            // The cassette records a single interaction, and one call yields
+            // both views of it: the normalized response, and the provider's
+            // own reply in `raw`. `status` and `incomplete_details` are
+            // Responses-API wire fields, so they are read off the latter.
+            let response = model
+                .completion(request)
                 .await
                 .expect("an incomplete response should still convert, not error");
+            let reply = ResponsesReply::deserialize(&response.raw)
+                .expect("`raw` is the serialized responses_api::CompletionResponse");
 
             assert_eq!(
-                raw.status,
+                reply.status,
                 ResponseStatus::Incomplete,
                 "hitting max_output_tokens should mark the response incomplete"
             );
-            let reason = raw
+            let reason = reply
                 .incomplete_details
                 .as_ref()
                 .map(|details| details.reason.as_str());
@@ -109,9 +114,6 @@ async fn incomplete_response_surfaces_partial_output() {
                 "incomplete_details should carry the truncation reason"
             );
 
-            let response: rig::completion::CompletionResponse = raw
-                .normalize("openai")
-                .expect("an incomplete response should still convert, not error");
             assert_eq!(
                 response.finish_reason(),
                 Some(FinishReason::Length),
@@ -143,9 +145,11 @@ async fn system_messages_as_input_items_mid_conversation() {
             // `with_system_instructions_as_messages`, the preamble and the
             // mid-conversation system message are sent as `system` input
             // items instead of the top-level `instructions` field.
-            let agent = client
-                .with_system_instructions_as_messages()
-                .agent(openai::GPT_4O)
+            let model = client
+                .openai
+                .responses(openai::GPT_4O)
+                .map_wire(|wire| wire.with_system_instructions_as_messages());
+            let agent = AgentBuilder::new(model)
                 .preamble("You are a concise assistant.")
                 .build();
             let mut history = vec![

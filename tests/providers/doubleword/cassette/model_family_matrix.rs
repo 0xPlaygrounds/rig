@@ -23,26 +23,31 @@
 //! compliance; the finish-reason matrix tests termination semantics directly.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
-use rig::providers::doubleword;
+use rig::providers::{doubleword, openai};
+use serde::Deserialize as _;
 
-use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
+use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_text_and_terminal;
 
 const PROMPT: &str = "Reply with the single word: family-ok";
 const CAP: u64 = 96;
 
-async fn exercise_blocking(client: doubleword::Client, model_name: &'static str) {
-    let model = client.completion_model(model_name);
-    let raw = model
-        .raw_completion(model.completion_request(PROMPT).max_tokens(CAP).build())
+async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
+    let model = client.completion(model_name);
+    let response = model
+        .completion(model.completion_request(PROMPT).max_tokens(CAP).build())
         .await
         .expect("the advertised model should answer a blocking request");
 
-    assert!(!raw.id.is_empty());
-    assert_eq!(raw.model, model_name);
-    assert!(!raw.choices.is_empty());
-    assert!(raw.usage.is_some(), "the live route should report usage");
+    // The census is about what the backend actually returned, so it reads the
+    // provider's own payload out of the captured document rather than the
+    // normalized view.
+    let reply = openai::CompletionResponse::deserialize(&response.raw)
+        .expect("raw is the shared chat-completions response");
+    assert!(!reply.id.is_empty());
+    assert_eq!(reply.model, model_name);
+    assert!(!reply.choices.is_empty());
+    assert!(reply.usage.is_some(), "the live route should report usage");
 }
 
 fn assert_recorded_model(scenario: &str, requested_model: &str, streaming: bool) {
@@ -176,7 +181,7 @@ async fn default_qwen_family_streaming() {
     with_doubleword_cassette(
         "model_family_matrix/default_qwen_family_streaming",
         |client| async move {
-            let model = client.completion_model(doubleword::QWEN3_5_9B);
+            let model = client.completion(doubleword::QWEN3_5_9B);
             let stream = model
                 .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
                 .await

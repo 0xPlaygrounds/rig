@@ -2,7 +2,6 @@
 
 #[cfg(feature = "derive")]
 use rig::Embed;
-use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
 use rig::providers::gemini;
 
@@ -20,7 +19,7 @@ async fn embeddings_smoke() {
     super::super::support::with_gemini_cassette(
         "embeddings/embeddings_smoke",
         |client| async move {
-            let model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+            let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
 
             let response = model
                 .embed_texts_response(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))

@@ -3,7 +3,6 @@ use super::{empty_stop_sequence_matrix as empty, stop_sequence_terminal_matrix a
 use crate::{ecs_agent::EcsAgent, ecs_lifecycle};
 use rig::{
     completion::{CompletionModel, FinishReason},
-    prelude::*,
     providers::anthropic,
 };
 use rig_ecs::agent::{AdditionalParams, MaxTokens};
@@ -24,7 +23,7 @@ async fn agent_stream_single_sequence() {
         "stop_sequence_terminal_matrix/agent_stream_single_sequence",
         |client| async move {
             let mut ecs = agent(
-                client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                 64,
                 "charlie",
             );
@@ -48,7 +47,7 @@ async fn agent_prompt_empty_stop_sequence() {
         "empty_stop_sequence_matrix/agent_prompt_empty_stop_sequence",
         |client| async move {
             let mut ecs = agent(
-                client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                 32,
                 "alpha",
             );
@@ -71,7 +70,7 @@ async fn agent_stream_empty_stop_sequence() {
         "empty_stop_sequence_matrix/agent_stream_empty_stop_sequence",
         |client| async move {
             let mut ecs = agent(
-                client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5),
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                 32,
                 "alpha",
             );

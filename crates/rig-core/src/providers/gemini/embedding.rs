@@ -5,11 +5,11 @@
 
 use serde_json::json;
 
-use super::{Client, client::ApiResponse};
-use crate::{
-    embeddings::{self, EmbeddingError},
-    http_client::HttpClientExt,
-    wasm_compat::WasmCompatSend,
+use crate::embeddings::{self, EmbeddingError};
+use crate::operation::EmbeddingCapabilities;
+use crate::providers::internal::wire::classify_marker_keyed_frame;
+use crate::wire::{
+    Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
 
 /// `gemini-embedding-001` embedding model (3072 dimensions by default)
@@ -28,58 +28,52 @@ fn model_default_ndims(model: &str) -> Option<usize> {
     }
 }
 
-#[derive(Clone)]
-pub struct EmbeddingModel<T = crate::http_client::BoxedHttpClient> {
-    client: Client<T>,
-    model: String,
-    ndims: usize,
+// =================================================================
+// The `batchEmbedContents` wire
+// =================================================================
+
+/// Gemini's batch embedding endpoint.
+///
+/// `POST /v1beta/models/{model}:batchEmbedContents`, authenticated by the
+/// `key` query parameter the GenerateContent family uses.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Embeddings {
+    /// The provider this wire speaks to.
+    pub provider: super::Gemini,
+    /// The embedding model, as the path names it.
+    pub model: String,
+    /// The `output_dimensionality` every document in the batch asks for.
+    pub ndims: usize,
 }
 
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
+impl Embeddings {
+    /// The wire for `model`, defaulting `ndims` from the model identifier
+    /// when the caller named none.
+    pub fn new(provider: super::Gemini, model: impl Into<String>, ndims: Option<usize>) -> Self {
+        let model = model.into();
+        let ndims = ndims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
         Self {
-            client,
-            model: model.into(),
+            provider,
+            model,
             ndims,
         }
     }
-
-    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.to_string(),
-            ndims,
-        }
-    }
 }
 
-impl<T> EmbeddingModel<T>
-where
-    T: Clone + HttpClientExt + 'static,
-{
-    /// Perform the request and return Gemini's native `batchEmbedContents`
-    /// response instead of the normalized [`embeddings::EmbeddingResponse`].
-    /// Same request, transport, parser, and error path as
-    /// [`embeddings::EmbeddingModel::embed_texts_response`].
-    ///
-    /// <https://ai.google.dev/api/embeddings#batch_embed_contents-SHELL>
-    pub async fn raw_embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<gemini_api_types::EmbeddingResponse, EmbeddingError> {
-        let documents: Vec<String> = documents.into_iter().collect();
-        self.raw_embed_texts_slice(&documents).await
+impl Wire for Embeddings {
+    type Op = crate::operation::Embedding;
+    type Decoder = EmbeddingsDecoder;
+
+    fn name(&self) -> &str {
+        super::PROVIDER_NAME
     }
 
-    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
-    /// serialized into the request body, so callers that keep their documents
-    /// (the normalize path) can lend them instead of cloning the batch.
-    async fn raw_embed_texts_slice(
-        &self,
-        documents: &[String],
-    ) -> Result<gemini_api_types::EmbeddingResponse, EmbeddingError> {
-        // Google batch embed requests. See docstrings for API ref link.
-        let requests: Vec<_> = documents
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    fn encode(&self, request: Vec<String>, _mode: Mode) -> Result<Encoded, EmbeddingError> {
+        let requests: Vec<_> = request
             .iter()
             .map(|doc| {
                 json!({
@@ -94,96 +88,77 @@ where
             })
             .collect();
 
-        let request_body = json!({ "requests": requests  });
+        let body = json!({ "requests": requests  });
 
-        if let Ok(pretty_body) = serde_json::to_string_pretty(&request_body) {
+        // Pretty-printing a whole batch costs more than the request itself,
+        // so it happens only when a subscriber is listening for it.
+        if tracing::enabled!(target: "rig::embedding", tracing::Level::TRACE)
+            && let Ok(pretty_body) = serde_json::to_string_pretty(&body)
+        {
             tracing::trace!(
                 target: "rig::embedding",
                 "Sending embedding request to Gemini API {pretty_body}"
             );
         }
 
-        let request_body = serde_json::to_vec(&request_body)?;
-        let path = format!("/v1beta/models/{}:batchEmbedContents", self.model);
-        let req = self
-            .client
-            .post(path.as_str())?
-            .body(request_body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
+        let request = http::Request::post(format!(
+            "{}/v1beta/models/{}:batchEmbedContents?key={}",
+            self.provider.base_url,
+            self.model,
+            self.provider.api_key.expose()
+        ))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::Bytes(serde_json::to_vec(&body)?))
+        .map_err(|error| EmbeddingError::HttpError(error.into()))?;
+        // `batchEmbedContents` has no streaming variant, so a streamed call
+        // sends the same bytes and reads the same whole reply.
+        Ok(Encoded::new(request, Framing::Whole))
+    }
 
-        let (parts, body) = response.into_parts();
-        let status = parts.status;
-        let headers = parts.headers;
-        let body = body.await?;
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+        EmbeddingsDecoder
+    }
 
-        // Preserve non-success bodies before deserialization because providers
-        // may return empty, non-JSON, or otherwise unexpected error payloads.
-        if !status.is_success() {
-            return Err(
-                EmbeddingError::from_http_response(status, String::from_utf8_lossy(&body))
-                    .with_response_headers(Some(headers)),
-            );
-        }
-
-        match serde_json::from_slice::<ApiResponse<gemini_api_types::EmbeddingResponse>>(&body)? {
-            ApiResponse::Ok(response) => Ok(response),
-            ApiResponse::Err(err) => {
-                tracing::warn!(message = %err.error.message, "provider returned an error response");
-                Err(
-                    EmbeddingError::from_http_response(status, String::from_utf8_lossy(&body))
-                        .with_response_headers(Some(headers)),
-                )
-            }
-        }
+    fn capabilities(&self) -> EmbeddingCapabilities {
+        EmbeddingCapabilities::new(1024, self.ndims)
     }
 }
 
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: Clone + HttpClientExt + 'static,
-{
-    fn max_documents(&self) -> usize {
-        1024
+/// Decodes one `batchEmbedContents` reply.
+///
+/// No `project` impl: the reply carries no verdict, usage or identity for
+/// observation to record — only vectors.
+#[derive(Default)]
+pub struct EmbeddingsDecoder;
+
+impl Decoder<crate::operation::Embedding> for EmbeddingsDecoder {
+    type Event = gemini_api_types::EmbeddingResponse;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        classify_marker_keyed_frame(&frame.as_str(), &["embeddings"])
     }
 
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts_response(
-        &self,
-        documents: impl IntoIterator<Item = String> + WasmCompatSend,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        crate::telemetry::instrument_modality(
-            super::completion::PROVIDER_NAME,
-            &self.model,
-            crate::telemetry::ModalityOperation::Embeddings,
-            async {
-                use embeddings::NormalizeEmbeddingResponse as _;
-
-                let documents: Vec<String> = documents.into_iter().collect();
-                // Gemini sends no transport request-id header.
-                let response = self.raw_embed_texts_slice(&documents).await?;
-                let captured = serde_json::to_value(&response)?;
-                Ok(response
-                    .normalize(super::completion::PROVIDER_NAME, documents)?
-                    .with_raw(captured))
-            },
-        )
-        .await
-    }
-}
-
-impl<T> EmbeddingModel<T>
-where
-    T: Clone + HttpClientExt,
-{
-    /// Build the model, defaulting `ndims` from the model identifier when the
-    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
-    pub fn make(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
-        let ndims = dims.or_else(|| model_default_ndims(&model)).unwrap_or(768);
-        Self::new(client.clone(), model, ndims)
+    fn interpret(&mut self, event: Self::Event, out: &mut Output<crate::operation::Embedding>) {
+        let vectors = event
+            .embeddings
+            .into_iter()
+            .map(|embedding| embeddings::Embedding {
+                // The document each vector belongs to is not on this wire;
+                // the operation's fold pairs the batch back on by position.
+                document: String::new(),
+                vec: embedding
+                    .values
+                    .into_iter()
+                    .filter_map(|value| value.as_f64())
+                    .collect(),
+            })
+            .collect();
+        // batchEmbedContents reports neither usage nor a response id, and
+        // the driver stamps the body as `raw`.
+        out.push(Ok(embeddings::EmbeddingResponse::new(
+            vectors,
+            super::PROVIDER_NAME,
+        )));
     }
 }
 

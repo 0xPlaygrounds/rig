@@ -2,13 +2,12 @@
 use super::support::with_xai_cassette;
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
-use rig::prelude::*;
 use rig::providers::xai;
 #[tokio::test]
 async fn extractor_smoke() {
     with_xai_cassette("extractor/extractor_smoke", |client| async move {
         let mut extractor =
-            EcsExtractor::<SmokePerson>::new(client.completion_model(xai::GROK_3_MINI), None, None);
+            EcsExtractor::<SmokePerson>::new(client.completion(xai::GROK_3_MINI), None, None);
         let response = extractor
             .extract(EXTRACTOR_TEXT, &[])
             .await

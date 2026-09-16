@@ -1,4 +1,4 @@
-use rig::client::DefaultTransportBuilder as _;
+use rig::client::DefaultTransport as _;
 use serde_json::json;
 use testcontainers::{
     GenericImage, ImageExt,
@@ -9,12 +9,13 @@ use testcontainers::{
 use futures::{StreamExt, TryStreamExt};
 use rig::neo4j::{Neo4jClient, ToBoltType};
 use rig::vector_store::VectorStoreIndex;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
+    driver::Bound,
     embeddings::{Embedding, EmbeddingsBuilder},
     providers::openai,
 };
-use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 
 const BOLT_PORT: u16 = 7687;
 const HTTP_PORT: u16 = 7474;
@@ -140,14 +141,13 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
+    let openai_client = openai::wire::OpenAI::new("TEST")
+        .with_base_url(server.base_url())
+        .bound()
         .unwrap();
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let embeddings = create_embeddings(model.clone()).await;
 
@@ -235,7 +235,7 @@ async fn vector_search_test() {
     );
 }
 
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<(Word, Vec<Embedding>)> {
+async fn create_embeddings(model: Bound<openai::wire::Embeddings>) -> Vec<(Word, Vec<Embedding>)> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

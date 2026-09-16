@@ -1,11 +1,11 @@
-// ================================================================
-//! Together AI Completion Integration
-//! From [Together AI Reference](https://docs.together.ai/docs/chat-overview)
-// ================================================================
-
-use crate::providers::openai;
-
-use super::client::Together;
+//! Together AI's completion model identifiers.
+//!
+//! From [Together AI Reference](https://docs.together.ai/docs/chat-overview).
+//! Together is an OpenAI chat-completions dialect, so the requests run on the
+//! shared wire: [`openai::wire::TOGETHER`](crate::providers::openai::wire::TOGETHER)
+//! carries the base URL, the `TOGETHER_API_KEY` variable, the `/v1`-prefixed
+//! paths, and the per-model structured-output support that makes this dialect
+//! drop a schema with a warning rather than send one and be rejected.
 
 // ================================================================
 // Together Completion Models
@@ -115,14 +115,3 @@ pub const TOPPY_M_7B: &str = "Undi95/Toppy-M-7B";
 pub const SOLAR_10_7B_INSTRUCT_V1: &str = "upstage/SOLAR-10.7B-Instruct-v1.0";
 pub const SOLAR_10_7B_INSTRUCT_V1_INT4: &str = "togethercomputer/SOLAR-10.7B-Instruct-v1.0-int4";
 pub const WIZARDLM_13B_V1_2: &str = "WizardLM/WizardLM-13B-V1.2";
-
-// =================================================================
-// Rig Implementation Types
-// =================================================================
-
-/// Together AI completion model, driven by the shared OpenAI Chat Completions path.
-pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<Together, H>;
-
-#[cfg(test)]
-mod tests;

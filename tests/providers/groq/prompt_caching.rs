@@ -22,8 +22,8 @@
 //! So these cells assert the narrower thing that is true and deterministic:
 //! when Groq reports a cache read, rig surfaces it at full magnitude, on the
 //! blocking and streaming paths alike. That is a claim about rig's usage mapping
-//! rather than about Groq's hit rate. Groq reuses `openai::Usage`, so the value
-//! arrives in `prompt_tokens_details.cached_tokens`.
+//! rather than about Groq's hit rate. Groq speaks the OpenAI chat shape, so the
+//! value arrives in `prompt_tokens_details.cached_tokens`.
 //!
 //! **Rate-limit caveat:** this account's Groq tier allows 8,000 tokens per
 //! minute, and three turns of the default ~4,600-token probe exceed that before
@@ -51,8 +51,6 @@
 //! RIG_PROVIDER_TEST_MODE=record cargo test -p rig --test groq --all-features \
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
-
-use rig::client::CompletionClient as _;
 
 use crate::cache_conformance::{
     CacheAccounting, CacheProbe, CacheSupport, assert_cache_read_is_surfaced, assert_prefix_stable,
@@ -92,7 +90,7 @@ async fn blocking_probe_surfaces_the_cache_read_groq_reports() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_groq_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion_model(CACHE_MODEL);
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_read_is_surfaced(&observation, &GROQ_CACHE_SUPPORT, "blocking probe");
     })
@@ -106,7 +104,7 @@ async fn streaming_probe_surfaces_the_cache_read_groq_reports() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_groq_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion_model(CACHE_MODEL);
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_read_is_surfaced(&observation, &GROQ_CACHE_SUPPORT, "streaming probe");
     })

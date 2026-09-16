@@ -7,10 +7,9 @@ use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
 use rig::effect::{EffectFamily, HandlerKey};
-use rig::prelude::*;
 use rig::providers::openai;
 
-use super::super::support::with_openai_corpus_host_cassette;
+use super::super::support::{OpenAiCassette, with_openai_corpus_host_cassette};
 use crate::goldens::{EMBED_KEY, EmbedPrompt, families};
 use crate::support::BASIC_PREAMBLE;
 
@@ -26,7 +25,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-async fn embeds_over_host(client: openai::Client, streamed: bool) -> rig::effect_log::EffectLog {
+async fn embeds_over_host(client: OpenAiCassette, streamed: bool) -> rig::effect_log::EffectLog {
     let (dispatcher, registrar, mut driver) = Bus::channel();
     let model_key = HandlerKey::from("golden/model:default");
     driver
@@ -34,7 +33,7 @@ async fn embeds_over_host(client: openai::Client, streamed: bool) -> rig::effect
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                 "default",
-                client.completion_model(openai::GPT_4O),
+                client.openai.completion(openai::GPT_4O),
             )),
         )
         .expect("a fresh key");
@@ -43,7 +42,9 @@ async fn embeds_over_host(client: openai::Client, streamed: bool) -> rig::effect
             HandlerKey::from(EMBED_KEY),
             rig::serve::ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
                 "host",
-                client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL),
+                client
+                    .openai
+                    .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
             )),
         )
         .expect("a fresh key");

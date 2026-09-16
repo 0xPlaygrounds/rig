@@ -142,41 +142,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "I'll start the checkpoint sequence.",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"token\": \"start\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_REDACTED_1",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_1",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "I'll start the checkpoint sequence.",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_1",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "checkpoint_step",
-                        "arguments": "{\"token\":\"start\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 44,
-              "prompt_tokens": 366,
               "prompt_cache_hit_tokens": 0,
               "prompt_cache_miss_tokens": 366,
-              "total_tokens": 410,
+              "prompt_tokens": 366,
               "prompt_tokens_details": {
                 "cached_tokens": 0
-              }
+              },
+              "total_tokens": 410
             }
           }
         }
@@ -353,41 +354,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"token\": \"cobalt-17\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_REDACTED_2",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_2",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_2",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "checkpoint_step",
-                        "arguments": "{\"token\":\"cobalt-17\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 41,
-              "prompt_tokens": 438,
               "prompt_cache_hit_tokens": 256,
               "prompt_cache_miss_tokens": 182,
-              "total_tokens": 479,
+              "prompt_tokens": 438,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "total_tokens": 479
             }
           }
         }
@@ -614,41 +616,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"token\": \"orchard-29\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_REDACTED_3",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_3",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_3",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "checkpoint_step",
-                        "arguments": "{\"token\":\"orchard-29\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 41,
-              "prompt_tokens": 507,
               "prompt_cache_hit_tokens": 256,
               "prompt_cache_miss_tokens": 251,
-              "total_tokens": 548,
+              "prompt_tokens": 507,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "total_tokens": 548
             }
           }
         }
@@ -925,41 +928,42 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "tool_calls",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "",
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"token\": \"harbor-43\"}",
+                        "name": "checkpoint_step"
+                      },
+                      "id": "call_REDACTED_4",
+                      "index": 0,
+                      "type": "function"
+                    }
+                  ]
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_4",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_4",
-                      "index": 0,
-                      "type": "function",
-                      "function": {
-                        "name": "checkpoint_step",
-                        "arguments": "{\"token\":\"harbor-43\"}"
-                      }
-                    }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
-              }
-            ],
             "usage": {
               "completion_tokens": 42,
-              "prompt_tokens": 577,
               "prompt_cache_hit_tokens": 384,
               "prompt_cache_miss_tokens": 193,
-              "total_tokens": 619,
+              "prompt_tokens": 577,
               "prompt_tokens_details": {
                 "cached_tokens": 384
-              }
+              },
+              "total_tokens": 619
             }
           }
         }
@@ -1272,30 +1276,31 @@
           "provider": "deepseek",
           "model": "deepseek-flash",
           "raw": {
+            "choices": [
+              {
+                "finish_reason": "stop",
+                "index": 0,
+                "logprobs": null,
+                "message": {
+                  "content": "checkpoint-complete",
+                  "role": "assistant"
+                }
+              }
+            ],
+            "created": 0,
             "id": "chatcmpl-REDACTED_5",
             "model": "deepseek-flash",
             "object": "chat.completion",
             "system_fingerprint": "aeb56401ca74e127821c4f9126dcb669",
-            "choices": [
-              {
-                "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": "checkpoint-complete"
-                },
-                "logprobs": null,
-                "finish_reason": "stop"
-              }
-            ],
             "usage": {
               "completion_tokens": 4,
-              "prompt_tokens": 644,
               "prompt_cache_hit_tokens": 384,
               "prompt_cache_miss_tokens": 260,
-              "total_tokens": 648,
+              "prompt_tokens": 644,
               "prompt_tokens_details": {
                 "cached_tokens": 384
-              }
+              },
+              "total_tokens": 648
             }
           }
         }

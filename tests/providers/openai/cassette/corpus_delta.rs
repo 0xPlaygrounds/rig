@@ -1,5 +1,5 @@
 //! Matrix K of the effect corpus, the live chat-completions wire: a tool call
-//! streamed as a name delta and argument deltas (`completions_api()`), dispatched,
+//! streamed as a name delta and argument deltas (the chat wire), dispatched,
 //! answered. Producer of the golden `crates/rig-verify/tests/corpus_delta.rs`
 //! replays by both interpreters. A new recording under
 //! `tests/cassettes/openai/corpus_delta/`.
@@ -21,7 +21,7 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 async fn chat_baseline_effect_log_is_the_golden_fixture() {
     with_openai_corpus_delta_cassette("corpus_delta/chat_baseline", |client| async move {
         let agent = client
-            .completions_api()
+            .chat
             .agent(openai::GPT_4O)
             .name("golden")
             .preamble(TOOLS_PREAMBLE)

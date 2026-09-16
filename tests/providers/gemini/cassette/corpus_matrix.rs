@@ -10,17 +10,18 @@
 //! had, whose producer stays where it is.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
+use rig::driver::{Bound, Socket};
+use rig::providers::gemini::Gemini;
 use rig::providers::gemini::completion::{GEMINI_3_1_FLASH_LITE_PREVIEW, GEMINI_3_FLASH_PREVIEW};
 
 use super::super::support::with_gemini_cassette;
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(client: &rig::providers::gemini::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: Socket>(client: &Bound<Gemini, H>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Gemini,
-        model: client.completion_model(GEMINI_3_FLASH_PREVIEW),
-        route: Some(client.completion_model(GEMINI_3_1_FLASH_LITE_PREVIEW)),
+        model: client.completion(GEMINI_3_FLASH_PREVIEW),
+        route: Some(client.completion(GEMINI_3_1_FLASH_LITE_PREVIEW)),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -246,12 +247,12 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(
-    client: &rig::providers::gemini::Client,
+fn reasoning_wire<H: Socket>(
+    client: &Bound<Gemini, H>,
 ) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Gemini,
-        model: client.completion_model("gemini-3-flash-preview"),
+        model: client.completion("gemini-3-flash-preview"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

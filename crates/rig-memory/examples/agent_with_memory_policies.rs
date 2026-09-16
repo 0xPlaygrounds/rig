@@ -16,6 +16,7 @@ use anyhow::Result;
 use rig_agent::prelude::*;
 use rig_core::completion::Message;
 use rig_core::providers::openai;
+use rig_core::providers::openai::OpenAI;
 use rig_memory::{InMemoryConversationMemory, IntoFilter, SlidingWindowMemory, TokenWindowMemory};
 use rig_reqwest::prelude::*;
 
@@ -44,7 +45,7 @@ fn approx_token_count(message: &Message) -> usize {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
+    let client = OpenAI::from_env()?.bound()?;
 
     let sliding_memory = InMemoryConversationMemory::new()
         .with_filter(SlidingWindowMemory::last_messages(20).into_filter());

@@ -13,9 +13,10 @@ use crate::{
     support::{BASIC_PREAMBLE, TOOLS_PREAMBLE},
 };
 use bevy_ecs::prelude::*;
+use rig::driver::Bound;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::{
     effect::{EffectFamily, EffectKind},
-    prelude::*,
     providers::anthropic::completion::CLAUDE_SONNET_4_6,
     serve::{
         ErasedHandler,
@@ -30,14 +31,10 @@ use rig_ecs::{
 use std::sync::Arc;
 
 fn layered_agent(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
 ) -> EcsAgent {
-    let mut ecs = EcsAgent::for_golden(
-        client.completion_model(CLAUDE_SONNET_4_6),
-        TOOLS_PREAMBLE,
-        false,
-    );
+    let mut ecs = EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
     ecs.app
         .world_mut()
         .entity_mut(ecs.agent)
@@ -63,7 +60,7 @@ async fn run_tool(ecs: &mut EcsAgent) -> rig::effect_log::EffectLog {
     ecs.effect_log()
 }
 async fn own_bus(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
     configure: impl FnOnce(&mut EcsAgent),
 ) -> rig::effect_log::EffectLog {
@@ -118,10 +115,10 @@ fn check_history(
         checks.0 += 1;
     }
 }
-fn memory_agent(client: rig::providers::anthropic::Client) -> EcsAgent {
+fn memory_agent(client: Bound<Anthropic>) -> EcsAgent {
     let mut memory_entity = None;
     let mut ecs = EcsAgent::for_golden_with_setup(
-        client.completion_model(CLAUDE_SONNET_4_6),
+        client.completion(CLAUDE_SONNET_4_6),
         BASIC_PREAMBLE,
         false,
         |world| {

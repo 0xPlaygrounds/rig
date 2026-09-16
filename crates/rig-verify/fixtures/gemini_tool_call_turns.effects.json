@@ -591,6 +591,10 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "21"
+            },
+            {
               "type": "reasoning",
               "id": null,
               "content": [
@@ -602,10 +606,6 @@
                   }
                 }
               ]
-            },
-            {
-              "type": "text",
-              "text": "21"
             }
           ],
           "usage": {

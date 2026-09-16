@@ -4,18 +4,14 @@
 //! `tests/common/ecs_matrix/long_loop.rs`'s; this file holds the scenario
 //! literals and the wire's model.
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop};
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
-fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiChat,
-        model: client
-            .clone()
-            .completions_api()
-            .completion_model("gpt-4.1-mini"),
+        model: client.openai.chat("gpt-4.1-mini"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

@@ -154,49 +154,44 @@
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "responseId": "id_REDACTED_1",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_1",
                       "functionCall": {
-                        "name": "add",
                         "args": {
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_2694165"
-                      }
+                        "id": "call_2694165",
+                        "name": "add"
+                      },
+                      "thoughtSignature": "signature_REDACTED_1"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "id_REDACTED_1",
             "usageMetadata": {
-              "promptTokenCount": 140,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 452,
-              "thoughtsTokenCount": 294,
+              "promptTokenCount": 140,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 140
                 }
-              ]
-            },
-            "modelVersion": "gemini-3-flash-preview"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 294,
+              "totalTokenCount": 452
+            }
           }
         }
       }
@@ -352,7 +347,6 @@
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "responseId": "id_REDACTED_2",
             "candidates": [
               {
                 "content": {
@@ -364,28 +358,23 @@
                   "role": "model"
                 },
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": null
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "id_REDACTED_2",
             "usageMetadata": {
-              "promptTokenCount": 463,
               "candidatesTokenCount": 3,
-              "totalTokenCount": 466,
+              "promptTokenCount": 463,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 463
                 }
-              ]
-            },
-            "modelVersion": "gemini-3-flash-preview"
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 466
+            }
           }
         }
       }

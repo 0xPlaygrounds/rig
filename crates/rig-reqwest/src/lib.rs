@@ -11,19 +11,23 @@
 )]
 //! The bundled `reqwest` transport for Rig.
 //!
-//! `rig-core` is transport-agnostic: every provider client is generic over an
-//! `H: HttpClientExt`, defaulting to the erased
-//! [`BoxedHttpClient`], and rig-core
-//! itself depends on neither reqwest nor tokio. This crate supplies:
+//! `rig-core` is transport-agnostic: a provider's wire says what to send and
+//! how to read the reply, and [`Bound`](rig_core::driver::Bound) pairs it with
+//! an `H: HttpClientExt` — defaulting to the erased
+//! [`BoxedHttpClient`] — to make a model. rig-core itself depends on neither
+//! reqwest nor tokio. This crate supplies:
 //!
 //! - [`ReqwestClient`], a newtype over [`reqwest::Client`] implementing
 //!   [`HttpClientExt`] (and, behind the `reqwest-middleware` feature,
 //!   [`ReqwestMiddlewareClient`] over `reqwest_middleware::ClientWithMiddleware`).
-//! - The construction conveniences the `rig` facade re-exports:
-//!   [`client::DefaultTransportClient`] / [`client::DefaultTransportBuilder`],
-//!   which build the erased default over a `ReqwestClient` so
-//!   `Client::new(key)`, `Client::from_env()`, and `builder().…build()` work
-//!   without naming a transport.
+//! - The construction convenience the `rig` facade re-exports:
+//!   [`client::DefaultTransport`], whose `bound()` builds the erased default
+//!   over a `ReqwestClient`, so
+//!   `openai::wire::OpenAI::from_env()?.bound()?` yields a usable provider
+//!   without naming a transport. Name one explicitly with
+//!   [`Bind::bind`](rig_core::driver::Bind::bind) instead and the concrete
+//!   type stays in the signature.
+//!
 //! # Running without a tokio runtime
 //!
 //! Async reqwest needs a tokio reactor on native targets. Inside a tokio
@@ -152,7 +156,7 @@ mod runtime;
 
 /// Bring the construction traits into scope.
 pub mod prelude {
-    pub use crate::client::{DefaultTransportBuilder, DefaultTransportClient};
+    pub use crate::client::DefaultTransport;
 }
 
 use bytes::Bytes;

@@ -1,12 +1,11 @@
 //! Structural guard: every streaming triage site runs on the single-policy
 //! driver.
 //!
-//! The `run_wire_stream`/`run_wire_buffered` driver (and its factored
-//! `triage_frame` helper) in `providers/internal/adapter.rs` is the ONLY place
-//! allowed to decide what happens to `WireEvent::Unknown` / `WireEvent::Corrupt`
-//! frames. The websocket divergence fixed on this branch is the standing proof
-//! that hand-copied triage tables drift; this test makes reintroducing one a CI
-//! failure.
+//! `WireDriver` (and its factored `triage_frame` helper for the one-frame
+//! surfaces) in `driver.rs` is the ONLY place allowed to decide what happens
+//! to `WireEvent::Unknown` / `WireEvent::Corrupt` frames. The websocket
+//! divergence fixed on this branch is the standing proof that hand-copied
+//! triage tables drift; this test makes reintroducing one a CI failure.
 //!
 //! Mechanism: non-test provider source may *classify* (produce a `WireEvent`)
 //! but never *triage* it — and triage requires matching the `Unknown`/`Corrupt`
@@ -24,16 +23,48 @@ use std::path::PathBuf;
 /// hand-rolls a `WireEvent` policy table is scanned like any other file
 /// instead of inheriting the core driver's exemption.
 const ALLOWED_POLICY_HOMES: &[&str] = &[
-    "rig-core/src/providers/internal/adapter.rs",
+    // The one driver: `WireDriver` is where the policy table lives now, and
+    // `call`/`stream` are the only consumers of it.
+    "rig-core/src/driver.rs",
+    // The trait definitions and the "write a provider" page: `Decoder`'s
+    // contract names the variants it is defined over, and `WireFrame` — the
+    // framed-but-undecoded payload the variants are about — is defined here.
+    "rig-core/src/wire.rs",
     "rig-core/src/providers/internal/wire.rs",
 ];
 
-/// Whether `path` is one of the two files allowed to state triage policy.
-fn is_policy_home(path: &std::path::Path) -> bool {
+/// Whether `path` is one of the three files [`ALLOWED_POLICY_HOMES`] names:
+/// the exemption BOTH guards share.
+fn is_named_policy_home(path: &std::path::Path) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
     ALLOWED_POLICY_HOMES
         .iter()
         .any(|suffix| unix_path.ends_with(suffix))
+}
+
+/// Whether `path` is allowed to state triage policy — **guard 1's scope only**.
+///
+/// A provider's own `wire.rs` — and the modules under `wire/`, which are
+/// that one file split by endpoint — IS its classify layer: `Decoder::classify`
+/// is where a provider decides what a frame is, which is the one place the
+/// triage variants are its to name. Anywhere else, naming them means a
+/// second policy table, which is what this guard exists to forbid.
+///
+/// Naming the triage variants is not the same licence as raw-parsing the
+/// wire, so [`is_serde_wall_target`] does NOT consult this predicate: guard 2
+/// exempts only [`is_named_policy_home`], and a provider's classify layer
+/// still owes the serde wall an allowlisted justification per parse. The two
+/// scopes are pinned apart by `the_two_guards_have_different_scopes`.
+fn is_policy_home(path: &std::path::Path) -> bool {
+    let unix_path = path.to_string_lossy().replace('\\', "/");
+    if let Some(providers) = unix_path
+        .split_once("rig-core/src/providers/")
+        .map(|(_, rest)| rest)
+        && (providers.ends_with("/wire.rs") || providers.contains("/wire/"))
+    {
+        return true;
+    }
+    is_named_policy_home(path)
 }
 
 /// Directories that hold test harness code rather than shipped policy.
@@ -384,7 +415,9 @@ fn for_each_shipped_source(mut visit: impl FnMut(&std::path::Path, &str)) {
 /// `test_public_interface_contracts` rule: a walk that finds nothing to
 /// check must fail loudly, never pass green.
 const WALK_FLOOR_FILES: &[&str] = &[
-    "rig-core/src/providers/internal/adapter.rs",
+    // The completion operation's own output buffer, which every completion
+    // decoder writes through.
+    "rig-core/src/operation/completion.rs",
     "rig-core/src/providers/internal/wire.rs",
     "rig-core/src/providers/anthropic/streaming.rs",
     "rig-core/src/providers/openai/responses_api/streaming.rs",
@@ -440,9 +473,9 @@ fn every_triage_site_runs_on_the_single_policy_driver() {
     );
     assert!(
         violations.is_empty(),
-        "Unknown/Corrupt triage restated outside the driver (adapter.rs) and \
-         classify layer (wire.rs) — route it through run_wire_stream / \
-         run_wire_buffered / triage_frame instead:\n{}",
+        "Unknown/Corrupt triage restated outside the driver (driver.rs) and \
+         classify layer (wire.rs) — route it through WireDriver / \
+         run_wire_stream / triage_frame instead:\n{}",
         violations.join("\n")
     );
 }
@@ -492,9 +525,10 @@ const RAW_SERDE_MARKERS: &[&str] = &[
 ///    over an ever-growing explicit path list precisely so future helpers are
 ///    scanned the moment they are written, with no list to forget to update.
 ///
-/// The classify layer (`wire.rs`) and driver (`adapter.rs`) are exempt by
-/// FULL path suffix ([`ALLOWED_POLICY_HOMES`]), not by basename, so a foreign
-/// `adapter.rs` elsewhere in the workspace is scanned like any other file.
+/// The classify layers (`rig-core/src/providers/internal/wire.rs`) and the
+/// driver (`rig-core/src/driver.rs`) are exempt by FULL path suffix
+/// ([`ALLOWED_POLICY_HOMES`]), not by basename, so a foreign `adapter.rs`
+/// elsewhere in the workspace is scanned like any other file.
 /// `rig-agent`'s streaming modules are consumer-side (no wire decoding) and
 /// are excluded by path, as is `test_utils`.
 ///
@@ -511,10 +545,9 @@ const SINGLE_FILE_STREAMING_MODULES: &[&str] = &[
 /// Identifiers a file cannot mention without participating in wire handling.
 const WIRE_MACHINERY_MARKERS: &[&str] = &[
     "WireEvent",
-    "WireAdapter",
+    "WireDriver",
     "WireFrame",
     "run_wire_stream",
-    "run_wire_buffered",
     "triage_frame",
 ];
 
@@ -523,7 +556,7 @@ fn is_serde_wall_target(path: &std::path::Path, shipped: &str) -> bool {
     if unix_path.contains("/rig-agent/") || unix_path.contains("/test_utils/") {
         return false;
     }
-    if is_policy_home(path) {
+    if is_named_policy_home(path) {
         return false;
     }
     if SINGLE_FILE_STREAMING_MODULES
@@ -792,7 +825,7 @@ fn body_debug_captures(body: &str) -> bool {
 
 /// Shipped streaming code never Debug-prints a wire payload into a WARN log:
 /// unmodeled frames and parts can carry model output, and the one redaction
-/// policy (kind + byte size only) lives in `adapter::warn_unmodeled`. The
+/// policy (kind + byte size only) lives in `driver::warn_unmodeled`. The
 /// scan covers the whole macro invocation — multi-line bodies, positional
 /// (`warn!(?frame)`) and named (`warn!(payload = ?frame)`) captures, and
 /// `{:?}` format-string Debug prints — so no spelling of a direct payload
@@ -884,7 +917,7 @@ fn streaming_modules_never_debug_print_wire_payloads_in_warn_logs() {
     assert!(
         violations.is_empty(),
         "a WARN log Debug-captures a wire payload — route it through \
-         `adapter::warn_unmodeled` (kind + byte size only):\n{}",
+         `driver::warn_unmodeled` (kind + byte size only):\n{}",
         violations.join("\n")
     );
 }
@@ -983,6 +1016,10 @@ fn provider_streaming_modules_never_raw_parse_the_wire() {
         "rig-core/src/providers/ollama.rs",
         "rig-core/src/providers/openai/responses_api/streaming.rs",
         "rig-bedrock/src/streaming.rs",
+        // A provider's classify layer: guard 1's policy home is guard 2's
+        // target, and this is the file whose envelope repair the collapse of
+        // the two scopes let through unreviewed.
+        "rig-core/src/providers/openai/wire/chat.rs",
     ] {
         assert!(
             scanned_targets.iter().any(|label| label.ends_with(suffix)),
@@ -1075,15 +1112,12 @@ fn serde_wall_scopes_by_machinery_content() {
         "crates/rig-core/src/providers/internal/openai_chat_completions_compatible.rs",
     );
     assert!(
-        is_serde_wall_target(compat, "use super::adapter::run_wire_stream;"),
+        is_serde_wall_target(compat, "use crate::driver::run_wire_stream;"),
         "a compat helper referencing the machinery must be scanned"
     );
     let future_helper = std::path::Path::new("crates/rig-core/src/providers/somegateway/sse.rs");
     assert!(
-        is_serde_wall_target(
-            future_helper,
-            "let out = run_wire_buffered(adapter, frames);"
-        ),
+        is_serde_wall_target(future_helper, "let mut driver = WireDriver::new(decoder);"),
         "any future compat/sse helper opts in the moment it names the machinery"
     );
     assert!(
@@ -1092,7 +1126,7 @@ fn serde_wall_scopes_by_machinery_content() {
     );
 }
 
-/// The wire.rs/adapter.rs exemption is by full path suffix: a foreign
+/// The named-policy-home exemption is by full path suffix: a foreign
 /// `adapter.rs` (e.g. a hand-rolled rig-bedrock driver) is scanned by both
 /// guards instead of inheriting the core driver's exemption.
 #[test]
@@ -1107,11 +1141,48 @@ fn foreign_adapter_files_are_not_exempt() {
         "guard 2 must scan a foreign adapter.rs that touches the machinery"
     );
     assert!(is_policy_home(std::path::Path::new(
-        "crates/rig-core/src/providers/internal/adapter.rs"
-    )));
-    assert!(is_policy_home(std::path::Path::new(
         "crates/rig-core/src/providers/internal/wire.rs"
     )));
+}
+
+/// The two guards do NOT share one predicate, and one edit must not be able
+/// to collapse them again.
+///
+/// A provider's own `wire.rs` (and the endpoint modules under `wire/`) is
+/// guard 1's policy home — `Decoder::classify` is where the triage variants
+/// are that provider's to name — and is *still* a guard 2 target, because
+/// naming the variants is not licence to raw-parse the wire. Widening
+/// [`is_policy_home`] once removed ~9,600 non-test provider lines from the
+/// serde wall as a side effect, which is what let `openai/wire/chat.rs`'s
+/// envelope repair ship without the justification its Responses twin owes.
+#[test]
+fn the_two_guards_have_different_scopes() {
+    let classify_layer = "fn classify(frame: WireFrame) -> WireEvent<Event> { todo!() }";
+    for provider_path in [
+        "crates/rig-core/src/providers/x/wire.rs",
+        "crates/rig-core/src/providers/x/wire/chat.rs",
+    ] {
+        let path = std::path::Path::new(provider_path);
+        assert!(
+            is_policy_home(path),
+            "{provider_path}: a provider's classify layer names its own triage variants"
+        );
+        assert!(
+            is_serde_wall_target(path, classify_layer),
+            "{provider_path}: the classify layer still owes the serde wall a \
+             justified allowlist entry per raw parse"
+        );
+    }
+
+    // The four named homes are the exemption the two guards DO share.
+    for suffix in ALLOWED_POLICY_HOMES {
+        let path = PathBuf::from("crates").join(suffix);
+        assert!(is_policy_home(&path), "{suffix} states the policy table");
+        assert!(
+            !is_serde_wall_target(&path, classify_layer),
+            "{suffix} is exempt from both guards"
+        );
+    }
 }
 
 /// Gating at `#[cfg(test)]` is line-anchored: only an attribute in attribute

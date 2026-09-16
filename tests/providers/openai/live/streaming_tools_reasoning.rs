@@ -1,13 +1,15 @@
 use futures::StreamExt;
-use rig::client::DefaultTransportClient as _;
-use rig::{completion::Message, prelude::*, providers::openai};
+use rig::providers::openai::OpenAI;
+use rig::{completion::Message, prelude::*};
 use rig_agent::test_utils::MockExampleTool;
 
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY environment variable"]
 async fn test_openai_streaming_tools_reasoning() {
     let api_key = std::env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY env var should exist");
-    let client = openai::Client::new(&api_key).expect("Failed to build client");
+    let client = OpenAI::new(api_key)
+        .bound()
+        .expect("Failed to build client");
     let agent = client
         .agent("gpt-5.2")
         .max_tokens(8192)

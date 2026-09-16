@@ -6,14 +6,14 @@ use serde_json::{Map, Value};
 
 use crate::{
     completion::Usage,
-    http_client::HttpClientExt,
+    operation::Transcription,
     providers::gemini::completion::gemini_api_types::{
         Blob, Content, GenerateContentRequest, GenerationConfig, Part, PartKind, Role,
         visible_text_parts,
     },
-    providers::internal::transcription::send_json_transcription,
+    providers::internal::wire::classify_marker_keyed_frame,
     transcription::{self, NormalizeTranscriptionResponse, TranscriptionError},
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame},
 };
 
 use super::completion::gemini_api_types::GenerateContentResponse;
@@ -21,125 +21,152 @@ use super::completion::gemini_api_types::GenerateContentResponse;
 const TRANSCRIPTION_PREAMBLE: &str =
     "Translate the provided audio exactly. Do not add additional information.";
 
-pub type TranscriptionModel<T = crate::http_client::BoxedHttpClient> =
-    crate::providers::internal::transcription::GenericTranscriptionModel<
-        crate::providers::gemini::client::Gemini,
-        T,
-    >;
+/// The `generateContent` body one transcription sends: the audio inline as
+/// base64, under the preamble's system instruction.
+///
+/// The one place the bytes Gemini receives are stated: [`Transcriptions`]
+/// encodes through it.
+fn transcription_body(
+    request: transcription::TranscriptionRequest,
+) -> Result<Vec<u8>, TranscriptionError> {
+    let additional_params = request
+        .additional_params
+        .unwrap_or_else(|| Value::Object(Map::new()));
+    let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
 
-impl<T> TranscriptionModel<T>
-where
-    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
-{
-    /// Perform the transcription and return Gemini's native
-    /// [`GenerateContentResponse`] instead of the normalized
-    /// [`transcription::TranscriptionResponse`]. Same request, transport,
-    /// parser, and error path as
-    /// [`transcription::TranscriptionModel::transcription`].
-    pub async fn raw_transcription(
-        &self,
-        request: transcription::TranscriptionRequest,
-    ) -> Result<GenerateContentResponse, TranscriptionError> {
-        let additional_params = request
-            .additional_params
-            .unwrap_or_else(|| Value::Object(Map::new()));
-        let mut generation_config = serde_json::from_value::<GenerationConfig>(additional_params)?;
+    // A temperature named on the request outranks one carried inside
+    // `additional_params`.
+    if let Some(temp) = request.temperature {
+        generation_config.temperature = Some(temp);
+    }
 
-        // Set temperature from completion_request or additional_params
-        if let Some(temp) = request.temperature {
-            generation_config.temperature = Some(temp);
-        }
+    let system_instruction = Some(Content {
+        parts: vec![TRANSCRIPTION_PREAMBLE.into()],
+        role: Some(Role::Model),
+    });
 
-        let system_instruction = Some(Content {
-            parts: vec![TRANSCRIPTION_PREAMBLE.into()],
-            role: Some(Role::Model),
-        });
+    // Gemini needs a mime type for the blob and the filename is the only
+    // evidence the request carries; mp3 is the format the endpoint documents.
+    let mime_type = mime_guess::from_path(Path::new(&request.filename))
+        .first()
+        .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
 
-        let mime_type = mime_guess::from_path(Path::new(&request.filename))
-            .first()
-            .map_or_else(|| "audio/mpeg".to_string(), |mime| mime.to_string());
-
-        let request = GenerateContentRequest {
-            contents: vec![Content {
-                parts: vec![Part {
-                    thought: Some(false),
-                    thought_signature: None,
-                    part: PartKind::InlineData(Blob {
-                        mime_type,
-                        data: BASE64_STANDARD.encode(request.data),
-                    }),
-                    additional_params: None,
-                }],
-                role: Some(Role::User),
+    let body = GenerateContentRequest {
+        contents: vec![Content {
+            parts: vec![Part {
+                thought: Some(false),
+                thought_signature: None,
+                part: PartKind::InlineData(Blob {
+                    mime_type,
+                    data: BASE64_STANDARD.encode(request.data),
+                }),
+                additional_params: None,
             }],
-            generation_config: Some(generation_config),
-            safety_settings: None,
-            tools: None,
-            tool_config: None,
-            system_instruction,
-            cached_content: None,
-            additional_params: None,
-        };
+            role: Some(Role::User),
+        }],
+        generation_config: Some(generation_config),
+        safety_settings: None,
+        tools: None,
+        tool_config: None,
+        system_instruction,
+        cached_content: None,
+        additional_params: None,
+    };
 
-        tracing::trace!(
-            target: "rig::transcription",
-            "Sending completion request to Gemini API {}",
-            serde_json::to_string_pretty(&request)?
-        );
+    tracing::trace!(
+        target: "rig::transcription",
+        "Sending completion request to Gemini API {}",
+        serde_json::to_string_pretty(&body)?
+    );
 
-        let body = serde_json::to_vec(&request)?;
+    Ok(serde_json::to_vec(&body)?)
+}
 
-        // Gemini sends no transport request-id header.
-        send_json_transcription(
-            &self.client,
-            self.client
-                .post(format!("/v1beta/models/{}:generateContent", self.model))?,
-            body,
-            None,
-            |_, body| {
-                let body: GenerateContentResponse = serde_json::from_slice(body)?;
+/// The transcription wire: `POST /v1beta/models/{model}:generateContent`.
+///
+/// Gemini has no dedicated transcription endpoint. The audio rides inline as
+/// base64 inside an ordinary `generateContent` request, so this wire sends
+/// JSON rather than a multipart form, and a transcript never arrives in
+/// pieces: both [`Mode`]s send the same request and read one whole reply.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Transcriptions {
+    /// The provider this wire speaks to.
+    pub provider: super::Gemini,
+    /// The model transcribing, for example
+    /// [`GEMINI_2_0_FLASH`](super::completion::GEMINI_2_0_FLASH).
+    pub model: String,
+}
 
-                match body.usage_metadata {
-                    Some(ref usage) => tracing::info!(target: "rig",
-                    "Gemini completion token usage: {}",
-                    usage
-                    ),
-                    None => tracing::info!(target: "rig",
-                        "Gemini completion token usage: n/a",
-                    ),
-                }
-
-                tracing::debug!("Received response");
-
-                Ok(body)
-            },
-        )
-        .await
-        .map(|(response, _)| response)
+impl Transcriptions {
+    /// The transcription wire for `model`.
+    pub fn new(provider: super::Gemini, model: impl Into<String>) -> Self {
+        Self {
+            provider,
+            model: model.into(),
+        }
     }
 }
 
-impl<T> transcription::TranscriptionModel for TranscriptionModel<T>
-where
-    T: HttpClientExt + WasmCompatSend + WasmCompatSync + Clone + 'static,
-{
-    async fn transcription(
+impl Wire for Transcriptions {
+    type Op = Transcription;
+    type Decoder = TranscriptionsDecoder;
+
+    fn name(&self) -> &str {
+        super::PROVIDER_NAME
+    }
+
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    fn encode(
         &self,
         request: transcription::TranscriptionRequest,
-    ) -> Result<transcription::TranscriptionResponse, TranscriptionError> {
-        crate::telemetry::instrument_modality(
-            super::completion::PROVIDER_NAME,
-            &self.model,
-            crate::telemetry::ModalityOperation::Transcription,
-            async {
-                let response = self.raw_transcription(request).await?;
-                let captured = serde_json::to_value(&response)?;
-                Ok(response
-                    .normalize(super::completion::PROVIDER_NAME)?
-                    .with_raw(captured))
-            },
+        _mode: Mode,
+    ) -> Result<Encoded, TranscriptionError> {
+        let body = transcription_body(request)?;
+        // The GenerateContent family authenticates through the `key` query
+        // parameter, appended last.
+        let request = http::Request::post(format!(
+            "{}/v1beta/models/{}:generateContent?key={}",
+            self.provider.base_url,
+            self.model,
+            self.provider.api_key.expose()
+        ))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::Bytes(body))
+        .map_err(|error| TranscriptionError::HttpError(error.into()))?;
+        // Gemini reports no transport request-id header.
+        Ok(Encoded::new(request, Framing::Whole))
+    }
+
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
+        TranscriptionsDecoder
+    }
+}
+
+/// Decodes one `generateContent` reply into a transcript.
+///
+/// `project` stays at its default: this reply carries nothing beyond what the
+/// GenerateContent decoder's own projection already observes.
+#[derive(Default)]
+pub struct TranscriptionsDecoder;
+
+impl Decoder<Transcription> for TranscriptionsDecoder {
+    type Event = GenerateContentResponse;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        classify_marker_keyed_frame(
+            &frame.as_str(),
+            &["candidates", "promptFeedback", "usageMetadata"],
         )
-        .await
+    }
+
+    /// The mapping — the no-candidates and no-text errors, and the usage,
+    /// model and response-id carry — is [`NormalizeTranscriptionResponse`]'s,
+    /// so this wire holds no second reading of the same reply.
+    fn interpret(&mut self, event: Self::Event, out: &mut Output<Transcription>) {
+        out.push(event.normalize(super::PROVIDER_NAME));
     }
 }
 

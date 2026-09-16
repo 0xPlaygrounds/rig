@@ -20,7 +20,7 @@ use anyhow::Result;
 use rig::agent::{AgentHook, HookContext, ModelTurnAction, ModelTurnFinished};
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 
 static NEXT_RETRY_HOOK_ID: AtomicUsize = AtomicUsize::new(1);
 
@@ -98,7 +98,7 @@ impl AgentHook for RetryOnMarker {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
+    let client = OpenAI::from_env()?.bound()?;
     let agent = client
         .agent(openai::GPT_4O_MINI)
         .preamble(

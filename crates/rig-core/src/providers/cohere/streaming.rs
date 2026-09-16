@@ -1,42 +1,48 @@
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::GenericEventSource;
-use crate::providers::cohere::CompletionModel;
+use crate::operation::AdapterOutput;
+use crate::operation::Completion;
 use crate::providers::cohere::completion::{
-    CohereCompletionRequest, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
-};
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
-use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_and_done,
+    AssistantContent, CompletionResponse, FinishReason, PROVIDER_NAME, Usage, map_finish_reason,
 };
 use crate::providers::internal::wire;
 use crate::streaming::{BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
-
-use crate::{json_utils, streaming};
+use crate::wire::WireFrame;
 use serde::{Deserialize, Serialize};
 
+/// One streamed frame of Cohere's `/v2/chat`, named by its `type`.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "type")]
-enum StreamingEvent {
+pub enum StreamingEvent {
     MessageStart {
+        /// The message identifier, when the wire named one.
         #[serde(default)]
         id: Option<String>,
     },
+    /// A content block opens.
     ContentStart,
+    /// One content fragment: text, or a reasoning model's thought text.
     ContentDelta {
+        /// The fragment, absent on a frame that carries none.
         delta: Option<Delta>,
     },
+    /// A content block closes.
     ContentEnd,
+    /// The model's plan for the tool calls that follow.
     ToolPlan,
+    /// A tool call opens, naming the function it calls.
     ToolCallStart {
+        /// The call's identity and name.
         delta: Option<Delta>,
     },
+    /// One argument fragment of the open tool call.
     ToolCallDelta {
+        /// The fragment.
         delta: Option<Delta>,
     },
+    /// The open tool call closes.
     ToolCallEnd,
+    /// The turn ends: the wire's genuine terminal.
     MessageEnd {
+        /// Usage and finish reason, absent on a bare terminal.
         delta: Option<MessageEndDelta>,
     },
 }
@@ -57,42 +63,58 @@ const KNOWN_EVENT_TYPES: [&str; 9] = [
     "message-end",
 ];
 
+/// One content fragment of a `content-delta` frame.
 #[derive(Debug, Deserialize)]
-struct MessageContentDelta {
-    text: Option<String>,
+pub struct MessageContentDelta {
+    /// Assistant text.
+    pub text: Option<String>,
     /// Cohere v2 reasoning models stream thought text as `content-delta`
     /// frames whose content carries `thinking` instead of `text`.
-    thinking: Option<String>,
+    pub thinking: Option<String>,
 }
 
+/// The function half of a tool-call frame.
 #[derive(Debug, Deserialize)]
-struct MessageToolFunctionDelta {
-    name: Option<String>,
-    arguments: Option<String>,
+pub struct MessageToolFunctionDelta {
+    /// The tool's name, on the frame that opens the call.
+    pub name: Option<String>,
+    /// One fragment of the call's JSON arguments.
+    pub arguments: Option<String>,
 }
 
+/// The tool-call half of a message delta.
 #[derive(Debug, Deserialize)]
-struct MessageToolCallDelta {
-    id: Option<String>,
-    function: Option<MessageToolFunctionDelta>,
+pub struct MessageToolCallDelta {
+    /// The call's wire id, on the frame that opens it.
+    pub id: Option<String>,
+    /// The function the call names.
+    pub function: Option<MessageToolFunctionDelta>,
 }
 
+/// What one frame's message delta carried.
 #[derive(Debug, Deserialize)]
-struct MessageDelta {
-    content: Option<MessageContentDelta>,
-    tool_calls: Option<MessageToolCallDelta>,
+pub struct MessageDelta {
+    /// A content fragment.
+    pub content: Option<MessageContentDelta>,
+    /// A tool-call fragment.
+    pub tool_calls: Option<MessageToolCallDelta>,
 }
 
+/// One frame's delta envelope.
 #[derive(Debug, Deserialize)]
-struct Delta {
-    message: Option<MessageDelta>,
+pub struct Delta {
+    /// The message the delta applies to.
+    pub message: Option<MessageDelta>,
 }
 
+/// The `message-end` payload: what the turn cost and why it stopped.
 #[derive(Debug, Deserialize)]
-struct MessageEndDelta {
-    usage: Option<Usage>,
+pub struct MessageEndDelta {
+    /// Token counters, when Cohere reported them.
+    pub usage: Option<Usage>,
+    /// Cohere's own finish reason.
     #[serde(default)]
-    finish_reason: Option<FinishReason>,
+    pub finish_reason: Option<FinishReason>,
 }
 
 /// Cohere's terminal stream record: the `message-end` payload as rig parsed
@@ -109,13 +131,13 @@ pub struct StreamingCompletionResponse {
     pub message_id: Option<String>,
 }
 
-/// The Cohere v2 chat SSE wire as a [`WireAdapter`].
+/// The Cohere v2 chat wire's decoder, serving both replies.
 ///
-/// Holds the per-stream state (open tool call, message id); frame-triage
+/// Holds the per-reply state (open tool call, message id); frame-triage
 /// policy (warn-skip `Unknown` for forward compatibility, in-band `Err` on
-/// `Corrupt` so a later genuine `message-end` can still complete the stream)
-/// lives in [`run_wire_stream`], not here.
-struct CohereAdapter {
+/// `Corrupt` so a later genuine `message-end` can still complete the
+/// stream) lives in the driver, not here.
+pub struct ChatDecoder {
     /// Wire id of the open tool call, when one is streaming. Only the wire
     /// identity is tracked here; fragment assembly, internal-id minting, and
     /// finalize policy live in the shared accumulator.
@@ -128,7 +150,7 @@ struct CohereAdapter {
     reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle,
 }
 
-impl Default for CohereAdapter {
+impl Default for ChatDecoder {
     fn default() -> Self {
         Self {
             current_tool_call: None,
@@ -141,17 +163,24 @@ impl Default for CohereAdapter {
     }
 }
 
-impl WireAdapter for CohereAdapter {
-    type Frame = WireFrame;
-    type Event = StreamingEvent;
+/// One frame of the `/v2/chat` wire.
+///
+/// The streamed frames name themselves in `type`; the unary body carries no
+/// discriminator at all, so it is the untagged fallback — the one place the
+/// whole-reply shape appears. Both go through the same [`ChatDecoder`], so
+/// the two paths cannot drift.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ChatEvent {
+    /// One SSE frame of `POST /v2/chat` with `stream: true`.
+    Stream(StreamingEvent),
+    /// The whole reply of `POST /v2/chat` without `stream`.
+    Reply(CompletionResponse),
+}
 
-    fn classify(&self, frame: WireFrame) -> wire::WireEvent<StreamingEvent> {
-        wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
-            KNOWN_EVENT_TYPES.contains(&event_type)
-        })
-    }
-
-    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
+impl ChatDecoder {
+    /// Interpret one streamed `/v2/chat` frame.
+    fn interpret_stream(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
         match event {
             StreamingEvent::MessageStart { id: Some(id) } => {
                 self.message_id = Some(id);
@@ -182,39 +211,14 @@ impl WireAdapter for CohereAdapter {
             StreamingEvent::MessageEnd { delta } => {
                 // `message-end` is the genuine terminal even when its optional
                 // payload is absent; usage and finish reason then default. The
-                // driver stops consuming after the terminal record.
-                let span = tracing::Span::current();
+                // driver stops consuming after the terminal record, and the
+                // span is the driver's to record.
                 let (usage, finish_reason) = match delta {
                     Some(delta) => (delta.usage, delta.finish_reason),
                     None => (None, None),
                 };
-                let recorded_usage = usage
-                    .as_ref()
-                    .map(crate::completion::Usage::from)
-                    .unwrap_or_default();
-                span.record_token_usage(&recorded_usage);
-                let native = StreamingCompletionResponse {
-                    usage,
-                    finish_reason,
-                    message_id: self.message_id.take(),
-                };
-                let raw = match serde_json::to_value(&native) {
-                    Ok(raw) => raw,
-                    Err(err) => {
-                        out.error(err.into());
-                        return;
-                    }
-                };
-                // Cohere's streaming events carry no model identifier, so the
-                // normalized `model` stays unset.
-                out.final_record(
-                    StreamFinal::new(PROVIDER_NAME, recorded_usage)
-                        .with_optional_finish_reason(
-                            native.finish_reason.as_ref().map(map_finish_reason),
-                        )
-                        .with_optional_response_id(native.message_id)
-                        .with_raw(raw),
-                );
+                let message_id = self.message_id.take();
+                self.terminal(usage, finish_reason, message_id, out);
             }
 
             StreamingEvent::ToolCallStart { delta: Some(delta) } => {
@@ -301,75 +305,111 @@ impl WireAdapter for CohereAdapter {
         }
     }
 
+    /// Interpret the unary reply by *synthesizing the stream* it would have
+    /// been: one block per content part, each tool call whole, then the
+    /// terminal the `message-end` event carries.
+    fn interpret_reply(&mut self, reply: CompletionResponse, out: &mut AdapterOutput) {
+        let response_id = crate::streaming::non_empty_id(reply.id.clone());
+        let finish_reason = Some(reply.finish_reason.clone());
+        let usage = reply.usage;
+        let (content, _citations, tool_calls) = match reply.message() {
+            Ok(message) => message,
+            Err(error) => {
+                out.error(error);
+                return;
+            }
+        };
+
+        for part in content {
+            match part {
+                AssistantContent::Text { text } => out.text(text),
+                AssistantContent::Thinking { thinking } => out.reasoning(thinking),
+            }
+        }
+        for call in tool_calls {
+            let Some(function) = call.function else {
+                continue;
+            };
+            // The wire's id when present, or a minted key — never the tool
+            // name, which is fake provenance and collides two same-tool
+            // calls in one turn. The streamed path keys the same way.
+            let key = call
+                .id
+                .and_then(crate::streaming::non_empty_id)
+                .map_or_else(|| self.tool_ids.mint(), BlockId::wire);
+            let mut end = ToolCallEnd::whole(function.name, function.arguments);
+            if let Some(wire_id) = key.wire_str() {
+                end = end.with_tool_id(wire_id);
+            }
+            out.tool_call(key, end);
+        }
+
+        out.close_active_blocks();
+        self.terminal(usage, finish_reason, response_id, out);
+    }
+
+    /// The terminal record both replies end with: Cohere's usage, its finish
+    /// reason, and the message id it named.
+    fn terminal(
+        &self,
+        usage: Option<Usage>,
+        finish_reason: Option<FinishReason>,
+        message_id: Option<String>,
+        out: &mut AdapterOutput,
+    ) {
+        let recorded_usage = usage
+            .as_ref()
+            .map(crate::completion::Usage::from)
+            .unwrap_or_default();
+        let native = StreamingCompletionResponse {
+            usage,
+            finish_reason,
+            message_id,
+        };
+        let raw = match serde_json::to_value(&native) {
+            Ok(raw) => raw,
+            Err(error) => {
+                out.error(error.into());
+                return;
+            }
+        };
+        // Cohere's `/v2/chat` reports no model identifier in either mode, so
+        // the normalized `model` stays unset.
+        out.final_record(
+            StreamFinal::new(PROVIDER_NAME, recorded_usage)
+                .with_optional_finish_reason(native.finish_reason.as_ref().map(map_finish_reason))
+                .with_optional_response_id(native.message_id)
+                .with_raw(raw),
+        );
+    }
+}
+
+/// The `/v2/chat` wire decodes its unary and streamed replies with the same
+/// state machine, so the two paths cannot drift.
+impl crate::wire::Decoder<Completion> for ChatDecoder {
+    type Event = ChatEvent;
+
+    fn classify(&self, frame: WireFrame) -> wire::WireEvent<ChatEvent> {
+        // One classifier for both shapes: a modeled `type` decodes as a
+        // streamed frame, an unmodeled one stays skippable, and a body with
+        // no `type` at all can only be the unary reply.
+        wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
+            KNOWN_EVENT_TYPES.contains(&event_type)
+        })
+    }
+
+    fn interpret(&mut self, event: ChatEvent, out: &mut AdapterOutput) {
+        match event {
+            ChatEvent::Stream(event) => self.interpret_stream(event, out),
+            ChatEvent::Reply(reply) => self.interpret_reply(reply, out),
+        }
+    }
+
     fn finish(&mut self, _out: &mut AdapterOutput) {
         // Only Cohere's `message-end` event counts as the provider completing
         // the turn. A stream that reached EOF without it (truncation) has no
         // terminal record to report; synthesizing one would present a partial
         // turn as a successful, zero-usage completion.
-    }
-}
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Open a chat stream with observation context owned by this invocation.
-    pub(crate) async fn stream_observed(
-        &self,
-        request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let system_instructions = request.system_instructions().map(str::to_owned);
-        let record_telemetry_content = request.record_telemetry_content;
-        let mut request = CohereCompletionRequest::try_from((self.model.as_ref(), request))?;
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-
-        let params = json_utils::merge(
-            request.additional_params.unwrap_or(serde_json::json!({})),
-            serde_json::json!({"stream": true}),
-        );
-
-        request.additional_params = Some(params);
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Streaming,
-            "Cohere streaming completion input",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post("/v2/chat")?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-        if let Some(observation) = observation {
-            observation.attach(&mut req, "/v2/chat");
-        }
-
-        let stream = open_wire_stream(
-            GenericEventSource::new(self.client.clone(), req),
-            SseTransportOptions {
-                open_log: OpenLog::Trace,
-                stream_ended_is_error: false,
-                log_transport_errors: true,
-            },
-            |data: String| skip_blank_and_done(&data),
-            CohereAdapter::default(),
-            span,
-        );
-
-        Ok(streaming::StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            stream,
-        ))
     }
 }
 

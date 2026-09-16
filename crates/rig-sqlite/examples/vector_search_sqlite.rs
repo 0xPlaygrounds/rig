@@ -1,10 +1,9 @@
-use rig_core::client::EmbeddingsClient;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
     embeddings::EmbeddingsBuilder,
-    providers::openai::Client,
+    providers::openai::wire::OpenAI,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
 use rig_reqwest::prelude::*;
@@ -60,8 +59,8 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .init();
 
-    // Initialize OpenAI client
-    let openai_client = Client::from_env()?;
+    // Bind the OpenAI embeddings endpoint
+    let openai_client = OpenAI::from_env()?.bound()?;
 
     // Initialize the `sqlite-vec`extension
     // See: https://alexgarcia.xyz/sqlite-vec/rust.html
@@ -75,7 +74,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let conn = Connection::open("vector_store.db").await?;
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let documents = vec![
         Document {

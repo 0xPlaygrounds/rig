@@ -3,17 +3,17 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. llama.cpp streams through the shared OpenAI Chat
-//! Completions model, whose
-//! [`raw_stream`](rig::providers::openai::GenericCompletionModel::raw_stream)
-//! yields [`openai::StreamingCompletionResponse`] as its terminal record: the
-//! usage from the stream's final `data:` frame plus the envelope fields the
-//! chunks carried (`object`, `created`, `system_fingerprint`) accumulated under
-//! `additional_params`. Every terminal record the seam yields carries `raw` —
-//! that record serialized by the adapter's `final_record` — the terminal record only,
-//! never the frames, and nothing about it is sent to the server. `raw ==
-//! Value::Null` means only that a `StreamFinal` was built by hand without a
-//! provider terminal behind it, which no cell here can produce.
+//! Capture is always on. llama.cpp streams through the OpenAI `Chat` wire,
+//! whose decoder builds
+//! [`openai::wire::StreamingCompletionResponse`](rig::providers::openai::wire::StreamingCompletionResponse)
+//! as its terminal record: the usage from the stream's final `data:` frame
+//! plus the envelope fields the chunks carried (`object`, `created`,
+//! `system_fingerprint`) accumulated under `additional_params`. Every
+//! terminal record the seam yields carries `raw` — that record serialized by
+//! the decoder before it folds into a `StreamFinal` — the terminal record
+//! only, never the frames, and nothing about it is sent to the server.
+//! `raw == Value::Null` means only that a `StreamFinal` was built by hand
+//! without a provider terminal behind it, which no cell here can produce.
 //!
 //! The envelope fields are exactly what the normalized
 //! [`StreamFinal`](rig::streaming::StreamFinal) has no home for, so cell 2
@@ -27,17 +27,19 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `openai::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `openai::wire::StreamingCompletionResponse::deserialize(&raw)` re-serializes equal | recorded |
 //! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded frames; usage equals the terminal frame | recorded |
 //! | 3 | `stream_raw_preserves_llamacpp_timings` | Part 4: dropped fields | `timings` from the terminal frame survives under `additional_params` | recorded |
 //!
 //! Cell 3 is the streaming half of the asymmetry `raw_capture_matrix`'s
-//! timings cell describes. `StreamingCompletionChunk` carries a
-//! `#[serde(flatten)]` catch-all for exactly this reason — "raw_stream must
-//! not erase them merely because the shared wire shape does not know their
-//! names yet" — so llama.cpp's `timings` reach the caller here *without* any
-//! provider-specific type. `openai::CompletionResponse` on the blocking path
-//! has no such catch-all, which is why `llamacpp::CompletionResponse` exists.
+//! timings cell describes. The terminal record carries a
+//! `#[serde(flatten)]`-backed `additional_params` catch-all for exactly this
+//! reason — a streamed terminal must not erase a field merely because the
+//! shared wire shape does not know its name yet — so llama.cpp's `timings`
+//! reach the caller here *without* any provider-specific type. The blocking
+//! path's `openai::CompletionResponse` has no such catch-all, which is why
+//! `llamacpp::CompletionResponse` exists; on that path `timings` reach the
+//! caller because `raw` is the reply document.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
@@ -45,9 +47,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_stream_capture_matrix -- --test-threads=1`
 
 use futures::StreamExt;
-use rig::completion::CompletionModel as _;
-use rig::prelude::*;
-use rig::providers::{llamacpp, openai};
+use rig::completion::CompletionModel;
+use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse as WireTerminal};
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
@@ -58,7 +59,15 @@ use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_j
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &llamacpp::CompletionModel) -> rig::completion::CompletionRequest {
+/// The terminal record as the decoder serialized it, accounting included.
+///
+/// [`ChatUsage`](rig::providers::openai::wire::ChatUsage) in the `U` slot
+/// reads the OpenAI-compatible counters *and* the dialect's extras — which is
+/// how llama.cpp's `timings` reach the caller on this path without any
+/// provider-specific type.
+type LlamacppTerminal = WireTerminal<ChatUsage>;
+
+fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
 }
 
@@ -124,7 +133,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -134,25 +143,22 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             .await;
 
             let raw = &terminal.raw;
-            let typed = openai::StreamingCompletionResponse::<openai::Usage>::deserialize(raw)
-                .expect("raw must deserialize into openai::StreamingCompletionResponse");
+            let typed = LlamacppTerminal::deserialize(raw)
+                .expect("raw must deserialize into the wire's terminal record");
             assert_eq!(
                 serde_json::to_value(&typed).expect("terminal type should serialize"),
                 *raw,
-                "openai::StreamingCompletionResponse must round-trip through its own serde"
+                "the terminal record must round-trip through its own serde — on \
+                 this path `raw` is that record's serialization, not the reply \
+                 document"
             );
 
             // The typed terminal agrees with the normalized one on usage and
-            // identity: raw is the record the adapter's `final_record` mapped.
-            let typed_usage = typed.usage.as_ref().expect("terminal carries usage");
-            assert_eq!(
-                Some(typed_usage.prompt_tokens as u64),
-                terminal.usage.input_tokens
-            );
-            assert_eq!(
-                typed_usage.completion_tokens.map(|tokens| tokens as u64),
-                terminal.usage.output_tokens
-            );
+            // identity: raw is the record the decoder emitted, and
+            // `ChatUsage::to_normalized` is the mapping the decoder applied,
+            // pinned directly rather than compared to a copy of itself.
+            let usage = typed.usage.as_ref().expect("terminal carries usage");
+            assert_eq!(usage.to_normalized(), terminal.usage);
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.model, terminal.model);
             *sink.lock().expect("capture mutex") = Some(raw.clone());
@@ -188,7 +194,7 @@ async fn stream_raw_exposes_envelope_fields() {
     with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -248,8 +254,8 @@ async fn stream_raw_exposes_envelope_fields() {
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    let typed = openai::StreamingCompletionResponse::<openai::Usage>::deserialize(&raw)
-        .expect("raw must deserialize into openai::StreamingCompletionResponse");
+    let typed = LlamacppTerminal::deserialize(&raw)
+        .expect("raw must deserialize into the wire's terminal record");
     let typed_params = typed
         .additional_params
         .expect("typed terminal must carry additional_params");
@@ -266,10 +272,11 @@ async fn stream_raw_exposes_envelope_fields() {
 /// llama.cpp's `timings` ride the terminal frame and land under
 /// `additional_params`.
 ///
-/// The blocking path needed `llamacpp::CompletionResponse` to keep this field;
-/// the streaming path keeps it for free, because the chunk type has a
-/// `#[serde(flatten)]` catch-all. Pinning both halves is what makes the
-/// asymmetry a measured fact rather than a reading of the source.
+/// The blocking path needs `llamacpp::CompletionResponse` to read this field
+/// as a typed value; the streaming path keeps it for free, because the
+/// terminal record's `additional_params` is a `#[serde(flatten)]` catch-all.
+/// Pinning both halves is what makes the asymmetry a measured fact rather
+/// than a reading of the source.
 #[tokio::test]
 async fn stream_raw_preserves_llamacpp_timings() {
     let scenario = "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings";
@@ -279,7 +286,7 @@ async fn stream_raw_preserves_llamacpp_timings() {
     with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))

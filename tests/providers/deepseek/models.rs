@@ -3,14 +3,14 @@
 //! Run with:
 //! `cargo test -p rig --test deepseek list_models_smoke -- --ignored --nocapture`
 
-use rig::client::ModelListingClient;
+use rig::model::ModelLister;
 
 use super::support::with_deepseek_cassette;
 
 #[tokio::test]
 async fn list_models_smoke() {
     with_deepseek_cassette("models/list_models_smoke", |client| async move {
-        let models = match client.list_models().await {
+        let models = match client.models().list_all().await {
             Ok(models) => models,
             Err(error) => {
                 panic!(
@@ -46,7 +46,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Re
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .list_models()
+                .models()
+                .list_all()
                 .await
                 .expect_err("a bogus key must not list models");
 
@@ -62,7 +63,14 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Re
             };
 
             anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
-            for expected in ["provider=DeepSeek", "path=/models", "status=401"] {
+            // `provider=` is the wire's descriptor name — the same `deepseek`
+            // every normalized response reports, not a display label. The
+            // deleted client layer decorated this message with its own
+            // capitalised `DeepSeek` instead, so one provider's identity had
+            // two spellings; there is now one. `path=` is unchanged: DeepSeek's
+            // base URL carries no version segment, so the listing really does
+            // send `/models`.
+            for expected in ["provider=deepseek", "path=/models", "status=401"] {
                 anyhow::ensure!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

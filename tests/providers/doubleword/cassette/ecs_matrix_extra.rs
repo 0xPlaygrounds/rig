@@ -6,22 +6,19 @@
 //! literals and the wire's models.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::doubleword::{QWEN3_5_9B, QWEN3_5_397B_A17B};
 
-use super::super::support::with_doubleword_cassette;
+use super::super::support::{BoundDoubleword, with_doubleword_cassette};
 use crate::ecs_matrix::{
     Wire, cells,
     extra::{Approval, ErrorProbe, batch_hold, despawn_waits_for_the_stream, error_facts},
 };
 
-fn wire(
-    client: &rig::providers::doubleword::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &BoundDoubleword) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Doubleword,
-        model: client.completion_model(QWEN3_5_397B_A17B),
-        route: Some(client.completion_model(QWEN3_5_9B)),
+        model: client.completion(QWEN3_5_397B_A17B),
+        route: Some(client.completion(QWEN3_5_9B)),
         temperature: Some(0.0),
         additional_params: Some(cells::reasoning_off),
     }
@@ -48,7 +45,7 @@ crate::matrix::case_matrix! {
 async fn error_facts_unary() {
     with_doubleword_cassette("error_matrix/unknown_model_blocking", |client| async move {
         error_facts(
-            client.completion_model("rig/definitely-not-a-doubleword-model"),
+            client.completion("rig/definitely-not-a-doubleword-model"),
             ErrorProbe {
                 prompt: "Reply with error-probe.",
                 max_tokens: Some(8),
@@ -70,7 +67,7 @@ async fn error_facts_streamed() {
         "error_matrix/unknown_model_streaming",
         |client| async move {
             error_facts(
-                client.completion_model("rig/definitely-not-a-doubleword-model"),
+                client.completion("rig/definitely-not-a-doubleword-model"),
                 ErrorProbe {
                     prompt: "Reply with error-probe.",
                     max_tokens: Some(8),

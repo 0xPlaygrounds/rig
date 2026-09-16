@@ -1,8 +1,7 @@
 use rig::prelude::*;
-use rig::providers::openai::Client;
+use rig::providers::openai::{self, OpenAI};
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;
 use std::vec;
@@ -26,9 +25,10 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // One OpenAI config serves both: completions go to the Responses API,
+    // embeddings to the shared REST surface.
+    let openai_client = OpenAI::from_env()?.bound()?;
+    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
@@ -65,7 +65,8 @@ async fn main() -> Result<(), anyhow::Error> {
     let vector_store = InMemoryVectorStore::from_documents(embeddings);
     // Create vector store index
     let index = vector_store.index(embedding_model);
-    let rag_agent = openai_client.agent(openai::GPT_4O)
+    let rag_agent = openai_client
+        .agent(openai::GPT_4O)
         .preamble("
             You are a dictionary assistant here to assist the user in understanding the meaning of words.
             You will find additional non-standard word definitions that could be useful below.

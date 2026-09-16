@@ -4,9 +4,10 @@ use std::future::IntoFuture;
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::prelude::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use rig::prelude::*;
 
 use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::assert_nonempty_response;
@@ -30,7 +31,7 @@ struct Sentiment {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn batch_multi_extract_chain() -> Result<()> {
-    let client = live_client();
+    let client = live_client().await;
     let names_extractor = client
         .extractor::<Names>(LIVE_MODEL)
         .append_preamble("Extract names from the given text.")

@@ -3,9 +3,10 @@
 //! Run it to watch the extractor keep counting upward until the stop condition is met.
 
 use anyhow::Result;
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
-use rig::providers::openai;
-use rig::providers::openai::Client;
+use rig::providers::openai::{self, OpenAI};
 
 use schemars::JsonSchema;
 
@@ -18,9 +19,10 @@ struct Counter {
 const TARGET_NUMBER: u32 = 2000;
 const STEP_DELAY: std::time::Duration = std::time::Duration::from_secs(1);
 
-fn build_counter_extractor(client: &Client) -> rig::extractor::Extractor<Counter> {
-    client
-        .extractor::<Counter>(openai::GPT_4)
+fn build_counter_extractor(
+    openai: &Bound<OpenAI, BoxedHttpClient>,
+) -> rig::extractor::Extractor<Counter> {
+    rig::extractor::ExtractorBuilder::new(openai.completion(openai::GPT_4))
         .append_preamble(
             "
             Add a random whole number between 1 and 64 to the number you receive.
@@ -32,8 +34,8 @@ fn build_counter_extractor(client: &Client) -> rig::extractor::Extractor<Counter
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = Client::from_env()?;
-    let extractor = build_counter_extractor(&client);
+    let openai = OpenAI::from_env()?.bound()?;
+    let extractor = build_counter_extractor(&openai);
     let mut current_number = 0;
     let mut step = 1;
     let mut interval = tokio::time::interval(STEP_DELAY);

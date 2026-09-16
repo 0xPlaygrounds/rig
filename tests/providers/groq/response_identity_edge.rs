@@ -1,13 +1,12 @@
 //! Response identity on Groq (rig#2265): Groq reports its transport request
 //! id on `x-request-id` — the same header OpenAI and xAI use — verified live
-//! and now captured via `Groq::REQUEST_ID_HEADER`. An earlier revision of
+//! and now captured via the dialect's own `GROQ.request_id_header`. An earlier revision of
 //! this suite recorded the header arriving while the compat-default contract
 //! ignored it; #2265's acceptance criterion ("providers that expose these
 //! populate them") makes capture, not documentation, the fix.
 
 use anyhow::Result;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use super::support::with_groq_cassette_result;
 
@@ -18,7 +17,7 @@ async fn blocking_response_carries_identity() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/blocking_response_carries_identity",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -45,7 +44,7 @@ async fn streaming_terminal_carries_identity() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/streaming_terminal_carries_identity",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
@@ -78,7 +77,7 @@ async fn provider_error_response_carries_request_id() -> Result<()> {
     with_groq_cassette_result(
         "response_identity_edge/provider_error_response_carries_request_id",
         |client| async move {
-            let model = client.completion_model("groq-nonexistent-model-for-identity-edge");
+            let model = client.completion("groq-nonexistent-model-for-identity-edge");
             let error = model
                 .completion_request("Never answered")
                 .send()
@@ -105,7 +104,7 @@ async fn auth_rejection_classifies_with_contract() -> Result<()> {
     with_groq_cassette_bogus_key_result(
         "response_identity_edge/auth_rejection_classifies_with_contract",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let error = model
                 .completion_request("Never authenticated")
                 .send()

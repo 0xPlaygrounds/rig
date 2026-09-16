@@ -12,10 +12,13 @@ Direct users import construction and prompting explicitly:
 
 ```rust,ignore
 use rig_agent::prelude::*;
-use rig_core::providers::openai;
+use rig_core::providers::openai::{self, OpenAI};
+use rig_reqwest::prelude::*;
 
-let client = openai::Client::from_env()?;
-let agent = client.agent(openai::GPT_5_2).build();
+let agent = OpenAI::from_env()?
+    .bound()?
+    .agent(openai::GPT_5_2)
+    .build();
 let answer = agent.prompt("Explain ownership briefly.").await?;
 ```
 

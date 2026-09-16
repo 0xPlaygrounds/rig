@@ -1,4 +1,5 @@
 use super::*;
+use crate::embeddings::EmbeddingError;
 use serde_json::json;
 
 // The NDJSON wire has no discriminator, so its classify has exactly two
@@ -62,10 +63,22 @@ fn leaves_unterminated_or_inline_reasoning_markers_visible() {
     );
 }
 
-// Test deserialization and conversion for the /api/chat endpoint.
+/// Fold one `/api/chat` reply body through the bound chat wire, the way a
+/// caller's `completion()` does.
+async fn unary(body: serde_json::Value) -> Result<completion::CompletionResponse, CompletionError> {
+    use crate::completion::CompletionModel as _;
+    let model = ollama_model(crate::test_utils::RecordingHttpClient::new(
+        body.to_string(),
+    ));
+    model
+        .completion(model.completion_request("hello").build())
+        .await
+}
+
+// A non-streaming `/api/chat` reply carrying both text and a tool call
+// (shape from the Ollama docs) folds to a choice holding both.
 #[tokio::test]
 async fn test_chat_completion() {
-    // Sample JSON response from /api/chat (non-streaming) based on Ollama docs.
     let sample_chat_response = json!({
         "model": "llama3.2",
         "created_at": "2023-08-04T19:22:45.499127Z",
@@ -94,14 +107,24 @@ async fn test_chat_completion() {
         "eval_count": 468u64,
         "eval_duration": 7700000000u64
     });
-    let sample_text = sample_chat_response.to_string();
 
-    let chat_resp: CompletionResponse =
-        serde_json::from_str(&sample_text).expect("Invalid JSON structure");
-    let conv: completion::CompletionResponse = chat_resp.try_into().unwrap();
+    let conv = unary(sample_chat_response)
+        .await
+        .expect("the reply decodes");
     assert!(
-        !conv.choice.is_empty(),
-        "Expected non-empty choice in chat response"
+        conv.choice
+            .iter()
+            .any(|c| matches!(c, completion::AssistantContent::Text(t) if t.text == "The sky is blue because of Rayleigh scattering.")),
+        "the text survives: {:?}",
+        conv.choice
+    );
+    assert!(
+        conv.choice.iter().any(|c| matches!(
+            c,
+            completion::AssistantContent::ToolCall(call) if call.function.name == "get_current_weather"
+        )),
+        "the tool call survives: {:?}",
+        conv.choice
     );
 }
 
@@ -121,9 +144,9 @@ fn done_reason_maps_documented_values_and_preserves_the_rest() {
     );
 }
 
-#[test]
-fn response_metadata_is_normalized() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+#[tokio::test]
+async fn response_metadata_is_normalized() {
+    let normalized = unary(json!({
         "model": "llama3.2",
         "created_at": "2023-08-04T19:22:45.499127Z",
         "message": {"role": "assistant", "content": "Hi!", "tool_calls": []},
@@ -132,10 +155,8 @@ fn response_metadata_is_normalized() {
         "prompt_eval_count": 12u64,
         "eval_count": 3u64
     }))
-    .expect("fixture should deserialize");
-
-    let normalized: completion::CompletionResponse =
-        response.try_into().expect("normalization should succeed");
+    .await
+    .expect("normalization should succeed");
 
     assert_eq!(normalized.provider, PROVIDER_NAME);
     assert_eq!(normalized.model.as_deref(), Some("llama3.2"));
@@ -152,9 +173,9 @@ fn response_metadata_is_normalized() {
 
 // A `done_reason` of `stop` on a turn that actually called a tool must be
 // upgraded by the response builder's reconciliation.
-#[test]
-fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+#[tokio::test]
+async fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
+    let normalized = unary(json!({
         "model": "qwen3:4b",
         "created_at": "2023-08-04T19:22:45.499127Z",
         "message": {
@@ -167,10 +188,8 @@ fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
         "done": true,
         "done_reason": "stop"
     }))
-    .expect("fixture should deserialize");
-
-    let normalized: completion::CompletionResponse =
-        response.try_into().expect("normalization should succeed");
+    .await
+    .expect("normalization should succeed");
 
     assert_eq!(
         normalized.finish_reason(),
@@ -453,10 +472,9 @@ async fn nonstreaming_response_preserves_thinking_as_reasoning() {
         "eval_duration": 7700000000u64
     });
 
-    let raw: CompletionResponse =
-        serde_json::from_value(sample_response).expect("deserialize ollama response");
-    let completed: completion::CompletionResponse =
-        raw.try_into().expect("convert to completion response");
+    let completed = unary(sample_response)
+        .await
+        .expect("convert to completion response");
 
     let reasoning = completed.choice.iter().find_map(|c| match c {
         completion::AssistantContent::Reasoning(r) => Some(r.clone()),
@@ -1105,111 +1123,9 @@ fn test_completion_request_without_output_schema() {
     );
 }
 
-#[test]
-fn test_client_initialization() {
-    let _client = crate::providers::ollama::Client::new_with(
-        Nothing,
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("Client::new() failed");
-    let _client_from_builder = crate::providers::ollama::Client::builder()
-        .api_key(Nothing)
-        .http_client(crate::test_utils::RecordingHttpClient::new(""))
-        .build()
-        .expect("Client::builder() failed");
-}
-
-#[test]
-fn ndjson_buffer_returns_complete_lines_in_single_chunk() {
-    let mut buf = NdjsonBuffer::new();
-    let lines = buf.decode(b"{\"a\":1}\n{\"b\":2}\n");
-    assert_eq!(lines, vec![b"{\"a\":1}".to_vec(), b"{\"b\":2}".to_vec()]);
-}
-
-#[test]
-fn ndjson_buffer_reassembles_line_split_across_chunks() {
-    let mut buf = NdjsonBuffer::new();
-
-    assert!(buf.decode(b"{\"model\":\"llama\",\"mes").is_empty());
-
-    let lines = buf.decode(b"sage\":\"hi\"}\n{\"done\"");
-    assert_eq!(
-        lines,
-        vec![b"{\"model\":\"llama\",\"message\":\"hi\"}".to_vec()]
-    );
-
-    let lines = buf.decode(b":true}\n");
-    assert_eq!(lines, vec![b"{\"done\":true}".to_vec()]);
-}
-
-#[test]
-fn ndjson_buffer_skips_blank_lines() {
-    let mut buf = NdjsonBuffer::new();
-    let lines = buf.decode(b"\n{\"a\":1}\n\n");
-    assert_eq!(lines, vec![b"{\"a\":1}".to_vec()]);
-}
-
-#[test]
-fn ndjson_buffer_retains_unterminated_trailing_data() {
-    let mut buf = NdjsonBuffer::new();
-    let lines = buf.decode(b"{\"a\":1}\n{\"b\":2");
-    assert_eq!(lines, vec![b"{\"a\":1}".to_vec()]);
-    let lines = buf.decode(b"}\n");
-    assert_eq!(lines, vec![b"{\"b\":2}".to_vec()]);
-}
-
-#[test]
-fn ndjson_buffer_handles_empty_chunk() {
-    let mut buf = NdjsonBuffer::new();
-    assert!(buf.decode(b"").is_empty());
-
-    buf.decode(b"{\"a\":1");
-    assert!(buf.decode(b"").is_empty());
-
-    let lines = buf.decode(b"}\n");
-    assert_eq!(lines, vec![b"{\"a\":1}".to_vec()]);
-}
-
-#[test]
-fn ndjson_buffer_handles_multi_byte_utf8_split_across_chunks() {
-    // `\n` (0x0A) cannot appear inside any UTF-8 continuation byte, so a
-    // byte-wise newline scan is always safe — but verify explicitly that a
-    // multi-byte sequence reassembles correctly when split across chunks.
-    let mut buf = NdjsonBuffer::new();
-    assert!(buf.decode(&[0xd0]).is_empty());
-    assert!(buf.decode(&[0xb8, 0xd0, 0xb7, 0xd0]).is_empty());
-    assert!(
-        buf.decode(&[
-            0xb2, 0xd0, 0xb5, 0xd1, 0x81, 0xd1, 0x82, 0xd0, 0xbd, 0xd0, 0xb8
-        ])
-        .is_empty()
-    );
-
-    let lines = buf.decode(b"\n");
-    assert_eq!(lines.len(), 1);
-    assert_eq!(std::str::from_utf8(&lines[0]).unwrap(), "известни");
-}
-
-#[test]
-fn ndjson_buffer_yields_parseable_chunks_when_split_arbitrarily() {
-    let original = concat!(
-        "{\"model\":\"llama3.2\",\"message\":{\"role\":\"assistant\",\"content\":\"hi\"},\"done\":false}\n",
-        "{\"model\":\"llama3.2\",\"message\":{\"role\":\"assistant\",\"content\":\"\"},\"done\":true}\n",
-    );
-
-    let mut buf = NdjsonBuffer::new();
-    let mut received = Vec::new();
-    for byte in original.as_bytes() {
-        for line in buf.decode(std::slice::from_ref(byte)) {
-            let parsed: serde_json::Value =
-                serde_json::from_slice(&line).expect("each drained line must be valid JSON");
-            received.push(parsed);
-        }
-    }
-
-    assert_eq!(received.len(), 2);
-    assert_eq!(received[0]["message"]["content"], "hi");
-    assert_eq!(received[1]["done"], true);
+/// The chat wire bound to `http_client`: the model every case below drives.
+fn ollama_model<H: Clone>(http_client: H) -> crate::driver::Bound<Chat, H> {
+    crate::driver::Bound::new(Ollama::new(), http_client).completion(LLAMA3_2)
 }
 
 // Proves a truncated NDJSON stream — content chunks then EOF without a
@@ -1217,7 +1133,6 @@ fn ndjson_buffer_yields_parseable_chunks_when_split_arbitrarily() {
 // terminal record.
 #[tokio::test]
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -1227,14 +1142,9 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:45.499127Z","message":{"role":"assistant","content":"hi"},"done":false}"#,
         "\n",
     );
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(ndjson),
-        })
-        .build()
-        .expect("build client");
-    let model = client.completion_model(LLAMA3_2);
+    let model = ollama_model(MockStreamingClient {
+        sse_bytes: bytes::Bytes::from(ndjson),
+    });
     let request = model.completion_request("hello").build();
 
     let mut stream = model.stream(request).await.expect("stream should open");
@@ -1265,7 +1175,6 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
 // the `done: true` record still arrive.
 #[tokio::test]
 async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -1280,14 +1189,9 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":""},"done":true,"done_reason":"stop","prompt_eval_count":10,"eval_count":4}"#,
         "\n",
     );
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(ndjson),
-        })
-        .build()
-        .expect("build client");
-    let model = client.completion_model(LLAMA3_2);
+    let model = ollama_model(MockStreamingClient {
+        sse_bytes: bytes::Bytes::from(ndjson),
+    });
     let request = model.completion_request("hello").build();
 
     let mut stream = model.stream(request).await.expect("stream should open");
@@ -1321,7 +1225,6 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
 // terminal record reach the consumer.
 #[tokio::test]
 async fn content_after_the_done_record_is_not_yielded() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -1335,14 +1238,9 @@ async fn content_after_the_done_record_is_not_yielded() {
         r#"{"model":"llama3.2","created_at":"2023-08-04T19:22:47.499127Z","message":{"role":"assistant","content":"stray"},"done":false}"#,
         "\n",
     );
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient {
-            sse_bytes: bytes::Bytes::from(ndjson),
-        })
-        .build()
-        .expect("build client");
-    let model = client.completion_model(LLAMA3_2);
+    let model = ollama_model(MockStreamingClient {
+        sse_bytes: bytes::Bytes::from(ndjson),
+    });
     let request = model.completion_request("hello").build();
 
     let mut stream = model.stream(request).await.expect("stream should open");
@@ -1383,19 +1281,13 @@ async fn content_after_the_done_record_is_not_yielded() {
 // (issue #1931).
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":"model not found"}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model(LLAMA3_2);
+    let model = ollama_model(http_client);
     let request = model.completion_request("hello").build();
 
     let error = model
@@ -1416,19 +1308,13 @@ async fn completion_non_success_preserves_status_and_body() {
 // (issue #1931).
 #[tokio::test]
 async fn embeddings_non_success_preserves_status_and_body() {
-    use crate::client::EmbeddingsClient;
     use crate::embeddings::EmbeddingModel;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":"model not found"}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.embedding_model(ALL_MINILM);
+    let model = crate::driver::Bound::new(Ollama::new(), http_client).embedding(ALL_MINILM, None);
 
     let error = model
         .embed_texts(vec!["hello".to_string()])
@@ -1443,16 +1329,15 @@ async fn embeddings_non_success_preserves_status_and_body() {
     assert_eq!(error.provider_response_body(), Some(body));
 }
 
-/// Raw-capture tests: the `TryFrom` shape, driven end to end through
-/// `CompletionModel::completion` over the recording mock transport. Ollama
-/// has no request-id contract, so there is nothing transport-side to
-/// reattach; the capture is the `/api/chat` body exactly as `raw_completion`
-/// parses it. The body carries the timing fields (`total_duration`,
+/// Raw-capture tests: the `/api/chat` reply driven end to end through
+/// `CompletionModel::completion` on the bound chat wire over the recording
+/// mock transport. Ollama has no request-id contract, so there is nothing
+/// transport-side to reattach; `CompletionResponse::raw` is the `/api/chat`
+/// body verbatim. The body carries the timing fields (`total_duration`,
 /// `eval_duration`, ...) rig never normalizes, so the capture can be shown
 /// to answer more than the normalized response does.
 mod raw_capture {
     use super::*;
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
@@ -1470,22 +1355,28 @@ mod raw_capture {
             "eval_duration": 4709213000
         }"#;
 
-    fn model() -> CompletionModel<RecordingHttpClient> {
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(RecordingHttpClient::new(BODY))
-            .build()
-            .expect("build client");
-        client.completion_model(LLAMA3_2)
+    fn model() -> crate::driver::Bound<Chat, RecordingHttpClient> {
+        ollama_model(RecordingHttpClient::new(BODY))
     }
 
-    /// The load-bearing capture property: `raw` is Ollama's
-    /// `CompletionResponse` as rig parsed it — it deserializes back into
-    /// that type and re-serializes to the identical value — and
-    /// re-normalizing that capture through the same `TryFrom` reproduces
-    /// every normalized field. Also reads `total_duration` and
-    /// `eval_duration` off the capture, which the normalized response
-    /// provably lacks.
+    /// The load-bearing capture property: `raw` is the `/api/chat` reply
+    /// **verbatim** — the body's own document, not a re-serialization of
+    /// the typed parse — it still deserializes back into Ollama's
+    /// `CompletionResponse` with every field the body carried intact, and
+    /// folding that capture back through the same wire reproduces every
+    /// normalized field. Also reads `total_duration` and `eval_duration`
+    /// off the capture, which the normalized response provably lacks.
+    ///
+    /// Compared against the body rather than against
+    /// `to_value(&typed)`: that equality was the *old* contract, where
+    /// `raw` was precisely that serialization, so it asserted nothing —
+    /// and it is false of a verbatim capture the moment the DTO spells
+    /// out a default the body omitted. Ollama's assistant message has
+    /// exactly one such field, `tool_calls`, which is the lone member of
+    /// that variant without `skip_serializing_if` because the recorded
+    /// request bodies carry it. So the re-serialization is compared to
+    /// the body with that one default filled in: any *other* drift — a
+    /// dropped timing field, a reshaped message — still fails.
     #[tokio::test]
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
         let model = model();
@@ -1496,20 +1387,27 @@ mod raw_capture {
             .expect("completion");
 
         let raw = &response.raw;
+        assert_eq!(
+            *raw,
+            serde_json::from_str::<serde_json::Value>(BODY).expect("the recorded body is JSON"),
+            "the capture is the reply document verbatim"
+        );
         let typed: CompletionResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
+        let reserialized = serde_json::to_value(&typed).expect("re-serialize");
+        let mut with_defaults = raw.clone();
+        with_defaults["message"]["tool_calls"] = serde_json::json!([]);
         assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the wire type serializes to"
+            reserialized, with_defaults,
+            "the wire type round-trips the whole document, up to the empty \
+             `tool_calls` the body omitted and the DTO always writes"
         );
         assert_eq!(typed.total_duration, Some(5_043_500_667));
         assert_eq!(typed.eval_duration, Some(4_709_213_000));
         assert_eq!(raw["total_duration"], 5_043_500_667_u64);
         assert_eq!(typed.done_reason.as_deref(), Some("stop"));
 
-        let renormalized: completion::CompletionResponse =
-            typed.try_into().expect("re-normalize the capture");
+        let renormalized = unary(raw.clone()).await.expect("re-fold the capture");
         assert_eq!(response.identity(), renormalized.identity());
         assert_eq!(response.finish_reason(), renormalized.finish_reason());
         assert_eq!(response.model, renormalized.model);
@@ -1526,8 +1424,8 @@ mod raw_capture {
 
 /// Synthetic wire values test absent-ID and explicit-ID collisions deterministically;
 /// recordings cannot reliably force a provider to emit these boundary combinations.
-#[test]
-fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
+#[tokio::test]
+async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
     let wire = json!({
         "model": "test", "created_at": "2024-01-01T00:00:00Z", "done": true,
         "message": {"role":"assistant", "content":"", "tool_calls":[
@@ -1536,16 +1434,11 @@ fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
             {"function":{"name":"same","arguments":{"value":3}}}
         ]}
     });
-    let normalize = || {
-        completion::CompletionResponse::try_from(
-            serde_json::from_value::<CompletionResponse>(wire.clone()).unwrap(),
-        )
-        .unwrap()
-    };
-    let first = normalize();
+    let normalize = || async { unary(wire.clone()).await.unwrap() };
+    let first = normalize().await;
     assert_eq!(
         serde_json::to_value(&first.choice).unwrap(),
-        serde_json::to_value(normalize().choice).unwrap()
+        serde_json::to_value(normalize().await.choice).unwrap()
     );
     let calls: Vec<_> = first
         .choice

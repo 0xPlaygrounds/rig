@@ -1,9 +1,11 @@
-//! Cassette coverage for mistral.rs through Rig's OpenAI Responses API client.
+//! Cassette coverage for mistral.rs through Rig's OpenAI Responses wire.
 
+use rig::agent::AgentBuilder;
 use rig::completion::CompletionModel;
-use rig::completion::NormalizeCompletionResponse;
 use rig::message::AssistantContent;
-use rig::prelude::*;
+use rig::providers::openai::responses_api;
+use rig::providers::openai::responses_api::wire::Responses;
+use serde::Deserialize;
 
 use crate::support::{assert_contains_all_case_insensitive, assert_nonempty_response};
 
@@ -14,9 +16,12 @@ async fn responses_api_no_think_returns_text() {
     with_mistralrs_cassette(
         "responses_api/responses_api_no_think_returns_text",
         |client| async move {
-            let agent = client
-                .with_system_instructions_as_messages()
-                .agent(model_name())
+            // mistral.rs does not accept top-level `instructions`, so the
+            // placement is a wire option rather than a client setting.
+            let model = client
+                .responses(model_name())
+                .map_wire(Responses::with_system_instructions_as_messages);
+            let agent = AgentBuilder::new(model)
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
                 .build();
@@ -39,8 +44,8 @@ async fn responses_api_reasoning_plus_answer_completes() {
         "responses_api/responses_api_reasoning_plus_answer_completes",
         |client| async move {
             let model = client
-                .with_system_instructions_as_messages()
-                .completion_model(model_name());
+                .responses(model_name())
+                .map_wire(Responses::with_system_instructions_as_messages);
             let request = model
                 .completion_request(
                     "Think briefly, then answer in one sentence why local OpenAI-compatible servers should report token usage.",
@@ -48,16 +53,17 @@ async fn responses_api_reasoning_plus_answer_completes() {
                 .preamble(SYSTEM_PROMPT.to_owned())
                 .max_tokens(512)
                 .build();
-            // One cassette interaction: `raw_completion` yields the Responses API
-            // wire response (whose reasoning fields are provider-specific and not
-            // normalized), and the provider-local conversion yields exactly what
-            // `CompletionModel::completion` would have returned for it.
-            let raw = model
-                .raw_completion(request)
+            // One cassette interaction, two views of it: the normalized
+            // response the decoder folded, and — through the typed escape
+            // hatch over its captured `raw` — the Responses reply document
+            // whose reasoning fields are provider-specific and not
+            // normalized.
+            let response = model
+                .completion(request)
                 .await
                 .expect("Responses API reasoning plus answer prompt should succeed");
-            let response: rig::completion::CompletionResponse = raw.clone().normalize("openai")
-                .expect("Responses API response should normalize");
+            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+                .expect("raw is the Responses API reply mistral.rs sent");
             let text = response
                 .choice
                 .iter()
@@ -86,9 +92,10 @@ async fn responses_api_multi_turn_replays_history() {
     with_mistralrs_cassette(
         "responses_api/responses_api_multi_turn_replays_history",
         |client| async move {
-            let agent = client
-                .with_system_instructions_as_messages()
-                .agent(model_name())
+            let model = client
+                .responses(model_name())
+                .map_wire(Responses::with_system_instructions_as_messages);
+            let agent = AgentBuilder::new(model)
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(256)
                 .build();

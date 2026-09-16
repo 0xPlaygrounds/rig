@@ -1,15 +1,28 @@
-use rig::client::DefaultTransportBuilder as _;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::providers::mistral;
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
+use rig::prelude::*;
+use rig::providers::openai::wire::{MISTRAL, OpenAI};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 const MISTRAL_BASE_URL: &str = "https://api.mistral.ai";
 
-async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, mistral::Client) {
+/// The Mistral dialect of the OpenAI config bound to the bundled transport —
+/// what a cassette test builds its models from, now that a model is a bound
+/// wire.
+pub(super) type BoundMistral = Bound<OpenAI, BoxedHttpClient>;
+
+/// The Mistral config pointed at `cassette`.
+fn mistral_config(cassette: &ProviderCassette) -> OpenAI {
+    OpenAI::with_key(&MISTRAL, cassette.api_key("MISTRAL_API_KEY"))
+        .with_base_url(cassette.base_url())
+}
+
+async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundMistral) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "mistral",
@@ -17,10 +30,8 @@ async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, m
         MISTRAL_BASE_URL,
     )
     .await;
-    let client = mistral::Client::builder()
-        .api_key(cassette.api_key("MISTRAL_API_KEY"))
-        .base_url(cassette.base_url())
-        .build()
+    let client = mistral_config(&cassette)
+        .bound()
         .expect("Mistral cassette client should build");
 
     (cassette, client)
@@ -32,7 +43,7 @@ pub(super) async fn with_mistral_embedding_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = mistral_cassette(spec).await;
@@ -45,7 +56,7 @@ pub(super) async fn with_mistral_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = mistral_cassette(spec).await;
@@ -65,7 +76,7 @@ pub(super) async fn with_mistral_multimodal_cassette<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = mistral_cassette(spec).await;
@@ -81,7 +92,7 @@ pub(super) async fn with_mistral_cassette_bogus_key_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let cassette = ProviderCassette::start(
@@ -91,10 +102,9 @@ where
         MISTRAL_BASE_URL,
     )
     .await;
-    let client = mistral::Client::builder()
-        .api_key("invalid-edge-matrix-key")
-        .base_url(cassette.base_url())
-        .build()
+    let client = OpenAI::with_key(&MISTRAL, "invalid-edge-matrix-key")
+        .with_base_url(cassette.base_url())
+        .bound()
         .expect("Mistral cassette client should build");
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
@@ -108,7 +118,7 @@ pub(super) async fn with_mistral_capability_cassette<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = mistral_cassette(spec).await;
@@ -122,7 +132,7 @@ pub(super) async fn with_mistral_terminal_metadata_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     // Kept inlined for the same reason as the bogus-key wrapper above: this
@@ -139,7 +149,7 @@ pub(super) async fn with_mistral_tool_truncation_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     // Inlined because cassette_safety source-scans this whole directory.
@@ -154,7 +164,7 @@ pub(super) async fn with_mistral_tool_lifecycle_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = mistral_cassette(spec).await;
@@ -168,7 +178,7 @@ pub(super) async fn with_mistral_history_roundtrip_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     // Inlined because cassette_safety source-scans this whole directory.
@@ -183,7 +193,7 @@ pub(super) async fn with_mistral_request_shape_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     // Inlined because cassette_safety source-scans this whole directory.
@@ -198,7 +208,7 @@ pub(super) async fn with_mistral_logprobs_rejection_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     // Inlined because cassette_safety source-scans this whole directory.
@@ -297,7 +307,7 @@ pub(super) async fn with_mistral_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(mistral::Client) -> Fut,
+    F: FnOnce(BoundMistral) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = mistral_cassette(spec).await;

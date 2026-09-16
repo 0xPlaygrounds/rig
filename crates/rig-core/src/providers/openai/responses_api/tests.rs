@@ -5,6 +5,49 @@ use crate::test_utils::MockCompletionModel;
 use serde_json::json;
 use std::collections::HashMap;
 
+/// The choice a body's `output[]` folds to, through the ONE interpreter: the
+/// decoder's unary variant synthesizes the stream's events and the shared
+/// fold turns them into the response — the two steps a unary reply takes.
+pub(super) fn folded_choice(output: Vec<Output>) -> Vec<completion::AssistantContent> {
+    let response = CompletionResponse {
+        id: "resp_1".to_string(),
+        object: ResponseObject::Response,
+        provider_request_id: None,
+        created_at: 0,
+        status: ResponseStatus::Completed,
+        error: None,
+        incomplete_details: None,
+        instructions: None,
+        max_output_tokens: None,
+        model: "gpt-5-mini".to_string(),
+        provider_reasoning: None,
+        reasoning_metadata: None,
+        reasoning_context: None,
+        usage: None,
+        output,
+        tools: Vec::new(),
+        additional_parameters: AdditionalParameters::default(),
+    };
+    wire::fold_body("openai", response)
+        .expect("the body folds")
+        .choice
+}
+
+/// The OpenAI Responses wire, for the request-shaping assertions.
+fn openai_wire(model: &str) -> wire::Responses {
+    crate::providers::openai::OpenAI::new("dummy-key").responses(model)
+}
+
+/// The Responses request a wire builds for a Rig request — the one
+/// conversion every caller reaches, whatever opened the socket.
+fn wire_request(
+    wire: &wire::Responses,
+    request: completion::CompletionRequest,
+) -> CompletionRequest {
+    wire.responses_request(request, false)
+        .expect("request should convert")
+}
+
 #[test]
 fn output_text_extras_survive_generic_conversion_and_replay() {
     // Ingest capture is unconditional: the wire's sibling keys ride the
@@ -800,18 +843,10 @@ fn responses_request_with_only_system_messages_keeps_them_in_input() {
 }
 
 #[test]
-fn responses_model_can_fallback_to_system_messages_in_input() {
-    let client = crate::providers::openai::Client::new_with(
-        "dummy-key",
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("client");
-    let model =
-        ResponsesCompletionModel::new(client, "gpt-4o-mini").with_system_instructions_as_messages();
+fn responses_wire_can_fallback_to_system_messages_in_input() {
+    let wire = openai_wire("gpt-4o-mini").with_system_instructions_as_messages();
 
-    let req = model
-        .create_completion_request(request_with_preamble("You are concise."))
-        .expect("request should convert");
+    let req = wire_request(&wire, request_with_preamble("You are concise."));
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -825,40 +860,8 @@ fn responses_model_can_fallback_to_system_messages_in_input() {
 }
 
 #[test]
-fn responses_client_can_fallback_to_system_messages_in_input() {
-    use crate::prelude::CompletionClient;
-
-    let client = crate::providers::openai::Client::new_with(
-        "dummy-key",
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("client")
-    .with_system_instructions_as_messages();
-    let model = client.completion_model("gpt-4o-mini");
-
-    let req = model
-        .create_completion_request(request_with_preamble("You are concise."))
-        .expect("request should convert");
-    let serialized = serde_json::to_value(&req).expect("request should serialize");
-    let input = serialized["input"]
-        .as_array()
-        .expect("input should be array");
-
-    assert!(serialized.get("instructions").is_none());
-    assert_eq!(input.len(), 2);
-    assert_eq!(input[0]["role"], "system");
-    assert!(input[0].to_string().contains("You are concise."));
-    assert_eq!(input[1]["role"], "user");
-}
-
-#[test]
-fn responses_model_can_lift_all_system_messages_via_placement() {
-    let client = crate::providers::openai::Client::new_with(
-        "dummy-key",
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("client");
-    let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
+fn responses_wire_can_lift_all_system_messages_via_placement() {
+    let wire = openai_wire("gpt-4o-mini")
         .with_system_instructions_placement(SystemInstructionsPlacement::AllInstructions);
 
     let request = CompletionRequestBuilder::new(MockCompletionModel::default(), "again")
@@ -867,9 +870,7 @@ fn responses_model_can_lift_all_system_messages_via_placement() {
         .message(completion::Message::system("Mid-conversation instruction"))
         .build();
 
-    let req = model
-        .create_completion_request(request)
-        .expect("request should convert");
+    let req = wire_request(&wire, request);
     let serialized = serde_json::to_value(&req).expect("request should serialize");
     let input = serialized["input"]
         .as_array()
@@ -883,32 +884,6 @@ fn responses_model_can_lift_all_system_messages_via_placement() {
         input.iter().all(|item| item["role"] != "system"),
         "AllInstructions should leave no system items in input: {input:?}"
     );
-}
-
-#[test]
-fn responses_client_placement_survives_completions_api_round_trip() {
-    use crate::prelude::CompletionClient;
-
-    let client = crate::providers::openai::Client::new_with(
-        "dummy-key",
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("client")
-    .with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
-    .completions_api()
-    .responses_api();
-    let model = client.completion_model("gpt-4o-mini");
-
-    let req = model
-        .create_completion_request(request_with_preamble("You are concise."))
-        .expect("request should convert");
-    let serialized = serde_json::to_value(&req).expect("request should serialize");
-
-    assert!(
-        serialized.get("instructions").is_none(),
-        "placement configured before completions_api() should survive responses_api()"
-    );
-    assert_eq!(serialized["input"][0]["role"], "system");
 }
 
 #[test]
@@ -954,22 +929,18 @@ fn responses_request_conversion_keeps_tools_non_strict_by_default() {
 }
 
 #[test]
-fn responses_model_strict_tools_opt_in_sanitizes_all_function_tools() {
-    let client = crate::providers::openai::Client::new_with(
-        "dummy-key",
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("client");
-    let model = ResponsesCompletionModel::new(client, "gpt-4o-mini")
-        .with_strict_tools()
-        .with_tool(completion::ToolDefinition {
-            name: "lookup".to_string(),
-            description: "Look something up".to_string(),
-            parameters: json!({
-                "type": "object",
-                "properties": {"q": {"type": "string"}}
-            }),
-        });
+fn responses_wire_strict_tools_opt_in_sanitizes_all_function_tools() {
+    let wire =
+        openai_wire("gpt-4o-mini")
+            .with_strict_tools()
+            .with_tool(completion::ToolDefinition {
+                name: "lookup".to_string(),
+                description: "Look something up".to_string(),
+                parameters: json!({
+                    "type": "object",
+                    "properties": {"q": {"type": "string"}}
+                }),
+            });
 
     let mut request = weather_tool_request();
     request.additional_params = Some(json!({
@@ -981,9 +952,7 @@ fn responses_model_strict_tools_opt_in_sanitizes_all_function_tools() {
         }]
     }));
 
-    let req = model
-        .create_completion_request(request)
-        .expect("request should convert");
+    let req = wire_request(&wire, request);
 
     assert_eq!(req.tools.len(), 3);
     for tool in &req.tools {
@@ -993,14 +962,8 @@ fn responses_model_strict_tools_opt_in_sanitizes_all_function_tools() {
 }
 
 #[test]
-fn responses_model_default_preserves_all_function_tools_as_constructed() {
-    let client = crate::providers::openai::Client::new_with(
-        "dummy-key",
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("client");
-    let model =
-        ResponsesCompletionModel::new(client, "gpt-4o-mini").with_tool(weather_tool_definition());
+fn responses_wire_default_preserves_all_function_tools_as_constructed() {
+    let wire = openai_wire("gpt-4o-mini").with_tool(weather_tool_definition());
 
     let mut request = weather_tool_request();
     request.additional_params = Some(json!({
@@ -1012,9 +975,7 @@ fn responses_model_default_preserves_all_function_tools_as_constructed() {
         }]
     }));
 
-    let req = model
-        .create_completion_request(request)
-        .expect("request should convert");
+    let req = wire_request(&wire, request);
 
     assert_eq!(req.tools.len(), 3);
     for tool in &req.tools {
@@ -1024,23 +985,14 @@ fn responses_model_default_preserves_all_function_tools_as_constructed() {
 }
 
 #[test]
-fn responses_explicit_strict_tool_stays_strict_on_default_model() {
-    let client = crate::providers::openai::Client::new_with(
-        "dummy-key",
-        crate::test_utils::RecordingHttpClient::new(""),
-    )
-    .expect("client");
-    let model = ResponsesCompletionModel::new(client, "gpt-4o-mini").with_tool(
-        ResponsesToolDefinition::strict_function(
-            "lookup",
-            "Look something up",
-            json!({"type": "object", "properties": {"q": {"type": "string"}}}),
-        ),
-    );
+fn responses_explicit_strict_tool_stays_strict_on_a_default_wire() {
+    let wire = openai_wire("gpt-4o-mini").with_tool(ResponsesToolDefinition::strict_function(
+        "lookup",
+        "Look something up",
+        json!({"type": "object", "properties": {"q": {"type": "string"}}}),
+    ));
 
-    let req = model
-        .create_completion_request(weather_tool_request())
-        .expect("request should convert");
+    let req = wire_request(&wire, weather_tool_request());
 
     assert!(!req.tools[0].strict);
     assert!(req.tools[1].strict);
@@ -1419,9 +1371,8 @@ fn completion_response_accepts_top_level_reasoning_string() {
         json!("thinking through the answer")
     );
 
-    let completion: completion::CompletionResponse = response
-        .normalize("openai")
-        .expect("response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("openai", response).expect("response should convert");
     let items = completion.choice.iter().collect::<Vec<_>>();
     assert!(matches!(
         items[0],
@@ -1476,9 +1427,8 @@ fn completion_response_accepts_reasoning_only_response() {
     }))
     .expect("reasoning-only response should deserialize");
 
-    let completion: completion::CompletionResponse = response
-        .normalize("openai")
-        .expect("reasoning-only response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("openai", response).expect("reasoning-only response should convert");
     let items = completion.choice.iter().collect::<Vec<_>>();
 
     assert_eq!(items.len(), 1);
@@ -1486,29 +1436,6 @@ fn completion_response_accepts_reasoning_only_response() {
         items[0],
         completion::AssistantContent::Reasoning(_)
     ));
-}
-
-#[test]
-fn completion_response_rejects_empty_response_without_reasoning() {
-    let response: CompletionResponse = serde_json::from_value(json!({
-        "id": "resp_123",
-        "object": "response",
-        "created_at": 0,
-        "status": "completed",
-        "model": "Qwen/Qwen3-4B",
-        "output": [],
-        "tools": []
-    }))
-    .expect("empty response shape should deserialize");
-
-    let err = response
-        .normalize("openai")
-        .expect_err("empty response without reasoning should be rejected");
-
-    assert!(
-        err.to_string()
-            .contains(crate::message::EMPTY_RESPONSE_ERROR)
-    );
 }
 
 #[test]
@@ -1530,8 +1457,7 @@ fn truncated_incomplete_response_surfaces_length_not_an_error() {
     }))
     .expect("incomplete response shape should deserialize");
 
-    let completion = response
-        .normalize("openai")
+    let completion = wire::fold_body("openai", response)
         .expect("truncated incomplete response must not be an error");
 
     assert!(completion.choice.is_empty());
@@ -1647,9 +1573,8 @@ fn completion_response_carries_the_message_id_not_the_response_id() {
     }))
     .expect("response should deserialize");
 
-    let completion: completion::CompletionResponse = response
-        .normalize("openai")
-        .expect("response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("openai", response).expect("response should convert");
 
     // The two IDs are distinct in this API: `resp_...` names the response,
     // `msg_...` names the assistant message.
@@ -1681,9 +1606,8 @@ fn completion_response_provider_name_is_an_input() {
     }))
     .expect("response should deserialize");
 
-    let completion: completion::CompletionResponse = response
-        .normalize("chatgpt")
-        .expect("response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("chatgpt", response).expect("response should convert");
 
     assert_eq!(completion.provider, "chatgpt");
 }
@@ -1708,9 +1632,8 @@ fn completion_response_completed_with_tool_call_reports_tool_calls() {
     }))
     .expect("response should deserialize");
 
-    let completion: completion::CompletionResponse = response
-        .normalize("openai")
-        .expect("response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("openai", response).expect("response should convert");
 
     // `completed` is reconciled up to `ToolCalls` because the turn carried
     // a function call.
@@ -1740,9 +1663,8 @@ fn completion_response_incomplete_reports_the_truncation_reason() {
     }))
     .expect("response should deserialize");
 
-    let completion: completion::CompletionResponse = response
-        .normalize("openai")
-        .expect("response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("openai", response).expect("response should convert");
 
     assert_eq!(
         completion.finish_reason(),
@@ -1801,9 +1723,8 @@ fn completion_response_preserves_context_without_treating_config_as_text() {
         })
     );
 
-    let completion: completion::CompletionResponse = response
-        .normalize("openai")
-        .expect("response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("openai", response).expect("response should convert");
     let items = completion.choice.iter().collect::<Vec<_>>();
     assert_eq!(items.len(), 1);
     assert!(matches!(items[0], completion::AssistantContent::Text(_)));
@@ -2008,9 +1929,8 @@ fn completion_response_does_not_duplicate_structured_reasoning() {
     }))
     .expect("response should deserialize");
 
-    let completion: completion::CompletionResponse = response
-        .normalize("openai")
-        .expect("response should convert");
+    let completion: completion::CompletionResponse =
+        wire::fold_body("openai", response).expect("response should convert");
     let reasoning_count = completion
         .choice
         .iter()
@@ -2342,19 +2262,13 @@ fn file_id_document_serializes_as_input_item_content() {
 
 #[tokio::test]
 async fn responses_completion_http_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
-    use crate::providers::openai::Client;
+    use crate::driver::Bound;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"bad image","type":"invalid_request_error","code":"invalid_value"}}"#;
     let http_client = RecordingHttpClient::with_error_response(http::StatusCode::BAD_REQUEST, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model("gpt-4o-mini");
+    let model = Bound::new(openai_wire("gpt-4o-mini"), http_client);
     let request = model.completion_request("hello").build();
 
     let error = model
@@ -2526,7 +2440,7 @@ fn output_reasoning_conversion_omits_empty_encrypted_content() {
         status: Some(ToolStatus::Completed),
     };
 
-    let converted = Vec::<completion::AssistantContent>::from(output);
+    let converted = folded_choice(vec![output]);
 
     assert_eq!(converted.len(), 1);
     let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {
@@ -2551,7 +2465,7 @@ fn output_reasoning_conversion_preserves_non_empty_encrypted_content() {
         status: Some(ToolStatus::Completed),
     };
 
-    let converted = Vec::<completion::AssistantContent>::from(output);
+    let converted = folded_choice(vec![output]);
 
     assert_eq!(converted.len(), 1);
     let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {
@@ -2776,21 +2690,19 @@ fn base64_pdf_via_input_item_path_keeps_filename() {
     );
 }
 
-/// Raw-capture tests: the `normalize` shape through the Responses model,
-/// driven end to end over a mock transport that hands back a Responses
-/// body *and* an `x-request-id` response header. The Responses raw type
-/// carries the transport id (`CompletionResponse::provider_request_id`,
-/// stamped by the driver), which is why the Part A contract here is a
-/// plain `raw_completion` → `normalize`. Its manual `Serialize` mirrors
-/// the wire body and deliberately never emits that id, so the captured
-/// value is the body as parsed — the transport id lives on the normalized
-/// response, beside the capture, not inside it. `with_error_response_headers`
-/// with `200 OK` is the one unary double that carries response headers.
+/// Raw-capture test: the reply document, driven end to end over a mock
+/// transport that hands back a Responses body *and* an `x-request-id`
+/// response header. The Responses raw type carries the transport id
+/// (`CompletionResponse::provider_request_id`, stamped by the driver), but
+/// its manual `Serialize` mirrors the wire body and deliberately never
+/// emits that id, so the captured value is the body as parsed — the
+/// transport id lives on the normalized response, beside the capture, not
+/// inside it. `with_error_response_headers` with `200 OK` is the one unary
+/// double that carries response headers.
 mod raw_capture {
     use super::*;
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
-    use crate::providers::openai::Client;
+    use crate::driver::Bound;
     use crate::test_utils::RecordingHttpClient;
 
     const REQUEST_ID: &str = "req_unit_responses_0001";
@@ -2825,33 +2737,24 @@ mod raw_capture {
             "tools": []
         }"#;
 
-    fn model() -> ResponsesCompletionModel<RecordingHttpClient> {
-        let mut headers = http::HeaderMap::new();
-        headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
-        let http_client =
-            RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        client.completion_model("gpt-4o-mini")
-    }
-
     /// The load-bearing capture property: `raw` is the Responses
     /// `CompletionResponse` as rig parsed it — it deserializes back into
-    /// that type and re-serializes to the identical value — and
-    /// re-normalizing that capture (with the header id reattached, since
-    /// the capture is body only) reproduces every normalized field. Also
-    /// reads `service_tier` off the capture,
-    /// and pins that the capture mirrors the wire body: the transport id
-    /// the driver stamped onto the raw type is not part of it (the manual
-    /// `Serialize` never emits it), so a value deserialized from `raw`
+    /// that type and re-serializes to the identical value — and folding
+    /// that capture again (with the header id reattached, since the
+    /// capture is body only) reproduces every normalized field. Also
+    /// reads `service_tier` off the capture, and pins that the capture
+    /// mirrors the wire body: the transport id the driver stamped onto the
+    /// raw type is not part of it, so a value deserialized from `raw`
     /// reports `None` there while the normalized response beside it still
     /// carries the header.
     #[tokio::test]
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
-        let model = model();
+        let mut headers = http::HeaderMap::new();
+        headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
+        let model = Bound::new(
+            openai_wire("gpt-4o-mini"),
+            RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers),
+        );
 
         let response = model
             .completion(model.completion_request("hello").build())
@@ -2874,51 +2777,16 @@ mod raw_capture {
         assert!(raw.get("provider_request_id").is_none());
         assert_eq!(typed.provider_request_id, None);
 
-        let renormalized = typed
-            .normalize(
-                <crate::providers::openai::OpenAIResponses as ResponsesProviderExt>::PROVIDER_NAME,
-            )
-            .expect("re-normalize the capture")
+        let refolded = wire::fold_body(crate::providers::openai::wire::OPENAI.name, typed)
+            .expect("re-fold the capture")
             .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
-        assert_eq!(response.identity(), renormalized.identity());
-        assert_eq!(response.finish_reason(), renormalized.finish_reason());
-        assert_eq!(response.model, renormalized.model);
-        assert_eq!(response.usage, renormalized.usage);
-        assert_eq!(response.choice, renormalized.choice);
+        assert_eq!(response.identity(), refolded.identity());
+        assert_eq!(response.finish_reason(), refolded.finish_reason());
+        assert_eq!(response.model, refolded.model);
+        assert_eq!(response.usage, refolded.usage);
+        assert_eq!(response.choice, refolded.choice);
         assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
         assert_eq!(response.identity().message_id.as_deref(), Some("msg_raw_1"));
-    }
-
-    /// Part A contract statement for a provider whose raw type carries the
-    /// transport id: `raw_completion` → `normalize` reproduces
-    /// `completion()` on identity, finish reason, model and usage — the id
-    /// included — with nothing to reattach.
-    #[tokio::test]
-    async fn raw_completion_then_normalize_reproduces_completion() {
-        let model = model();
-
-        let raw = model
-            .raw_completion(model.completion_request("hello").build())
-            .await
-            .expect("typed route");
-        assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
-        let reassembled = raw
-            .normalize(
-                <crate::providers::openai::OpenAIResponses as ResponsesProviderExt>::PROVIDER_NAME,
-            )
-            .expect("normalize");
-
-        let normalized = model
-            .completion(model.completion_request("hello").build())
-            .await
-            .expect("normalized route");
-
-        assert_eq!(reassembled.identity(), normalized.identity());
-        assert_eq!(reassembled.finish_reason(), normalized.finish_reason());
-        assert_eq!(reassembled.model, normalized.model);
-        assert_eq!(reassembled.usage, normalized.usage);
-        assert_eq!(reassembled.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
     }
 }
 

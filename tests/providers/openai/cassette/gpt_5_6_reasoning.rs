@@ -9,11 +9,11 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use futures::StreamExt;
-use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, CompletionResponse};
+use rig::driver::Bound;
 use rig::message::{AssistantContent, Message, Reasoning};
-use rig::prelude::*;
 use rig::providers::openai;
+use rig::providers::openai::wire::OpenAiWire;
 use rig::streaming::{BlockKind, Delta, StreamEvent};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -58,15 +58,12 @@ struct StoredStreamingTurn {
     final_response: openai::responses_api::streaming::StreamingCompletionResponse,
 }
 
-/// Issue one GPT-5.6 completion and return both the normalized response and the
-/// Responses API's own wire response, which is the only carrier of the
-/// reasoning metadata these tests lock down.
-///
-/// Each cassette records a single interaction, so the normalized response is
-/// derived from the same raw response through the provider's own conversion
-/// rather than by issuing a second identical request.
+/// Issue one GPT-5.6 completion and return both views of the single recorded
+/// interaction: the normalized response, and the Responses API's own wire
+/// response read back out of [`CompletionResponse::raw`], which is the only
+/// carrier of the reasoning metadata these tests lock down.
 async fn prompt_with_reasoning(
-    model: &openai::ResponsesCompletionModel,
+    model: &Bound<OpenAiWire>,
     reasoning: serde_json::Value,
 ) -> (
     CompletionResponse,
@@ -77,14 +74,12 @@ async fn prompt_with_reasoning(
         .additional_params(json!({ "reasoning": reasoning }))
         .build();
 
-    let raw_response = model
-        .raw_completion(request)
+    let response = model
+        .completion(request)
         .await
         .expect("completion with GPT-5.6 reasoning controls should succeed");
-    let response = raw_response
-        .clone()
-        .normalize("openai")
-        .expect("GPT-5.6 reasoning response should normalize");
+    let raw_response = openai::responses_api::CompletionResponse::deserialize(&response.raw)
+        .expect("`raw` is the serialized responses_api::CompletionResponse");
 
     (response, raw_response)
 }
@@ -133,7 +128,7 @@ fn assert_has_text(response: &CompletionResponse) {
 #[tokio::test]
 async fn effort_max() {
     with_openai_cassette("gpt_5_6_reasoning/effort_max", |client| async move {
-        let model = client.completion_model(openai::GPT_5_6);
+        let model = client.openai.completion(openai::GPT_5_6);
         let (response, raw_response) =
             prompt_with_reasoning(&model, json!({ "effort": "max" })).await;
         assert_has_text(&response);
@@ -155,7 +150,7 @@ async fn mode_pro_with_independent_effort() {
     with_openai_cassette(
         "gpt_5_6_reasoning/mode_pro_with_independent_effort",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let model = client.openai.completion(openai::GPT_5_6_SOL);
             let (response, raw_response) =
                 prompt_with_reasoning(&model, json!({ "effort": "high", "mode": "pro" })).await;
             assert_has_text(&response);
@@ -178,7 +173,7 @@ async fn context_current_turn() {
     with_openai_cassette(
         "gpt_5_6_reasoning/context_current_turn",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let model = client.openai.completion(openai::GPT_5_6_SOL);
             let (response, raw_response) = prompt_with_reasoning(
                 &model,
                 json!({ "effort": "low", "context": "current_turn" }),
@@ -204,7 +199,7 @@ async fn five_turn_reasoning_metadata_roundtrip() {
     with_openai_cassette(
         "gpt_5_6_reasoning/five_turn_metadata_roundtrip",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let model = client.openai.completion(openai::GPT_5_6_SOL);
             let expected_metadata = json!({
                 "context": "all_turns",
                 "effort": "low",
@@ -229,18 +224,19 @@ async fn five_turn_reasoning_metadata_roundtrip() {
                         }
                     }))
                     .build();
-                // One request per turn: the raw wire response carries the
-                // reasoning metadata under test, and the normalized response is
-                // derived from it rather than re-requested.
-                let raw_response = model.raw_completion(request).await.unwrap_or_else(|error| {
-                    panic!("turn {} should succeed: {error}", turn_index + 1)
-                });
-                let response: CompletionResponse = raw_response
-                    .clone()
-                    .normalize("openai")
-                    .unwrap_or_else(|error| {
-                        panic!("turn {} should normalize: {error}", turn_index + 1)
+                // One request per turn: one call yields both views of it — the
+                // normalized response, and the provider's own wire response
+                // read back out of `raw`, which carries the reasoning
+                // metadata under test.
+                let response: CompletionResponse =
+                    model.completion(request).await.unwrap_or_else(|error| {
+                        panic!("turn {} should succeed: {error}", turn_index + 1)
                     });
+                let raw_response =
+                    openai::responses_api::CompletionResponse::deserialize(&response.raw)
+                        .unwrap_or_else(|error| {
+                            panic!("turn {} raw should deserialize: {error}", turn_index + 1)
+                        });
 
                 assert_has_text(&response);
                 assert_reasoning_metadata(&raw_response, expected_metadata.clone());
@@ -315,7 +311,7 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
     with_openai_cassette(
         "gpt_5_6_reasoning/five_turn_streaming_metadata_roundtrip",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let model = client.openai.completion(openai::GPT_5_6_SOL);
             let expected_metadata = json!({
                 "context": "all_turns",
                 "effort": "low",
@@ -341,9 +337,9 @@ async fn five_turn_streaming_reasoning_metadata_roundtrip() {
                     }))
                     .build();
                 // The terminal record under test is the Responses API's own
-                // streaming response, so the turn is driven off `raw_stream`;
-                // the normalized stream would hand back `StreamFinal`, which
-                // does not carry the reasoning metadata.
+                // streaming response, which rides on `StreamFinal::raw`; the
+                // normalized `StreamFinal` does not carry the reasoning
+                // metadata.
                 let mut stream = model.stream(request).await.unwrap_or_else(|error| {
                     panic!("turn {} stream should start: {error}", turn_index + 1)
                 });
@@ -476,7 +472,7 @@ async fn streaming_reasoning_metadata() {
     with_openai_cassette(
         "gpt_5_6_reasoning/streaming_metadata",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
+            let model = client.openai.completion(openai::GPT_5_6_SOL);
             let request = model
                 .completion_request(PROMPT)
                 .additional_params(json!({
@@ -487,8 +483,8 @@ async fn streaming_reasoning_metadata() {
                     }
                 }))
                 .build();
-            // `raw_stream` keeps the terminal record provider-native; the
-            // normalized `StreamFinal` carries no reasoning metadata.
+            // The terminal record's `raw` keeps the provider-native response;
+            // the normalized `StreamFinal` carries no reasoning metadata.
             let mut stream = model
                 .stream(request)
                 .await

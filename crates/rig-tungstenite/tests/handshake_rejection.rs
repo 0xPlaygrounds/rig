@@ -16,6 +16,9 @@
 #![cfg(not(target_family = "wasm"))]
 #![allow(clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
 
+use rig_core::driver::Bound;
+use rig_core::providers::openai::OpenAI;
+use rig_core::providers::openai::responses_api::wire::Responses;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_tungstenite::DefaultWebSocketClient as _;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -64,13 +67,13 @@ fn expect_refusal<T>(
     }
 }
 
-fn client(base_url: &str) -> rig_core::providers::openai::Client<RecordingHttpClient> {
-    rig_core::providers::openai::Client::builder()
-        .api_key("sk-invalid-key")
-        .base_url(base_url)
-        .http_client(RecordingHttpClient::new("{}"))
-        .build()
-        .expect("client should build")
+/// The websocket session is opened over a bound wire; its HTTP transport is
+/// never used, so any socket will do.
+fn bound(base_url: &str) -> Bound<Responses, RecordingHttpClient> {
+    let wire = OpenAI::new("sk-invalid-key")
+        .with_base_url(base_url)
+        .responses("gpt-5.4");
+    Bound::new(wire, RecordingHttpClient::new("{}"))
 }
 
 #[tokio::test]
@@ -83,7 +86,7 @@ async fn a_refused_upgrade_keeps_the_status_body_and_request_id() {
     .await;
 
     let error = expect_refusal(
-        client(&base_url).responses_websocket("gpt-5.4").await,
+        bound(&base_url).responses_websocket().await,
         "an invalid key should be refused",
     );
 
@@ -120,7 +123,7 @@ async fn a_rate_limited_upgrade_keeps_its_backoff_headers() {
     .await;
 
     let error = expect_refusal(
-        client(&base_url).responses_websocket("gpt-5.4").await,
+        bound(&base_url).responses_websocket().await,
         "a rate-limited upgrade should be refused",
     );
 
@@ -155,8 +158,8 @@ async fn a_connection_failure_reports_no_provider_response() {
     };
 
     let error = expect_refusal(
-        client(&format!("http://{address}/v1"))
-            .responses_websocket("gpt-5.4")
+        bound(&format!("http://{address}/v1"))
+            .responses_websocket()
             .await,
         "a closed port should fail to connect",
     );

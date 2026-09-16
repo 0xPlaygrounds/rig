@@ -1,4 +1,4 @@
-use rig::client::DefaultTransportBuilder as _;
+use rig::client::DefaultTransport as _;
 use serde_json::json;
 use testcontainers::{
     GenericImage,
@@ -14,10 +14,11 @@ use qdrant_client::{
     },
 };
 use rig::qdrant::QdrantVectorStore;
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai, vector_store::VectorStoreIndex,
+    Embed, driver::Bound, embeddings::EmbeddingsBuilder, providers::openai,
+    vector_store::VectorStoreIndex,
 };
-use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 
 const QDRANT_PORT: u16 = 6333;
 const QDRANT_PORT_SECONDARY: u16 = 6334;
@@ -157,13 +158,12 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
+    let openai_client = openai::wire::OpenAI::new("TEST")
+        .with_base_url(server.base_url())
+        .bound()
         .unwrap();
 
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let points = create_points(model.clone()).await;
 
@@ -194,7 +194,7 @@ async fn vector_search_test() {
     );
 }
 
-async fn create_points(model: openai::EmbeddingModel) -> Vec<PointStruct> {
+async fn create_points(model: Bound<openai::wire::Embeddings>) -> Vec<PointStruct> {
     let words = vec![
         Word {
             id: "0981d983-a5f8-49eb-89ea-f7d3b2196d2e".to_string(),

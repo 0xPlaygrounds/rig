@@ -8,7 +8,6 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::prelude::*;
@@ -407,43 +406,35 @@ pub(super) fn assert_history_records_sequential_tool_roundtrips(
     }
 }
 
-/// Run one completion and return both DeepSeek's own wire response and the
-/// normalized response the completion path derives from it.
+/// The provider-only facts of a completed turn, read off the captured `raw`.
 ///
-/// `raw_completion` is the escape hatch for the provider-specific fields the
-/// normalized response no longer carries (per-choice finish reasons, DeepSeek's
-/// `completion_tokens_details`); converting its result locally keeps the
-/// raw-vs-normalized parity checks below on a single cassette interaction.
-async fn raw_and_normalized_completion(
-    model: &deepseek::CompletionModel,
-    request: rig::completion::CompletionRequest,
-) -> Result<(
-    deepseek::CompletionResponse,
-    rig::completion::CompletionResponse,
-)> {
-    let raw = model.raw_completion(request).await?;
-    let normalized: rig::completion::CompletionResponse = raw.clone().normalize("deepseek")?;
-    Ok((raw, normalized))
-}
-
-fn assert_response_metadata(
-    response: &rig::completion::CompletionResponse,
-    raw: &deepseek::CompletionResponse,
-) {
+/// The normalized response carries one finish reason for the turn and none of
+/// the provider's own identity spellings per choice, so the reply's verbatim
+/// `raw` body is the only place a per-choice finish reason, the provider id
+/// and the provider's model string can be checked — and it rides on the very
+/// response asserted beside it, so both views cost one cassette interaction.
+fn assert_response_metadata(response: &rig::completion::CompletionResponse) {
+    let raw = &response.raw;
     assert_nonempty_response(
-        raw.id
-            .as_deref()
+        raw["id"]
+            .as_str()
             .expect("raw DeepSeek response should preserve id"),
     );
     assert_nonempty_response(
-        raw.model
-            .as_deref()
+        raw["model"]
+            .as_str()
             .expect("raw DeepSeek response should preserve model"),
     );
+    let choices = raw["choices"]
+        .as_array()
+        .expect("raw DeepSeek response should preserve choices");
     assert!(
-        raw.choices
-            .iter()
-            .all(|choice| !choice.finish_reason.is_empty()),
+        !choices.is_empty()
+            && choices.iter().all(|choice| {
+                choice["finish_reason"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty())
+            }),
         "raw DeepSeek choices should preserve finish reasons"
     );
     assert!(
@@ -650,7 +641,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -692,7 +683,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let request = model
                 .completion_request(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
@@ -723,12 +714,12 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .additional_params(non_thinking_params())
                 .build();
 
-            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
+            let response = model.completion(request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
-            assert_response_metadata(&response, &raw);
+            assert_response_metadata(&response);
 
             Ok(())
         },
@@ -741,7 +732,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
 
             let required = model
                 .completion(
@@ -826,7 +817,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
     with_deepseek_cassette_result(
         "agent_tool_sessions/reasoning_enabled_preserves_reasoning_content_deltas_and_usage",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let request = model
                 .completion_request(
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
@@ -835,7 +826,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 .additional_params(thinking_params())
                 .build();
 
-            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
+            let response = model.completion(request).await?;
 
             anyhow::ensure!(
                 response
@@ -849,18 +840,15 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 "core usage should preserve DeepSeek reasoning tokens: {:?}",
                 response.usage
             );
-            let raw_reasoning_tokens = raw
-                .usage
-                .completion_tokens_details
-                .as_ref()
-                .and_then(|details| details.reasoning_tokens)
-                .map(u64::from);
+            let raw_reasoning_tokens = response.raw["usage"]["completion_tokens_details"]
+                ["reasoning_tokens"]
+                .as_u64();
             anyhow::ensure!(
                 response.usage.reasoning_tokens == raw_reasoning_tokens
                     && raw_reasoning_tokens.is_some_and(|n| n > 0),
                 "usage reasoning tokens should match raw provider details"
             );
-            assert_response_metadata(&response, &raw);
+            assert_response_metadata(&response);
 
             let stream_request = model
                 .completion_request("Briefly solve 2 + 2, then answer with the number.")
@@ -899,7 +887,7 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/chat_alias_vs_reasoner_alias_behavior",
         |client| async move {
-            let chat_model = client.completion_model(CHAT_ALIAS_MODEL);
+            let chat_model = client.completion(CHAT_ALIAS_MODEL);
             let chat = chat_model
                 .completion(
                     chat_model
@@ -917,7 +905,7 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
                 "deepseek-chat alias should not emit reasoning content"
             );
 
-            let reasoner_model = client.completion_model(REASONER_ALIAS_MODEL);
+            let reasoner_model = client.completion(REASONER_ALIAS_MODEL);
             let reasoner = reasoner_model
                 .completion(
                     reasoner_model
@@ -951,7 +939,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_deepseek_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let request = model
                 .completion_request(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
@@ -962,14 +950,14 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
                 })))
                 .build();
 
-            let (raw, response) = raw_and_normalized_completion(&model, request).await?;
+            let response = model.completion(request).await?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("JSON response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;
 
             let serialized = plan.to_string();
             assert_contains_all_case_insensitive(&serialized, &["canary", "low", "compile", "replay"]);
-            assert_response_metadata(&response, &raw);
+            assert_response_metadata(&response);
 
             Ok(())
         },

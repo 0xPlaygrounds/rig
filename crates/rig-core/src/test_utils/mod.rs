@@ -3,10 +3,7 @@
 mod completion;
 mod embeddings;
 mod http;
-#[cfg(test)]
-pub(crate) mod internal_streaming_profiles;
 mod memory;
-mod model_listing;
 pub mod observations;
 mod streaming;
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -19,10 +16,10 @@ pub use completion::{MockCompletionModel, MockError, MockTurn};
 pub use embeddings::{MockEmbeddingModel, MockMultiTextDocument, MockTextDocument};
 pub use http::{
     CapturedHttpRequest, HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient,
-    RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
+    NonSuccessStreamingClient, RecordingHttpClient, SequencedHttpClient,
+    SequencedStreamingHttpClient,
 };
 pub use memory::{AppendFailingMemory, CountingMemory, FailingMemory};
-pub use model_listing::MockModelLister;
 pub use streaming::{MOCK_PROVIDER, MockStreamEvent, mock_final, mock_final_with_total_tokens};
 pub use tracing_isolation::{
     scoped_tracing_subscriber_guard, scoped_tracing_subscriber_guard_blocking,

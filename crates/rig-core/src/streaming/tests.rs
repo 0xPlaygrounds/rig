@@ -3,7 +3,7 @@ use std::time::Duration;
 use super::*;
 use crate::completion::FinishReason;
 use crate::message::{Reasoning, ReasoningContent, Text, ToolCall};
-use crate::providers::internal::adapter::AdapterOutput;
+use crate::operation::AdapterOutput;
 use async_stream::stream;
 use futures::StreamExt;
 use tokio::time::sleep;

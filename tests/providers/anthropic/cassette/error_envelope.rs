@@ -9,7 +9,6 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 use futures::StreamExt;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use super::super::support::with_anthropic_cassette;
 
@@ -18,7 +17,7 @@ async fn nonexistent_model_error_preserves_status_and_body() {
     with_anthropic_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion_model("claude-nonexistent-rig-test");
+            let model = client.completion("claude-nonexistent-rig-test");
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             let error = model
@@ -37,6 +36,17 @@ async fn nonexistent_model_error_preserves_status_and_body() {
                 .expect("provider error body should be present");
             assert_eq!(body["type"], "error");
             assert_eq!(body["error"]["type"], "not_found_error");
+            // Anthropic puts its own correlation id at the top level of the
+            // envelope, beside `error` rather than inside it, and no typed
+            // envelope in the tree models that field. A non-success reply
+            // never reaches a decoder — `send` rejects it and the error
+            // carries the reply's bytes — so reading the id back is the
+            // cheapest proof this funnel hands over the body verbatim
+            // rather than anything's rendering of it.
+            assert_eq!(
+                body["request_id"], "req_REDACTED_1",
+                "the preserved body must be the reply's own envelope: {body}"
+            );
         },
     )
     .await;
@@ -47,7 +57,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_anthropic_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion_model("claude-nonexistent-rig-test");
+            let model = client.completion("claude-nonexistent-rig-test");
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             // The SSE connection opens lazily, so the HTTP error may surface
@@ -73,6 +83,16 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
                 .expect("provider error body should be JSON")
                 .expect("provider error body should be present");
             assert_eq!(body["error"]["type"], "not_found_error");
+            // The 404 lands before the stream opens, so this is the same
+            // non-success funnel as the unary cell reached through
+            // `stream()` — not the SSE `error` event, which arrives on a
+            // 200 and is covered by
+            // `anthropic::streaming::tests::terminal_emission::streamed_error_envelope_preserves_the_verbatim_body`.
+            assert_eq!(
+                body["request_id"], "req_REDACTED_1",
+                "the streamed path's preserved body must keep the envelope's \
+                 own correlation id too: {body}"
+            );
         },
     )
     .await;
@@ -98,7 +118,7 @@ async fn nonexistent_model_error_preserves_response_headers() {
     with_anthropic_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion_model("claude-nonexistent-rig-test");
+            let model = client.completion("claude-nonexistent-rig-test");
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             let error = model
@@ -126,7 +146,7 @@ async fn nonexistent_model_streaming_error_preserves_response_headers() {
     with_anthropic_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion_model("claude-nonexistent-rig-test");
+            let model = client.completion("claude-nonexistent-rig-test");
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             let error = match model.stream(request).await {

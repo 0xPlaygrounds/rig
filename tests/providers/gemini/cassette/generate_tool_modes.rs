@@ -9,7 +9,6 @@
 
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::tool::Tool;
 
@@ -21,7 +20,7 @@ async fn required_maps_to_any_and_forces_function_call() {
     with_gemini_cassette(
         "generate_tool_modes/required_maps_to_any_and_forces_function_call",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request("Please greet me.")
                 .preamble(TOOLS_PREAMBLE.to_string())

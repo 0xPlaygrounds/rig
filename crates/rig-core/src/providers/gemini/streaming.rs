@@ -5,19 +5,16 @@ use super::completion::gemini_api_types::{
     map_finish_reason,
 };
 use super::completion::{
-    CompletionModel, PROVIDER_NAME, blocked_prompt_error, create_request_body,
-    function_call_finish_reason_error, resolve_request_model, streaming_endpoint,
+    PROVIDER_NAME, blocked_prompt_error, function_call_finish_reason_error, part_kind_name,
 };
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
-use crate::http_client::sse::GenericEventSource;
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
-use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
-};
+use crate::completion::CompletionError;
+use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::wire::{
+    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Mode,
+    ObservationSink, Output, WireFrame,
+};
 
 /// Part-kind interpretation shared by the Gemini wires whose payloads
 /// coincide: REST `streamGenerateContent` and the Interactions API both
@@ -136,13 +133,27 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
 const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
     &["candidates", "usageMetadata", "promptFeedback", "error"];
 
-/// The Gemini REST (`streamGenerateContent`) SSE wire as a [`WireAdapter`].
+/// The Gemini GenerateContent wire's decoder, serving both of its modes.
 ///
-/// Holds the per-stream state (thought-restatement buffer, terminal
-/// metadata); frame-triage policy lives in
-/// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
-/// not here.
-struct GeminiRestAdapter {
+/// One decoder decodes `generateContent` and `streamGenerateContent` because
+/// they are the *same document*: the streaming shape is a strict superset of
+/// the unary one (it adds `error` and relaxes `responseId`), every field of
+/// both is optional or defaulted, and a unary reply is simply that document
+/// delivered whole with complete `candidates` instead of in pieces with
+/// partial ones. The superset is the wire's, not rig's — so there is no
+/// unary event variant to select, and nothing to select it with: `classify`
+/// sees a `WireFrame` and is never told the mode. The terminal stays where
+/// the streaming wire needs it, deferred to EOF (see [`Self::finish`]),
+/// which for a one-frame unary reply fires immediately after that frame.
+///
+/// The one difference the two modes cannot share is what an EOF *means*,
+/// and the decoder is built knowing it: [`Wire::decoder`](crate::wire::Wire::decoder)
+/// is handed the [`Mode`], which is the only thing this decoder knows about
+/// how its bytes arrived.
+///
+/// Holds the per-reply state (thought lifecycle, tool-id minter, terminal
+/// metadata); frame-triage policy is the driver's.
+pub struct GenerateContentDecoder {
     /// Owns the constant-key thought lifecycle — the ends this wire never
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
@@ -150,6 +161,9 @@ struct GeminiRestAdapter {
     /// Per-stream minter for id-less tool-call keys — a fresh key per call,
     /// so two id-less calls in one turn never collide on one identity.
     tool_ids: crate::streaming::SyntheticIds,
+    /// Per-reply minter for the raw-content blocks a part the stream
+    /// vocabulary cannot express rides on (see `GEMINI_RAW_CONTENT_KEY`).
+    raw_ids: crate::streaming::SyntheticIds,
     final_usage: Option<PartialUsage>,
     final_finish_reason: Option<FinishReason>,
     final_finish_message: Option<String>,
@@ -163,44 +177,62 @@ struct GeminiRestAdapter {
     /// finishReason:STOP] [codeExecutionResult] [text] [text +
     /// finishReason:STOP]` — so a `finishReason` chunk is not, on this wire, the
     /// provider completing the turn. The terminal record is therefore deferred
-    /// to EOF (see [`WireAdapter::finish`], which names exactly this case);
+    /// to EOF (see [`Decoder::finish`], which names exactly this case);
     /// pushing it on the first such chunk made the driver stop reading there
     /// and silently drop the model's whole answer while still reporting a
     /// successful `STOP`.
     saw_finish_reason: bool,
+    /// Whether any part of the turn mapped to assistant content.
+    ///
+    /// A *whole* reply that produced none is not a blank successful answer:
+    /// the unary mapper this decoder replaced ended with
+    /// `require_non_empty_response`, and a caller reading `choice: []` as an
+    /// answer is the outcome that rule exists to prevent. Checked in
+    /// `finish` against [`Self::whole`], so a reply whose only parts were
+    /// `executableCode` / `codeExecutionResult` is rejected exactly where
+    /// the deleted mapper rejected it, while a stream that ends undelivered
+    /// keeps reporting truncation the way it always has — by carrying no
+    /// terminal record.
+    delivered: bool,
+    /// This reply arrived whole, so its EOF ends an answer rather than a
+    /// stream — the [`Mode`] this decoder was built for.
+    whole: bool,
     /// A tool-protocol finish reason or a blocked prompt ended the turn; later frames are dead —
     /// the provider aborted, and interpreting more output (or a terminal)
     /// would dress the failure up as a completed turn.
     failed: bool,
 }
 
-impl Default for GeminiRestAdapter {
-    fn default() -> Self {
+impl GenerateContentDecoder {
+    /// A decoder for one reply read in `mode`.
+    pub(super) fn new(mode: Mode) -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 crate::streaming::MintKind::Reasoning,
             ),
             tool_ids: crate::streaming::SyntheticIds::tool(),
+            raw_ids: crate::streaming::SyntheticIds::new(crate::streaming::MintKind::Block),
             final_usage: None,
             final_finish_reason: None,
             final_finish_message: None,
             final_model_version: None,
             final_response_id: None,
             saw_finish_reason: false,
+            delivered: false,
+            whole: mode == Mode::Unary,
             failed: false,
         }
     }
 }
 
-impl WireAdapter for GeminiRestAdapter {
-    type Frame = WireFrame;
+impl Decoder<Completion> for GenerateContentDecoder {
     type Event = StreamGenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
         // ID-only frames update terminal metadata without manufacturing an
         // Unknown content item (and therefore a semantic truncation tail).
         // This applies equally with observation enabled or disabled.
-        if self.is_analysis_only(&frame) {
+        if <Self as Decoder<Completion>>::is_analysis_only(self, &frame) {
             return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
         }
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
@@ -219,7 +251,7 @@ impl WireAdapter for GeminiRestAdapter {
         )
     }
 
-    fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut AdapterOutput) {
+    fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut Output<Completion>) {
         if self.failed {
             return;
         }
@@ -234,7 +266,8 @@ impl WireAdapter for GeminiRestAdapter {
             self.final_model_version = Some(model_version.clone());
         }
         if let Some(usage) = data.usage_metadata.as_ref() {
-            span.record_token_usage(&crate::completion::Usage::from(usage));
+            // Carried for the terminal record only: the driver records usage
+            // off the folded response, so the decoder states it once.
             self.final_usage = Some(usage.clone());
         }
 
@@ -310,7 +343,43 @@ impl WireAdapter for GeminiRestAdapter {
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput) {
+    fn finish(&mut self, out: &mut Output<Completion>) {
+        // A whole reply is the entire turn, so reaching its end having
+        // mapped no assistant content is the provider answering with
+        // nothing — the rejection `require_non_empty_response` gave the
+        // deleted unary mapper, stated here because this decoder replaced
+        // it. It runs before the `finishReason` gate below: a reply with no
+        // candidates at all names no reason to finish, and that is the
+        // shape the mapper rejected most often.
+        //
+        // Except where the reply named a terminal that cut the turn short
+        // (see `crate::message::EMPTY_RESPONSE_ERROR` for the rule and
+        // `FinishReason::truncated_output` for the set): `MAX_TOKENS`
+        // normalizes to `Length`, and Gemini's filter reasons to
+        // `ContentFilter`. A turn the cap or the filter emptied is a real
+        // answer carrying a real usage report, not a defect, so it falls
+        // through to the terminal below and yields an empty choice with
+        // that reason. The predicate is shared rather than re-derived, so
+        // this wire cannot disagree with the rest about which reasons
+        // legalize emptiness.
+        //
+        // A streamed reply reaching EOF undelivered stopped early instead,
+        // and truncation is reported by the absent terminal record (see
+        // below), never by an error — so this guard is the whole reply's
+        // alone, and widening it to the stream would turn every truncated
+        // turn into an empty-answer error.
+        let cut_short = self
+            .final_finish_reason
+            .as_ref()
+            .and_then(map_finish_reason)
+            .is_some_and(|reason| reason.truncated_output());
+        if self.whole && !self.delivered && !cut_short {
+            out.error(CompletionError::ResponseError(
+                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
+            ));
+            return;
+        }
+
         // EOF without a `finishReason` chunk is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
@@ -361,10 +430,133 @@ impl WireAdapter for GeminiRestAdapter {
         // rest of the transport (and pass through post-error unknown frames).
         self.failed
     }
+
+    /// GenerateContent metadata projected before normalization discards it:
+    /// the verdict, the usage report, the response id and the error
+    /// envelope — the facts the normalized response does not keep.
+    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
+        // The observation projection must not inherit native response
+        // defaults: omitted prompt/total counts in UsageMetadata otherwise
+        // become zero. Parsing failure has no effect on the provider's
+        // authoritative decoder.
+        if let Ok(ObservedUsageOnly { usage: Some(usage) }) =
+            serde_json::from_slice::<ObservedUsageOnly>(payload)
+        {
+            sink.emit(AdapterEvent::Usage {
+                usage: AdapterUsage {
+                    input_tokens: usage.prompt_token_count,
+                    output_tokens: usage.candidates_token_count,
+                    total_tokens: usage.total_token_count,
+                    cached_input_tokens: usage.cached_content_token_count,
+                    reasoning_tokens: usage.thoughts_token_count,
+                    tool_input_tokens: usage.tool_use_prompt_token_count,
+                },
+            });
+        }
+        // Project metadata independently so malformed candidate fields cannot
+        // erase an otherwise valid usage report from a rejected response.
+        let Ok(metadata) = serde_json::from_slice::<ObservedMetadata>(payload) else {
+            return;
+        };
+        let candidate = metadata.candidates.into_iter().next().unwrap_or_default();
+        let scrub = |value: String| sink.scrub(&value);
+        let verdict = AdapterVerdict {
+            finish_reason: candidate.finish_reason.map(scrub),
+            block_reason: metadata
+                .prompt_feedback
+                .and_then(|f| f.block_reason)
+                .map(scrub),
+            detail: candidate.finish_message.map(scrub),
+            model: metadata.model_version.map(scrub),
+        };
+        let response_id = metadata.response_id.map(scrub);
+        sink.provider(verdict, response_id);
+        if let Some(error) = metadata.error {
+            let code = error.code.map(|code| match code {
+                serde_json::Value::String(code) => sink.scrub(&code),
+                serde_json::Value::Number(code) => code.to_string(),
+                _ => "[invalid]".to_owned(),
+            });
+            sink.emit(AdapterEvent::ErrorEnvelope {
+                error: AdapterErrorEnvelope {
+                    code,
+                    status: error.status.map(|value| sink.scrub(&value)),
+                    message: error.message.map(|value| sink.scrub(&value)),
+                },
+            });
+        }
+    }
 }
 
-impl GeminiRestAdapter {
+/// The usage report alone, read off the payload before the verdict so a
+/// malformed candidate cannot erase it.
+#[derive(Deserialize)]
+struct ObservedUsageOnly {
+    #[serde(rename = "usageMetadata")]
+    usage: Option<ObservedUsage>,
+}
+
+// Ignore all unrelated response fields rather than allocating another tree
+// containing the completion text, tools, signatures and media.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ObservedUsage {
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    prompt_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    candidates_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    total_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    cached_content_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    thoughts_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    tool_use_prompt_token_count: Option<u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ObservedMetadata {
+    #[serde(default)]
+    candidates: Vec<ObservedCandidate>,
+    prompt_feedback: Option<ObservedFeedback>,
+    model_version: Option<String>,
+    response_id: Option<String>,
+    error: Option<ObservedError>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ObservedCandidate {
+    finish_reason: Option<String>,
+    finish_message: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ObservedFeedback {
+    block_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ObservedError {
+    code: Option<serde_json::Value>,
+    status: Option<String>,
+    message: Option<String>,
+}
+
+impl GenerateContentDecoder {
     fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput) {
+        // Every arm below but the two skipping arms produces assistant
+        // content; the skips leave `delivered` alone, which is what lets
+        // `finish` tell a completed-but-contentless turn from a real answer.
+        if !matches!(
+            part.part,
+            PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_)
+        ) {
+            self.delivered = true;
+        }
         match part {
             Part {
                 part: PartKind::Text(text),
@@ -397,24 +589,44 @@ impl GeminiRestAdapter {
                 // signature must be recognized here as well as in the
                 // `thought: true` arm above, which real streams never reach
                 // for the signature. Dropping it costs the replay-required
-                // provider state Gemini validates (`MISSING_THOUGHT_SIGNATURE`).
-                // A trailing `thoughtSignature` rides a part with no
-                // `thought` flag (recorded traffic:
-                // `{"text":"","thoughtSignature":"..."}`); the shared
-                // lifecycle emits its close before the text, and one end
-                // covers every case — open block (sign the deltas),
-                // already-closed block (sign the block that holds the
-                // chain-of-thought, #2258 B4), nothing streamed
-                // (signature-only part). No per-case branch to forget.
+                // provider state Gemini validates
+                // (`MISSING_THOUGHT_SIGNATURE`). One lifecycle end covers
+                // every case — open block (sign the deltas), already-closed
+                // block (sign the block that holds the chain-of-thought,
+                // #2258 B4), nothing streamed (signature-only part).
+                //
+                // Declared as two chunks, text first, because the signature
+                // signs what came *before* it and a chunk emits its
+                // reasoning end before its text. A streamed turn states the
+                // two in separate frames (`"289"`, then
+                // `{"text":"","thoughtSignature":…}`); a unary reply states
+                // them in ONE part, and folding that as one chunk put the
+                // signature's block ahead of the text — the same turn with
+                // its blocks in a different order depending on the
+                // transport
+                // (`completion/tests.rs::both_transports_place_a_trailing_thought_signature_the_same_way`).
+                // An empty text (the streamed shape) declares nothing, so
+                // that path is unchanged.
                 self.reasoning.emit_chunk(
                     crate::providers::internal::chunk_lifecycle::ChunkParts {
                         reasoning: None,
-                        reasoning_signature: thought_signature,
+                        reasoning_signature: None,
                         text: Some(text),
                         tool_events: Vec::new(),
                     },
                     out,
                 );
+                if let Some(signature) = thought_signature {
+                    self.reasoning.emit_chunk(
+                        crate::providers::internal::chunk_lifecycle::ChunkParts {
+                            reasoning: None,
+                            reasoning_signature: Some(signature),
+                            text: None,
+                            tool_events: Vec::new(),
+                        },
+                        out,
+                    );
+                }
             }
             Part {
                 part: PartKind::FunctionCall(function_call),
@@ -439,76 +651,88 @@ impl GeminiRestAdapter {
                     out,
                 );
             }
-            part => {
-                // Structural metadata only: an unmodeled part can carry
-                // model output, which must not leak into WARN logs.
-                crate::providers::internal::adapter::warn_unmodeled("gemini_part", &part);
+            Part {
+                part: part @ PartKind::InlineData(_),
+                thought_signature,
+                ..
+            } => {
+                // `inlineData` is model output rig's *message* vocabulary
+                // models (`AssistantContent::Image`) and its *stream*
+                // vocabulary does not: `BlockKind`, `BlockClose` and
+                // `BlockAccumulator` carry text, reasoning and tool calls
+                // only. Since both modes now decode through here, dropping
+                // it would turn the streaming path's existing loss into a
+                // unary regression for the models that answer a completion
+                // with an image (`gemini-2.5-flash-image`), so the part
+                // rides a text block's metadata verbatim instead and stays
+                // recoverable. A first-class image block in the streaming
+                // vocabulary is the real fix and is a separate change.
+                let raw = Part {
+                    thought: None,
+                    thought_signature,
+                    part,
+                    additional_params: None,
+                };
+                let events = match crate::message::AdditionalParams::from_entries([(
+                    super::GEMINI_RAW_CONTENT_KEY,
+                    serde_json::json!(raw),
+                )]) {
+                    Some(params) => {
+                        let id = self.raw_ids.mint();
+                        vec![
+                            streaming::StreamEvent::BlockStart {
+                                id: id.clone(),
+                                kind: streaming::BlockKind::Text {
+                                    additional_params: Some(params),
+                                },
+                            },
+                            streaming::StreamEvent::BlockEnd {
+                                id,
+                                end: streaming::BlockClose::Text,
+                                block: None,
+                            },
+                        ]
+                    }
+                    None => Vec::new(),
+                };
+                // Declared through the lifecycle, not pushed directly, so a
+                // raw part interleaving an open thought block closes it the
+                // way every other content kind does.
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: None,
+                        reasoning_signature: None,
+                        text: None,
+                        tool_events: events,
+                    },
+                    out,
+                );
+            }
+            Part {
+                part: part @ (PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_)),
+                ..
+            } => {
+                // The `codeExecution` tool's own output: real Gemini output
+                // with no slot in `AssistantContent`, skipped by both
+                // transports since #2258. Structural metadata only in the
+                // log — an unmodeled part can carry model output, which must
+                // not leak into WARN logs.
+                crate::driver::warn_unmodeled("gemini_part", &part_kind_name(&part));
+            }
+            Part { part, .. } => {
+                // A part kind rig cannot account for at all. `functionResponse`
+                // and `fileData` are request-side shapes `generateContent`
+                // never answers with, so one arriving means the reply is not
+                // what this wire models — the blocking mapper this decoder
+                // replaced failed the response rather than dropping content
+                // with a WARN, and that is the contract.
+                out.error(CompletionError::ResponseError(format!(
+                    "Gemini response part kind {} carries no assistant content rig can account for",
+                    part_kind_name(&part)
+                )));
+                self.failed = true;
             }
         }
-    }
-}
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    pub(crate) async fn stream_observed(
-        &self,
-        completion_request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &request_model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(
-            completion_request.system_instructions(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-        let mut request = create_request_body(completion_request)?;
-        if let Some(name) = self.cached_content.as_deref() {
-            request.with_cached_content(name)?;
-        }
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Streaming,
-            "Gemini streaming completion request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post(format!("{}?alt=sse", streaming_endpoint(&request_model)))?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        if let Some(observation) = observation {
-            super::observation::attach(
-                observation,
-                &mut req,
-                "/models/{model}:streamGenerateContent",
-            );
-        }
-        Ok(streaming::StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            open_wire_stream(
-                GenericEventSource::new(self.client.clone(), req),
-                SseTransportOptions {
-                    open_log: OpenLog::Debug,
-                    stream_ended_is_error: false,
-                    log_transport_errors: true,
-                },
-                skip_blank_frames,
-                GeminiRestAdapter::default(),
-                span,
-            ),
-        ))
     }
 }
 

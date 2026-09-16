@@ -1,14 +1,16 @@
-use super::super::adapter::{AdapterOutput, WireAdapter, run_wire_buffered};
 use super::super::wire::WireEvent;
+use crate::driver::WireDriver;
+use crate::operation::AdapterOutput;
+use crate::operation::Completion;
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, ToolCallEnd};
+use crate::wire::Decoder;
 
 /// A scripted adapter: each frame index replays its preloaded batch.
 struct Scripted {
     batches: Vec<Vec<StreamEvent>>,
 }
 
-impl WireAdapter for Scripted {
-    type Frame = usize;
+impl Decoder<Completion, usize> for Scripted {
     type Event = usize;
 
     fn classify(&self, frame: usize) -> WireEvent<usize> {
@@ -27,8 +29,15 @@ impl WireAdapter for Scripted {
 }
 
 fn drive(batches: Vec<Vec<StreamEvent>>) {
-    let frames = 0..batches.len();
-    run_wire_buffered(frames, Scripted { batches }).expect("no data errors");
+    let frames = batches.len();
+    let mut driver = WireDriver::<Completion, _, usize>::new(Scripted { batches });
+    for frame in 0..frames {
+        driver.push(frame);
+    }
+    driver.finish();
+    for item in driver.drain() {
+        item.expect("no data errors");
+    }
 }
 
 fn text(text: &str) -> StreamEvent {

@@ -9,14 +9,14 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
-use rig::client::ModelListingClient;
+use rig::model::ModelLister;
 
 use super::support::{with_mistral_cassette_bogus_key_result, with_mistral_cassette_result};
 
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
     with_mistral_cassette_result("models/list_models_smoke", |client| async move {
-        let models = client.list_models().await?;
+        let models = client.models().list_all().await?;
 
         anyhow::ensure!(
             !models.is_empty(),
@@ -49,7 +49,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .list_models()
+                .models()
+                .list_all()
                 .await
                 .expect_err("a bogus key must not list models");
 
@@ -65,7 +66,9 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
             };
 
             anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
-            for expected in ["provider=Mistral", "path=/v1/models", "status=401"] {
+            // `provider=` is the wire's descriptor name — the same `mistral`
+            // every normalized response reports, not a display label.
+            for expected in ["provider=mistral", "path=/v1/models", "status=401"] {
                 anyhow::ensure!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

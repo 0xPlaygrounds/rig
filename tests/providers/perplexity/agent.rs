@@ -1,15 +1,19 @@
 //! Migrated from `examples/perplexity_agent.rs`.
 
 use rig::prelude::*;
-use rig::providers::perplexity::{self, SONAR};
+use rig::providers::openai::wire::{OpenAI, PERPLEXITY};
+use rig::providers::perplexity::SONAR;
 
 use crate::support::assert_nonempty_response;
 
 #[tokio::test]
 #[ignore = "requires PERPLEXITY_API_KEY"]
 async fn completion_smoke() {
-    let client = perplexity::Client::from_env().expect("client should build");
-    let agent = client
+    let perplexity = OpenAI::from_env_with(&PERPLEXITY)
+        .expect("config should build from env")
+        .bound()
+        .expect("transport should build");
+    let agent = perplexity
         .agent(SONAR)
         .preamble("Be precise and concise.")
         .temperature(0.5)

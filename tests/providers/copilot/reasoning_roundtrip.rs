@@ -1,12 +1,13 @@
 //! Copilot reasoning roundtrip tests.
 
+use rig::providers::copilot::wire::CopilotWire;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
 use rig::completion::{
     CompletionError, CompletionModel, CompletionRequest, CompletionResponse, ProviderCapabilities,
 };
-use rig::prelude::*;
+use rig::driver::Bound;
 use rig::providers::copilot;
 use rig::streaming::{StreamEvent, StreamingCompletionResponse};
 
@@ -20,12 +21,12 @@ use crate::reasoning::{self, ReasoningRoundtripAgent};
 /// the terminal records, whose `raw` is Copilot's provider-native record.
 #[derive(Clone)]
 struct CapturingProviderFinals {
-    inner: copilot::CompletionModel,
+    inner: Bound<CopilotWire>,
     finals: Arc<Mutex<Vec<rig::streaming::StreamFinal>>>,
 }
 
 impl CapturingProviderFinals {
-    fn new(inner: copilot::CompletionModel) -> Self {
+    fn new(inner: Bound<CopilotWire>) -> Self {
         Self {
             inner,
             finals: Arc::new(Mutex::new(Vec::new())),
@@ -81,7 +82,7 @@ async fn streaming() {
             "effort": "medium",
             "summary": null
         });
-        let model = CapturingProviderFinals::new(client.completion_model(live_responses_model()));
+        let model = CapturingProviderFinals::new(client.completion(live_responses_model()));
         let finals = model.finals();
 
         reasoning::run_reasoning_roundtrip_streaming(ReasoningRoundtripAgent::new(
@@ -111,7 +112,7 @@ async fn streaming() {
 async fn nonstreaming() {
     with_copilot_cassette("reasoning_roundtrip/nonstreaming", |client| async move {
         reasoning::run_reasoning_roundtrip_nonstreaming(ReasoningRoundtripAgent::new(
-            client.completion_model(live_responses_model()),
+            client.completion(live_responses_model()),
             Some(serde_json::json!({
                 "reasoning": { "effort": "medium" }
             })),

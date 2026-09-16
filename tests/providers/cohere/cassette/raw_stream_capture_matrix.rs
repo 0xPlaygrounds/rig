@@ -32,9 +32,7 @@
 //! terminal record is built from.
 
 use futures::StreamExt;
-use rig::completion::{CompletionModel as _, FinishReason};
-use rig::prelude::*;
-use rig::providers::cohere;
+use rig::completion::{CompletionModel, FinishReason};
 use rig::providers::cohere::streaming::StreamingCompletionResponse;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
@@ -46,7 +44,7 @@ use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
-fn request(model: &cohere::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .temperature(0.0)
@@ -56,7 +54,7 @@ fn request(model: &cohere::CompletionModel) -> rig::completion::CompletionReques
 
 /// Drain a model stream and return its single terminal record.
 async fn stream_to_terminal(
-    model: &cohere::CompletionModel,
+    model: &(impl CompletionModel + Clone),
     request: rig::completion::CompletionRequest,
 ) -> StreamFinal {
     let mut stream = model.stream(request).await.expect("stream should open");
@@ -142,7 +140,7 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;
@@ -197,7 +195,7 @@ async fn raw_exposes_terminal_only_fields() {
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;

@@ -1,5 +1,7 @@
-use rig::client::DefaultTransportBuilder as _;
-use rig::providers::{openai, openrouter};
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
+use rig::prelude::*;
+use rig::providers::openai::wire::{OPENROUTER, OpenAI, Route};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -8,9 +10,20 @@ use futures::FutureExt;
 
 const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 
-async fn openrouter_cassette(
-    spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, openrouter::Client) {
+/// OpenRouter's chat surface: the `OPENROUTER` dialect of the OpenAI chat
+/// wire, bound to the bundled transport.
+///
+/// Named once here so every `FnOnce(..)` bound below and every suite that
+/// needs to spell the provider out agrees on one type.
+pub(super) type BoundOpenRouter = Bound<OpenAI, BoxedHttpClient>;
+
+/// The same OpenRouter host on its `/responses` route, for the compatibility
+/// suite: OpenRouter serves `/responses` as well, and the point of those
+/// cells is that rig's Responses wire drives it once the configuration is
+/// routed there.
+pub(super) type BoundOpenRouterResponses = Bound<OpenAI, BoxedHttpClient>;
+
+async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundOpenRouter) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "openrouter",
@@ -18,18 +31,17 @@ async fn openrouter_cassette(
         OPENROUTER_BASE_URL,
     )
     .await;
-    let client = openrouter::Client::builder()
-        .api_key(cassette.api_key("OPENROUTER_API_KEY"))
-        .base_url(cassette.base_url())
-        .build()
-        .expect("OpenRouter cassette client should build");
+    let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
+        .with_base_url(cassette.base_url())
+        .bound()
+        .expect("OpenRouter cassette transport should build");
 
-    (cassette, client)
+    (cassette, bound)
 }
 
 async fn openrouter_openai_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, openai::Client) {
+) -> (ProviderCassette, BoundOpenRouterResponses) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "openrouter",
@@ -37,22 +49,22 @@ async fn openrouter_openai_cassette(
         OPENROUTER_BASE_URL,
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key(cassette.api_key("OPENROUTER_API_KEY"))
-        .base_url(cassette.base_url())
-        .build()
-        .expect("OpenRouter OpenAI-compatible cassette client should build");
+    let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
+        .with_base_url(cassette.base_url())
+        .with_route(Route::Responses)
+        .bound()
+        .expect("OpenRouter Responses cassette transport should build");
 
-    (cassette, client)
+    (cassette, bound)
 }
 
 pub(super) async fn with_openrouter_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) = openrouter_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, bound) = openrouter_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -61,11 +73,11 @@ pub(super) async fn with_openrouter_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let (cassette, client) = openrouter_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, bound) = openrouter_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -73,11 +85,11 @@ pub(super) async fn with_openrouter_openai_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(BoundOpenRouterResponses) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) = openrouter_openai_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, bound) = openrouter_openai_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -89,7 +101,7 @@ pub(super) async fn with_openrouter_cassette_bogus_key_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let cassette = ProviderCassette::start(
@@ -99,23 +111,22 @@ where
         OPENROUTER_BASE_URL,
     )
     .await;
-    let client = openrouter::Client::builder()
-        .api_key("sk-invalid-edge-matrix-key")
-        .base_url(cassette.base_url())
-        .build()
-        .expect("OpenRouter client should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let bound = OpenAI::with_key(&OPENROUTER, "sk-invalid-edge-matrix-key")
+        .with_base_url(cassette.base_url())
+        .bound()
+        .expect("OpenRouter transport should build");
+    let result = AssertUnwindSafe(test_body(bound)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
 
 /// Refusal edge matrix (`refusal_matrix/*`): a structured-output refusal
-/// arrives as a sibling of `content`, and OpenRouter's own normalize dropped
-/// it. Its own wrapper keeps the matrix auditable as one unit.
+/// arrives as a sibling of `content`, and the chat decoder must not drop it.
+/// Its own wrapper keeps the matrix auditable as one unit.
 pub(super) async fn with_openrouter_refusal_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openrouter_cassette(spec, test_body).await;
@@ -128,7 +139,7 @@ pub(super) async fn with_openrouter_usage_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openrouter_cassette(spec, test_body).await;
@@ -140,7 +151,7 @@ pub(super) async fn with_openrouter_stream_logprobs_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openrouter_cassette_result(spec, test_body).await
@@ -152,7 +163,7 @@ pub(super) async fn with_openrouter_tool_truncation_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openrouter_cassette_result(spec, test_body).await
@@ -164,7 +175,7 @@ pub(super) async fn with_openrouter_tool_lifecycle_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openrouter_cassette_result(spec, test_body).await
@@ -177,7 +188,7 @@ pub(super) async fn with_openrouter_terminal_metadata_cassette_result<F, Fut, E>
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openrouter_cassette_result(spec, test_body).await
@@ -189,7 +200,7 @@ pub(super) async fn with_openrouter_history_roundtrip_cassette_result<F, Fut, E>
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openrouter_cassette_result(spec, test_body).await
@@ -201,7 +212,7 @@ pub(super) async fn with_openrouter_reasoning_tool_order_cassette_result<F, Fut,
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openrouter_cassette_result(spec, test_body).await
@@ -254,7 +265,7 @@ pub(super) async fn with_openrouter_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openrouter::Client) -> Fut,
+    F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openrouter_cassette(spec, test_body).await;

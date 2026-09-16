@@ -3,14 +3,14 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: the adapter serializes its provider-native
-//! terminal record — the Interactions API's own
-//! [`StreamingCompletionResponse`], built from the `interaction.completed`
-//! event — onto the terminal [`rig::streaming::StreamFinal::raw`] it yields
-//! as `StreamEvent::Final`. There is no
-//! opt-in and nothing about it reaches the wire; `raw` is `Value::Null` only
-//! on a terminal constructed without a provider stream behind it, never
-//! because capture "was not requested".
+//! Raw capture is always on: the Interactions decoder builds its terminal
+//! record from the `interaction.completed` event — the API's own
+//! [`StreamingCompletionResponse`], carrying the finished interaction, its
+//! usage and the model version — and serializes it onto the terminal
+//! [`rig::streaming::StreamFinal::raw`] it yields as `StreamEvent::Final`.
+//! There is no opt-in and nothing about it reaches the wire; `raw` is
+//! `Value::Null` only on a terminal constructed without a provider stream
+//! behind it, never because capture "was not requested".
 //!
 //! # Matrix
 //!
@@ -22,7 +22,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal and agrees with the normalized terminal | recorded |
+//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `StreamingCompletionResponse::deserialize(&raw)` re-serializes equal and agrees with the normalized terminal | recorded |
 //! | 2 | `raw_exposes_terminal_only_fields` | un-normalized terminal fields | `interaction.status` spelled `"completed"`, `interaction.object`, `usage.total_tokens` == completed event, absent from the normalized terminal | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
@@ -30,12 +30,13 @@
 //!
 //! The "wire" side of each premise is the `interaction.completed` SSE frame:
 //! it is the only frame that carries the finished interaction and its usage,
-//! and it is what rig's terminal record is built from.
+//! and it is what the decoder's terminal record is built from.
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel as _, FinishReason};
-use rig::prelude::*;
-use rig::providers::gemini::interactions_api::InteractionsCompletionModel;
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
+use rig::providers::gemini::interactions_api::Interactions;
 use rig::providers::gemini::interactions_api::streaming::StreamingCompletionResponse;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
@@ -48,7 +49,10 @@ const PROVIDER: &str = "gemini";
 const MODEL: &str = "gemini-3-flash-preview";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
 
-type Model = InteractionsCompletionModel;
+/// The Interactions wire bound to the bundled cassette transport. One Gemini
+/// config serves both surfaces, so the wrapper hands out the config and each
+/// cell names the surface it is about.
+type Model = Bound<Interactions, BoxedHttpClient>;
 
 fn request(model: &Model) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
@@ -136,7 +140,7 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_gemini_interactions_cassette(
         "interactions_raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.map_wire(|config| config.interactions(MODEL));
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;
@@ -193,7 +197,7 @@ async fn raw_exposes_terminal_only_fields() {
     with_gemini_interactions_cassette(
         "interactions_raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.map_wire(|config| config.interactions(MODEL));
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;

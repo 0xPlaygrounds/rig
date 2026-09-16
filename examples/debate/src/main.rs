@@ -3,7 +3,10 @@ use rig::prelude::*;
 use rig::{
     agent::Agent,
     message::Message,
-    providers::{cohere, openai},
+    providers::{
+        cohere::{self, Cohere},
+        openai::{self, OpenAI},
+    },
 };
 
 struct Debater {
@@ -17,8 +20,8 @@ impl Debater {
             .with_max_level(tracing::Level::INFO)
             .with_target(false)
             .init();
-        let openai_client = openai::Client::from_env()?;
-        let cohere_client = cohere::Client::from_env()?;
+        let openai_client = OpenAI::from_env()?.bound()?;
+        let cohere_client = Cohere::from_env()?.bound()?;
 
         Ok(Self {
             gpt_4: openai_client

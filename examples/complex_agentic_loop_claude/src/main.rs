@@ -1,6 +1,7 @@
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::anthropic::{self, Client};
+use rig::providers::anthropic::{self, wire::Anthropic};
+use rig::providers::openai;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, message::Message, tool::builtin::ThinkTool,
     vector_store::in_memory_store::InMemoryVectorStore,
@@ -25,15 +26,14 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create Anthropic client
+    // Create the Anthropic provider
     let anthropic_api_key = env::var("ANTHROPIC_API_KEY")?;
-    let anthropic_client = Client::builder().api_key(&anthropic_api_key).build()?;
+    let anthropic_client = Anthropic::new(&anthropic_api_key).bound()?;
 
     // Create the embedding model for our vector store
     // We'll use OpenAI's embedding model for this example
-    let openai_client = rig::providers::openai::Client::from_env()?;
-    let embedding_model =
-        openai_client.embedding_model(rig::providers::openai::TEXT_EMBEDDING_ADA_002);
+    let openai_client = openai::wire::OpenAI::from_env()?.bound()?;
+    let embedding_model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Create a knowledge base with sample entries
     let knowledge_entries = vec![

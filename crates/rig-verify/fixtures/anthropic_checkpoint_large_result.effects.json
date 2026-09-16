@@ -120,30 +120,37 @@
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_1",
+                "input": {},
                 "name": "checkpoint_large",
-                "input": {}
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 627,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 37
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "not_available",
+              "input_tokens": 627,
+              "output_tokens": 37,
+              "service_tier": "standard"
+            }
           }
         }
       }
@@ -282,28 +289,32 @@
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
-                "type": "text",
-                "text": "checkpoint-complete"
+                "text": "checkpoint-complete",
+                "type": "text"
               }
             ],
             "id": "msg_REDACTED_2",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "end_turn",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 22180,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 6
-            },
-            "provider_request_id": "req_REDACTED_2"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "not_available",
+              "input_tokens": 22180,
+              "output_tokens": 6,
+              "service_tier": "standard"
+            }
           }
         }
       }

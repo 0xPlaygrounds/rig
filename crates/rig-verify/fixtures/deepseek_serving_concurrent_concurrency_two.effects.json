@@ -163,14 +163,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 47,
               "prompt_tokens": 395,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 139,
+              "completion_tokens": 47,
               "total_tokens": 442,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 139
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_1",
@@ -387,14 +387,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 17,
               "prompt_tokens": 472,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 216,
+              "completion_tokens": 17,
               "total_tokens": 489,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 216
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_2",

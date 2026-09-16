@@ -1,7 +1,7 @@
 //! The `rig` prelude.
 //!
 //! Bringing this module into scope with `use rig::prelude::*` pulls in the
-//! portable provider-client, completion, embedding, tool, and vector-store
+//! portable model-construction, completion, embedding, tool, and vector-store
 //! contracts.
 //!
 //! This is deliberately the *common* path, not the whole crate. Advanced
@@ -9,20 +9,14 @@
 //! blocks, tool authoring internals, extraction/loaders/memory, etc. — are
 //! imported explicitly from their modules so those imports document intent.
 
-// Provider-client traits.
-pub use crate::client::completion::CompletionClient;
-pub use crate::client::embeddings::EmbeddingsClient;
-pub use crate::client::model_listing::ModelListingClient;
-pub use crate::client::transcription::TranscriptionClient;
-pub use crate::client::verify::{VerifyClient, VerifyError};
-
-#[cfg(feature = "image")]
-pub use crate::client::image_generation::ImageGenerationClient;
-
-#[cfg(feature = "audio")]
-pub use crate::client::audio_generation::AudioGenerationClient;
+// The `Verify` operation's error, returned by `Bound::verify`.
+pub use crate::client::verify::VerifyError;
 
 pub use crate::completion::{CompletionError, CompletionModel, Message};
+// Construction: a wire bound to a socket is the model, and anything that
+// builds a completion model answers `completion(model)` — including the
+// typed-transport providers, which are not wires.
+pub use crate::driver::{Bind, Bound, CompletionProvider};
 
 // Embeddings. `Embed` is re-exported from the crate root so that, with the
 // `derive` feature enabled, the `#[derive(Embed)]` macro comes along with the

@@ -1,21 +1,26 @@
 //! Raw provider response capture on Groq's streaming chat-completions path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the provider-native terminal record
-//! behind the stream's `StreamEvent::Final` — for Groq the shared
-//! chat-completions terminal [`StreamingCompletionResponse`] over the shared
-//! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
-//! request it, nothing about it reaches the wire, and a `Value::Null` only ever
-//! means a terminal built by hand with no provider record behind it. It is the
-//! terminal record only, never the stream's frames. Groq's terminal usage
-//! carries its timing accounting (`queue_time`, `prompt_time`, ...) that the
-//! normalized `Usage` has no slot for, and the terminal's accumulated
-//! `additional_params` carries the `x_groq` envelope and `system_fingerprint`
-//! the frames repeat; both are reachable only through `raw`.
+//! [`rig::streaming::StreamFinal::raw`] carries the provider-native terminal
+//! record the decoder assembled behind the stream's `StreamEvent::Final` —
+//! for Groq the shared chat-completions terminal
+//! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
+//! is always on: there is no flag to request it, nothing about it reaches
+//! the wire, and a
+//! `Value::Null` only ever means a terminal built by hand with no provider
+//! record behind it. It is the terminal record only, never the stream's
+//! frames — which is the one place `raw` is *not* a reply document: an SSE
+//! reply is many frames and no single one of them is the answer, so the
+//! decoder's reassembled record is what rides along, and a typed round trip
+//! through it is therefore exact. Groq's terminal usage carries its timing
+//! accounting (`queue_time`, `prompt_time`, ...) that the normalized `Usage`
+//! has no slot for, and the accumulated `additional_params` carries the
+//! `x_groq` envelope and `system_fingerprint` the frames repeat; both are
+//! reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<openai::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame and `x-request-id` header | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame and `x-request-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_queue_time` | terminal-only field | `raw.usage.queue_time` and `raw.additional_params.x_groq.id` equal the recorded terminal frame's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -26,9 +31,7 @@
 //! stopped reporting usage fails loudly instead of covering nothing.
 
 use rig::completion::{CompletionModel, CompletionRequest};
-use rig::prelude::*;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
-use rig::providers::{groq, openai};
+use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::StreamFinal;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -39,12 +42,14 @@ use super::support::{
 };
 use crate::support::collect_text_and_terminal;
 
-type GroqTerminal = StreamingCompletionResponse<openai::Usage>;
+/// The wire's terminal record over the wire's own accounting — the typed
+/// escape hatch [`rig::streaming::StreamFinal::raw`] advertises.
+type GroqTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &groq::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
@@ -133,18 +138,27 @@ async fn stream_raw_round_trips_terminal_type() {
     with_groq_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
+            let model = client.completion(RAW_CAPTURE_MATRIX_MODEL);
             let stream = model.stream(request(&model)).await?;
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
             let raw = &terminal.raw;
             let typed = GroqTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over the shared OpenAI usage");
+                .expect("raw is the chat-completions terminal record, serialized");
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
                 *raw,
                 "the captured value is the typed terminal serialized, nothing more"
+            );
+            let usage = typed
+                .usage
+                .as_ref()
+                .expect("the terminal record carries the reply's accounting");
+            assert_eq!(
+                usage.to_normalized(),
+                terminal.usage,
+                "the normalized usage is that accounting, normalized"
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);
@@ -182,7 +196,7 @@ async fn stream_raw_exposes_terminal_queue_time() {
     with_groq_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time",
         |client| async move {
-            let model = client.completion_model(RAW_CAPTURE_MATRIX_MODEL);
+            let model = client.completion(RAW_CAPTURE_MATRIX_MODEL);
             let stream = model.stream(request(&model)).await?;
             let (_, terminal) = collect_text_and_terminal(stream).await;
             *sink.lock().expect("observation lock") =

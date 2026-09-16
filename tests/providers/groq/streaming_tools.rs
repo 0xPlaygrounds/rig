@@ -2,7 +2,7 @@
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
-use rig::providers::groq;
+use rig::providers::openai::wire::{GROQ, OpenAI};
 
 use crate::support::{
     ALPHA_SIGNAL_OUTPUT, AlphaSignal, BETA_SIGNAL_OUTPUT, BetaSignal, ORDERED_TOOL_STREAM_PREAMBLE,
@@ -21,8 +21,11 @@ use super::{
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_stream_emits_required_zero_arg_tool_call() {
-    let client = groq::Client::from_env().expect("client should build");
-    let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
+    let groq = OpenAI::from_env_with(&GROQ)
+        .expect("GROQ_API_KEY should be set")
+        .bound()
+        .expect("transport should build");
+    let model = groq.completion(STREAMING_TOOLS_RAW_MODEL);
     let request = model
         .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
         .tool(zero_arg_tool_definition("ping"))
@@ -36,8 +39,11 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
-    let client = groq::Client::from_env().expect("client should build");
-    let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
+    let groq = OpenAI::from_env_with(&GROQ)
+        .expect("GROQ_API_KEY should be set")
+        .bound()
+        .expect("transport should build");
+    let model = groq.completion(STREAMING_TOOLS_RAW_MODEL);
     let request = model
         .completion_request(TWO_TOOL_STREAM_PROMPT)
         .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -62,8 +68,11 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
+    let groq = OpenAI::from_env_with(&GROQ)
+        .expect("GROQ_API_KEY should be set")
+        .bound()
+        .expect("transport should build");
+    let agent = groq
         .agent(STREAMING_TOOLS_MULTI_MODEL)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
@@ -83,8 +92,11 @@ async fn streaming_tools_surface_two_distinct_tool_calls_before_final_answer() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn streaming_tools_emit_tool_call_before_later_text() {
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
+    let groq = OpenAI::from_env_with(&GROQ)
+        .expect("GROQ_API_KEY should be set")
+        .bound()
+        .expect("transport should build");
+    let agent = groq
         .agent(STREAMING_TOOLS_ORDERED_MODEL)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
@@ -106,8 +118,11 @@ async fn streaming_tools_emit_tool_call_before_later_text() {
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn raw_followup_uses_tool_result_without_new_tool_calls() {
-    let client = groq::Client::from_env().expect("client should build");
-    let model = client.completion_model(STREAMING_TOOLS_RAW_MODEL);
+    let groq = OpenAI::from_env_with(&GROQ)
+        .expect("GROQ_API_KEY should be set")
+        .bound()
+        .expect("transport should build");
+    let model = groq.completion(STREAMING_TOOLS_RAW_MODEL);
     let request = model
         .completion_request(ORDERED_TOOL_STREAM_PROMPT)
         .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

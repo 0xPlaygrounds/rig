@@ -1,21 +1,16 @@
-//! Venice image generation.
+//! Venice's image-generation model identifiers and its own view of a
+//! generated image.
 //!
 //! Venice's image endpoint is its own wire, not OpenAI's: it is
-//! `POST /image/generate`, it takes `width`/`height` (plus Venice-only
-//! controls through `additional_params`), and it answers with
+//! `POST /image/generate` (the path
+//! [`openai::wire::VENICE`](crate::providers::openai::wire::VENICE) carries),
+//! it takes `width`/`height` plus Venice-only controls through
+//! `additional_params`, and it answers with
 //! `{ id, images: [base64], request, timing }` rather than OpenAI's
-//! `data[].b64_json`.
+//! `data[].b64_json` — which is what [`ImageGenerationResponse`] models, for
+//! a caller reading the raw document the normalized image does not name.
 
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-
-use crate::image_generation::{
-    self, ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
-};
-use crate::json_utils::merge_inplace;
-use crate::providers::internal::image_generation::{
-    GenericImageGenerationModel, JsonImageGenerationProvider, decode_base64_image,
-};
 
 // ================================================================
 // Venice Image Generation API
@@ -62,54 +57,3 @@ pub struct ImageGenerationResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timing: Option<ImageGenerationTiming>,
 }
-
-impl NormalizeImageGenerationResponse for ImageGenerationResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<image_generation::ImageGenerationResponse, ImageGenerationError> {
-        let image = decode_base64_image(
-            &self,
-            |response| response.images.first().map(String::as_str),
-            "No image data returned",
-            Some("Base64 decode error: "),
-        )?;
-        Ok(image_generation::ImageGenerationResponse::new(
-            image, provider,
-        ))
-    }
-}
-
-/// Venice image generation model.
-pub type ImageGenerationModel<T = crate::http_client::BoxedHttpClient> =
-    GenericImageGenerationModel<super::client::Venice, T>;
-
-impl JsonImageGenerationProvider for super::client::Venice {
-    const IMAGE_GENERATION_PATH: &'static str = "/image/generate";
-    const PROVIDER_NAME: &'static str = "venice";
-    type Response = ImageGenerationResponse;
-
-    fn image_generation_request_body(
-        model: &str,
-        generation_request: ImageGenerationRequest,
-    ) -> Result<serde_json::Value, ImageGenerationError> {
-        // Venice returns base64 images unless `return_binary` is set; the
-        // decode above depends on that, so the flag stays off the request and
-        // is not something `additional_params` should turn on.
-        let mut request = json!({
-            "model": model,
-            "prompt": generation_request.prompt,
-            "width": generation_request.width,
-            "height": generation_request.height,
-        });
-
-        if let Some(additional_params) = generation_request.additional_params {
-            merge_inplace(&mut request, additional_params);
-        }
-
-        Ok(request)
-    }
-}
-
-#[cfg(test)]
-mod tests;

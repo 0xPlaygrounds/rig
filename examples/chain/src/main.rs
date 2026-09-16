@@ -2,14 +2,12 @@
 //! store, fold it into the prompt, then prompt the agent.
 //! Requires `OPENAI_API_KEY`.
 
+use rig::driver::Bound;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 use rig::vector_store::VectorStoreIndex;
 use rig::vector_store::request::VectorSearchRequest;
-use rig::{
-    embeddings::EmbeddingsBuilder, providers::openai::Client,
-    vector_store::in_memory_store::InMemoryVectorStore,
-};
+use rig::{embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore};
 
 const QUERY: &str = "What does \"glarb-glarb\" mean?";
 
@@ -21,7 +19,7 @@ fn sample_definitions() -> [&'static str; 3] {
     ]
 }
 
-fn build_dictionary_agent(client: &Client) -> rig::agent::Agent {
+fn build_dictionary_agent(client: &Bound<OpenAI>) -> rig::agent::Agent {
     client
         .agent(openai::GPT_4)
         .preamble(
@@ -46,8 +44,8 @@ fn lookup_context(docs: Vec<(f64, String, String)>, prompt: &str) -> String {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     tracing_subscriber::fmt().init();
-    let client = Client::from_env()?;
-    let embedding_model = client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let client = OpenAI::from_env()?.bound()?;
+    let embedding_model = client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let mut builder = EmbeddingsBuilder::new(embedding_model.clone());
     for definition in sample_definitions() {

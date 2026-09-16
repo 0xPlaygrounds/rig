@@ -1,5 +1,5 @@
 use super::*;
-use crate::completion::{CompletionRequest, Message};
+use crate::completion::{self, CompletionRequest, Message};
 use crate::message::{self, ToolChoice as MessageToolChoice};
 use serde_json::json;
 
@@ -371,8 +371,8 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
     );
 }
 
-#[test]
-fn test_response_function_call_mapping() {
+#[tokio::test]
+async fn test_response_function_call_mapping() {
     let interaction = Interaction {
         id: "interaction-1".to_string(),
         steps: vec![Step::FunctionCall(FunctionCallContent {
@@ -389,8 +389,7 @@ fn test_response_function_call_mapping() {
         ..Default::default()
     };
 
-    let response: completion::CompletionResponse =
-        interaction.try_into().expect("conversion should succeed");
+    let response = fold_resource(&interaction).await;
 
     let choice = response.choice.first();
     match choice {
@@ -894,8 +893,8 @@ fn test_interaction_with_unknown_status_stays_parseable() {
     );
 }
 
-#[test]
-fn test_completion_response_carries_normalized_metadata() {
+#[tokio::test]
+async fn test_completion_response_carries_normalized_metadata() {
     let interaction = Interaction {
         id: "interaction-meta".to_string(),
         model: Some("gemini-2.5-pro".to_string()),
@@ -909,8 +908,7 @@ fn test_completion_response_carries_normalized_metadata() {
         ..Default::default()
     };
 
-    let response: completion::CompletionResponse =
-        interaction.try_into().expect("conversion should succeed");
+    let response = fold_resource(&interaction).await;
 
     assert_eq!(response.provider, PROVIDER_NAME);
     assert_eq!(response.model.as_deref(), Some("gemini-2.5-pro"));
@@ -922,8 +920,8 @@ fn test_completion_response_carries_normalized_metadata() {
     );
 }
 
-#[test]
-fn test_completion_response_upgrades_completed_to_tool_calls() {
+#[tokio::test]
+async fn test_completion_response_upgrades_completed_to_tool_calls() {
     // A `completed` interaction whose outputs are function calls is a tool
     // turn; the normalized response must say so.
     let interaction = Interaction {
@@ -937,8 +935,7 @@ fn test_completion_response_upgrades_completed_to_tool_calls() {
         ..Default::default()
     };
 
-    let response: completion::CompletionResponse =
-        interaction.try_into().expect("conversion should succeed");
+    let response = fold_resource(&interaction).await;
 
     assert_eq!(
         response.finish_reason(),
@@ -1159,4 +1156,299 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
             assert_adapter_pairs(serde_json::to_value(wire).unwrap());
         }
     }
+}
+
+// ── the Interactions wire ───────────────────────────────────────────────
+//
+// Bodies pasted verbatim from committed cassettes, named at each constant.
+// This family's unary reply is a different *document* from its stream
+// events — a whole interaction resource — so the decoder names it as one
+// more event of the wire and replays the resource's steps through the
+// streamed content mapping. These tests pin that the two transports agree
+// on the SHAPE of a turn (block kinds and signature placement), which is
+// what the recorded traffic allows: no two committed cassettes record the
+// same interaction both ways.
+
+use crate::driver::Bound;
+use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
+use crate::wire::{Mode, Wire};
+use futures::StreamExt;
+
+/// `tests/cassettes/gemini/interactions_api/basic_interaction_returns_id.yaml`
+const UNARY_INTERACTION: &str = r#"{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","service_tier":"standard","status":"completed","steps":[{"signature":"signature_REDACTED_1","type":"thought"},{"content":[{"text":"1. Hummingbirds are the only birds capable of flying **backwards**.\n2. Their hearts can beat up to **1,260 times per minute**.","type":"text"}],"type":"model_output"}],"updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":14}],"raw_prompt_token":39,"total_cached_tokens":0,"total_input_tokens":14,"total_output_tokens":34,"total_thought_tokens":222,"total_tokens":270,"total_tool_use_tokens":0}}"#;
+
+/// `tests/cassettes/gemini/interactions_api/streaming_interaction.yaml` —
+/// a different turn, streamed: the same two steps (a signature-only
+/// thought, then text) delivered as events.
+const STREAMED_INTERACTION: &str = concat!(
+    "event: interaction.created\ndata: {\"event_type\":\"interaction.created\",\"interaction\":{\"id\":\"v1_REDACTED_1\",\"model\":\"gemini-3-flash-preview\",\"object\":\"interaction\",\"status\":\"in_progress\"}}\n\n",
+    "event: interaction.status_update\ndata: {\"event_type\":\"interaction.status_update\",\"interaction_id\":\"v1_REDACTED_1\",\"status\":\"in_progress\"}\n\n",
+    "event: step.start\ndata: {\"event_type\":\"step.start\",\"index\":0,\"step\":{\"type\":\"thought\"}}\n\n",
+    "event: step.delta\ndata: {\"delta\":{\"signature\":\"signature_REDACTED_1\",\"type\":\"thought_signature\"},\"event_type\":\"step.delta\",\"index\":0}\n\n",
+    "event: step.stop\ndata: {\"event_type\":\"step.stop\",\"index\":0}\n\n",
+    "event: step.start\ndata: {\"event_type\":\"step.start\",\"index\":1,\"step\":{\"type\":\"model_output\"}}\n\n",
+    "event: step.delta\ndata: {\"delta\":{\"text\":\"Red flakes drift from the bridge\u{2019}s spine,\\nTo bleed within the river\u{2019}s silver line,\\nWhere\",\"type\":\"text\"},\"event_type\":\"step.delta\",\"index\":1}\n\n",
+    "event: step.delta\ndata: {\"delta\":{\"text\":\" metal yields to water\u{2019}s slow design.\",\"type\":\"text\"},\"event_type\":\"step.delta\",\"index\":1}\n\n",
+    "event: step.stop\ndata: {\"event_type\":\"step.stop\",\"index\":1}\n\n",
+    "event: interaction.completed\ndata: {\"event_type\":\"interaction.completed\",\"interaction\":{\"created\":\"1970-01-01T00:00:00Z\",\"id\":\"v1_REDACTED_1\",\"model\":\"gemini-3-flash-preview\",\"object\":\"interaction\",\"service_tier\":\"standard\",\"status\":\"completed\",\"updated\":\"1970-01-01T00:00:00Z\",\"usage\":{\"input_tokens_by_modality\":[{\"modality\":\"text\",\"tokens\":13}],\"raw_prompt_token\":34,\"total_cached_tokens\":0,\"total_input_tokens\":13,\"total_output_tokens\":32,\"total_thought_tokens\":806,\"total_tokens\":851,\"total_tool_use_tokens\":0}}}\n\n",
+);
+
+fn interactions_wire() -> Interactions {
+    crate::providers::gemini::Gemini::new("test-key").interactions("gemini-3-flash-preview")
+}
+
+fn probe() -> CompletionRequest {
+    CompletionRequest {
+        record_telemetry_content: false,
+        model: None,
+        chat_history: vec![Message::user("probe")],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+    }
+}
+
+/// Fold an interaction resource, as the unary reply's body, through the
+/// bound wire the way a caller's `completion()` does.
+async fn fold_resource(interaction: &Interaction) -> crate::completion::CompletionResponse {
+    use crate::completion::CompletionModel as _;
+    let body = serde_json::to_string(interaction).expect("the resource serializes");
+    Bound::new(interactions_wire(), RecordingHttpClient::new(body))
+        .completion(probe())
+        .await
+        .expect("the interaction resource decodes")
+}
+
+/// The block kinds a folded turn carries, and the signature on its
+/// reasoning block: the shape two transports must agree on.
+fn shape(response: &crate::completion::CompletionResponse) -> (Vec<&'static str>, Option<String>) {
+    let kinds = response
+        .choice
+        .iter()
+        .map(|item| match item {
+            message::AssistantContent::Text(_) => "text",
+            message::AssistantContent::Reasoning(_) => "reasoning",
+            message::AssistantContent::ToolCall(_) => "tool_call",
+            message::AssistantContent::Image(_) => "image",
+        })
+        .collect();
+    let signature = response.choice.iter().find_map(|item| match item {
+        message::AssistantContent::Reasoning(reasoning) => match reasoning.content.first() {
+            Some(message::ReasoningContent::Text { signature, .. }) => signature.clone(),
+            _ => None,
+        },
+        _ => None,
+    });
+    (kinds, signature)
+}
+
+#[tokio::test]
+async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
+    use crate::completion::CompletionModel as _;
+
+    let buffered = Bound::new(
+        interactions_wire(),
+        RecordingHttpClient::new(UNARY_INTERACTION),
+    )
+    .completion(probe())
+    .await
+    .expect("the recorded interaction resource decodes");
+
+    let mut stream = Bound::new(
+        interactions_wire(),
+        MockStreamingClient {
+            sse_bytes: bytes::Bytes::from_static(STREAMED_INTERACTION.as_bytes()),
+        },
+    )
+    .stream(probe())
+    .await
+    .expect("the stream opens");
+    while let Some(item) = stream.next().await {
+        item.expect("the recorded stream carries no in-band error");
+    }
+    let streamed = stream.finish();
+
+    assert_eq!(shape(&buffered), shape(&streamed));
+    assert_eq!(
+        shape(&buffered),
+        (
+            vec!["reasoning", "text"],
+            Some("signature_REDACTED_1".to_owned())
+        )
+    );
+    // The turn's own facts, from the resource the reply carried.
+    assert_eq!(buffered.response_id.as_deref(), Some("v1_REDACTED_1"));
+    assert_eq!(buffered.model.as_deref(), Some("gemini-3-flash-preview"));
+    assert_eq!(buffered.usage.output_tokens, Some(34));
+    assert_eq!(streamed.usage.output_tokens, Some(32));
+    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    assert_eq!(
+        buffered.choice.last(),
+        Some(&message::AssistantContent::text(
+            "1. Hummingbirds are the only birds capable of flying **backwards**.\n2. Their hearts can beat up to **1,260 times per minute**."
+        ))
+    );
+
+    // Both paths keep the interaction resource reachable, in the shape each
+    // reply actually has: a unary reply's bytes ARE the resource, so `raw`
+    // is it; a streamed reply's terminal record is the envelope the wire
+    // reassembled, so the resource is under `/interaction`. A caller that
+    // wants the provider's own vocabulary gets it either way, which is what
+    // the escape hatch promises.
+    let buffered_interaction: Interaction = serde_json::from_value(buffered.raw.clone())
+        .expect("a unary reply's `raw` is the interaction document");
+    assert_eq!(buffered_interaction.id, "v1_REDACTED_1");
+    assert!(buffered_interaction.is_terminal());
+
+    let streamed_interaction: Interaction =
+        serde_json::from_value(streamed.raw["interaction"].clone())
+            .expect("a streamed reply's terminal record carries the interaction");
+    assert_eq!(streamed_interaction.id, "v1_REDACTED_1");
+    assert!(streamed_interaction.is_terminal());
+}
+
+/// The one request an `Encoded` carries: this wire sends one per call.
+fn sole(encoded: &crate::wire::Encoded) -> &http::Request<crate::wire::Body> {
+    match encoded.requests.as_slice() {
+        [request] => request,
+        requests => panic!("expected one request, got {}", requests.len()),
+    }
+}
+
+#[test]
+fn the_mode_chooses_the_query_and_the_framing_and_the_key_is_a_header() {
+    let wire = interactions_wire();
+
+    let unary = wire
+        .encode(probe(), Mode::Unary)
+        .expect("the unary request encodes");
+    assert_eq!(sole(&unary).uri().path(), "/v1beta/interactions");
+    assert_eq!(sole(&unary).uri().query(), None);
+    assert_eq!(unary.framing, crate::http_client::framing::Framing::Whole);
+    // This family authenticates by header, so no credential is in the URI.
+    assert_eq!(
+        sole(&unary)
+            .headers()
+            .get("x-goog-api-key")
+            .and_then(|value| value.to_str().ok()),
+        Some("test-key")
+    );
+
+    let streaming = wire
+        .encode(probe(), Mode::Streaming)
+        .expect("the streaming request encodes");
+    assert_eq!(sole(&streaming).uri().query(), Some("alt=sse"));
+    assert_eq!(streaming.framing, crate::http_client::framing::Framing::Sse);
+    assert_eq!(streaming.request_id_header, None);
+
+    // `stream` rides the body on this wire as well as the query.
+    let body = match sole(&streaming).body() {
+        crate::wire::Body::Bytes(bytes) => bytes.clone(),
+        crate::wire::Body::Multipart(_) => panic!("interactions posts JSON"),
+    };
+    let body: serde_json::Value = serde_json::from_slice(&body).expect("the request body is JSON");
+    assert_eq!(body.get("stream"), Some(&json!(true)));
+}
+
+/// The span names this wire has always recorded, per mode.
+#[test]
+fn the_interactions_wire_keeps_its_span_names() {
+    let wire = interactions_wire();
+    assert_eq!(
+        Wire::telemetry(&wire, false),
+        CompletionOperation::Interactions
+    );
+    assert_eq!(
+        Wire::telemetry(&wire, true),
+        CompletionOperation::InteractionsStreaming
+    );
+}
+
+/// A `background: true` interaction outlives its create request and a
+/// dropped stream resumes from the last event seen. Both are the same
+/// interaction read again, so both are requests on one wire: the poll GETs
+/// the resource, the resume GETs the event stream from `last_event_id`
+/// onward \u2014 byte-for-byte the two requests the client layer sent.
+#[test]
+fn one_interaction_is_polled_unary_and_resumed_streamed() {
+    let gemini = crate::providers::gemini::Gemini::new("test-key");
+
+    let poll = gemini
+        .interaction("v1_REDACTED_1")
+        .encode(probe(), Mode::Unary)
+        .expect("the poll request encodes");
+    assert_eq!(sole(&poll).method(), http::Method::GET);
+    assert_eq!(
+        sole(&poll).uri().path(),
+        "/v1beta/interactions/v1_REDACTED_1"
+    );
+    assert_eq!(sole(&poll).uri().query(), None);
+    assert_eq!(poll.framing, crate::http_client::framing::Framing::Whole);
+    assert_eq!(
+        sole(&poll)
+            .headers()
+            .get("x-goog-api-key")
+            .and_then(|value| value.to_str().ok()),
+        Some("test-key")
+    );
+
+    let resumed = gemini
+        .interaction_resumed("v1_REDACTED_1", Some("42"))
+        .encode(probe(), Mode::Streaming)
+        .expect("the resume request encodes");
+    assert_eq!(sole(&resumed).method(), http::Method::GET);
+    assert_eq!(
+        sole(&resumed).uri().path(),
+        "/v1beta/interactions/v1_REDACTED_1"
+    );
+    assert_eq!(
+        sole(&resumed).uri().query(),
+        Some("stream=true&last_event_id=42&alt=sse")
+    );
+    assert_eq!(resumed.framing, crate::http_client::framing::Framing::Sse);
+
+    // Resuming without a cursor asks for the stream from its beginning,
+    // which is the API's own default and what the client layer sent.
+    let from_start = gemini
+        .interaction_resumed("v1_REDACTED_1", None)
+        .encode(probe(), Mode::Streaming)
+        .expect("the resume request encodes");
+    assert_eq!(sole(&from_start).uri().query(), Some("stream=true&alt=sse"));
+}
+
+/// The poll's reply is the whole interaction resource, so it decodes
+/// through the same decoder as the stream and the document survives on the
+/// response's `raw` for a caller that wants the provider's own vocabulary.
+#[tokio::test]
+async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
+    use crate::completion::CompletionModel as _;
+
+    let response = Bound::new(
+        crate::providers::gemini::Gemini::new("test-key").interaction("v1_REDACTED_1"),
+        RecordingHttpClient::new(UNARY_INTERACTION),
+    )
+    .completion(probe())
+    .await
+    .expect("the recorded interaction resource decodes");
+
+    assert_eq!(
+        shape(&response),
+        (
+            vec!["reasoning", "text"],
+            Some("signature_REDACTED_1".to_owned())
+        )
+    );
+    assert_eq!(response.response_id.as_deref(), Some("v1_REDACTED_1"));
+    let interaction: Interaction =
+        serde_json::from_value(response.raw.clone()).expect("`raw` is the interaction document");
+    assert_eq!(interaction.id, "v1_REDACTED_1");
+    assert!(
+        interaction.is_terminal(),
+        "status: {:?}",
+        interaction.status
+    );
 }

@@ -153,41 +153,34 @@
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "responseId": "id_REDACTED_1",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_1",
                       "functionCall": {
-                        "name": "add",
                         "args": {
                           "x": 17,
                           "y": 25
                         },
-                        "id": "call_3123612"
-                      }
+                        "id": "call_3123612",
+                        "name": "add"
+                      },
+                      "thoughtSignature": "signature_REDACTED_1"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "id_REDACTED_1",
             "usageMetadata": {
-              "promptTokenCount": 1222,
               "candidatesTokenCount": 18,
-              "totalTokenCount": 1365,
-              "thoughtsTokenCount": 125,
+              "promptTokenCount": 1222,
               "promptTokensDetails": [
                 {
                   "modality": "IMAGE",
@@ -197,9 +190,11 @@
                   "modality": "TEXT",
                   "tokenCount": 133
                 }
-              ]
-            },
-            "modelVersion": "gemini-3-flash-preview"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 125,
+              "totalTokenCount": 1365
+            }
           }
         }
       }
@@ -358,7 +353,6 @@
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "responseId": "id_REDACTED_2",
             "candidates": [
               {
                 "content": {
@@ -370,20 +364,14 @@
                   "role": "model"
                 },
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": null
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "id_REDACTED_2",
             "usageMetadata": {
-              "promptTokenCount": 1376,
               "candidatesTokenCount": 17,
-              "totalTokenCount": 1393,
+              "promptTokenCount": 1376,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
@@ -393,9 +381,10 @@
                   "modality": "IMAGE",
                   "tokenCount": 1089
                 }
-              ]
-            },
-            "modelVersion": "gemini-3-flash-preview"
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 1393
+            }
           }
         }
       }

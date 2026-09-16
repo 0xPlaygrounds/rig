@@ -882,7 +882,7 @@ fn install_materializer(world: &mut World, data: &WireBinding, runtime: &tokio::
         Materializer::new(
             move |credential: &CredentialRef| {
                 if credential.as_str() == CASSETTE_CREDENTIAL {
-                    Ok(Secret::new(api_key.clone()))
+                    Ok(Secret::from(api_key.clone()))
                 } else {
                     Err(format!("the harness resolves only `{CASSETTE_CREDENTIAL}`"))
                 }

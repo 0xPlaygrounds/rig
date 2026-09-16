@@ -19,12 +19,12 @@
 use futures::StreamExt;
 use rig::completion::{CompletionError, CompletionModel};
 use rig::error::ErrorReport;
-use rig::prelude::*;
 use rig::providers::doubleword;
 use serde_json::json;
 
 use super::super::support::{
-    recorded_chat_calls, with_doubleword_bogus_key_cassette, with_doubleword_cassette,
+    BoundDoubleword, recorded_chat_calls, with_doubleword_bogus_key_cassette,
+    with_doubleword_cassette,
 };
 
 const PROMPT: &str = "Reply with error-probe.";
@@ -119,17 +119,17 @@ fn assert_recorded_transport_parity(blocking_scenario: &str, streaming_scenario:
     );
 }
 
-async fn unknown_model_blocking_body(client: doubleword::Client) {
-    let model = client.completion_model(UNKNOWN_MODEL);
+async fn unknown_model_blocking_body(client: BoundDoubleword) {
+    let model = client.completion(UNKNOWN_MODEL);
     let error = model
-        .raw_completion(model.completion_request(PROMPT).max_tokens(8).build())
+        .completion(model.completion_request(PROMPT).max_tokens(8).build())
         .await
         .expect_err("an unknown model should be rejected");
     assert_preserved_client_error(&error, 404, ErrorEnvelope::Nested);
 }
 
-async fn unknown_model_streaming_body(client: doubleword::Client) {
-    let model = client.completion_model(UNKNOWN_MODEL);
+async fn unknown_model_streaming_body(client: BoundDoubleword) {
+    let model = client.completion(UNKNOWN_MODEL);
     let result = model
         .stream(model.completion_request(PROMPT).max_tokens(8).build())
         .await;
@@ -144,17 +144,17 @@ async fn unknown_model_streaming_body(client: doubleword::Client) {
     assert_preserved_client_error_report(&error, 404, ErrorEnvelope::Nested);
 }
 
-async fn invalid_key_blocking_body(client: doubleword::Client) {
-    let model = client.completion_model(doubleword::QWEN3_5_9B);
+async fn invalid_key_blocking_body(client: BoundDoubleword) {
+    let model = client.completion(doubleword::QWEN3_5_9B);
     let error = model
-        .raw_completion(model.completion_request(PROMPT).max_tokens(8).build())
+        .completion(model.completion_request(PROMPT).max_tokens(8).build())
         .await
         .expect_err("invalid credentials should be rejected");
     assert_preserved_client_error(&error, 403, ErrorEnvelope::Nested);
 }
 
-async fn invalid_key_streaming_body(client: doubleword::Client) {
-    let model = client.completion_model(doubleword::QWEN3_5_9B);
+async fn invalid_key_streaming_body(client: BoundDoubleword) {
+    let model = client.completion(doubleword::QWEN3_5_9B);
     let result = model
         .stream(model.completion_request(PROMPT).max_tokens(8).build())
         .await;
@@ -169,10 +169,10 @@ async fn invalid_key_streaming_body(client: doubleword::Client) {
     assert_preserved_client_error_report(&error, 403, ErrorEnvelope::Nested);
 }
 
-async fn invalid_temperature_blocking_body(client: doubleword::Client) {
-    let model = client.completion_model(doubleword::QWEN3_5_9B);
+async fn invalid_temperature_blocking_body(client: BoundDoubleword) {
+    let model = client.completion(doubleword::QWEN3_5_9B);
     let error = model
-        .raw_completion(
+        .completion(
             model
                 .completion_request(PROMPT)
                 .additional_params(json!({ "temperature": 100 }))
@@ -184,8 +184,8 @@ async fn invalid_temperature_blocking_body(client: doubleword::Client) {
     assert_preserved_client_error(&error, 400, ErrorEnvelope::Flat);
 }
 
-async fn invalid_temperature_streaming_body(client: doubleword::Client) {
-    let model = client.completion_model(doubleword::QWEN3_5_9B);
+async fn invalid_temperature_streaming_body(client: BoundDoubleword) {
+    let model = client.completion(doubleword::QWEN3_5_9B);
     let result = model
         .stream(
             model

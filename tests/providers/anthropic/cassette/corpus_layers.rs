@@ -8,9 +8,11 @@
 
 use rig::agent::AgentBuilder;
 use rig::bus::Bus;
+use rig::driver::Bound;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ErasedHandler;
 
 use super::super::support::{
@@ -50,7 +52,7 @@ pub(super) fn tool_record_outputs(log: &rig::effect_log::EffectLog) -> Vec<Strin
 /// The program of the hooks cells with `layers` around `add` instead of
 /// a hook stack, on the agent's own bus.
 async fn own_bus(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
     hooks: impl FnOnce(
         AgentBuilder<rig::agent::WithToolServerHandle>,
@@ -150,7 +152,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                     "default",
-                    client.completion_model(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6),
                 )),
             )
             .expect("a fresh key");

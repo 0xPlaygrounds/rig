@@ -1,7 +1,50 @@
 use super::*;
+use crate::driver::WireDriver;
 use crate::message::EMPTY_RESPONSE_ERROR;
+use crate::operation::Completion;
+use crate::providers::anthropic::wire::Anthropic;
+use crate::wire::WireFrame;
+use crate::wire::{Fold, Operation, Wire};
 use serde_json::json;
 use serde_path_to_error::deserialize;
+
+/// The one-turn request every reply below is folded against.
+fn hello_request() -> CompletionRequest {
+    completion_request_with_history(vec![message::Message::user("hello")], None)
+}
+
+/// Fold a Messages reply body through the wire's own decoder — the one
+/// mapping there is, now that the duplicate `normalize` is gone.
+///
+/// `POST /v1/messages` answers with a whole `message` object, which the
+/// decoder treats as a frame like any other, so a cell that used to call
+/// `normalize` on a typed response states the same thing by folding the
+/// body the provider would have sent. `type` is injected when the cell
+/// built the typed response directly, since that type does not model the
+/// tag. Whatever the decoder or the fold rejects surfaces here as the
+/// error the driver would report.
+fn fold_reply(body: &serde_json::Value) -> Result<completion::CompletionResponse, CompletionError> {
+    let mut body = body.clone();
+    if let Some(map) = body.as_object_mut() {
+        map.entry("type").or_insert_with(|| json!("message"));
+    }
+    let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
+    let mut driver = WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
+    driver.push(WireFrame::Text(body.to_string()));
+    driver.finish();
+    let mut fold = <Completion as Operation>::fold(&hello_request());
+    for item in driver.drain() {
+        fold.absorb(item?)?;
+    }
+    Fold::<Completion>::finish(
+        fold,
+        crate::wire::Reply {
+            provider: "anthropic".to_owned(),
+            raw: body,
+            provider_request_id: None,
+        },
+    )
+}
 
 #[test]
 fn current_model_default_max_tokens_match_anthropic_limits() {
@@ -23,9 +66,8 @@ fn current_model_default_max_tokens_match_anthropic_limits() {
 }
 
 #[test]
-fn unknown_model_uses_conservative_default_max_tokens_fallback() {
+fn unknown_model_has_no_documented_default_max_tokens() {
     assert_eq!(default_max_tokens_for_model("claude-unknown"), None);
-    assert_eq!(default_max_tokens_with_fallback("claude-unknown"), 2_048);
 }
 
 #[test]
@@ -189,29 +231,6 @@ fn test_deserialize_message() {
 }
 
 #[test]
-fn test_content_format_conversion() {
-    use crate::completion::message::ContentFormat;
-
-    let source_type: SourceType = ContentFormat::Url.try_into().unwrap();
-    assert_eq!(source_type, SourceType::URL);
-
-    let content_format: ContentFormat = SourceType::URL.into();
-    assert_eq!(content_format, ContentFormat::Url);
-
-    let source_type: SourceType = ContentFormat::Base64.try_into().unwrap();
-    assert_eq!(source_type, SourceType::BASE64);
-
-    let content_format: ContentFormat = SourceType::BASE64.into();
-    assert_eq!(content_format, ContentFormat::Base64);
-
-    let source_type: SourceType = ContentFormat::String.try_into().unwrap();
-    assert_eq!(source_type, SourceType::TEXT);
-
-    let content_format: ContentFormat = SourceType::TEXT.into();
-    assert_eq!(content_format, ContentFormat::String);
-}
-
-#[test]
 fn test_cache_control_serialization() {
     // Test SystemContent with cache_control
     let system = SystemContent::Text {
@@ -365,19 +384,33 @@ fn rig_tools_are_non_strict_by_default() {
     );
 }
 
+/// Anthropic-compatible gateways do not necessarily implement Anthropic's
+/// constrained tool schemas, so asking for strict tools on one leaves the
+/// tool unchanged. The policy is the dialect's data, not a trait hook, so
+/// this is asserted through the wire a gateway builds.
 #[test]
 fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
-    let mut additional_params = serde_json::Value::Null;
-    let tools = build_tool_definitions::<crate::providers::minimax::MiniMaxAnthropic>(
-        vec![generic_tool("lookup")],
-        &mut additional_params,
-        true,
-    )
-    .unwrap();
+    use crate::wire::{Mode, Wire};
 
-    assert!(tools[0].get("strict").is_none());
+    let request = completion_request_with_tools(vec![generic_tool("lookup")], None);
+    let encoded = crate::providers::anthropic::wire::Anthropic::with_dialect(
+        "k",
+        &crate::providers::anthropic::wire::ZAI,
+    )
+    .messages("some-model")
+    .with_strict_tools()
+    .encode(request, Mode::Unary)
+    .expect("the request encodes");
+    let crate::wire::Body::Bytes(body) = encoded.requests.first().expect("one request").body()
+    else {
+        panic!("the Messages endpoint takes JSON")
+    };
+    let value: serde_json::Value =
+        serde_json::from_slice(body).expect("the body is the JSON the wire built");
+
+    assert!(value["tools"][0].get("strict").is_none());
     assert!(
-        tools[0]["input_schema"]
+        value["tools"][0]["input_schema"]
             .get("additionalProperties")
             .is_none()
     );
@@ -436,9 +469,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             }]
         })),
     );
-    let request = AnthropicCompletionRequest::try_from_params::<
-        crate::providers::anthropic::client::Anthropic,
-    >(
+    let request = AnthropicCompletionRequest::try_from_params(
         AnthropicRequestParams {
             model: CLAUDE_SONNET_4_6,
             request,
@@ -447,7 +478,10 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             automatic_caching_ttl: None,
             static_prefix_cache_ttl: None,
         },
-        true,
+        Some(
+            crate::providers::anthropic::wire::strict_tool_transform
+                as fn(&mut crate::providers::anthropic::completion::ToolDefinition),
+        ),
     )
     .unwrap();
 
@@ -2517,24 +2551,6 @@ fn test_assistant_reasoning_multiblock_to_anthropic_content() {
 }
 
 #[test]
-fn test_redacted_thinking_content_to_assistant_reasoning() {
-    let content = Content::RedactedThinking {
-        data: "opaque-redacted".to_string(),
-    };
-    let converted: message::AssistantContent =
-        content.try_into().expect("convert redacted thinking");
-
-    assert!(matches!(
-        converted,
-        message::AssistantContent::Reasoning(message::Reasoning { content, .. })
-            if matches!(
-                content.first(),
-                Some(message::ReasoningContent::Redacted { data }) if data == "opaque-redacted"
-            )
-    ));
-}
-
-#[test]
 fn test_assistant_encrypted_reasoning_maps_to_redacted_thinking() {
     let reasoning = message::Reasoning {
         id: None,
@@ -2577,9 +2593,9 @@ fn empty_end_turn_response_normalizes_to_an_empty_choice() {
         },
     };
 
-    let parsed: completion::CompletionResponse = response
-        .normalize("anthropic")
-        .expect("empty end_turn should not error");
+    let parsed: completion::CompletionResponse =
+        fold_reply(&serde_json::to_value(&response).expect("serialize the wire type"))
+            .expect("empty end_turn should not error");
 
     // Anthropic's documented empty `end_turn` is a turn that carried
     // nothing. It used to normalize to one fabricated empty-text part
@@ -2633,11 +2649,13 @@ fn empty_response_outside_the_legal_terminals_still_errors() {
         // legal. The carve-out gates on the reason first, then the field.
         (Some("max_tokens"), Some("alpha")),
     ] {
-        let err = empty_response_with(stop_reason, stop_sequence)
-            .normalize("anthropic")
-            .expect_err(&format!(
-                "empty {stop_reason:?} response should remain an error"
-            ));
+        let err = fold_reply(
+            &serde_json::to_value(empty_response_with(stop_reason, stop_sequence))
+                .expect("serialize the wire type"),
+        )
+        .expect_err(&format!(
+            "empty {stop_reason:?} response should remain an error"
+        ));
 
         assert!(matches!(
             err,
@@ -2648,9 +2666,11 @@ fn empty_response_outside_the_legal_terminals_still_errors() {
 
 #[test]
 fn empty_stop_sequence_response_naming_its_sequence_is_a_completed_turn() {
-    let parsed = empty_response_with(Some("stop_sequence"), Some("alpha"))
-        .normalize("anthropic")
-        .expect("a completed stop-sequence turn must not normalize into an error");
+    let parsed = fold_reply(
+        &serde_json::to_value(empty_response_with(Some("stop_sequence"), Some("alpha")))
+            .expect("serialize the wire type"),
+    )
+    .expect("a completed stop-sequence turn must not fold into an error");
 
     assert!(parsed.choice.is_empty());
     assert_eq!(parsed.finish_reason(), Some(completion::FinishReason::Stop));
@@ -2721,9 +2741,8 @@ fn end_turn_with_a_tool_call_is_reconciled_to_tool_calls() {
         },
     };
 
-    let parsed = response
-        .normalize("anthropic")
-        .expect("tool-use response should normalize");
+    let parsed = fold_reply(&serde_json::to_value(&response).expect("serialize the wire type"))
+        .expect("tool-use response should fold");
 
     assert_eq!(
         parsed.finish_reason(),
@@ -2978,16 +2997,18 @@ fn web_search_response_preserves_raw_blocks_and_citations() {
         ]
     });
 
-    let response: CompletionResponse = serde_json::from_value(value).unwrap();
-    // The wire response is consumed by the conversion, so read the
-    // provider-native text off it first.
-    let raw_text_response = response.text_response();
-    let converted = response.normalize("anthropic").unwrap();
+    let typed: CompletionResponse =
+        serde_json::from_value(value.clone()).expect("the body parses into the wire type");
+    assert_eq!(typed.content.len(), 3);
+    let converted = fold_reply(&value).expect("the hosted-tool reply folds");
     assert_eq!(converted.choice.len(), 3);
-    assert_eq!(
-        raw_text_response.as_deref(),
-        Some("Claude Shannon was born on April 30, 1916.")
-    );
+    // The answer's own text, which the hosted-tool blocks around it must
+    // not absorb.
+    let answer_text = match converted.choice.get(2) {
+        Some(message::AssistantContent::Text(text)) => text.text.clone(),
+        other => panic!("expected the text answer last, got {other:?}"),
+    };
+    assert_eq!(answer_text, "Claude Shannon was born on April 30, 1916.");
 
     let items = converted.choice.iter().collect::<Vec<_>>();
     let message::AssistantContent::Text(server_tool_use) = items[0] else {
@@ -3065,8 +3086,10 @@ fn web_search_tool_result_error_object_is_preserved_raw() {
         }]
     });
 
-    let response: CompletionResponse = serde_json::from_value(value).unwrap();
-    let converted = response.normalize("anthropic").unwrap();
+    let typed: CompletionResponse =
+        serde_json::from_value(value.clone()).expect("the body parses into the wire type");
+    assert_eq!(typed.content.len(), 1);
+    let converted = fold_reply(&value).expect("the reply folds");
     let Some(message::AssistantContent::Text(web_search_result)) = converted.choice.first() else {
         panic!("expected raw web_search_tool_result metadata");
     };
@@ -3170,8 +3193,10 @@ fn code_execution_tool_result_is_preserved_and_round_trips() {
         "content": [raw_block]
     });
 
-    let response: CompletionResponse = serde_json::from_value(value).unwrap();
-    let converted = response.normalize("anthropic").unwrap();
+    let typed: CompletionResponse =
+        serde_json::from_value(value.clone()).expect("the body parses into the wire type");
+    assert_eq!(typed.content.len(), 1);
+    let converted = fold_reply(&value).expect("the reply folds");
     let Some(message::AssistantContent::Text(code_execution_result)) = converted.choice.first()
     else {
         panic!("expected raw code_execution_tool_result metadata");
@@ -3280,69 +3305,6 @@ fn anthropic_citations_returns_empty_when_absent() {
 }
 
 #[test]
-fn content_text_with_citations_survives_assistant_conversion() {
-    let content = Content::Text {
-        text: "the grass is green".into(),
-        citations: vec![Citation::CharLocation(CharLocationCitation {
-            cited_text: "The grass is green.".into(),
-            document_index: 0,
-            document_title: None,
-            start_char_index: 0,
-            end_char_index: 20,
-        })],
-        cache_control: None,
-    };
-    let assistant: message::AssistantContent = content.try_into().unwrap();
-    let message::AssistantContent::Text(text) = assistant else {
-        panic!("expected text variant");
-    };
-    let recovered = anthropic_citations(&text).unwrap();
-    assert_eq!(recovered.len(), 1);
-}
-
-#[test]
-fn provider_text_response_concatenates_text_blocks_without_inserted_newlines() {
-    let response = CompletionResponse {
-        content: vec![
-            Content::Text {
-                text: "According to the document, ".into(),
-                citations: Vec::new(),
-                cache_control: None,
-            },
-            Content::Text {
-                text: "the grass is green".into(),
-                citations: Vec::new(),
-                cache_control: None,
-            },
-            Content::Text {
-                text: " and the sky is blue.".into(),
-                citations: Vec::new(),
-                cache_control: None,
-            },
-        ],
-        id: "msg_1".into(),
-        model: "claude-test".into(),
-        role: "assistant".into(),
-        stop_reason: Some("end_turn".into()),
-        stop_sequence: None,
-        provider_request_id: None,
-        usage: Usage {
-            input_tokens: 1,
-            cache_read_input_tokens: None,
-            cache_creation_input_tokens: None,
-            cache_creation: None,
-            output_tokens: 1,
-            output_tokens_details: None,
-        },
-    };
-
-    assert_eq!(
-        response.text_response().as_deref(),
-        Some("According to the document, the grass is green and the sky is blue.")
-    );
-}
-
-#[test]
 fn assistant_text_citations_survive_anthropic_request_conversion() {
     let assistant = message::Message::Assistant {
         id: None,
@@ -3434,24 +3396,13 @@ fn document_additional_params_forward_to_anthropic_document() {
 
 #[tokio::test]
 async fn completion_http_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::anthropic::Client;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
-    let http_client =
-        RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model(CLAUDE_SONNET_4_6);
-    let request = model.completion_request("hello").build();
+    let http = RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
+    let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
 
-    let error = model
-        .completion(request)
+    let error = crate::driver::call(&wire, &http, hello_request(), None)
         .await
         .expect_err("completion should fail with non-success status");
 
@@ -3469,60 +3420,45 @@ async fn completion_http_non_success_preserves_status_and_body() {
 
 #[tokio::test]
 async fn completion_2xx_error_envelope_preserves_status_and_body() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::anthropic::Client;
     use crate::test_utils::RecordingHttpClient;
 
-    // Anthropic's `ApiResponse` is internally tagged on `type`; the `Error`
-    // arm flattens `ApiErrorResponse { message }`, so a 200-OK error envelope
-    // deserializes from `{"type":"error","message":"..."}` and routes through
-    // `from_http_response(OK, ..)` into `ProviderResponse`.
-    let body = r#"{"type":"error","message":"model overloaded"}"#;
-    let http_client = RecordingHttpClient::new(body); // 200 OK
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model(CLAUDE_SONNET_4_6);
-    let request = model.completion_request("hello").build();
+    // Anthropic answers an in-band failure with its top-level error
+    // envelope, and it can arrive under a 200: the decoder models `error`
+    // as an event of the Messages wire, so the envelope routes through the
+    // same `ProviderResponse` funnel as a rejected status rather than
+    // reading as a corrupt frame.
+    //
+    // The body is asserted byte-for-byte, in the key order Anthropic's
+    // recorded replies use, and carries the top-level `request_id` the
+    // envelope type does not model: a preserved reply that Rig rebuilt from
+    // the fields it happens to parse is not the provider's reply. The
+    // status is the driver's — a success at the transport layer is still a
+    // status the caller must see.
+    let body = r#"{"error":{"message":"model overloaded","type":"overloaded_error"},"request_id":"req_011CXYZ","type":"error"}"#;
+    let http = RecordingHttpClient::new(body); // 200 OK
+    let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
 
-    let error = model
-        .completion(request)
+    let error = crate::driver::call(&wire, &http, hello_request(), None)
         .await
         .expect_err("completion should fail with provider error envelope");
 
-    match &error {
-        CompletionError::ProviderResponse(stored) => {
-            assert_eq!(stored.body, body);
-            assert_eq!(stored.status, Some(http::StatusCode::OK));
-            assert_eq!(error.provider_response_body(), Some(body));
-            assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
-        }
-        other => panic!("expected ProviderResponse, got {other:?}"),
-    }
+    assert!(matches!(error, CompletionError::ProviderResponse(_)));
+    assert_eq!(error.provider_response_body(), Some(body));
+    assert_eq!(error.provider_response_status(), Some(http::StatusCode::OK));
 }
 
 #[tokio::test]
 async fn completion_streaming_http_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::anthropic::Client;
     use crate::test_utils::HttpErrorStreamingClient;
     use futures::StreamExt;
 
     let body = r#"{"type":"error","error":{"type":"overloaded_error","message":"slow down"}}"#;
-    let http_client = HttpErrorStreamingClient::new(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model(CLAUDE_SONNET_4_6);
-    let request = model.completion_request("hello").build();
+    let http = HttpErrorStreamingClient::new(http::StatusCode::SERVICE_UNAVAILABLE, body);
+    let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
 
-    let mut stream = model.stream(request).await.expect("stream should start");
+    let stream = crate::driver::stream(&wire, &http, hello_request(), None)
+        .expect("the streamed request encodes");
+    let mut stream = Box::pin(stream);
 
     // The transport failure surfaces as the first error item yielded by the stream.
     let error = loop {
@@ -3535,24 +3471,16 @@ async fn completion_streaming_http_non_success_preserves_status_and_body() {
 
     // A rejected SSE handshake is the provider's reply, classified like the
     // unary driver's and the in-band envelopes': one funnel.
-    assert_eq!(error.kind, crate::error::ErrorKind::ProviderResponse);
+    assert!(matches!(error, CompletionError::ProviderResponse(_)));
     assert_eq!(
-        error.http_status,
-        Some(http::StatusCode::SERVICE_UNAVAILABLE.as_u16())
+        error.provider_response_status(),
+        Some(http::StatusCode::SERVICE_UNAVAILABLE)
     );
-    assert!(
-        error.message.contains(body),
-        "the preserved body must reach the consumer: {}",
-        error.message
-    );
+    assert_eq!(error.provider_response_body(), Some(body));
 
     // The transport failure ends the stream: nothing may follow it that
     // would read as a successfully completed turn.
     assert!(stream.next().await.is_none());
-    assert!(
-        stream.response.is_none(),
-        "a stream cut short by a transport error must not synthesize a terminal record"
-    );
 }
 
 #[test]
@@ -3612,26 +3540,23 @@ fn url_pdf_with_or_without_media_type_converts_to_url_document_source() {
     }
 }
 
-/// Raw-capture tests: the `normalize` shape through the Anthropic model,
-/// driven end to end over a mock transport that hands back a Messages body
-/// *and* a `request-id` response header. Anthropic's raw type carries the
-/// transport id itself (`CompletionResponse::provider_request_id`, stamped
-/// by the driver), which is why the Part A contract here is a plain
-/// `raw_completion` → `normalize`, with no id to reattach.
+/// Raw-capture tests: `CompletionResponse::raw` driven end to end over a
+/// mock transport that hands back a Messages body *and* a `request-id`
+/// response header. `raw` is the verbatim reply document — not a
+/// re-serialization of the parsed type — so it answers what the normalized
+/// response does not, and the transport id the driver read off the headers
+/// reaches the normalized response rather than the document.
 /// `with_error_response_headers` with `200 OK` is the one unary double
 /// that carries response headers.
 mod raw_capture {
     use super::*;
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::anthropic::Client;
     use crate::test_utils::RecordingHttpClient;
 
     const REQUEST_ID: &str = "req_unit_anthropic_0001";
 
     /// A Messages body whose `stop_sequence` is set: the normalized
     /// response maps it to `FinishReason::Stop` and drops which sequence
-    /// fired, so the capture provably answers more than `completion()`.
+    /// fired, so the capture provably answers more than the fold does.
     const BODY: &str = r#"{
             "id": "msg_raw_1",
             "type": "message",
@@ -3643,91 +3568,56 @@ mod raw_capture {
             "usage": {"input_tokens": 7, "output_tokens": 2}
         }"#;
 
-    fn model() -> CompletionModel<RecordingHttpClient> {
+    fn http() -> RecordingHttpClient {
         let mut headers = http::HeaderMap::new();
         headers.insert("request-id", http::HeaderValue::from_static(REQUEST_ID));
-        let http_client =
-            RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers);
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        client.completion_model(CLAUDE_SONNET_4_6)
+        RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers)
     }
 
-    /// The load-bearing capture property: `raw` is Anthropic's
-    /// `CompletionResponse` as rig parsed it — it deserializes back into
-    /// that type and re-serializes to the identical value, including the
-    /// transport id the driver stamped onto the raw type — and
-    /// re-normalizing that capture reproduces every normalized field, so
-    /// `raw` and the typed route tell one story. Also reads
-    /// `stop_sequence` off the capture, which the normalized response does
-    /// not carry.
+    /// The load-bearing capture property: `raw` is the reply Anthropic
+    /// sent, verbatim — it still carries the `type` tag the wire type does
+    /// not model, which is how you can tell it is the document and not a
+    /// projection of it — it deserializes into Anthropic's own
+    /// `CompletionResponse`, and it answers `stop_sequence`, which the
+    /// normalized response drops.
     #[tokio::test]
     async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
-        let model = model();
-
-        let response = model
-            .completion(model.completion_request("hello").build())
+        let wire = Anthropic::new("test-key").messages(CLAUDE_SONNET_4_6);
+        let response = crate::driver::call(&wire, &http(), hello_request(), None)
             .await
             .expect("completion");
 
         let raw = &response.raw;
+        assert_eq!(
+            raw["type"], "message",
+            "raw must be the verbatim reply, tag included"
+        );
         let typed: CompletionResponse =
             serde_json::from_value(raw.clone()).expect("raw must deserialize");
-        assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the wire type serializes to"
-        );
+        assert_eq!(typed.id, "msg_raw_1");
+        assert_eq!(typed.model, "claude-sonnet-4-6");
+        assert_eq!(typed.stop_reason.as_deref(), Some("stop_sequence"));
         assert_eq!(typed.stop_sequence.as_deref(), Some("alpha"));
-        assert_eq!(typed.provider_request_id.as_deref(), Some(REQUEST_ID));
+        assert_eq!(typed.usage.input_tokens, 7);
+        assert_eq!(typed.usage.output_tokens, 2);
         assert_eq!(raw["stop_sequence"], "alpha");
 
-        let renormalized = typed
-            .normalize(<crate::providers::anthropic::client::Anthropic as AnthropicCompatibleProvider>::PROVIDER_NAME)
-            .expect("re-normalize the capture");
-        assert_eq!(response.identity(), renormalized.identity());
-        assert_eq!(response.finish_reason(), renormalized.finish_reason());
-        assert_eq!(response.model, renormalized.model);
-        assert_eq!(response.usage, renormalized.usage);
-        assert_eq!(response.choice, renormalized.choice);
+        // The transport id is not part of any reply document; the driver
+        // read it off the `request-id` header and stamped the normalized
+        // response with it.
+        assert!(
+            raw.get("provider_request_id").is_none(),
+            "the document carries no transport id"
+        );
+        assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
+
+        // The normalized response reports the reason and drops which
+        // sequence fired — the whole reason `raw` is worth capturing.
         assert_eq!(
             response.finish_reason(),
             Some(completion::FinishReason::Stop)
         );
-        assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
-    }
-
-    /// Part A contract statement for a provider whose raw type carries the
-    /// transport id: `raw_completion` → `normalize` reproduces
-    /// `completion()` on identity, finish reason, model and usage — the id
-    /// included — with nothing to reattach.
-    #[tokio::test]
-    async fn raw_completion_then_normalize_reproduces_completion() {
-        let model = model();
-
-        let raw = model
-            .raw_completion(model.completion_request("hello").build())
-            .await
-            .expect("typed route");
-        assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
-        let reassembled = raw
-            .normalize(<crate::providers::anthropic::client::Anthropic as AnthropicCompatibleProvider>::PROVIDER_NAME)
-            .expect("normalize");
-
-        let normalized = model
-            .completion(model.completion_request("hello").build())
-            .await
-            .expect("normalized route");
-
-        assert_eq!(reassembled.identity(), normalized.identity());
-        assert_eq!(reassembled.finish_reason(), normalized.finish_reason());
-        assert_eq!(reassembled.model, normalized.model);
-        assert_eq!(reassembled.usage, normalized.usage);
-        assert_eq!(reassembled.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
+        assert_eq!(response.model.as_deref(), Some("claude-sonnet-4-6"));
     }
 }
 
@@ -3748,6 +3638,18 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         })
         .unwrap();
         assert_adapter_pairs(serde_json::to_value(wire).unwrap());
+    }
+}
+
+/// The history shape a decoded server-tool block takes: an empty text block
+/// carrying the verbatim block under the wire's own key.
+fn raw_content_text(content: &Content) -> message::Text {
+    message::Text {
+        text: String::new(),
+        additional_params: crate::message::AdditionalParams::from_entries([(
+            ANTHROPIC_RAW_CONTENT_KEY,
+            serde_json::to_value(content).unwrap(),
+        )]),
     }
 }
 
@@ -3776,12 +3678,8 @@ fn request_reserves_raw_server_tool_handles_without_rewriting_them() {
             id: None,
             content: vec![
                 message::AssistantContent::ToolCall(local.clone()),
-                message::AssistantContent::Text(
-                    anthropic_raw_content_to_message_text(raw_call.clone()).unwrap(),
-                ),
-                message::AssistantContent::Text(
-                    anthropic_raw_content_to_message_text(raw_result.clone()).unwrap(),
-                ),
+                message::AssistantContent::Text(raw_content_text(&raw_call)),
+                message::AssistantContent::Text(raw_content_text(&raw_result)),
             ],
         },
         message::Message::User {

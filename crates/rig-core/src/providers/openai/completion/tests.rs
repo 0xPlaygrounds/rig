@@ -80,7 +80,6 @@ fn minted_tool_ids_replay_as_a_consistent_pair() {
 
 use super::*;
 use crate::completion::CompletionRequestBuilder;
-use crate::telemetry::ProviderResponseExt;
 use crate::test_utils::MockCompletionModel;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -148,43 +147,14 @@ fn mixed_user_content_preserves_order_around_tool_results() {
 }
 
 #[test]
-fn video_data_uri_with_unrecognized_mime_round_trips_as_url() {
+fn video_url_with_unrecognized_mime_stays_a_url_on_the_wire() {
     let original = "data:video/quicktime;base64,AAAA";
-    let openai_content = UserContent::Video {
-        video_url: VideoUrl {
-            url: original.to_string(),
-        },
-    };
-
-    let rig_content: message::UserContent = openai_content.into();
-    // Unrecognized MIME: kept as a URL source, not decomposed.
-    assert!(matches!(
-        &rig_content,
-        message::UserContent::Video(video)
-            if matches!(&video.data, message::DocumentSourceKind::Url(url) if url == original)
-    ));
+    let rig_content = message::UserContent::video_url(original.to_string(), None);
 
     let back = UserContent::try_from(rig_content).expect("video should convert back");
     assert!(matches!(
         back,
         UserContent::Video { video_url } if video_url.url == original
-    ));
-}
-
-#[test]
-fn video_data_uri_with_known_mime_decomposes_to_base64() {
-    let openai_content = UserContent::Video {
-        video_url: VideoUrl {
-            url: "data:video/mp4;base64,AAAA".to_string(),
-        },
-    };
-
-    let rig_content: message::UserContent = openai_content.into();
-    assert!(matches!(
-        &rig_content,
-        message::UserContent::Video(video)
-            if video.media_type == Some(crate::message::VideoMediaType::MP4)
-                && matches!(&video.data, message::DocumentSourceKind::Base64(data) if data == "AAAA")
     ));
 }
 
@@ -268,11 +238,13 @@ fn sanitize_plain_text_history_merges_consecutive_assistant_messages() {
 #[test]
 fn tool_result_array_content_preserves_multiple_text_blocks() {
     let request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: request_with_multi_block_tool_result(),
         strict_tools: false,
         tool_result_array_content: true,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -304,11 +276,13 @@ fn tool_result_array_content_preserves_multiple_text_blocks() {
 #[test]
 fn tool_result_string_content_flattens_multiple_text_blocks() {
     let request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: request_with_multi_block_tool_result(),
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -374,11 +348,13 @@ fn test_openai_request_uses_request_model_override() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -408,11 +384,13 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
         };
     let convert = |request| {
         CompletionRequest::try_from(OpenAIRequestParams {
+            reasoning_details: false,
             model: "gpt-4o-mini".to_string(),
             request,
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            response_format_with_tools: false,
             supports_image_tool_results: false,
             supports_tools: true,
         })
@@ -451,11 +429,13 @@ fn test_openai_request_uses_default_model_when_override_unset() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -477,11 +457,13 @@ fn openai_chat_request_keeps_documents_after_system_messages() {
         .build();
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -536,11 +518,13 @@ fn openai_chat_direct_request_keeps_documents_after_system_messages() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -575,7 +559,7 @@ fn assistant_reasoning_alone_is_dropped() {
     let assistant_content = vec![message::AssistantContent::reasoning("hidden")];
 
     let converted: Vec<Message> =
-        assistant_content_to_messages(assistant_content).expect("conversion should work");
+        assistant_content_to_messages(assistant_content, false).expect("conversion should work");
 
     assert!(converted.is_empty());
 }
@@ -597,7 +581,7 @@ fn assistant_reasoning_is_attached_to_tool_call_message() {
     ];
 
     let converted: Vec<Message> =
-        assistant_content_to_messages(assistant_content).expect("conversion should work");
+        assistant_content_to_messages(assistant_content, false).expect("conversion should work");
     assert_eq!(converted.len(), 1);
 
     match &converted[0] {
@@ -629,78 +613,38 @@ fn assistant_reasoning_is_attached_to_tool_call_message() {
     assert_eq!(json["reasoning_content"], "hidden");
 }
 
+/// The raw text view of an assistant turn joins its non-empty parts in
+/// order, refusal parts included. This is the helper every unary path on
+/// this wire reads text through.
 #[test]
-fn assistant_reasoning_roundtrips_back_to_rig_message() {
-    let assistant = Message::Assistant {
-        content: vec![AssistantContent::Text {
-            text: "visible".to_string(),
-        }],
-        reasoning: Some("hidden".to_string()),
+fn assistant_message_text_joins_every_non_empty_part() {
+    let message = Message::Assistant {
+        content: vec![
+            AssistantContent::Text {
+                text: "first".to_owned(),
+            },
+            AssistantContent::Refusal {
+                refusal: "second".to_owned(),
+            },
+            AssistantContent::Text {
+                text: "third".to_owned(),
+            },
+        ],
+        reasoning: Some("hidden".to_owned()),
         refusal: None,
-        audio: None,
         name: None,
         tool_calls: vec![],
         reasoning_details: vec![],
-        images: vec![],
-    };
-
-    let rig_msg: message::Message = assistant.try_into().expect("convert back");
-
-    let message::Message::Assistant { content, .. } = rig_msg else {
-        panic!("expected assistant");
-    };
-
-    let items: Vec<_> = content.into_iter().collect();
-    assert_eq!(items.len(), 2);
-    assert!(matches!(items[0], message::AssistantContent::Reasoning(_)));
-    assert!(matches!(items[1], message::AssistantContent::Text(_)));
-}
-
-#[test]
-fn provider_response_text_response_reads_assistant_multipart_output() {
-    let response = CompletionResponse {
-        id: "resp_123".to_owned(),
-        object: "chat.completion".to_owned(),
-        created: 0,
-        model: GPT_4O.to_owned(),
-        system_fingerprint: None,
-        service_tier: None,
-        choices: vec![Choice {
-            index: 0,
-            message: Message::Assistant {
-                content: vec![
-                    AssistantContent::Text {
-                        text: "first".to_owned(),
-                    },
-                    AssistantContent::Refusal {
-                        refusal: "second".to_owned(),
-                    },
-                    AssistantContent::Text {
-                        text: "third".to_owned(),
-                    },
-                ],
-                reasoning: Some("hidden".to_owned()),
-                refusal: None,
-                audio: None,
-                name: None,
-                tool_calls: vec![],
-                reasoning_details: vec![],
-                images: vec![],
-            },
-            logprobs: None,
-            finish_reason: "stop".to_owned(),
-        }],
-        usage: None,
     };
 
     assert_eq!(
-        response.text_response(),
+        assistant_message_text_response(&message),
         Some("first\nsecond\nthird".to_owned())
     );
 }
 
 #[test]
-fn raw_completion_response_retains_service_tier() {
+fn completion_response_retains_service_tier() {
     let response: CompletionResponse = serde_json::from_value(json!({
         "id": "chatcmpl-tier",
         "object": "chat.completion",
@@ -719,90 +663,152 @@ fn raw_completion_response_retains_service_tier() {
     assert_eq!(response.service_tier.as_deref(), Some("priority"));
 }
 
-#[test]
-fn provider_response_text_response_falls_back_to_assistant_refusal_field() {
-    let response = CompletionResponse {
-        id: "resp_123".to_owned(),
-        object: "chat.completion".to_owned(),
-        created: 0,
-        model: GPT_4O.to_owned(),
-        system_fingerprint: None,
-        service_tier: None,
-        choices: vec![Choice {
-            index: 0,
-            message: Message::Assistant {
-                content: vec![],
-                reasoning: None,
-                refusal: Some("blocked".to_owned()),
-                audio: None,
-                name: None,
-                tool_calls: vec![],
-                reasoning_details: vec![],
-                images: vec![],
-            },
-            logprobs: None,
-            finish_reason: "stop".to_owned(),
-        }],
-        usage: None,
-    };
+fn usage(body: Value) -> crate::completion::Usage {
+    serde_json::from_value::<Usage>(body)
+        .expect("chat-completions usage should deserialize")
+        .to_normalized()
+}
 
-    assert_eq!(response.text_response(), Some("blocked".to_owned()));
+/// A gateway fronting an upstream that bills cache writes (OpenRouter over
+/// Anthropic) reports them as `prompt_tokens_details.cache_write_tokens`;
+/// they are the normalized `cache_creation_input_tokens`.
+#[test]
+fn usage_maps_cache_token_accounting() {
+    let converted = usage(json!({
+        "prompt_tokens": 500,
+        "completion_tokens": 10,
+        "total_tokens": 510,
+        "prompt_tokens_details": {"cached_tokens": 400, "cache_write_tokens": 50}
+    }));
+
+    assert_eq!(converted.input_tokens, Some(500));
+    assert_eq!(converted.output_tokens, Some(10));
+    assert_eq!(converted.cached_input_tokens, Some(400));
+    assert_eq!(converted.cache_creation_input_tokens, Some(50));
+}
+
+/// A counter the provider did not send stays `None`: OpenAI's own detail
+/// block has no `cache_write_tokens`, and a reply with no detail block has
+/// neither cache counter.
+#[test]
+fn usage_cache_counters_absent_are_unreported() {
+    let openai = usage(json!({
+        "prompt_tokens": 100,
+        "completion_tokens": 10,
+        "total_tokens": 110,
+        "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 0}
+    }));
+    assert_eq!(openai.cached_input_tokens, Some(0));
+    assert_eq!(openai.cache_creation_input_tokens, None);
+
+    let bare = usage(json!({
+        "prompt_tokens": 100,
+        "completion_tokens": 10,
+        "total_tokens": 110
+    }));
+    assert_eq!(bare.cached_input_tokens, None);
+    assert_eq!(bare.cache_creation_input_tokens, None);
+}
+
+/// Mistral reports cache hits as the structured block and as a top-level
+/// `num_cached_tokens`, sometimes on its own. The structured count wins when
+/// both are present. Its embeddings reply also carries the singular
+/// `prompt_token_details` (`null`) *beside* the plural key — the live shape
+/// that rules out a serde alias — and must still decode.
+#[test]
+fn usage_prefers_structured_cached_tokens_and_falls_back() {
+    let structured = usage(json!({
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+        "num_cached_tokens": 2,
+        "prompt_tokens_details": {"cached_tokens": 7}
+    }));
+    assert_eq!(structured.cached_input_tokens, Some(7));
+
+    let fallback = usage(json!({
+        "prompt_tokens": 10,
+        "completion_tokens": 5,
+        "total_tokens": 15,
+        "num_cached_tokens": 2
+    }));
+    assert_eq!(fallback.cached_input_tokens, Some(2));
+
+    let both_spellings = usage(json!({
+        "completion_tokens": 0,
+        "prompt_token_details": null,
+        "prompt_tokens": 42,
+        "prompt_tokens_details": null,
+        "total_tokens": 42
+    }));
+    assert_eq!(both_spellings.input_tokens, Some(42));
+    assert_eq!(both_spellings.cached_input_tokens, None);
+}
+
+/// Mistral's Voxtral models report audio *beside* `prompt_tokens`, so the
+/// input count is the sum; a text turn's detail block is unaffected. The
+/// numbers are a live Voxtral turn's, quoted verbatim.
+#[test]
+fn usage_counts_audio_tokens_reported_beside_the_prompt_as_input() {
+    let voxtral = usage(json!({
+        "prompt_audio_seconds": 0,
+        "prompt_tokens": 6,
+        "completion_tokens": 2,
+        "total_tokens": 383,
+        "prompt_tokens_details": {"cached_tokens": 0, "audio_tokens": 375}
+    }));
+    assert_eq!(voxtral.input_tokens, Some(381));
+    assert_eq!(voxtral.output_tokens, Some(2));
+    assert_eq!(
+        voxtral.total_tokens,
+        Some(381 + 2),
+        "the parts must add up to the total Mistral reported"
+    );
+
+    let text = usage(json!({
+        "prompt_tokens": 19,
+        "completion_tokens": 2,
+        "total_tokens": 21,
+        "prompt_tokens_details": {"cached_tokens": 0}
+    }));
+    assert_eq!(text.input_tokens, Some(19));
 }
 
 /// One chat-completions turn, built from the wire shape a structured-output
 /// refusal actually has (`content: null` beside a top-level `refusal`).
-fn refusal_response(body: Value) -> CompletionResponse {
-    serde_json::from_value(json!({
-        "id": "chatcmpl-refusal",
-        "object": "chat.completion",
-        "created": 0,
-        "model": GPT_4O,
-        "choices": [{ "index": 0, "message": body, "finish_reason": "stop" }],
-    }))
-    .expect("the refusal wire shape must deserialize")
+fn refusal_message(body: Value) -> Message {
+    serde_json::from_value(body).expect("the refusal wire shape must deserialize")
 }
 
-fn normalized_text(response: CompletionResponse) -> Vec<completion::AssistantContent> {
-    use crate::completion::NormalizeCompletionResponse;
-
-    response
-        .normalize("openai")
-        .expect("a refusal turn must normalize")
-        .choice
+/// The fallback as every reader of this wire applies it: the message's own
+/// parts decide, and the top-level `refusal` is the turn's text only when
+/// they carry nothing.
+fn fallback(message: &Message) -> Option<String> {
+    let Message::Assistant {
+        content, refusal, ..
+    } = message
+    else {
+        panic!("assistant message expected");
+    };
+    assistant_refusal_fallback(content, refusal.as_deref()).map(str::to_owned)
 }
 
 #[test]
-fn refusal_sibling_of_null_content_becomes_assistant_text() {
-    let response = refusal_response(json!({
+fn refusal_sibling_of_null_content_is_the_turns_text() {
+    let message = refusal_message(json!({
         "role": "assistant",
         "content": null,
         "refusal": "I'm sorry, I can't help with that."
     }));
 
     assert_eq!(
-        normalized_text(response),
-        vec![completion::AssistantContent::text(
-            "I'm sorry, I can't help with that."
-        )]
+        fallback(&message).as_deref(),
+        Some("I'm sorry, I can't help with that.")
     );
-}
-
-/// The raw text view and the normalized response must not disagree about
-/// whether the turn said anything — the disagreement was the bug.
-#[test]
-fn refusal_raw_and_normalized_views_agree() {
-    let message = json!({
-        "role": "assistant",
-        "content": null,
-        "refusal": "I'm sorry, I can't help with that."
-    });
-    let raw_text = refusal_response(message.clone())
-        .text_response()
-        .expect("raw text view");
-
     assert_eq!(
-        normalized_text(refusal_response(message)),
-        vec![completion::AssistantContent::text(raw_text)]
+        assistant_message_text_response(&message).as_deref(),
+        Some("I'm sorry, I can't help with that."),
+        "the raw text view routes through the same rule"
     );
 }
 
@@ -810,162 +816,49 @@ fn refusal_raw_and_normalized_views_agree() {
 /// turn with both never duplicates its text.
 #[test]
 fn refusal_beside_non_empty_content_does_not_duplicate() {
-    let response = refusal_response(json!({
+    let message = refusal_message(json!({
         "role": "assistant",
         "content": "here is the answer",
         "refusal": "I'm sorry, I can't help with that."
     }));
 
+    assert_eq!(fallback(&message), None);
     assert_eq!(
-        normalized_text(response),
-        vec![completion::AssistantContent::text("here is the answer")]
+        assistant_message_text_response(&message).as_deref(),
+        Some("here is the answer")
     );
 }
 
-/// An empty `refusal` is not content: the turn stays an empty-response
-/// error rather than gaining a fabricated empty text block.
+/// An empty `refusal` is not content: the turn stays empty rather than
+/// gaining a fabricated empty text block.
 #[test]
 fn empty_refusal_is_not_content() {
-    use crate::completion::NormalizeCompletionResponse;
-
-    let response = refusal_response(json!({
+    let message = refusal_message(json!({
         "role": "assistant",
         "content": null,
         "refusal": ""
     }));
 
-    assert!(response.normalize("openai").is_err());
-}
-
-/// A refusal beside tool calls keeps both — the fallback is about the
-/// message's *text*, and tool calls are appended as before.
-#[test]
-fn refusal_beside_tool_calls_keeps_both() {
-    let response = refusal_response(json!({
-        "role": "assistant",
-        "content": null,
-        "refusal": "I'm sorry, I can't help with that.",
-        "tool_calls": [{
-            "id": "call_1",
-            "type": "function",
-            "function": { "name": "lookup", "arguments": "{}" }
-        }]
-    }));
-
-    let content = normalized_text(response);
-    assert_eq!(content.len(), 2);
-    assert_eq!(
-        content.first(),
-        Some(&completion::AssistantContent::text(
-            "I'm sorry, I can't help with that."
-        ))
-    );
-    assert!(matches!(
-        content.get(1),
-        Some(completion::AssistantContent::ToolCall(_))
-    ));
+    assert_eq!(fallback(&message), None);
+    assert_eq!(assistant_message_text_response(&message), None);
 }
 
 /// The Responses-shaped `refusal` **content part** is not what chat
 /// completions sends, but the model still accepts it — and it must not
 /// also trigger the sibling fallback.
 #[test]
-fn refusal_content_part_still_maps_to_text_without_the_fallback() {
-    let response = refusal_response(json!({
+fn refusal_content_part_suppresses_the_sibling_fallback() {
+    let message = refusal_message(json!({
         "role": "assistant",
         "content": [{ "type": "refusal", "refusal": "part refusal" }],
         "refusal": "sibling refusal"
     }));
 
+    assert_eq!(fallback(&message), None);
     assert_eq!(
-        normalized_text(response),
-        vec![completion::AssistantContent::text("part refusal")]
+        assistant_message_text_response(&message).as_deref(),
+        Some("part refusal")
     );
-}
-
-/// The history round trip: a stored refusal-only assistant message used to
-/// fail conversion outright.
-#[test]
-fn refusal_only_message_converts_into_rig_history() {
-    let wire: Message = serde_json::from_value(json!({
-        "role": "assistant",
-        "content": null,
-        "refusal": "I'm sorry, I can't help with that."
-    }))
-    .expect("wire message");
-
-    let converted = message::Message::try_from(wire).expect("history conversion");
-
-    assert_eq!(
-        converted,
-        message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::text(
-                "I'm sorry, I can't help with that."
-            )],
-        }
-    );
-}
-
-/// `"content": ""` decodes to a *present but empty* text part, so the
-/// fallback and the parts must be either/or: appending both would put an
-/// empty text block back on the wire beside the refusal and make this view
-/// of the message disagree with the one `normalize` builds.
-#[test]
-fn refusal_beside_an_empty_content_string_converts_to_the_refusal_alone() {
-    let wire: Message = serde_json::from_value(json!({
-        "role": "assistant",
-        "content": "",
-        "refusal": "I'm sorry, I can't help with that."
-    }))
-    .expect("wire message");
-
-    let converted = message::Message::try_from(wire).expect("history conversion");
-
-    assert_eq!(
-        converted,
-        message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::text(
-                "I'm sorry, I can't help with that."
-            )],
-        },
-        "the empty part must not ride along beside the refusal"
-    );
-}
-
-/// The other side of that branch: content that carries text keeps every
-/// part, and the refusal is not appended.
-#[test]
-fn refusal_beside_real_content_converts_to_the_content_alone() {
-    let wire: Message = serde_json::from_value(json!({
-        "role": "assistant",
-        "content": "here is the answer",
-        "refusal": "I'm sorry, I can't help with that."
-    }))
-    .expect("wire message");
-
-    let converted = message::Message::try_from(wire).expect("history conversion");
-
-    assert_eq!(
-        converted,
-        message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::text("here is the answer")],
-        }
-    );
-}
-
-#[test]
-fn refusal_only_message_with_empty_refusal_still_fails_conversion() {
-    let wire: Message = serde_json::from_value(json!({
-        "role": "assistant",
-        "content": null,
-        "refusal": ""
-    }))
-    .expect("wire message");
-
-    assert!(message::Message::try_from(wire).is_err());
 }
 
 #[test]
@@ -984,11 +877,13 @@ fn test_max_tokens_is_forwarded_to_request() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1001,6 +896,7 @@ fn test_max_tokens_is_forwarded_to_request() {
 /// A chat-completions request whose only interesting property is the cap.
 fn capped_request(max_tokens: Option<u64>, additional_params: Option<Value>) -> CompletionRequest {
     CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: crate::completion::CompletionRequest {
             model: None,
@@ -1017,6 +913,7 @@ fn capped_request(max_tokens: Option<u64>, additional_params: Option<Value>) -> 
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1146,15 +1043,6 @@ fn modern_output_cap_covers_exactly_the_reasoning_families() {
     }
 }
 
-/// The predicate is what the provider extension actually consults.
-#[test]
-fn openai_extension_asks_for_the_modern_cap_only_on_reasoning_models() {
-    let ext = super::super::OpenAICompletions::default();
-
-    assert!(ext.requires_modern_output_cap("gpt-5-nano"));
-    assert!(!ext.requires_modern_output_cap(GPT_4O_MINI));
-}
-
 #[test]
 fn test_max_tokens_omitted_when_none() {
     let request = crate::completion::CompletionRequest {
@@ -1171,11 +1059,13 @@ fn test_max_tokens_omitted_when_none() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1224,11 +1114,13 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1265,11 +1157,13 @@ fn request_conversion_errors_when_all_messages_are_filtered() {
     };
 
     let result = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     });
@@ -1316,11 +1210,13 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1386,11 +1282,13 @@ fn request_conversion_restores_response_format_after_tool_result() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1424,11 +1322,9 @@ fn deserialize_llama_cpp_tool_call() {
             "id": "xxx"
         }
         "#;
-    let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("the llama.cpp-shaped reply should decode");
 
-    let ApiResponse::Ok(response) = response else {
-        panic!("expected successful completion response");
-    };
     assert_eq!(response.choices.len(), 1);
 
     let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
@@ -1463,11 +1359,9 @@ fn deserialize_openai_stringified_tool_call() {
             "id": "xxx"
         }
         "#;
-    let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("the OpenAI-shaped reply should decode");
 
-    let ApiResponse::Ok(response) = response else {
-        panic!("expected successful completion response");
-    };
     assert_eq!(response.choices.len(), 1);
 
     let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
@@ -1512,13 +1406,15 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         }
         "#;
 
-    let ApiResponse::Ok(response) =
-        serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap()
-    else {
-        panic!("expected successful completion response");
-    };
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("the truncated turn should survive decode");
 
-    let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
+    let Message::Assistant {
+        content,
+        tool_calls,
+        ..
+    } = &response.choices[0].message
+    else {
         panic!("expected assistant message");
     };
     assert_eq!(
@@ -1526,32 +1422,17 @@ fn truncated_tool_arguments_do_not_destroy_the_response() {
         1,
         "the unusable call is dropped at decode; the complete one survives"
     );
+    assert_eq!(tool_calls[0].function.name, "page");
 
-    let converted = response.normalize("openai").unwrap();
-
-    assert_eq!(
-        converted.finish_reason(),
-        Some(crate::completion::FinishReason::Length)
-    );
-    assert_eq!(converted.usage.total_tokens, Some(396));
-    assert_eq!(converted.response_id.as_deref(), Some("chatcmpl-truncated"));
-    let names = converted
-        .choice
-        .iter()
-        .filter_map(|content| match content {
-            completion::AssistantContent::ToolCall(call) => Some(call.function.name.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(names, vec!["page"], "only the truncated call is dropped");
-    assert!(
-        converted.choice.iter().any(|content| matches!(
-            content,
-            completion::AssistantContent::Text(text) if text.text == "Acknowledged."
-        )),
-        "the turn's text survives: {:?}",
-        converted.choice
-    );
+    // The rest of the turn is untouched: the text, the usage, the id and
+    // the terminal reason all survive the dropped call.
+    assert!(matches!(
+        content.as_slice(),
+        [AssistantContent::Text { text }] if text == "Acknowledged."
+    ));
+    assert_eq!(response.choices[0].finish_reason, "length");
+    assert_eq!(response.usage.expect("usage").total_tokens, 396);
+    assert_eq!(response.id, "chatcmpl-truncated");
 }
 
 fn response_with_tool_call(finish_reason: &str, call: serde_json::Value) -> serde_json::Value {
@@ -1668,14 +1549,12 @@ fn tolerant_tool_arguments_leave_complete_payloads_alone() {
         }
         "#;
 
-    let ApiResponse::Ok(response) =
-        serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap()
-    else {
-        panic!("expected successful completion response");
-    };
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("every complete call should survive decode");
     let Message::Assistant { tool_calls, .. } = &response.choices[0].message else {
         panic!("expected assistant message");
     };
+    assert_eq!(tool_calls.len(), 4, "every completed call survives");
     assert_eq!(tool_calls[0].function.arguments, serde_json::json!({}));
     assert_eq!(
         tool_calls[1].function.arguments,
@@ -1692,24 +1571,15 @@ fn tolerant_tool_arguments_leave_complete_payloads_alone() {
         serde_json::Value::Null,
         "and the same for a bare JSON null in the non-string branch"
     );
-
-    let converted = response.normalize("openai").unwrap();
-    assert_eq!(
-        converted
-            .choice
-            .iter()
-            .filter(|content| matches!(content, completion::AssistantContent::ToolCall(_)))
-            .count(),
-        4,
-        "every completed parameterless call survives"
-    );
 }
 
 /// The Doubleword reasoning tool-loop cassette exposed text-before-reasoning
-/// in this shared unary converter. A controlled reply pins both fields even
-/// when a live model chooses not to produce reasoning for a simple prompt.
+/// in the shared unary converter. The ordering itself is the chat wire's
+/// rule; what this pins is the decode the wire reads it from — a
+/// `reasoning_content` sibling of `content` lands on the assistant
+/// message's `reasoning` field rather than being dropped.
 #[test]
-fn deserialize_compatible_response_orders_reasoning_before_text() {
+fn compatible_response_decodes_reasoning_content_beside_text() {
     let request = r#"
         {
             "choices": [
@@ -1747,29 +1617,23 @@ fn deserialize_compatible_response_orders_reasoning_before_text() {
             }
         }
         "#;
-    let response = serde_json::from_str::<ApiResponse<CompletionResponse>>(request).unwrap();
-    let ApiResponse::Ok(response) = response else {
-        panic!("expected successful completion response");
-    };
+    let response: CompletionResponse =
+        serde_json::from_str(request).expect("the llama.cpp-shaped reply should decode");
 
-    let response: completion::CompletionResponse =
-        response
-            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
-            .unwrap();
-
-    assert_eq!(response.choice.len(), 2);
-
-    let Some(completion::message::AssistantContent::Reasoning(reasoning)) = response.choice.first()
+    let Message::Assistant {
+        content, reasoning, ..
+    } = &response.choices[0].message
     else {
-        panic!("expected assistant content to be reasoning");
+        panic!("expected assistant message");
     };
     assert_eq!(
-        reasoning.first_text(),
+        reasoning.as_deref(),
         Some("Now I understand the structure better. I need to: ...")
     );
-    assert!(
-        matches!(&response.choice[1], completion::AssistantContent::Text(text) if text.text == "The answer.")
-    );
+    assert!(matches!(
+        content.as_slice(),
+        [AssistantContent::Text { text }] if text == "The answer."
+    ));
 }
 
 #[test]
@@ -1883,37 +1747,12 @@ fn file_user_content_deserializes_from_wire_json() {
 }
 
 #[test]
-fn file_variant_round_trips_back_to_pdf_document() {
-    let wire = UserContent::File {
-        file: FileData {
-            file_data: Some("data:application/pdf;base64,QUJD".to_string()),
-            file_id: None,
-            filename: Some("document.pdf".to_string()),
-        },
+fn document_file_id_serializes_as_a_file_part() {
+    let doc = message::Document {
+        data: DocumentSourceKind::FileId("file_abc".to_string()),
+        media_type: None,
+        additional_params: None,
     };
-    let rig: message::UserContent = wire.into();
-    let message::UserContent::Document(doc) = rig else {
-        panic!("expected Document");
-    };
-    assert_eq!(doc.media_type, Some(message::DocumentMediaType::PDF));
-    assert!(matches!(doc.data, DocumentSourceKind::Base64(ref b) if b == "QUJD"));
-}
-
-#[test]
-fn file_variant_with_file_id_only_round_trips_to_document_file_id() {
-    let wire = UserContent::File {
-        file: FileData {
-            file_data: None,
-            file_id: Some("file_abc".to_string()),
-            filename: None,
-        },
-    };
-    let rig: message::UserContent = wire.into();
-    let message::UserContent::Document(doc) = rig else {
-        panic!("expected Document");
-    };
-    assert_eq!(doc.media_type, None);
-    assert!(matches!(doc.data, DocumentSourceKind::FileId(ref id) if id == "file_abc"));
 
     let converted: UserContent = message::UserContent::Document(doc)
         .try_into()
@@ -1950,213 +1789,6 @@ fn mixed_text_and_pdf_user_message_produces_two_content_parts() {
     assert!(matches!(parts[1], UserContent::File { .. }));
 }
 
-#[tokio::test]
-async fn completion_preserves_raw_provider_error_json_on_api_error_envelope() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel;
-    use crate::providers::openai::CompletionsClient;
-    use crate::test_utils::RecordingHttpClient;
-
-    let body = r#"{"message":"slow down","type":"rate_limit","code":"rate_limit_exceeded"}"#;
-    let http_client = RecordingHttpClient::with_error_response(http::StatusCode::ACCEPTED, body);
-    let client = CompletionsClient::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model("gpt-4o-mini");
-    let request = model.completion_request("hello").build();
-
-    let error = model
-        .completion(request)
-        .await
-        .expect_err("completion should fail with provider error envelope");
-
-    match &error {
-        CompletionError::ProviderResponse(stored) => {
-            assert_eq!(stored.body, body);
-            assert_eq!(stored.status, Some(http::StatusCode::ACCEPTED));
-            assert_eq!(error.provider_response_body(), Some(body));
-            assert_eq!(
-                error.provider_response_status(),
-                Some(http::StatusCode::ACCEPTED)
-            );
-            let json = error
-                .provider_response_json()
-                .expect("raw body should be valid JSON")
-                .expect("parsed JSON should be present");
-            assert_eq!(json["code"], "rate_limit_exceeded");
-            assert_eq!(json["type"], "rate_limit");
-        }
-        other => panic!("expected ProviderResponse, got {other:?}"),
-    }
-}
-
-#[tokio::test]
-async fn completion_http_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel;
-    use crate::providers::openai::CompletionsClient;
-    use crate::test_utils::RecordingHttpClient;
-
-    let body = r#"{"error":{"message":"rate limited","type":"rate_limit_error"}}"#;
-    let http_client =
-        RecordingHttpClient::with_error_response(http::StatusCode::TOO_MANY_REQUESTS, body);
-    let client = CompletionsClient::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model("gpt-4o-mini");
-    let request = model.completion_request("hello").build();
-
-    let error = model
-        .completion(request)
-        .await
-        .expect_err("completion should fail with non-success status");
-
-    // rig#2314: a provider with a request-id contract preserves its
-    // non-success responses as ProviderResponse, so the transport id has
-    // a home on the error; this mock sent no header, so the id is None.
-    assert!(matches!(error, CompletionError::ProviderResponse(_)));
-    assert_eq!(error.provider_request_id(), None);
-    assert_eq!(
-        error.provider_response_status(),
-        Some(http::StatusCode::TOO_MANY_REQUESTS)
-    );
-    assert_eq!(error.provider_response_body(), Some(body));
-    let json = error
-        .provider_response_json()
-        .expect("raw body should be valid JSON")
-        .expect("parsed JSON should be present");
-    assert_eq!(json["error"]["type"], "rate_limit_error");
-}
-
-/// Raw-capture tests: the `normalize` shape through the OpenAI-compatible
-/// model, driven end to end over a mock transport that hands back a real
-/// chat-completions body *and* an `x-request-id` response header, so the
-/// same fixture serves the capture contract and the Part A parity
-/// contract. `with_error_response_headers` is the only unary double that
-/// carries headers; with `200 OK` it is simply a successful response with
-/// headers (`completion_send` already relies on that).
-mod raw_capture {
-    use super::*;
-    use crate::client::CompletionClient;
-    use crate::completion::CompletionModel as _;
-    use crate::providers::openai::CompletionsClient;
-    use crate::test_utils::RecordingHttpClient;
-
-    const REQUEST_ID: &str = "req_unit_chat_0001";
-
-    /// A chat-completions body carrying fields the normalized response
-    /// provably lacks (`system_fingerprint`, `service_tier`), so the
-    /// captured value can be shown to answer more than `completion()`.
-    const BODY: &str = r#"{
-            "id": "chatcmpl-raw-1",
-            "object": "chat.completion",
-            "created": 1700000000,
-            "model": "gpt-4o-mini-2024-07-18",
-            "system_fingerprint": "fp_unit_test",
-            "service_tier": "default",
-            "choices": [{
-                "index": 0,
-                "message": {"role": "assistant", "content": "hello"},
-                "logprobs": null,
-                "finish_reason": "stop"
-            }],
-            "usage": {"prompt_tokens": 4, "completion_tokens": 1, "total_tokens": 5}
-        }"#;
-
-    fn model() -> CompletionModel<RecordingHttpClient> {
-        let mut headers = http::HeaderMap::new();
-        headers.insert("x-request-id", http::HeaderValue::from_static(REQUEST_ID));
-        let http_client =
-            RecordingHttpClient::with_error_response_headers(http::StatusCode::OK, BODY, headers);
-        let client = CompletionsClient::builder()
-            .api_key("test-key")
-            .http_client(http_client)
-            .build()
-            .expect("build client");
-        client.completion_model("gpt-4o-mini")
-    }
-
-    /// The load-bearing capture property: `raw` is the wire type as rig
-    /// parsed it — it deserializes back into
-    /// `openai::completion::CompletionResponse` and re-serializes to the
-    /// identical value — and re-normalizing that capture (with the header
-    /// id reattached, exactly as `completion()` does) reproduces every
-    /// normalized field. Also reads a field rig does not normalize
-    /// (`system_fingerprint`) off the capture.
-    #[tokio::test]
-    async fn completion_captures_raw_that_round_trips_into_the_wire_type() {
-        let model = model();
-
-        let response = model
-            .completion(model.completion_request("hello").build())
-            .await
-            .expect("completion");
-
-        let raw = &response.raw;
-        let typed = super::CompletionResponse::deserialize(raw)
-            .expect("raw must deserialize into the provider wire type");
-        assert_eq!(
-            serde_json::to_value(&typed).expect("re-serialize"),
-            *raw,
-            "the capture must be exactly what the wire type serializes to"
-        );
-        assert_eq!(typed.system_fingerprint.as_deref(), Some("fp_unit_test"));
-        assert_eq!(raw["service_tier"], "default");
-
-        // The capture and the normalized response tell one story.
-        let renormalized = typed
-            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
-            .expect("re-normalize the capture")
-            .with_optional_provider_request_id(Some(REQUEST_ID.to_string()));
-        assert_eq!(response.identity(), renormalized.identity());
-        assert_eq!(response.finish_reason(), renormalized.finish_reason());
-        assert_eq!(response.model, renormalized.model);
-        assert_eq!(response.usage, renormalized.usage);
-        assert_eq!(response.choice, renormalized.choice);
-        assert_eq!(response.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(
-            response.finish_reason(),
-            Some(crate::completion::FinishReason::Stop)
-        );
-    }
-
-    /// Part A parity, unit form: the typed route
-    /// `raw_completion_with_request_id` → `normalize` →
-    /// `with_optional_provider_request_id` reproduces `completion()` on
-    /// identity, finish reason, model and usage — and specifically the
-    /// transport id, which lives only on the response header and which
-    /// plain `raw_completion` drops. This is why the pair is public.
-    #[tokio::test]
-    async fn raw_completion_with_request_id_reproduces_completion() {
-        let model = model();
-
-        let (raw, id) = model
-            .raw_completion_with_request_id(model.completion_request("hello").build())
-            .await
-            .expect("typed route");
-        assert_eq!(id.as_deref(), Some(REQUEST_ID));
-        let reassembled = raw
-            .normalize(<crate::providers::openai::OpenAICompletions as OpenAICompatibleProvider>::PROVIDER_NAME)
-            .expect("normalize")
-            .with_optional_provider_request_id(id);
-
-        let normalized = model
-            .completion(model.completion_request("hello").build())
-            .await
-            .expect("normalized route");
-
-        assert_eq!(reassembled.identity(), normalized.identity());
-        assert_eq!(reassembled.finish_reason(), normalized.finish_reason());
-        assert_eq!(reassembled.model, normalized.model);
-        assert_eq!(reassembled.usage, normalized.usage);
-        assert_eq!(reassembled.provider_request_id.as_deref(), Some(REQUEST_ID));
-        assert_eq!(normalized.provider_request_id.as_deref(), Some(REQUEST_ID));
-    }
-}
 /// Synthetic history exercises a collision and result order that cannot be
 /// reliably elicited from a live provider; assertions inspect the request wire.
 #[test]
@@ -2225,11 +1857,13 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
         record_telemetry_content: false,
     };
     let wire = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "test".into(),
         request,
         strict_tools: false,
         tool_result_array_content: true,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -2259,11 +1893,13 @@ fn additional_params_override_typed_fields_on_the_wire() {
         .additional_params(serde_json::json!({"temperature": 0.9, "top_p": 0.5}))
         .build();
     let request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: rig_request,
         strict_tools: false,
         tool_result_array_content: true,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })

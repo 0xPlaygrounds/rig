@@ -16,7 +16,7 @@ async fn raw_response_text_matches_normalized_choice_text() {
     with_bedrock_cassette(
         "raw_completion/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())

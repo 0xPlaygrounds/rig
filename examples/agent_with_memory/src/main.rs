@@ -9,7 +9,7 @@
 use anyhow::Result;
 use rig::memory::InMemoryConversationMemory;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,7 +17,8 @@ async fn main() -> Result<()> {
     // depend on the `rig-memory` companion crate. Here we use the bare backend.
     let memory = InMemoryConversationMemory::new();
 
-    let agent = openai::Client::from_env()?
+    let agent = OpenAI::from_env()?
+        .bound()?
         .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant with persistent memory.")
         .memory(memory)

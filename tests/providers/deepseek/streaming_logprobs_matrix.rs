@@ -2,35 +2,36 @@
 //!
 //! Before this fix, `StreamingChoice` did not model `logprobs`, so serde
 //! discarded every per-token object before the shared compatible adapter saw
-//! it. Blocking `raw_completion` retained the same field on `Choice`; raw
-//! streaming therefore carried strictly less provider-native information.
+//! it. A blocking reply's captured `raw` kept the same field on its choice;
+//! a streamed reply therefore carried strictly less provider-native
+//! information than a blocking one.
 //!
 //! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
 //!
 //! | dimension | values |
 //! |---|---|
-//! | transport | blocking control, raw streaming regression |
+//! | transport | blocking control, streamed regression |
 //! | thinking | disabled text, `reasoning_effort: low` |
 //! | termination | natural `stop`, one-token `length` |
 //! | top candidates | `top_logprobs` absent, `0`, `2` |
 //!
 //! That is 24 recorded cells. Each one re-derives the exact expected
-//! log-probability object from its fixture and compares it with the serialized
-//! native response. Streaming cells recursively concatenate token arrays in
-//! wire order, including DeepSeek's `reasoning_content` probability array.
+//! log-probability object from its fixture and compares it with the captured
+//! `raw` view of the reply it rode on. Streaming cells recursively
+//! concatenate token arrays in wire order, including DeepSeek's
+//! `reasoning_content` probability array.
 
 use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::deepseek;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
 use super::support::{
-    recorded_request, recorded_response, recorded_stream_chunks,
+    BoundDeepSeek, recorded_request, recorded_response, recorded_stream_chunks,
     with_deepseek_stream_logprobs_cassette_result,
 };
 
@@ -119,8 +120,8 @@ fn max_tokens(cell: Cell) -> u64 {
     }
 }
 
-async fn run_cell(client: deepseek::Client, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion_model(MODEL);
+async fn run_cell(client: BoundDeepSeek, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.completion(MODEL);
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -129,14 +130,14 @@ async fn run_cell(client: deepseek::Client, cell: Cell, observed: SharedObservat
 
     let observation = match cell.transport {
         Transport::Blocking => {
-            let raw = model.raw_completion(request).await?;
-            let choice = raw
-                .choices
-                .first()
+            let response = model.completion(request).await?;
+            let choice = response.raw["choices"]
+                .as_array()
+                .and_then(|choices| choices.first())
                 .context("blocking response should carry a choice")?;
             Observation {
-                logprobs: choice.logprobs.clone().unwrap_or(Value::Null),
-                finish_reason: json!(choice.finish_reason),
+                logprobs: choice["logprobs"].clone(),
+                finish_reason: choice["finish_reason"].clone(),
             }
         }
         Transport::Streaming => {

@@ -51,7 +51,7 @@ async fn specific_add_raw_streaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
@@ -104,7 +104,7 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     super::super::support::with_gemini_cassette(
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let response = model
                 .completion_request(
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",

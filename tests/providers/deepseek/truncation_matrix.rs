@@ -33,14 +33,15 @@
 //! the agent loop. See the module doc table in the PR body for per-cell status.
 
 use anyhow::Result;
-use rig::completion::{CompletionModel, NormalizeCompletionResponse, ToolDefinition};
+use rig::completion::{CompletionModel, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::deepseek;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::support::{
-    collect_raw_stream_outcome, recorded_response, recorded_stream_chunks,
+    BoundDeepSeek, collect_raw_stream_outcome, recorded_response, recorded_stream_chunks,
     with_deepseek_truncation_cassette_result,
 };
 
@@ -97,7 +98,7 @@ fn page_oncall_tool() -> ToolDefinition {
 }
 
 fn request(
-    model: &deepseek::CompletionModel,
+    model: &(impl CompletionModel + Clone),
     preamble: &str,
     tools: Vec<ToolDefinition>,
     params: Value,
@@ -107,7 +108,7 @@ fn request(
 }
 
 fn request_for(
-    model: &deepseek::CompletionModel,
+    model: &(impl CompletionModel + Clone),
     prompt: &str,
     preamble: &str,
     tools: Vec<ToolDefinition>,
@@ -235,12 +236,12 @@ fn assert_parseable(arguments: &str, scenario: &str) {
 /// carries no tool call at all — the truncated one is dropped exactly as the
 /// streaming path drops it.
 async fn assert_blocking_truncation_survives(
-    client: &deepseek::Client,
+    client: &BoundDeepSeek,
     max_tokens: u64,
 ) -> Result<()> {
-    let model = client.completion_model(MODEL);
-    let raw = model
-        .raw_completion(request(
+    let model = client.completion(MODEL);
+    let response = model
+        .completion(request(
             &model,
             TOOL_PREAMBLE,
             vec![file_report_tool()],
@@ -249,42 +250,46 @@ async fn assert_blocking_truncation_survives(
         ))
         .await?;
 
+    // The premise, read off DeepSeek's own view of the very reply the
+    // normalized response was decoded from: `raw` is that reply's document.
+    let wire = deepseek::CompletionResponse::deserialize(&response.raw)
+        .expect("raw reads back as DeepSeek's own CompletionResponse");
+    let choice = wire.choices.first().expect("a reply carries a choice");
     assert_eq!(
-        raw.choices[0].finish_reason, "length",
+        choice.finish_reason, "length",
         "premise: the recorded turn must have been cut by the budget"
     );
     let deepseek::Message::Assistant {
         tool_calls: wire_calls,
         ..
-    } = &raw.choices[0].message;
+    } = &choice.message;
     assert!(
         wire_calls.is_empty(),
         "the unusable call is dropped at decode rather than surfaced: {wire_calls:?}"
     );
 
-    let normalized = raw.clone().normalize("deepseek")?;
     assert_eq!(
-        normalized.finish_reason(),
+        response.finish_reason(),
         Some(rig::completion::FinishReason::Length),
         "the surviving turn reports the truncation"
     );
     assert!(
-        tool_calls(&normalized.choice).is_empty(),
+        tool_calls(&response.choice).is_empty(),
         "an unusable call must not reach the caller: {:?}",
-        normalized.choice
+        response.choice
     );
     assert!(
-        normalized.usage.total_tokens.is_some_and(|n| n > 0)
-            && normalized.usage.input_tokens.is_some_and(|n| n > 0),
+        response.usage.total_tokens.is_some_and(|n| n > 0)
+            && response.usage.input_tokens.is_some_and(|n| n > 0),
         "usage survives the truncated call: {:?}",
-        normalized.usage
+        response.usage
     );
     assert!(
-        normalized.response_id.is_some(),
+        response.response_id.is_some(),
         "the response id survives the truncated call"
     );
     assert!(
-        normalized.model.is_some(),
+        response.model.is_some(),
         "the model name survives the truncated call"
     );
     Ok(())
@@ -293,10 +298,10 @@ async fn assert_blocking_truncation_survives(
 /// Streaming twin: the stream already dropped the unusable call; this pins that
 /// it still does, and that its terminal record reports the same `Length`.
 async fn assert_streaming_truncation_survives(
-    client: &deepseek::Client,
+    client: &BoundDeepSeek,
     max_tokens: u64,
 ) -> Result<()> {
-    let model = client.completion_model(MODEL);
+    let model = client.completion(MODEL);
     let outcome = collect_raw_stream_outcome(
         model
             .stream(request(
@@ -347,9 +352,9 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_12_truncates_before_any_tool_call",
         |client| async move {
-            let model = client.completion_model(MODEL);
-            let raw = model
-                .raw_completion(request(
+            let model = client.completion(MODEL);
+            let normalized = model
+                .completion(request(
                     &model,
                     TOOL_PREAMBLE,
                     vec![file_report_tool()],
@@ -357,7 +362,6 @@ async fn blocking_budget_12_truncates_before_any_tool_call() {
                     12,
                 ))
                 .await?;
-            let normalized = raw.normalize("deepseek")?;
             assert_eq!(
                 normalized.finish_reason(),
                 Some(rig::completion::FinishReason::Length)
@@ -387,17 +391,16 @@ async fn blocking_budget_16_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let normalized = model
-                .raw_completion(request(
+                .completion(request(
                     &model,
                     TOOL_PREAMBLE,
                     vec![file_report_tool()],
                     non_thinking_params(),
                     16,
                 ))
-                .await?
-                .normalize("deepseek")?;
+                .await?;
             let calls = tool_calls(&normalized.choice);
             assert!(
                 calls.is_empty(),
@@ -427,17 +430,16 @@ async fn blocking_budget_20_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_20_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let normalized = model
-                .raw_completion(request(
+                .completion(request(
                     &model,
                     TOOL_PREAMBLE,
                     vec![file_report_tool()],
                     non_thinking_params(),
                     20,
                 ))
-                .await?
-                .normalize("deepseek")?;
+                .await?;
             let calls = tool_calls(&normalized.choice);
             assert!(calls.is_empty());
             assert_eq!(
@@ -515,17 +517,16 @@ async fn blocking_budget_96_complete_arguments_are_untouched() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_budget_96_complete_arguments_are_untouched",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let normalized = model
-                .raw_completion(request(
+                .completion(request(
                     &model,
                     TOOL_PREAMBLE,
                     vec![file_report_tool()],
                     non_thinking_params(),
                     96,
                 ))
-                .await?
-                .normalize("deepseek")?;
+                .await?;
             let calls = tool_calls(&normalized.choice);
             assert_eq!(calls.len(), 1, "the complete call still reaches the caller");
             assert!(
@@ -557,7 +558,7 @@ async fn streaming_budget_12_truncates_before_any_tool_call() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_12_truncates_before_any_tool_call",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -592,7 +593,7 @@ async fn streaming_budget_16_empty_arguments_are_dropped_on_length() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_16_empty_arguments_are_dropped_on_length",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -695,7 +696,7 @@ async fn streaming_budget_96_complete_arguments_are_untouched() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_budget_96_complete_arguments_are_untouched",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -729,17 +730,16 @@ async fn blocking_parallel_calls_keep_the_complete_one() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_parallel_calls_keep_the_complete_one",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let normalized = model
-                .raw_completion(request(
+                .completion(request(
                     &model,
                     PARALLEL_PREAMBLE,
                     vec![page_oncall_tool(), file_report_tool()],
                     json!({ "thinking": { "type": "disabled" }, "parallel_tool_calls": true }),
                     56,
                 ))
-                .await?
-                .normalize("deepseek")?;
+                .await?;
 
             let calls = tool_calls(&normalized.choice);
             assert_eq!(
@@ -774,7 +774,7 @@ async fn streaming_parallel_calls_keep_the_complete_one() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_parallel_calls_keep_the_complete_one",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -814,17 +814,16 @@ async fn blocking_text_before_a_truncated_call_survives() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_text_before_a_truncated_call_survives",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let normalized = model
-                .raw_completion(request(
+                .completion(request(
                     &model,
                     TEXT_FIRST_PREAMBLE,
                     vec![file_report_tool()],
                     non_thinking_params(),
                     40,
                 ))
-                .await?
-                .normalize("deepseek")?;
+                .await?;
 
             assert!(
                 !text(&normalized.choice).trim().is_empty(),
@@ -860,7 +859,7 @@ async fn streaming_text_before_a_truncated_call_survives() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_text_before_a_truncated_call_survives",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request(
@@ -899,9 +898,9 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/blocking_reasoner_truncated_call_keeps_the_reasoning_block",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let normalized = model
-                .raw_completion(request_for(
+                .completion(request_for(
                     &model,
                     REASONER_INCIDENT_PROMPT,
                     REASONER_TOOL_PREAMBLE,
@@ -909,8 +908,7 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
                     thinking_params(),
                     112,
                 ))
-                .await?
-                .normalize("deepseek")?;
+                .await?;
 
             assert!(
                 normalized
@@ -943,7 +941,7 @@ async fn streaming_reasoner_truncated_call_keeps_the_reasoning_block() {
     with_deepseek_truncation_cassette_result(
         "truncation_matrix/streaming_reasoner_truncated_call_keeps_the_reasoning_block",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let outcome = collect_raw_stream_outcome(
                 model
                     .stream(request_for(
@@ -1244,13 +1242,14 @@ async fn agent_streaming_empty_arguments_on_length_are_not_invoked() {
 }
 
 // ================================================================
-// G. Wire-type decode, no recording needed
+// G. Provider-type decode, no recording needed
 // ================================================================
 
-/// The decode itself, exercised on this side of the crate boundary against the
-/// exact bytes DeepSeek returned at the 24-token budget. A live recording
-/// cannot force a *shape* the model does not happen to produce, and this cell
-/// is about the type rather than the turn, so it is a unit cell in the matrix.
+/// The typed escape hatch's own decode, exercised against the exact bytes
+/// DeepSeek returned at the 24-token budget. A live recording cannot force a
+/// *shape* the model does not happen to produce, and this cell is about the
+/// type a caller reaches `response.raw` through rather than about a turn, so
+/// it is a unit cell in the matrix.
 #[test]
 fn a_truncated_call_is_dropped_at_decode_and_the_turn_survives() {
     let body = r#"{
@@ -1290,24 +1289,10 @@ fn a_truncated_call_is_dropped_at_decode_and_the_turn_survives() {
         json!({"team": "platform"})
     );
 
-    let normalized = response.normalize("deepseek").expect("normalize");
-    assert_eq!(
-        normalized.finish_reason(),
-        Some(rig::completion::FinishReason::Length)
-    );
-    assert_eq!(
-        tool_calls_names(&normalized.choice),
-        vec!["page_oncall"],
-        "only the truncated call is dropped: {:?}",
-        normalized.choice
-    );
-    assert_eq!(normalized.usage.total_tokens, Some(396));
-    assert_eq!(normalized.usage.cached_input_tokens, Some(256));
-}
-
-fn tool_calls_names(choice: &[AssistantContent]) -> Vec<&str> {
-    tool_calls(choice)
-        .into_iter()
-        .map(|call| call.function.name.as_str())
-        .collect()
+    // The counters survive the cut: the truncated call still cost its
+    // tokens, and DeepSeek's cache split is on the type in full.
+    assert_eq!(response.usage.total_tokens, 396);
+    assert_eq!(response.usage.prompt_cache_hit_tokens, 256);
+    assert_eq!(response.usage.prompt_cache_miss_tokens, 116);
+    assert_eq!(response.choices[0].finish_reason, "length");
 }

@@ -21,10 +21,9 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
         assert_eq!(report.kind, crate::error::ErrorKind::Http);
         let log = Arc::new(ObservationLog::default());
         let context = AdapterContext::new(log.clone(), Subject::default(), "call");
-        let mut request = http::Request::new(());
-        request.extensions_mut().insert((context, "/completion"));
+        let request = http::Request::new(());
         let slot = AdapterSlot::default();
-        slot.start(&request);
+        slot.install(context.attempt_for(&request, "/completion"));
         slot.fail(&error);
         drop(slot);
         let trace = log.trace();
@@ -42,8 +41,7 @@ fn native_http_errors_preserve_distinct_boundaries_before_report_erasure() {
 #[tokio::test]
 async fn streamed_body_failure_preserves_boundary_through_provider_error_conversion() {
     use crate::{
-        client::CompletionClient, completion::CompletionModel as _,
-        test_utils::SequencedStreamingHttpClient,
+        completion::CompletionModel as _, driver::Bind, test_utils::SequencedStreamingHttpClient,
     };
     use futures::StreamExt;
     let mut baseline = None;
@@ -52,12 +50,9 @@ async fn streamed_body_failure_preserves_boundary_through_provider_error_convers
             SequencedStreamingHttpClient::new(vec![Err(crate::http_client::Error::instance(
                 std::io::Error::other("scripted body transfer failure"),
             ))]);
-        let client = crate::providers::gemini::Client::builder()
-            .api_key("test-key")
-            .http_client(http)
-            .build()
-            .unwrap();
-        let model = client.completion_model("gemini-test");
+        let model = crate::providers::gemini::Gemini::new("test-key")
+            .bind(http)
+            .completion("gemini-test");
         let log = Arc::new(ObservationLog::default());
         let request = model.completion_request("hello").build();
         let context = enabled.then(|| AdapterContext::new(log.clone(), Subject::default(), "call"));
@@ -163,8 +158,8 @@ fn cloned_context_numbers_attempts_and_closes_once_without_payloads() {
     let mut first = context
         .begin(&http::Method::POST, "/models/{model}")
         .unwrap();
-    first.response(http::StatusCode::OK);
-    first.response(http::StatusCode::OK);
+    first.response_with_headers(http::StatusCode::OK, None);
+    first.response_with_headers(http::StatusCode::OK, None);
     first.finish(AdapterEnding::Decoded);
     drop(first);
     drop(
@@ -216,17 +211,12 @@ fn context_is_not_part_of_serialized_completion_requests() {
 
 #[tokio::test]
 async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_request() {
-    use crate::{
-        client::CompletionClient, completion::CompletionModel as _, test_utils::RecordingHttpClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient};
     let body = r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#;
     let http = RecordingHttpClient::new(body);
-    let client = crate::providers::gemini::Client::builder()
-        .api_key("synthetic-secret-key")
-        .http_client(http.clone())
-        .build()
-        .unwrap();
-    let model = client.completion_model("gemini-test");
+    let model = crate::providers::gemini::Gemini::new("synthetic-secret-key")
+        .bind(http.clone())
+        .completion("gemini-test");
     let plain = model.completion_request("hello").build();
     model.completion(plain.clone()).await.unwrap();
     let log = Arc::new(ObservationLog::default());
@@ -254,12 +244,22 @@ async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_reques
             observation.event.clone()
         })
         .collect();
+    // The route is the request's own path: the deleted client layer passed a
+    // hand-written `"/models/{model}:generateContent"` template to
+    // `observation::attach`, and with the driver owning observation there is
+    // no template to pass — the boundary it reports is the one it sent.
+    //
+    // `TransportEof` is the driver reading the buffered reply as the stream
+    // of one frame it is: `Framing::Whole` yields that frame and then the
+    // end of the body, so the ending is the provider's own `Terminal`
+    // (recorded as the terminal passes) and not the client layer's
+    // hand-rolled `Decoded`.
     assert_eq!(
         events,
         [
             AdapterEvent::Started {
                 method: "POST".into(),
-                route: "/models/{model}:generateContent".into()
+                route: "/v1beta/models/gemini-test:generateContent".into()
             },
             AdapterEvent::Response { status: 200 },
             AdapterEvent::Provider {
@@ -268,8 +268,12 @@ async fn gemini_unary_emits_the_actual_http_boundary_without_changing_the_reques
                     ..AdapterVerdict::default()
                 }
             },
+            AdapterEvent::TransportEof {
+                after: 1,
+                partial_bytes: 0
+            },
             AdapterEvent::Finished {
-                ending: AdapterEnding::Decoded
+                ending: AdapterEnding::Terminal
             },
         ]
     );
@@ -295,19 +299,14 @@ fn exhausted_identity_never_wraps_or_reuses_an_attempt() {
 
 #[tokio::test]
 async fn unary_failure_facts_preserve_retryability_without_copying_error_bodies() {
-    use crate::{
-        client::CompletionClient, completion::CompletionModel as _, test_utils::RecordingHttpClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient};
     let http = RecordingHttpClient::with_error(
         http::StatusCode::TOO_MANY_REQUESTS,
         r#"{"error":{"message":"synthetic-sensitive-body"},"usageMetadata":{"promptTokenCount":3}}"#,
     );
-    let client = crate::providers::gemini::Client::builder()
-        .api_key("synthetic-sensitive-body")
-        .http_client(http.clone())
-        .build()
-        .unwrap();
-    let model = client.completion_model("gemini-test");
+    let model = crate::providers::gemini::Gemini::new("synthetic-sensitive-body")
+        .bind(http.clone())
+        .completion("gemini-test");
     let log = Arc::new(ObservationLog::default());
     let context = AdapterContext::new(log.clone(), Subject::default(), "retry-operation");
     for _ in 0..2 {
@@ -424,7 +423,7 @@ impl crate::http_client::HttpClientExt for PendingHttp {
             if !body_pending {
                 return std::future::pending().await;
             }
-            let body: crate::http_client::sse::BoxedStream = Box::pin(futures::stream::pending());
+            let body: crate::http_client::BoxedStream = Box::pin(futures::stream::pending());
             http::Response::builder()
                 .header(http::header::CONTENT_TYPE, "text/event-stream")
                 .body(body)
@@ -435,14 +434,11 @@ impl crate::http_client::HttpClientExt for PendingHttp {
 
 #[tokio::test]
 async fn dropping_pending_transport_or_body_closes_the_attempt_once() {
-    use crate::{client::CompletionClient, completion::CompletionModel as _};
+    use crate::{completion::CompletionModel as _, driver::Bind};
     for body_pending in [false, true] {
-        let client = crate::providers::gemini::Client::builder()
-            .api_key("test-key")
-            .http_client(PendingHttp { body_pending })
-            .build()
-            .unwrap();
-        let model = client.completion_model("gemini-test");
+        let model = crate::providers::gemini::Gemini::new("test-key")
+            .bind(PendingHttp { body_pending })
+            .completion("gemini-test");
         let log = Arc::new(ObservationLog::default());
         let request = model.completion_request("hello").build();
         let context = Some(AdapterContext::new(
@@ -463,15 +459,14 @@ async fn dropping_pending_transport_or_body_closes_the_attempt_once() {
 
 #[tokio::test]
 async fn shared_arc_model_keeps_mixed_invocations_distinct_after_context_scope_ends() {
-    use crate::{client::CompletionClient, completion::CompletionModel as _};
+    use crate::{completion::CompletionModel as _, driver::Bind};
     use futures::StreamExt;
 
-    let client = crate::providers::gemini::Client::builder()
-        .api_key("test-key")
-        .http_client(PendingHttp { body_pending: true })
-        .build()
-        .unwrap();
-    let model = Arc::new(client.completion_model("gemini-test"));
+    let model = Arc::new(
+        crate::providers::gemini::Gemini::new("test-key")
+            .bind(PendingHttp { body_pending: true })
+            .completion("gemini-test"),
+    );
     let sink = Arc::new(ObservationLog::default());
     let request = model.completion_request("same request").build();
     let mut stream = {
@@ -525,15 +520,12 @@ async fn shared_arc_model_keeps_mixed_invocations_distinct_after_context_scope_e
 
 #[tokio::test]
 async fn dropping_stream_pending_on_connection_or_body_closes_once() {
-    use crate::{client::CompletionClient, completion::CompletionModel as _};
+    use crate::{completion::CompletionModel as _, driver::Bind};
     use futures::StreamExt;
     for body_pending in [false, true] {
-        let client = crate::providers::gemini::Client::builder()
-            .api_key("test-key")
-            .http_client(PendingHttp { body_pending })
-            .build()
-            .unwrap();
-        let model = client.completion_model("gemini-test");
+        let model = crate::providers::gemini::Gemini::new("test-key")
+            .bind(PendingHttp { body_pending })
+            .completion("gemini-test");
         let log = Arc::new(ObservationLog::default());
         let request = model.completion_request("hello").build();
         let context = Some(AdapterContext::new(
@@ -554,18 +546,13 @@ async fn dropping_stream_pending_on_connection_or_body_closes_once() {
 }
 
 async fn observed_stream(bytes: &str, stop_after_first: bool) -> crate::observe::ObservationTrace {
-    use crate::{
-        client::CompletionClient, completion::CompletionModel as _, test_utils::MockStreamingClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::MockStreamingClient};
     use futures::StreamExt;
-    let client = crate::providers::gemini::Client::builder()
-        .api_key("test-key")
-        .http_client(MockStreamingClient {
+    let model = crate::providers::gemini::Gemini::new("test-key")
+        .bind(MockStreamingClient {
             sse_bytes: bytes::Bytes::copy_from_slice(bytes.as_bytes()),
         })
-        .build()
-        .unwrap();
-    let model = client.completion_model("gemini-test");
+        .completion("gemini-test");
     let log = Arc::new(ObservationLog::default());
     let request = model.completion_request("hello").build();
     let mut plain_stream = model.stream(request.clone()).await.unwrap();
@@ -656,11 +643,13 @@ async fn stream_terminal_eof_error_and_drop_have_distinct_closures() {
                 &observation.event
             })
             .collect();
+        // The path the driver sent, not the template the deleted
+        // `observation::attach` callsite spelled out per provider.
         assert_eq!(
             events[0],
             &AdapterEvent::Started {
                 method: "POST".into(),
-                route: "/models/{model}:streamGenerateContent".into()
+                route: "/v1beta/models/gemini-test:streamGenerateContent".into()
             }
         );
         assert_eq!(events[1], &AdapterEvent::Response { status: 200 });
@@ -739,9 +728,7 @@ async fn provider_terminal_does_not_hide_partial_transport_eof() {
 
 #[tokio::test]
 async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
-    use crate::{
-        client::CompletionClient, completion::CompletionModel as _, test_utils::RecordingHttpClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient};
     for (metadata, expected) in [
         (
             serde_json::json!({"promptTokenCount": 7, "totalTokenCount": 9}),
@@ -762,12 +749,9 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
     ] {
         let body = serde_json::json!({"candidates": [], "usageMetadata": metadata}).to_string();
         let http = RecordingHttpClient::new(body);
-        let client = crate::providers::gemini::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .unwrap();
-        let model = client.completion_model("gemini-test");
+        let model = crate::providers::gemini::Gemini::new("test-key")
+            .bind(http.clone())
+            .completion("gemini-test");
         let request = model.completion_request("hello").build();
         let plain_error = model.completion(request.clone()).await.unwrap_err();
         let log = Arc::new(ObservationLog::default());
@@ -801,26 +785,6 @@ async fn empty_unary_rejection_preserves_optional_usage_before_failure() {
         assert!(matches!(&trace.observations.last().unwrap().action,
             Action::Adapter { observation } if observation.event == AdapterEvent::Finished { ending: AdapterEnding::Error { boundary: AdapterErrorBoundary::Decode, kind: "response".into(), status: None, retryable: false } }
         ));
-        let raw_log = Arc::new(ObservationLog::default());
-        let raw_request = model.completion_request("hello").build();
-        let context = Some(AdapterContext::new(
-            raw_log.clone(),
-            Subject::default(),
-            "raw-empty-call",
-        ));
-        let raw = model
-            .raw_completion_with_context(raw_request, context)
-            .await
-            .unwrap();
-        assert!(
-            raw.candidates.is_empty(),
-            "the raw API must retain its decode-only contract"
-        );
-        assert!(
-            matches!(&raw_log.trace().observations.last().unwrap().action,
-                Action::Adapter { observation } if observation.event == AdapterEvent::Finished { ending: AdapterEnding::Decoded }
-            )
-        );
     }
 }
 
@@ -868,15 +832,15 @@ async fn streamed_usage_snapshots_keep_missing_counts_and_failed_attempt_usage()
 #[tokio::test]
 async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
     use crate::{
-        client::CompletionClient, completion::CompletionModel as _,
-        test_utils::HttpErrorStreamingClient,
+        completion::CompletionModel as _, driver::Bind, test_utils::HttpErrorStreamingClient,
     };
     use futures::StreamExt;
-    let client = crate::providers::gemini::Client::builder().api_key("synthetic-sensitive-body")
-        .http_client(HttpErrorStreamingClient::new(http::StatusCode::TOO_MANY_REQUESTS,
-            r#"{"error":{"message":"synthetic-sensitive-body"},"usageMetadata":{"promptTokenCount":3}}"#))
-        .build().unwrap();
-    let model = client.completion_model("gemini-test");
+    let model = crate::providers::gemini::Gemini::new("synthetic-sensitive-body")
+        .bind(HttpErrorStreamingClient::new(
+            http::StatusCode::TOO_MANY_REQUESTS,
+            r#"{"error":{"message":"synthetic-sensitive-body"},"usageMetadata":{"promptTokenCount":3}}"#,
+        ))
+        .completion("gemini-test");
     let request = model.completion_request("hello").build();
     let mut plain = model.stream(request.clone()).await.unwrap();
     let plain_error = plain.next().await.unwrap().unwrap_err();
@@ -909,9 +873,7 @@ async fn streaming_http_rejection_preserves_usage_and_the_original_error() {
 
 #[tokio::test]
 async fn provider_metadata_and_headers_are_scrubbed_before_observation() {
-    use crate::{
-        client::CompletionClient, completion::CompletionModel as _, test_utils::RecordingHttpClient,
-    };
+    use crate::{completion::CompletionModel as _, driver::Bind, test_utils::RecordingHttpClient};
     let secret = "synthetic-credential-12345";
     let body = serde_json::json!({
         "candidates": [{"finishReason": "MAX_TOKENS", "finishMessage": secret}],
@@ -943,12 +905,9 @@ async fn provider_metadata_and_headers_are_scrubbed_before_observation() {
                 headers.clone(),
             )
         };
-        let client = crate::providers::gemini::Client::builder()
-            .api_key(secret)
-            .http_client(http)
-            .build()
-            .unwrap();
-        let model = client.completion_model("gemini-test");
+        let model = crate::providers::gemini::Gemini::new(secret)
+            .bind(http)
+            .completion("gemini-test");
         let log = Arc::new(ObservationLog::default());
         let request = model.completion_request("hello").build();
         let context = Some(AdapterContext::new(

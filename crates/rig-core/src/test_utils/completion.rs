@@ -409,7 +409,7 @@ impl CompletionModel for MockCompletionModel {
         // and the same `Stop` -> `ToolCalls` reconciliation callers see in
         // production runs in `StreamingCompletionResponse` for both.
         let stream = async_stream::stream! {
-            let mut out = crate::providers::internal::adapter::AdapterOutput::new();
+            let mut out = crate::operation::AdapterOutput::new();
             // An id-less scripted tool call mints per stream, like a wire
             // that carries no ids (`tool-0`, `tool-1`, …).
             let mut tool_ids = crate::streaming::SyntheticIds::tool();

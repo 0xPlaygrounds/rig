@@ -4,6 +4,7 @@
 //! All models are returned in a single list; providers with pagination
 //! handle fetching all pages internally.
 
+use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -301,6 +302,18 @@ impl<'a> IntoIterator for &'a ModelList {
     }
 }
 
+/// A model listing: what a bound model-listing wire answers.
+///
+/// Providers with pagination fetch every page before returning, which the
+/// driver does for them by looping on
+/// [`Decoder::continuation`](crate::wire::Decoder::continuation).
+pub trait ModelLister: WasmCompatSend + WasmCompatSync {
+    /// Every model the provider offers.
+    fn list_all(
+        &self,
+    ) -> impl Future<Output = Result<ModelList, ModelListingError>> + WasmCompatSend;
+}
+
 /// Errors that can occur when listing models from a provider.
 ///
 /// This enum represents the various error conditions that may arise when
@@ -391,17 +404,6 @@ impl ModelListingError {
         }
     }
 
-    pub(crate) fn api_error_with_context(
-        provider: &str,
-        path: &str,
-        status_code: u16,
-        body: &[u8],
-    ) -> Self {
-        let message =
-            format_response_context(provider, path, format_args!("status={status_code}"), body);
-        Self::api_error(status_code, message)
-    }
-
     pub(crate) fn parse_error_with_context(
         provider: &str,
         path: &str,
@@ -439,6 +441,137 @@ impl From<http::Error> for ModelListingError {
 impl From<serde_json::Error> for ModelListingError {
     fn from(e: serde_json::Error) -> Self {
         Self::parse_error(e.to_string())
+    }
+}
+
+/// The listing wire reports the same four shapes every other operation
+/// does; the mapping onto this enum's own vocabulary lives here so no wire
+/// restates it.
+impl crate::wire::WireError for ModelListingError {
+    fn transport(error: crate::http_client::Error) -> Self {
+        match error.non_success_status() {
+            Some(status) => Self::api_error(
+                status.as_u16(),
+                error.non_success_body().unwrap_or_default().to_owned(),
+            ),
+            None => Self::request_error(error.to_string()),
+        }
+    }
+
+    fn http_response(status: http::StatusCode, body: &str) -> Self {
+        Self::api_error(status.as_u16(), body)
+    }
+
+    fn json(error: serde_json::Error) -> Self {
+        Self::parse_error(error.to_string())
+    }
+
+    fn decode(message: String) -> Self {
+        Self::parse_error(message)
+    }
+
+    fn provider_body(body: &str) -> Self {
+        Self::parse_error(body.to_owned())
+    }
+
+    /// A listing error carries its status in its own `ApiError` variant, so
+    /// there is no status-less reply to stamp.
+    fn with_provider_status(self, _status: Option<http::StatusCode>) -> Self {
+        self
+    }
+
+    /// The listing error enum has no slot for transport metadata; it is a
+    /// serializable value the ECS records, and adding one would put a
+    /// `HeaderMap` on the wire.
+    fn with_provider_request_id(self, _request_id: Option<String>) -> Self {
+        self
+    }
+
+    fn with_response_headers(self, _headers: Option<http::HeaderMap>) -> Self {
+        self
+    }
+
+    fn provider_response_status(&self) -> Option<http::StatusCode> {
+        match self {
+            Self::ApiError { status_code, .. } => http::StatusCode::from_u16(*status_code).ok(),
+            _ => None,
+        }
+    }
+
+    /// A failed catalog fetch names no response a caller can inspect, so the
+    /// diagnostic has to carry what it was: which provider, which path, and
+    /// the reply's status and body (rig#2079).
+    fn with_route(self, provider: &str, path: &str) -> Self {
+        match self {
+            Self::ApiError {
+                status_code,
+                message,
+            } => Self::api_error(
+                status_code,
+                format_response_context(
+                    provider,
+                    path,
+                    format_args!("status={status_code}"),
+                    message.as_bytes(),
+                ),
+            ),
+            Self::ParseError { message } => Self::parse_error(format_response_context(
+                provider,
+                path,
+                format_args!("parse_error"),
+                message.as_bytes(),
+            )),
+            other => other,
+        }
+    }
+
+    /// The listing error's `ApiError` message *is* the reply's body (with
+    /// its request context), which is what a projector would read.
+    fn provider_response_body(&self) -> Option<&str> {
+        match self {
+            Self::ApiError { message, .. } => Some(message),
+            _ => None,
+        }
+    }
+
+    fn report(&self) -> crate::error::ErrorReport {
+        crate::error::ErrorReport::from(self)
+    }
+
+    fn boundary(&self) -> crate::observe::AdapterErrorBoundary {
+        use crate::observe::AdapterErrorBoundary as B;
+        match self {
+            Self::ApiError { .. } | Self::AuthError { .. } => B::ProviderResponse,
+            Self::ParseError { .. } => B::Decode,
+            Self::RequestError { .. } => B::Request,
+        }
+    }
+}
+
+impl From<&ModelListingError> for crate::error::ErrorReport {
+    fn from(error: &ModelListingError) -> Self {
+        use crate::error::{ErrorKind, retryable_status};
+        let status = match error {
+            ModelListingError::ApiError { status_code, .. } => Some(*status_code),
+            _ => None,
+        };
+        let kind = match error {
+            ModelListingError::ApiError { .. } | ModelListingError::AuthError { .. } => {
+                ErrorKind::ProviderResponse
+            }
+            ModelListingError::ParseError { .. } => ErrorKind::Response,
+            ModelListingError::RequestError { .. } => ErrorKind::Http,
+        };
+        let mut report = crate::error::ErrorReport::new(kind, error.to_string())
+            .with_retryable(retryable_status(status));
+        report.http_status = status;
+        report
+    }
+}
+
+impl From<ModelListingError> for crate::error::ErrorReport {
+    fn from(error: ModelListingError) -> Self {
+        Self::from(&error)
     }
 }
 

@@ -91,28 +91,32 @@
           "provider": "anthropic",
           "model": "claude-sonnet-4-6",
           "raw": {
+            "container": null,
             "content": [
               {
-                "type": "text",
-                "text": "The dominant non-background color is **bright red**."
+                "text": "The dominant non-background color is **bright red**.",
+                "type": "text"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "end_turn",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 47,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 14
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 47,
+              "output_tokens": 14,
+              "service_tier": "standard"
+            }
           }
         }
       }

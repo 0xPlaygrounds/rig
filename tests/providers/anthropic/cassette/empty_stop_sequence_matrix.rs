@@ -10,7 +10,7 @@
 //! {"content":[],"stop_reason":"stop_sequence","stop_sequence":"alpha", ...}
 //! ```
 //!
-//! `CompletionResponse::normalize` carved out exactly one legal empty case —
+//! The blocking response mapping carved out exactly one legal empty case —
 //! `end_turn` — and routed every other empty response through
 //! `require_non_empty_response`. So a completed provider turn became
 //! `CompletionError::ResponseError("Response contained no message or tool call
@@ -27,7 +27,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_normalize_empty_stop_sequence` | `raw_completion` + `normalize` | empty choice | recorded |
+//! | 1 | `raw_normalize_empty_stop_sequence` | `raw` beside normalized | empty choice | recorded |
 //! | 2 | `completion_empty_stop_sequence` | `CompletionModel::completion` | empty choice | recorded |
 //! | 3 | `agent_prompt_empty_stop_sequence` | agent `prompt` | empty text | recorded |
 //! | 4 | `streaming_empty_stop_sequence` | streamed twin | empty choice | recorded |
@@ -45,43 +45,30 @@
 //! | 16 | `finish_reason_is_stop_on_empty_stop` | finish-reason mapping | `Stop` | recorded |
 //! | 17 | `followup_after_empty_stop_turn` | the model stays usable afterwards | non-empty | recorded |
 //! | 18 | `long_sequence_empty_stop` | multi-token sequence | empty choice | recorded |
-//! | 19 | `unit_empty_end_turn_still_allowed` | the pre-existing legal empty | empty choice | unit |
-//! | 20 | `unit_empty_max_tokens_still_rejected` | guard preserved | error | unit |
-//! | 21 | `unit_empty_tool_use_still_rejected` | guard preserved | error | unit |
-//! | 22 | `unit_empty_refusal_still_rejected` | guard preserved | error | unit |
-//! | 23 | `unit_empty_pause_turn_still_rejected` | guard preserved | error | unit |
-//! | 24 | `unit_empty_without_stop_reason_still_rejected` | guard preserved | error | unit |
-//! | 25 | `unit_empty_stop_sequence_without_a_sequence_still_rejected` | carve-out stays inside its evidence | error | unit |
-//! | 26 | `unit_empty_assistant_turn_cannot_be_replayed` | adjacent request boundary | error | unit |
+//! | 19 | `unit_empty_assistant_turn_cannot_be_replayed` | adjacent request boundary | error | unit |
 //!
-//! Cells 20–25 are unit tests because Anthropic will not produce those states
-//! on demand: `max_tokens` truncation always emits at least one token (probed
-//! live — a `max_tokens: 1` turn came back with a one-character text block); a
-//! `tool_use` terminal by construction carries the tool-use block; `pause_turn`
-//! requires a server tool to exhaust its iteration budget; `refusal` requires
-//! tripping a safety classifier; a turn that reports *no* stop reason at all is
-//! by definition not something a well-formed wire emits; and a `stop_sequence`
-//! turn that names no sequence is the malformed shape the carve-out
-//! deliberately stops short of. Each is exactly the case the guard must keep
-//! rejecting, so pinning them by hand is the only way to prove the carve-out
-//! did not widen past its evidence.
+//! Cell 19 is a unit test because it is about a request-side conversion, not
+//! about anything a provider turn can vary.
 //!
-//! Cell 19's *recorded* counterpart already exists as
-//! `empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice`;
-//! it is repeated here as a unit cell so this matrix's own table is complete.
+//! Seven further unit cells pinned the blocking mapping's guard directly on
+//! hand-built provider responses (`max_tokens`, `tool_use`, `refusal`,
+//! `pause_turn`, a missing stop reason, a `stop_sequence` naming no sequence,
+//! and the legal `end_turn` empty). They asserted a second mapping from the
+//! provider response type to `AssistantContent`, which no longer exists: the
+//! wire's decoder is the one mapping, and the guard lives beside it in
+//! `crates/rig-core/src/providers/anthropic/`. Cells 1–18 still cover the
+//! behaviour end to end on recorded turns.
 
-use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-    NormalizeCompletionResponse, ToolDefinition,
-};
+use rig::completion::{CompletionModel as _, FinishReason, ToolDefinition};
+use rig::driver::Bound;
 use rig::prelude::*;
 use rig::providers::anthropic;
-use rig::providers::anthropic::completion::{CompletionResponse, Content, Usage};
+use rig::providers::anthropic::completion::CompletionResponse;
+use rig::providers::anthropic::wire::Messages;
+use serde::Deserialize;
 use serde_json::json;
 
 use super::super::support::{recorded_response_body, with_anthropic_empty_stop_cassette};
-
-const ANTHROPIC_PROVIDER: &str = "anthropic";
 
 /// Asks for exactly one word so a stop sequence naming that word matches
 /// before the model emits anything else.
@@ -92,7 +79,7 @@ const IMMEDIATE_PHRASE_PROMPT: &str =
     "Reply with exactly this phrase and nothing else: alpha bravo charlie";
 const IMMEDIATE_PUNCTUATION_PROMPT: &str = "Reply with exactly this and nothing else: ###";
 
-type AnthropicModel = anthropic::CompletionModel;
+type AnthropicModel = Bound<Messages>;
 
 fn request(
     model: &AnthropicModel,
@@ -155,28 +142,6 @@ pub(super) fn assert_recorded_streamed_empty_stop(scenario: &str) {
     );
 }
 
-fn empty_response(stop_reason: Option<&str>, content: Vec<Content>) -> CompletionResponse {
-    CompletionResponse {
-        content,
-        id: "msg_matrix".to_string(),
-        model: "claude-haiku-4-5".to_string(),
-        role: "assistant".to_string(),
-        stop_reason: stop_reason.map(str::to_string),
-        stop_sequence: stop_reason
-            .filter(|reason| *reason == "stop_sequence")
-            .map(|_| "alpha".to_string()),
-        usage: Usage {
-            input_tokens: 18,
-            cache_read_input_tokens: None,
-            cache_creation_input_tokens: None,
-            cache_creation: None,
-            output_tokens: 1,
-            output_tokens_details: None,
-        },
-        provider_request_id: None,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // 1–5: the surfaces a caller reaches this through
 // ---------------------------------------------------------------------------
@@ -186,19 +151,21 @@ async fn raw_normalize_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/raw_normalize_empty_stop_sequence",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let raw = model
-                .raw_completion(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32))
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let response = model
+                .completion(request(&model, IMMEDIATE_PROMPT, &["alpha"], 32))
                 .await
                 .expect("empty stop-sequence request should succeed");
+            let raw = CompletionResponse::deserialize(&response.raw)
+                .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
 
             assert!(raw.content.is_empty(), "premise: the turn carried nothing");
             assert_eq!(raw.stop_sequence.as_deref(), Some("alpha"));
 
-            let normalized: RigCompletionResponse = raw
-                .normalize(ANTHROPIC_PROVIDER)
-                .expect("a completed stop-sequence turn must not normalize into an error");
-            assert!(normalized.choice.is_empty());
+            assert!(
+                response.choice.is_empty(),
+                "a completed stop-sequence turn must normalize to an empty choice"
+            );
         },
     )
     .await;
@@ -211,7 +178,7 @@ async fn completion_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/completion_empty_stop_sequence",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PROMPT, &["alpha"], 32),
@@ -260,7 +227,7 @@ async fn streaming_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/streaming_empty_stop_sequence",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let mut stream = rig::completion::CompletionModel::stream(
                 &model,
                 request(&model, IMMEDIATE_PROMPT, &["alpha"], 32),
@@ -354,7 +321,7 @@ async fn nonempty_stop_sequence_control() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/nonempty_stop_sequence_control",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PHRASE_PROMPT, &["charlie"], 64),
@@ -394,7 +361,7 @@ async fn unicode_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/unicode_empty_stop_sequence",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_UNICODE_PROMPT, &["🌊"], 32),
@@ -414,7 +381,7 @@ async fn whitespace_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/whitespace_empty_stop_sequence",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PHRASE_PROMPT, &["alpha bravo"], 32),
@@ -434,7 +401,7 @@ async fn punctuation_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/punctuation_empty_stop_sequence",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PUNCTUATION_PROMPT, &["###"], 32),
@@ -454,7 +421,7 @@ async fn two_sequences_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/two_sequences_empty_stop",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PROMPT, &["zulu", "alpha"], 32),
@@ -478,7 +445,7 @@ async fn with_preamble_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/with_preamble_empty_stop",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let request = model
                 .completion_request(IMMEDIATE_PROMPT)
                 .preamble("You follow formatting instructions exactly.".to_string())
@@ -501,7 +468,7 @@ async fn with_tools_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/with_tools_empty_stop",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let request = model
                 .completion_request(IMMEDIATE_PROMPT)
                 .max_tokens(32)
@@ -525,8 +492,8 @@ async fn with_prompt_caching_empty_stop() {
         "empty_stop_sequence_matrix/with_prompt_caching_empty_stop",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_HAIKU_4_5)
-                .with_prompt_caching();
+                .completion(anthropic::completion::CLAUDE_HAIKU_4_5)
+                .map_wire(|wire| wire.with_prompt_caching());
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PROMPT, &["alpha"], 32),
@@ -546,7 +513,7 @@ async fn sonnet_empty_stop_sequence() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/sonnet_empty_stop_sequence",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PROMPT, &["alpha"], 32),
@@ -573,7 +540,7 @@ async fn identity_survives_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/identity_survives_empty_stop",
         move |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PROMPT, &["alpha"], 32),
@@ -625,7 +592,7 @@ async fn finish_reason_is_stop_on_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/finish_reason_is_stop_on_empty_stop",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(&model, IMMEDIATE_PROMPT, &["alpha"], 32),
@@ -650,7 +617,7 @@ async fn followup_after_empty_stop_turn() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/followup_after_empty_stop_turn",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
             let first = rig::completion::CompletionModel::completion(
                 &model,
@@ -683,7 +650,7 @@ async fn long_sequence_empty_stop() {
     with_anthropic_empty_stop_cassette(
         "empty_stop_sequence_matrix/long_sequence_empty_stop",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
             let response = rig::completion::CompletionModel::completion(
                 &model,
                 request(
@@ -704,83 +671,8 @@ async fn long_sequence_empty_stop() {
 }
 
 // ---------------------------------------------------------------------------
-// 19–26: states no provider turn will produce on demand
+// 19: the adjacent request boundary
 // ---------------------------------------------------------------------------
-
-#[test]
-fn unit_empty_end_turn_still_allowed() {
-    let normalized = empty_response(Some("end_turn"), Vec::new()).normalize(ANTHROPIC_PROVIDER);
-    assert!(
-        normalized.is_ok_and(|response| response.choice.is_empty()),
-        "the pre-existing legal empty case must keep working"
-    );
-}
-
-#[test]
-fn unit_empty_max_tokens_still_rejected() {
-    assert!(
-        empty_response(Some("max_tokens"), Vec::new())
-            .normalize(ANTHROPIC_PROVIDER)
-            .is_err(),
-        "a truncated turn that produced nothing is still the shared provider defect"
-    );
-}
-
-#[test]
-fn unit_empty_tool_use_still_rejected() {
-    assert!(
-        empty_response(Some("tool_use"), Vec::new())
-            .normalize(ANTHROPIC_PROVIDER)
-            .is_err(),
-        "a tool-use terminal with no tool-use block is malformed"
-    );
-}
-
-#[test]
-fn unit_empty_refusal_still_rejected() {
-    assert!(
-        empty_response(Some("refusal"), Vec::new())
-            .normalize(ANTHROPIC_PROVIDER)
-            .is_err(),
-        "widening the carve-out past its evidence would swallow refusals silently"
-    );
-}
-
-#[test]
-fn unit_empty_pause_turn_still_rejected() {
-    assert!(
-        empty_response(Some("pause_turn"), Vec::new())
-            .normalize(ANTHROPIC_PROVIDER)
-            .is_err(),
-        "a paused turn carries the server-tool blocks it paused on"
-    );
-}
-
-#[test]
-fn unit_empty_without_stop_reason_still_rejected() {
-    assert!(
-        empty_response(None, Vec::new())
-            .normalize(ANTHROPIC_PROVIDER)
-            .is_err(),
-        "an empty response that never said why it ended is the case the guard exists for"
-    );
-}
-
-#[test]
-fn unit_empty_stop_sequence_without_a_sequence_still_rejected() {
-    // The carve-out is keyed on the sequence being *named*, not merely on the
-    // stop reason. Every recorded stop-sequence turn names it, so a turn that
-    // claims the reason and names nothing is outside the evidence and stays
-    // the malformed shape the guard exists for. This matters most for the
-    // Anthropic-compatible gateways sharing this mapping.
-    let mut response = empty_response(Some("stop_sequence"), Vec::new());
-    response.stop_sequence = None;
-
-    assert!(
-        response.normalize(ANTHROPIC_PROVIDER).is_err(),
-        "a stop-sequence terminal that names no sequence must stay rejected"
-    );
-}
 
 #[test]
 fn unit_empty_assistant_turn_cannot_be_replayed() {

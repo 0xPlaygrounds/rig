@@ -86,7 +86,7 @@ fn the_tools_conflict_says_a_cached_tool_set_is_declarations_only() {
              {tools_message}"
     );
     assert!(
-        tools_message.contains("CompletionModel"),
+        tools_message.contains("GenerateContent"),
         "the tools conflict must name the surface that can actually use a cached tool set: \
              {tools_message}"
     );

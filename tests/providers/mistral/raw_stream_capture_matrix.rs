@@ -2,21 +2,22 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
-//! `raw_stream` yielded as its terminal record — for Mistral the shared
-//! chat-completions terminal [`StreamingCompletionResponse`] over Mistral's own
-//! [`mistral::Usage`] — serialized. Capture is always on: there is no flag to
-//! request it, nothing about it reaches the wire, and a `Value::Null` only ever
-//! means a terminal built by hand with no provider record behind it. It is the
-//! terminal record only, never the stream's frames. Mistral's terminal usage
-//! carries the capacity tier (`usage.service_tier`) that the normalized `Usage`
-//! has no slot for, so it is the terminal-only field pinned here.
+//! [`rig::streaming::StreamFinal::raw`] carries the chat-completions terminal
+//! record the wire's decoder assembled, serialized — and it carries it whole:
+//! a dialect's own usage fields ride along beside the OpenAI-compatible ones
+//! that [`StreamingCompletionResponse`] models. Capture is always on: there is
+//! no flag to request it, nothing about it reaches the wire, and a
+//! `Value::Null` only ever means a terminal built by hand with no provider
+//! record behind it. It is the terminal record only, never the stream's frames.
+//! Mistral's terminal usage carries the capacity tier (`usage.service_tier`)
+//! that the normalized `Usage` has no slot for, so it is the terminal-only
+//! field pinned here.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<mistral::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame and `mistral-correlation-id` header | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into the chat-completions terminal record and re-serializes equal, and its typed accounting normalizes to the terminal's usage; the normalized terminal reproduces the recorded terminal frame and `mistral-correlation-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_service_tier` | terminal-only field | `raw.usage.service_tier` equals the recorded terminal frame's | recorded |
-//! | 3 | `stream_tool_call_raw_round_trips_terminal_type` | forced tool call | a `tool_choice: any` stream's terminal `raw` round-trips into `StreamingCompletionResponse<mistral::Usage>` and reproduces the recorded finish frame; the normalized terminal reports `ToolCalls` while the recorded frame spells `"tool_calls"`, and the stream's one tool call reassembles the fixture's `delta.tool_calls` fragments | recorded |
+//! | 3 | `stream_tool_call_raw_round_trips_terminal_type` | forced tool call | a `tool_choice: any` stream's terminal `raw` round-trips into the terminal record and reproduces the recorded finish frame; the normalized terminal reports `ToolCalls` while the recorded frame spells `"tool_calls"`, and the stream's one tool call reassembles the fixture's `delta.tool_calls` fragments | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that usage appears on exactly one frame — Mistral's finish
@@ -32,9 +33,7 @@ use rig::message::AssistantContent;
 
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
-use rig::prelude::*;
-use rig::providers::mistral;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
+use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -45,7 +44,9 @@ use super::support::{
 };
 use crate::support::collect_text_and_terminal;
 
-type MistralTerminal = StreamingCompletionResponse<mistral::Usage>;
+/// The terminal record as the wire assembled it, over the accounting that
+/// keeps a dialect's own usage fields beside the OpenAI-compatible ones.
+type MistralTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "mistral";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -56,7 +57,7 @@ const TOOL_PREAMBLE: &str =
 const TOOL_PROMPT: &str = "Call lookup_city exactly once with city Paris.";
 const TOOL_NAME: &str = "lookup_city";
 
-fn request(model: &mistral::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
@@ -72,7 +73,7 @@ fn lookup_city_tool() -> ToolDefinition {
     }
 }
 
-fn tool_request(model: &mistral::CompletionModel) -> CompletionRequest {
+fn tool_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
         .preamble(TOOL_PREAMBLE.to_owned())
@@ -235,19 +236,27 @@ async fn stream_raw_round_trips_terminal_type() {
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
+            let model = client.completion(DEFAULT_MODEL);
             let stream = model.stream(request(&model)).await?;
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
             assert!(!text.is_empty());
             let raw = &terminal.raw;
             let typed = MistralTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over Mistral usage");
+                .expect("raw is the chat-completions terminal record");
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
                 *raw,
                 "the captured value is the typed terminal serialized, nothing more"
             );
+            // The accounting rides the record typed: `ChatUsage` folds the
+            // OpenAI-compatible counters and the dialect's extras, and its
+            // mapping is what the normalized terminal reports.
+            let usage = typed
+                .usage
+                .as_ref()
+                .expect("Mistral reports usage on its finish frame");
+            assert_eq!(usage.to_normalized(), terminal.usage);
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);
             assert_eq!(
@@ -284,7 +293,7 @@ async fn stream_raw_exposes_terminal_service_tier() {
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier",
         |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
+            let model = client.completion(DEFAULT_MODEL);
             let stream = model.stream(request(&model)).await?;
             let (_, terminal) = collect_text_and_terminal(stream).await;
             *sink.lock().expect("observation lock") =
@@ -332,7 +341,7 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_tool_call_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
+            let model = client.completion(DEFAULT_MODEL);
             let stream = model.stream(tool_request(&model)).await?;
             let observation = collect_tool_calls_and_terminal(stream).await;
             let terminal = observation
@@ -341,12 +350,17 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
                 .expect("stream should end with a terminal record");
             let raw = &terminal.raw;
             let typed = MistralTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over Mistral usage");
+                .expect("raw is the chat-completions terminal record");
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
                 *raw,
                 "the captured value is the typed terminal serialized, nothing more"
             );
+            let usage = typed
+                .usage
+                .as_ref()
+                .expect("Mistral reports usage on its finish frame");
+            assert_eq!(usage.to_normalized(), terminal.usage);
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);
             assert_eq!(

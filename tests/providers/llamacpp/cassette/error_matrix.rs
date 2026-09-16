@@ -17,7 +17,7 @@
 //! | [`an_unknown_model_is_ignored_rather_than_rejected`] | default | **200** | — | llama.cpp never reads `model` for routing |
 //! | [`a_missing_api_key_is_a_401_the_caller_can_read`] | `--api-key` | 401 | `authentication_error` | |
 //! | [`the_api_key_the_provider_sends_is_accepted`] | `--api-key` | 200 | — | the paired positive; impossible before this PR |
-//! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `VERIFY_PATH` is `/props`, not the public `/models` |
+//! | [`verify_fails_without_the_key_and_succeeds_with_it`] | `--api-key` | 401 / 200 | `authentication_error` | why `verify_path` is `/props`, not the public `/models` |
 //! | [`the_model_listing_is_public_even_on_a_keyed_server`] | `--api-key` | **200** | — | the measurement that justifies the row above |
 //! | [`embeddings_without_the_flag_are_a_501`] | default | 501 | `not_supported_error` | |
 //! | [`embeddings_with_pooling_none_are_a_400`] | `--pooling none` | 400 | `invalid_request_error` | not the 500 the README implies |
@@ -58,11 +58,9 @@
 //!   400 that must survive rig's SSE funnel rather than the unary one.
 
 use futures::StreamExt;
-use rig::client::{
-    CompletionClient, EmbeddingsClient, ModelListingClient, RerankingClient, VerifyClient,
-};
 use rig::completion::CompletionModel;
 use rig::embeddings::{EmbeddingError, EmbeddingModel};
+use rig::model::ModelLister;
 use rig::rerank::{RerankError, RerankModel};
 use serde_json::{Value, json};
 
@@ -133,7 +131,7 @@ async fn context_overflow_preserves_the_token_counts() {
     with_llamacpp_small_context_cassette(
         "error_matrix/context_overflow_blocking",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let error = model
                 .completion(
                     model
@@ -189,7 +187,7 @@ async fn streaming_context_overflow_matches_the_blocking_envelope() {
     with_llamacpp_small_context_cassette(
         "error_matrix/context_overflow_streaming",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let request = model
                 .completion_request(overflowing_prompt())
                 .max_tokens(8)
@@ -262,7 +260,7 @@ async fn an_unknown_model_is_ignored_rather_than_rejected() {
     with_llamacpp_cassette(
         "error_matrix/unknown_model_is_ignored",
         |client| async move {
-            let model = client.completion_model("rig/definitely-not-a-llamacpp-model");
+            let model = client.completion("rig/definitely-not-a-llamacpp-model");
             let response = model
                 .completion(
                     model
@@ -309,7 +307,7 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
     with_llamacpp_missing_api_key_cassette(
         "error_matrix/missing_api_key_is_401",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let error = model
                 .completion(model.completion_request("hi").max_tokens(8).build())
                 .await
@@ -343,7 +341,7 @@ async fn a_missing_api_key_is_a_401_the_caller_can_read() {
 #[tokio::test]
 async fn the_api_key_the_provider_sends_is_accepted() {
     with_llamacpp_api_key_cassette("error_matrix/api_key_is_accepted", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -363,11 +361,12 @@ async fn the_api_key_the_provider_sends_is_accepted() {
 
 /// `verify()` on a keyed server distinguishes a good credential from a bad one.
 ///
-/// This is why `Llamacpp::VERIFY_PATH` is `/props` rather than the
-/// `/models` its predecessor used: `GET /v1/models` and `GET /health` are the
-/// only two routes llama.cpp serves *without* the API-key check, so verifying
-/// against `/models` returns 200 for every key including a wrong one, which is
-/// the exact opposite of what verification means.
+/// This is why the `LLAMACPP` dialect's `verify_path` quirk is `/props`
+/// rather than the `/models` its predecessor used: `GET /v1/models` and
+/// `GET /health` are the only two routes llama.cpp serves *without* the
+/// API-key check, so verifying against `/models` returns 200 for every key
+/// including a wrong one, which is the exact opposite of what verification
+/// means.
 #[tokio::test]
 async fn verify_fails_without_the_key_and_succeeds_with_it() {
     with_llamacpp_missing_api_key_cassette(
@@ -409,8 +408,9 @@ async fn verify_fails_without_the_key_and_succeeds_with_it() {
     );
 }
 
-/// The claim `VERIFY_PATH` rests on, recorded: `GET /v1/models` answers **200
-/// without a credential** on a server that rejects everything else.
+/// The claim the `verify_path` quirk rests on, recorded: `GET /v1/models`
+/// answers **200 without a credential** on a server that rejects everything
+/// else.
 ///
 /// The cell above explains why `/props` replaced `/models`; this is the half
 /// that makes it a measurement. Against the *same* `--api-key` server and the
@@ -423,7 +423,8 @@ async fn the_model_listing_is_public_even_on_a_keyed_server() {
         "error_matrix/model_listing_is_public",
         |client| async move {
             let models = client
-                .list_models()
+                .models()
+                .list_all()
                 .await
                 .expect("`/v1/models` is served without the API-key check");
             assert!(
@@ -470,7 +471,7 @@ async fn embeddings_without_the_flag_are_a_501() {
         "error_matrix/embeddings_without_the_flag",
         |client| async move {
             let error = client
-                .embedding_model(CASSETTE_EMBEDDING_MODEL)
+                .embedding(CASSETTE_EMBEDDING_MODEL, None)
                 .embed_texts(["hello".to_string()])
                 .await
                 .expect_err("a server without --embeddings must refuse");
@@ -514,7 +515,7 @@ async fn embeddings_with_pooling_none_are_a_400() {
         "error_matrix/embeddings_with_pooling_none",
         |client| async move {
             let error = client
-                .embedding_model(CASSETTE_EMBEDDING_MODEL)
+                .embedding(CASSETTE_EMBEDDING_MODEL, None)
                 .embed_texts(["hello".to_string()])
                 .await
                 .expect_err("--pooling none is not OpenAI-compatible");
@@ -557,7 +558,7 @@ async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
         "error_matrix/embeddings_on_a_causal_lm",
         |client| async move {
             let embeddings = client
-                .embedding_model(CASSETTE_MODEL)
+                .embedding(CASSETTE_MODEL, None)
                 .embed_texts(["hello".to_string()])
                 .await
                 .expect("llama.cpp pools a causal LM rather than refusing");
@@ -593,7 +594,7 @@ async fn embeddings_on_a_causal_lm_return_pooled_numbers() {
 #[tokio::test]
 async fn tools_without_jinja_are_a_500() {
     with_llamacpp_no_jinja_cassette("error_matrix/tools_without_jinja", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let error = model
             .completion(
                 model
@@ -639,7 +640,7 @@ async fn a_malformed_body_keeps_its_parse_error() {
     with_llamacpp_cassette(
         "error_matrix/malformed_request_field",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let error = model
                 .completion(
                     model
@@ -687,7 +688,7 @@ async fn an_oversized_output_cap_is_clamped_not_rejected() {
     with_llamacpp_small_context_cassette(
         "error_matrix/oversized_output_cap",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(
                     model
@@ -734,7 +735,7 @@ async fn rerank_without_a_reranker_is_a_501() {
         "error_matrix/rerank_without_a_reranker",
         |client| async move {
             let error = client
-                .rerank_model(CASSETTE_RERANK_MODEL)
+                .rerank(CASSETTE_RERANK_MODEL)
                 .rerank("what is a panda?", vec!["hi".into(), "it is a bear".into()])
                 .await
                 .expect_err("a server without --reranking must refuse");
@@ -775,7 +776,7 @@ async fn rerank_without_a_reranker_is_a_501() {
 async fn rerank_with_an_empty_document_list_is_a_400() {
     with_llamacpp_rerank_cassette("error_matrix/rerank_empty_documents", |client| async move {
         let error = client
-            .rerank_model(CASSETTE_RERANK_MODEL)
+            .rerank(CASSETTE_RERANK_MODEL)
             .rerank("what is a panda?", Vec::new())
             .await
             .expect_err("an empty document list is refused by the server");
@@ -827,7 +828,7 @@ async fn an_embeddings_input_past_the_batch_size_is_a_500() {
             // with, and deterministic.
             let oversized = "word ".repeat(4_000);
             let error = client
-                .embedding_model(CASSETTE_EMBEDDING_MODEL)
+                .embedding(CASSETTE_EMBEDDING_MODEL, None)
                 .embed_texts([oversized])
                 .await
                 .expect_err("an input past the physical batch must fail");

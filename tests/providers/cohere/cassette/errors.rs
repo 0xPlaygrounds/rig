@@ -6,7 +6,6 @@
 
 use axum::http;
 use rig::completion::{CompletionError, CompletionModel};
-use rig::prelude::*;
 
 use super::super::support::with_cohere_cassette;
 use crate::support::BASIC_PROMPT;
@@ -18,7 +17,7 @@ async fn completion_error_preserves_status_and_body() {
     with_cohere_cassette(
         "errors/completion_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion_model(UNKNOWN_MODEL);
+            let model = client.completion(UNKNOWN_MODEL);
             let request = model.completion_request(BASIC_PROMPT).build();
 
             let error = model

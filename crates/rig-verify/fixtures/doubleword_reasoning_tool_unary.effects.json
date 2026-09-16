@@ -152,6 +152,7 @@
             "output_tokens": 84,
             "total_tokens": 438,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 46
           },
           "message_id": null,
@@ -160,52 +161,61 @@
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
-            "id": "resp_REDACTED_1",
-            "object": "chat.completion",
-            "created": 0,
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "system_fingerprint": null,
             "choices": [
               {
+                "finish_reason": "tool_calls",
                 "index": 0,
                 "message": {
-                  "role": "assistant",
                   "reasoning_content": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-                  "tool_calls": [
-                    {
-                      "id": "call_REDACTED_1",
-                      "type": "function",
-                      "function": {
-                        "name": "add",
-                        "arguments": "{\"x\":17,\"y\":25}"
-                      }
-                    }
-                  ],
                   "reasoning_details": [
                     {
-                      "type": "reasoning.text",
-                      "id": null,
                       "format": "unknown",
                       "index": 0,
                       "text": "The user wants me to add 17 and 25 using the add tool, and then reply with just the number. I need to call the add function with x=17 and y=25.\n",
-                      "signature": null
+                      "type": "reasoning.text"
+                    }
+                  ],
+                  "refusal": null,
+                  "role": "assistant",
+                  "tool_calls": [
+                    {
+                      "function": {
+                        "arguments": "{\"x\": 17, \"y\": 25}",
+                        "name": "add"
+                      },
+                      "id": "call_REDACTED_1",
+                      "type": "function"
                     }
                   ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
+                }
               }
             ],
+            "created": 0,
+            "id": "resp_REDACTED_1",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "object": "chat.completion",
             "usage": {
-              "prompt_tokens": 354,
-              "completion_tokens": 84,
-              "total_tokens": 438,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 84,
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 46
-              }
+              },
+              "prompt_tokens": 354,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 438
             }
           }
         }
@@ -377,6 +387,7 @@
             "output_tokens": 48,
             "total_tokens": 493,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 43
           },
           "message_id": null,
@@ -385,48 +396,52 @@
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
-            "id": "resp_REDACTED_2",
-            "object": "chat.completion",
-            "created": 0,
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "system_fingerprint": null,
             "choices": [
               {
+                "finish_reason": "stop",
                 "index": 0,
                 "message": {
-                  "role": "assistant",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "\n\n42"
-                    }
-                  ],
+                  "content": "\n\n42",
                   "reasoning_content": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
                   "reasoning_details": [
                     {
-                      "type": "reasoning.text",
-                      "id": null,
                       "format": "unknown",
                       "index": 0,
                       "text": "The add tool returned 42, which is the correct sum of 17 and 25. The user asked me to reply with just the number, so I should respond with \"42\".\n",
-                      "signature": null
+                      "type": "reasoning.text"
                     }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "stop"
+                  ],
+                  "refusal": null,
+                  "role": "assistant"
+                }
               }
             ],
+            "created": 0,
+            "id": "resp_REDACTED_2",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "object": "chat.completion",
             "usage": {
-              "prompt_tokens": 445,
-              "completion_tokens": 48,
-              "total_tokens": 493,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 48,
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 43
-              }
+              },
+              "prompt_tokens": 445,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 493
             }
           }
         }

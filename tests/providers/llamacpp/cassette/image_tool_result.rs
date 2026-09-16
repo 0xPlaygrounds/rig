@@ -4,8 +4,8 @@
 //! (*"Image URLs are only allowed for messages with role 'user'"*) and the
 //! GPT-5 family answers 200 with the image discarded, the model then describing
 //! what it never received. llama.cpp does honour it, which is why
-//! `Llamacpp::SUPPORTS_IMAGE_TOOL_RESULTS` is `true` and the shared
-//! conversion is gated rather than hard-coded.
+//! the `LLAMACPP` dialect's `supports_image_tool_results` quirk is `true` and
+//! the shared conversion is gated rather than hard-coded.
 //!
 //! **Server**: the `--mmproj` vision configuration —
 //! `ggml-org/Qwen3-VL-2B-Instruct-GGUF` Q8_0 with its `mmproj`,
@@ -16,7 +16,6 @@
 //! Run cassette tests in replay mode by default, or set
 //! `RIG_PROVIDER_TEST_MODE=record` to record against a local llama.cpp server.
 
-use rig::client::CompletionClient as _;
 use rig::completion::CompletionModel as _;
 use rig::message::{ImageMediaType, ProviderCallId, ToolCallId, ToolResult, ToolResultContent};
 
@@ -78,7 +77,7 @@ async fn a_tool_result_image_is_read_by_the_model() {
     with_llamacpp_vision_cassette(
         "image_tool_result/a_tool_result_image_is_read_by_the_model",
         |client| async move {
-            let model = client.completion_model(VISION_MODEL);
+            let model = client.completion(VISION_MODEL);
             let request = model
                 .completion_request(
                     "Call view_file, then reply with ONLY the dominant colour name.",
@@ -118,7 +117,7 @@ async fn the_same_image_in_a_user_message_is_read_too() {
     with_llamacpp_vision_cassette(
         "image_tool_result/the_same_image_in_a_user_message_is_read_too",
         |client| async move {
-            let model = client.completion_model(VISION_MODEL);
+            let model = client.completion(VISION_MODEL);
             let request = model
                 .completion_request(rig::message::Message::User {
                     content: vec![

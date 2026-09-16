@@ -142,7 +142,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -197,7 +197,7 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_bedrock_stop_reason",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))

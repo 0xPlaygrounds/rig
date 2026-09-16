@@ -2,22 +2,26 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
-//! `raw_stream` yielded as its terminal record — for Perplexity the shared
-//! chat-completions terminal [`StreamingCompletionResponse`] over the shared
-//! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
-//! request it, nothing about it reaches the wire, and a `Value::Null` only ever
-//! means a terminal built by hand with no provider record behind it. It is the
-//! terminal record only, never the stream's frames. Perplexity reports usage on
-//! *every* frame and the last frame's counts are the terminal's; the terminal's
-//! accumulated `additional_params` carries the `object` tag the frames repeat.
-//! Neither the tag nor the raw usage block has a slot on the normalized
-//! terminal.
+//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! record — for Perplexity the shared chat-completions
+//! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture is
+//! always on: there is no flag to request it, nothing about it reaches the
+//! wire, and a `Value::Null` only ever means a terminal built by hand with no
+//! provider record behind it. It is the terminal record only, never the
+//! stream's frames. Perplexity reports usage on *every* frame and the last
+//! frame's counts are the terminal's; the terminal's accumulated
+//! `additional_params` carries the `object` tag the frames repeat. Neither the
+//! tag nor the raw usage block has a slot on the normalized terminal.
+//!
+//! [`ChatUsage`] flattens the OpenAI-compatible counters and keeps whatever
+//! else the dialect sent in a sibling map, so Perplexity's `cost` and
+//! `search_context_size` survive into `raw` instead of being dropped at the
+//! type boundary. Cell 2 pins that against a fixture that carries them.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<openai::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded last frame | recorded |
-//! | 2 | `stream_raw_exposes_terminal_usage_and_object` | terminal-only field | `raw.usage` counts equal the recorded last frame's; `raw.additional_params.object` equals the frames' tag | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into the terminal record and re-serializes equal; its `ChatUsage` normalizes to the terminal usage; the normalized terminal reproduces the recorded last frame | recorded |
+//! | 2 | `stream_raw_exposes_terminal_usage_and_object` | terminal-only fields | `raw.usage` equals the recorded last frame's counters *including* the unmodeled `cost` block; `raw.additional_params.object` equals the frames' tag | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that the recorded stream's last data frame carries usage and a
@@ -28,9 +32,8 @@
 //! documented outcome.
 
 use rig::completion::{CompletionModel, CompletionRequest};
-use rig::prelude::*;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
-use rig::providers::{openai, perplexity};
+use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
+use rig::providers::perplexity;
 use rig::streaming::StreamFinal;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -38,13 +41,14 @@ use serde_json::{Value, json};
 use super::super::support::{assert_matches_recorded_token, with_perplexity_cassette};
 use crate::support::collect_text_and_terminal;
 
-type PerplexityTerminal = StreamingCompletionResponse<openai::Usage>;
+/// The terminal record as the decoder serialized it, accounting included.
+type PerplexityTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &perplexity::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
@@ -109,7 +113,7 @@ async fn stream_raw_round_trips_terminal_type() {
     with_perplexity_cassette(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model
                 .stream(request(&model))
                 .await
@@ -119,7 +123,10 @@ async fn stream_raw_round_trips_terminal_type() {
             assert!(!text.is_empty());
             let raw = &terminal.raw;
             let typed = PerplexityTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over the shared OpenAI usage");
+                .expect("raw is the chat-completions terminal record");
+            // Unlike a unary `CompletionResponse::raw`, a stream's terminal
+            // `raw` IS this record serialized (`openai/wire/chat.rs`'s
+            // `emit_terminal`), so the round trip is exact.
             assert_eq!(
                 serde_json::to_value(&typed).expect("typed serializes"),
                 *raw,
@@ -131,6 +138,14 @@ async fn stream_raw_round_trips_terminal_type() {
                 typed.provider_request_id, None,
                 "the transport id is stamped on the normalized terminal, not the native record"
             );
+            // `ChatUsage::to_normalized` is the mapping the terminal's usage
+            // went through, so pinning it directly says more than an equality
+            // between the record and its own serialization would.
+            let usage = typed
+                .usage
+                .as_ref()
+                .expect("the terminal carries the dialect's accounting");
+            assert_eq!(usage.to_normalized(), terminal.usage);
             *sink.lock().expect("observation lock") = Some(terminal);
         },
     )
@@ -159,7 +174,7 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     with_perplexity_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model
                 .stream(request(&model))
                 .await
@@ -193,14 +208,19 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
     );
     assert_eq!(raw["usage"]["total_tokens"], recorded_usage["total_tokens"]);
     assert_eq!(raw["additional_params"]["object"], json!(recorded_object));
-    // The normalized terminal has no slot for the tag; and the raw usage is
-    // the shared *type* serialized, so Perplexity's `cost` /
-    // `search_context_size` usage extras — unmodeled — are not in it either.
+    // The normalized terminal has no slot for the tag. The usage block, by
+    // contrast, is the dialect's own: `ChatUsage` keeps the fields no
+    // OpenAI-compatible shape models, so Perplexity's `cost` reaches a caller
+    // through `raw` rather than being lost at the type boundary.
     let normalized = serde_json::to_value(&terminal).expect("terminal serializes");
     assert!(normalized.get("object").is_none() && normalized.get("additional_params").is_none());
     assert!(
         recorded_usage.get("cost").is_some(),
         "the recorded usage carries Perplexity's cost block: {recorded_usage}"
     );
-    assert!(raw["usage"].get("cost").is_none());
+    assert_eq!(
+        raw["usage"].get("cost"),
+        recorded_usage.get("cost"),
+        "the dialect's extra usage fields ride along in raw: {raw}"
+    );
 }

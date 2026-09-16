@@ -1,31 +1,48 @@
-//! Z.AI API clients and Rig integrations.
+//! Z.AI's endpoints and model identifiers.
 //!
-//! Z.AI exposes OpenAI-compatible APIs for both its general platform and
-//! coding-focused platform, plus an Anthropic-compatible endpoint for tools
-//! like Claude Code.
+//! Z.AI serves the same models over two wires, so this module is data for
+//! both and nothing else:
+//!
+//! - the OpenAI chat-completions wire, as
+//!   [`openai::wire::ZAI`](crate::providers::openai::wire::ZAI) (general
+//!   platform) and
+//!   [`openai::wire::ZAI_CODING`](crate::providers::openai::wire::ZAI_CODING)
+//!   (coding platform) — one dialect at two base URLs;
+//! - the Anthropic Messages wire, as
+//!   [`anthropic::wire::ZAI`](crate::providers::anthropic::wire::ZAI), for
+//!   tools that speak Claude Code's format.
+//!
+//! Both read `ZAI_API_KEY`.
+//!
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
 //!
 //! # OpenAI-compatible example
-//! ```ignore
-//! use rig_core::client::CompletionClient;
+//! ```no_run
+//! use rig_core::providers::openai::wire::{OpenAI, ZAI, ZAI_CODING};
 //! use rig_core::providers::zai;
 //!
-//! let client = zai::Client::new("YOUR_API_KEY").expect("Failed to build client");
-//! let glm_4_6 = client.completion_model(zai::GLM_4_6);
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let glm_4_6 = OpenAI::from_env_with(&ZAI)?.chat(zai::GLM_4_6);
+//!
+//! // The coding platform is the same dialect at `CODING_API_BASE_URL`.
+//! let coding = OpenAI::from_env_with(&ZAI_CODING)?.chat(zai::GLM_4_6);
+//! # let _ = (glm_4_6, coding);
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Anthropic-compatible example
-//! ```ignore
-//! use rig_core::client::CompletionClient;
+//! ```no_run
+//! use rig_core::providers::anthropic::wire::{Anthropic, ZAI};
 //! use rig_core::providers::zai;
 //!
-//! let client = zai::AnthropicClient::new("YOUR_API_KEY").expect("Failed to build client");
-//! let glm_4_6 = client.completion_model(zai::GLM_4_6);
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let glm_4_6 = Anthropic::from_env_with(&ZAI)?.messages(zai::GLM_4_6);
+//! # let _ = glm_4_6;
+//! # Ok(())
+//! # }
 //! ```
-
-use crate::client;
-use crate::providers::internal::anthropic_compatible::{
-    AnthropicBaseUrl, impl_dual_dialect_provider,
-};
 
 /// General-purpose OpenAI-compatible base URL.
 pub const GENERAL_API_BASE_URL: &str = "https://api.z.ai/api/paas/v4";
@@ -48,71 +65,3 @@ pub const GLM_4_5_AIR: &str = "glm-4.5-air";
 pub const GLM_4_5V: &str = "glm-4.5v";
 /// `glm-4.5-airx`
 pub const GLM_4_5_AIRX: &str = "glm-4.5-airx";
-
-impl_dual_dialect_provider!(
-    provider = ZAi,
-    anthropic_provider = ZAiAnthropic,
-    client_input = client::BearerAuth,
-    name = "zai",
-    api_key_env = "ZAI_API_KEY",
-    base_url = GENERAL_API_BASE_URL,
-    base_url_env = "ZAI_API_BASE",
-    anthropic_provider_name = "z.ai",
-    anthropic_base_url = ANTHROPIC_API_BASE_URL,
-    anthropic_base_url_env = "ZAI_ANTHROPIC_API_BASE",
-);
-
-impl client::HasCompletion for ZAi {
-    type Model<H>
-        = super::openai::completion::GenericCompletionModel<ZAi, H>
-    where
-        H: client::ModelTransport;
-
-    fn completion_model<H: client::ModelTransport>(
-        client: &Client<H>,
-        model: String,
-    ) -> Self::Model<H> {
-        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
-    }
-}
-
-impl super::openai::completion::OpenAICompatibleProvider for ZAi {
-    const PROVIDER_NAME: &'static str = "zai";
-
-    type StreamingUsage = super::openai::Usage;
-
-    type Response = super::openai::CompletionResponse;
-}
-
-const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
-    &[
-        (GENERAL_API_BASE_URL, ANTHROPIC_API_BASE_URL),
-        (CODING_API_BASE_URL, ANTHROPIC_API_BASE_URL),
-    ],
-    &[
-        "/api/paas/v4",
-        "/api/paas/v4/",
-        "/api/coding/paas/v4",
-        "/api/coding/paas/v4/",
-    ],
-    "/api/anthropic",
-);
-
-impl<H> ClientBuilder<H> {
-    pub fn general(self) -> Self {
-        self.base_url(GENERAL_API_BASE_URL)
-    }
-
-    pub fn coding(self) -> Self {
-        self.base_url(CODING_API_BASE_URL)
-    }
-}
-
-impl<H> AnthropicClientBuilder<H> {
-    pub fn general(self) -> Self {
-        self.base_url(ANTHROPIC_API_BASE_URL)
-    }
-}
-
-#[cfg(test)]
-mod tests;

@@ -6,7 +6,7 @@ use super::super::{
 };
 use super::ecs_stress_streaming_runtime::{self as runtime, EventTap};
 use crate::support::{assert_mentions_expected_number, assert_nonempty_response};
-use rig::{prelude::*, providers::gemini};
+use rig::providers::gemini;
 #[tokio::test]
 async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
     let tap = EventTap::default();
@@ -15,7 +15,7 @@ async fn streaming_text_only_emits_text_deltas_and_stream_finish() {
         "hook_stress_streaming/streaming_text_only_emits_text_deltas_and_stream_finish",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 "You are a concise assistant. Answer directly in plain text.",
                 "stress-agent",
                 Some(0.0),
@@ -61,7 +61,7 @@ async fn streaming_tool_turns_fire_model_turn_finished() {
         "hook_stress_streaming/streaming_tool_turns_fire_model_turn_finished",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 CHAIN_PREAMBLE,
                 "stress-agent",
                 Some(0.0),
@@ -105,7 +105,7 @@ async fn streaming_result_redaction_reaches_final_response() {
         "hook_stress_streaming/streaming_result_redaction_reaches_final_response",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 "You are a calculator assistant. Use the add tool, then report the exact tool \
                      result text verbatim.",
                 "stress-agent",
@@ -147,7 +147,7 @@ async fn streaming_active_tools_narrowing_filters_a_tool() {
         "hook_stress_streaming/streaming_active_tools_narrowing_filters_a_tool",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 "You are a calculator assistant. Use a provided tool for any arithmetic you \
                      can; if a tool is unavailable, say so and continue.",
                 "stress-agent",
@@ -194,7 +194,7 @@ async fn streaming_skip_leaves_tool_unexecuted() {
         "hook_stress_streaming/streaming_skip_leaves_tool_unexecuted",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 "You are a calculator assistant. You MUST use the provided tools. If a tool \
                      reports it is unavailable, acknowledge that and report any results you have.",
                 "stress-agent",
@@ -236,7 +236,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
         "hook_stress_streaming/parity_blocking",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 CHAIN_PREAMBLE,
                 "stress-agent",
                 Some(0.0),
@@ -254,7 +254,7 @@ async fn blocking_and_streaming_produce_same_final_answer() {
         "hook_stress_streaming/parity_streaming",
         |client| async move {
             let mut ecs = runtime::agent(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 CHAIN_PREAMBLE,
                 "stress-agent",
                 Some(0.0),

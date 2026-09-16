@@ -3,13 +3,14 @@
 //!
 //! Cells asserted from recordings, not assumptions: response completeness
 //! (order, provider, usage/model/request-id exactly as the wire reports),
-//! `raw` round-tripping to the provider's own type, raw-route parity,
-//! the single-text convenience, and the error path preserving the body.
+//! `raw` reading back as the shared OpenAI-compatible embeddings payload,
+//! `encode` determinism across two identical exchanges, the single-text
+//! convenience, and the error path preserving the body.
 
 use super::super::support::with_doubleword_cassette;
-use rig::client::EmbeddingsClient;
-use rig::embeddings::{EmbeddingModel as _, NormalizeEmbeddingResponse as _};
+use rig::embeddings::EmbeddingModel as _;
 use rig::providers::{doubleword, openai};
+use serde::Deserialize as _;
 
 use crate::support::{
     EMBEDDING_INPUTS, EmbeddingMatrixExpectations, assert_normalized_embedding_response,
@@ -33,7 +34,7 @@ async fn normalized_response_is_complete() {
     with_doubleword_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding_model(doubleword::QWEN3_EMBEDDING_8B);
+            let model = client.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
             let response = model
                 .embed_texts_response(inputs())
                 .await
@@ -44,54 +45,78 @@ async fn normalized_response_is_complete() {
     .await;
 }
 
-/// `raw` is the provider's own payload, serialized: it deserializes back to
-/// the wire type and normalizing that value reproduces the normalized view.
+/// `raw` is the provider's verbatim payload: it reads back as the shared
+/// OpenAI-compatible embeddings response, and that value's provider-native
+/// fields are the ones the decoder normalized.
 #[tokio::test]
 async fn raw_round_trips() {
     with_doubleword_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding_model(doubleword::QWEN3_EMBEDDING_8B);
+        let model = client.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
         let response = model
             .embed_texts_response(inputs())
             .await
             .expect("embedding request should succeed");
 
-        let raw: openai::CompatibleEmbeddingResponse =
-            serde_json::from_value(response.raw.clone()).expect("raw round-trips");
-        assert_eq!(raw.data.len(), response.embeddings.len());
-
-        let renormalized = raw
-            .normalize(response.provider.as_str(), inputs())
-            .expect("re-normalization succeeds");
-        assert_eq!(renormalized.embeddings.len(), response.embeddings.len());
-        assert_eq!(renormalized.model, response.model);
-        assert_eq!(renormalized.usage, response.usage);
+        let reply = openai::CompatibleEmbeddingResponse::deserialize(&response.raw)
+            .expect("raw is the shared OpenAI-compatible embeddings response");
+        assert_eq!(reply.data.len(), response.embeddings.len());
+        assert_eq!(Some(reply.model.as_str()), response.model.as_deref());
+        let native_usage = reply.usage.as_ref().expect("Doubleword reports usage");
+        assert_eq!(
+            response.usage.total_tokens,
+            Some(native_usage.total_tokens as u64)
+        );
+        assert_eq!(
+            response.usage.input_tokens,
+            Some(native_usage.prompt_tokens as u64)
+        );
+        for (datum, embedding) in reply.data.iter().zip(&response.embeddings) {
+            assert_eq!(datum.embedding.len(), embedding.vec.len());
+        }
     })
     .await;
 }
 
-/// The inherent raw route answers with the payload whose normalization agrees
-/// with the normalized call — two live exchanges in one recording, following
-/// the raw-parity matrices' shape.
+/// There is one embed seam, so the axis this cell pins is that `encode` is
+/// deterministic — the same inputs produce byte-identical request bodies on
+/// both exchanges — and that `raw` is a faithful second view of the reply it
+/// rode on rather than a summary.
 #[tokio::test]
 async fn raw_route_parity() {
+    const SCENARIO: &str = "embedding_matrix/raw_route_parity";
+
     with_doubleword_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding_model(doubleword::QWEN3_EMBEDDING_8B);
+        let model = client.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
         let normalized = model
             .embed_texts_response(inputs())
             .await
             .expect("normalized call should succeed");
-        let raw = model
-            .raw_embed_texts(inputs())
+        let again = model
+            .embed_texts_response(inputs())
             .await
-            .expect("raw call should succeed");
+            .expect("the same request should succeed again");
 
-        assert_eq!(raw.data.len(), normalized.embeddings.len());
-        let renormalized = raw
-            .normalize(normalized.provider.as_str(), inputs())
-            .expect("raw payload normalizes");
-        assert_eq!(renormalized.model, normalized.model);
+        assert_eq!(again.embeddings.len(), normalized.embeddings.len());
+        assert_eq!(again.model, normalized.model);
+        assert_eq!(again.usage, normalized.usage);
+
+        let reply = openai::CompatibleEmbeddingResponse::deserialize(&again.raw)
+            .expect("raw is the shared OpenAI-compatible embeddings response");
+        assert_eq!(reply.data.len(), normalized.embeddings.len());
+        assert_eq!(Some(reply.model.as_str()), normalized.model.as_deref());
     })
     .await;
+
+    let bodies = crate::cassettes::recorded_interaction_bodies("doubleword", SCENARIO);
+    assert_eq!(
+        bodies.len(),
+        2,
+        "{SCENARIO}: the cell records the request and then its twin"
+    );
+    assert_eq!(
+        bodies[0].0, bodies[1].0,
+        "{SCENARIO}: `encode` is deterministic, so both turns must send the same request bytes"
+    );
 }
 
 /// The single-text conveniences derive from the full method: same embedding,
@@ -101,7 +126,7 @@ async fn single_text_convenience() {
     with_doubleword_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding_model(doubleword::QWEN3_EMBEDDING_8B);
+            let model = client.embedding(doubleword::QWEN3_EMBEDDING_8B, None);
             let response = model
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
@@ -125,7 +150,7 @@ async fn error_preserves_provider_body() {
     with_doubleword_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding_model("no-such-embedding-model");
+            let model = client.embedding("no-such-embedding-model", None);
             let error = model
                 .embed_texts_response(inputs())
                 .await

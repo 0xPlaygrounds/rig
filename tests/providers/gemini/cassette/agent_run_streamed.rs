@@ -179,7 +179,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             );
 
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "subtract"],
                 None,
@@ -265,7 +265,7 @@ async fn streamed_invalid_tool_call_fails_fast_mid_stream() {
         "agent_run_streamed/streamed_invalid_tool_call_fails_fast_mid_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 Some(ToolChoice::Required),
@@ -324,7 +324,7 @@ async fn streamed_repair_continues_the_same_stream() {
         "agent_run_streamed/streamed_repair_continues_the_same_stream",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add", "sum"],
                 None,
@@ -396,7 +396,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
         "agent_run_streamed/streamed_skip_abandons_the_turn_and_recovers",
         |client| async move {
             let agent = GeminiAgent::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 FORCE_TOOLS_PREAMBLE,
                 &["add"],
                 None,

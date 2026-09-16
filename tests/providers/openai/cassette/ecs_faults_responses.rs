@@ -11,10 +11,11 @@
 
 use rig::completion::CompletionModel;
 use rig::prelude::*;
+use rig::providers::openai::OpenAI;
 use rig::providers::openai::{GPT_4O, GPT_5_MINI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{
     Wire, cells,
     cells::Cell,
@@ -25,10 +26,10 @@ use crate::ecs_matrix::{
 };
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
-fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_5_MINI),
+        model: client.openai.completion(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,
@@ -36,12 +37,10 @@ fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + 
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &rig::providers::openai::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model("gpt-4o-mini-nonexistent-rig-test"),
+        model: client.openai.completion("gpt-4o-mini-nonexistent-rig-test"),
         route: None,
         temperature: None,
         additional_params: None,
@@ -50,10 +49,10 @@ fn missing(
 
 /// The recording's own model, for a cell that reuses a recording the
 /// corpus already had.
-fn legacy(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn legacy(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_4O),
+        model: client.openai.completion(GPT_4O),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -106,14 +105,10 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 /// The wire over a transport that answers one streaming request with
 /// `frames`, then EOF.
 fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = rig::providers::openai::Client::builder()
-        .api_key(SCRIPTED_KEY)
-        .http_client(scripted(vec![sse_bytes(frames)]))
-        .build()
-        .expect("client should build");
+    let client = OpenAI::new(SCRIPTED_KEY).bind(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_5_MINI),
+        model: client.completion(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,
@@ -123,14 +118,10 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
 fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = rig::providers::openai::Client::builder()
-        .api_key(SCRIPTED_KEY)
-        .http_client(SequencedHttpClient::new(replies))
-        .build()
-        .expect("client should build");
+    let client = OpenAI::new(SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_5_MINI),
+        model: client.completion(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

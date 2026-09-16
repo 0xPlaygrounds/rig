@@ -190,14 +190,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 46,
               "prompt_tokens": 395,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 395,
+              "completion_tokens": 46,
               "total_tokens": 441,
               "prompt_tokens_details": {
                 "cached_tokens": 0
-              }
+              },
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 395
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_1",
@@ -371,14 +371,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 46,
               "prompt_tokens": 395,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 395,
+              "completion_tokens": 46,
               "total_tokens": 441,
               "prompt_tokens_details": {
                 "cached_tokens": 0
-              }
+              },
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 395
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_1",
@@ -595,14 +595,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 17,
               "prompt_tokens": 471,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 215,
+              "completion_tokens": 17,
               "total_tokens": 488,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 215
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_2",
@@ -774,14 +774,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 17,
               "prompt_tokens": 471,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 215,
+              "completion_tokens": 17,
               "total_tokens": 488,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 215
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_2",

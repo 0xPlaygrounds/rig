@@ -8,7 +8,6 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice};
 use rig::prelude::*;
@@ -446,21 +445,23 @@ fn assert_history_records_sequential_tool_roundtrips(history: &[Message], expect
     }
 }
 
-/// Run one completion and return both Mistral's own wire response and the
-/// normalized response the completion path derives from it.
+/// Run one completion and return both Mistral's own reply document, typed, and
+/// the normalized response the completion path derived from it.
 ///
-/// `raw_completion` is the escape hatch for the provider-specific fields the
-/// normalized response no longer carries; converting its result locally keeps
-/// the raw-vs-normalized parity checks below on a single cassette interaction.
+/// [`rig::completion::CompletionResponse::raw`] is the escape hatch for the
+/// provider-specific fields the normalized response does not carry, and
+/// Mistral's own response type reads it back. Doing that here keeps the
+/// provider-native-versus-normalized checks below on a single cassette
+/// interaction.
 async fn raw_and_normalized_completion(
-    model: &mistral::CompletionModel,
+    model: &(impl CompletionModel + Clone),
     request: rig::completion::CompletionRequest,
 ) -> Result<(
     mistral::CompletionResponse,
     rig::completion::CompletionResponse,
 )> {
-    let raw = model.raw_completion(request).await?;
-    let normalized: rig::completion::CompletionResponse = raw.clone().normalize("mistral")?;
+    let normalized = model.completion(request).await?;
+    let raw = mistral::CompletionResponse::deserialize(&normalized.raw)?;
     Ok((raw, normalized))
 }
 
@@ -516,7 +517,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -552,7 +553,7 @@ async fn tool_choice_auto_any_specific_and_none() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/tool_choice_auto_any_specific_and_none",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
 
             let auto = model
                 .completion(
@@ -647,7 +648,7 @@ async fn json_object_response_format_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/json_object_response_format_roundtrip",
         |client| async move {
-            let model = client.completion_model(STRUCTURED_MODEL);
+            let model = client.completion(STRUCTURED_MODEL);
             let request = model
                 .completion_request(
                     "Return a JSON object with release lane canary, risk low, and checks compile=true and replay=true.",
@@ -689,7 +690,7 @@ async fn json_schema_structured_output_roundtrip() -> Result<()> {
     with_mistral_cassette_result(
         "agent_tool_sessions/json_schema_structured_output_roundtrip",
         |client| async move {
-            let model = client.completion_model(STRUCTURED_MODEL);
+            let model = client.completion(STRUCTURED_MODEL);
             let request = model
                 .completion_request(
                     "Return lane=canary, risk=low, checks.compile=true, and checks.replay=true.",

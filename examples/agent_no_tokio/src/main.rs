@@ -17,10 +17,10 @@ use std::{thread, time::Duration};
 use anyhow::Result;
 use bevy_tasks::{AsyncComputeTaskPool, TaskPool, futures::check_ready};
 use rig::agent::MultiTurnStreamItem;
-use rig::client::Provider as _;
+use rig::driver::Bind;
 use rig::http_client::ReqwestClient;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 use rig::streaming::{Delta, StreamEvent};
 
 const PREAMBLE: &str = "You are a comedian here to entertain the user using humour and jokes.";
@@ -30,10 +30,11 @@ const FRAME: Duration = Duration::from_millis(16);
 
 fn main() -> Result<()> {
     // A host holds one erased transport for every provider it talks to: the
-    // client is `Client<OpenAIResponses>` — `H` defaults to
-    // `BoxedHttpClient`, so no transport type reaches this crate's signatures.
+    // bound provider is `Bound<OpenAI, BoxedHttpClient>`, so no
+    // transport type reaches this crate's signatures.
     let transport = ReqwestClient::default().boxed();
-    let agent = openai::OpenAIResponses::from_env(transport)?
+    let agent = OpenAI::from_env()?
+        .bind(transport)
         .agent(openai::GPT_4O)
         .preamble(PREAMBLE)
         .build();

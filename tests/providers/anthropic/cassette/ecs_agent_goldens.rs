@@ -3,7 +3,7 @@
 use std::sync::Arc;
 
 use rig::{
-    effect::EffectFamily, memory::InMemoryConversationMemory, prelude::*,
+    effect::EffectFamily, memory::InMemoryConversationMemory,
     providers::anthropic::completion::CLAUDE_SONNET_4_6, serve::adapters::MemoryAdapter,
 };
 use rig_ecs::{
@@ -20,11 +20,8 @@ use crate::{
 #[tokio::test]
 async fn completion_smoke_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
         assert_nonempty_response(&ecs.prompt(BASIC_PROMPT, false).await);
         crate::ecs_goldens::golden_effects("anthropic_completion_smoke", &ecs.effect_log());
     })
@@ -36,7 +33,7 @@ async fn memory_conversation_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
         let mut memory = None;
         let mut ecs = EcsAgent::for_golden_with_setup(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             false,
             |world| {

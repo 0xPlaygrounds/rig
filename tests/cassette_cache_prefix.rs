@@ -596,9 +596,9 @@ fn an_unknown_conversational_endpoint_is_a_finding_not_a_skip() {
 // that were actually put on the wire. A literal would only prove that
 // `serde_json` is deterministic, which was never in doubt.
 
-use rig::client::CompletionClient as _;
 use rig::completion::{CompletionModel as _, CompletionRequest, ToolDefinition};
 use rig::message::{Message, UserContent};
+use rig::prelude::*;
 use rig_core::test_utils::RecordingHttpClient;
 
 /// How many times each provider's request is serialized before the bytes are
@@ -757,12 +757,9 @@ determinism_test!(
     anthropic_request_serialization_is_deterministic,
     "anthropic",
     |http| {
-        rig::providers::anthropic::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("anthropic client should build")
-            .completion_model(rig::providers::anthropic::completion::CLAUDE_SONNET_4_6)
+        rig::providers::anthropic::wire::Anthropic::new("test-key")
+            .bind(http.clone())
+            .completion(rig::providers::anthropic::completion::CLAUDE_SONNET_4_6)
     }
 );
 
@@ -770,12 +767,9 @@ determinism_test!(
     openai_responses_request_serialization_is_deterministic,
     "openai/responses",
     |http| {
-        rig::providers::openai::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("openai client should build")
-            .completion_model(rig::providers::openai::GPT_4O)
+        rig::providers::openai::OpenAI::new("test-key")
+            .bind(http.clone())
+            .completion(rig::providers::openai::GPT_4O)
     }
 );
 
@@ -783,13 +777,12 @@ determinism_test!(
     openai_chat_request_serialization_is_deterministic,
     "openai/chat-completions",
     |http| {
-        rig::providers::openai::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("openai client should build")
-            .completions_api()
-            .completion_model(rig::providers::openai::GPT_4O)
+        rig::providers::openai::wire::OpenAI::with_key(
+            &rig::providers::openai::wire::OPENAI,
+            "test-key",
+        )
+        .bind(http.clone())
+        .completion(rig::providers::openai::GPT_4O)
     }
 );
 
@@ -797,12 +790,9 @@ determinism_test!(
     gemini_request_serialization_is_deterministic,
     "gemini",
     |http| {
-        rig::providers::gemini::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("gemini client should build")
-            .completion_model(rig::providers::gemini::completion::GEMINI_2_5_FLASH)
+        rig::providers::gemini::Gemini::new("test-key")
+            .bind(http.clone())
+            .completion(rig::providers::gemini::completion::GEMINI_2_5_FLASH)
     }
 );
 
@@ -810,12 +800,9 @@ determinism_test!(
     cohere_request_serialization_is_deterministic,
     "cohere",
     |http| {
-        rig::providers::cohere::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("cohere client should build")
-            .completion_model(rig::providers::cohere::COMMAND_A_03_2025)
+        rig::providers::cohere::wire::Cohere::new("test-key")
+            .bind(http.clone())
+            .completion(rig::providers::cohere::COMMAND_A_03_2025)
     }
 );
 
@@ -823,12 +810,12 @@ determinism_test!(
     deepseek_request_serialization_is_deterministic,
     "deepseek",
     |http| {
-        rig::providers::deepseek::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("deepseek client should build")
-            .completion_model(rig::providers::deepseek::DEEPSEEK_V4_FLASH)
+        rig::providers::openai::wire::OpenAI::with_key(
+            &rig::providers::openai::wire::DEEPSEEK,
+            "test-key",
+        )
+        .bind(http.clone())
+        .completion(rig::providers::deepseek::DEEPSEEK_V4_FLASH)
     }
 );
 
@@ -836,12 +823,12 @@ determinism_test!(
     mistral_request_serialization_is_deterministic,
     "mistral",
     |http| {
-        rig::providers::mistral::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("mistral client should build")
-            .completion_model(rig::providers::mistral::MISTRAL_SMALL)
+        rig::providers::openai::wire::OpenAI::with_key(
+            &rig::providers::openai::wire::MISTRAL,
+            "test-key",
+        )
+        .bind(http.clone())
+        .completion(rig::providers::mistral::MISTRAL_SMALL)
     }
 );
 
@@ -849,12 +836,12 @@ determinism_test!(
     openrouter_request_serialization_is_deterministic,
     "openrouter",
     |http| {
-        rig::providers::openrouter::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("openrouter client should build")
-            .completion_model("openai/gpt-4o-mini")
+        rig::providers::openai::wire::OpenAI::with_key(
+            &rig::providers::openai::wire::OPENROUTER,
+            "test-key",
+        )
+        .bind(http.clone())
+        .completion("openai/gpt-4o-mini")
     }
 );
 
@@ -862,34 +849,31 @@ determinism_test!(
     groq_request_serialization_is_deterministic,
     "groq",
     |http| {
-        rig::providers::groq::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("groq client should build")
-            .completion_model(rig::providers::groq::LLAMA_3_1_8B_INSTANT)
+        rig::providers::openai::wire::OpenAI::with_key(
+            &rig::providers::openai::wire::GROQ,
+            "test-key",
+        )
+        .bind(http.clone())
+        .completion(rig::providers::groq::LLAMA_3_1_8B_INSTANT)
     }
 );
 
 determinism_test!(xai_request_serialization_is_deterministic, "xai", |http| {
-    rig::providers::xai::Client::builder()
-        .api_key("test-key")
-        .http_client(http.clone())
-        .build()
-        .expect("xai client should build")
-        .completion_model(rig::providers::xai::GROK_3_MINI)
+    rig::providers::openai::OpenAI::with_key(&rig::providers::xai::DIALECT, "test-key")
+        .bind(http.clone())
+        .completion(rig::providers::xai::GROK_3_MINI)
 });
 
 determinism_test!(
     venice_request_serialization_is_deterministic,
     "venice",
     |http| {
-        rig::providers::venice::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("venice client should build")
-            .completion_model(rig::providers::venice::QWEN3_5_9B)
+        rig::providers::openai::wire::OpenAI::with_key(
+            &rig::providers::openai::wire::VENICE,
+            "test-key",
+        )
+        .bind(http.clone())
+        .completion(rig::providers::venice::QWEN3_5_9B)
     }
 );
 
@@ -897,12 +881,12 @@ determinism_test!(
     doubleword_request_serialization_is_deterministic,
     "doubleword",
     |http| {
-        rig::providers::doubleword::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("doubleword client should build")
-            .completion_model(rig::providers::doubleword::QWEN3_5_9B)
+        rig::providers::openai::wire::OpenAI::with_key(
+            &rig::providers::openai::wire::DOUBLEWORD,
+            "test-key",
+        )
+        .bind(http.clone())
+        .completion(rig::providers::doubleword::QWEN3_5_9B)
     }
 );
 
@@ -910,12 +894,12 @@ determinism_test!(
     perplexity_request_serialization_is_deterministic,
     "perplexity",
     |http| {
-        rig::providers::perplexity::Client::builder()
-            .api_key("test-key")
-            .http_client(http.clone())
-            .build()
-            .expect("perplexity client should build")
-            .completion_model(rig::providers::perplexity::SONAR)
+        rig::providers::openai::wire::OpenAI::with_key(
+            &rig::providers::openai::wire::PERPLEXITY,
+            "test-key",
+        )
+        .bind(http.clone())
+        .completion(rig::providers::perplexity::SONAR)
     }
 );
 

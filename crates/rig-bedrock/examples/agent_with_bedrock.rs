@@ -1,5 +1,6 @@
 use rig_agent::{agent::AgentBuilder, prelude::*};
 use rig_bedrock::{client::Client, completion::AMAZON_NOVA_LITE};
+use rig_core::driver::CompletionProvider;
 use rig_core::loaders::FileLoader;
 use tracing::info;
 
@@ -66,7 +67,7 @@ async fn tools() -> Result<(), anyhow::Error> {
 }
 
 async fn context() -> Result<(), anyhow::Error> {
-    let model = client()?.completion_model(AMAZON_NOVA_LITE);
+    let model = client()?.completion(AMAZON_NOVA_LITE);
 
     // Create an agent with multiple context documents
     let agent = AgentBuilder::new(model)
@@ -92,7 +93,7 @@ async fn context() -> Result<(), anyhow::Error> {
 /// This example loads in all the rust examples from the rig-core crate and uses them as\\
 ///  context for the agent
 async fn loaders() -> Result<(), anyhow::Error> {
-    let model = client()?.completion_model(AMAZON_NOVA_LITE);
+    let model = client()?.completion(AMAZON_NOVA_LITE);
 
     // Load in all the rust examples
     let examples = FileLoader::with_glob("examples/*.rs")?

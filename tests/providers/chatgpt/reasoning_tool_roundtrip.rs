@@ -14,6 +14,7 @@ use crate::reasoning::{self, WeatherTool};
 async fn streaming() {
     let call_count = Arc::new(AtomicUsize::new(0));
     let agent = live_client()
+        .await
         .agent(LIVE_MODEL)
         .preamble(reasoning::TOOL_SYSTEM_PROMPT)
         .max_tokens(4096)

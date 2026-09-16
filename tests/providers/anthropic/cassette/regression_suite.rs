@@ -7,8 +7,10 @@
 //! passing for the wrong reason the moment the premise changes.
 
 use rig::completion::FinishReason;
+use rig::driver::Bound;
 use rig::prelude::*;
 use rig::providers::anthropic;
+use rig::providers::anthropic::wire::Messages;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{
@@ -103,8 +105,8 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
         "regression/cache_hit_zero_uncached_input",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_prompt_caching();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_prompt_caching());
 
             // A prefix long enough to clear Anthropic's minimum cacheable size.
             let padding = std::iter::repeat_n(
@@ -115,7 +117,7 @@ async fn cache_hit_turn_reports_uncached_remainder_not_prompt_size() {
             .collect::<Vec<_>>()
             .join(" ");
 
-            let send = |model: anthropic::CompletionModel<_>, padding: String| async move {
+            let send = |model: Bound<Messages>, padding: String| async move {
                 let agent = rig::agent::AgentBuilder::new(model)
                     .preamble(&padding)
                     .max_tokens(32)

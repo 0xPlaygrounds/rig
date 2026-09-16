@@ -52,7 +52,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     super::super::support::with_gemini_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))

@@ -1,27 +1,26 @@
 //! Non-success triage across every shape a transport can report one in.
 //!
 //! The recorded cassettes only ever exercise the bundled reqwest shape: the
-//! transport rejects the reply as `InvalidStatusCodeWithDetails`. But `H` is
-//! a public extension point (`ClientBuilder::http_client`), and a custom
-//! [`HttpClientExt`] may hand the same 404 back as an `Ok` response carrying
-//! the status, or reject it with an empty body — shapes rig's own test
-//! double produces. On those the triage used to fall through to
-//! `CachedContentError::Http` or to a bogus deserialization error, so the
-//! recovery this module documents (`Expired { .. } => recreate the cache`)
-//! silently never fired.
+//! transport rejects the reply as `InvalidStatusCodeWithDetails`. But the
+//! socket is a public extension point — any [`HttpClientExt`] can be bound
+//! to the provider — and a custom one may hand the same 404 back as an `Ok`
+//! response carrying the status, or reject it with an empty body: shapes
+//! rig's own test double produces. The driver funnels all of them through
+//! [`WireError::transport`] / [`WireError::http_response`], and these cells
+//! pin that the recovery this module documents (`Expired { .. } => recreate
+//! the cache`) fires on each.
 
 use super::*;
 use crate::test_utils::{MockHttpResponse, SequencedHttpClient};
 
-/// A `cachedContents` client whose transport answers the next request with
-/// `response` and nothing after it.
-fn caches(response: MockHttpResponse) -> CachedContentClient<SequencedHttpClient> {
-    Client::builder()
-        .api_key("test-key")
-        .http_client(SequencedHttpClient::new(vec![response]))
-        .build()
-        .expect("client should build")
-        .cached_contents()
+/// A `cachedContents` resource handle whose transport answers the next
+/// request with `response` and nothing after it.
+fn caches(response: MockHttpResponse) -> crate::driver::Bound<CachedContents, SequencedHttpClient> {
+    crate::driver::Bound::new(
+        crate::providers::gemini::Gemini::new("test-key"),
+        SequencedHttpClient::new(vec![response]),
+    )
+    .cached_contents()
 }
 
 const GONE: &str =
@@ -52,8 +51,8 @@ async fn a_status_error_without_captured_headers_still_reports_expired() {
 ///
 /// This is the worse half of the same bug: the error body reached
 /// `serde_json::from_str::<CachedContent>` and failed there, so the call
-/// reported `CachedContentError::Serde` ("missing field `name`") for what
-/// is plainly a 404 — a status-shaped failure disguised as a parse bug.
+/// reported a JSON error ("missing field `name`") for what is plainly a
+/// 404 — a status-shaped failure disguised as a parse bug.
 #[tokio::test]
 async fn a_non_success_response_is_triaged_rather_than_deserialized() {
     let error = caches(MockHttpResponse::ErrorResponse(
@@ -105,18 +104,20 @@ async fn a_403_on_create_is_an_api_error_not_an_expiry() {
     .await
     .expect_err("a refused create should not succeed");
 
-    let CachedContentError::Api { status, message } = &error else {
+    let CachedContentError::ProviderResponse(response) = &error else {
         panic!("a create that never made a handle cannot be Expired: {error:?}");
     };
-    assert_eq!(*status, 403);
+    assert_eq!(response.status, Some(http::StatusCode::FORBIDDEN));
     assert!(
-        message.contains("has not been used in project"),
-        "{message}"
+        response.body.contains("has not been used in project"),
+        "{}",
+        response.body
     );
 }
 
-/// Everything that is not a 403/404 on a named handle is an `Api` failure,
-/// carrying the status a caller needs to decide whether to retry.
+/// Everything that is not a 403/404 on a named handle is a preserved
+/// provider reply, carrying the status a caller needs to decide whether to
+/// retry.
 #[tokio::test]
 async fn a_server_error_reports_the_status_rather_than_an_expiry() {
     let error = caches(MockHttpResponse::error(
@@ -127,40 +128,41 @@ async fn a_server_error_reports_the_status_rather_than_an_expiry() {
     .await
     .expect_err("a 500 should not resolve");
 
-    let CachedContentError::Api { status, message } = &error else {
+    let CachedContentError::ProviderResponse(response) = &error else {
         panic!("a 500 is not an expiry: {error:?}");
     };
-    assert_eq!(*status, 500);
-    assert!(message.contains("Internal error"), "{message}");
+    assert_eq!(
+        response.status,
+        Some(http::StatusCode::INTERNAL_SERVER_ERROR)
+    );
+    assert!(
+        response.body.contains("Internal error"),
+        "{}",
+        response.body
+    );
 }
 
-/// A rejection with an empty body has no provider text to quote. The
-/// message must still say something: an empty one leaves the error Display
-/// ending in a bare colon, which reads as truncated output rather than as a
-/// provider that said nothing.
+/// A rejection with an empty body is still the provider's reply, with its
+/// status and nothing to quote — the same shape every other operation
+/// preserves, rather than a stand-in message of rig's own.
 #[tokio::test]
-async fn a_status_error_with_no_body_still_names_why_it_has_no_message() {
+async fn a_status_error_with_no_body_still_carries_its_status() {
     // `SequencedHttpClient` answers 501 with an empty body once its scripted
     // responses run out.
-    let caches = Client::builder()
-        .api_key("test-key")
-        .http_client(SequencedHttpClient::new(Vec::new()))
-        .build()
-        .expect("client should build")
-        .cached_contents();
+    let caches = crate::driver::Bound::new(
+        crate::providers::gemini::Gemini::new("test-key"),
+        SequencedHttpClient::new(Vec::new()),
+    )
+    .cached_contents();
 
     let error = caches
         .get("cachedContents/abc123")
         .await
         .expect_err("an unscripted request should not resolve");
 
-    let CachedContentError::Api { status, message } = &error else {
+    let CachedContentError::ProviderResponse(response) = &error else {
         panic!("a 501 is not an expiry: {error:?}");
     };
-    assert_eq!(*status, 501);
-    assert_eq!(message, NO_RESPONSE_BODY);
-    assert!(
-        !error.to_string().ends_with(": "),
-        "the Display must not trail off: {error}"
-    );
+    assert_eq!(response.status, Some(http::StatusCode::NOT_IMPLEMENTED));
+    assert_eq!(response.body, "");
 }

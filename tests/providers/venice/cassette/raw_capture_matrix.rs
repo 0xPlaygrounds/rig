@@ -1,8 +1,7 @@
 //! Raw provider response capture on Venice's blocking chat-completions path.
 //!
-//! **The feature.** Every blocking completion attaches the value the model's
-//! inherent `raw_completion` returned — Venice's own
-//! [`venice::CompletionResponse`], serialized — onto the normalized
+//! **The feature.** Every blocking completion attaches Venice's verbatim reply
+//! document onto the normalized
 //! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
 //! no flag to request it, nothing about it reaches the wire, and a
 //! `Value::Null` only ever means a response built by hand with no provider
@@ -12,41 +11,44 @@
 //! slot on the normalized response, so they are the fields pinned here as
 //! reachable only through `raw`.
 //!
+//! Because `raw` is the document the provider sent rather than a
+//! re-serialization of whatever the decoder parsed, it also retains fields no
+//! Rust type models — Venice's `usage.cache_read_input_tokens` and its
+//! `kv_transfer_params`/`prompt_logprobs`/`prompt_token_ids` keys. Cell 1
+//! pins that, because it is the reason `raw` is the document.
+//!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_venice_type` | typed round trip | `raw` deserializes into `venice::CompletionResponse` and re-serializes equal | recorded |
+//! | 1 | `raw_round_trips_venice_type` | typed read-back | `raw` deserializes into `venice::CompletionResponse`, and additionally carries fields that type does not model | recorded |
 //! | 2 | `raw_exposes_venice_parameters_and_cost` | provider-only field | `raw.venice_parameters.disable_thinking` and `raw.cost.usd` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes and equals its own `raw` re-normalized | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the normalized fields reproduce the fixture bytes and equal the provider-native fields of the captured payload | recorded |
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the echo and the cost out of the
-//! recorded body rather than trusting what the typed view reports, and cell 3
-//! checks the normalized fields against the recorded body before comparing
-//! them with the re-normalized `raw`, so a recording that stopped carrying a
-//! usage block or a finish reason fails loudly instead of covering nothing.
-//! Venice contracts no request-id header, so `provider_request_id` is `None`
-//! on every turn here — a documented outcome, pinned as such. Thinking is
-//! disabled through `venice_parameters` so the small reasoning model answers
-//! in plain text within the token budget.
+//! recorded body rather than trusting what the captured view reports, and
+//! cell 3 checks the normalized fields against the recorded body before
+//! comparing them with the captured payload's own fields, so a recording that
+//! stopped carrying a usage block or a finish reason fails loudly instead of
+//! covering nothing. Venice contracts no request-id header, so
+//! `provider_request_id` is `None` on every turn here — a documented outcome,
+//! pinned as such. Thinking is disabled through `venice_parameters` so the
+//! small reasoning model answers in plain text within the token budget.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse,
-};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
 use rig::message::AssistantContent;
-use rig::prelude::*;
-use rig::providers::venice;
-use rig::providers::venice::completion::VeniceParameters;
-use serde::Deserialize;
+use rig::providers::venice::{self, VeniceParameters};
+use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::DEFAULT_MODEL;
-use super::super::support::{assert_matches_recorded_token, with_venice_cassette_result};
+use super::super::support::{
+    BoundVenice, assert_matches_recorded_token, with_venice_cassette_result,
+};
 
 const PROVIDER: &str = "venice";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &venice::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model
         .completion_request(PROMPT)
         .max_tokens(16)
@@ -132,35 +134,67 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.provider_request_id, None, "request id");
 }
 
+/// Where a cell parks the response it observed, so the assertions can run
+/// after the cassette wrapper has finished and written its fixture.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
+
+/// One completion under the cell's model, parked in `sink`.
+///
+/// The wrapper call itself stays at each `#[tokio::test]` site with its
+/// scenario literal: `tests/common/cassette_safety.rs` discovers fixtures by
+/// parsing those literals out of the wrapper's first argument, so hiding one
+/// behind a variable would orphan the cassette.
+async fn run(client: BoundVenice, sink: Observed) -> Result<(), anyhow::Error> {
+    let model = client.completion(DEFAULT_MODEL);
+    let response = model.completion(request(&model)).await?;
+    *sink.lock().expect("observation lock") = Some(response);
+    Ok(())
+}
+
+fn observed(sink: &Observed) -> CompletionResponse {
+    sink.lock()
+        .expect("observation lock")
+        .take()
+        .expect("the cell should observe a response")
+}
+
 // ================================================================
-// 1. raw round-trips Venice's own type
+// 1. raw reads back as Venice's own type — and carries more
 // ================================================================
 
 #[tokio::test]
 async fn raw_round_trips_venice_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_venice_type";
-    with_venice_cassette_result(
-        "raw_capture_matrix/raw_round_trips_venice_type",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            let raw = &response.raw;
-            let typed = venice::CompletionResponse::deserialize(raw)
-                .expect("raw is Venice's own CompletionResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed view serialized, nothing more"
-            );
-            assert_eq!(
-                Some(typed.openai.id.as_str()),
-                response.response_id.as_deref()
-            );
-            Ok::<(), anyhow::Error>(())
-        },
-    )
+    let sink = Observed::default();
+    with_venice_cassette_result("raw_capture_matrix/raw_round_trips_venice_type", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_round_trips_venice_type should replay from its cassette");
+    let response = observed(&sink);
+
+    let raw = &response.raw;
+    let typed = venice::CompletionResponse::deserialize(raw)
+        .expect("raw is Venice's own CompletionResponse");
+    assert_eq!(
+        Some(typed.openai.id.as_str()),
+        response.response_id.as_deref()
+    );
+
+    // `raw` is the document Venice sent, not a re-serialization of `typed`:
+    // these fields have no home on any Rust type here, and reach the caller
+    // only because capture keeps the payload whole.
+    assert_eq!(
+        raw["usage"]["cache_read_input_tokens"].as_u64(),
+        Some(1056),
+        "Venice's own cache counter is unmodelled and survives on raw"
+    );
+    for unmodelled in ["kv_transfer_params", "prompt_logprobs", "prompt_token_ids"] {
+        assert!(
+            raw.get(unmodelled).is_some(),
+            "raw keeps Venice's `{unmodelled}` key, which no type models"
+        );
+    }
 
     let (_, response_body) = recorded_json(SCENARIO);
     assert!(
@@ -176,25 +210,15 @@ async fn raw_round_trips_venice_type() {
 #[tokio::test]
 async fn raw_exposes_venice_parameters_and_cost() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_venice_parameters_and_cost";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_venice_cassette_result(
         "raw_capture_matrix/raw_exposes_venice_parameters_and_cost",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| run(client, sink.clone()),
     )
     .await
     .expect("raw_exposes_venice_parameters_and_cost should replay from its cassette");
+    let response = observed(&sink);
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
     let (request_body, body) = recorded_json(SCENARIO);
     assert_eq!(
         request_body["venice_parameters"]["disable_thinking"],
@@ -227,43 +251,55 @@ async fn raw_exposes_venice_parameters_and_cost() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_venice_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| run(client, sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = observed(&sink);
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
     let (_, body) = recorded_json(SCENARIO);
     assert_reproduces_fixture(&response, &body);
 
-    // The normalized fields are exactly what the response's own raw
-    // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = &response.raw;
-    let renormalized = venice::CompletionResponse::deserialize(raw)
-        .expect("raw is Venice's own type")
-        .normalize(PROVIDER)
-        .expect("raw normalizes")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
-    assert_eq!(renormalized.identity(), response.identity());
-    assert_eq!(renormalized.finish_reason(), response.finish_reason());
-    assert_eq!(renormalized.model, response.model);
-    assert_eq!(renormalized.usage, response.usage);
-    assert_eq!(renormalized.choice, response.choice);
-    assert!(
-        renormalized.raw.is_null(),
-        "normalizing a hand-fed typed value attaches no raw of its own"
+    // The other half: the provider-native fields of the captured payload are
+    // the ones the decoder normalized. There is one mapping now, so this pins
+    // it against Venice's own vocabulary rather than against a copy of
+    // itself.
+    let typed = venice::CompletionResponse::deserialize(&response.raw)
+        .expect("raw is Venice's own CompletionResponse");
+    let native = &typed.openai;
+    assert_matches_recorded_token(
+        response.response_id.as_deref(),
+        Some(native.id.as_str()),
+        "response id",
+    );
+    assert_eq!(response.model.as_deref(), Some(native.model.as_str()));
+    let native_choice = native
+        .choices
+        .first()
+        .expect("Venice returns at least one choice");
+    assert_eq!(
+        response.finish_reason(),
+        Some(match native_choice.finish_reason.as_str() {
+            "stop" => FinishReason::Stop,
+            "length" => FinishReason::Length,
+            other => panic!("unexpected native finish reason {other:?}"),
+        }),
+        "the normalized reason is the native one"
+    );
+    let native_usage = native.usage.as_ref().expect("Venice reports usage");
+    assert_eq!(
+        response.usage.input_tokens,
+        Some(native_usage.prompt_tokens as u64)
+    );
+    assert_eq!(
+        response.usage.output_tokens,
+        native_usage.completion_tokens.map(|tokens| tokens as u64)
+    );
+    assert_eq!(
+        response.usage.total_tokens,
+        Some(native_usage.total_tokens as u64)
     );
 }

@@ -8,9 +8,10 @@
 //! turns.
 
 use rig::completion::Message;
+use rig::driver::{Bound, Socket};
 use rig::embeddings::EmbeddingsBuilder;
 use rig::prelude::*;
-use rig::providers::gemini;
+use rig::providers::gemini::{self, Gemini};
 use rig::tool::ToolSet;
 use rig::vector_store::in_memory_store::InMemoryVectorStore;
 
@@ -22,14 +23,14 @@ use super::super::tools_support::{
 use crate::support::assert_mentions_expected_number;
 
 /// Build an in-memory index over the toolset's embeddable schemas.
-async fn build_tool_index(
-    client: &gemini::Client,
+async fn build_tool_index<H: Socket>(
+    client: &Bound<Gemini, H>,
     toolset: &ToolSet,
 ) -> rig::vector_store::in_memory_store::InMemoryVectorIndex<
     rig::embeddings::ToolSchema,
-    gemini::embedding::EmbeddingModel,
+    Bound<gemini::embedding::Embeddings, H>,
 > {
-    let embedding_model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+    let embedding_model = client.embedding(gemini::embedding::EMBEDDING_001, None);
     // ToolSet::schemas() returns registration order, so the recorded
     // embedding batch replays deterministically.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

@@ -62,7 +62,9 @@ use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use serde_json::Value;
 
-use super::super::support::{assert_matches_recorded_token, sse_json_frames, with_openai_cassette};
+use super::super::support::{
+    OpenAiCassette, assert_matches_recorded_token, sse_json_frames, with_openai_cassette,
+};
 use crate::support::{Adder, TOOLS_PREAMBLE};
 
 const PROVIDER: &str = "openai";
@@ -77,10 +79,10 @@ enum Route {
 }
 
 impl Route {
-    fn builder(self, client: openai::Client) -> AgentBuilder {
+    fn builder(self, client: OpenAiCassette) -> AgentBuilder {
         match self {
-            Route::Chat => client.completions_api().agent(MODEL),
-            Route::Responses => client.agent(MODEL),
+            Route::Chat => client.chat.agent(MODEL),
+            Route::Responses => client.openai.agent(MODEL),
         }
     }
 
@@ -257,7 +259,7 @@ type Observed = Arc<Mutex<Option<RunObservation>>>;
 /// The agent every hook / tool-run cell drives.
 fn build_agent(
     route: Route,
-    client: openai::Client,
+    client: OpenAiCassette,
     tools: bool,
     probe: RawProbe,
 ) -> (rig::agent::Agent, &'static str) {
@@ -275,7 +277,7 @@ fn build_agent(
 /// A cassette test body: boxed so the cell can build it in a helper while the
 /// wrapper call — and its string-literal scenario, which the cassette safety
 /// scan reads — stays in the test itself.
-type Body = Box<dyn FnOnce(openai::Client) -> Pin<Box<dyn Future<Output = ()>>>>;
+type Body = Box<dyn FnOnce(OpenAiCassette) -> Pin<Box<dyn Future<Output = ()>>>>;
 
 fn take(observed: &Observed) -> RunObservation {
     observed
@@ -668,7 +670,7 @@ async fn chat_retried_turn_records_retried_attempt_raw() {
         "raw_capture_agent_matrix/chat_retried_turn_records_retried_attempt_raw",
         |client| async move {
             let response = client
-                .completions_api()
+                .chat
                 .agent(MODEL)
                 .preamble(
                     "Follow this protocol exactly. For the initial request, reply exactly \

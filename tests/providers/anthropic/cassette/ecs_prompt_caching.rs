@@ -4,7 +4,6 @@ use crate::cache_conformance::assert_breakpoints_match_support;
 use crate::{
     cache_conformance::assert_prefix_stable, ecs_agent::EcsAgent, ecs_cache::assert_cache_growth,
 };
-use rig::prelude::*;
 use rig::providers::anthropic;
 
 #[tokio::test]
@@ -14,8 +13,8 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
         |client| async move {
             let ecs = EcsAgent::new(
                 client
-                    .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching(),
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .map_wire(|wire| wire.with_prompt_caching()),
                 &conformance_probe().preamble,
                 1,
             );

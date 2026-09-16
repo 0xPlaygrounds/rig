@@ -1,20 +1,16 @@
 use rig::completion::{CompletionError, Message as CompletionMessage};
 use rig::message::{AssistantContent, Reasoning, ReasoningContent};
 use rig::providers::openai::responses_api::{
-    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Message, Output, UserContent,
+    CompletionRequest as OpenAIResponsesRequest, Include, InputItem, Output, ReasoningSummary,
 };
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 #[test]
 fn test_input_item_serialization_avoids_duplicate_role() {
-    let message = Message::User {
-        content: vec![UserContent::InputText {
-            text: "hello".to_string(),
-        }],
-        name: None,
-    };
-    let item: InputItem = message.into();
-    let json = serde_json::to_string(&item).expect("serialize InputItem");
+    let items: Vec<InputItem> = CompletionMessage::user("hello")
+        .try_into()
+        .expect("user text converts to one input item");
+    let json = serde_json::to_string(&items).expect("serialize InputItem");
     let role_count = json.matches("\"role\"").count();
 
     assert_eq!(
@@ -157,6 +153,17 @@ fn openai_responses_request_auto_adds_reasoning_encrypted_include() {
     );
 }
 
+// The mapping from a Responses `output[]` item to rig's reasoning blocks now
+// lives in the wire's one decoder, which no public entry point exposes
+// outside a recorded exchange; `From<Output> for Vec<AssistantContent>` was
+// the client layer's copy of it. What these cells can still pin without a
+// fixture is the half that is theirs: the typed `Output::Reasoning` item
+// preserves everything the provider sent, which is the precondition for the
+// decoder to map it. The mapping half is covered by
+// `raw_capture_matrix::responses_reasoning_raw_round_trips_typed`, which
+// asserts the normalized reasoning block carries the recorded item's
+// encrypted content.
+
 #[test]
 fn openai_responses_reasoning_output_preserves_encrypted_content() {
     let output: Output = serde_json::from_value(serde_json::json!({
@@ -170,20 +177,24 @@ fn openai_responses_reasoning_output_preserves_encrypted_content() {
     }))
     .expect("deserialize reasoning output");
 
-    let content: Vec<AssistantContent> = output.into();
-    assert_eq!(content.len(), 1);
-    let Some(AssistantContent::Reasoning(reasoning)) = content.first() else {
-        panic!("expected reasoning output content");
+    let Output::Reasoning {
+        id,
+        summary,
+        encrypted_content,
+        ..
+    } = &output
+    else {
+        panic!("expected a reasoning output item");
     };
-    assert_eq!(reasoning.id.as_deref(), Some("rs_out_1"));
-    assert!(matches!(
-        reasoning.content.first(),
-        Some(ReasoningContent::Summary(summary)) if summary == "summary text"
-    ));
-    assert!(matches!(
-        reasoning.content.get(1),
-        Some(ReasoningContent::Encrypted(value)) if value == "cipher_blob"
-    ));
+    assert_eq!(id, "rs_out_1");
+    assert_eq!(encrypted_content.as_deref(), Some("cipher_blob"));
+    assert_eq!(
+        summary
+            .iter()
+            .map(ReasoningSummary::text)
+            .collect::<Vec<_>>(),
+        ["summary text"]
+    );
 }
 
 #[test]
@@ -199,16 +210,18 @@ fn openai_responses_reasoning_output_preserves_reasoning_text_content() {
     }))
     .expect("deserialize reasoning output");
 
-    let content: Vec<AssistantContent> = output.into();
-    assert_eq!(content.len(), 1);
-    let Some(AssistantContent::Reasoning(reasoning)) = content.first() else {
-        panic!("expected reasoning output content");
+    let Output::Reasoning {
+        id,
+        summary,
+        content,
+        ..
+    } = &output
+    else {
+        panic!("expected a reasoning output item");
     };
-    assert_eq!(reasoning.id.as_deref(), Some("rs_text_1"));
-    assert!(matches!(
-        reasoning.content.first(),
-        Some(ReasoningContent::Text { text, signature: None }) if text == "visible reasoning"
-    ));
+    assert_eq!(id, "rs_text_1");
+    assert!(summary.is_empty());
+    assert_eq!(content, &["visible reasoning".to_string()]);
 }
 
 #[test]
@@ -220,26 +233,30 @@ fn openai_responses_reasoning_output_without_summary_is_not_dropped() {
     }))
     .expect("deserialize reasoning output");
 
-    let content: Vec<AssistantContent> = output.into();
-    assert_eq!(content.len(), 1);
-    let Some(AssistantContent::Reasoning(reasoning)) = content.first() else {
-        panic!("expected reasoning output content");
+    let Output::Reasoning {
+        id,
+        summary,
+        content,
+        encrypted_content,
+        ..
+    } = &output
+    else {
+        panic!("a contentless reasoning item must still decode as one");
     };
-    assert_eq!(reasoning.id.as_deref(), Some("rs_empty"));
-    assert!(reasoning.content.is_empty());
+    assert_eq!(id, "rs_empty");
+    assert!(summary.is_empty());
+    assert!(content.is_empty());
+    assert_eq!(encrypted_content.as_deref(), None);
 }
 
 #[test]
 fn openai_empty_reasoning_content_roundtrips_to_request_item() {
-    let output: Output = serde_json::from_value(serde_json::json!({
-        "type": "reasoning",
-        "id": "rs_roundtrip_empty",
-        "summary": []
-    }))
-    .expect("deserialize reasoning output");
-    let content: Vec<AssistantContent> = output.into();
-    let Some(AssistantContent::Reasoning(reasoning)) = content.first().cloned() else {
-        panic!("expected reasoning output content");
+    // The request side is unchanged, so the cell keeps its subject: a
+    // reasoning block with no content still converts to an input item rather
+    // than being dropped or erroring.
+    let reasoning = Reasoning {
+        id: Some("rs_roundtrip_empty".to_string()),
+        content: Vec::new(),
     };
 
     let message = CompletionMessage::Assistant {

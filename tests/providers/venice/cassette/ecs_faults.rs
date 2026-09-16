@@ -10,7 +10,9 @@
 //! reasons; the drivers are `tests/common/ecs_matrix/{world,agent,extra}.rs`.
 
 use rig::completion::CompletionModel;
+use rig::driver::{Bound, Socket};
 use rig::prelude::*;
+use rig::providers::openai::wire::{OpenAI, VENICE};
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 
@@ -25,10 +27,10 @@ use crate::ecs_matrix::{
 };
 use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
 
-fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire<H: Socket>(client: &Bound<OpenAI, H>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion_model(MISTRAL_SMALL_3_2_24B),
+        model: client.completion(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -36,12 +38,10 @@ fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + 
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &rig::providers::venice::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing<H: Socket>(client: &Bound<OpenAI, H>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion_model("venice-nonexistent-rig-test"),
+        model: client.completion("venice-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -92,14 +92,10 @@ fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
 /// The wire over a transport that answers one streaming request with
 /// `frames`, then EOF.
 fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = rig::providers::venice::Client::builder()
-        .api_key(SCRIPTED_KEY)
-        .http_client(scripted(vec![sse_bytes(frames)]))
-        .build()
-        .expect("client should build");
+    let client = OpenAI::with_key(&VENICE, SCRIPTED_KEY).bind(scripted(vec![sse_bytes(frames)]));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion_model(MISTRAL_SMALL_3_2_24B),
+        model: client.completion(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -109,14 +105,10 @@ fn scripted_stream(frames: &[String]) -> Wire<impl CompletionModel + Clone + 'st
 /// The wire over a transport that answers each unary request with the
 /// next of `replies`.
 fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel + Clone + 'static> {
-    let client = rig::providers::venice::Client::builder()
-        .api_key(SCRIPTED_KEY)
-        .http_client(SequencedHttpClient::new(replies))
-        .build()
-        .expect("client should build");
+    let client = OpenAI::with_key(&VENICE, SCRIPTED_KEY).bind(SequencedHttpClient::new(replies));
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion_model(MISTRAL_SMALL_3_2_24B),
+        model: client.completion(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

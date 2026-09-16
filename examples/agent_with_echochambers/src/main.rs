@@ -3,7 +3,7 @@ use reqwest::header::{CONTENT_TYPE, HeaderMap, HeaderValue};
 use rig::prelude::*;
 use rig::{
     integrations::cli_chatbot::ChatBotBuilder,
-    providers::openai::{self, Client},
+    providers::openai::{self, OpenAI},
     tool::Tool,
 };
 use serde::{Deserialize, Serialize};
@@ -324,8 +324,8 @@ async fn main() -> Result<(), anyhow::Error> {
     // Get API keys from environment
     let echochambers_api_key = env::var("ECHOCHAMBERS_API_KEY")?;
 
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    // Create the OpenAI Responses provider, bound to the bundled transport
+    let openai_client = OpenAI::from_env()?.bound()?;
 
     // Create agent with all tools
     let echochambers_agent = openai_client

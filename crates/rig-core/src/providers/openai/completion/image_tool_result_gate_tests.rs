@@ -21,6 +21,7 @@ fn params(
     content: Vec<message::ToolResultContent>,
 ) -> OpenAIRequestParams {
     OpenAIRequestParams {
+        reasoning_details: false,
         model: "test-model".to_string(),
         request: crate::completion::CompletionRequest {
             model: None,
@@ -46,6 +47,7 @@ fn params(
         supports_image_tool_results,
         supports_tools: true,
         supports_response_format: true,
+        response_format_with_tools: false,
     }
 }
 
@@ -132,63 +134,6 @@ fn a_mixed_text_and_image_result_is_refused_rather_than_partly_sent() {
         error.to_string().contains("does not accept an image"),
         "{error}"
     );
-}
-
-/// A wire tool result carrying an image converts back into rig's types with
-/// the image intact.
-///
-/// The inbound counterpart of the gate. Flattening with `as_text()` turned
-/// this into `Text("")` — a silent drop, and one that used to be impossible:
-/// before the image variant existed such a body failed to deserialize, so
-/// the loss was at least loud.
-#[test]
-fn an_inbound_tool_result_image_is_not_flattened_away() {
-    let wire: Message = serde_json::from_str(
-        r#"{"role":"tool","tool_call_id":"c1","content":[{"type":"image_url","image_url":{"url":"data:image/png;base64,iVBORw0KGgo="}}]}"#,
-    )
-    .expect("deserialize");
-
-    let converted = message::Message::try_from(wire).expect("convert back");
-    let message::Message::User { content } = converted else {
-        panic!("a tool result converts to a user message");
-    };
-    let message::UserContent::ToolResult(result) = &content[0] else {
-        panic!("expected a tool result");
-    };
-    assert!(
-        matches!(
-            result.content.first(),
-            Some(message::ToolResultContent::Image(_))
-        ),
-        "the image must survive the round trip, got {:?}",
-        result.content
-    );
-}
-
-/// A mixed result keeps both halves, in order.
-#[test]
-fn an_inbound_mixed_tool_result_keeps_text_and_image() {
-    let wire: Message = serde_json::from_str(
-        r#"{"role":"tool","tool_call_id":"c1","content":[{"type":"text","text":"here"},{"type":"image_url","image_url":{"url":"https://example.com/x.png"}}]}"#,
-    )
-    .expect("deserialize");
-
-    let converted = message::Message::try_from(wire).expect("convert back");
-    let message::Message::User { content } = converted else {
-        panic!("user message")
-    };
-    let message::UserContent::ToolResult(result) = &content[0] else {
-        panic!("tool result")
-    };
-    assert_eq!(result.content.len(), 2, "{:?}", result.content);
-    assert!(matches!(
-        result.content[0],
-        message::ToolResultContent::Text(_)
-    ));
-    assert!(matches!(
-        result.content[1],
-        message::ToolResultContent::Image(_)
-    ));
 }
 
 /// And the image shape round-trips.

@@ -178,35 +178,41 @@
           "raw": {
             "content": [
               {
-                "type": "text",
-                "text": "I'll start by adding 17 and 25 using the add tool!"
+                "text": "I'll start by adding 17 and 25 using the add tool!",
+                "type": "text"
               },
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_1",
-                "name": "add",
                 "input": {
                   "x": 17,
                   "y": 25
-                }
+                },
+                "name": "add",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 795,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 86
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 795,
+              "output_tokens": 86,
+              "service_tier": "standard"
+            }
           }
         }
       }
@@ -389,26 +395,29 @@
           "raw": {
             "content": [
               {
-                "type": "text",
-                "text": "The sum is **42**! Now I'll build the event object with that result in the summary."
+                "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
+                "type": "text"
               }
             ],
             "id": "msg_REDACTED_2",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "end_turn",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 894,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 30
-            },
-            "provider_request_id": "req_REDACTED_2"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 894,
+              "output_tokens": 30,
+              "service_tier": "standard"
+            }
           }
         }
       }
@@ -602,32 +611,38 @@
           "raw": {
             "content": [
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_2",
-                "name": "final_result",
                 "input": {
                   "category": "Technology",
                   "summary": "Join us at the Rust Meetup in Seattle! The sum of 17 and 25 is 42.",
                   "title": "Rust Meetup Seattle"
-                }
+                },
+                "name": "final_result",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_3",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 948,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 117
-            },
-            "provider_request_id": "req_REDACTED_3"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 948,
+              "output_tokens": 117,
+              "service_tier": "standard"
+            }
           }
         }
       }

@@ -1,7 +1,10 @@
-//! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI Responses provider.
+//! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI
+//! Responses wire: the `OPENROUTER` dialect routed to `/responses` once.
 
 use rig::completion::CompletionModel;
 use rig::prelude::*;
+use rig::providers::openai::responses_api::CompletionResponse;
+use serde::Deserialize as _;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
 
@@ -14,9 +17,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
     with_openrouter_openai_cassette(
         "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata",
         |client| async move {
-            let model = client
-                .completion_model(DEFAULT_OPENAI_COMPAT_MODEL)
-                .with_system_instructions_as_messages();
+            let model = client.completion(DEFAULT_OPENAI_COMPAT_MODEL);
             let request = model
                 .completion_request("Reply with exactly: openrouter responses service tier ok")
                 .preamble(
@@ -25,15 +26,16 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
                 .build();
 
             // `service_tier` is Responses-API metadata rig does not normalize,
-            // so it is read off the provider's own wire response. `completion`
-            // sends exactly this request, so the cassette still sees one
-            // interaction.
+            // so it is read off the provider's own reply document, which the
+            // driver keeps verbatim on `raw`. One interaction either way.
             let response = model
-                .raw_completion(request)
+                .completion(request)
                 .await
                 .expect("OpenRouter Responses API completion should deserialize");
 
-            let service_tier = response
+            let document = CompletionResponse::deserialize(&response.raw)
+                .expect("raw is the Responses API's own response");
+            let service_tier = document
                 .additional_parameters
                 .service_tier
                 .as_ref()
@@ -54,7 +56,6 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_agent_prompt_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .with_system_instructions_as_messages()
                 .agent(DEFAULT_OPENAI_COMPAT_MODEL)
                 .preamble("You are concise. Answer with one short sentence.")
                 .build();
@@ -76,7 +77,6 @@ async fn openai_responses_stream_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_stream_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .with_system_instructions_as_messages()
                 .agent(DEFAULT_OPENAI_COMPAT_MODEL)
                 .preamble("You are concise. Answer directly.")
                 .build();

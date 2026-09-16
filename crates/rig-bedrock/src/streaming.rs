@@ -8,7 +8,8 @@ use crate::{
 use async_stream::stream;
 use aws_sdk_bedrockruntime::types as aws_bedrock;
 use base64::{Engine, prelude::BASE64_STANDARD};
-use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
+use rig_core::driver::run_wire_stream;
+use rig_core::operation::{AdapterOutput, Completion};
 use rig_core::providers::internal::tool_call_bridge::ToolCallBridge;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::{StreamFinal, StreamingCompletionResponse};
@@ -342,11 +343,10 @@ fn process_event(
     }
 }
 
-impl WireAdapter for StreamState {
-    type Frame = aws_bedrock::ConverseStreamOutput;
+impl rig_core::wire::Decoder<Completion, aws_bedrock::ConverseStreamOutput> for StreamState {
     type Event = aws_bedrock::ConverseStreamOutput;
 
-    fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
+    fn classify(&self, frame: aws_bedrock::ConverseStreamOutput) -> WireEvent<Self::Event> {
         // The AWS SDK already deserialized the event-stream frame, so the
         // byte-level decode step collapses: an event-stream decode failure
         // surfaces as a receive error on the transport, and the only triage

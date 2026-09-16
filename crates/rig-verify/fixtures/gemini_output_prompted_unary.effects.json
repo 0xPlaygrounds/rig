@@ -94,42 +94,36 @@
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "responseId": "id_REDACTED_1",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_1",
-                      "text": "{\"category\": \"Technology\", \"summary\": \"A gathering for Rust developers in Seattle to discuss systems programming, share projects, and network.\", \"title\": \"Seattle Rust Meetup\"}"
+                      "text": "{\"category\": \"Technology\", \"summary\": \"A gathering for Rust developers in Seattle to discuss systems programming, share projects, and network.\", \"title\": \"Seattle Rust Meetup\"}",
+                      "thoughtSignature": "signature_REDACTED_1"
                     }
                   ],
                   "role": "model"
                 },
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": null
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "id_REDACTED_1",
             "usageMetadata": {
-              "promptTokenCount": 90,
               "candidatesTokenCount": 37,
-              "totalTokenCount": 374,
-              "thoughtsTokenCount": 247,
+              "promptTokenCount": 90,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 90
                 }
-              ]
-            },
-            "modelVersion": "gemini-3-flash-preview"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 247,
+              "totalTokenCount": 374
+            }
           }
         }
       }

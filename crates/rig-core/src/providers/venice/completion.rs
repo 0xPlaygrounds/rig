@@ -1,20 +1,27 @@
-//! Venice completion models.
+//! Venice's model identifiers, its own request block, and its own view of a
+//! reply.
 //!
-//! Completions run through the shared OpenAI-compatible
-//! [`GenericCompletionModel`](openai::completion::GenericCompletionModel); the
-//! dialect is declared by the `OpenAICompatibleProvider` impl on
-//! [`Venice`](super::client::Venice) in `client.rs`.
+//! Venice is an OpenAI chat-completions dialect, so it has no client and no
+//! completion model of its own:
+//! [`openai::wire::VENICE`] carries
+//! the base URL, the `VENICE_API_KEY`/`VENICE_BASE_URL` variables, and the
+//! native `/image/generate` path.
 //!
-//! Venice's chat payload is OpenAI's plus two blocks it adds itself: the
-//! resolved [`VeniceParameters`] echo (which is where web-search citations
-//! arrive) and a per-request [`Cost`]. [`CompletionResponse`] preserves both,
-//! so `raw_completion` callers keep everything Venice sent.
+//! What remains here is data: the model identifiers, [`VeniceParameters`] —
+//! Venice's own request block (web search, thinking control, characters),
+//! which reaches the body through
+//! [`additional_params`](crate::completion::CompletionRequest::additional_params)
+//! — and [`CompletionResponse`], the typed read of Venice's own reply
+//! document, which a completion carries verbatim on
+//! [`CompletionResponse::raw`](crate::completion::CompletionResponse::raw).
+//! The response type is not a second mapping: the normalized response is
+//! produced by the wire's decoder, and this is how a caller reads the blocks
+//! that mapping does not name — the resolved [`VeniceParametersEcho`], where
+//! web-search citations arrive, and the per-request [`Cost`].
 
 use serde::{Deserialize, Serialize};
 
-use crate::completion::{self, CompletionError, NormalizeCompletionResponse};
 use crate::providers::openai;
-use crate::telemetry::ProviderResponseExt;
 
 // ================================================================
 // Venice Completion Models
@@ -48,12 +55,6 @@ pub const MISTRAL_SMALL_2603: &str = "mistral-small-2603";
 /// `mistral-small-3-2-24b-instruct`
 pub const MISTRAL_SMALL_3_2_24B: &str = "mistral-small-3-2-24b-instruct";
 
-/// Venice completion model — the shared OpenAI-compatible
-/// [`GenericCompletionModel`](openai::completion::GenericCompletionModel)
-/// specialized to Venice.
-pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<super::client::Venice, H>;
-
 // ================================================================
 // Venice-specific request parameters
 // ================================================================
@@ -77,16 +78,11 @@ pub enum WebSearchMode {
 /// which is the same merge path every other provider's dialect extras use, so
 /// there is no separate request abstraction to keep in sync:
 ///
-/// ```ignore
-/// use rig_core::client::CompletionClient;
-/// use rig_core::completion::CompletionModel;
-/// use rig_core::providers::venice::{self, VeniceParameters, WebSearchMode};
+/// ```no_run
+/// use rig_core::completion::CompletionRequestBuilder;
+/// use rig_core::providers::venice::{VeniceParameters, WebSearchMode};
 ///
-/// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = venice::Client::from_env()?;
-/// let model = client.completion_model(venice::QWEN3_5_9B);
-/// let request = model
-///     .completion_request("Summarize today's Rust news.")
+/// let request = CompletionRequestBuilder::unbound("Summarize today's Rust news.")
 ///     .additional_params(
 ///         VeniceParameters::new()
 ///             .enable_web_search(WebSearchMode::On)
@@ -94,10 +90,6 @@ pub enum WebSearchMode {
 ///             .into_additional_params(),
 ///     )
 ///     .build();
-/// let response = model.completion(request).await?;
-/// # let _ = response;
-/// # Ok(())
-/// # }
 /// ```
 ///
 /// Every field is optional; omitted fields are left to Venice's own defaults
@@ -272,7 +264,7 @@ pub struct Cost {
 ///
 /// Normalization and telemetry delegate to the OpenAI payload — the wire
 /// shape of `choices`/`usage` is OpenAI's — so the Venice-only blocks are
-/// preserved for `raw_completion` callers without forking the conversion.
+/// read out of `CompletionResponse::raw` without forking the conversion.
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     /// The OpenAI-compatible portion of the payload.
@@ -293,32 +285,6 @@ impl CompletionResponse {
             .as_ref()
             .map(|parameters| parameters.web_search_citations.as_slice())
             .unwrap_or_default()
-    }
-}
-
-impl NormalizeCompletionResponse for CompletionResponse {
-    fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
-        self.openai.normalize(provider)
-    }
-}
-
-impl ProviderResponseExt for CompletionResponse {
-    type Usage = <openai::CompletionResponse as ProviderResponseExt>::Usage;
-
-    fn response_id(&self) -> Option<&str> {
-        self.openai.response_id()
-    }
-
-    fn response_model_name(&self) -> Option<&str> {
-        self.openai.response_model_name()
-    }
-
-    fn text_response(&self) -> Option<String> {
-        self.openai.text_response()
-    }
-
-    fn usage(&self) -> Option<Self::Usage> {
-        self.openai.usage()
     }
 }
 

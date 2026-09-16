@@ -19,14 +19,15 @@
 //! # Example
 //! ```no_run
 //! use rig_agent::prelude::*;
-//! use rig_core::providers::openai;
+//! use rig_core::providers::openai::{self, OpenAI};
 //! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let openai = openai::Client::from_env()?;
+//! let openai = OpenAI::from_env()?.bound()?;
 //!
 //! // Configure the agent
-//! let agent = openai.agent(openai::GPT_5_2)
+//! let agent = openai
+//!     .agent(openai::GPT_5_2)
 //!     .preamble("System prompt")
 //!     .context("Context document 1")
 //!     .context("Context document 2")
@@ -58,18 +59,18 @@
 //! use rig_agent::prelude::*;
 //! use rig_reqwest::prelude::*;
 //! use rig_core::{
-//!     client::EmbeddingsClient,
 //!     embeddings::EmbeddingsBuilder,
-//!     providers::openai,
+//!     providers::openai::{self, OpenAI},
 //!     vector_store::in_memory_store::InMemoryVectorStore,
 //! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize OpenAI client
-//! let openai = openai::Client::from_env()?;
+//! // One OpenAI config serves both: completions go to the Responses API,
+//! // embeddings to the shared REST surface.
+//! let openai = OpenAI::from_env()?.bound()?;
 //!
 //! // Initialize OpenAI embedding model
-//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+//! let embedding_model = openai.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //!
 //! // Create vector store, compute embeddings and load them in the store
 //! let mut vector_store = InMemoryVectorStore::default();
@@ -88,7 +89,8 @@
 //! // Create vector store index
 //! let index = vector_store.index(embedding_model);
 //!
-//! let agent = openai.agent(openai::GPT_5_2)
+//! let agent = openai
+//!     .agent(openai::GPT_5_2)
 //!     .preamble("
 //!         You are a dictionary assistant here to assist the user in understanding the meaning of words.
 //!         You will find additional non-standard word definitions that could be useful below.

@@ -77,7 +77,6 @@
 //! bytes instead, as an earlier version did, could not have detected an HTTP
 //! regression at all.
 
-use rig::client::completion::CompletionClient;
 use rig::completion::{CompletionError, CompletionModel};
 use rig::prelude::DefaultWebSocketClient as _;
 
@@ -103,7 +102,9 @@ async fn handshake_rejection_carries_status_body_and_request_id() {
         "websocket_error_identity_matrix/handshake_rejection_carries_status_body_and_request_id",
         |client| async move {
             let error = client
-                .responses_websocket("gpt-4o-mini")
+                .openai
+                .responses("gpt-4o-mini")
+                .responses_websocket()
                 .await
                 .err()
                 .expect("an invalid key must fail the upgrade");
@@ -142,13 +143,13 @@ async fn handshake_rejection_matches_the_http_twin() {
     with_openai_websocket_cassette(
         "websocket_error_identity_matrix/handshake_rejection_matches_the_http_twin",
         |client| async move {
-            let websocket_error = client
-                .responses_websocket("gpt-4o-mini")
+            let model = client.openai.responses("gpt-4o-mini");
+            let websocket_error = model
+                .responses_websocket()
                 .await
                 .err()
                 .expect("an invalid key must fail the upgrade");
 
-            let model = client.completion_model("gpt-4o-mini");
             let http_error = model
                 .completion(model.completion_request("Never authenticated").build())
                 .await

@@ -1,11 +1,12 @@
-// ================================================================
-//! Venice Embeddings Integration
-//! From [Venice's embeddings endpoint](https://docs.venice.ai/api-reference/endpoint/embeddings/generate)
-// ================================================================
-
-use crate::providers::openai::embedding::{GenericEmbeddingModel, OpenAIEmbeddingsCompatible};
-
-use super::client::Venice;
+//! Venice's embedding model identifiers.
+//!
+//! From [Venice's embeddings endpoint](https://docs.venice.ai/api-reference/endpoint/embeddings/generate).
+//! The requests run on the shared OpenAI embeddings wire, whose
+//! [`VENICE`](crate::providers::openai::wire::VENICE) dialect carries the base
+//! URL and the `/embeddings` path: Venice is OpenAI-compatible on every field
+//! rig sends — `model`, `input`, `encoding_format`, `dimensions` (honored — a
+//! request for 256 dimensions returns 256), and `user` (accepted for
+//! compatibility) — and it answers with `usage`.
 
 // ================================================================
 // Venice Embedding API
@@ -21,15 +22,3 @@ pub const TEXT_EMBEDDING_QWEN3_0_6B: &str = "text-embedding-qwen3-0-6b";
 /// `text-embedding-multilingual-e5-large-instruct`
 pub const TEXT_EMBEDDING_MULTILINGUAL_E5_LARGE_INSTRUCT: &str =
     "text-embedding-multilingual-e5-large-instruct";
-
-// Venice's embeddings endpoint is OpenAI-compatible on every field Rig sends:
-// `model`, `input`, `encoding_format`, `dimensions` (honored — a request for
-// 256 dimensions returns 256), and `user` (accepted for compatibility), and it
-// answers with `usage`.
-impl OpenAIEmbeddingsCompatible for Venice {
-    const PROVIDER_NAME: &'static str = "venice";
-}
-
-/// Venice embedding model, driven by the shared OpenAI-compatible
-/// embeddings path.
-pub type EmbeddingModel<T = crate::http_client::BoxedHttpClient> = GenericEmbeddingModel<Venice, T>;

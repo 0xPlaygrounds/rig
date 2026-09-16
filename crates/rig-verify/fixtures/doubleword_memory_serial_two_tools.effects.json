@@ -180,6 +180,7 @@
             "output_tokens": 36,
             "total_tokens": 446,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -193,11 +194,19 @@
               "completion_tokens": 36,
               "total_tokens": 446,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
-              }
+              },
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_2",
@@ -299,6 +308,7 @@
             "output_tokens": 36,
             "total_tokens": 446,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
@@ -312,11 +322,19 @@
               "completion_tokens": 36,
               "total_tokens": 446,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
-              }
+              },
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_2",
@@ -522,6 +540,7 @@
             "output_tokens": 14,
             "total_tokens": 491,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -535,11 +554,19 @@
               "completion_tokens": 14,
               "total_tokens": 491,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
-              }
+              },
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_4",
@@ -670,6 +697,7 @@
             "output_tokens": 14,
             "total_tokens": 491,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
@@ -683,11 +711,19 @@
               "completion_tokens": 14,
               "total_tokens": 491,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
-              }
+              },
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_4",

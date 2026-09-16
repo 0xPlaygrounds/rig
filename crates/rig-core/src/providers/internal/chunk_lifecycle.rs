@@ -21,9 +21,9 @@
 //! debug-mode sequence laws (`sequence_law`) still watch the emitted stream,
 //! so an adapter bypassing this helper fails its own tests.
 //!
-//! `pub` (not `pub(crate)`) for the same reason as [`adapter`](super::adapter)
-//! and [`tool_call_bridge`](super::tool_call_bridge): companion provider
-//! crates implementing [`WireAdapter`](super::adapter::WireAdapter) over a
+//! `pub` (not `pub(crate)`) for the same reason as
+//! [`tool_call_bridge`](super::tool_call_bridge): companion provider
+//! crates implementing [`Decoder`](crate::wire::Decoder) over a
 //! boundary-less wire (rig-gemini-grpc) must inherit this derivation rather
 //! than hand-roll it; it is not part of rig-core's stable public API.
 //!
@@ -36,9 +36,8 @@
 //! wire quirks (slot eviction, encrypted reasoning details, tool-call
 //! decorations) this declarative shape does not model.
 
+use crate::operation::AdapterOutput;
 use crate::streaming::{BlockId, MintKind, StreamEvent, SyntheticIds};
-
-use super::adapter::AdapterOutput;
 
 /// What one wire chunk (or one wire part, for parts-array wires) carried,
 /// declared by the adapter with no lifecycle events of its own.

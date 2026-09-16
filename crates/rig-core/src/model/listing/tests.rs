@@ -155,30 +155,6 @@ fn test_format_response_body_preview_with_truncation() {
 }
 
 #[test]
-fn test_api_error_with_context_includes_provider_path_and_preview() {
-    let error = ModelListingError::api_error_with_context(
-        "Gemini",
-        "/v1beta/models?pageSize=1000",
-        500,
-        br#"{"error":"boom"}"#,
-    );
-
-    match error {
-        ModelListingError::ApiError {
-            status_code,
-            message,
-        } => {
-            assert_eq!(status_code, 500);
-            assert!(message.contains("provider=Gemini"));
-            assert!(message.contains("path=/v1beta/models?pageSize=1000"));
-            assert!(message.contains("status=500"));
-            assert!(message.contains(r#"{"error":"boom"}"#));
-        }
-        _ => panic!("Expected ApiError"),
-    }
-}
-
-#[test]
 fn test_parse_error_with_context_includes_parse_error_and_preview() {
     let body = br#"{"models":[{"displayName":"broken"}]}"#;
     let parse_error = serde_json::from_slice::<serde_json::Value>(b"{")

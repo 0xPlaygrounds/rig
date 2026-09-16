@@ -1,23 +1,34 @@
 //! Dedicated Claude Opus 4.8 cassette coverage.
 
-use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{
     AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, Document,
     Message, ProviderToolDefinition,
 };
 use rig::message::Text;
-use rig::prelude::*;
-use rig::providers::anthropic::completion::CLAUDE_OPUS_4_8;
-use rig::telemetry::ProviderResponseExt;
+use rig::providers::anthropic::completion::{CLAUDE_OPUS_4_8, CompletionResponse, Content};
 use serde::Deserialize;
 use serde_json::Value;
 use serde_json::json;
 
 use crate::support::{assert_contains_any_case_insensitive, assistant_text_response};
 
-/// Descriptor name the Anthropic client normalizes responses under; needed
-/// when a test converts a `raw_completion` response itself.
-const ANTHROPIC_PROVIDER: &str = "anthropic";
+/// The text Anthropic's own reply carried, read back out of
+/// [`RigCompletionResponse::raw`] — the value the deleted `raw_completion`
+/// returned. These cells fall back to it when rig's normalized choice holds
+/// no assistant text, and one request carries both views.
+fn provider_text(response: &RigCompletionResponse) -> Option<String> {
+    let reply = CompletionResponse::deserialize(&response.raw)
+        .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
+    let text: String = reply
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            Content::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    (!text.is_empty()).then_some(text)
+}
 
 const SYSTEM_ROLE_INSTRUCTION: &str = "For the rest of this conversation, answer in Spanish only.";
 const DOCUMENT_GLOBAL_SYSTEM_INSTRUCTION: &str = "Answer in Spanish only. Use one short sentence.";
@@ -29,7 +40,7 @@ async fn web_search_with_dynamic_filtering_succeeds() {
     super::super::support::with_anthropic_cassette(
         "opus_4_8/web_search_with_dynamic_filtering_succeeds",
         |client| async move {
-            let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let model = client.completion(CLAUDE_OPUS_4_8);
             let request = model
                 .completion_request(
                     "Search for the current prices of AAPL and GOOGL, then calculate which has a better P/E ratio.",
@@ -40,16 +51,14 @@ async fn web_search_with_dynamic_filtering_succeeds() {
                 )
                 .max_tokens(1024)
                 .build();
-            // One request, two views: `raw_completion` returns Anthropic's own
-            // response and the same value normalizes into rig's, so the
+            // One request, two views: the normalized response is what the
+            // model returns, and `raw` carries Anthropic's own reply, so the
             // provider-text fallback below still costs a single interaction.
-            let raw = model
-                .raw_completion(request)
+            let response: RigCompletionResponse = model
+                .completion(request)
                 .await
                 .expect("Opus 4.8 dynamic web-search request should succeed");
-            let raw_text = raw.text_response();
-            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER)
-                .expect("Opus 4.8 dynamic web-search response should normalize");
+            let raw_text = provider_text(&response);
 
             assert!(
                 response.choice.iter().any(|content| {
@@ -73,7 +82,7 @@ async fn messages_preserve_mid_conversation_system_role() {
     super::super::support::with_anthropic_cassette(
         "opus_4_8/messages_preserve_mid_conversation_system_role",
         |client| async move {
-            let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let model = client.completion(CLAUDE_OPUS_4_8);
             let request = model
                 .completion_request(
                     "What color is a clear daytime sky? Reply with one lowercase Spanish word.",
@@ -85,14 +94,11 @@ async fn messages_preserve_mid_conversation_system_role() {
                 ])
                 .max_tokens(64)
                 .build();
-            let raw = model
-                .raw_completion(request)
+            let response: RigCompletionResponse = model
+                .completion(request)
                 .await
                 .expect("Opus 4.8 system-role request should succeed");
-            let raw_text = raw.text_response();
-            let response: RigCompletionResponse = raw
-                .normalize(ANTHROPIC_PROVIDER)
-                .expect("Opus 4.8 system-role response should normalize");
+            let raw_text = provider_text(&response);
 
             let text = assistant_text_response(&response.choice)
                 .or(raw_text)
@@ -113,7 +119,7 @@ async fn messages_preserve_system_role_after_server_tool_result() {
     super::super::support::with_anthropic_cassette(
         "opus_4_8/messages_preserve_system_role_after_server_tool_result",
         |client| async move {
-            let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let model = client.completion(CLAUDE_OPUS_4_8);
             let first_response = model
                 .completion_request(
                     "Use web search to check the color of a clear daytime sky. Keep the final answer under five words.",
@@ -140,13 +146,10 @@ async fn messages_preserve_system_role_after_server_tool_result() {
                 ])
                 .max_tokens(64)
                 .build();
-            let raw = model.raw_completion(request).await.expect(
+            let response: RigCompletionResponse = model.completion(request).await.expect(
                 "Opus 4.8 request with system role after server tool result should succeed",
             );
-            let raw_text = raw.text_response();
-            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER).expect(
-                "Opus 4.8 response with system role after server tool result should normalize",
-            );
+            let raw_text = provider_text(&response);
 
             let text = assistant_text_response(&response.choice)
                 .or(raw_text)
@@ -167,7 +170,7 @@ async fn documents_keep_leading_system_message_top_level() {
     super::super::support::with_anthropic_cassette(
         "opus_4_8/documents_keep_leading_system_message_top_level",
         |client| async move {
-            let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let model = client.completion(CLAUDE_OPUS_4_8);
             let request = model
                 .completion_request(
                     "According to the document, what color is the clear daytime sky?",
@@ -183,13 +186,10 @@ async fn documents_keep_leading_system_message_top_level() {
                 })
                 .max_tokens(64)
                 .build();
-            let raw = model.raw_completion(request).await.expect(
+            let response: RigCompletionResponse = model.completion(request).await.expect(
                 "Opus 4.8 request with documents and a leading system message should succeed",
             );
-            let raw_text = raw.text_response();
-            let response: RigCompletionResponse = raw.normalize(ANTHROPIC_PROVIDER).expect(
-                "Opus 4.8 response with documents and a leading system message should normalize",
-            );
+            let raw_text = provider_text(&response);
 
             let text = assistant_text_response(&response.choice)
                 .or(raw_text)

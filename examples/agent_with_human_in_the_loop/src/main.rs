@@ -23,7 +23,7 @@
 use anyhow::Result;
 use rig::agent::{AgentHook, DispatchAction, DispatchEvent, HookContext};
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
@@ -235,7 +235,8 @@ impl AgentHook for ApprovalHook {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = openai::Client::from_env()?
+    let agent = OpenAI::from_env()?
+        .bound()?
         .agent(openai::GPT_4O)
         .preamble(
             "You are an operations assistant. Use the available tools to carry out the user's \

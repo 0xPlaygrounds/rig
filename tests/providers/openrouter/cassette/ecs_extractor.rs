@@ -2,12 +2,11 @@
 use super::super::{DEFAULT_MODEL, support::with_openrouter_cassette};
 use crate::ecs_extractor::EcsExtractor;
 use crate::support::{EXTRACTOR_TEXT, SmokePerson, assert_nonempty_response};
-use rig::prelude::*;
 #[tokio::test]
 async fn extractor_smoke() {
     with_openrouter_cassette("extractor/extractor_smoke", |client| async move {
         let mut extractor =
-            EcsExtractor::<SmokePerson>::new(client.completion_model(DEFAULT_MODEL), None, None);
+            EcsExtractor::<SmokePerson>::new(client.completion(DEFAULT_MODEL), None, None);
         let response = extractor
             .extract(EXTRACTOR_TEXT, &[])
             .await

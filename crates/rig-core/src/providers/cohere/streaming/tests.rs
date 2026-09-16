@@ -1,15 +1,16 @@
 use super::*;
 use serde_json::json;
 
-fn cohere_client<H>(http_client: H) -> crate::providers::cohere::Client<H>
-where
-    H: HttpClientExt,
-{
-    crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("client should build")
+/// The chat wire bound to `http_client`: the model every streamed case
+/// drives.
+fn cohere_model<H: Clone>(
+    http_client: H,
+) -> crate::driver::Bound<crate::providers::cohere::Chat, H> {
+    crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client,
+    )
+    .completion(crate::providers::cohere::COMMAND_R_08_2024)
 }
 
 fn classify(data: &str) -> wire::WireEvent<StreamingEvent> {
@@ -53,7 +54,6 @@ fn classify_known_event_with_defective_payload_is_corrupt() {
 
 #[tokio::test]
 async fn stream_terminal_record_is_normalized() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
@@ -70,8 +70,7 @@ async fn stream_terminal_record_is_normalized() {
         .collect::<String>(),
     );
 
-    let client = cohere_client(MockStreamingClient { sse_bytes });
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -102,7 +101,6 @@ async fn stream_terminal_record_is_normalized() {
 
 #[tokio::test]
 async fn truncated_stream_does_not_synthesize_a_terminal_record() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -119,8 +117,7 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
         .collect::<String>(),
     );
 
-    let client = cohere_client(MockStreamingClient { sse_bytes });
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -150,7 +147,6 @@ async fn truncated_stream_does_not_synthesize_a_terminal_record() {
 
 #[tokio::test]
 async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -171,8 +167,7 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
         .collect::<String>(),
     );
 
-    let client = cohere_client(MockStreamingClient { sse_bytes });
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -205,7 +200,6 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
 
 #[tokio::test]
 async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::streaming::StreamEvent;
     use crate::test_utils::MockStreamingClient;
@@ -224,8 +218,7 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
         .collect::<String>(),
     );
 
-    let client = cohere_client(MockStreamingClient { sse_bytes });
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -260,7 +253,6 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
 
 #[tokio::test]
 async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -280,8 +272,7 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
         .collect::<String>(),
     );
 
-    let client = cohere_client(MockStreamingClient { sse_bytes });
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -308,7 +299,6 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
 
 #[tokio::test]
 async fn message_end_without_delta_still_emits_the_terminal_record() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::streaming::{Delta, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -327,8 +317,7 @@ async fn message_end_without_delta_still_emits_the_terminal_record() {
         .collect::<String>(),
     );
 
-    let client = cohere_client(MockStreamingClient { sse_bytes });
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -357,7 +346,6 @@ async fn message_end_without_delta_still_emits_the_terminal_record() {
 
 #[tokio::test]
 async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::message::AssistantContent;
     use crate::streaming::{Delta, StreamEvent};
@@ -381,8 +369,7 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
         .collect::<String>(),
     );
 
-    let client = cohere_client(MockStreamingClient { sse_bytes });
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("hello").build();
 
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -420,17 +407,15 @@ async fn thinking_deltas_aggregate_into_one_reasoning_part_before_the_text() {
 
 #[tokio::test]
 async fn errored_stream_does_not_synthesize_a_terminal_record() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::streaming::StreamEvent;
     use crate::test_utils::HttpErrorStreamingClient;
     use futures::StreamExt;
 
-    let client = cohere_client(HttpErrorStreamingClient::new(
+    let model = cohere_model(HttpErrorStreamingClient::new(
         http::StatusCode::TOO_MANY_REQUESTS,
         r#"{"message":"slow down"}"#,
     ));
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
     let request = model.completion_request("hello").build();
 
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
@@ -678,7 +663,6 @@ fn test_streaming_event_order() {
 /// assertion.
 #[tokio::test]
 async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::streaming::{BlockId, BlockKind, StreamEvent};
     use crate::test_utils::MockStreamingClient;
@@ -703,8 +687,7 @@ async fn empty_tool_call_ids_are_minted_not_keyed_on_the_empty_string() {
             .map(|event| format!("data: {event}\n\n"))
             .collect::<String>(),
     );
-    let client = cohere_client(MockStreamingClient { sse_bytes });
-    let model = client.completion_model(crate::providers::cohere::COMMAND_R_08_2024);
+    let model = cohere_model(MockStreamingClient { sse_bytes });
     let request = model.completion_request("add twice").build();
     let mut stream = crate::completion::CompletionModel::stream(&model, request)
         .await

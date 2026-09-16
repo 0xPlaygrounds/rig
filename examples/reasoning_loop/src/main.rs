@@ -4,7 +4,7 @@ use rig::{
     completion::{CompletionError, PromptError},
     extractor::Extractor,
     message::Message,
-    providers::anthropic,
+    providers::anthropic::{self, wire::Anthropic},
     tool::Tool,
 };
 use schemars::JsonSchema;
@@ -71,8 +71,8 @@ async fn main() -> anyhow::Result<()> {
         .with_target(false)
         .init();
 
-    // Create Anthropic client
-    let anthropic_client = anthropic::Client::from_env()?;
+    // Create the Anthropic provider, bound to the bundled transport
+    let anthropic_client = Anthropic::from_env()?.bound()?;
     let agent = ReasoningAgent {
         chain_of_thought_extractor: anthropic_client
             .extractor(anthropic::completion::CLAUDE_SONNET_4_6)

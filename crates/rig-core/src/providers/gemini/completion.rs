@@ -29,23 +29,19 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
 use crate::completion::{self, CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
-use crate::message::{self, MimeType, Reasoning};
+use crate::message::{self, Reasoning};
+use crate::operation::Completion;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
 };
-use crate::providers::internal::completion_send::send_completion_with;
-use crate::providers::internal::envelope::DirectPayload;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::telemetry::CompletionOperation;
+use crate::wire::{Body, Encoded, Framing, Mode, Wire};
 use gemini_api_types::{
-    Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
-    GenerationConfig, Part, PartKind, Role, Tool, map_finish_reason,
+    Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerationConfig, Part,
+    PartKind, Role, Tool,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
-use tracing_futures::Instrument;
-
-use super::Client;
 
 // =================================================================
 // Rig Implementation Types
@@ -55,35 +51,33 @@ use super::Client;
 ///
 /// Recorded on every normalized response and stream this module produces, and
 /// on the telemetry spans, so the two never drift apart.
-pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
+pub const PROVIDER_NAME: &str = "gcp.gemini";
 
-#[derive(Clone, Debug)]
-pub struct CompletionModel<T = crate::http_client::BoxedHttpClient> {
-    pub(crate) client: Client<T>,
+/// The Gemini GenerateContent wire: `generateContent` when a caller wants
+/// one reply, `streamGenerateContent?alt=sse` when it wants the reply as it
+/// is produced.
+///
+/// The two are one wire because they are one endpoint family answering with
+/// one document shape — only the delivery differs, which is what [`Mode`]
+/// names. The decoder is
+/// [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder) in
+/// both modes; the mode it is built for decides only what its EOF means.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GenerateContent {
+    /// The key and the API root.
+    pub provider: super::Gemini,
+    /// The model to address, e.g. [`GEMINI_2_5_FLASH`].
     pub model: String,
-    /// Handle of a `cachedContents` resource every request should read from.
-    ///
-    /// See [`CompletionModel::with_cached_content`].
-    pub(crate) cached_content: Option<String>,
+    /// Handle of a `cachedContents` resource every request reads its prefix
+    /// from. See [`Self::with_cached_content`].
+    pub cached_content: Option<String>,
 }
 
-impl<T> CompletionModel<T> {
-    /// The provider client this model sends through.
-    pub fn client(&self) -> &Client<T> {
-        &self.client
-    }
-
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
+impl GenerateContent {
+    /// The wire for `model`.
+    pub fn new(provider: super::Gemini, model: impl Into<String>) -> Self {
         Self {
-            client,
-            model: model.into(),
-            cached_content: None,
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str) -> Self {
-        Self {
-            client,
+            provider,
             model: model.into(),
             cached_content: None,
         }
@@ -91,203 +85,77 @@ impl<T> CompletionModel<T> {
 
     /// Read every request's prefix from an explicit `cachedContents` handle.
     ///
-    /// This is Gemini's *explicit* context cache, which is a different feature
-    /// from the implicit prefix caching that happens with no API surface at all.
-    /// Explicit caching hits on the first request and across unrelated
-    /// conversations; implicit caching needs a warm-up and keys on a prefix a
-    /// fresh conversation does not have. Measured on `gemini-2.5-flash` over one
-    /// 18.5k-token corpus: implicit read zero cached tokens for five consecutive
-    /// turns, explicit read 100% on turn one.
-    ///
-    /// Create the handle with
-    /// [`crate::providers::gemini::cached_content::CachedContentClient`], and
-    /// delete it when you are done — storage bills until you do.
-    ///
-    /// # What can actually use the handle
-    ///
-    /// The cache owns the system instruction, the tool set *and* the tool
-    /// choice, so a request built from this model must carry none of the three;
-    /// rig rejects that before the request goes out rather than letting Gemini
-    /// answer 400.
-    ///
-    /// That is a tighter constraint than it looks for rig's `Agent`, because an
-    /// agent does not choose what to send — it sends what it holds:
-    ///
-    /// * a preamble becomes `systemInstruction`, so an agent reading from a
-    ///   cache must have no preamble and put those instructions in the cache;
-    /// * every always-exposed tool is advertised on every turn, and the agent
-    ///   can only dispatch what it advertised, so an agent reading from a cache
-    ///   must have no tools — and a function tool set moved into the cache is
-    ///   declarations the agent could never execute (see
-    ///   [`crate::providers::gemini::cached_content::NewCachedContent::tools`]).
-    ///   An empty `RequestPatch::active_tools` allow-list does suppress the
-    ///   `tools` field for a turn, so a tool-holding agent *can* be made to pass
-    ///   this check — but it gains a request, not a dispatch: neither its own
-    ///   suppressed tools nor the cache's are callable on that turn;
-    /// * a configured `tool_choice` becomes `toolConfig` even on a tool-less
-    ///   agent, so it has to go too — though dropping it costs a tool-less agent
-    ///   nothing;
-    /// * `output_schema` is fine under the default `OutputMode::Auto`, which for
-    ///   a tool-less agent resolves to `Native` and sends the schema as a
-    ///   `generationConfig` constraint with no tool. It is not fine in `Tool`
-    ///   mode, which advertises a synthetic output tool *and* appends an
-    ///   instruction to the preamble — and `Extractor` pins `Tool` mode, so
-    ///   extractors cannot read from a cache at all. `Prompted` is out for the
-    ///   same reason: it writes the schema into the preamble, so even a
-    ///   preamble-less agent ends up sending a `systemInstruction`.
-    ///
-    /// Context documents are fine either way: they are appended to the chat
-    /// history as user content, never to the system instruction.
-    ///
-    /// So there are two supported shapes: an agent with no preamble, no tools
-    /// and no `tool_choice` (with or without native structured output), or this
-    /// model driven directly
-    /// through
-    /// [`CompletionModel::completion`](completion::CompletionModel::completion)
-    /// or [`Self::raw_completion`] with a tool loop you run yourself.
+    /// Gemini's *explicit* context cache, which is a different feature from
+    /// the implicit prefix caching that happens with no API surface at all:
+    /// it hits on the first request and across unrelated conversations, at
+    /// the cost of billing storage per token-hour. The cache owns the system
+    /// instruction, the tool set *and* the tool choice, so a request built
+    /// from this wire must carry none of the three — `encode` rejects that
+    /// before the request goes out rather than letting Gemini answer 400.
+    /// See [`crate::providers::gemini::cached_content`] for which agent
+    /// shapes can use a handle at all.
     pub fn with_cached_content(mut self, name: impl Into<String>) -> Self {
         self.cached_content = Some(name.into());
         self
     }
 }
 
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Execute a completion and return Gemini's own `generateContent` payload.
-    ///
-    /// This is the escape hatch for provider-specific fields rig does not
-    /// normalize. It shares the request builder, transport, telemetry, and
-    /// error handling with
-    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
-    /// which calls it and then applies the provider-local mapping — one network
-    /// request either way.
-    pub async fn raw_completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<GenerateContentResponse, CompletionError> {
-        self.raw_completion_with_context(completion_request, None)
-            .await
+impl Wire for GenerateContent {
+    type Op = Completion;
+    type Decoder = super::streaming::GenerateContentDecoder;
+
+    fn name(&self) -> &str {
+        PROVIDER_NAME
     }
 
-    /// Return provider-native output with context owned by this invocation.
-    pub async fn raw_completion_with_context(
-        &self,
-        completion_request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<GenerateContentResponse, CompletionError> {
-        self.complete_with(completion_request, context, Ok).await
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
     }
 
-    async fn complete_with<R>(
-        &self,
-        completion_request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-        normalize: impl FnOnce(GenerateContentResponse) -> Result<R, CompletionError>,
-    ) -> Result<R, CompletionError> {
-        let request_model = resolve_request_model(&self.model, &completion_request);
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &request_model,
-            CompletionOperation::GenerateContent,
-        )
-        .system_instructions(
-            completion_request.system_instructions(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
+    /// The endpoint has its own canonical name for a whole reply
+    /// (`generate_content`), and the streamed span keeps the name the
+    /// streaming path has always recorded.
+    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+        if streaming {
+            CompletionOperation::ChatStreaming
+        } else {
+            CompletionOperation::GenerateContent
+        }
+    }
 
-        let mut request = create_request_body(completion_request)?;
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
+        // The request may name a model of its own; the wire's is the default.
+        let model = resolve_request_model(&self.model, &request);
+        let mut body = create_request_body(request)?;
         if let Some(name) = self.cached_content.as_deref() {
-            request.with_cached_content(name)?;
+            body.with_cached_content(name)?;
         }
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Gemini completion request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let path = completion_endpoint(&request_model);
-
-        let mut request = self
-            .client
-            .post(path.as_str())?
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-
-        if let Some(observation) = observation {
-            super::observation::attach(
-                observation,
-                &mut request,
-                "/models/{model}:generateContent",
-            );
-        }
-        send_completion_with::<_, DirectPayload<GenerateContentResponse>, _, _, _>(
-            &self.client,
-            request,
-            "Gemini completion",
-            // Gemini reports no transport request-id response header (verified
-            // against the live API); the normalized id is None by design.
-            None,
-            |response| {
-                let span = tracing::Span::current();
-                span.record_response_metadata(response);
-                let usage = response
-                    .usage_metadata
-                    .as_ref()
-                    .map(crate::completion::Usage::from)
-                    .unwrap_or_default();
-                span.record_token_usage(&usage);
-            },
-            normalize,
-        )
-        .instrument(span)
-        .await
-        .map(|(payload, _)| payload)
-    }
-}
-
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    async fn completion(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::completion::CompletionResponse, CompletionError> {
-        self.completion_with_context(request, None).await
+        let (path, framing, target) = match mode {
+            Mode::Unary => (
+                completion_endpoint(&model),
+                Framing::Whole,
+                crate::providers::internal::LogTarget::Completions,
+            ),
+            // `alt=sse` is what makes the streamed reply an event stream
+            // rather than a JSON array of the same chunks.
+            Mode::Streaming => (
+                format!("{}?alt=sse", streaming_endpoint(&model)),
+                Framing::Sse,
+                crate::providers::internal::LogTarget::Streaming,
+            ),
+        };
+        crate::providers::internal::trace_json(target, "Gemini completion request", &body);
+        let request = http::Request::post(self.provider.uri(&path))
+            .header("Content-Type", "application/json")
+            .body(Body::Bytes(serde_json::to_vec(&body)?))
+            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+        // Gemini reports no transport request-id response header (verified
+        // against the live API); the normalized id is None by design.
+        Ok(Encoded::new(request, framing))
     }
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        self.stream_with_context(request, None).await
-    }
-
-    async fn completion_with_context(
-        &self,
-        completion_request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.complete_with(completion_request, context, |raw| {
-            let captured = serde_json::to_value(&raw)?;
-            let response: completion::CompletionResponse = raw.try_into()?;
-            Ok(response.with_raw(captured))
-        })
-        .await
-    }
-
-    async fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, CompletionError> {
-        self.stream_observed(request, context).await
+    fn decoder(&self, mode: Mode) -> Self::Decoder {
+        super::streaming::GenerateContentDecoder::new(mode)
     }
 }
 
@@ -584,23 +452,6 @@ pub(crate) fn streaming_endpoint(model: &str) -> String {
     format!("/v1beta/models/{model}:streamGenerateContent")
 }
 
-impl TryFrom<completion::ToolDefinition> for Tool {
-    type Error = CompletionError;
-
-    fn try_from(tool: completion::ToolDefinition) -> Result<Self, Self::Error> {
-        let parameters = tool_parameters_to_schema(tool.parameters)?;
-
-        Ok(Self {
-            function_declarations: vec![FunctionDeclaration {
-                name: tool.name,
-                description: tool.description,
-                parameters,
-            }],
-            code_execution: None,
-        })
-    }
-}
-
 impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
     type Error = CompletionError;
 
@@ -730,97 +581,6 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
-/// Map one response `Part` onto the assistant content it carries.
-///
-/// An empty result means the part is real Gemini output that carries no
-/// rig-modeled assistant content, so it contributes nothing to the choice and
-/// the rest of the turn still converts. Only a part rig cannot account for at
-/// all is an `Err`. One part can yield *two* items: a trailing
-/// `thoughtSignature` rides a text part that carries no `thought` flag, and
-/// the signature belongs to a reasoning block rather than to the text.
-fn map_response_part(
-    part: &Part,
-    tool_index: &mut u64,
-) -> Result<Vec<completion::AssistantContent>, CompletionError> {
-    let Part {
-        thought,
-        thought_signature,
-        part,
-        ..
-    } = part;
-
-    Ok(vec![match part {
-        PartKind::Text(text) => {
-            if let Some(thought) = thought
-                && *thought
-            {
-                completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
-                    text,
-                    thought_signature.clone(),
-                ))
-            } else if thought_signature.is_some() {
-                // A trailing signature on a part with no `thought` flag: the
-                // caller places it, because where it belongs depends on what
-                // came before. See `attach_trailing_signature`.
-                return Ok(vec![completion::AssistantContent::text(text)]);
-            } else {
-                completion::AssistantContent::text(text)
-            }
-        }
-        PartKind::InlineData(inline_data) => {
-            let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
-
-            match mime_type {
-                Some(message::MediaType::Image(media_type)) => {
-                    message::AssistantContent::image_base64(
-                        &inline_data.data,
-                        Some(media_type),
-                        Some(message::ImageDetail::default()),
-                    )
-                }
-                _ => {
-                    return Err(CompletionError::ResponseError(format!(
-                        "Unsupported media type {mime_type:?}"
-                    )));
-                }
-            }
-        }
-        PartKind::FunctionCall(function_call) => {
-            // Gemini function calls carry no id on most models: the
-            // `index`-th call of the response is `tool-<index>`.
-            let index = *tool_index;
-            *tool_index += 1;
-            let tool_call = message::ToolCall::from_wire_indexed(
-                function_call.id.clone().unwrap_or_default(),
-                index,
-                message::ToolFunction::new(function_call.name.clone(), function_call.args.clone()),
-            )
-            .with_signature(thought_signature.clone());
-            completion::AssistantContent::ToolCall(tool_call)
-        }
-        // The `codeExecution` tool's own output. Rig lets callers enable that
-        // tool (`additional_params.tools = [{"codeExecution": {}}]`, lifted
-        // onto the request by `extract_tools_from_additional_params`), and
-        // Gemini then answers with `executableCode`/`codeExecutionResult`
-        // parts alongside the text. Neither has a slot in
-        // `AssistantContent` — the same position OpenAI Responses' hosted-tool
-        // items are in, which decode to `Output::Unknown` and contribute no
-        // content rather than failing the response. Erroring here discarded
-        // the entire turn, final text answer included, while the streaming
-        // adapter skipped the parts and kept it. Their own `thoughtSignature`
-        // goes with them, which is the streaming path's behaviour too — those
-        // part kinds have nowhere to round-trip from, so keeping the
-        // transports in step is the most that can be preserved here.
-        PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_) => return Ok(Vec::new()),
-        other => {
-            return Err(CompletionError::ResponseError(format!(
-                "Gemini response part kind {} carries no assistant content rig can account for",
-                part_kind_name(other)
-            )));
-        }
-    }])
-}
-
 /// Place a trailing `thoughtSignature` — one that rode a part carrying no
 /// `thought` flag — onto the assistant content mapped so far.
 ///
@@ -866,7 +626,7 @@ pub fn attach_trailing_signature(
 }
 
 /// The wire name of a part kind, for error messages.
-fn part_kind_name(part: &PartKind) -> &'static str {
+pub(crate) fn part_kind_name(part: &PartKind) -> &'static str {
     match part {
         PartKind::Text(_) => "text",
         PartKind::InlineData(_) => "inlineData",
@@ -878,88 +638,7 @@ fn part_kind_name(part: &PartKind) -> &'static str {
     }
 }
 
-/// Normalize a Gemini `generateContent` response.
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
-        if let Some(blocked) = response
-            .prompt_feedback
-            .as_ref()
-            .and_then(blocked_prompt_error)
-        {
-            return Err(blocked);
-        }
-        let candidate = response.candidates.first().ok_or_else(|| {
-            CompletionError::ResponseError("No response candidates in response".into())
-        })?;
-
-        if let Some(reason) = candidate.finish_reason.as_ref()
-            && let Some(err) =
-                function_call_finish_reason_error(reason, candidate.finish_message.as_deref())
-        {
-            return Err(err);
-        }
-
-        let finish_reason = candidate.finish_reason.as_ref().and_then(map_finish_reason);
-
-        let parts = &candidate
-            .content
-            .as_ref()
-            .ok_or_else(|| {
-                let reason = candidate.finish_reason.as_ref().map_or_else(
-                    || "finish_reason=<unknown>".to_string(),
-                    |r| format!("finish_reason={r:?}"),
-                );
-                let message = candidate
-                    .finish_message
-                    .as_deref()
-                    .unwrap_or("no finish message provided");
-                CompletionError::ResponseError(format!(
-                    "Gemini candidate missing content ({reason}, finish_message={message})"
-                ))
-            })?
-            .parts;
-
-        // Mapped in wire order, one part at a time — a part may contribute no
-        // content at all (skipped, not failed; see `map_response_part`), and
-        // `?` still surfaces the first error in wire order. A trailing
-        // signature is placed against the content mapped *before* it, so the
-        // fold cannot become a `map`.
-        let mut content: Vec<completion::AssistantContent> = Vec::with_capacity(parts.len());
-        let mut tool_index = 0;
-        for part in parts {
-            content.extend(map_response_part(part, &mut tool_index)?);
-            if !part.thought.unwrap_or(false)
-                && matches!(part.part, PartKind::Text(_))
-                && let Some(signature) = part.thought_signature.clone()
-            {
-                attach_trailing_signature(&mut content, signature);
-            }
-        }
-
-        crate::message::normalize_missing_tool_call_ids(&mut content);
-        let choice = crate::message::require_non_empty_response(content)?;
-
-        let usage = response
-            .usage_metadata
-            .as_ref()
-            .map(crate::completion::Usage::from)
-            .unwrap_or_default();
-
-        Ok(
-            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_optional_response_id(
-                    Some(response.response_id.as_str()).filter(|id| !id.is_empty()),
-                )
-                .with_optional_model(response.model_version.as_deref())
-                .with_optional_finish_reason(finish_reason),
-        )
-    }
-}
-
 pub mod gemini_api_types {
-    use crate::telemetry::ProviderResponseExt;
     use std::{collections::HashMap, convert::Infallible, str::FromStr};
 
     // =================================================================
@@ -1019,40 +698,6 @@ pub mod gemini_api_types {
         pub model_version: Option<String>,
     }
 
-    impl ProviderResponseExt for GenerateContentResponse {
-        type Usage = UsageMetadata;
-
-        fn response_id(&self) -> Option<&str> {
-            Some(self.response_id.as_str())
-        }
-
-        fn response_model_name(&self) -> Option<&str> {
-            self.model_version.as_deref()
-        }
-
-        fn text_response(&self) -> Option<String> {
-            let str = self
-                .candidates
-                .iter()
-                .filter_map(|x| {
-                    let content = x.content.as_ref()?;
-                    if content.role.as_ref().is_none_or(|y| y != &Role::Model) {
-                        return None;
-                    }
-
-                    Some(visible_text_parts(content).collect::<Vec<_>>().join("\n"))
-                })
-                .collect::<Vec<String>>()
-                .join("\n");
-
-            if str.is_empty() { None } else { Some(str) }
-        }
-
-        fn usage(&self) -> Option<Self::Usage> {
-            self.usage_metadata.clone()
-        }
-    }
-
     /// The model-visible text of a content's parts, in order.
     ///
     /// A `thought: true` part is the model's chain-of-thought, not its answer:
@@ -1065,8 +710,8 @@ pub mod gemini_api_types {
     /// The *skip* rule lives here; the *join* rule stays with each caller,
     /// because they differ legitimately: a transcript is one continuous text
     /// whose part boundaries are not sentence boundaries, so transcription
-    /// concatenates, while `text_response` keeps the newline separator it
-    /// has always used between a candidate's blocks.
+    /// concatenates, while a reader that presents a candidate's blocks keeps
+    /// a newline between them.
     pub(crate) fn visible_text_parts(content: &Content) -> impl Iterator<Item = &str> {
         content.parts.iter().filter_map(|part| match &part.part {
             PartKind::Text(text) if !part.thought.unwrap_or(false) => Some(text.as_str()),
@@ -1781,21 +1426,6 @@ pub mod gemini_api_types {
         ProvisionedThroughput,
     }
 
-    impl std::fmt::Display for UsageMetadata {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(
-                f,
-                "Prompt token count: {}\nCached content token count: {}\nCandidates token count: {}\nTotal token count: {}",
-                self.prompt_token_count,
-                self.cached_content_token_count
-                    .map_or_else(|| "n/a".to_string(), |count| count.to_string()),
-                self.candidates_token_count
-                    .map_or_else(|| "n/a".to_string(), |count| count.to_string()),
-                self.total_token_count
-            )
-        }
-    }
-
     impl From<&UsageMetadata> for crate::completion::Usage {
         fn from(value: &UsageMetadata) -> crate::completion::Usage {
             let count = |count: i32| count as u64;
@@ -1808,12 +1438,6 @@ pub mod gemini_api_types {
                 total_tokens: Some(count(value.total_token_count)),
                 cache_creation_input_tokens: None,
             }
-        }
-    }
-
-    impl From<UsageMetadata> for crate::completion::Usage {
-        fn from(value: UsageMetadata) -> crate::completion::Usage {
-            (&value).into()
         }
     }
 
@@ -2774,7 +2398,7 @@ impl gemini_api_types::GenerateContentRequest {
                 " Note that function declarations in a cache are declarations only — rig's \
                  `Agent` can only dispatch tools it advertised, so a cached function tool set is \
                  never executable from an agent; it is usable only when you drive \
-                 `CompletionModel` yourself and run the tool loop. (Provider-hosted tools such \
+                 `GenerateContent` yourself and run the tool loop. (Provider-hosted tools such \
                  as `codeExecution` run on Gemini's side and are fine to keep in the cache.)"
             } else {
                 ""

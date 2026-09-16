@@ -1,32 +1,37 @@
-//! Typed-route parity for OpenAI: the provider-native `raw_completion` route
+//! Typed-route parity for OpenAI: the provider-native view of a reply
 //! reproduces what `CompletionModel::completion` returns.
 //!
 //! # What this pins
 //!
+//! One call yields both views of one reply. The normalized
+//! [`CompletionResponse`] is what `completion()` returns, and
+//! [`CompletionResponse::raw`] holds the provider's own reply, serialized —
+//! so deserializing `raw` into the route's wire type and normalizing *that*
+//! must reproduce the response the call already handed back.
+//!
 //! On the Chat Completions route the wire type (`openai::CompletionResponse`)
 //! is substitutable across every OpenAI-compatible provider, so the transport
-//! request id from the `x-request-id` header cannot live on it. Until
-//! `GenericCompletionModel::raw_completion_with_request_id` became public, a
-//! caller on the typed route had no way to obtain that id: `raw_completion`
-//! followed by `normalize` silently produced a response whose
-//! `provider_request_id` was `None` while `completion()` reported one. Cell 3
-//! pins exactly that asymmetry — the plain route lacks the id, the
-//! `_with_request_id` route restores it — so the documented contract is tested
-//! rather than asserted in prose.
+//! request id from the `x-request-id` header cannot live on it: it is a
+//! header, not a body field, and `raw` mirrors the body. So the provider-native
+//! view reproduces `completion()` only once the call's own transport id is
+//! attached to it. Cell 3 pins exactly that asymmetry — the body-derived view
+//! lacks the id, `completion()` reports it — so the documented contract is
+//! tested rather than asserted in prose.
 //!
-//! On the Responses route the wire type carries `provider_request_id` itself
-//! (stamped by the request driver), so `raw_completion(req).normalize(..)`
-//! already reproduces `completion(req)`.
+//! On the Responses route the wire type carries `provider_request_id` itself,
+//! but wire deserialization always leaves it `None` for the same reason, so
+//! the same rule holds.
 //!
-//! Every parity cell issues the same request twice — once through the raw
-//! route, once through `completion()` — as two interactions of one scenario;
-//! the harness replays them in order. The two responses are distinct provider
-//! turns, so each side is first checked against *its own* fixture interaction
-//! (id, request-id header, usage, model, finish reason), and then the two
-//! sides are compared on the fields the contract names: `finish_reason()`,
-//! `model`, `usage`, and `provider_request_id.is_some()`. Identity is
-//! compared structurally (`response_id` present with the route's prefix,
-//! `provider_request_id` present) — two live turns cannot share ids.
+//! Every parity cell issues the same request twice — two interactions of one
+//! scenario, replayed in order by the harness. The first call supplies the
+//! provider-native view, the second the `completion()` view. The two
+//! responses are distinct provider turns, so each side is first checked
+//! against *its own* fixture interaction (id, request-id header, usage,
+//! model, finish reason), and then the two sides are compared on the fields
+//! the contract names: `finish_reason()`, `model`, `usage`, and
+//! `provider_request_id.is_some()`. Identity is compared structurally
+//! (`response_id` present with the route's prefix, `provider_request_id`
+//! present) — two live turns cannot share ids.
 //!
 //! # Matrix
 //!
@@ -34,7 +39,7 @@
 //! |---|------|-----------|----------|--------|
 //! | 1 | `chat_text_turn_parity` | chat, text turn | raw+id ≡ completion (`Stop`) | recorded |
 //! | 2 | `chat_tool_turn_parity` | chat, forced tool call | raw+id ≡ completion (`ToolCalls`) | recorded |
-//! | 3 | `chat_plain_raw_completion_lacks_request_id` | chat, `raw_completion` without the id | `provider_request_id` `None` vs `Some` | recorded |
+//! | 3 | `chat_plain_raw_completion_lacks_request_id` | chat, the body-derived view alone | `provider_request_id` `None` vs `Some` | recorded |
 //! | 4 | `responses_text_turn_parity` | Responses, text turn | raw ≡ completion (`Stop`) | recorded |
 //! | 5 | `responses_tool_turn_parity` | Responses, forced tool call | raw ≡ completion (`ToolCalls`) | recorded |
 //!
@@ -48,15 +53,18 @@ use std::pin::Pin;
 
 use rig::completion::{
     AssistantContent, CompletionModel as _, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse as _, ToolDefinition,
+    ToolDefinition,
 };
+use rig::driver::Bound;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::openai;
+use rig::providers::openai::wire::{Chat, OpenAiWire};
+use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    assert_matches_recorded_token, recorded_request_id_headers, with_openai_cassette,
+    OpenAiCassette, assert_matches_recorded_token, recorded_request_id_headers,
+    with_openai_cassette,
 };
 
 const PROVIDER: &str = "openai";
@@ -251,7 +259,7 @@ type Observed = std::sync::Arc<std::sync::Mutex<Option<(CompletionResponse, Comp
 /// A cassette test body: boxed so the cell can build it in a helper while the
 /// wrapper call — and its string-literal scenario, which the cassette safety
 /// scan reads — stays in the test itself.
-type Body = Box<dyn FnOnce(openai::Client) -> Pin<Box<dyn Future<Output = ()>>>>;
+type Body = Box<dyn FnOnce(OpenAiCassette) -> Pin<Box<dyn Future<Output = ()>>>>;
 
 fn take(observed: &Observed) -> (CompletionResponse, CompletionResponse) {
     observed
@@ -261,24 +269,55 @@ fn take(observed: &Observed) -> (CompletionResponse, CompletionResponse) {
         .expect("test body should save its observation")
 }
 
-/// Chat route: the typed route (`raw_completion_with_request_id` → normalize
-/// → `with_optional_provider_request_id`), then `completion()`, on the same
-/// request — two interactions.
-fn chat_parity_body(
-    sink: Observed,
-    request_for: fn(&openai::CompletionModel) -> CompletionRequest,
-) -> Body {
+/// The two views of one reply agree on the fields rig normalizes, read off
+/// the provider's own field names.
+///
+/// This replaces a comparison against `raw.normalize(..)`: there is one
+/// mapping now (the decoder's), so re-running it would compare it to a copy
+/// of itself. The transport id is deliberately absent here — it is an
+/// `x-request-id` header, not a body field, which is cell 3's whole subject.
+fn assert_chat_views_agree(
+    scenario: &str,
+    reply: &openai::CompletionResponse,
+    response: &CompletionResponse,
+) {
+    assert_eq!(
+        response.response_id.as_deref(),
+        Some(reply.id.as_str()),
+        "{scenario}: the response id is the provider's `id`"
+    );
+    assert_eq!(
+        response.model.as_deref(),
+        Some(reply.model.as_str()),
+        "{scenario}: model"
+    );
+    let usage = reply
+        .usage
+        .as_ref()
+        .unwrap_or_else(|| panic!("{scenario}: the recorded chat body reports usage"));
+    assert_eq!(
+        response.usage.input_tokens,
+        Some(usage.prompt_tokens as u64),
+        "{scenario}: input tokens are the provider's `prompt_tokens`"
+    );
+    assert!(
+        response.raw.get("provider_request_id").is_none(),
+        "{scenario}: the transport id is a header, so the reply document has none"
+    );
+}
+
+/// Chat route: two `completion()` calls on the same request — two
+/// interactions. The first call's reply is read both ways (the provider's own
+/// type out of `raw`, and the normalized response); the second call's
+/// response is the side the parity assertions compare against.
+fn chat_parity_body(sink: Observed, request_for: fn(&Bound<Chat>) -> CompletionRequest) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let model = client.completions_api().completion_model(MODEL);
-            let (raw, request_id) = model
-                .raw_completion_with_request_id(request_for(&model))
+            let model = client.openai.chat(MODEL);
+            let typed = model
+                .completion(request_for(&model))
                 .await
-                .expect("raw route should succeed");
-            let typed = raw
-                .normalize(PROVIDER)
-                .expect("raw response should normalize")
-                .with_optional_provider_request_id(request_id);
+                .expect("the first call should succeed");
             let normalized = model
                 .completion(request_for(&model))
                 .await
@@ -317,9 +356,14 @@ fn assert_chat_parity(
             "{scenario}: interaction {index} wire finish reason"
         );
     }
+    // The first reply, read both ways: the provider's own type out of `raw`,
+    // then rig's normalized view of the same reply.
+    let reply = openai::CompletionResponse::deserialize(&typed.raw)
+        .unwrap_or_else(|err| panic!("{scenario}: raw must be the chat wire type: {err}"));
+    assert_chat_views_agree(scenario, &reply, &typed);
     assert_side_matches_fixture(
         scenario,
-        "raw_completion_with_request_id",
+        "raw view",
         &typed,
         &first,
         &request_ids[0],
@@ -374,10 +418,10 @@ async fn chat_tool_turn_parity() {
     assert_chat_parity(SCENARIO, &observed, FinishReason::ToolCalls, true);
 }
 
-/// The asymmetry the public `raw_completion_with_request_id` exists to close:
-/// the plain typed route normalizes into a response with no transport id even
-/// though the wire carried the `x-request-id` header, while `completion()` on
-/// the same model reports it.
+/// The asymmetry between the two views of one reply: the provider's reply
+/// document carries no transport id even though the wire reported one in the
+/// `x-request-id` header, so a caller reading `raw` alone cannot obtain it,
+/// while the response `completion()` returns does.
 #[tokio::test]
 async fn chat_plain_raw_completion_lacks_request_id() {
     const SCENARIO: &str =
@@ -387,13 +431,11 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     with_openai_cassette(
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
         |client| async move {
-            let model = client.completions_api().completion_model(MODEL);
+            let model = client.openai.chat(MODEL);
             let plain = model
-                .raw_completion(text_request(&model))
+                .completion(text_request(&model))
                 .await
-                .expect("raw_completion should succeed")
-                .normalize(PROVIDER)
-                .expect("raw response should normalize");
+                .expect("the first call should succeed");
             let normalized = model
                 .completion(text_request(&model))
                 .await
@@ -405,18 +447,26 @@ async fn chat_plain_raw_completion_lacks_request_id() {
 
     let (plain, normalized) = take(&observed);
     // Premise: the wire reported a request id on *both* interactions — so the
-    // plain route's `None` is a property of the route, not of the recording.
+    // document's silence is a property of the body, not of the recording.
     let request_ids = recorded_request_ids(SCENARIO, 2);
-    assert_eq!(
-        plain.provider_request_id, None,
-        "{SCENARIO}: `raw_completion(..).normalize(..)` has no slot for the transport id"
+    assert!(
+        plain.raw.get("provider_request_id").is_none(),
+        "{SCENARIO}: the reply document has no slot for the transport id"
+    );
+    assert_matches_recorded_token(
+        plain.provider_request_id.as_deref(),
+        Some(&request_ids[0]),
+        &format!("{SCENARIO}: the response carries the header's id the body lacks"),
     );
     assert_matches_recorded_token(
         normalized.provider_request_id.as_deref(),
         Some(&request_ids[1]),
         &format!("{SCENARIO}: completion() reports the fixture's x-request-id"),
     );
-    // Everything else the plain route normalizes still matches its fixture.
+    // Everything else rig reports still matches the reply document.
+    let reply = openai::CompletionResponse::deserialize(&plain.raw)
+        .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the chat wire type: {err}"));
+    assert_chat_views_agree(SCENARIO, &reply, &plain);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let first: Value = serde_json::from_str(&bodies[0].1).expect("recorded body should be JSON");
     assert_matches_recorded_token(
@@ -438,21 +488,62 @@ async fn chat_plain_raw_completion_lacks_request_id() {
 // Responses
 // ---------------------------------------------------------------------------
 
-/// Responses route: `raw_completion` → normalize (the wire type carries the
-/// transport id itself), then `completion()`, on the same request.
+/// [`assert_chat_views_agree`] for the Responses route, whose body names its
+/// usage counters differently and whose own `provider_request_id` field is
+/// never part of the document the wire sends.
+fn assert_responses_views_agree(
+    scenario: &str,
+    reply: &openai::responses_api::CompletionResponse,
+    response: &CompletionResponse,
+) {
+    assert_eq!(
+        response.response_id.as_deref(),
+        Some(reply.id.as_str()),
+        "{scenario}: the response id is the provider's `id`"
+    );
+    assert_eq!(
+        response.model.as_deref(),
+        Some(reply.model.as_str()),
+        "{scenario}: model"
+    );
+    let usage = reply
+        .usage
+        .as_ref()
+        .unwrap_or_else(|| panic!("{scenario}: the recorded Responses body reports usage"));
+    assert_eq!(
+        response.usage.input_tokens,
+        Some(usage.input_tokens),
+        "{scenario}: input tokens"
+    );
+    assert_eq!(
+        response.usage.output_tokens,
+        Some(usage.output_tokens),
+        "{scenario}: output tokens"
+    );
+    assert_eq!(
+        reply.provider_request_id, None,
+        "{scenario}: wire deserialization never fills the transport id"
+    );
+    assert!(
+        response.raw.get("provider_request_id").is_none(),
+        "{scenario}: the transport id is a header, so the reply document has none"
+    );
+}
+
+/// Responses route: two `completion()` calls on the same request — two
+/// interactions. The first reply is read both ways, the second is the
+/// `completion()` side the parity assertions compare against.
 fn responses_parity_body(
     sink: Observed,
-    request_for: fn(&openai::ResponsesCompletionModel) -> CompletionRequest,
+    request_for: fn(&Bound<OpenAiWire>) -> CompletionRequest,
 ) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let model = client.completion_model(MODEL);
+            let model = client.openai.completion(MODEL);
             let typed = model
-                .raw_completion(request_for(&model))
+                .completion(request_for(&model))
                 .await
-                .expect("raw route should succeed")
-                .normalize(PROVIDER)
-                .expect("raw response should normalize");
+                .expect("the first call should succeed");
             let normalized = model
                 .completion(request_for(&model))
                 .await
@@ -490,9 +581,14 @@ fn assert_responses_parity(
             "{scenario}: interaction {index} tool-call premise"
         );
     }
+    // The first reply, read both ways: the provider's own type out of `raw`,
+    // then rig's normalized view of the same reply.
+    let reply = openai::responses_api::CompletionResponse::deserialize(&typed.raw)
+        .unwrap_or_else(|err| panic!("{scenario}: raw must be the Responses wire type: {err}"));
+    assert_responses_views_agree(scenario, &reply, &typed);
     assert_side_matches_fixture(
         scenario,
-        "raw_completion",
+        "raw view",
         &typed,
         &first,
         &request_ids[0],

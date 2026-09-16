@@ -1,7 +1,6 @@
 //! Cassette coverage for mistral.rs `/v1/chat/completions` responses.
 
 use rig::completion::CompletionModel;
-use rig::completion::NormalizeCompletionResponse;
 use rig::prelude::*;
 use serde_json::Value;
 
@@ -12,7 +11,7 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
     with_mistralrs_completions_cassette(
         "chat_completions/raw_chat_completion_surfaces_reasoning_or_text",
         |client| async move {
-            let model = client.completion_model(model_name());
+            let model = client.chat(model_name());
             let request = model
                 .completion_request(
                     "Think briefly, then answer in one sentence why token usage should be reported.",
@@ -20,16 +19,14 @@ async fn raw_chat_completion_surfaces_reasoning_or_text() {
                 .preamble(SYSTEM_PROMPT.to_string())
                 .max_tokens(256)
                 .build();
-            // A single cassette interaction: take mistral.rs's own wire response
-            // and still exercise the normalization the completion path applies.
-            let wire_response = model
-                .raw_completion(request)
+            // A single cassette interaction: `raw` is mistral.rs's own reply
+            // document, captured by the driver on the very response the
+            // completion path folded.
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw chat completion should succeed");
-            let raw = serde_json::to_value(&wire_response)
-                .expect("raw chat completion response should serialize");
-            let _normalized: rig::completion::CompletionResponse = wire_response.normalize("openai")
-                .expect("raw chat completion should normalize");
+                .expect("chat completion should succeed");
+            let raw = &response.raw;
             let message = &raw["choices"][0]["message"];
             let text = message
                 .get("content")
@@ -66,8 +63,7 @@ async fn chat_completions_agent_prompt_completes() {
     with_mistralrs_completions_cassette(
         "chat_completions/chat_completions_agent_prompt_completes",
         |client| async move {
-            let agent = client
-                .agent(model_name())
+            let agent = client.agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
                 .build();

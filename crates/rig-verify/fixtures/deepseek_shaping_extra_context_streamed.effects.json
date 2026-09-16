@@ -89,14 +89,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 15,
               "prompt_tokens": 55,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 55,
+              "completion_tokens": 15,
               "total_tokens": 70,
               "prompt_tokens_details": {
                 "cached_tokens": 0
-              }
+              },
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 55
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_1",
@@ -252,14 +252,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 15,
               "prompt_tokens": 55,
-              "prompt_cache_hit_tokens": 0,
-              "prompt_cache_miss_tokens": 55,
+              "completion_tokens": 15,
               "total_tokens": 70,
               "prompt_tokens_details": {
                 "cached_tokens": 0
-              }
+              },
+              "prompt_cache_hit_tokens": 0,
+              "prompt_cache_miss_tokens": 55
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_1",

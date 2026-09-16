@@ -27,7 +27,7 @@ fn resource_path_accepts_a_bare_id_or_a_full_handle() {
 ///
 /// `resource_path`'s unit tests prove the string is refused; this proves the
 /// refusal happens *before* the request is built. It matters because the
-/// URL these handles produce is not malformed — `Gemini::build_uri`
+/// URL these handles produce is not malformed — `Gemini::uri`
 /// appends the API key with `&` once the path contains a `?`, so
 /// `DELETE /v1beta/cachedContents/abc?stale&key=…` is a well-formed request
 /// that deletes cache `abc` and returns 200.
@@ -37,12 +37,7 @@ async fn a_mis_targeting_handle_never_reaches_the_socket() {
         // No scripted responses: anything that does escape fails twice, once
         // on the error variant and once on the captured request.
         let http_client = SequencedHttpClient::default();
-        let client = Client::builder()
-            .api_key("test-key")
-            .http_client(http_client.clone())
-            .build()
-            .expect("client should build");
-        let caches = client.cached_contents();
+        let caches = bound_caches(http_client.clone());
 
         let outcomes = [
             ("get", caches.get(smuggled).await.err()),
@@ -76,7 +71,7 @@ async fn a_mis_targeting_handle_never_reaches_the_socket() {
 /// query-string writers is pinned in one place.
 ///
 /// `resource_path` writes the path, the `format!` appends `?updateMask=`,
-/// and `build_uri` follows with `&key=` because it now sees a `?`. That
+/// and `Gemini::uri` follows with `&key=` because it now sees a `?`. That
 /// layout is only stable while a handle cannot carry its own `?` — which is
 /// what `resource_path` refuses, and what the cells above cover. This cell
 /// pins the well-formed side: it passed before the validation existed and
@@ -93,14 +88,7 @@ async fn update_expiry_puts_its_update_mask_after_the_validated_path() {
         })
         .to_string(),
     )]);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("client should build");
-
-    client
-        .cached_contents()
+    bound_caches(http_client.clone())
         .update_expiry(
             "cachedContents/n3v1qk0nqz9k",
             CacheExpiry::ttl(Duration::from_secs(600)),
@@ -172,21 +160,18 @@ fn create_body_omits_unset_fields() {
     );
 }
 
-// The pagination loop, and every way its cursor can fail to advance:
-// absent, empty, repeated, and alternating — the last of which only the
-// page ceiling catches. `paginate_models` carries the same three rules for
-// model listings, but this resource cannot call it (it is typed on
-// `Model`/`ModelListingError` and fetches through `get_bytes`, which
-// collapses the 403/404 triage `CachedContentError::Expired` exists for),
-// so the rules are restated in `list_with_page_size` and pinned here.
+// The pagination loop's request shape, and the two ways a cursor can fail
+// to advance that the decoder decides: absent and empty. A repeated or
+// alternating cursor is the driver's to stop (`driver/tests.rs`), since
+// `Decoder::continuation` hands it the next request and the loop is its
+// own.
 //
 // Only the malformed-cursor cells are unrecordable: no live response
-// carries an empty, repeated or alternating cursor, and no live cursor
-// carries URL-significant characters. Ordinary and multi-page listings are
-// recorded — `prompt_caching/explicit_cache_lifecycle` for a single page,
+// carries an empty cursor, and no live cursor carries URL-significant
+// characters. Ordinary and multi-page listings are recorded —
+// `prompt_caching/explicit_cache_lifecycle` for a single page,
 // `cached_content_matrix/edge_list_pagination` for three pages at
-// `pageSize=1`. These cells exist to pin the three termination guards,
-// which a recording cannot exercise.
+// `pageSize=1`.
 
 /// One page of Gemini's `cachedContents` list envelope.
 fn cached_page(names: &[&str], next_page_token: Option<&str>) -> MockHttpResponse {
@@ -203,22 +188,18 @@ fn cached_page(names: &[&str], next_page_token: Option<&str>) -> MockHttpRespons
     )
 }
 
-/// A `cachedContents` client whose transport answers the scripted pages in
-/// order and `NOT_IMPLEMENTED` once they run out — so a loop that fails to
-/// terminate ends its test with an error rather than hanging the suite.
+/// A `cachedContents` resource handle whose transport answers the scripted
+/// pages in order and `NOT_IMPLEMENTED` once they run out — so a loop that
+/// fails to terminate ends its test with an error rather than hanging the
+/// suite.
 fn caches(
     pages: Vec<MockHttpResponse>,
 ) -> (
-    CachedContentClient<SequencedHttpClient>,
+    crate::driver::Bound<CachedContents, SequencedHttpClient>,
     SequencedHttpClient,
 ) {
     let http_client = SequencedHttpClient::new(pages);
-    let client = Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("client should build");
-    (client.cached_contents(), http_client)
+    (bound_caches(http_client.clone()), http_client)
 }
 
 /// The ordinary single-page listing — what `list()`'s default page size
@@ -256,62 +237,6 @@ async fn pagination_stops_on_an_empty_cursor() {
     assert_eq!(http_client.remaining_responses(), 1);
 }
 
-/// A server that keeps echoing the same cursor cannot advance the listing
-/// either — the next request would be byte-identical to the one just
-/// answered, so the same page would come back forever.
-#[tokio::test]
-async fn pagination_stops_on_a_cursor_that_does_not_advance() {
-    let (caches, http_client) = caches(vec![
-        cached_page(&["a"], Some("stuck")),
-        cached_page(&["b"], Some("stuck")),
-        cached_page(&["c"], Some("stuck")),
-    ]);
-
-    let listed = caches
-        .list_with_page_size(1)
-        .await
-        .expect("listing should terminate");
-
-    let names: Vec<_> = listed.iter().map(|entry| entry.name.as_str()).collect();
-    assert_eq!(
-        names,
-        ["cachedContents/a", "cachedContents/b"],
-        "the repeat is only detectable on the second page, so both are kept",
-    );
-    assert_eq!(http_client.remaining_responses(), 1);
-}
-
-/// A cursor that keeps *changing* without making progress — a gateway
-/// alternating between two values, or minting a fresh one per request —
-/// defeats the repeat check, which only remembers the previous cursor. Only
-/// the page ceiling stops it, and without one `list` never returns while
-/// `all` grows without bound (rig#2334).
-#[tokio::test]
-async fn pagination_stops_at_the_page_ceiling_on_an_alternating_cursor() {
-    // Two cursors that alternate forever: every request differs from the
-    // one before, so no repeat is ever observed.
-    let pages: Vec<_> = (0..MAX_LISTING_PAGES + 10)
-        .map(|i| cached_page(&["a"], Some(if i % 2 == 0 { "ping" } else { "pong" })))
-        .collect();
-    let (caches, http_client) = caches(pages);
-
-    let listed = caches
-        .list_with_page_size(1)
-        .await
-        .expect("the ceiling ends the listing instead of looping");
-
-    assert_eq!(
-        listed.len(),
-        MAX_LISTING_PAGES,
-        "exactly the ceiling's worth of pages is fetched",
-    );
-    assert_eq!(
-        http_client.remaining_responses(),
-        10,
-        "the loop stops at the ceiling rather than draining every page",
-    );
-}
-
 /// A cursor carrying URL-significant characters is percent-encoded rather
 /// than interpolated, so it cannot truncate the path or inject a query
 /// parameter — Gemini appends `key=` to every URI, so a raw `&` in the
@@ -336,5 +261,217 @@ async fn pagination_percent_encodes_the_cursor() {
     assert!(
         uris[1].contains("pageSize=1&pageToken=weird+token%26x%3D1&key="),
         "the cursor must be percent-encoded: {uris:?}",
+    );
+}
+
+// ── the resource API on a bound provider ────────────────────────────────
+//
+// The cache lifecycle moved off the client layer onto
+// `Bound<Gemini, H>::cached_contents()`. These two cells are the in-tree
+// proof that it moved *without moving the bytes*: they pin the paths the
+// recorded traffic and the axum-stub harness cells
+// (`tests/providers/gemini/support.rs`, which asserts the literal
+// `DELETE /v1beta/cachedContents/leaky`) match on.
+
+fn bound_caches(
+    http: SequencedHttpClient,
+) -> crate::driver::Bound<CachedContents, SequencedHttpClient> {
+    crate::driver::Bound::new(crate::providers::gemini::Gemini::new("test-key"), http)
+        .cached_contents()
+}
+
+#[tokio::test]
+async fn the_bound_cache_sends_each_recorded_path_with_the_key_in_the_query() {
+    const HANDLE: &str = r#"{"name":"cachedContents/leaky","model":"models/gemini-2.5-flash"}"#;
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(HANDLE),
+        MockHttpResponse::success(HANDLE),
+        MockHttpResponse::success(HANDLE),
+        MockHttpResponse::success("{}"),
+    ]);
+    let caches = bound_caches(http.clone());
+
+    caches
+        .create(NewCachedContent::new("gemini-2.5-flash").content("corpus"))
+        .await
+        .expect("create decodes");
+    caches.get("leaky").await.expect("get decodes");
+    caches
+        .update_expiry("leaky", CacheExpiry::ttl(Duration::from_secs(600)))
+        .await
+        .expect("the patch decodes");
+    // Storage bills until this is sent, and it is the one request whose
+    // path a mistake would aim at another cache.
+    caches.delete("cachedContents/leaky").await.expect("delete");
+
+    let uris: Vec<_> = http
+        .requests()
+        .into_iter()
+        .map(|request| request.uri)
+        .collect();
+    assert_eq!(
+        uris,
+        vec![
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents?key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?updateMask=ttl&key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents/leaky?key=test-key",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn the_bound_cache_follows_the_listing_cursor() {
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(
+            r#"{"cachedContents":[{"name":"cachedContents/one"}],"nextPageToken":"two"}"#,
+        ),
+        MockHttpResponse::success(r#"{"cachedContents":[{"name":"cachedContents/two"}]}"#),
+    ]);
+    let caches = bound_caches(http.clone());
+
+    let all = caches
+        .list_with_page_size(1)
+        .await
+        .expect("both pages decode");
+    assert_eq!(
+        all.iter()
+            .map(|cache| cache.name.as_str())
+            .collect::<Vec<_>>(),
+        vec!["cachedContents/one", "cachedContents/two"]
+    );
+
+    let uris: Vec<_> = http
+        .requests()
+        .into_iter()
+        .map(|request| request.uri)
+        .collect();
+    assert_eq!(
+        uris,
+        vec![
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents?pageSize=1&key=test-key",
+            "https://generativelanguage.googleapis.com/v1beta/cachedContents?pageSize=1&pageToken=two&key=test-key",
+        ]
+    );
+}
+
+/// A wire is data a host may serialize into a scene or a config file, and
+/// the key is the one credential in it. Nothing serialized may carry it,
+/// and what comes back must be the same wire.
+#[test]
+fn a_serialized_wire_carries_no_key_material_and_round_trips() {
+    let wire = crate::providers::gemini::Gemini::new("AIzaSyNOTAREALKEY-0123456789")
+        .cached_contents()
+        .with_page_size(7);
+    let json = serde_json::to_string(&wire).expect("the wire serializes");
+    assert!(
+        !json.contains("AIzaSyNOTAREALKEY"),
+        "the serialized wire leaked the key: {json}"
+    );
+    assert!(!format!("{wire:?}").contains("AIzaSyNOTAREALKEY"));
+    let restored: CachedContents = serde_json::from_str(&json).expect("the wire deserializes");
+    assert_eq!(restored.page_size, 7);
+    assert_eq!(restored.provider.base_url, wire.provider.base_url);
+}
+
+/// The one delete reply shape the cassettes never show — an empty body —
+/// still acknowledges: the status already said yes. The same emptiness on a
+/// verb that needs the resource is reported as such rather than as a
+/// parse failure.
+#[tokio::test]
+async fn an_empty_body_acknowledges_a_delete_but_answers_no_get() {
+    let caches = bound_caches(SequencedHttpClient::new([
+        MockHttpResponse::success(""),
+        MockHttpResponse::success(""),
+    ]));
+    caches
+        .delete("cachedContents/leaky")
+        .await
+        .expect("an empty 200 acknowledges the delete");
+    let error = caches
+        .get("cachedContents/leaky")
+        .await
+        .expect_err("an empty 200 carries no resource");
+    assert!(
+        matches!(error, CachedContentError::ResponseError(_)),
+        "{error:?}"
+    );
+}
+
+/// A body that names a resource and then fails to deserialize is the
+/// defect it is.
+///
+/// The union this replaced read `{"name": 5}` through a flattened
+/// `Option<CachedContent>`, which swallows the deserialization error: the
+/// call reported a *missing* cached content for a body that carried one,
+/// badly. The shape is now decided before the typed decode, so the decode
+/// failure reaches the caller as one.
+#[tokio::test]
+async fn a_malformed_resource_body_is_a_decode_error() {
+    let caches = bound_caches(SequencedHttpClient::new([MockHttpResponse::success(
+        r#"{"name":5}"#,
+    )]));
+
+    let error = caches
+        .get("leaky")
+        .await
+        .expect_err("a `name` that is not a string cannot decode");
+
+    assert!(
+        matches!(error, CachedContentError::JsonError(_)),
+        "{error:?}"
+    );
+}
+
+/// The `{}` every recorded delete is answered with is the whole reply —
+/// [`CachedContentReply::Acknowledged`], not a resource that is absent.
+#[tokio::test]
+async fn a_deletes_empty_object_is_the_acknowledgement() {
+    let wire = crate::providers::gemini::Gemini::new("test-key").cached_contents();
+    let http = SequencedHttpClient::new([MockHttpResponse::success("{}")]);
+
+    let reply = crate::driver::call(
+        &wire,
+        &http,
+        CachedContentRequest::Delete("leaky".to_owned()),
+        None,
+    )
+    .await
+    .expect("the empty object acknowledges the delete");
+
+    assert!(
+        matches!(reply, CachedContentReply::Acknowledged),
+        "{reply:?}"
+    );
+}
+
+/// A reply of a shape the verb did not ask for names the shape it carried,
+/// in both directions. The union could not: a page reaching a `get` left
+/// its `Option<CachedContent>` empty, which read as "no cached content",
+/// and a resource reaching a `list` left its `Vec` empty, which read as an
+/// empty collection.
+#[tokio::test]
+async fn a_reply_of_the_other_shape_names_the_shape_it_carried() {
+    let caches = bound_caches(SequencedHttpClient::new([
+        cached_page(&["a"], None),
+        MockHttpResponse::success(r#"{"name":"cachedContents/leaky"}"#),
+    ]));
+
+    let on_get = caches
+        .get("leaky")
+        .await
+        .expect_err("a listing page is not one cached content");
+    assert!(
+        matches!(&on_get, CachedContentError::ResponseError(message) if message.contains("listing page")),
+        "{on_get:?}"
+    );
+
+    let on_list = caches
+        .list()
+        .await
+        .expect_err("one cached content is not a listing page");
+    assert!(
+        matches!(&on_list, CachedContentError::ResponseError(message) if message.contains("not a listing page")),
+        "{on_list:?}"
     );
 }

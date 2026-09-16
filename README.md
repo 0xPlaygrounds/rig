@@ -122,15 +122,15 @@ cargo add rig
 ### Simple example
 ```rust
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let client = openai::Client::from_env()?;
-
-    // Create agent with a single context prompt
-    let comedian_agent = client
+    // Create an agent over OpenAI on the bundled transport. OpenAI's default
+    // completion route is the Responses API; `.with_route(Route::Chat)` on the
+    // configuration selects Chat Completions for every agent built on it.
+    let comedian_agent = OpenAI::from_env()?
+        .bound()?
         .agent(openai::GPT_5_2)
         .preamble("You are a comedian here to entertain the user using humour and jokes.")
         .build();

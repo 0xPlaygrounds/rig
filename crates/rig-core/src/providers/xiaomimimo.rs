@@ -1,31 +1,40 @@
-//! Xiaomi MiMo API clients and Rig integrations.
+//! Xiaomi MiMo's endpoints and model identifiers.
 //!
-//! Xiaomi exposes both OpenAI-compatible and Anthropic-compatible chat APIs
-//! under a single global host.
+//! Xiaomi serves MiMo over two wires, so this module is data for both and
+//! nothing else:
+//!
+//! - the OpenAI chat-completions wire, as
+//!   [`openai::wire::XIAOMIMIMO`](crate::providers::openai::wire::XIAOMIMIMO),
+//!   which also serves the model listing (`GET /models`);
+//! - the Anthropic Messages wire, as
+//!   [`anthropic::wire::XIAOMIMIMO`](crate::providers::anthropic::wire::XIAOMIMIMO).
+//!
+//! A wire is the config plus a model; `.bind(transport)` (or `.bound()` from
+//! `rig-reqwest`) turns it into the model.
 //!
 //! # OpenAI-compatible example
-//! ```ignore
-//! use rig_core::client::CompletionClient;
+//! ```no_run
+//! use rig_core::providers::openai::wire::{OpenAI, XIAOMIMIMO};
 //! use rig_core::providers::xiaomimimo;
 //!
-//! let client = xiaomimimo::Client::new("YOUR_API_KEY").expect("Failed to build client");
-//! let model = client.completion_model(xiaomimimo::MIMO_V2_5_PRO);
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let model = OpenAI::from_env_with(&XIAOMIMIMO)?.chat(xiaomimimo::MIMO_V2_5_PRO);
+//! # let _ = model;
+//! # Ok(())
+//! # }
 //! ```
 //!
 //! # Anthropic-compatible example
-//! ```ignore
-//! use rig_core::client::CompletionClient;
+//! ```no_run
+//! use rig_core::providers::anthropic::wire::{Anthropic, XIAOMIMIMO};
 //! use rig_core::providers::xiaomimimo;
 //!
-//! let client = xiaomimimo::AnthropicClient::new("YOUR_API_KEY").expect("Failed to build client");
-//! let model = client.completion_model(xiaomimimo::MIMO_V2_5_PRO);
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! let model = Anthropic::from_env_with(&XIAOMIMIMO)?.messages(xiaomimimo::MIMO_V2_5_PRO);
+//! # let _ = model;
+//! # Ok(())
+//! # }
 //! ```
-
-use crate::client;
-use crate::providers::internal::anthropic_compatible::{
-    AnthropicBaseUrl, impl_dual_dialect_provider,
-};
-use crate::providers::internal::model_listing::{ListModelEntry, impl_model_lister};
 
 /// OpenAI-compatible base URL.
 pub const API_BASE_URL: &str = "https://api.xiaomimimo.com/v1";
@@ -42,68 +51,3 @@ pub const MIMO_V2_PRO: &str = "mimo-v2-pro";
 pub const MIMO_V2_5: &str = "mimo-v2.5";
 /// `mimo-v2.5-pro`
 pub const MIMO_V2_5_PRO: &str = "mimo-v2.5-pro";
-
-impl_dual_dialect_provider!(
-    provider = XiaomiMimo,
-    anthropic_provider = XiaomiMimoAnthropic,
-    client_input = client::BearerAuth,
-    name = "xiaomimimo",
-    api_key_env = "XIAOMI_MIMO_API_KEY",
-    base_url = API_BASE_URL,
-    base_url_env = "XIAOMI_MIMO_API_BASE",
-    anthropic_provider_name = "xiaomimimo",
-    anthropic_base_url = ANTHROPIC_API_BASE_URL,
-    anthropic_base_url_env = "XIAOMI_MIMO_ANTHROPIC_API_BASE",
-);
-
-impl client::HasCompletion for XiaomiMimo {
-    type Model<H>
-        = super::openai::completion::GenericCompletionModel<XiaomiMimo, H>
-    where
-        H: client::ModelTransport;
-
-    fn completion_model<H: client::ModelTransport>(
-        client: &Client<H>,
-        model: String,
-    ) -> Self::Model<H> {
-        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
-    }
-}
-
-impl client::HasModelListing for XiaomiMimo {
-    type Lister<H>
-        = XiaomiMimoModelLister<H>
-    where
-        H: client::ModelTransport;
-
-    fn model_lister<H: client::ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
-        XiaomiMimoModelLister::new(client.clone())
-    }
-}
-
-impl super::openai::completion::OpenAICompatibleProvider for XiaomiMimo {
-    const PROVIDER_NAME: &'static str = "xiaomimimo";
-
-    type StreamingUsage = super::openai::Usage;
-
-    type Response = super::openai::CompletionResponse;
-}
-
-const ANTHROPIC_BASE_URLS: AnthropicBaseUrl = AnthropicBaseUrl::new(
-    &[(API_BASE_URL, ANTHROPIC_API_BASE_URL)],
-    &["/v1", "/v1/"],
-    "/anthropic/v1",
-);
-
-impl_model_lister!(
-    /// [`ModelLister`](crate::client::ModelLister) implementation for the
-    /// Xiaomi MiMo API (`GET /models`).
-    XiaomiMimoModelLister,
-    Client<H>,
-    ListModelEntry,
-    "Xiaomi MiMo",
-    "/models"
-);
-
-#[cfg(test)]
-mod tests;

@@ -113,9 +113,24 @@ fn unknown_finish_reason_survives_verbatim() {
     );
 }
 
-#[test]
-fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
-    let response: CompletionResponse = serde_json::from_str(
+/// Fold one `/v2/chat` reply body through the bound chat wire, the way a
+/// caller's `completion()` does.
+async fn unary(body: &'static str) -> completion::CompletionResponse {
+    use crate::completion::CompletionModel as _;
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        crate::test_utils::RecordingHttpClient::new(body),
+    )
+    .completion(crate::providers::cohere::COMMAND_A_03_2025);
+    model
+        .completion(model.completion_request("hello").build())
+        .await
+        .expect("the reply decodes")
+}
+
+#[tokio::test]
+async fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
+    let normalized = unary(
         r#"{
                 "id": "abc123",
                 "message": {
@@ -130,10 +145,7 @@ fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
                 "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}}
             }"#,
     )
-    .expect("fixture should deserialize");
-
-    let normalized: completion::CompletionResponse =
-        response.try_into().expect("normalization should succeed");
+    .await;
 
     assert_eq!(normalized.provider, PROVIDER_NAME);
     assert_eq!(normalized.response_id.as_deref(), Some("abc123"));
@@ -146,6 +158,12 @@ fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
     assert_eq!(normalized.usage.input_tokens, Some(10));
     assert_eq!(normalized.usage.output_tokens, Some(4));
     assert_eq!(normalized.usage.total_tokens, Some(14));
+    let Some(completion::AssistantContent::ToolCall(call)) = normalized.choice.first() else {
+        panic!("expected a tool call, got {:?}", normalized.choice);
+    };
+    assert_eq!(call.id.explicit(), Some("subtract_1"));
+    assert_eq!(call.function.name, "subtract");
+    assert_eq!(call.function.arguments, serde_json::json!({"x": 5, "y": 2}));
 }
 
 #[test]
@@ -166,10 +184,9 @@ fn usage_is_mapped_from_tokens_and_carries_cached_input() {
     assert_eq!(mapped.cached_input_tokens, Some(112));
 }
 
-#[test]
-fn response_usage_matches_the_canonical_mapping() {
-    let response: CompletionResponse = serde_json::from_str(
-        r#"{
+#[tokio::test]
+async fn response_usage_matches_the_canonical_mapping() {
+    const BODY: &str = r#"{
                 "id": "abc123",
                 "finish_reason": "COMPLETE",
                 "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]},
@@ -178,18 +195,21 @@ fn response_usage_matches_the_canonical_mapping() {
                     "cached_tokens": 112,
                     "tokens": {"input_tokens": 1610, "output_tokens": 56}
                 }
-            }"#,
-    )
-    .expect("response should deserialize");
-
+            }"#;
+    let response: CompletionResponse =
+        serde_json::from_str(BODY).expect("response should deserialize");
     let expected =
         crate::completion::Usage::from(response.usage.as_ref().expect("usage should be present"));
-    let converted: completion::CompletionResponse =
-        response.try_into().expect("response should convert");
+
+    let converted = unary(BODY).await;
 
     assert_eq!(converted.usage, expected);
     assert_eq!(converted.usage.input_tokens, Some(1610));
     assert_eq!(converted.usage.cached_input_tokens, Some(112));
+    assert_eq!(
+        converted.choice.first(),
+        Some(&completion::AssistantContent::text("hi"))
+    );
 }
 
 /// Without `tokens` nothing is reported — including `cached_tokens`, which
@@ -321,17 +341,15 @@ fn unsupported_tool_choices_are_rejected_before_the_request_is_sent() {
 /// must stop them before the HTTP boundary.
 #[tokio::test]
 async fn required_tool_choice_without_tools_is_rejected_before_the_request_is_sent() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let http_client = RecordingHttpClient::new("{}");
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client.clone())
-        .build()
-        .expect("build client");
-    let model = client.completion_model(crate::providers::cohere::COMMAND_A_03_2025);
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client.clone(),
+    )
+    .completion(crate::providers::cohere::COMMAND_A_03_2025);
     let request = model
         .completion_request("hello")
         .tool_choice(ToolChoice::Required)
@@ -424,19 +442,17 @@ fn tool_choice_is_omitted_when_unset() {
 
 #[tokio::test]
 async fn completion_non_success_preserves_status_and_body() {
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel as _;
     use crate::test_utils::RecordingHttpClient;
 
     let body = r#"{"error":{"message":"boom"}}"#;
     let http_client =
         RecordingHttpClient::with_error_response(http::StatusCode::SERVICE_UNAVAILABLE, body);
-    let client = crate::providers::cohere::Client::builder()
-        .api_key("test-key")
-        .http_client(http_client)
-        .build()
-        .expect("build client");
-    let model = client.completion_model(crate::providers::cohere::COMMAND_A_03_2025);
+    let model = crate::driver::Bound::new(
+        crate::providers::cohere::Cohere::new("test-key"),
+        http_client,
+    )
+    .completion(crate::providers::cohere::COMMAND_A_03_2025);
     let request = model.completion_request("hello").build();
 
     let error = model

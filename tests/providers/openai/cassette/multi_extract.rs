@@ -33,22 +33,23 @@ struct Sentiment {
 async fn batch_multi_extract_chain() -> Result<()> {
     with_openai_cassette_result(
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
-        |client| async move {
-            let names_extractor = client
-                .extractor::<Names>(openai::GPT_4O_MINI)
-                .append_preamble("Extract names from the given text.")
-                .retries(2)
-                .build();
-            let topics_extractor = client
-                .extractor::<Topics>(openai::GPT_4O_MINI)
-                .append_preamble("Extract topics from the given text.")
-                .retries(2)
-                .build();
-            let sentiment_extractor = client
-                .extractor::<Sentiment>(openai::GPT_4O_MINI)
-                .append_preamble("Extract sentiment and confidence from the given text.")
-                .retries(2)
-                .build();
+        |cassette| async move {
+            let client = cassette.openai;
+            let names_extractor =
+                client.extractor::<Names>(openai::GPT_4O_MINI)
+                    .append_preamble("Extract names from the given text.")
+                    .retries(2)
+                    .build();
+            let topics_extractor =
+                client.extractor::<Topics>(openai::GPT_4O_MINI)
+                    .append_preamble("Extract topics from the given text.")
+                    .retries(2)
+                    .build();
+            let sentiment_extractor =
+                client.extractor::<Sentiment>(openai::GPT_4O_MINI)
+                    .append_preamble("Extract sentiment and confidence from the given text.")
+                    .retries(2)
+                    .build();
 
             // Fan out each input to the three extractors concurrently
             // (`try_join!`), and run up to four inputs at a time

@@ -1,8 +1,7 @@
 use rig_core::{
     Embed,
-    client::EmbeddingsClient,
     embeddings::EmbeddingsBuilder,
-    providers::openai::{self, Client},
+    providers::openai::{self, wire::OpenAI},
     vector_store::{InsertDocuments, VectorStoreIndex, request::VectorSearchRequest},
 };
 use rig_reqwest::prelude::*;
@@ -25,9 +24,9 @@ async fn main() -> Result<(), anyhow::Error> {
     // In production, you would use your ScyllaDB cluster endpoints
     let session = create_session("127.0.0.1:9042").await?;
 
-    // Create OpenAI client and embedding model
-    let openai_client = Client::from_env()?;
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Bind the OpenAI embeddings endpoint and select an embedding model
+    let openai_client = OpenAI::from_env()?.bound()?;
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Create ScyllaDB vector store
     let vector_store = ScyllaDbVectorStore::new(

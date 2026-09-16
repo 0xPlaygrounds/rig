@@ -1,8 +1,8 @@
+use rig::extractor::ExtractorBuilder;
 use rig::prelude::*;
 use std::future::IntoFuture;
 
-use rig::providers::openai;
-use rig::providers::openai::Client;
+use rig::providers::openai::{self, OpenAI};
 
 use schemars::JsonSchema;
 
@@ -13,11 +13,11 @@ struct DocumentScore {
 }
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    // Bind the OpenAI Responses API to the default transport
+    let openai_client = OpenAI::from_env()?.bound()?;
+    let model = openai_client.completion(openai::GPT_4);
 
-    let manipulation_agent = openai_client
-        .extractor::<DocumentScore>(openai::GPT_4)
+    let manipulation_agent = ExtractorBuilder::<DocumentScore>::new(model.clone())
         .append_preamble(
             "
             Your role is to score a user's statement on how manipulative it sounds between 0 and 1.
@@ -25,8 +25,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .build();
 
-    let depression_agent = openai_client
-        .extractor::<DocumentScore>(openai::GPT_4)
+    let depression_agent = ExtractorBuilder::<DocumentScore>::new(model.clone())
         .append_preamble(
             "
             Your role is to score a user's statement on how depressive it sounds between 0 and 1.
@@ -34,8 +33,7 @@ async fn main() -> Result<(), anyhow::Error> {
         )
         .build();
 
-    let intelligent_agent = openai_client
-        .extractor::<DocumentScore>(openai::GPT_4)
+    let intelligent_agent = ExtractorBuilder::<DocumentScore>::new(model)
         .append_preamble(
             "
             Your role is to score a user's statement on how intelligent it sounds between 0 and 1.

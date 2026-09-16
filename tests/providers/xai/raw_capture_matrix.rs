@@ -1,12 +1,12 @@
 //! Raw provider response capture on xAI's blocking path.
 //!
-//! **The feature.** Every blocking completion attaches the value the model's
-//! inherent `raw_completion` returned onto the normalized
+//! **The feature.** Every blocking completion attaches the provider's own
+//! reply document — the response body, verbatim — onto the normalized
 //! [`rig::completion::CompletionResponse::raw`]. xAI speaks the OpenAI
-//! Responses wire, so the raw view is the Responses [`CompletionResponse`]
-//! serialized — a serialization that mirrors the wire body, which is why the
-//! transport `provider_request_id` the typed value carries is *not* in `raw`
-//! (it is on the normalized response instead). Capture is always on: there is
+//! Responses wire, so that document is what the Responses
+//! [`CompletionResponse`] reads back; the transport `provider_request_id` is
+//! a header rather than a body field, so it is *not* in `raw` (it is on the
+//! normalized response instead). Capture is always on: there is
 //! no flag to request it, nothing about it reaches the wire, and a
 //! `Value::Null` only ever means a response built by hand with no provider
 //! payload behind it. `raw` is a second view of the same response, never a
@@ -17,24 +17,23 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_responses_type` | typed round trip | `raw` deserializes into the Responses `CompletionResponse` and re-serializes equal | recorded |
+//! | 1 | `raw_round_trips_responses_type` | typed round trip | `raw` reads back as the Responses `CompletionResponse`, whose fields are the document's | recorded |
 //! | 2 | `raw_exposes_status_and_service_tier` | provider-only field | `raw.status`, `raw.service_tier` and `raw.metadata.system_fingerprint` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (including the `x-request-id` header) and equals its own `raw` re-normalized plus the id | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes (including the `x-request-id` header) and its fields are the mapping of the provider-native fields in its own `raw` | recorded |
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the status and tier out of the
 //! recorded body rather than trusting what the typed view reports, and cell 3
 //! checks the normalized fields against the recorded body and the recorded
-//! `x-request-id` header before comparing them with the re-normalized `raw`,
-//! so a recording that stopped carrying usage, a status, or the id header
-//! fails loudly instead of covering nothing.
+//! `x-request-id` header before reading the provider-native fields back out
+//! of `raw`, so a recording that stopped carrying usage, a status, or the id
+//! header fails loudly instead of covering nothing.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse,
-};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
+use rig::driver::Bound;
 use rig::message::AssistantContent;
-use rig::prelude::*;
+use rig::providers::openai::responses_api;
+use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -47,7 +46,7 @@ const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &xai::CompletionModel) -> CompletionRequest {
+fn request(model: &Bound<OpenAiWire>) -> CompletionRequest {
     model.completion_request(PROMPT).build()
 }
 
@@ -169,20 +168,21 @@ async fn raw_round_trips_responses_type() {
     with_xai_cassette_result(
         "raw_capture_matrix/raw_round_trips_responses_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
             let raw = &response.raw;
-            let typed = xai::CompletionResponse::deserialize(raw)
+            let typed = responses_api::CompletionResponse::deserialize(raw)
                 .expect("raw is the Responses CompletionResponse xAI parses into");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed view serialized, nothing more"
-            );
+            // `raw` is the reply document, so the typed view's fields are the
+            // document's fields.
+            assert_eq!(Some(typed.id.as_str()), raw["id"].as_str());
+            assert_eq!(Some(typed.model.as_str()), raw["model"].as_str());
+            assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
+            assert_eq!(raw["status"], json!("completed"));
             assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            // The transport id is not part of the wire body, so the mirrored
-            // serialization never carries it — it lives on the normalized
-            // response only.
+            // The transport id is not part of the reply document, so the
+            // capture never carries it — it lives on the normalized response
+            // only.
             assert!(raw.get("provider_request_id").is_none());
             assert_eq!(typed.provider_request_id, None);
             assert!(response.provider_request_id.is_some());
@@ -208,7 +208,7 @@ async fn raw_exposes_status_and_service_tier() {
     with_xai_cassette_result(
         "raw_capture_matrix/raw_exposes_status_and_service_tier",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
             *sink.lock().expect("observation lock") = Some(response);
             Ok::<(), anyhow::Error>(())
@@ -261,7 +261,7 @@ async fn normalized_fields_match_raw_renormalized() {
     with_xai_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
             *sink.lock().expect("observation lock") = Some(response);
             Ok::<(), anyhow::Error>(())
@@ -278,22 +278,36 @@ async fn normalized_fields_match_raw_renormalized() {
     let (_, body) = recorded_json(SCENARIO);
     assert_reproduces_fixture(&response, &body, recorded_request_id(SCENARIO).as_deref());
 
-    // The normalized fields are exactly what the response's own raw
-    // re-normalizes to (plus the transport id the mirrored body cannot
-    // carry): capture adds a view, it never changes the mapping.
-    let raw = &response.raw;
-    let renormalized = xai::CompletionResponse::deserialize(raw)
-        .expect("raw is the Responses type")
-        .normalize(PROVIDER)
-        .expect("raw normalizes")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
-    assert_eq!(renormalized.identity(), response.identity());
-    assert_eq!(renormalized.finish_reason(), response.finish_reason());
-    assert_eq!(renormalized.model, response.model);
-    assert_eq!(renormalized.usage, response.usage);
-    assert_eq!(renormalized.choice, response.choice);
-    assert!(
-        renormalized.raw.is_null(),
-        "normalizing a hand-fed typed value attaches no raw of its own"
+    // The normalized fields are the mapping of the provider-native fields in
+    // the response's own `raw`: one decoder reads that document once, and
+    // this pins what it read rather than a second copy of the mapping.
+    let typed = responses_api::CompletionResponse::deserialize(&response.raw)
+        .expect("raw is the Responses type");
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    let usage = typed.usage.as_ref().expect("the reply carries usage");
+    assert_eq!(
+        (
+            Some(usage.input_tokens),
+            Some(usage.output_tokens),
+            Some(usage.total_tokens)
+        ),
+        (
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+            response.usage.total_tokens
+        ),
+        "usage"
     );
+    let message = typed
+        .output
+        .iter()
+        .find_map(|item| match item {
+            responses_api::Output::Message(message) => Some(message),
+            _ => None,
+        })
+        .expect("the reply carries a message item");
+    assert_eq!(Some(message.id.as_str()), response.message_id.as_deref());
 }

@@ -13,11 +13,9 @@ async fn cached_oauth_allows_noninteractive_streaming_completion() {
     with_chatgpt_noninteractive_oauth_cassette(
         "noninteractive_oauth/cached_oauth_allows_noninteractive_streaming_completion",
         |client| async move {
-            client
-                .authorize()
-                .await
-                .expect("cached OAuth auth should not require device flow");
-
+            // The harness already resolved the cached credential without a
+            // device flow — the yielded provider holds it — so the only thing
+            // left to prove is that a turn goes out on it.
             let agent = client
                 .agent(chatgpt::GPT_5_4)
                 .preamble(BASIC_PREAMBLE)

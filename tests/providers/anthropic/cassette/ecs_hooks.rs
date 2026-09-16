@@ -11,7 +11,6 @@ use crate::support::{Adder, BASIC_PREAMBLE, BASIC_PROMPT, TOOLS_PREAMBLE};
 use bevy_ecs::prelude::*;
 use rig::effect::{EffectFamily, Outcome};
 use rig::message::{AssistantContent, Message};
-use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig_ecs::{
     agent::*,
@@ -26,7 +25,7 @@ use policies::*;
 async fn observe_everything_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/observe_everything", |client| async move {
         let mut ecs = EcsAgent::for_golden_with_setup(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             TOOLS_PREAMBLE,
             false,
             |world| {
@@ -100,11 +99,8 @@ async fn observe_everything_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn patch_tool_args_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/patch_tool_args", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            TOOLS_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -155,11 +151,8 @@ async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette(
         "corpus_hooks/patch_tool_args_streamed",
         |client| async move {
-            let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
-                TOOLS_PREAMBLE,
-                true,
-            );
+            let mut ecs =
+                EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, true);
             ecs.app
                 .world_mut()
                 .entity_mut(ecs.agent)
@@ -198,11 +191,8 @@ async fn patch_tool_args_streamed_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn deny_tool_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            TOOLS_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -234,11 +224,8 @@ async fn deny_tool_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/deny_tool_streamed", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            TOOLS_PREAMBLE,
-            true,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, true);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -272,11 +259,8 @@ async fn deny_tool_streamed_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn replace_tool_result_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_tool_result", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            TOOLS_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -314,11 +298,8 @@ async fn replace_tool_result_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn replace_answer_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/replace_answer", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -357,11 +338,8 @@ async fn replace_answer_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn preamble_override_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/preamble_override", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -404,11 +382,8 @@ async fn preamble_override_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn demand_done_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/demand_done", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            BASIC_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), BASIC_PREAMBLE, false);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -443,11 +418,8 @@ async fn demand_done_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn lookup_before_run_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/lookup_before_run", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            TOOLS_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)
@@ -488,11 +460,8 @@ async fn lookup_before_run_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn two_hooks_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_hooks_cassette("corpus_hooks/two_hooks", |client| async move {
-        let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
-            TOOLS_PREAMBLE,
-            false,
-        );
+        let mut ecs =
+            EcsAgent::for_golden(client.completion(CLAUDE_SONNET_4_6), TOOLS_PREAMBLE, false);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)

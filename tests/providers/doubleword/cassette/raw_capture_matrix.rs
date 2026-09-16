@@ -1,56 +1,58 @@
 //! Raw provider response capture on Doubleword's blocking chat-completions
 //! path.
 //!
-//! **The feature.** Every blocking completion attaches the value the model's
-//! inherent `raw_completion` returned onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Doubleword reuses the
-//! shared [`openai::CompletionResponse`] wire type, so the raw view is that
-//! type serialized. Capture is always on: there is no flag to request it,
+//! **The feature.** Every blocking completion attaches Doubleword's verbatim
+//! reply document onto the normalized
+//! [`rig::completion::CompletionResponse::raw`]. Doubleword speaks the shared
+//! chat-completions wire, so that document reads back as
+//! [`openai::CompletionResponse`] — but it is the bytes the provider sent,
+//! not a re-serialization of that parse, so it also retains fields the shared
+//! type does not model. Capture is always on: there is no flag to request it,
 //! nothing about it reaches the wire, and a `Value::Null` only ever means a
 //! response built by hand with no provider payload behind it. `raw` is a
 //! second view of the same response, never a substitute for a normalized
-//! field. Beyond the normalized set, Doubleword's body carries the `object`
-//! tag the shared type models and the normalized response has no slot for,
-//! so that is the field pinned here as reachable only through `raw`; its
-//! backend-specific usage extras (`cache_creation`,
-//! `cache_read_input_tokens`) are not on the shared type and therefore, by
-//! the documented meaning of `raw`, not in it either.
+//! field.
+//!
+//! Two kinds of field are reachable only through `raw`, and cells 1 and 2
+//! pin one each: the `object` tag, which the shared type models and the
+//! normalized response has no slot for, and Doubleword's backend usage
+//! extras (`cache_creation`, `cache_creation_input_tokens`,
+//! `cache_read_input_tokens`), which no Rust type here models and which
+//! survive precisely because `raw` is the document.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_openai_type` | typed round trip | `raw` deserializes into `openai::CompletionResponse` and re-serializes equal | recorded |
-//! | 2 | `raw_exposes_object` | provider-only field | `raw.object` equals the fixture body; the unmodeled usage extras are absent | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes and equals its own `raw` re-normalized | recorded |
+//! | 1 | `raw_round_trips_openai_type` | typed read-back | `raw` deserializes into `openai::CompletionResponse`, and additionally carries usage extras that type does not model | recorded |
+//! | 2 | `raw_exposes_object` | provider-only field | `raw.object` equals the fixture body; the unmodeled usage extras reach the caller through `raw` | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the normalized fields reproduce the fixture bytes and equal the provider-native fields of the captured payload | recorded |
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the tag out of the recorded body
 //! rather than trusting the typed view, and cell 3 checks the normalized
-//! fields against the recorded body before comparing them with the
-//! re-normalized `raw`, so a recording that stopped carrying a usage block or
-//! a finish reason fails loudly instead of covering nothing. Doubleword
+//! fields against the recorded body before comparing them with the captured
+//! payload's own fields, so a recording that stopped carrying a usage block
+//! or a finish reason fails loudly instead of covering nothing. Doubleword
 //! contracts no request-id header (`response_identity_edge` documents why),
 //! so `provider_request_id` is `None` on every turn here — a documented
 //! outcome, pinned as such. `DEFAULT_MODEL` is a reasoning model, so the
 //! token budget leaves room for its hidden thinking before the one-word
 //! answer.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse,
-};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
 use rig::message::AssistantContent;
-use rig::prelude::*;
-use rig::providers::{doubleword, openai};
-use serde::Deserialize;
+use rig::providers::openai;
+use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::DEFAULT_MODEL;
-use super::super::support::{assert_matches_recorded_token, with_doubleword_cassette_result};
+use super::super::support::{
+    BoundDoubleword, assert_matches_recorded_token, with_doubleword_cassette_result,
+};
 
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &doubleword::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(256).build()
 }
 
@@ -128,32 +130,66 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.provider_request_id, None, "request id");
 }
 
+/// Where a cell parks the response it observed, so the assertions can run
+/// after the cassette wrapper has finished and written its fixture.
+type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
+
+/// One completion under the cell's model, parked in `sink`.
+///
+/// The wrapper call itself stays at each `#[tokio::test]` site with its
+/// scenario literal: `tests/common/cassette_safety.rs` discovers fixtures by
+/// parsing those literals out of the wrapper's first argument, so hiding one
+/// behind a variable would orphan the cassette.
+async fn run(client: BoundDoubleword, sink: Observed) -> Result<(), anyhow::Error> {
+    let model = client.completion(DEFAULT_MODEL);
+    let response = model.completion(request(&model)).await?;
+    *sink.lock().expect("observation lock") = Some(response);
+    Ok(())
+}
+
+fn observed(sink: &Observed) -> CompletionResponse {
+    sink.lock()
+        .expect("observation lock")
+        .take()
+        .expect("the cell should observe a response")
+}
+
+/// The backend usage fields Doubleword sends that no type here models.
+const UNMODELLED_USAGE: [&str; 3] = [
+    "cache_creation",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+];
+
 // ================================================================
-// 1. raw round-trips the shared OpenAI type
+// 1. raw reads back as the shared OpenAI type — and carries more
 // ================================================================
 
 #[tokio::test]
 async fn raw_round_trips_openai_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
-    with_doubleword_cassette_result(
-        "raw_capture_matrix/raw_round_trips_openai_type",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            let raw = &response.raw;
-            let typed = openai::CompletionResponse::deserialize(raw)
-                .expect("raw is the shared OpenAI CompletionResponse Doubleword parses into");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed view serialized, nothing more"
-            );
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            Ok::<(), anyhow::Error>(())
-        },
-    )
+    let sink = Observed::default();
+    with_doubleword_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_round_trips_openai_type should replay from its cassette");
+    let response = observed(&sink);
+
+    let raw = &response.raw;
+    let typed = openai::CompletionResponse::deserialize(raw)
+        .expect("raw is the shared OpenAI CompletionResponse Doubleword parses into");
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+
+    // `raw` is the document Doubleword sent, not a re-serialization of
+    // `typed`: these usage fields have no home on the shared type and reach
+    // the caller only because capture keeps the payload whole.
+    for field in UNMODELLED_USAGE {
+        assert!(
+            raw["usage"].get(field).is_some(),
+            "raw keeps Doubleword's `usage.{field}`, which the shared type does not model"
+        );
+    }
 
     let (_, response_body) = recorded_json(SCENARIO);
     assert!(
@@ -169,25 +205,14 @@ async fn raw_round_trips_openai_type() {
 #[tokio::test]
 async fn raw_exposes_object() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_doubleword_cassette_result(
-        "raw_capture_matrix/raw_exposes_object",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
-            Ok::<(), anyhow::Error>(())
-        },
-    )
+    let sink = Observed::default();
+    with_doubleword_cassette_result("raw_capture_matrix/raw_exposes_object", |client| {
+        run(client, sink.clone())
+    })
     .await
     .expect("raw_exposes_object should replay from its cassette");
+    let response = observed(&sink);
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
     let (_, body) = recorded_json(SCENARIO);
     let recorded_object = body["object"]
         .as_str()
@@ -198,15 +223,24 @@ async fn raw_exposes_object() {
     // The normalized view has no slot for the tag.
     let normalized = serde_json::to_value(&response).expect("response serializes");
     assert!(normalized.get("object").is_none());
-    // And `raw` is the wire *type* serialized: Doubleword's backend usage
-    // extras are not on the shared type, so they are absent by construction
-    // — pinned against a fixture that carries them.
-    assert!(
-        body["usage"].get("cache_read_input_tokens").is_some(),
-        "the recorded usage carries Doubleword's backend extras: {}",
-        body["usage"]
-    );
-    assert!(raw["usage"].get("cache_read_input_tokens").is_none());
+    // Nor for Doubleword's backend usage extras — which is why `raw` is the
+    // document rather than the parse: they are in the recording, and they are
+    // in `raw`, with the same values.
+    for field in UNMODELLED_USAGE {
+        assert!(
+            body["usage"].get(field).is_some(),
+            "the recorded usage carries Doubleword's `{field}`: {}",
+            body["usage"]
+        );
+        assert_eq!(
+            raw["usage"][field], body["usage"][field],
+            "`usage.{field}` reaches the caller through raw"
+        );
+        assert!(
+            normalized.get(field).is_none(),
+            "`{field}` has no normalized slot"
+        );
+    }
 }
 
 // ================================================================
@@ -216,43 +250,54 @@ async fn raw_exposes_object() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_doubleword_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| run(client, sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = observed(&sink);
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
     let (_, body) = recorded_json(SCENARIO);
     assert_reproduces_fixture(&response, &body);
 
-    // The normalized fields are exactly what the response's own raw
-    // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = &response.raw;
-    let renormalized = openai::CompletionResponse::deserialize(raw)
-        .expect("raw is the shared OpenAI type")
-        .normalize(PROVIDER)
-        .expect("raw normalizes")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
-    assert_eq!(renormalized.identity(), response.identity());
-    assert_eq!(renormalized.finish_reason(), response.finish_reason());
-    assert_eq!(renormalized.model, response.model);
-    assert_eq!(renormalized.usage, response.usage);
-    assert_eq!(renormalized.choice, response.choice);
-    assert!(
-        renormalized.raw.is_null(),
-        "normalizing a hand-fed typed value attaches no raw of its own"
+    // The other half: the provider-native fields of the captured payload are
+    // the ones the decoder normalized. There is one mapping now, so this pins
+    // it against the wire's own vocabulary rather than against a copy of
+    // itself.
+    let typed = openai::CompletionResponse::deserialize(&response.raw)
+        .expect("raw is the shared OpenAI type");
+    assert_matches_recorded_token(
+        response.response_id.as_deref(),
+        Some(typed.id.as_str()),
+        "response id",
+    );
+    assert_eq!(response.model.as_deref(), Some(typed.model.as_str()));
+    let native_choice = typed
+        .choices
+        .first()
+        .expect("Doubleword returns at least one choice");
+    assert_eq!(
+        response.finish_reason(),
+        Some(match native_choice.finish_reason.as_str() {
+            "stop" => FinishReason::Stop,
+            "length" => FinishReason::Length,
+            other => panic!("unexpected native finish reason {other:?}"),
+        }),
+        "the normalized reason is the native one"
+    );
+    let native_usage = typed.usage.as_ref().expect("Doubleword reports usage");
+    assert_eq!(
+        response.usage.input_tokens,
+        Some(native_usage.prompt_tokens as u64)
+    );
+    assert_eq!(
+        response.usage.output_tokens,
+        native_usage.completion_tokens.map(|tokens| tokens as u64)
+    );
+    assert_eq!(
+        response.usage.total_tokens,
+        Some(native_usage.total_tokens as u64)
     );
 }

@@ -1,40 +1,39 @@
-//! Parity matrix for the typed escape hatch: `raw_completion` / `raw_stream`
-//! followed by rig's own normalization must reproduce what `completion` /
-//! `stream` report.
+//! Parity matrix for the typed escape hatch: the provider-native reply rig
+//! hands back in `CompletionResponse::raw` / `StreamFinal::raw` must tell the
+//! same story as the normalized response delivered with it, and both must be
+//! what the fixture recorded.
 //!
 //! # The contract
 //!
-//! Anthropic's raw type carries the transport id itself
-//! (`anthropic::completion::CompletionResponse::provider_request_id`, stamped
-//! from the `request-id` response header by the request driver), so the
-//! typed route is one step: `raw_completion(req)?.normalize("anthropic")`.
-//! That value must agree with `completion(req)` on `identity()`,
-//! `finish_reason()`, `model`, and `usage` — otherwise a caller who reaches for
-//! the provider type to read a field rig does not normalize silently loses the
-//! metadata the normalized route would have given them. Streaming has the same
-//! shape: `raw_stream`'s terminal mapped through the public
-//! the adapter's terminal mapping (`terminal_record`) must agree with
-//! `stream()`'s terminal record.
+//! One call yields both views. `CompletionResponse::deserialize(&response.raw)`
+//! reads Anthropic's own reply out of the blocking response, and
+//! `anthropic::streaming::StreamingCompletionResponse::deserialize(&raw)`
+//! reads the provider's terminal record out of a stream's. The provider-native
+//! fields — message id, model, token counts — must be exactly what the
+//! normalized view reports, otherwise a caller who reaches for the provider
+//! type to read a field rig does not normalize is reading a different exchange
+//! than the one rig described. The transport id is the exception in both
+//! directions: it is a response *header*, so no reply document carries it and
+//! only the normalized identity does.
 //!
-//! Each cell makes two live requests (one per route) in one scenario, so the
-//! fixture holds two interactions in wire order: `completion` / `stream` first,
-//! the raw route second. Two requests are two responses, so `identity()` cannot
-//! be *literally* equal across them — each attempt reports its own message id
-//! and request id. Parity is therefore asserted the only honest way: every
-//! identity field each route reports equals what *its own* recorded
-//! interaction says (message id from the body, transport id from the
-//! `request-id` header), both routes populate the same identity fields, and
+//! Each cell makes two live requests in one scenario, so the fixture holds two
+//! interactions in wire order. Two requests are two responses, so `identity()`
+//! cannot be *literally* equal across them — each attempt reports its own
+//! message id and request id. Parity is therefore asserted the only honest
+//! way: every identity field each response reports equals what *its own*
+//! recorded interaction says (message id from the body, transport id from the
+//! `request-id` header), both responses populate the same identity fields, and
 //! `finish_reason`, `model`, and `usage.input_tokens` (deterministic for an
-//! identical prompt) are equal outright, with each route's `output_tokens`
+//! identical prompt) are equal outright, with each response's `output_tokens`
 //! pinned to its own recorded usage.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `text_turn_parity` | `raw_completion` + `normalize` vs `completion`, `end_turn` | equal `Stop`, model, usage; identity per fixture | recorded |
+//! | 1 | `text_turn_parity` | `raw` beside the normalized response, `end_turn` | equal `Stop`, model, usage; identity per fixture | recorded |
 //! | 2 | `tool_call_turn_parity` | same, `tool_use` terminal | equal `ToolCalls` (reconciled), model, usage; identity per fixture | recorded |
-//! | 3 | `streamed_text_turn_parity` | `raw_stream` + `StreamFinal::from` vs `stream()` terminal | equal `Stop`, model, usage; identity per fixture | recorded |
+//! | 3 | `streamed_text_turn_parity` | terminal `raw` beside `stream()`'s terminal | equal `Stop`, model, usage; identity per fixture | recorded |
 //! | 4 | `streamed_tool_call_turn_parity` | same, `tool_use` terminal | equal `ToolCalls`, model, usage; identity per fixture | recorded |
 //!
 //! Every cell is recorded; the premise each re-derives from its fixture is that
@@ -45,13 +44,16 @@
 use futures::StreamExt;
 use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-    NormalizeCompletionResponse, ResponseIdentity, Usage,
+    ResponseIdentity, Usage,
 };
+use rig::driver::Bound;
 use rig::message::ToolChoice;
-use rig::prelude::*;
 use rig::providers::anthropic;
+use rig::providers::anthropic::wire::Anthropic;
+use rig::providers::anthropic::wire::Messages;
 use rig::streaming::{StreamEvent, StreamFinal};
 use rig::tool::Tool;
+use serde::Deserialize;
 
 use super::super::support::{
     assert_ids_match_recording, recorded_request_id_headers, sse_json_frames,
@@ -63,7 +65,7 @@ const ANTHROPIC_PROVIDER: &str = "anthropic";
 const TEXT_PROMPT: &str = "Reply with exactly: parity probe";
 const TOOL_PROMPT: &str = "What is 2 + 3? Use the tool.";
 
-type AnthropicModel = anthropic::CompletionModel;
+type AnthropicModel = Bound<Messages>;
 
 fn text_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(TEXT_PROMPT).max_tokens(32).build()
@@ -81,7 +83,7 @@ fn tool_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
         .build()
 }
 
-/// The comparable part of one route's result: what both routes must agree on.
+/// The comparable part of one exchange's result: what both must agree on.
 #[derive(Debug, Clone, PartialEq)]
 struct Reported {
     identity: ResponseIdentity,
@@ -110,23 +112,22 @@ impl Reported {
     }
 }
 
-/// Parity between the normalized route (`first`) and the typed route
-/// (`second`), for the fields that do not depend on which HTTP exchange
-/// produced them.
+/// Parity between the two recorded exchanges of the same request, for the
+/// fields that do not depend on which HTTP exchange produced them.
 fn assert_route_parity(first: &Reported, second: &Reported, expected: FinishReason) {
     assert_eq!(first.finish_reason, Some(expected));
     assert_eq!(
         second.finish_reason, first.finish_reason,
-        "the typed route must map the stop reason exactly as `completion` does"
+        "the same stop reason must map the same way on both exchanges"
     );
     assert!(first.model.is_some(), "the wire names its model");
     assert_eq!(second.model, first.model);
     assert_eq!(
         second.usage.input_tokens, first.usage.input_tokens,
-        "the same prompt costs the same input tokens on both routes"
+        "the same prompt costs the same input tokens on both exchanges"
     );
-    // Both routes populate the same identity *fields*; the values are
-    // per-exchange and pinned against each route's own fixture below.
+    // Both exchanges populate the same identity *fields*; the values are
+    // per-exchange and pinned against their own fixture below.
     assert!(first.identity.message_id.is_some());
     assert!(second.identity.message_id.is_some());
     assert!(first.identity.provider_request_id.is_some());
@@ -135,7 +136,7 @@ fn assert_route_parity(first: &Reported, second: &Reported, expected: FinishReas
     assert_eq!(second.identity.response_id, None);
 }
 
-/// Pin each route's identity and output usage to *its own* recorded
+/// Pin each exchange's identity and output usage to *its own* recorded
 /// interaction: message id from the body (interaction `i`), transport id from
 /// the `request-id` header, `output_tokens` from the recorded usage.
 fn assert_identity_matches_fixture(
@@ -149,7 +150,7 @@ fn assert_identity_matches_fixture(
     assert_eq!(
         reported.len(),
         2,
-        "{scenario}: one result per route (normalized first, typed second)"
+        "{scenario}: one result per recorded exchange"
     );
     let request_ids = recorded_request_id_headers(scenario);
     assert_eq!(
@@ -274,47 +275,74 @@ async fn drain_normalized_terminal(
 
 type ReportedSink = std::sync::Arc<std::sync::Mutex<Vec<Reported>>>;
 
-/// Body of a blocking cell: both routes, one request each, parity asserted
-/// inside; what each reported is kept for the fixture-pinning that runs
-/// after the wrapper has written the fixture.
+/// Body of a blocking cell: two requests, the provider-native view of each
+/// asserted against the normalized response delivered with it; what each
+/// response reported is kept for the fixture-pinning that runs after the
+/// wrapper has written the fixture.
 async fn blocking_body(
-    client: anthropic::Client,
+    client: Bound<Anthropic>,
     build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
     expected: FinishReason,
     sink: ReportedSink,
 ) {
-    let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+    let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
-    let normalized = model
+    let first_response = model
         .completion(build(&model))
         .await
         .expect("`completion` should succeed");
-    let typed = model
-        .raw_completion(build(&model))
+    // The same request again, so the fixture holds two interactions and each
+    // identity is pinned against its own exchange below.
+    let second_response = model
+        .completion(build(&model))
         .await
-        .expect("`raw_completion` should succeed");
-    assert!(
-        typed.provider_request_id.is_some(),
-        "the raw type carries the transport id itself"
-    );
-    let via_raw: RigCompletionResponse = typed
-        .normalize(ANTHROPIC_PROVIDER)
-        .expect("the raw response should normalize");
+        .expect("second `completion` should succeed");
 
-    let first = Reported::from_completion(&normalized);
-    let second = Reported::from_completion(&via_raw);
+    let first = Reported::from_completion(&first_response);
+    let second = Reported::from_completion(&second_response);
     assert_route_parity(&first, &second, expected);
+    assert_raw_view_agrees(&first_response, &first);
+    assert_raw_view_agrees(&second_response, &second);
     *sink.lock().expect("sink") = vec![first, second];
+}
+
+/// The two views of one reply agree: `raw` is Anthropic's own reply document,
+/// and the provider type reads the same message id, model and token counts
+/// the normalized response reports. The transport id is a response header
+/// rather than a body field, so it reaches the caller only on the normalized
+/// identity.
+fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported) {
+    let typed = anthropic::completion::CompletionResponse::deserialize(&response.raw)
+        .expect("`raw` is Anthropic's reply document, which the provider type reads");
+    assert_eq!(
+        Some(typed.id.as_str()),
+        reported.identity.message_id.as_deref(),
+        "the normalized message id is the document's"
+    );
+    assert_eq!(Some(typed.model.as_str()), reported.model.as_deref());
+    assert_eq!(Some(typed.usage.input_tokens), reported.usage.input_tokens);
+    assert_eq!(
+        Some(typed.usage.output_tokens),
+        reported.usage.output_tokens
+    );
+    assert!(
+        typed.provider_request_id.is_none(),
+        "the transport id is a header, not part of the reply document"
+    );
+    assert!(
+        reported.identity.provider_request_id.is_some(),
+        "the normalized response carries the transport id instead"
+    );
 }
 
 /// Streamed twin of [`blocking_body`].
 async fn streamed_body(
-    client: anthropic::Client,
+    client: Bound<Anthropic>,
     build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
     expected: FinishReason,
     sink: ReportedSink,
 ) {
-    let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+    let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
     let normalized = drain_normalized_terminal(
         model

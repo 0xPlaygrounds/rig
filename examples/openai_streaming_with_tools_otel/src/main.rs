@@ -2,7 +2,8 @@ use anyhow::Result;
 use rig::agent::stream_to_stdout;
 use rig::prelude::*;
 
-use rig::{providers, tool::Tool};
+use rig::providers::openai::{self, OpenAI};
+use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -134,8 +135,9 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     // Create agent with a single context prompt and two tools
-    let calculator_agent = providers::openai::Client::from_env()?
-        .agent(providers::openai::GPT_4O)
+    let calculator_agent = OpenAI::from_env()?
+        .bound()?
+        .agent(openai::GPT_4O)
         .preamble(
             "You are a calculator here to help the user perform arithmetic
             operations. Use the tools provided to answer the user's question.

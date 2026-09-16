@@ -11,8 +11,9 @@
 #![cfg(not(target_family = "wasm"))]
 #![allow(clippy::expect_used, clippy::panic)]
 
-use rig_core::client::CompletionClient as _;
 use rig_core::completion::CompletionModel as _;
+use rig_core::driver::Bound;
+use rig_core::providers::openai::OpenAI;
 use rig_core::providers::openai::responses_api::websocket::ResponsesWebSocketExt as _;
 use rig_core::test_utils::RecordingHttpClient;
 use rig_tungstenite::{DefaultWebSocketBuilder as _, DefaultWebSocketClient as _};
@@ -133,21 +134,18 @@ fn a_whole_session_runs_without_a_tokio_runtime() {
     );
 
     futures::executor::block_on(async move {
-        let client = rig_core::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .http_client(RecordingHttpClient::new("{}"))
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
+        let wire = OpenAI::new("test-key")
+            .with_base_url(&base_url)
+            .responses("gpt-5.4");
+        let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
 
-        let mut session = match client.responses_websocket("gpt-5.4").await {
+        let mut session = match bound.responses_websocket().await {
             Ok(session) => session,
             Err(error) => panic!("session should connect off-runtime: {error}"),
         };
 
         let response = session
-            .completion(model.completion_request("hello").build())
+            .completion(bound.completion_request("hello").build())
             .await
             .expect("the turn should complete off-runtime");
 
@@ -186,16 +184,13 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
     );
 
     futures::executor::block_on(async move {
-        let client = rig_core::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .http_client(RecordingHttpClient::new("{}"))
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
+        let wire = OpenAI::new("test-key")
+            .with_base_url(&base_url)
+            .responses("gpt-5.4");
+        let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
 
-        let mut session = match client
-            .responses_websocket_builder("gpt-5.4")
+        let mut session = match bound
+            .responses_websocket_builder()
             .event_timeout(Duration::from_millis(50))
             .connect()
             .await
@@ -205,7 +200,7 @@ fn an_event_timeout_still_allows_close_without_a_tokio_runtime() {
         };
 
         session
-            .send(model.completion_request("hello").build())
+            .send(bound.completion_request("hello").build())
             .await
             .expect("request should send");
 
@@ -252,20 +247,17 @@ fn a_cancelled_read_does_not_lose_the_frame_off_runtime() {
     let base_url = serve_one_turn_after(Duration::from_millis(200), vec![delta]);
 
     futures::executor::block_on(async move {
-        let client = rig_core::providers::openai::Client::builder()
-            .api_key("test-key")
-            .base_url(&base_url)
-            .http_client(RecordingHttpClient::new("{}"))
-            .build()
-            .expect("client should build");
-        let model = client.completion_model("gpt-5.4");
+        let wire = OpenAI::new("test-key")
+            .with_base_url(&base_url)
+            .responses("gpt-5.4");
+        let bound = Bound::new(wire, RecordingHttpClient::new("{}"));
 
-        let mut session = match client.responses_websocket("gpt-5.4").await {
+        let mut session = match bound.responses_websocket().await {
             Ok(session) => session,
             Err(error) => panic!("session should connect off-runtime: {error}"),
         };
         session
-            .send(model.completion_request("hello").build())
+            .send(bound.completion_request("hello").build())
             .await
             .expect("request should send");
 

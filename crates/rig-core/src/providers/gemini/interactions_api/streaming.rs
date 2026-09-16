@@ -1,31 +1,20 @@
-use async_stream::stream;
-use futures::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
-use std::pin::Pin;
 
+use super::PROVIDER_NAME;
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
-    Step, TextDelta, ThoughtSignatureDelta, ThoughtSummaryContent, ThoughtSummaryDelta,
-    map_interaction_status,
+    Step, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
+    ThoughtSummaryDelta, map_interaction_status,
 };
-use super::{InteractionsCompletionModel, PROVIDER_NAME, create_request_body};
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::HttpClientExt;
-use crate::http_client::Request;
-use crate::http_client::sse::{Event, GenericEventSource};
 use crate::providers::gemini::streaming::shared_parts;
 use crate::providers::internal::chunk_lifecycle::ChunkParts;
-use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
-};
 use crate::providers::internal::tool_call_bridge::ToolCallBridge;
 
-use crate::providers::internal::adapter::{
-    AdapterOutput, TriagedFrame, WireAdapter, WireFrame, triage_frame,
-};
+use crate::operation::Completion;
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::wire::WireFrame;
+use crate::wire::{Decoder, Output};
 use serde_json::{Map, Value};
 
 /// The `event_type` values this client models on the Interactions SSE wire.
@@ -45,13 +34,56 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
     "error",
 ];
 
-/// Classify one Interactions SSE frame. The single classify site for both
-/// consumers of this wire: the completion adapter below and the raw
-/// [`stream_interaction_events`] surface.
+/// Classify one Interactions SSE frame: the tagged half of this wire.
+/// [`classify_interactions_frame`] composes it with the whole-resource
+/// classifier, so the `event_type` table is read in exactly one place.
 fn classify_interaction_frame(data: &str) -> WireEvent<InteractionSseEvent> {
     wire::classify_tagged_frame(data, "event_type", |event_type| {
         KNOWN_EVENT_TYPES.contains(&event_type)
     })
+}
+
+/// The top-level keys only a whole [`Interaction`] resource carries.
+///
+/// Every field of `Interaction` is optional or defaulted, so a marker key is
+/// what separates the unary document from a stream frame that happens to be
+/// a JSON object: without one, a defective `step.delta` frame would decode
+/// as a default `Interaction` and a data defect would read as a completed
+/// turn.
+const INTERACTION_MARKER_KEYS: &[&str] = &["steps", "status", "usage", "object", "id"];
+
+/// One decoded frame of the Interactions wire, in either mode.
+///
+/// Unlike GenerateContent, this family's unary reply is a genuinely
+/// different document from its stream events — a whole `Interaction`
+/// resource rather than an `event_type`-tagged event — so it is named here
+/// as one more event of the wire, and `interpret` synthesizes the step
+/// events a stream would have sent for it.
+pub enum InteractionsEvent {
+    /// One `event_type`-tagged streaming event.
+    Sse(InteractionSseEvent),
+    /// The whole interaction resource, as the unary reply delivers it.
+    Whole(Interaction),
+}
+
+/// Classify one frame of either mode.
+///
+/// The tagged classifier runs first: it is the hot path, and it is the one
+/// that knows which `event_type` values are modeled (an unlisted one is a
+/// skippable `Unknown`, not a defect). An untagged document makes it report
+/// `Corrupt` — no modeled event omits `event_type` — which is exactly when
+/// the unary resource is worth trying. The composition and its
+/// which-error-wins rule are [`wire::classify_or`]'s, so no verdict is read
+/// here.
+fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
+    wire::classify_or(
+        data,
+        |data| classify_interaction_frame(data).map(InteractionsEvent::Sse),
+        |data| {
+            wire::classify_marker_keyed_frame::<Interaction>(data, INTERACTION_MARKER_KEYS)
+                .map(InteractionsEvent::Whole)
+        },
+    )
 }
 
 /// Final metadata yielded by an Interactions streaming response.
@@ -65,14 +97,6 @@ pub struct StreamingCompletionResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_version: Option<String>,
 }
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-pub type InteractionEventStream =
-    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>> + Send>>;
-
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-pub type InteractionEventStream =
-    Pin<Box<dyn Stream<Item = Result<InteractionSseEvent, CompletionError>>>>;
 
 impl From<&StreamingCompletionResponse> for crate::completion::Usage {
     fn from(value: &StreamingCompletionResponse) -> crate::completion::Usage {
@@ -90,70 +114,11 @@ impl From<StreamingCompletionResponse> for crate::completion::Usage {
     }
 }
 
-impl<T> InteractionsCompletionModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Open an interaction stream with observation context owned by this
-    /// invocation.
-    pub(crate) async fn stream_observed(
-        &self,
-        completion_request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &self.model,
-            CompletionOperation::InteractionsStreaming,
-        )
-        .system_instructions(
-            completion_request.system_instructions(),
-            completion_request.record_telemetry_content,
-        )
-        .build();
-
-        let request = create_request_body(self.model.clone(), completion_request, Some(true))?;
-
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Streaming,
-            "Gemini interactions streaming request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-        let mut req = self
-            .client
-            .post("/v1beta/interactions?alt=sse")?
-            .header("Content-Type", "application/json")
-            .body(body)
-            .map_err(|e| CompletionError::HttpError(e.into()))?;
-        if let Some(observation) = observation {
-            observation.attach(&mut req, "/v1beta/interactions");
-        }
-
-        Ok(streaming::StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            open_wire_stream(
-                GenericEventSource::new(self.client.clone(), req),
-                SseTransportOptions {
-                    open_log: OpenLog::Debug,
-                    stream_ended_is_error: false,
-                    log_transport_errors: true,
-                },
-                skip_blank_frames,
-                InteractionsAdapter::default(),
-                span,
-            ),
-        ))
-    }
-}
-
-/// The Gemini Interactions SSE wire as a [`WireAdapter`].
+/// The Gemini Interactions wire's decoder, for both of its modes.
 ///
-/// Frame-triage policy (warn on `Unknown`, in-band `Err` on `Corrupt`) lives
-/// in [`run_wire_stream`], not here — this ends the wire's former
-/// debug-log-and-skip handling of every decode failure.
-struct InteractionsAdapter {
+/// Holds the per-reply state (thought lifecycle, open function-call step
+/// assemblies); frame-triage policy is the driver's, not this decoder's.
+pub struct InteractionsDecoder {
     /// Owns the constant-key thought lifecycle — the ends this wire never
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
@@ -182,7 +147,7 @@ struct InteractionsAdapter {
     open_function_steps: ToolCallBridge<u32>,
 }
 
-impl Default for InteractionsAdapter {
+impl Default for InteractionsDecoder {
     fn default() -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
@@ -194,18 +159,38 @@ impl Default for InteractionsAdapter {
     }
 }
 
-impl WireAdapter for InteractionsAdapter {
-    type Frame = WireFrame;
-    type Event = InteractionSseEvent;
+impl Decoder<Completion> for InteractionsDecoder {
+    type Event = InteractionsEvent;
 
-    fn classify(&self, frame: WireFrame) -> WireEvent<InteractionSseEvent> {
-        classify_interaction_frame(&frame.as_str())
+    fn classify(&self, frame: WireFrame) -> WireEvent<InteractionsEvent> {
+        classify_interactions_frame(&frame.as_str())
     }
 
-    fn interpret(&mut self, event: InteractionSseEvent, out: &mut AdapterOutput) {
+    fn interpret(&mut self, event: InteractionsEvent, out: &mut Output<Completion>) {
         if self.failed {
             return;
         }
+
+        let event = match event {
+            InteractionsEvent::Sse(event) => event,
+            // The unary reply: replay the interaction's own output as the
+            // step events a stream would have sent, then let its completion
+            // event push the terminal. One mapping from content to blocks,
+            // and it is the streamed one.
+            InteractionsEvent::Whole(interaction) => {
+                for content in interaction.output_contents() {
+                    if let Some(parts) =
+                        content_to_parts(content, self.open_function_steps.minted_ids())
+                    {
+                        self.reasoning.emit_chunk(parts, out);
+                    }
+                }
+                InteractionSseEvent::InteractionCompleted {
+                    interaction,
+                    event_id: None,
+                }
+            }
+        };
 
         match event {
             InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
@@ -339,10 +324,6 @@ impl WireAdapter for InteractionsAdapter {
                 if let Some(model) = interaction.model.clone() {
                     span.record("gen_ai.response.model", model);
                 }
-                if let Some(usage) = interaction.usage.as_ref() {
-                    span.record_token_usage(&crate::completion::Usage::from(usage));
-                }
-
                 // A function-call step still open here was announced by
                 // `step.start` and — per this very event — belongs to a turn
                 // the provider COMPLETED: its `step.stop` was lost or
@@ -415,7 +396,7 @@ impl WireAdapter for InteractionsAdapter {
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput) {
+    fn finish(&mut self, _out: &mut Output<Completion>) {
         // EOF without `interaction.completed` is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
@@ -428,55 +409,6 @@ impl WireAdapter for InteractionsAdapter {
         // transport (and pass through post-error unknown frames).
         self.failed
     }
-}
-
-pub(crate) fn stream_interaction_events<T>(
-    client: super::InteractionsClient<T>,
-    request: Request<Vec<u8>>,
-) -> InteractionEventStream
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    let mut event_source = GenericEventSource::new(client, request);
-
-    let stream = stream! {
-        while let Some(event_result) = event_source.next().await {
-            match event_result {
-                Ok(Event::Open) => continue,
-                Ok(Event::Message(message)) => {
-                    if message.data.trim().is_empty() {
-                        continue;
-                    }
-
-                    // Same frame-triage table as the completion path's
-                    // `run_wire_stream` driver — this surface yields typed
-                    // events rather than grammar events, so it applies the
-                    // driver's factored per-frame policy against the same
-                    // classify site instead of restating the table.
-                    match triage_frame(classify_interaction_frame(&message.data)) {
-                        Ok(TriagedFrame::Event(event)) => yield Ok(event),
-                        // This surface yields typed interaction events, not
-                        // grammar events — there is no raw passthrough item to
-                        // carry an unknown frame on, so it stays a warned skip
-                        // (the completion path surfaces Unknown via the
-                        // driver's `StreamEvent::Unknown` passthrough).
-                        Ok(TriagedFrame::Unknown(_)) => {}
-                        Err(error) => yield Err(error),
-                    }
-                }
-                Err(crate::http_client::Error::StreamEnded) => break,
-                Err(error) => {
-                    tracing::error!(?error, "SSE error");
-                    yield Err(CompletionError::from_stream_transport(error));
-                    break;
-                }
-            }
-        }
-
-        event_source.close();
-    };
-
-    Box::pin(stream)
 }
 
 /// Close an announced function-call step. The shared accumulator finalizes
@@ -555,6 +487,11 @@ fn step_start_to_parts(step: Step, tool_ids: &mut streaming::SyntheticIds) -> Ve
     }
 }
 
+/// One output content as one declared chunk.
+///
+/// The wire's single content → block mapping, used by the streamed
+/// `step.start` path and by the unary reply's replay of its own steps, so
+/// the two cannot disagree about what a content item becomes.
 fn content_to_parts(
     content: Content,
     tool_ids: &mut streaming::SyntheticIds,
@@ -566,8 +503,72 @@ fn content_to_parts(
                 .into_iter()
                 .next()
         }
+        // A thought the reply states whole: the summary's text is the
+        // block's content and the signature closes it, which is the same
+        // pair the streamed `thought_summary`/`thought_signature` deltas
+        // deliver piecewise.
+        Content::Thought(ThoughtContent {
+            summary, signature, ..
+        }) => {
+            let reasoning: String = summary
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|content| match content {
+                    ThoughtSummaryContent::Text(text) => Some(text.text),
+                    _ => None,
+                })
+                .collect();
+            if reasoning.is_empty() && signature.is_none() {
+                return None;
+            }
+            Some(ChunkParts {
+                reasoning: (!reasoning.is_empty()).then_some(reasoning),
+                reasoning_signature: signature,
+                text: None,
+                tool_events: Vec::new(),
+            })
+        }
+        // An image the stream vocabulary cannot express rides a text
+        // block's metadata verbatim rather than being dropped — the same
+        // treatment, and the same reason, as GenerateContent's `inlineData`
+        // (`GEMINI_RAW_CONTENT_KEY`).
+        image @ Content::Image(_) => raw_content_parts(image, tool_ids),
         _ => None,
     }
+}
+
+/// A content item the stream vocabulary has no block kind for, preserved as
+/// a text block carrying the part verbatim under
+/// [`GEMINI_RAW_CONTENT_KEY`](crate::providers::gemini::GEMINI_RAW_CONTENT_KEY).
+fn raw_content_parts(
+    content: Content,
+    tool_ids: &mut streaming::SyntheticIds,
+) -> Option<ChunkParts> {
+    let params = crate::message::AdditionalParams::from_entries([(
+        crate::providers::gemini::GEMINI_RAW_CONTENT_KEY,
+        serde_json::json!(content),
+    )])?;
+    // Keyed from the same counter every id-less block on this wire draws
+    // from, so a raw block can never collide with a minted tool-call key.
+    let id = tool_ids.mint();
+    Some(ChunkParts {
+        reasoning: None,
+        reasoning_signature: None,
+        text: None,
+        tool_events: vec![
+            streaming::StreamEvent::BlockStart {
+                id: id.clone(),
+                kind: streaming::BlockKind::Text {
+                    additional_params: Some(params),
+                },
+            },
+            streaming::StreamEvent::BlockEnd {
+                id,
+                end: streaming::BlockClose::Text,
+                block: None,
+            },
+        ],
+    })
 }
 
 fn content_delta_to_parts(

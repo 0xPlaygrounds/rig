@@ -1,15 +1,14 @@
 //! Focused tool-turn checkpoint matrix on OpenAiResponses: gpt-4.1-mini.
 //! One producer recording is reused by every native cut with strict matching.
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
-fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model("gpt-4.1-mini"),
+        model: client.openai.completion("gpt-4.1-mini"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

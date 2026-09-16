@@ -2,14 +2,14 @@
 //! consumers. Their original producer/native cases remain registered separately.
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, world::run_world};
-use rig::{completion::CompletionModel, prelude::*};
+use rig::completion::CompletionModel;
+use rig::driver::Bound;
+use rig::providers::anthropic::wire::Anthropic;
 
-fn wire(
-    client: &rig::providers::anthropic::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &Bound<Anthropic>) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Anthropic,
-        model: client.completion_model("claude-sonnet-4-6"),
+        model: client.completion("claude-sonnet-4-6"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

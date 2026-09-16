@@ -46,21 +46,20 @@ fn sse(frame: &serde_json::Value) -> conformance::WireInput {
 /// only the pipeline under test differs.
 mod xai {
     use super::*;
-    use rig_core::client::CompletionClient as _;
     use rig_core::completion::CompletionModel as _;
     use rig_core::test_utils::SequencedStreamingHttpClient;
 
     fn driver() -> conformance::WireDriver {
         conformance::WireDriver::new("xai", |chunks| {
             Box::pin(async move {
-                let client = rig_core::providers::xai::Client::builder()
-                    .api_key("test-key")
-                    .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                    .build()
-                    .map_err(|error| {
-                        rig_core::completion::CompletionError::ProviderError(error.to_string())
-                    })?;
-                let model = client.completion_model(rig_core::providers::xai::completion::GROK_4);
+                let model = rig_core::driver::Bind::bind(
+                    rig_core::providers::openai::OpenAI::with_key(
+                        &rig_core::providers::xai::DIALECT,
+                        "test-key",
+                    ),
+                    SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                )
+                .completion(rig_core::providers::xai::GROK_4);
                 let request = model.completion_request("hello").build();
                 let stream = rig_core::completion::CompletionModel::stream(&model, request).await?;
                 Ok(conformance::fixtures::drain(stream).await)
@@ -82,21 +81,21 @@ mod xai {
 /// fixture frames with a Copilot pipeline driver.
 mod copilot {
     use super::*;
-    use rig_core::client::CompletionClient as _;
     use rig_core::completion::CompletionModel as _;
     use rig_core::test_utils::SequencedStreamingHttpClient;
 
     fn driver(provider: &'static str, model_name: &'static str) -> conformance::WireDriver {
         conformance::WireDriver::new(provider, move |chunks| {
             Box::pin(async move {
-                let client = rig_core::providers::copilot::Client::builder()
-                    .api_key("copilot-token")
-                    .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                    .build()
-                    .map_err(|error| {
-                        rig_core::completion::CompletionError::ProviderError(error.to_string())
-                    })?;
-                let model = client.completion_model(model_name);
+                // The route is a property of the model
+                // (`copilot::wire::routes_through_responses`), so naming the
+                // same two model ids keeps each fixture on the route it was
+                // recorded against.
+                let model = rig_core::driver::Bind::bind(
+                    rig_core::providers::copilot::wire::Copilot::new("copilot-token"),
+                    SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                )
+                .completion(model_name);
                 let request = model.completion_request("hello").build();
                 let stream = model.stream(request).await?;
                 Ok(conformance::fixtures::drain(stream).await)
@@ -128,24 +127,21 @@ mod copilot {
 /// shared Responses fixture's; only the pipeline under test differs.
 mod chatgpt {
     use super::*;
-    use rig_core::client::CompletionClient as _;
     use rig_core::completion::CompletionModel as _;
     use rig_core::test_utils::SequencedStreamingHttpClient;
 
     fn driver() -> conformance::WireDriver {
         conformance::WireDriver::new("chatgpt", |chunks| {
             Box::pin(async move {
-                let client = rig_core::providers::chatgpt::Client::builder()
-                    .api_key(rig_core::providers::chatgpt::ChatGPTAuth::AccessToken {
-                        access_token: "test-token".to_string(),
-                        account_id: Some("account-id".to_string()),
-                    })
-                    .http_client(SequencedStreamingHttpClient::new(byte_chunks(chunks)?))
-                    .build()
-                    .map_err(|error| {
-                        rig_core::completion::CompletionError::ProviderError(error.to_string())
-                    })?;
-                let model = client.completion_model("gpt-5.4");
+                let model = rig_core::driver::Bind::bind(
+                    rig_core::providers::openai::OpenAI::with_key(
+                        &rig_core::providers::chatgpt::DIALECT,
+                        "test-token",
+                    )
+                    .with_account_id("account-id"),
+                    SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
+                )
+                .completion("gpt-5.4");
                 let request = model.completion_request("hello").build();
                 let stream = model.stream(request).await?;
                 Ok(conformance::fixtures::drain(stream).await)

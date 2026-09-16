@@ -94,7 +94,7 @@ fn phase_survives_history_and_is_resent_on_the_assistant_item() {
         content: vec![AssistantContent::OutputText(OutputText::new("the answer"))],
         phase: Some("final_answer".to_string()),
     });
-    let content: Vec<completion::AssistantContent> = output.into();
+    let content = super::tests::folded_choice(vec![output]);
     let history = completion::Message::Assistant {
         id: Some("msg_1".to_string()),
         content,

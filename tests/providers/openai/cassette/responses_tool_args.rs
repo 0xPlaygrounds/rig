@@ -158,7 +158,7 @@ async fn zero_argument_tool_call_streaming() {
     with_openai_cassette(
         "responses_tool_args/zero_argument_tool_call_streaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
@@ -181,7 +181,7 @@ async fn zero_argument_tool_call_nonstreaming() {
     with_openai_cassette(
         "responses_tool_args/zero_argument_tool_call_nonstreaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
@@ -218,6 +218,7 @@ async fn nested_arguments_roundtrip_nonstreaming() {
         "responses_tool_args/nested_arguments_roundtrip_nonstreaming",
         |client| async move {
             let agent = client
+                .openai
                 .agent(openai::GPT_4O)
                 .preamble(NESTED_ARGS_PREAMBLE)
                 .tool(PlanTrip)
@@ -263,7 +264,7 @@ async fn nested_arguments_streaming() {
     with_openai_cassette(
         "responses_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let request = model
                 .completion_request(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
@@ -299,7 +300,7 @@ async fn unicode_arguments_streaming() {
     with_openai_cassette(
         "responses_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.openai.completion(openai::GPT_4O);
             let request = model
                 .completion_request(
                     "Call the echo tool exactly once with the message argument set to \

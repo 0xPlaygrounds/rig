@@ -266,7 +266,7 @@ async fn long_history_replay_nonstreaming() {
     with_anthropic_cassette(
         "messages_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool_use so the follow-up can echo its

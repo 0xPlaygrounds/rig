@@ -4,16 +4,18 @@ use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::prelude::*;
-use rig::providers::ollama;
+use rig::providers::ollama::wire::Ollama;
 use rig::streaming::{Delta, StreamEvent};
 use tokio::time::{Duration, sleep};
 
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn streaming_pause_and_resume() {
-    let model = ollama::Client::from_env()
-        .expect("client should build")
-        .completion_model("gemma3:4b");
+    let model = Ollama::from_env()
+        .expect("config should build from env")
+        .bound()
+        .expect("transport should build")
+        .completion("gemma3:4b");
     let request = model
         .completion_request("Explain backpropagation in neural networks.")
         .preamble("You are a helpful AI assistant. Provide concise explanations.".to_string())

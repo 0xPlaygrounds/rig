@@ -1,11 +1,10 @@
 use fixture::{Word, as_record_batch, words};
 use lancedb::index::vector::IvfPqIndexBuilder;
-use rig_agent::client::AgentModelExt;
-use rig_core::client::{CompletionClient, EmbeddingsClient};
+use rig_agent::client::AgentProviderExt;
 use rig_core::providers::openai;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::Client,
+    providers::openai::wire::OpenAI,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 use rig_reqwest::prelude::*;
@@ -15,11 +14,11 @@ mod fixture;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-    let openai_client = Client::from_env()?;
+    // Initialize the OpenAI Chat Completions provider. Use this to generate embeddings (and generate test data for RAG demo).
+    let openai_client = OpenAI::from_env()?.bound()?;
 
     // Select an embedding model.
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Initialize LanceDB locally.
     let db = lancedb::connect("data/lancedb-store").execute().await?;
@@ -74,9 +73,7 @@ async fn main() -> Result<(), anyhow::Error> {
     // Build RAG agent with dynamic context.
     // Use OpenAI-compatible API interface to build agent
     let agent = openai_client
-        .completion_model(openai::GPT_4O)
-        .completions_api()
-        .into_agent_builder()
+        .agent(openai::GPT_4O)
         .temperature(0.5)
         .preamble("You are a helpful AI assistant.")
         .dynamic_context(top_k, vector_store_index)

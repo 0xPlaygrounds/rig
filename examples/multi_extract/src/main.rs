@@ -4,9 +4,9 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::client::DefaultTransportClient;
+use rig::extractor::ExtractorBuilder;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::future::IntoFuture;
@@ -37,19 +37,17 @@ fn sample_inputs() -> Vec<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
-    let names_extractor = client
-        .extractor::<Names>(openai::GPT_4O_MINI)
+    let client = OpenAI::from_env()?.bound()?;
+    let model = client.completion(openai::GPT_4O_MINI);
+    let names_extractor = ExtractorBuilder::<Names>::new(model.clone())
         .append_preamble("Extract names from the given text.")
         .retries(2)
         .build();
-    let topics_extractor = client
-        .extractor::<Topics>(openai::GPT_4O_MINI)
+    let topics_extractor = ExtractorBuilder::<Topics>::new(model.clone())
         .append_preamble("Extract topics from the given text.")
         .retries(2)
         .build();
-    let sentiment_extractor = client
-        .extractor::<Sentiment>(openai::GPT_4O_MINI)
+    let sentiment_extractor = ExtractorBuilder::<Sentiment>::new(model)
         .append_preamble("Extract sentiment and confidence from the given text.")
         .retries(2)
         .build();

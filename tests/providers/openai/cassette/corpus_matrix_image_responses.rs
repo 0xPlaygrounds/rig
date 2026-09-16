@@ -5,16 +5,15 @@
 //! the scenario literals, the wire's model and the wire's `#[ignore]` reasons.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::GPT_5_MINI;
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_5_MINI),
+        model: client.openai.completion(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

@@ -4,7 +4,6 @@
 //! local Ollama server. Transport request matching stays in this provider suite;
 //! the behavioral assertions are shared with artifact-backed local models.
 
-use rig::prelude::*;
 use rig_agent::test_utils::{optional_argument, sequential_tools};
 use serde_json::json;
 
@@ -15,7 +14,7 @@ const MODEL: &str = "qwen3:4b";
 #[tokio::test]
 async fn tool_with_optional_argument() {
     with_ollama_cassette("tools/optional_argument", |client| async move {
-        let report = optional_argument(client.completion_model(MODEL), |builder| {
+        let report = optional_argument(client.completion(MODEL), |builder| {
             builder.additional_params(json!({ "think": false }))
         })
         .await
@@ -28,7 +27,7 @@ async fn tool_with_optional_argument() {
 #[tokio::test]
 async fn two_tools_nonstreaming_chain() {
     with_ollama_cassette("tools/two_tools_nonstreaming", |client| async move {
-        let report = sequential_tools(client.completion_model(MODEL), |builder| {
+        let report = sequential_tools(client.completion(MODEL), |builder| {
             builder.additional_params(json!({ "think": false }))
         })
         .await

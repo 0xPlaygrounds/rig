@@ -13,7 +13,7 @@ use rig::prelude::*;
 use rig::providers::openai;
 use rig::run::OutputMode;
 
-use super::super::support::with_openai_corpus_breadth_cassette;
+use super::super::support::{OpenAiCassette, with_openai_corpus_breadth_cassette};
 use crate::goldens::{
     CANCEL_ADD_DISPATCH, CONVERSATION, CancelAddDispatch, EMBED_KEY, NOTE_KEY, NoteAtOutcome,
     NoteTaker, STOP_ON_TEXT_DELTA, StopOnTextDelta, event_schema, families,
@@ -56,7 +56,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
 
 /// A host's bus with the model, and the host's note taker or embedding model.
 fn host_bus(
-    client: &openai::Client,
+    client: &OpenAiCassette,
     notes: bool,
     embeds: bool,
 ) -> (
@@ -72,7 +72,7 @@ fn host_bus(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                 "default",
-                client.completion_model(MODEL),
+                client.openai.completion(MODEL),
             )),
         )
         .expect("a fresh key");
@@ -90,7 +90,9 @@ fn host_bus(
                 HandlerKey::from(EMBED_KEY),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::EmbedAdapter::new(
                     "host",
-                    client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL),
+                    client
+                        .openai
+                        .embedding(openai::TEXT_EMBEDDING_3_SMALL, None),
                 )),
             )
             .expect("a fresh key");
@@ -106,6 +108,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
         "corpus_breadth/output_tool_streamed",
         |client| async move {
             let agent = client
+                .openai
                 .agent(MODEL)
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
@@ -133,6 +136,7 @@ async fn output_tool_streamed_effect_log_is_the_golden_fixture() {
 async fn text_delta_stop_effect_log_is_the_golden_fixture() {
     with_openai_corpus_breadth_cassette("corpus_breadth/text_delta_stop", |client| async move {
         let agent = client
+            .openai
             .agent(MODEL)
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -174,6 +178,7 @@ async fn tool_dispatch_cancelled_effect_log_is_the_golden_fixture() {
         "corpus_breadth/tool_dispatch_cancelled",
         |client| async move {
             let agent = client
+                .openai
                 .agent(MODEL)
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
@@ -245,6 +250,7 @@ async fn custom_at_outcome_effect_log_is_the_golden_fixture() {
 async fn prompted_streamed_effect_log_is_the_golden_fixture() {
     with_openai_corpus_breadth_cassette("corpus_breadth/prompted_streamed", |client| async move {
         let agent = client
+            .openai
             .agent(MODEL)
             .name("golden")
             .preamble(BASIC_PREAMBLE)
@@ -270,6 +276,7 @@ async fn prompted_streamed_effect_log_is_the_golden_fixture() {
 async fn memory_two_runs_effect_log_is_the_golden_fixture() {
     with_openai_corpus_breadth_cassette("corpus_breadth/memory_two_runs", |client| async move {
         let agent = client
+            .openai
             .agent(MODEL)
             .name("golden")
             .preamble(BASIC_PREAMBLE)

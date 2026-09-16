@@ -1,6 +1,8 @@
 use futures::FutureExt;
-use rig::client::DefaultTransportBuilder as _;
-use rig::providers::doubleword;
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
+use rig::prelude::*;
+use rig::providers::openai::wire::{DOUBLEWORD, OpenAI};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -8,9 +10,12 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 
 const DOUBLEWORD_BASE_URL: &str = "https://api.doubleword.ai/v1";
 
-async fn doubleword_cassette(
-    spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, doubleword::Client) {
+/// The Doubleword dialect of the OpenAI config bound to the bundled
+/// transport — what a cassette test builds its models from, now that a model
+/// is a bound wire.
+pub(super) type BoundDoubleword = Bound<OpenAI, BoxedHttpClient>;
+
+async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDoubleword) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "doubleword",
@@ -18,18 +23,17 @@ async fn doubleword_cassette(
         DOUBLEWORD_BASE_URL,
     )
     .await;
-    let client = doubleword::Client::builder()
-        .api_key(cassette.api_key("DOUBLEWORD_API_KEY"))
-        .base_url(cassette.base_url())
-        .build()
-        .expect("client should build");
+    let doubleword = OpenAI::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
+        .with_base_url(cassette.base_url())
+        .bound()
+        .expect("transport should build");
 
-    (cassette, client)
+    (cassette, doubleword)
 }
 
 pub(super) async fn with_doubleword_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(doubleword::Client) -> Fut,
+    F: FnOnce(BoundDoubleword) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = doubleword_cassette(spec).await;
@@ -41,7 +45,7 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(doubleword::Client) -> Fut,
+    F: FnOnce(BoundDoubleword) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -51,11 +55,10 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
         DOUBLEWORD_BASE_URL,
     )
     .await;
-    let client = doubleword::Client::builder()
-        .api_key("rig-deliberately-invalid-doubleword-key")
-        .base_url(cassette.base_url())
-        .build()
-        .expect("client should build");
+    let client = OpenAI::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
+        .with_base_url(cassette.base_url())
+        .bound()
+        .expect("transport should build");
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
@@ -65,7 +68,7 @@ pub(super) async fn with_doubleword_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(doubleword::Client) -> Fut,
+    F: FnOnce(BoundDoubleword) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = doubleword_cassette(spec).await;
@@ -177,7 +180,7 @@ pub(super) async fn with_doubleword_embedding_cassette<F, Fut>(
     test_body: F,
 ) -> Vec<RecordedEmbeddingCall>
 where
-    F: FnOnce(doubleword::Client) -> Fut,
+    F: FnOnce(BoundDoubleword) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_doubleword_cassette(scenario, test_body).await;
@@ -305,7 +308,7 @@ pub(super) async fn with_doubleword_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(doubleword::Client) -> Fut,
+    F: FnOnce(BoundDoubleword) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_doubleword_cassette(spec, test_body).await;

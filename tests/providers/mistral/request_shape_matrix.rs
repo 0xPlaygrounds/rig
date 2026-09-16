@@ -36,12 +36,10 @@ use anyhow::Result;
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::AssistantContent;
-use rig::prelude::*;
-use rig::providers::mistral;
 use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
-use super::support::with_mistral_request_shape_cassette_result;
+use super::support::{BoundMistral, with_mistral_request_shape_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -110,7 +108,10 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &mistral::CompletionModel, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl CompletionModel + Clone),
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     let mut params = json!({
         "tool_choice": match cell.tool_policy {
             ToolPolicy::Auto => "auto",
@@ -147,8 +148,8 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion_model(model_name(cell.model));
+async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.completion(model_name(cell.model));
     let observation = match cell.transport {
         Transport::Blocking => {
             let response = model.completion(request(&model, cell)).await?;

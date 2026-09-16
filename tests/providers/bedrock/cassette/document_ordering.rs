@@ -48,7 +48,7 @@ async fn documents_are_prepended_before_history() {
         "document_ordering/documents_are_prepended_before_history",
         |client| async move {
             let response = client
-                .completion_model(bedrock::completion::AMAZON_NOVA_LITE)
+                .completion(bedrock::completion::AMAZON_NOVA_LITE)
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))

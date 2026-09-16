@@ -97,42 +97,36 @@
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "responseId": "id_REDACTED_1",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_1",
-                      "text": "Rust is a systems programming language that provides high performance while ensuring memory safety through a unique ownership model. Memory safety is critical because it prevents common errors like buffer overflows and null pointer dereferences, which are the leading causes of security vulnerabilities and system crashes."
+                      "text": "Rust is a systems programming language that provides high performance while ensuring memory safety through a unique ownership model. Memory safety is critical because it prevents common errors like buffer overflows and null pointer dereferences, which are the leading causes of security vulnerabilities and system crashes.",
+                      "thoughtSignature": "signature_REDACTED_1"
                     }
                   ],
                   "role": "model"
                 },
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": null
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "id_REDACTED_1",
             "usageMetadata": {
-              "promptTokenCount": 29,
               "candidatesTokenCount": 50,
-              "totalTokenCount": 485,
-              "thoughtsTokenCount": 406,
+              "promptTokenCount": 29,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 29
                 }
-              ]
-            },
-            "modelVersion": "gemini-3-flash-preview"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 406,
+              "totalTokenCount": 485
+            }
           }
         }
       }

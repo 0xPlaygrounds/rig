@@ -163,8 +163,6 @@ convert_case = "0.11"
 dotenvy = "0.15"
 epub = "2"
 ethers = "2"
-# 0.2.3: `EventStream::set_last_event_id`.
-eventsource-stream = "0.2.3"
 # 4.5: the `hf-hub-*` feature split rig-fastembed forwards.
 fastembed = { version = "4.5", default-features = false }
 fastrand = "2"

@@ -1,10 +1,44 @@
 //! Synthetic wire edge cases complement cassette replay: missing and colliding IDs
 //! cannot be reliably requested from a live provider.
-use crate::{
-    completion::{CompletionResponse, NormalizeCompletionResponse},
-    message::AssistantContent,
-};
+use crate::operation::Completion;
+use crate::wire::{Fold, Operation, Reply, Wire, WireFrame};
+use crate::{completion::CompletionResponse, message::AssistantContent};
 use serde_json::{Value, json};
+
+/// Fold one whole reply document through a wire's own decoder — the single
+/// path a unary reply takes in production, minus the transport.
+fn fold_document<W: Wire<Op = Completion>>(wire: &W, body: &Value) -> CompletionResponse {
+    let body = body.to_string();
+    let mut driver =
+        crate::driver::WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
+    driver.push(WireFrame::Text(body.clone()));
+    driver.finish();
+    let mut fold = <Completion as Operation>::fold(&crate::completion::CompletionRequest {
+        model: None,
+        chat_history: vec![crate::message::Message::user("probe")],
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: Some(32),
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    });
+    for item in driver.drain() {
+        fold.absorb(item.expect("the reply decodes without an in-band error"))
+            .expect("the fold accepts every event");
+    }
+    Fold::<Completion>::finish(
+        fold,
+        Reply {
+            provider: wire.name().to_owned(),
+            raw: serde_json::from_str(&body).unwrap_or(Value::Null),
+            provider_request_id: None,
+        },
+    )
+    .expect("the fold produces a response")
+}
 
 fn assert_normalization(convert: impl Fn() -> CompletionResponse) {
     let first = convert();
@@ -49,41 +83,31 @@ fn chat_wire() -> Value {
 
 #[test]
 fn openai_chat_missing_ids_and_later_explicit_collision() {
-    assert_normalization(|| {
-        serde_json::from_value::<crate::providers::openai::completion::CompletionResponse>(
-            chat_wire(),
-        )
-        .unwrap()
-        .normalize("test")
-        .unwrap()
-    });
+    let wire = crate::providers::openai::wire::OpenAI::with_key(
+        &crate::providers::openai::wire::OPENAI,
+        "test-key",
+    )
+    .chat("test");
+    assert_normalization(|| fold_document(&wire, &chat_wire()));
 }
 
 #[test]
 fn openrouter_missing_ids_and_later_explicit_collision() {
-    assert_normalization(|| {
-        serde_json::from_value::<crate::providers::openrouter::completion::CompletionResponse>(
-            chat_wire(),
-        )
-        .unwrap()
-        .normalize("test")
-        .unwrap()
-    });
+    let wire = crate::providers::openai::wire::OpenAI::with_key(
+        &crate::providers::openai::wire::OPENROUTER,
+        "test-key",
+    )
+    .chat("test");
+    assert_normalization(|| fold_document(&wire, &chat_wire()));
 }
 
 #[test]
 fn anthropic_missing_ids_and_later_explicit_collision() {
-    let wire = json!({"id":"response","model":"test","role":"assistant","stop_reason":"tool_use",
+    let wire = json!({"type":"message","id":"response","model":"test","role":"assistant","stop_reason":"tool_use",
         "usage":{"input_tokens":1,"output_tokens":1},
         "content":(0..3).map(|i|json!({"type":"tool_use","id":if i==1 {"tool-0"} else {""},"name":"same","input":{"n":i}})).collect::<Vec<_>>()});
-    assert_normalization(|| {
-        serde_json::from_value::<crate::providers::anthropic::completion::CompletionResponse>(
-            wire.clone(),
-        )
-        .unwrap()
-        .normalize("test")
-        .unwrap()
-    });
+    let messages = crate::providers::anthropic::wire::Anthropic::new("test-key").messages("test");
+    assert_normalization(|| fold_document(&messages, &wire));
 }
 
 #[test]
@@ -91,14 +115,8 @@ fn cohere_missing_ids_and_later_explicit_collision() {
     let mut message = chat_wire()["choices"][0]["message"].clone();
     message["content"] = json!([{"type":"text","text":"prefix"}]);
     let wire = json!({"id":"response","finish_reason":"TOOL_CALL","message":message});
-    assert_normalization(|| {
-        serde_json::from_value::<crate::providers::cohere::completion::CompletionResponse>(
-            wire.clone(),
-        )
-        .unwrap()
-        .try_into()
-        .unwrap()
-    });
+    let chat = crate::providers::cohere::Cohere::new("test-key").chat("test");
+    assert_normalization(|| fold_document(&chat, &wire));
 }
 
 #[test]
@@ -106,14 +124,8 @@ fn gemini_rest_missing_ids_and_later_explicit_collision() {
     let wire = json!({"candidates":[{"content":{"role":"model","parts":
         (0..3).map(|i|json!({"functionCall":{"id":if i==1 {"tool-0"} else {""},"name":"same","args":{"n":i}}})).collect::<Vec<_>>()
     },"finishReason":"STOP"}]});
-    assert_normalization(|| {
-        serde_json::from_value::<
-            crate::providers::gemini::completion::gemini_api_types::GenerateContentResponse,
-        >(wire.clone())
-        .unwrap()
-        .try_into()
-        .unwrap()
-    });
+    let generate = crate::providers::gemini::Gemini::new("test-key").generate_content("test");
+    assert_normalization(|| fold_document(&generate, &wire));
 }
 
 #[test]
@@ -121,14 +133,8 @@ fn gemini_interactions_missing_ids_and_later_explicit_collision() {
     let wire = json!({"id":"response","status":"completed","steps":
         (0..3).map(|i|json!({"type":"function_call","id":if i==1 {"tool-0"} else {""},"name":"same","arguments":{"n":i}})).collect::<Vec<_>>()
     });
-    assert_normalization(|| {
-        serde_json::from_value::<
-            crate::providers::gemini::interactions_api::interactions_api_types::Interaction,
-        >(wire.clone())
-        .unwrap()
-        .try_into()
-        .unwrap()
-    });
+    let interactions = crate::providers::gemini::Gemini::new("test-key").interactions("test");
+    assert_normalization(|| fold_document(&interactions, &wire));
 }
 
 #[test]
@@ -137,11 +143,13 @@ fn openai_responses_missing_ids_and_later_explicit_collision() {
         (0..3).map(|i|json!({"type":"function_call","id":format!("item-{i}"),"call_id":if i==1 {"tool-0"} else {""},"name":"same","arguments":json!({"n":i}).to_string(),"status":"completed"})).collect::<Vec<_>>()
     });
     assert_normalization(|| {
-        serde_json::from_value::<crate::providers::openai::responses_api::CompletionResponse>(
-            wire.clone(),
+        crate::providers::openai::responses_api::wire::fold_body(
+            "test",
+            serde_json::from_value::<crate::providers::openai::responses_api::CompletionResponse>(
+                wire.clone(),
+            )
+            .unwrap(),
         )
-        .unwrap()
-        .normalize("test")
         .unwrap()
     });
 }

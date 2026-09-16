@@ -23,7 +23,6 @@
 //! fixtures below carry only `content-type`.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use super::super::{DEFAULT_MODEL, support::with_doubleword_cassette};
 
@@ -32,7 +31,7 @@ async fn blocking_identity_contract_vs_reality() {
     with_doubleword_cassette(
         "response_identity_edge/blocking_identity_contract_vs_reality",
         |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
+            let model = client.completion(DEFAULT_MODEL);
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .max_tokens(128)
@@ -57,7 +56,7 @@ async fn streaming_identity_contract_vs_reality() {
     with_doubleword_cassette(
         "response_identity_edge/streaming_identity_contract_vs_reality",
         |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
+            let model = client.completion(DEFAULT_MODEL);
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .max_tokens(128)

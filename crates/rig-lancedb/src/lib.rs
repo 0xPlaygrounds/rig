@@ -42,12 +42,12 @@ mod utils;
 /// ```ignore
 /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
 /// use rig_reqwest::prelude::*;
-/// use rig_core::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
+/// use rig_core::providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI};
 ///
-/// let openai_client = Client::from_env()?;
+/// let openai = OpenAI::from_env()?.bound()?;
 ///
 /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-/// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None); // <-- Replace with your embedding model here.
 /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
 /// ```
 ///
@@ -376,12 +376,12 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
     /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     /// use rig_reqwest::prelude::*;
-    /// use rig_core::providers::openai::{EmbeddingModel, Client, TEXT_EMBEDDING_ADA_002};
+    /// use rig_core::providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI};
     ///
-    /// let openai_client = Client::from_env()?;
+    /// let openai = OpenAI::from_env()?.bound()?;
     ///
     /// let table: lancedb::Table = db.create_table("fake_definitions"); // <-- Replace with your lancedb table here.
-    /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+    /// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None); // <-- Replace with your embedding model here.
     /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
     /// // Query the index
@@ -439,12 +439,12 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
     /// ```ignore
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     /// use rig_reqwest::prelude::*;
-    /// use rig_core::providers::openai::{Client, TEXT_EMBEDDING_ADA_002, EmbeddingModel};
+    /// use rig_core::providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI};
     ///
-    /// let openai_client = Client::from_env()?;
+    /// let openai = OpenAI::from_env()?.bound()?;
     ///
     /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-    /// let model: EmbeddingModel = openai_client.embedding_model(TEXT_EMBEDDING_ADA_002); // <-- Replace with your embedding model here.
+    /// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None); // <-- Replace with your embedding model here.
     /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
     /// // Query the index

@@ -125,32 +125,38 @@
           "raw": {
             "content": [
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_1",
-                "name": "final_result",
                 "input": {
                   "category": "Technology / Programming",
                   "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss best practices, explore new features of the Rust ecosystem, and network with fellow developers passionate about systems programming and memory-safe software development.",
                   "title": "Seattle Rust Meetup"
-                }
+                },
+                "name": "final_result",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 679,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 141
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 679,
+              "output_tokens": 141,
+              "service_tier": "standard"
+            }
           }
         }
       }

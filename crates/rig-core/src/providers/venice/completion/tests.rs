@@ -65,7 +65,16 @@ fn completion_response_preserves_venice_blocks() {
         serde_json::from_value(body).expect("response should decode");
 
     assert_eq!(response.openai.id, "chatcmpl-1");
-    assert_eq!(response.text_response().as_deref(), Some("hi"));
+    assert_eq!(
+        response
+            .openai
+            .choices
+            .first()
+            .and_then(|choice| openai::completion::assistant_message_text_response(&choice.message))
+            .as_deref(),
+        Some("hi"),
+        "the OpenAI half decodes beside Venice's own blocks"
+    );
     assert_eq!(response.cost.expect("cost").diem, 0.0);
     assert_eq!(response.web_search_citations().len(), 1);
     assert_eq!(response.web_search_citations()[0].title, "Rust");

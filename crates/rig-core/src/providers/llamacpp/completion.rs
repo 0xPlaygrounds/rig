@@ -1,9 +1,22 @@
-//! llama.cpp completion models.
+//! llama.cpp's model identifier, its server-side timings, and its own view
+//! of a reply.
 //!
-//! Completions run through the shared OpenAI-compatible
-//! [`GenericCompletionModel`](openai::completion::GenericCompletionModel); the
-//! dialect is declared by the `OpenAICompatibleProvider` impl on
-//! [`Llamacpp`](super::client::Llamacpp) in `client.rs`.
+//! llama.cpp is an OpenAI chat-completions dialect, so it has no client and
+//! no completion model of its own:
+//! [`openai::wire::LLAMACPP`]
+//! carries the `http://localhost:8080/v1` default, the optional-bearer
+//! credential a server started without `--api-key` refuses to accept, the
+//! root-relative operational routes (`/props`, `/health`, `/slots`, …) that
+//! answer 404 under `/v1`, and the `/rerank` and `/embeddings` quirks.
+//!
+//! What remains here is data: the model identifier, and [`CompletionResponse`]
+//! — the typed read of `llama-server`'s own reply document, which a completion
+//! carries verbatim on
+//! [`CompletionResponse::raw`](crate::completion::CompletionResponse::raw).
+//! It is not a second mapping: the normalized response is produced by the
+//! wire's decoder, and this type is how a caller reads the field that mapping
+//! does not name — [`Timings`], the only latency accounting a llama.cpp caller
+//! gets.
 
 use crate::providers::openai;
 use serde::{Deserialize, Serialize};
@@ -21,11 +34,6 @@ use serde::{Deserialize, Serialize};
 /// router (`llama-server --models-dir`) is the exception, and there the
 /// identifier is whatever `GET /v1/models` lists.
 pub const LLAMA_CPP: &str = "LLaMA_CPP";
-
-/// llama.cpp completion model, driven by the shared OpenAI Chat Completions
-/// path.
-pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    openai::completion::GenericCompletionModel<super::client::Llamacpp, H>;
 
 /// Server-side timing accounting `llama-server` reports beside `usage`.
 ///
@@ -84,9 +92,8 @@ pub struct Timings {
 /// set: a provider that adds fields to the wire declares its own response type
 /// rather than pretending the OpenAI one describes it.
 ///
-/// Everything OpenAI-shaped is reached through [`Self::openai`], and every
-/// trait a `Response` must satisfy delegates to it, so this wrapper cannot
-/// drift from the shared conversion.
+/// Everything OpenAI-shaped is reached through [`Self::openai`], which is the
+/// same type the wire's decoder reads, so this wrapper cannot drift from it.
 ///
 /// What llama.cpp does **not** put on this wire is worth stating too:
 /// `tokens_evaluated`, `tokens_cached`, `truncated`, `stop_type`,
@@ -102,44 +109,6 @@ pub struct CompletionResponse {
     /// llama.cpp's server-side timing accounting, when the server reported it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timings: Option<Timings>,
-}
-
-impl CompletionResponse {
-    /// Generation throughput in tokens per second, when the server reported it.
-    pub fn predicted_tokens_per_second(&self) -> Option<f64> {
-        self.timings
-            .as_ref()
-            .and_then(|timings| timings.predicted_per_second)
-    }
-}
-
-impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
-    fn normalize(
-        self,
-        provider: &str,
-    ) -> Result<crate::completion::CompletionResponse, crate::completion::CompletionError> {
-        self.openai.normalize(provider)
-    }
-}
-
-impl crate::telemetry::ProviderResponseExt for CompletionResponse {
-    type Usage = openai::Usage;
-
-    fn response_id(&self) -> Option<&str> {
-        self.openai.response_id()
-    }
-
-    fn response_model_name(&self) -> Option<&str> {
-        self.openai.response_model_name()
-    }
-
-    fn text_response(&self) -> Option<String> {
-        self.openai.text_response()
-    }
-
-    fn usage(&self) -> Option<Self::Usage> {
-        self.openai.usage()
-    }
 }
 
 #[cfg(test)]

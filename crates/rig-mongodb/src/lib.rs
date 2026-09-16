@@ -69,7 +69,7 @@ struct Field {
 /// # Example
 /// ```no_run
 /// use rig_mongodb::{MongoDbVectorIndex, SearchParams};
-/// use rig_core::{providers::openai, vector_store::{VectorStoreIndex, VectorSearchRequest}, client::EmbeddingsClient};
+/// use rig_core::{providers::openai::{self, wire::OpenAI}, vector_store::{VectorStoreIndex, VectorSearchRequest}};
 /// use rig_reqwest::prelude::*;
 ///
 /// # async fn example() -> anyhow::Result<()> {
@@ -82,11 +82,11 @@ struct Field {
 /// }
 ///
 /// let mongodb_client = mongodb::Client::with_uri_str("mongodb://localhost:27017").await?; // <-- replace with your mongodb uri.
-/// let openai_client = openai::Client::from_env()?;
+/// let openai = OpenAI::from_env()?.bound()?;
 ///
 /// let collection = mongodb_client.database("db").collection::<WordDefinition>(""); // <-- replace with your mongodb collection.
 ///
-/// let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002); // <-- replace with your embedding model.
+/// let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None); // <-- replace with your embedding model.
 /// let index = MongoDbVectorIndex::new(
 ///     collection,
 ///     model,

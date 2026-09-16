@@ -1,15 +1,19 @@
 //! Migrated from `examples/agent_with_mira.rs`.
 
-use rig::client::DefaultTransportClient as _;
-use rig::client::ModelListingClient;
-use rig::providers::mira;
+use rig::model::ModelLister;
+use rig::prelude::*;
+use rig::providers::openai::wire::{MIRA, OpenAI};
 
 #[tokio::test]
 #[ignore = "requires MIRA_API_KEY"]
 async fn list_models_smoke() {
-    let client = mira::Client::from_env().expect("client should build");
-    let models = client
-        .list_models()
+    let provider = OpenAI::from_env_with(&MIRA)
+        .expect("config should build from env")
+        .bound()
+        .expect("transport should build");
+    let models = provider
+        .models()
+        .list_all()
         .await
         .expect("listing models should succeed");
     assert!(

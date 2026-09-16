@@ -39,12 +39,10 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
-use rig::providers::openrouter;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_terminal_metadata_cassette_result;
+use super::super::support::{BoundOpenRouter, with_openrouter_terminal_metadata_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -128,12 +126,8 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(
-    client: openrouter::Client,
-    cell: Cell,
-    observed: SharedObservation,
-) -> Result<()> {
-    let model = client.completion_model(model_name(cell.model));
+async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.completion(model_name(cell.model));
     let mut builder = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -145,8 +139,11 @@ async fn run_cell(
 
     let raw = match cell.transport {
         Transport::Blocking => {
-            let response = model.raw_completion(request).await?;
-            serde_json::to_value(response)?
+            // The blocking half of this matrix is about the gateway's own
+            // terminal metadata — routed `provider`, `service_tier`, the
+            // per-choice finish reason — so it observes the reply document
+            // the driver keeps on `raw`, not the normalized projection.
+            model.completion(request).await?.raw
         }
         Transport::Streaming => {
             let mut stream = model.stream(request).await?;

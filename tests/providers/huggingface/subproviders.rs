@@ -1,30 +1,29 @@
 //! Migrated from `examples/huggingface_subproviders.rs`.
 
 use rig::prelude::*;
-use rig::providers::huggingface::{self, SubProvider};
+use rig::providers::openai::wire::{HUGGINGFACE, OpenAI, SubRoute};
 
 use crate::support::{Adder, Subtract, assert_mentions_expected_number};
 
 #[tokio::test]
 #[ignore = "requires HUGGINGFACE_API_KEY"]
 async fn tool_prompt_across_subproviders() {
-    let api_key = std::env::var("HUGGINGFACE_API_KEY").expect("HUGGINGFACE_API_KEY must be set");
     let cases = [
-        ("deepseek-ai/DeepSeek-V3", SubProvider::Together),
+        ("deepseek-ai/DeepSeek-V3", SubRoute::Together),
         (
             "meta-llama/Meta-Llama-3.1-8B-Instruct",
-            SubProvider::HFInference,
+            SubRoute::HFInference,
         ),
-        ("Meta-Llama-3.1-8B-Instruct", SubProvider::SambaNova),
+        ("Meta-Llama-3.1-8B-Instruct", SubRoute::SambaNova),
     ];
 
-    for (model, subprovider) in cases {
-        let client = huggingface::Client::builder()
-            .api_key(&api_key)
-            .subprovider(subprovider)
-            .build()
-            .expect("client should build");
-        let agent = client
+    for (model, sub_route) in cases {
+        let provider = OpenAI::from_env_with(&HUGGINGFACE)
+            .expect("config should build from env")
+            .with_sub_route(sub_route)
+            .bound()
+            .expect("transport should build");
+        let agent = provider
             .agent(model)
             .preamble(
                 "You are a calculator here to help the user perform arithmetic operations. \

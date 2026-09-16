@@ -81,7 +81,7 @@ async fn prompt_caching_completion_smoke() {
         "agent/prompt_caching_completion_smoke",
         |client| async move {
             let model = client
-                .completion_model(bedrock::completion::AMAZON_NOVA_LITE)
+                .completion(bedrock::completion::AMAZON_NOVA_LITE)
                 .with_prompt_caching();
             let agent = AgentBuilder::new(model).preamble(BASIC_PREAMBLE).build();
 

@@ -158,7 +158,7 @@ async fn zero_argument_tool_call_streaming() {
     with_chatgpt_cassette(
         "codex_tool_args/zero_argument_tool_call_streaming",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_4);
+            let model = client.completion(chatgpt::GPT_5_4);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
@@ -181,7 +181,7 @@ async fn zero_argument_tool_call_nonstreaming() {
     with_chatgpt_cassette(
         "codex_tool_args/zero_argument_tool_call_nonstreaming",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_4);
+            let model = client.completion(chatgpt::GPT_5_4);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .preamble("Follow the tool-calling instructions exactly.".to_string())
@@ -262,7 +262,7 @@ async fn nested_arguments_streaming() {
     with_chatgpt_cassette(
         "codex_tool_args/nested_arguments_streaming",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_4);
+            let model = client.completion(chatgpt::GPT_5_4);
             let request = model
                 .completion_request(NESTED_ARGS_PROMPT)
                 .preamble(NESTED_ARGS_PREAMBLE.to_string())
@@ -298,7 +298,7 @@ async fn unicode_arguments_streaming() {
     with_chatgpt_cassette(
         "codex_tool_args/unicode_arguments_streaming",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_4);
+            let model = client.completion(chatgpt::GPT_5_4);
             let request = model
                 .completion_request(
                     "Call the echo tool exactly once with the message argument set to \

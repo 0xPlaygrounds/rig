@@ -1,11 +1,10 @@
 use anyhow::Result;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, OpenAI};
 use rig::{
     agent::{Agent, AgentBuilder},
     completion::Message,
-    providers::openai::Client as OpenAIClient,
     tool::Tool,
 };
 use serde::Deserialize;
@@ -73,8 +72,8 @@ impl Tool for TranslatorTool {
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create OpenAI client
-    let openai_client = OpenAIClient::from_env()?;
-    let model = openai_client.completion_model(openai::GPT_4O);
+    let openai_client = OpenAI::from_env()?.bound()?;
+    let model = openai_client.completion(openai::GPT_4O);
 
     let translator_agent = AgentBuilder::new(model.clone())
                 .preamble(

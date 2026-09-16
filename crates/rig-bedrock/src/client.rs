@@ -1,8 +1,9 @@
 use crate::image::ImageGenerationModel;
 use crate::{completion::CompletionModel, embedding::EmbeddingModel};
 use aws_config::{BehaviorVersion, Region};
-use rig_core::client::Nothing;
-use rig_core::prelude::*;
+use rig_core::client::VerifyError;
+use rig_core::driver::CompletionProvider;
+use rig_core::embeddings::EmbeddingsBuilder;
 use std::sync::Arc;
 use tokio::sync::OnceCell;
 
@@ -99,56 +100,52 @@ impl Client {
     /// process environment on first use.
     ///
     /// Bedrock talks through the AWS SDK rather than an HTTP transport, so
-    /// this client is not a `rig_core::client::Client`; construction is
-    /// inherent.
+    /// there is no socket to bind: construction is inherent, and the client
+    /// is itself the [`CompletionProvider`] a `Bound` would be for a wire.
     pub fn from_env() -> Result<Self, rig_core::client::ProviderClientError> {
         Ok(Client::new())
     }
 
-    /// Bedrock takes no explicit input: use [`Client::from_env`] or
-    /// [`Client::with_profile_name`].
-    pub fn from_val(_: Nothing) -> Result<Self, rig_core::client::ProviderClientError> {
-        Err(rig_core::client::ProviderClientError::InvalidConfiguration(
-            "use `Client::from_env()` or `Client::with_profile_name(\"aws_profile\")` instead",
-        ))
-    }
-}
-
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
-
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
-        CompletionModel::new(self.clone(), model)
-    }
-}
-
-impl EmbeddingsClient for Client {
-    type EmbeddingModel = EmbeddingModel;
-
-    fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, None)
+    /// This provider's embedding model for `model`, at `ndims` dimensions
+    /// when the caller named one rather than taking the model's default.
+    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, ndims)
     }
 
-    fn embedding_model_with_ndims(
+    /// An embedding builder over this provider's `model`.
+    pub fn embeddings<D: rig_core::Embed>(
+        &self,
+        model: impl Into<String>,
+    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
+        EmbeddingsBuilder::new(self.embedding(model, None))
+    }
+
+    /// An embedding builder over this provider's `model` at `ndims`
+    /// dimensions.
+    pub fn embeddings_with_ndims<D: rig_core::Embed>(
         &self,
         model: impl Into<String>,
         ndims: usize,
-    ) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, Some(ndims))
+    ) -> EmbeddingsBuilder<EmbeddingModel, D> {
+        EmbeddingsBuilder::new(self.embedding(model, Some(ndims)))
     }
-}
 
-impl ImageGenerationClient for Client {
-    type ImageGenerationModel = ImageGenerationModel;
-
-    fn image_generation_model(&self, model: impl Into<String>) -> Self::ImageGenerationModel {
+    /// This provider's image-generation model for `model`.
+    pub fn image_generation(&self, model: impl Into<String>) -> ImageGenerationModel {
         ImageGenerationModel::new(self.clone(), model)
     }
+
+    /// Bedrock exposes no credential-check endpoint: the AWS SDK validates
+    /// credentials on first use, so there is nothing to call here.
+    pub async fn verify(&self) -> Result<(), VerifyError> {
+        Ok(())
+    }
 }
 
-impl VerifyClient for Client {
-    async fn verify(&self) -> Result<(), VerifyError> {
-        // No API endpoint to verify the API key
-        Ok(())
+impl CompletionProvider for Client {
+    type Model = CompletionModel;
+
+    fn completion(&self, model: impl Into<String>) -> Self::Model {
+        CompletionModel::new(self.clone(), model)
     }
 }

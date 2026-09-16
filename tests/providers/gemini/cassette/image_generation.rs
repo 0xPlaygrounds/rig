@@ -1,6 +1,5 @@
 //! Gemini image generation cassette tests.
 
-use rig::client::image_generation::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
 use rig::providers::gemini;
 
@@ -9,7 +8,7 @@ async fn nano_banana_image_generation_smoke() {
     super::super::support::with_gemini_cassette(
         "image_generation/nano_banana_image_generation_smoke",
         |client| async move {
-            let model = client.image_generation_model(gemini::GEMINI_2_5_FLASH_IMAGE);
+            let model = client.image_generation(gemini::GEMINI_2_5_FLASH_IMAGE);
             let response = model
                 .image_generation_request()
                 .prompt("Generate a simple flat icon of a yellow banana on a white background.")

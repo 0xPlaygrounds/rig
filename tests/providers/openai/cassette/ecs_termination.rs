@@ -14,7 +14,6 @@ use crate::{
     support::Adder,
 };
 use rig::completion::FinishReason;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig_ecs::agent::{MaxTokens, Temperature};
 
@@ -29,13 +28,8 @@ async fn blocking_truncated_turn_reports_length_and_cap() {
         with_openai_turn_metadata_cassette(
             "turn_termination_matrix/blocking_truncated_turn_reports_length_and_cap",
             |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client
-                        .completions_api()
-                        .completion_model(openai::GPT_4O_MINI),
-                    CONCISE_PREAMBLE,
-                    1,
-                );
+                let mut ecs =
+                    EcsAgent::new(client.openai.chat(openai::GPT_4O_MINI), CONCISE_PREAMBLE, 1);
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -79,13 +73,8 @@ async fn streaming_truncated_turn_reports_length_and_cap() {
         with_openai_turn_metadata_cassette(
             "turn_termination_matrix/streaming_truncated_turn_reports_length_and_cap",
             |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client
-                        .completions_api()
-                        .completion_model(openai::GPT_4O_MINI),
-                    CONCISE_PREAMBLE,
-                    1,
-                );
+                let mut ecs =
+                    EcsAgent::new(client.openai.chat(openai::GPT_4O_MINI), CONCISE_PREAMBLE, 1);
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -119,13 +108,8 @@ async fn blocking_completed_turn_reports_stop_and_cap() {
         with_openai_turn_metadata_cassette(
             "turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap",
             |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client
-                        .completions_api()
-                        .completion_model(openai::GPT_4O_MINI),
-                    CONCISE_PREAMBLE,
-                    1,
-                );
+                let mut ecs =
+                    EcsAgent::new(client.openai.chat(openai::GPT_4O_MINI), CONCISE_PREAMBLE, 1);
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -159,13 +143,8 @@ async fn streaming_completed_turn_reports_stop_and_cap() {
         with_openai_turn_metadata_cassette(
             "turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap",
             |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client
-                        .completions_api()
-                        .completion_model(openai::GPT_4O_MINI),
-                    CONCISE_PREAMBLE,
-                    1,
-                );
+                let mut ecs =
+                    EcsAgent::new(client.openai.chat(openai::GPT_4O_MINI), CONCISE_PREAMBLE, 1);
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -192,13 +171,8 @@ async fn blocking_tool_turn_reports_tool_calls() {
         with_openai_turn_metadata_cassette(
             "turn_termination_matrix/blocking_tool_turn_reports_tool_calls",
             |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client
-                        .completions_api()
-                        .completion_model(openai::GPT_4O_MINI),
-                    TOOL_PREAMBLE,
-                    1,
-                );
+                let mut ecs =
+                    EcsAgent::new(client.openai.chat(openai::GPT_4O_MINI), TOOL_PREAMBLE, 1);
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -236,13 +210,8 @@ async fn streaming_tool_turn_reports_tool_calls() {
         with_openai_turn_metadata_cassette(
             "turn_termination_matrix/streaming_tool_turn_reports_tool_calls",
             |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client
-                        .completions_api()
-                        .completion_model(openai::GPT_4O_MINI),
-                    TOOL_PREAMBLE,
-                    1,
-                );
+                let mut ecs =
+                    EcsAgent::new(client.openai.chat(openai::GPT_4O_MINI), TOOL_PREAMBLE, 1);
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -277,13 +246,8 @@ async fn blocking_escalating_retry_reports_each_attempts_own_cap() {
         with_openai_turn_metadata_cassette(
             "turn_termination_matrix/blocking_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client
-                        .completions_api()
-                        .completion_model(openai::GPT_4O_MINI),
-                    CONCISE_PREAMBLE,
-                    1,
-                );
+                let mut ecs =
+                    EcsAgent::new(client.openai.chat(openai::GPT_4O_MINI), CONCISE_PREAMBLE, 1);
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)
@@ -329,13 +293,8 @@ async fn streaming_escalating_retry_reports_each_attempts_own_cap() {
         with_openai_turn_metadata_cassette(
             "turn_termination_matrix/streaming_escalating_retry_reports_each_attempts_own_cap",
             |client| async move {
-                let mut ecs = EcsAgent::new(
-                    client
-                        .completions_api()
-                        .completion_model(openai::GPT_4O_MINI),
-                    CONCISE_PREAMBLE,
-                    1,
-                );
+                let mut ecs =
+                    EcsAgent::new(client.openai.chat(openai::GPT_4O_MINI), CONCISE_PREAMBLE, 1);
                 ecs.app
                     .world_mut()
                     .entity_mut(ecs.agent)

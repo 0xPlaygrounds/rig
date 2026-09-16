@@ -1,59 +1,17 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::completion::{
-    AnthropicCompatibleProvider, AnthropicCompletionRequest, Content, GenericCompletionModel,
-    Usage, anthropic_usage_totals, map_finish_reason,
-};
-use crate::completion::{CompletionError, CompletionRequest};
-use crate::http_client::sse::GenericEventSource;
-use crate::http_client::{self, HttpClientExt};
+use super::completion::{Content, Usage, anthropic_usage_totals, map_finish_reason};
+use crate::completion::CompletionError;
 use crate::message::ReasoningContent;
-use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
-use crate::providers::internal::sse_transport::stamp_terminal_request_id;
-use crate::providers::internal::sse_transport::{
-    OpenLog, SseTransportOptions, open_wire_stream, skip_blank_frames,
-};
+use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{self, BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
-use crate::telemetry::{CompletionOperation, SpanCombinator};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
+use crate::wire::{
+    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, ObservationSink,
+    WireFrame,
+};
 use std::collections::HashMap;
-
-/// Patch the shared typed request into the Anthropic *streaming* request body.
-///
-/// The body derives from the *same* typed [`AnthropicCompletionRequest`] the
-/// blocking path builds (in `completion.rs`), rather than being re-assembled by
-/// hand. The previous hand-rolled `json!` body had drifted from the blocking one
-/// and silently dropped `output_schema` (structured-output config); reaching for
-/// the typed request fixes that and keeps the two in lockstep. Only the two
-/// streaming-only differences documented below are applied here.
-fn streaming_body(request: &AnthropicCompletionRequest) -> Result<Value, CompletionError> {
-    let mut body = serde_json::to_value(request)?;
-    if let Some(map) = body.as_object_mut() {
-        // `AnthropicCompletionRequest` has no `stream` field (the blocking path
-        // omits it, defaulting to non-streaming); set it for the streaming endpoint.
-        map.insert("stream".to_string(), Value::Bool(true));
-
-        // Preserve the streaming path's long-standing `tool_choice` shape, which
-        // emitted `tool_choice` *iff* a non-empty tool set was advertised (Anthropic
-        // rejects `tool_choice` without `tools`). The blocking typed request instead
-        // serializes any caller-set `tool_choice` regardless of tools and omits it
-        // when unset, so reconcile here:
-        //   - tools present, choice unset -> add the explicit `auto` the streaming
-        //     wire has always carried (equivalent to Anthropic's default);
-        //   - tools absent -> drop a caller-set `tool_choice` that would otherwise
-        //     be sent without `tools` and rejected.
-        if map.contains_key("tools") {
-            map.entry("tool_choice")
-                .or_insert_with(|| json!({ "type": "auto" }));
-        } else {
-            map.remove("tool_choice");
-        }
-    }
-
-    Ok(body)
-}
 
 /// The `type` values this client models on the Anthropic Messages SSE wire.
 ///
@@ -65,6 +23,11 @@ fn streaming_body(request: &AnthropicCompletionRequest) -> Result<Value, Complet
 /// *nested* delta type inside `content_block_delta`, which decodes to
 /// [`ContentDelta::Unknown`] (a warned no-op) via its hand-written dispatch.
 const KNOWN_EVENT_TYPES: &[&str] = &[
+    // The unary reply's own shape: a whole `message` object, which is what
+    // `POST /v1/messages` answers without `stream`. Naming it here is the
+    // ONE place the unary shape appears — it is a frame like any other, so
+    // the unary and streamed paths cannot drift.
+    "message",
     "message_start",
     "content_block_start",
     "content_block_delta",
@@ -84,6 +47,13 @@ pub enum StreamingEvent {
         /// rather than a corrupt frame.
         #[serde(default)]
         message: Option<MessageStart>,
+    },
+    /// The whole message: what the endpoint answers when not streaming.
+    /// Its fields are exactly `message_start`'s, plus the stop reason and
+    /// usage a stream delivers on `message_delta`.
+    Message {
+        #[serde(flatten)]
+        message: MessageStart,
     },
     ContentBlockStart {
         index: usize,
@@ -106,10 +76,28 @@ pub enum StreamingEvent {
     /// Anthropic's top-level error envelope (`{"type":"error","error":{...}}`,
     /// e.g. `overloaded_error`). A modeled event, not an unknown to warn-skip:
     /// it surfaces as a provider error like every other family's error
-    /// envelope. The payload stays a raw `Value` so every provider field
-    /// (type, message, extras) survives into the error body.
+    /// envelope.
+    ///
+    /// The nested `error` object is required, and that requirement is the
+    /// whole of the wire's shape check: every Anthropic error body recorded
+    /// under `tests/cassettes/anthropic/` nests it, and the flattened
+    /// `{"type":"error","message":"…"}` form appears in no recorded traffic.
     Error {
+        /// Decoding it is the whole point — it proves the body is the
+        /// envelope and nothing else — but the error the consumer sees is
+        /// built from `raw`, so the provider's payload rides out verbatim.
+        #[allow(dead_code)]
         error: serde_json::Value,
+        /// The envelope's own bytes, attached by
+        /// [`MessagesDecoder::classify`] because serde cannot see them.
+        ///
+        /// A body rebuilt from the fields this client models is not the
+        /// provider's body: re-encoding through `serde_json::Value`
+        /// normalizes key order, and every sibling key of `error` is
+        /// dropped — `request_id` among them, the one field a user quotes
+        /// to provider support.
+        #[serde(skip)]
+        raw: String,
     },
 }
 
@@ -313,14 +301,14 @@ impl ThinkingState {
     }
 }
 
-/// The Anthropic Messages SSE wire as a [`WireAdapter`].
+/// The Anthropic Messages wire's [`Decoder`], for both modes.
 ///
-/// Holds the per-stream assembly state (open tool call, server tool uses,
+/// Holds the per-reply assembly state (open tool call, server tool uses,
 /// open thinking block, terminal metadata); frame-triage policy lives in
-/// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
-/// not here. Every interpretation — content blocks and the message-level
-/// frames alike — goes through [`WireAdapter::interpret`]: one path.
-struct AnthropicAdapter {
+/// [`crate::driver`], not here. Every interpretation — content blocks and
+/// the message-level frames alike, buffered reply included — goes through
+/// [`Decoder::interpret`]: one path.
+pub struct MessagesDecoder {
     /// Stable descriptor name stamped on the terminal record. An *input*
     /// rather than a constant: the Anthropic Messages stream format is
     /// shared by every Anthropic-compatible provider, so baking in
@@ -344,9 +332,9 @@ struct AnthropicAdapter {
     failed: bool,
 }
 
-impl AnthropicAdapter {
-    /// A fresh adapter whose terminal record names `provider`.
-    fn new(provider: &'static str) -> Self {
+impl MessagesDecoder {
+    /// A fresh decoder whose terminal record names `provider`.
+    pub fn new(provider: &'static str) -> Self {
         Self {
             provider,
             current_tool_call: None,
@@ -574,22 +562,145 @@ impl AnthropicAdapter {
             // Interpreted by `interpret` itself (`message_start` /
             // `message_delta` / the `error` envelope) or Known no-ops
             // (`message_stop`, `ping`).
-            StreamingEvent::MessageStart { .. }
+            StreamingEvent::Message { .. }
+            | StreamingEvent::MessageStart { .. }
             | StreamingEvent::MessageDelta { .. }
             | StreamingEvent::MessageStop
             | StreamingEvent::Ping
             | StreamingEvent::Error { .. } => {}
         }
     }
+
+    /// Interpret the unary reply by *synthesizing the stream* it would have
+    /// been: the same `content_block_start` / `_delta` / `_stop` frames the
+    /// streaming wire sends for each content part, then the terminal the
+    /// `message_delta` carries.
+    ///
+    /// This is why there is no second `Content -> AssistantContent` mapping
+    /// and no `normalize`: the block code that assembles a streamed turn is
+    /// the only code that assembles a buffered one, so the two cannot
+    /// disagree about text, citations, tool arguments, thinking signatures
+    /// or server tool use.
+    fn interpret_whole_message(&mut self, message: MessageStart, out: &mut AdapterOutput) {
+        self.input_tokens = message.usage.input_tokens;
+        self.cache_creation
+            .clone_from(&message.usage.cache_creation);
+        self.message_id = Some(message.id);
+        self.response_model = Some(message.model);
+
+        // Anthropic has two ways to end a turn that genuinely carried no
+        // content, and an empty list says exactly that:
+        //
+        // - `end_turn` after a tool-result round trip — documented, and it
+        //   used to be normalized into a fabricated empty-text part.
+        // - `stop_sequence` when the matched sequence is the first thing the
+        //   model emits. Anthropic strips the sequence it stopped on, so a
+        //   turn that produced nothing before it arrives with `content: []`
+        //   and a 200. Rejecting that turned a completed provider turn into
+        //   `EMPTY_RESPONSE_ERROR`.
+        //
+        // The `stop_sequence` arm additionally requires the sequence itself.
+        // Every recorded stop-sequence turn names the sequence that fired, so
+        // that is the full extent of the evidence; a turn claiming to have
+        // stopped on a sequence while naming none is the malformed shape this
+        // guard exists for, not a legal empty turn. This matters most for the
+        // Anthropic-compatible gateways sharing this decoder, which are the
+        // likeliest to report a stop reason without its companion field.
+        //
+        // Any *other* empty reply is the shared provider defect.
+        //
+        // The guard is deliberately asymmetric: it runs here, on the
+        // buffered reply, and has no equivalent on the streamed path, which
+        // still finishes such a turn cleanly with an empty choice and no
+        // error. The parity this carve-out protects is for *legal* turns,
+        // and widening the rejection to the stream would trade a real guard
+        // for a cosmetic match — so do not "unify" it by moving it into the
+        // terminal both modes share.
+        let legal_empty_turn = match message.stop_reason.as_deref() {
+            Some("end_turn") => true,
+            Some("stop_sequence") => message.stop_sequence.is_some(),
+            _ => false,
+        };
+        if message.content.is_empty() && !legal_empty_turn {
+            self.failed = true;
+            out.error(CompletionError::ResponseError(
+                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
+            ));
+            return;
+        }
+
+        for (index, content) in message.content.into_iter().enumerate() {
+            // The payload a stream delivers by delta, for the part kinds
+            // that have one. Everything else is carried by the block's
+            // start frame alone.
+            let delta = match &content {
+                Content::Text { text, .. } if !text.is_empty() => {
+                    Some(ContentDelta::TextDelta { text: text.clone() })
+                }
+                Content::ToolUse { input, .. } => Some(ContentDelta::InputJsonDelta {
+                    partial_json: input.to_string(),
+                }),
+                _ => None,
+            };
+            self.interpret_content(
+                StreamingEvent::ContentBlockStart {
+                    index,
+                    content_block: content,
+                },
+                out,
+            );
+            if let Some(delta) = delta {
+                self.interpret_content(StreamingEvent::ContentBlockDelta { index, delta }, out);
+            }
+            self.interpret_content(StreamingEvent::ContentBlockStop { index }, out);
+        }
+
+        // A buffered reply is the whole turn, so its terminal is
+        // unconditional — unlike a `message_delta`, which is only terminal
+        // when it carries a stop reason.
+        let usage = PartialUsage {
+            output_tokens: message.usage.output_tokens as usize,
+            input_tokens: usize::try_from(message.usage.input_tokens).ok(),
+            cache_creation_input_tokens: message.usage.cache_creation_input_tokens,
+            cache_creation: message.usage.cache_creation,
+            cache_read_input_tokens: message.usage.cache_read_input_tokens,
+            output_tokens_details: message.usage.output_tokens_details,
+        };
+        let native = StreamingCompletionResponse {
+            usage,
+            stop_reason: message.stop_reason,
+            stop_sequence: message.stop_sequence,
+            message_id: self.message_id.clone(),
+            model: self.response_model.clone(),
+            provider_request_id: None,
+        };
+        match terminal_record(self.provider, &native) {
+            Ok(record) => out.final_record(record),
+            Err(error) => out.error(error),
+        }
+    }
 }
 
-impl WireAdapter for AnthropicAdapter {
-    type Frame = WireFrame;
+/// The Messages wire decodes its unary and streamed replies with the same
+/// state machine: `POST /v1/messages` answers with a whole `message`
+/// object, which is a frame like any other, so the two modes cannot drift.
+impl Decoder<Completion> for MessagesDecoder {
     type Event = StreamingEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamingEvent> {
-        wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
+        let data = frame.as_str();
+        wire::classify_tagged_frame(&data, "type", |event_type| {
             KNOWN_EVENT_TYPES.contains(&event_type)
+        })
+        .map(|event| match event {
+            // The one event whose payload leaves this crate as bytes rather
+            // than as decoded fields, so it is captured where the frame is
+            // still in hand: serde never sees the text it parsed.
+            StreamingEvent::Error { error, .. } => StreamingEvent::Error {
+                error,
+                raw: data.to_string(),
+            },
+            other => other,
         })
     }
 
@@ -599,6 +710,7 @@ impl WireAdapter for AnthropicAdapter {
         }
 
         match event {
+            StreamingEvent::Message { message } => self.interpret_whole_message(message, out),
             StreamingEvent::MessageStart { message } => {
                 // Bedrock-compat quirk: a `message_start` without a message
                 // body is a no-op, not an error.
@@ -608,10 +720,6 @@ impl WireAdapter for AnthropicAdapter {
                     .clone_from(&message.usage.cache_creation);
                 self.message_id = Some(message.id.clone());
                 self.response_model = Some(message.model.clone());
-
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &message.id);
-                span.record("gen_ai.response.model", &message.model);
             }
             StreamingEvent::MessageDelta { delta, usage } => {
                 // Only a `message_delta` carrying a stop reason is the
@@ -677,8 +785,6 @@ impl WireAdapter for AnthropicAdapter {
                     output_tokens_details: usage.output_tokens_details,
                 };
 
-                let span = tracing::Span::current();
-                span.record_token_usage(&crate::completion::Usage::from(&usage));
                 let native = StreamingCompletionResponse {
                     usage,
                     stop_reason: Some(reason),
@@ -688,8 +794,8 @@ impl WireAdapter for AnthropicAdapter {
                     stop_sequence: delta.stop_sequence,
                     message_id: self.message_id.clone(),
                     model: self.response_model.clone(),
-                    // Stamped by the transport layer onto the normalized
-                    // record; the adapter never sees connection headers.
+                    // Stamped by the driver onto the normalized record; the
+                    // decoder never sees connection headers.
                     provider_request_id: None,
                 };
                 match terminal_record(self.provider, &native) {
@@ -697,15 +803,15 @@ impl WireAdapter for AnthropicAdapter {
                     Err(err) => out.error(err),
                 }
             }
-            StreamingEvent::Error { error } => {
-                // The provider aborted the turn in-band. Preserve the full
-                // error envelope (code + message + extras) as the error body,
-                // matching the interactions wire's handling; the stream
+            StreamingEvent::Error { raw, .. } => {
+                // The provider aborted the turn in-band. The envelope is the
+                // error body verbatim — every field it carried, in the order
+                // it carried them — so the consumer reads what Anthropic
+                // said rather than what this client models. The stream
                 // carries it as an in-band `Err` item, and EOF without
                 // `message_delta` then withholds the terminal record.
                 self.failed = true;
-                let body = serde_json::json!({ "type": "error", "error": error }).to_string();
-                out.error(crate::provider_response::completion_error_from_body(body));
+                out.error(crate::provider_response::completion_error_from_body(raw));
             }
             event @ (StreamingEvent::ContentBlockStart { .. }
             | StreamingEvent::ContentBlockDelta { .. }
@@ -720,6 +826,59 @@ impl WireAdapter for AnthropicAdapter {
         // partial, and no terminal record may be synthesized.
     }
 
+    /// Messages metadata projected before normalization can discard it: the
+    /// stop reason, the model, the message id, the usage and any error
+    /// envelope, on the unary reply and on the stream's `message_start`,
+    /// `message_delta` and `error` events.
+    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
+        let Ok(payload) = serde_json::from_slice::<ObservedPayload>(payload) else {
+            return;
+        };
+        let usage = payload.usage;
+        let (id, model, stop_reason, nested_usage) = match payload.message {
+            Some(message) => (
+                message.id,
+                message.model,
+                message.stop_reason,
+                message.usage,
+            ),
+            None => (payload.id, payload.model, payload.stop_reason, None),
+        };
+        // Anthropic reports the prompt on `message_start` and the answer's
+        // running total on each `message_delta`: each is a snapshot of what it
+        // knows, never a sum.
+        if let Some(usage) = usage.or(nested_usage) {
+            sink.emit(AdapterEvent::Usage {
+                usage: AdapterUsage {
+                    input_tokens: usage.input_tokens,
+                    output_tokens: usage.output_tokens,
+                    total_tokens: None,
+                    cached_input_tokens: usage.cache_read_input_tokens,
+                    reasoning_tokens: None,
+                    tool_input_tokens: None,
+                },
+            });
+        }
+        let stop_reason = stop_reason.or(payload.delta.and_then(|delta| delta.stop_reason));
+        let verdict = AdapterVerdict {
+            finish_reason: stop_reason.map(|v| sink.scrub(&v)),
+            block_reason: None,
+            detail: None,
+            model: model.map(|v| sink.scrub(&v)),
+        };
+        let response_id = id.map(|v| sink.scrub(&v));
+        sink.provider(verdict, response_id);
+        if let Some(error) = payload.error {
+            sink.emit(AdapterEvent::ErrorEnvelope {
+                error: AdapterErrorEnvelope {
+                    code: None,
+                    status: error.kind.map(|v| sink.scrub(&v)),
+                    message: error.message.map(|v| sink.scrub(&v)),
+                },
+            });
+        }
+    }
+
     fn is_finished(&self) -> bool {
         // A provider `error` event is the wire's own terminal failure:
         // `interpret` already pushed the in-band `Err`, so the driver must
@@ -727,6 +886,43 @@ impl WireAdapter for AnthropicAdapter {
         // would otherwise dress the aborted turn up as a completed one.
         self.failed
     }
+}
+
+/// One object covers every payload `project` above sees — the unary reply and
+/// each stream event: a `message_start` nests the message, a `message_delta`
+/// carries the stop reason under `delta` and the cumulative output usage
+/// beside it.
+#[derive(Deserialize)]
+struct ObservedPayload {
+    id: Option<String>,
+    model: Option<String>,
+    stop_reason: Option<String>,
+    usage: Option<ObservedUsage>,
+    message: Option<Box<ObservedPayload>>,
+    delta: Option<ObservedDelta>,
+    error: Option<ObservedError>,
+}
+
+#[derive(Deserialize)]
+struct ObservedUsage {
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    output_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    cache_read_input_tokens: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct ObservedDelta {
+    stop_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ObservedError {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    message: Option<String>,
 }
 
 /// Anthropic's own terminal stream record.
@@ -788,74 +984,6 @@ fn terminal_record(
             .with_optional_model(response.model.clone())
             .with_raw(serde_json::to_value(response)?),
     )
-}
-
-impl<Ext, T> GenericCompletionModel<Ext, T>
-where
-    T: HttpClientExt + Clone + 'static,
-    Ext: AnthropicCompatibleProvider + Clone + WasmCompatSend + WasmCompatSync + 'static,
-{
-    /// Open a Messages stream with observation context owned by this
-    /// invocation.
-    pub(crate) async fn stream_observed(
-        &self,
-        completion_request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let (span, request) =
-            self.prepare_request(completion_request, CompletionOperation::ChatStreaming)?;
-
-        // Logged after the streaming-only patches, not on the shared typed
-        // request: `stream` and the reconciled `tool_choice` are exactly what
-        // makes this body differ from the blocking one.
-        let body = streaming_body(&request)?;
-        crate::providers::internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Anthropic completion request",
-            &body,
-        );
-
-        let body: Vec<u8> = serde_json::to_vec(&body)?;
-
-        let mut req = self
-            .client
-            .post("/v1/messages")?
-            .body(body)
-            .map_err(http_client::Error::Protocol)?;
-        if let Some(observation) = observation {
-            super::observation::attach(observation, &mut req, "/v1/messages");
-        }
-
-        let event_source = GenericEventSource::new(self.client.clone(), req);
-        let (event_source, request_id_slot) = match Ext::REQUEST_ID_HEADER {
-            Some(header) => {
-                let (event_source, slot) = event_source.capture_request_id(header);
-                (event_source, Some(slot))
-            }
-            None => (event_source, None),
-        };
-
-        // Anthropic's loop historically had no separate `StreamEnded` arm and
-        // no transport-error log: `StreamEnded` folds into the generic error
-        // mapping, preserved via the options below.
-        let stream = open_wire_stream(
-            event_source,
-            SseTransportOptions {
-                open_log: OpenLog::Silent,
-                stream_ended_is_error: true,
-                log_transport_errors: false,
-            },
-            skip_blank_frames,
-            AnthropicAdapter::new(Ext::PROVIDER_NAME),
-            span,
-        );
-        let stream = stamp_terminal_request_id(stream, request_id_slot, Ext::REQUEST_ID_HEADER);
-
-        Ok(streaming::StreamingCompletionResponse::stream(
-            Ext::PROVIDER_NAME,
-            stream,
-        ))
-    }
 }
 
 #[cfg(test)]

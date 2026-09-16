@@ -7,7 +7,7 @@ when:
     value: '*/*'
   - name: content-type
     value: application/json
-  body: '{"input":[{"content":"Never authenticated","role":"user","type":"message"}],"model":"grok-3-mini"}'
+  body: '{"input":[{"content":[{"text":"Never authenticated","type":"input_text"}],"role":"user","type":"message"}],"model":"grok-3-mini"}'
 then:
   status: 400
   header:

@@ -4,15 +4,16 @@ use mongodb::{
     bson::{self, doc},
     options::ClientOptions,
 };
-use rig::client::DefaultTransportBuilder as _;
+use rig::client::DefaultTransport as _;
 use rig::mongodb::{MongoDbVectorIndex, SearchParams};
+use rig::vector_store::request::VectorSearchRequest;
 use rig::{
     Embed,
+    driver::Bound,
     embeddings::EmbeddingsBuilder,
     providers::openai,
     vector_store::{InsertDocuments, VectorStoreIndex},
 };
-use rig::{client::EmbeddingsClient, vector_store::request::VectorSearchRequest};
 use serde_json::json;
 use testcontainers::{
     GenericImage, ImageExt,
@@ -139,14 +140,13 @@ async fn vector_search_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
+    let openai_client = openai::wire::OpenAI::new("TEST")
+        .with_base_url(server.base_url())
+        .bound()
         .unwrap();
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Setup a local MongoDB Atlas container for testing. NOTE: docker service must be running.
     let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
@@ -277,13 +277,12 @@ async fn insert_documents_test() {
     });
 
     // Initialize OpenAI client
-    let openai_client = openai::Client::builder()
-        .api_key("TEST")
-        .base_url(server.base_url())
-        .build()
+    let openai_client = openai::wire::OpenAI::new("TEST")
+        .with_base_url(server.base_url())
+        .bound()
         .unwrap();
 
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Setup MongoDB container
     let container = GenericImage::new(MONGODB_IMAGE, MONGODB_TAG)
@@ -471,7 +470,7 @@ async fn bootstrap_collection(host: String, port: u16) -> Collection<bson::Docum
     collection
 }
 
-async fn create_embeddings(model: openai::EmbeddingModel) -> Vec<bson::Document> {
+async fn create_embeddings(model: Bound<openai::wire::Embeddings>) -> Vec<bson::Document> {
     let words = vec![
         Word {
             id: "doc0".to_string(),

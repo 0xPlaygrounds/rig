@@ -2,8 +2,9 @@
 //!
 //! Before this fix, `StreamingChoice` did not model `logprobs`, so serde
 //! discarded every per-token object before the shared compatible adapter saw
-//! it. Blocking `raw_completion` retained the same field on `Choice`; raw
-//! streaming therefore carried strictly less provider-native information.
+//! it. The blocking provider-native reply retained the same field on
+//! `Choice`; raw streaming therefore carried strictly less provider-native
+//! information.
 //!
 //! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
 //!
@@ -39,12 +40,11 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::with_openai_chat_stream_logprobs_cassette_result;
+use super::super::support::{OpenAiCassette, with_openai_chat_stream_logprobs_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -128,10 +128,8 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client
-        .completions_api()
-        .completion_model(model_name(cell.model));
+async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.openai.chat(model_name(cell.model));
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -140,7 +138,11 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
 
     let observation = match cell.transport {
         Transport::Blocking => {
-            let raw = model.raw_completion(request).await?;
+            // The provider-native chat-completions reply rides serialized on
+            // `CompletionResponse::raw`; decode it to read the same fields the
+            // old raw surface exposed directly.
+            let response = model.completion(request).await?;
+            let raw: openai::completion::CompletionResponse = serde_json::from_value(response.raw)?;
             let choice = raw
                 .choices
                 .first()
@@ -163,9 +165,7 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
             // on `StreamFinal::raw`; decode it to prove the shape, then read
             // the serialized form the way the old raw surface did.
             let terminal = serde_json::from_value::<
-                openai::completion::streaming::StreamingCompletionResponse<
-                    openai::completion::Usage,
-                >,
+                openai::wire::StreamingCompletionResponse<openai::completion::Usage>,
             >(terminal.raw)?;
             let serialized = serde_json::to_value(terminal)?;
             Observation {

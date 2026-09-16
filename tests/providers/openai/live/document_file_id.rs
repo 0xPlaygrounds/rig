@@ -8,7 +8,8 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
 use rig::prelude::*;
-use rig::providers::openai::{self, FileData, UserContent as OpenAiUserContent};
+use rig::providers::openai;
+use rig::providers::openai::wire::{OpenAI, Route};
 use serde::Deserialize;
 use std::future::Future;
 use std::panic::{AssertUnwindSafe, resume_unwind};
@@ -113,14 +114,11 @@ fn file_id_document(file_id: &str) -> Document {
 }
 
 fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
-    let content = OpenAiUserContent::File {
-        file: FileData {
-            file_data: None,
-            file_id: Some(file_id.to_string()),
-            filename: Some("rig-pages.pdf".to_string()),
-        },
-    };
-    let content: RigUserContent = content.into();
+    let content = RigUserContent::Document(Document {
+        data: DocumentSourceKind::file_id(file_id),
+        media_type: None,
+        additional_params: None,
+    });
     assert_file_id_user_content(&content, file_id);
     content
 }
@@ -186,7 +184,10 @@ fn assert_page_label(response: &str, page_number: u8) {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
-        let client = openai::Client::from_env().expect("client should build");
+        let client = OpenAI::from_env()
+            .expect("config should build from env")
+            .bound()
+            .expect("transport should build");
         let agent = client
             .agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)
@@ -224,11 +225,12 @@ async fn responses_document_file_id_roundtrip_live() {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
-        let client = openai::Client::from_env()
-            .expect("client should build")
-            .completions_api();
-        let agent = client
-            .agent(openai::GPT_5_5)
+        let client = OpenAI::from_env()
+            .expect("config should build from env")
+            .with_route(Route::Chat)
+            .bound()
+            .expect("transport should build");
+        let agent = client.agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();

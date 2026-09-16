@@ -36,17 +36,14 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
-use rig::completion::{
-    AssistantContent, CompletionModel, FinishReason, NormalizeCompletionResponse,
-};
+use rig::completion::{AssistantContent, CompletionModel, FinishReason};
 use rig::prelude::*;
-use rig::providers::openrouter;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_tool_lifecycle_cassette_result;
+use super::super::support::{BoundOpenRouter, with_openrouter_tool_lifecycle_cassette_result};
 
 const PREAMBLE: &str = "Follow the user's tool-call instruction exactly. Do not answer in prose.";
 
@@ -155,7 +152,10 @@ fn tool_definition(name: &str) -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &openrouter::CompletionModel, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl CompletionModel + Clone),
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     let mut builder = model
         .completion_request(prompt(cell.shape))
         .preamble(PREAMBLE.to_owned())
@@ -261,26 +261,20 @@ impl_matrix_tool!(RecordPayload, "record_payload", PayloadArgs);
 impl_matrix_tool!(Alpha, "alpha", ValueArgs);
 impl_matrix_tool!(Beta, "beta", ValueArgs);
 
-async fn run_model(client: openrouter::Client, cell: Cell) -> Observation {
-    let model = client.completion_model(model_name(cell.model));
+async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
+    let model = client.completion(model_name(cell.model));
     match cell.transport {
-        Transport::Blocking => match model.raw_completion(request(&model, cell)).await {
-            Ok(raw) => match raw.normalize("openrouter") {
-                Ok(response) => {
-                    let (names, ids, arguments) = normalized_calls(&response.choice);
-                    Observation {
-                        finish_reason: response.finish_reason(),
-                        names,
-                        ids,
-                        arguments,
-                        ..Default::default()
-                    }
-                }
-                Err(error) => Observation {
-                    errors: vec![error.to_string()],
+        Transport::Blocking => match model.completion(request(&model, cell)).await {
+            Ok(response) => {
+                let (names, ids, arguments) = normalized_calls(&response.choice);
+                Observation {
+                    finish_reason: response.finish_reason(),
+                    names,
+                    ids,
+                    arguments,
                     ..Default::default()
-                },
-            },
+                }
+            }
             Err(error) => Observation {
                 errors: vec![error.to_string()],
                 ..Default::default()
@@ -320,7 +314,7 @@ async fn run_model(client: openrouter::Client, cell: Cell) -> Observation {
     }
 }
 
-async fn run_agent(client: openrouter::Client, cell: Cell) -> Observation {
+async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
     let builder = client
         .agent(model_name(cell.model))
@@ -377,11 +371,7 @@ async fn run_agent(client: openrouter::Client, cell: Cell) -> Observation {
     }
 }
 
-async fn run_cell(
-    client: openrouter::Client,
-    cell: Cell,
-    observed: SharedObservation,
-) -> Result<()> {
+async fn run_cell(client: BoundOpenRouter, cell: Cell, observed: SharedObservation) -> Result<()> {
     let observation = match cell.surface {
         Surface::Model => run_model(client, cell).await,
         Surface::Agent => run_agent(client, cell).await,

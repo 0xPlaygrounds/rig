@@ -1,17 +1,19 @@
 //! OpenAI image generation smoke test.
 
-use rig::client::DefaultTransportClient as _;
-use rig::client::image_generation::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
-use rig::providers::openai;
+use rig::prelude::*;
+use rig::providers::openai::{self, wire::OpenAI};
 
 use crate::support::{IMAGE_PROMPT, assert_nonempty_bytes};
 
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn image_generation_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let model = client.image_generation_model(openai::DALL_E_2);
+    let client = OpenAI::from_env()
+        .expect("config should build from env")
+        .bound()
+        .expect("transport should build");
+    let model = client.image_generation(openai::DALL_E_2);
 
     let response = model
         .image_generation_request()
@@ -28,8 +30,11 @@ async fn image_generation_smoke() {
 #[tokio::test]
 #[ignore = "requires OPENAI_API_KEY"]
 async fn gpt_image_2_image_generation_smoke() {
-    let client = openai::Client::from_env().expect("client should build");
-    let model = client.image_generation_model(openai::GPT_IMAGE_2);
+    let client = OpenAI::from_env()
+        .expect("config should build from env")
+        .bound()
+        .expect("transport should build");
+    let model = client.image_generation(openai::GPT_IMAGE_2);
 
     let response = model
         .image_generation_request()

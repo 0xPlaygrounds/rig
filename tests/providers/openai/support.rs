@@ -1,6 +1,6 @@
-use rig::client::DefaultTransportBuilder as _;
+use rig::driver::{Bind, Bound};
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::providers::openai;
+use rig::providers::openai::{OpenAI, Route};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -14,7 +14,44 @@ use futures::FutureExt;
 #[cfg(feature = "audio")]
 use crate::cassettes::DirectRecordingHttpClient;
 
-async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, openai::Client) {
+/// The one OpenAI configuration a recorded endpoint serves, bound — twice.
+///
+/// `openai::Client` was `Client<OpenAIResponses, H>` — the Responses API —
+/// and the client layer swapped a marker type to reach `/chat/completions`
+/// on the same credential and base URL. In the wire model the endpoint is
+/// configuration: [`OpenAI`] routes every completion it is asked for to
+/// the dialect's flagship, `POST /responses`, unless
+/// [`OpenAI::with_route`] chose `/chat/completions` once, and the modality
+/// wires serve every other OpenAI REST route (embeddings, transcriptions,
+/// images, speech, model listing, verification). So the same credential is
+/// held here on both routes, and a cell spells the route it drives by the
+/// field it reads: `client.openai.agent(model)` beside
+/// `client.chat.agent(model)`, with `.chat(model)` / `.responses(model)`
+/// still naming a typed wire when a cell reads the native reply.
+pub(super) struct OpenAiCassette<H = BoxedHttpClient> {
+    /// The configuration on its flagship route, over the cassette's socket.
+    pub(super) openai: Bound<OpenAI, H>,
+    /// The same configuration routed to Chat Completions.
+    pub(super) chat: Bound<OpenAI, H>,
+}
+
+impl<H: Clone> OpenAiCassette<H> {
+    /// The configuration for `api_key` at `base_url`, over `http`.
+    fn new(api_key: impl Into<String>, base_url: impl Into<String>, http: H) -> Self {
+        let openai = OpenAI::new(api_key).with_base_url(base_url).bind(http);
+        let chat = openai
+            .clone()
+            .map_wire(|openai| openai.with_route(Route::Chat));
+        Self { openai, chat }
+    }
+}
+
+/// The bundled transport, erased — the socket the deleted client built.
+fn bundled() -> BoxedHttpClient {
+    ReqwestClient::default().boxed()
+}
+
+async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, OpenAiCassette) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "openai",
@@ -22,20 +59,20 @@ async fn openai_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, op
         "https://api.openai.com/v1",
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key(cassette.api_key("OPENAI_API_KEY"))
-        .base_url(cassette.base_url())
-        .build()
-        .expect("client should build");
+    let openai = OpenAiCassette::new(
+        cassette.api_key("OPENAI_API_KEY"),
+        cassette.base_url(),
+        bundled(),
+    );
 
-    (cassette, client)
+    (cassette, openai)
 }
 
 async fn openai_completions_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, openai::CompletionsClient) {
-    let (cassette, client) = openai_cassette(spec).await;
-    (cassette, client.completions_api())
+) -> (ProviderCassette, Bound<OpenAI>) {
+    let (cassette, openai) = openai_cassette(spec).await;
+    (cassette, openai.chat)
 }
 
 /// Like [`with_openai_cassette`], but the client sends through the erased
@@ -44,7 +81,7 @@ async fn openai_completions_cassette(
 /// erasure is byte-transparent: the replay server matches on body bytes.
 pub(super) async fn with_openai_boxed_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(openai::Client<BoxedHttpClient>) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -54,13 +91,12 @@ where
         "https://api.openai.com/v1",
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key(cassette.api_key("OPENAI_API_KEY"))
-        .base_url(cassette.base_url())
-        .http_client(ReqwestClient::default().boxed())
-        .build()
-        .expect("client should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let openai = OpenAiCassette::new(
+        cassette.api_key("OPENAI_API_KEY"),
+        cassette.base_url(),
+        ReqwestClient::default().boxed(),
+    );
+    let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -75,7 +111,7 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     test_body: F,
 ) where
     M: rig::http_client::HttpMiddleware + 'static,
-    F: FnOnce(openai::Client<BoxedHttpClient>) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -85,13 +121,12 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
         "https://api.openai.com/v1",
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key(cassette.api_key("OPENAI_API_KEY"))
-        .base_url(cassette.base_url())
-        .http_client(ReqwestClient::default().boxed().with_middleware(middleware))
-        .build()
-        .expect("client should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let openai = OpenAiCassette::new(
+        cassette.api_key("OPENAI_API_KEY"),
+        cassette.base_url(),
+        ReqwestClient::default().boxed().with_middleware(middleware),
+    );
+    let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -101,7 +136,7 @@ pub(super) async fn with_openai_corpus_retrieval_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -113,7 +148,7 @@ pub(super) async fn with_openai_corpus_breadth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -125,7 +160,7 @@ pub(super) async fn with_openai_corpus_delta_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -137,7 +172,7 @@ pub(super) async fn with_openai_corpus_host_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -149,7 +184,7 @@ pub(super) async fn with_openai_corpus_output_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -157,12 +192,12 @@ pub(super) async fn with_openai_corpus_output_cassette<F, Fut>(
 
 pub(super) async fn with_openai_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     let spec = spec.into();
-    let (cassette, client) = openai_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, openai) = openai_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     crate::cassettes::checkpoint_attempt(&cassette, "openai", spec.scenario()).await;
     cassette.finish_after_test(result).await;
 }
@@ -173,7 +208,7 @@ pub(super) async fn with_openai_turn_metadata_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -183,11 +218,11 @@ pub(super) async fn with_openai_completions_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::CompletionsClient) -> Fut,
+    F: FnOnce(Bound<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let (cassette, client) = openai_completions_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, chat) = openai_completions_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(chat)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -196,11 +231,11 @@ pub(super) async fn with_openai_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let (cassette, client) = openai_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, openai) = openai_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -209,25 +244,25 @@ pub(super) async fn with_openai_completions_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openai::CompletionsClient) -> Fut,
+    F: FnOnce(Bound<OpenAI>) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let (cassette, client) = openai_completions_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, chat) = openai_completions_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(chat)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
 
 /// Per-bug wrapper for the Chat Completions refusal matrix
 /// (`tests/cassettes/openai/refusal_matrix/`).
 ///
-/// Yields the Responses client; cells that drive Chat Completions call
-/// [`openai::Client::completions_api`] on it, so one wrapper covers both
-/// surfaces of a bug whose logic lives in the shared chat-completions types.
+/// Yields both routes; cells that drive Chat Completions take
+/// [`OpenAiCassette::chat`], so one wrapper covers both surfaces of a bug
+/// whose logic lives in the shared chat-completions types.
 pub(super) async fn with_openai_refusal_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -239,7 +274,7 @@ pub(super) async fn with_openai_max_tokens_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -251,7 +286,7 @@ pub(super) async fn with_openai_truncation_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -263,7 +298,7 @@ pub(super) async fn with_openai_chat_stream_logprobs_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openai_cassette_result(spec, test_body).await
@@ -275,7 +310,7 @@ pub(super) async fn with_openai_tool_truncation_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openai_cassette_result(spec, test_body).await
@@ -287,7 +322,7 @@ pub(super) async fn with_openai_tool_lifecycle_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openai_cassette_result(spec, test_body).await
@@ -300,7 +335,7 @@ pub(super) async fn with_openai_terminal_metadata_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openai_cassette_result(spec, test_body).await
@@ -312,7 +347,7 @@ pub(super) async fn with_openai_history_roundtrip_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     with_openai_cassette_result(spec, test_body).await
@@ -325,7 +360,7 @@ pub(super) async fn with_openai_image_params_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -337,7 +372,7 @@ pub(super) async fn with_openai_transcription_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -353,7 +388,7 @@ pub(super) async fn with_openai_transcription_cassette<F, Fut>(
 #[cfg(feature = "audio")]
 pub(super) async fn with_openai_audio_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(openai::Client<DirectRecordingHttpClient>) -> Fut,
+    F: FnOnce(OpenAiCassette<DirectRecordingHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start_via(
@@ -364,14 +399,13 @@ where
         "https://api.openai.com/v1",
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key(cassette.api_key("OPENAI_API_KEY"))
-        .base_url(cassette.base_url())
-        .http_client(DirectRecordingHttpClient::new(cassette.direct_recorder()))
-        .build()
-        .expect("client should build");
+    let openai = OpenAiCassette::new(
+        cassette.api_key("OPENAI_API_KEY"),
+        cassette.base_url(),
+        DirectRecordingHttpClient::new(cassette.direct_recorder()),
+    );
 
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -388,7 +422,7 @@ pub(super) async fn with_openai_websocket_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -398,12 +432,12 @@ pub(super) async fn with_openai_websocket_cassette<F, Fut>(
         "https://api.openai.com/v1",
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key("sk-invalid-websocket-edge-matrix-key")
-        .base_url(cassette.base_url())
-        .build()
-        .expect("client should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let openai = OpenAiCassette::new(
+        "sk-invalid-websocket-edge-matrix-key",
+        cassette.base_url(),
+        bundled(),
+    );
+    let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -413,7 +447,7 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -423,12 +457,8 @@ pub(super) async fn with_openai_cassette_bogus_key<F, Fut>(
         "https://api.openai.com/v1",
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key("sk-invalid-edge-matrix-key")
-        .base_url(cassette.base_url())
-        .build()
-        .expect("client should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let openai = OpenAiCassette::new("sk-invalid-edge-matrix-key", cassette.base_url(), bundled());
+    let result = AssertUnwindSafe(test_body(openai)).catch_unwind().await;
     cassette.finish_after_test(result).await;
 }
 
@@ -545,7 +575,7 @@ pub(super) async fn with_openai_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(OpenAiCassette) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_cassette(spec, test_body).await;
@@ -561,7 +591,7 @@ pub(super) async fn with_openai_completions_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(openai::CompletionsClient) -> Fut,
+    F: FnOnce(Bound<OpenAI>) -> Fut,
     Fut: Future<Output = ()>,
 {
     with_openai_completions_cassette(spec, test_body).await;

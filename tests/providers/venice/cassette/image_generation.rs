@@ -5,7 +5,6 @@
 //! request body is what pins that shape — a regression to OpenAI's
 //! `/images/generations` body would fail as a mock miss.
 
-use rig::client::image_generation::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
 use rig::providers::venice;
 
@@ -16,7 +15,7 @@ async fn image_generation_smoke() {
     with_venice_cassette(
         "image_generation/image_generation_smoke",
         |client| async move {
-            let model = client.image_generation_model(venice::VENICE_SD35);
+            let model = client.image_generation(venice::VENICE_SD35);
             let response = model
                 .image_generation_request()
                 .prompt("A lighthouse on a rocky cliff at sunrise, clean illustrative style.")

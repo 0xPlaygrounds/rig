@@ -1,8 +1,8 @@
 //! Migrated from `examples/transcription.rs`.
 
-use rig::client::DefaultTransportClient as _;
-use rig::prelude::TranscriptionClient;
+use rig::prelude::*;
 use rig::providers::mistral;
+use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig::transcription::TranscriptionModel;
 
 use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
@@ -10,8 +10,11 @@ use crate::support::{AUDIO_FIXTURE_PATH, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn transcription_smoke() {
-    let client = mistral::Client::from_env().expect("client should build");
-    let model = client.transcription_model(mistral::VOXTRAL_MINI);
+    let client = OpenAI::from_env_with(&MISTRAL)
+        .expect("MISTRAL_API_KEY should be set")
+        .bound()
+        .expect("client should build");
+    let model = client.transcription(mistral::VOXTRAL_MINI);
     let response = model
         .transcription_request()
         .load_file(AUDIO_FIXTURE_PATH)

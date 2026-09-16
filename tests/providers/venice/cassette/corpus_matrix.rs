@@ -10,17 +10,16 @@
 //! had, whose producer stays where it is.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 
-use super::super::support::with_venice_cassette;
+use super::super::support::{BoundVenice, with_venice_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion_model(MISTRAL_SMALL_3_2_24B),
-        route: Some(client.completion_model(MISTRAL_SMALL_3_2_24B)),
+        model: client.completion(MISTRAL_SMALL_3_2_24B),
+        route: Some(client.completion(MISTRAL_SMALL_3_2_24B)),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -236,12 +235,10 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(
-    client: &rig::providers::venice::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::Venice,
-        model: client.completion_model(rig::providers::venice::QWEN3_235B_A22B_THINKING),
+        model: client.completion(rig::providers::venice::QWEN3_235B_A22B_THINKING),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

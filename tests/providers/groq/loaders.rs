@@ -2,7 +2,7 @@
 
 use rig::loaders::FileLoader;
 use rig::prelude::*;
-use rig::providers::groq;
+use rig::providers::openai::wire::{GROQ, OpenAI};
 
 use crate::support::{LOADERS_GLOB, LOADERS_PROMPT, assert_loader_answer_is_relevant};
 
@@ -11,7 +11,10 @@ use super::LOADERS_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn loaders_smoke() {
-    let client = groq::Client::from_env().expect("client should build");
+    let groq = OpenAI::from_env_with(&GROQ)
+        .expect("GROQ_API_KEY should be set")
+        .bound()
+        .expect("transport should build");
     let examples = FileLoader::with_glob(LOADERS_GLOB)
         .expect("examples glob should parse")
         .read_with_path()
@@ -19,7 +22,7 @@ async fn loaders_smoke() {
         .into_iter();
 
     let agent = examples
-        .fold(client.agent(LOADERS_MODEL), |builder, (path, content)| {
+        .fold(groq.agent(LOADERS_MODEL), |builder, (path, content)| {
             builder.context(format!("Rust Example {path:?}:\n{content}").as_str())
         })
         .preamble(

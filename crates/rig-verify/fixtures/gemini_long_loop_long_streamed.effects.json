@@ -4727,6 +4727,10 @@
           "outcome": "completion",
           "choice": [
             {
+              "type": "text",
+              "text": "done"
+            },
+            {
               "type": "reasoning",
               "id": null,
               "content": [
@@ -4738,10 +4742,6 @@
                   }
                 }
               ]
-            },
-            {
-              "type": "text",
-              "text": "done"
             }
           ],
           "usage": {
@@ -4784,6 +4784,21 @@
       },
       "events": [
         {
+          "event": "block_start",
+          "id": "minted:text:0",
+          "kind": {
+            "kind": "text"
+          }
+        },
+        {
+          "event": "block_delta",
+          "id": "minted:text:0",
+          "delta": {
+            "delta": "text",
+            "text": "done"
+          }
+        },
+        {
           "event": "block_end",
           "id": "minted:reasoning:0",
           "end": {
@@ -4803,21 +4818,6 @@
                 }
               }
             ]
-          }
-        },
-        {
-          "event": "block_start",
-          "id": "minted:text:0",
-          "kind": {
-            "kind": "text"
-          }
-        },
-        {
-          "event": "block_delta",
-          "id": "minted:text:0",
-          "delta": {
-            "delta": "text",
-            "text": "done"
           }
         },
         {

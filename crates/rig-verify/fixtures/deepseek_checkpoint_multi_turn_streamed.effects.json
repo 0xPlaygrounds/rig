@@ -139,14 +139,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 38,
               "prompt_tokens": 366,
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 238,
+              "completion_tokens": 38,
               "total_tokens": 404,
               "prompt_tokens_details": {
                 "cached_tokens": 128
-              }
+              },
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 238
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_1",
@@ -282,14 +282,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 38,
               "prompt_tokens": 366,
-              "prompt_cache_hit_tokens": 128,
-              "prompt_cache_miss_tokens": 238,
+              "completion_tokens": 38,
               "total_tokens": 404,
               "prompt_tokens_details": {
                 "cached_tokens": 128
-              }
+              },
+              "prompt_cache_hit_tokens": 128,
+              "prompt_cache_miss_tokens": 238
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_1",
@@ -471,14 +471,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 41,
               "prompt_tokens": 432,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 176,
+              "completion_tokens": 41,
               "total_tokens": 473,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 176
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_2",
@@ -638,14 +638,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 41,
               "prompt_tokens": 432,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 176,
+              "completion_tokens": 41,
               "total_tokens": 473,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 176
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_2",
@@ -877,14 +877,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 41,
               "prompt_tokens": 501,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 245,
+              "completion_tokens": 41,
               "total_tokens": 542,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 245
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_3",
@@ -1044,14 +1044,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 41,
               "prompt_tokens": 501,
-              "prompt_cache_hit_tokens": 256,
-              "prompt_cache_miss_tokens": 245,
+              "completion_tokens": 41,
               "total_tokens": 542,
               "prompt_tokens_details": {
                 "cached_tokens": 256
-              }
+              },
+              "prompt_cache_hit_tokens": 256,
+              "prompt_cache_miss_tokens": 245
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_3",
@@ -1333,14 +1333,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 42,
               "prompt_tokens": 571,
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 187,
+              "completion_tokens": 42,
               "total_tokens": 613,
               "prompt_tokens_details": {
                 "cached_tokens": 384
-              }
+              },
+              "prompt_cache_hit_tokens": 384,
+              "prompt_cache_miss_tokens": 187
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_4",
@@ -1508,14 +1508,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 42,
               "prompt_tokens": 571,
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 187,
+              "completion_tokens": 42,
               "total_tokens": 613,
               "prompt_tokens_details": {
                 "cached_tokens": 384
-              }
+              },
+              "prompt_cache_hit_tokens": 384,
+              "prompt_cache_miss_tokens": 187
             },
             "finish_reason": "tool_calls",
             "response_id": "chatcmpl-REDACTED_4",
@@ -1833,14 +1833,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 4,
               "prompt_tokens": 638,
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 254,
+              "completion_tokens": 4,
               "total_tokens": 642,
               "prompt_tokens_details": {
                 "cached_tokens": 384
-              }
+              },
+              "prompt_cache_hit_tokens": 384,
+              "prompt_cache_miss_tokens": 254
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_5",
@@ -1908,14 +1908,14 @@
           "model": "deepseek-flash",
           "raw": {
             "usage": {
-              "completion_tokens": 4,
               "prompt_tokens": 638,
-              "prompt_cache_hit_tokens": 384,
-              "prompt_cache_miss_tokens": 254,
+              "completion_tokens": 4,
               "total_tokens": 642,
               "prompt_tokens_details": {
                 "cached_tokens": 384
-              }
+              },
+              "prompt_cache_hit_tokens": 384,
+              "prompt_cache_miss_tokens": 254
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_5",

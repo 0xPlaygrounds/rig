@@ -11,8 +11,7 @@ async fn chat_completions_stream_emits_reasoning_and_text_incrementally() {
     with_mistralrs_completions_cassette(
         "streaming/chat_completions_stream_emits_reasoning_and_text_incrementally",
         |client| async move {
-            let agent = client
-                .agent(model_name())
+            let agent = client.agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(512)
                 .build();

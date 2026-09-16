@@ -12,7 +12,6 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 
 use super::super::support::with_openai_completions_cassette;
 use crate::support::zero_arg_tool_definition;
@@ -22,7 +21,7 @@ async fn builder_tools_survive_additional_params_tools() {
     with_openai_completions_cassette(
         "additional_params_tools/builder_tools_survive_additional_params_tools",
         |client| async move {
-            let model = client.completion_model("gpt-4o-mini");
+            let model = client.chat("gpt-4o-mini");
             let request = model
                 .completion_request(
                     "Call the lookup_alpha tool now. Do not call any other tool.",

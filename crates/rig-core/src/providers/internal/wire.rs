@@ -270,6 +270,38 @@ pub fn classify_with_repair<T>(
     }
 }
 
+/// Classify a frame through `first`, falling back to `then` when `first`
+/// reports `Corrupt`.
+///
+/// A wire with more than one reply shape on one decoder — the Responses
+/// endpoint answers with a tagged SSE event, an untagged response object,
+/// or, on one gateway, an error envelope inside a 200 — needs to *read* the
+/// first classifier's verdict, and reading it in a provider is the one thing
+/// the single-policy rule forbids. So the composition lives here: a frame
+/// that is not `first`'s kind at all is what makes `first` report `Corrupt`,
+/// and that is exactly when the next shape is worth trying.
+///
+/// `Known` and `Unknown` from `first` pass through untouched — an unmodeled
+/// tag is forward compatibility, not a different shape. When `then` also
+/// fails, `first`'s error is the diagnostic, because `first` is the shape
+/// the wire mostly sends; the exception is a `then` that recognized the
+/// shape and rejected its *data*, whose error is the specific one. Composes,
+/// so a wire with three shapes chains two calls.
+pub fn classify_or<T>(
+    data: &str,
+    first: impl Fn(&str) -> WireEvent<T>,
+    then: impl Fn(&str) -> WireEvent<T>,
+) -> WireEvent<T> {
+    match first(data) {
+        WireEvent::Corrupt(first_error) => match then(data) {
+            WireEvent::Known(event) => WireEvent::Known(event),
+            WireEvent::Corrupt(error) => WireEvent::Corrupt(error),
+            WireEvent::Unknown { .. } => WireEvent::Corrupt(first_error),
+        },
+        event => event,
+    }
+}
+
 /// Reject a top-level object that carries any discriminator key more than
 /// once.
 ///

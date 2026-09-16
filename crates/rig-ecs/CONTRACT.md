@@ -495,7 +495,8 @@ nothing executable. The executable half is built on the host's word:
 refusal in `MaterializeFailed`) reads the host-installed `Materializer`
 resource — a credential resolver and a transport factory, both host
 closures; rig-ecs reads no environment variable and picks no transport —
-builds the rig-core client for every binding nothing serves yet and
+builds the provider's completion wire for every binding nothing serves yet,
+binds it to the host's transport and
 registers a `CompletionAdapter` under the binding's key through
 `Handlers::register_erased`, on the binding's own entity, so the bound
 `HandlerDescriptor` is the one a hand-registered adapter produces and the
@@ -525,7 +526,7 @@ as saved (`Register`):
 | a binding beside a `Bound` of another key | `KeyMismatch` |
 | no `Materializer` | `NoMaterializer` |
 | a reference the resolver refuses | `MissingCredential { key, credential, detail }` |
-| `extra_params` the kind does not take, or a builder that refuses | `ExtraParams`, `Client` |
+| `extra_params` the kind does not take | `ExtraParams` |
 
 A kind the reader does not know is refused by serde before anything is
 spawned. Pinned by `run_binding.rs`; the harness (`tests/common/ecs_matrix/world.rs`)

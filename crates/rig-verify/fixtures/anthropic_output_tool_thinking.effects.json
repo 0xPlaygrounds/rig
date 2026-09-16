@@ -144,40 +144,46 @@
           "raw": {
             "content": [
               {
-                "type": "thinking",
+                "signature": "signature_REDACTED_1",
                 "thinking": "The user wants me to create a concise event object for a local Rust meetup in Seattle using the final_result tool.",
-                "signature": "signature_REDACTED_1"
+                "type": "thinking"
               },
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_1",
-                "name": "final_result",
                 "input": {
                   "category": "Tech / Programming",
                   "summary": "A local gathering for Rust programming language enthusiasts in Seattle. Attendees share projects, discuss new features, and network with fellow Rustaceans of all skill levels.",
                   "title": "Seattle Rust Meetup"
-                }
+                },
+                "name": "final_result",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 708,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 708,
               "output_tokens": 163,
               "output_tokens_details": {
                 "thinking_tokens": 32
-              }
-            },
-            "provider_request_id": "req_REDACTED_1"
+              },
+              "service_tier": "standard"
+            }
           }
         }
       }

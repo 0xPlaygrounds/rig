@@ -68,9 +68,10 @@ use futures::Stream;
 use rig_core::completion::{
     CompletionError, CompletionModel, CompletionRequest, CompletionResponse,
 };
+use rig_core::driver::run_wire_stream;
 #[cfg(test)]
 use rig_core::message::{Message, UserContent};
-use rig_core::providers::internal::adapter::{AdapterOutput, WireAdapter, run_wire_stream};
+use rig_core::operation::AdapterOutput;
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming::{StreamFinal, StreamingCompletionResponse, StreamingResult};
 #[cfg(test)]
@@ -363,7 +364,8 @@ fn stream_infer(
         .map_err(|_| CandleError::StreamingChannelClosed)
 }
 
-/// The in-process generation channel as a [`WireAdapter`].
+/// The in-process generation channel as a
+/// [`Decoder`](rig_core::wire::Decoder) over typed generation events.
 ///
 /// The producer sends already-typed [`GenerationEvent`]s, so classification
 /// is total: **this family never produces `Unknown`** — there is no foreign
@@ -373,11 +375,10 @@ fn stream_infer(
 /// the one policy site the conformance corpus pins.
 struct CandleAdapter;
 
-impl WireAdapter for CandleAdapter {
-    type Frame = GenerationEvent;
+impl rig_core::wire::Decoder<rig_core::operation::Completion, GenerationEvent> for CandleAdapter {
     type Event = GenerationEvent;
 
-    fn classify(&self, frame: Self::Frame) -> WireEvent<Self::Event> {
+    fn classify(&self, frame: GenerationEvent) -> WireEvent<Self::Event> {
         wire::classify_typed_event(TypedEvent::Modeled(frame))
     }
 

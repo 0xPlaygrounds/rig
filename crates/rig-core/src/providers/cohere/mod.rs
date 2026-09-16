@@ -1,25 +1,28 @@
 //! Cohere API client and Rig integration
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::{client::CompletionClient, providers::cohere};
+//! ```no_run
+//! use rig_core::providers::cohere;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = cohere::Client::new("YOUR_API_KEY")?;
+//! let provider = cohere::Cohere::from_env()?;
 //!
-//! let command_a = client.completion_model(cohere::COMMAND_A_03_2025);
+//! let command_a = provider.chat(cohere::COMMAND_A_03_2025);
+//! let embeddings = provider.embeddings(cohere::EMBED_V4, None);
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! A wire says what to send and how to read the reply; `.bind(transport)`
+//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
+//! implements the consumer-facing model traits.
 
-pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod streaming;
+pub mod wire;
 
-pub use client::{ApiErrorResponse, ApiResponse, Client};
-pub use completion::CompletionModel;
-pub use embeddings::{EmbeddingModel, ImageEmbeddingModel};
+pub use wire::{Chat, Cohere, Embeddings, ImageEmbeddings};
 
 // ================================================================
 // Cohere Completion Models

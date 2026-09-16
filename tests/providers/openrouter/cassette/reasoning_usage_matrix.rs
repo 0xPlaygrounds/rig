@@ -24,9 +24,9 @@
 //! span, and every caller reading the field, saw a hardcoded zero no matter
 //! how much reasoning the route billed for.
 //!
-//! The same type is `OpenRouter::StreamingUsage`, so the streaming
-//! terminal record lost it too — the zero was consistent across transports,
-//! which is exactly why nothing caught it.
+//! The streaming terminal record read the same accounting, so it lost the
+//! field too — the zero was consistent across transports, which is exactly why
+//! nothing caught it.
 //!
 //! **How these cells fail on `origin/main`.** Every non-control cell replays
 //! its recorded fixture and asserts `usage.reasoning_tokens > 0`; on
@@ -63,7 +63,7 @@
 //! | 12 | `blocking_reasoning_tokens_stay_within_completion_tokens` | blocking | raw model | OpenAI / o4-mini | recorded |
 //! | 13 | `blocking_reasoning_tokens_with_tools_in_request` | blocking | raw model | OpenAI / o4-mini | recorded |
 //! | 14 | `transports_agree_on_reasoning_tokens` | both | raw model | OpenAI / o4-mini | recorded |
-//! | 15 | `blocking_raw_usage_and_normalized_usage_agree` | blocking | raw + normalized | OpenAI / o4-mini | recorded |
+//! | 15 | `blocking_raw_usage_and_normalized_usage_agree` | blocking | document + normalized | OpenAI / o4-mini | recorded |
 //! | 16 | `blocking_cost_and_cache_details_still_map` | blocking | raw model | OpenAI / o4-mini | recorded |
 //! | 17 | `control_non_reasoning_model_reports_zero_blocking` | blocking | raw model | OpenAI / gpt-4o-mini | recorded |
 //! | 18 | `control_non_reasoning_model_reports_zero_streaming` | streaming | raw model | OpenAI / gpt-4o-mini | recorded |
@@ -72,14 +72,14 @@
 //! (a real recorded usage object, the breakdown absent / `null` / `{}` /
 //! zero, unmodeled siblings tolerated, the `total - prompt` output-token
 //! fallback undisturbed, and the field omitted on serialization when absent)
-//! — live next to the fix in
-//! `crates/rig-core/src/providers/openrouter/client.rs`
-//! (`completion_tokens_details_*`).
+//! — live next to the shared chat usage shape in
+//! `crates/rig-core/src/providers/openai/wire/dto.rs`, which flattens a
+//! dialect's extra usage fields so `completion_tokens_details` reaches both
+//! the normalized `Usage` and the reply document on `raw`.
 
-use rig::client::completion::CompletionClient;
-use rig::completion::{CompletionModel, NormalizeCompletionResponse};
+use rig::completion::CompletionModel;
 use rig::prelude::*;
-use rig::telemetry::ProviderResponseExt;
+use rig::providers::openrouter;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -131,7 +131,7 @@ async fn blocking_reasoning_tokens_reach_normalized_usage() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_reasoning_tokens_reach_normalized_usage",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -170,7 +170,7 @@ async fn streaming_reasoning_tokens_reach_the_terminal_record() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/streaming_reasoning_tokens_reach_the_terminal_record",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -285,7 +285,7 @@ async fn blocking_high_effort_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_high_effort_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -318,7 +318,7 @@ async fn blocking_gpt_5_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_gpt_5_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion_model(GPT_5);
+            let model = client.completion(GPT_5);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -351,7 +351,7 @@ async fn streaming_gpt_5_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/streaming_gpt_5_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion_model(GPT_5);
+            let model = client.completion(GPT_5);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -392,7 +392,7 @@ async fn blocking_anthropic_routed_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_anthropic_routed_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion_model(CLAUDE_HAIKU);
+            let model = client.completion(CLAUDE_HAIKU);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -429,7 +429,7 @@ async fn streaming_anthropic_routed_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/streaming_anthropic_routed_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion_model(CLAUDE_HAIKU);
+            let model = client.completion(CLAUDE_HAIKU);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -469,7 +469,7 @@ async fn blocking_open_weight_route_reports_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_open_weight_route_reports_reasoning_tokens",
         |client| async move {
-            let model = client.completion_model(DEEPSEEK_R1);
+            let model = client.completion(DEEPSEEK_R1);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -512,7 +512,7 @@ async fn blocking_excluded_reasoning_still_counts_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_excluded_reasoning_still_counts_tokens",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -553,7 +553,7 @@ async fn blocking_reasoning_tokens_stay_within_completion_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_reasoning_tokens_stay_within_completion_tokens",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -590,7 +590,7 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_reasoning_tokens_with_tools_in_request",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
@@ -614,9 +614,9 @@ async fn blocking_reasoning_tokens_with_tools_in_request() {
     );
 }
 
-/// One scenario, both transports: `openrouter::Usage` is also
-/// `OpenRouter::StreamingUsage`, so a fix that only reached the blocking
-/// mapping would show up here.
+/// One scenario, both transports: the blocking reply and the stream's terminal
+/// frame report the same accounting through the same shape, so a fix that only
+/// reached one of them would show up here.
 #[tokio::test]
 async fn transports_agree_on_reasoning_tokens() {
     const SCENARIO: &str = "reasoning_usage_matrix/transports_agree_on_reasoning_tokens";
@@ -627,7 +627,7 @@ async fn transports_agree_on_reasoning_tokens() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/transports_agree_on_reasoning_tokens",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
 
             let blocking = model
                 .completion(
@@ -684,7 +684,9 @@ async fn transports_agree_on_reasoning_tokens() {
 }
 
 /// The provider-native escape hatch and the normalized view must agree: the
-/// raw `openrouter::Usage` now carries the breakdown, and `From` maps it.
+/// gateway's own document, which the driver keeps verbatim on `raw`, carries
+/// the breakdown in `openrouter::Usage`, and the decoder's one mapping
+/// reports it.
 #[tokio::test]
 async fn blocking_raw_usage_and_normalized_usage_agree() {
     const SCENARIO: &str = "reasoning_usage_matrix/blocking_raw_usage_and_normalized_usage_agree";
@@ -692,21 +694,21 @@ async fn blocking_raw_usage_and_normalized_usage_agree() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_raw_usage_and_normalized_usage_agree",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let raw = model.raw_completion(request).await.expect("raw turn");
-            let raw_reasoning = raw
-                .usage()
+            let normalized = model.completion(request).await.expect("the turn");
+            let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
+                .expect("raw is OpenRouter's own completion response");
+            let raw_reasoning = document
+                .usage
                 .and_then(|usage| usage.completion_tokens_details)
-                .map(|details| details.reasoning_tokens as u64)
-                .expect("the raw usage must model the breakdown");
-
-            let normalized = raw.normalize("openrouter").expect("normalization");
+                .and_then(|details| u64::try_from(details.reasoning_tokens).ok())
+                .expect("the document's usage must model the breakdown");
 
             assert!(raw_reasoning > 0);
             assert_eq!(normalized.usage.reasoning_tokens, Some(raw_reasoning));
@@ -735,28 +737,30 @@ async fn blocking_cost_and_cache_details_still_map() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/blocking_cost_and_cache_details_still_map",
         |client| async move {
-            let model = client.completion_model(O4_MINI);
+            let model = client.completion(O4_MINI);
             let request = model
                 .completion_request(REASONING_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(openai_reasoning("medium"))
                 .build();
 
-            let raw = model.raw_completion(request).await.expect("raw turn");
-            let usage = raw.usage().expect("usage");
+            let normalized = model.completion(request).await.expect("the turn");
+            let usage = openrouter::CompletionResponse::deserialize(&normalized.raw)
+                .expect("raw is OpenRouter's own completion response")
+                .usage
+                .expect("usage");
 
             assert!(usage.cost > 0.0, "{usage:?}");
             assert!(usage.prompt_tokens_details.is_some(), "{usage:?}");
             assert!(usage.completion_tokens_details.is_some(), "{usage:?}");
 
-            let normalized = raw.normalize("openrouter").expect("normalization");
             // Shape check only — see the scope note above.
             assert_eq!(
                 normalized.usage.cached_input_tokens,
                 usage
                     .prompt_tokens_details
                     .as_ref()
-                    .map(|d| d.cached_tokens as u64)
+                    .and_then(|details| u64::try_from(details.cached_tokens).ok())
             );
             // These two do carry weight: the new field must not have displaced
             // the cost mapping, and the reasoning share must still arrive.
@@ -767,7 +771,7 @@ async fn blocking_cost_and_cache_details_still_map() {
             );
             assert_eq!(
                 normalized.usage.output_tokens,
-                Some(usage.completion_tokens as u64)
+                u64::try_from(usage.completion_tokens).ok()
             );
         },
     )
@@ -789,7 +793,7 @@ async fn control_non_reasoning_model_reports_zero_blocking() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_blocking",
         |client| async move {
-            let model = client.completion_model(PLAIN_MODEL);
+            let model = client.completion(PLAIN_MODEL);
             let request = model
                 .completion_request(PLAIN_PROMPT)
                 .max_tokens(32)
@@ -815,7 +819,7 @@ async fn control_non_reasoning_model_reports_zero_streaming() {
     with_openrouter_usage_cassette(
         "reasoning_usage_matrix/control_non_reasoning_model_reports_zero_streaming",
         |client| async move {
-            let model = client.completion_model(PLAIN_MODEL);
+            let model = client.completion(PLAIN_MODEL);
             let request = model
                 .completion_request(PLAIN_PROMPT)
                 .max_tokens(32)

@@ -1,4 +1,4 @@
-use rig_core::prelude::*;
+use rig_core::driver::CompletionProvider;
 use std::fmt::Debug;
 use tonic::metadata::MetadataValue;
 use tonic::service::Interceptor;
@@ -91,8 +91,9 @@ impl Client {
 impl Client {
     /// Create a new Google Gemini gRPC client from the `GEMINI_API_KEY` environment variable.
     ///
-    /// The gRPC channel is not an HTTP transport, so this client is not a
-    /// `rig_core::client::Client`; construction is inherent.
+    /// The gRPC channel is not an HTTP transport, so there is no socket to
+    /// bind: construction is inherent, and the client is itself the
+    /// [`CompletionProvider`] a `Bound` would be for a wire.
     pub fn from_env() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let api_key = std::env::var("GEMINI_API_KEY")?;
         tokio::task::block_in_place(|| {
@@ -108,26 +109,36 @@ impl Client {
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl CompletionProvider for Client {
+    type Model = CompletionModel;
 
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
+    fn completion(&self, model: impl Into<String>) -> Self::Model {
         CompletionModel::new(self.clone(), model)
     }
 }
 
-impl EmbeddingsClient for Client {
-    type EmbeddingModel = EmbeddingModel;
-
-    fn embedding_model(&self, model: impl Into<String>) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, None)
+impl Client {
+    /// This provider's embedding model for `model`, at `ndims` dimensions
+    /// when the caller named one rather than taking the model's default.
+    pub fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> EmbeddingModel {
+        EmbeddingModel::new(self.clone(), model, ndims)
     }
 
-    fn embedding_model_with_ndims(
+    /// An embedding builder over this provider's `model`.
+    pub fn embeddings<D: rig_core::Embed>(
+        &self,
+        model: impl Into<String>,
+    ) -> rig_core::embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
+        rig_core::embeddings::EmbeddingsBuilder::new(self.embedding(model, None))
+    }
+
+    /// An embedding builder over this provider's `model` at `ndims`
+    /// dimensions.
+    pub fn embeddings_with_ndims<D: rig_core::Embed>(
         &self,
         model: impl Into<String>,
         ndims: usize,
-    ) -> Self::EmbeddingModel {
-        EmbeddingModel::new(self.clone(), model, Some(ndims))
+    ) -> rig_core::embeddings::EmbeddingsBuilder<EmbeddingModel, D> {
+        rig_core::embeddings::EmbeddingsBuilder::new(self.embedding(model, Some(ndims)))
     }
 }

@@ -47,7 +47,7 @@ impl fmt::Display for FastembedError {
             }
             FastembedError::UnsupportedMake => write!(
                 f,
-                "`EmbeddingModel::make` is not supported for rig-fastembed; construct models via `Client::embedding_model` or `EmbeddingModel::new_from_user_defined`"
+                "`EmbeddingModel::make` is not supported for rig-fastembed; construct models via `Client::embedding` or `EmbeddingModel::new_from_user_defined`"
             ),
         }
     }
@@ -67,27 +67,35 @@ impl Client {
         Self
     }
 
-    /// Create an embedding model with the given name.
-    /// Note: default embedding dimension of 0 will be used if model is not known.
-    /// If this is the case, it's better to use function `embedding_model_with_ndims`
+    /// Create an embedding model for `model`.
+    ///
+    /// `ndims` is the embedding width; `None` reads it from the model's own
+    /// metadata, which fails for a model `fastembed` does not know. The name
+    /// and shape match [`Bound::embedding`](rig_core::driver::Bound::embedding),
+    /// so a caller swapping a hosted provider for a local one changes only
+    /// the value it calls.
     ///
     /// # Example
     /// ```
     /// use rig_fastembed::{Client, FastembedModel};
     ///
     /// // Initialize the `rig-fastembed` client
-    /// let fastembed_client = rig_fastembed::Client::new();
+    /// let fastembed = Client::new();
     ///
-    /// let embedding_model = fastembed_client.embedding_model(&FastembedModel::AllMiniLML6V2Q);
+    /// let model = fastembed.embedding(&FastembedModel::AllMiniLML6V2Q, None);
     /// ```
     #[cfg(feature = "hf-hub")]
-    pub fn embedding_model(
+    pub fn embedding(
         &self,
         model: &FastembedModel,
+        ndims: Option<usize>,
     ) -> Result<EmbeddingModel, FastembedError> {
-        let ndims = TextEmbedding::get_model_info(model)
-            .map(|info| info.dim)
-            .map_err(|_| FastembedError::UnknownModel(model.clone()))?;
+        let ndims = match ndims {
+            Some(ndims) => ndims,
+            None => TextEmbedding::get_model_info(model)
+                .map(|info| info.dim)
+                .map_err(|_| FastembedError::UnknownModel(model.clone()))?,
+        };
 
         EmbeddingModel::new(model, ndims)
     }
@@ -100,9 +108,9 @@ impl Client {
     ///
     /// // Initialize the Fastembed client
     /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-    /// let fastembed_client = Client::new();
+    /// let fastembed = Client::new();
     ///
-    /// let embeddings = fastembed_client
+    /// let embeddings = fastembed
     ///     .embeddings(&FastembedModel::AllMiniLML6V2Q)?
     ///     .documents(vec![
     ///         "Hello, world!".to_string(),
@@ -118,9 +126,9 @@ impl Client {
     #[cfg(feature = "hf-hub")]
     pub fn embeddings<D: Embed>(
         &self,
-        model: &fastembed::EmbeddingModel,
+        model: &FastembedModel,
     ) -> Result<EmbeddingsBuilder<EmbeddingModel, D>, FastembedError> {
-        Ok(EmbeddingsBuilder::new(self.embedding_model(model)?))
+        Ok(EmbeddingsBuilder::new(self.embedding(model, None)?))
     }
 }
 

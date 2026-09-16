@@ -1,197 +1,47 @@
-//! Ollama API client and Rig integration
+//! Ollama API integration
 //!
 //! # Example
-//! ```ignore
-//! use rig_core::{
-//!     client::{CompletionClient, EmbeddingsClient, Nothing},
-//!     completion::CompletionModel,
-//!     embeddings::EmbeddingModel,
-//!     providers::ollama,
-//! };
+//! ```no_run
+//! use rig_core::providers::ollama;
 //!
-//! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Create a new Ollama client (defaults to http://localhost:11434, no auth)
-//! let client = ollama::Client::new(Nothing)?;
+//! # fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! // The local daemon, unauthenticated; `from_env()` reads
+//! // `OLLAMA_API_BASE_URL` and `OLLAMA_API_KEY` when a proxied daemon
+//! // needs them.
+//! let provider = ollama::Ollama::new();
 //!
-//! // Or connect to a remote/proxied Ollama instance with authentication
-//! let client = ollama::Client::builder()
-//!     .api_key("my-secret-key")
-//!     .base_url("http://remote-ollama:11434")
-//!     .build()?;
-//!
-//! // Send a completion request with a preamble.
-//! let model = client.completion_model("qwen2.5:14b");
-//! let request = model
-//!     .completion_request("Entertain me!")
-//!     .preamble("You are a comedian here to entertain the user using humour and jokes.".to_string())
-//!     .build();
-//! let response = model.completion(request).await?;
-//! println!("{:?}", response.choice);
-//!
-//! // Create an embedding model using the "all-minilm" model
-//! let emb_model = client.embedding_model_with_ndims("all-minilm", 384);
-//! let embeddings = emb_model.embed_texts(vec![
-//!     "Why is the sky blue?".to_owned(),
-//!     "Why is the grass green?".to_owned()
-//! ]).await?;
-//! println!("Embedding response: {embeddings:?}");
+//! let qwen = provider.chat("qwen2.5:14b");
+//! let embeddings = provider.embeddings(ollama::ALL_MINILM, Some(384));
 //! # Ok(())
 //! # }
 //! ```
-use crate::client::{
-    self, ApiKey, HasCompletion, HasEmbeddings, HasModelListing, ModelLister, ModelTransport,
-    Nothing, Provider, ProviderClientResult,
-};
+//!
+//! A wire says what to send and how to read the reply; `.bind(transport)`
+//! joins it to a socket and yields the [`Bound`](crate::driver::Bound) that
+//! implements the consumer-facing model traits.
 use crate::completion::Usage;
-use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
-use crate::model::{Model, ModelList, ModelListingError};
+use crate::model::Model;
+use crate::operation::Completion;
 use crate::providers::internal;
 use crate::streaming::{StreamFinal, ToolCallEnd};
-use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
 use crate::{
     completion::{self, CompletionError, CompletionRequest},
-    embeddings::{self, EmbeddingError},
-    json_utils, message, streaming,
-    wasm_compat::{WasmCompatSend, WasmCompatSync},
+    json_utils, message,
 };
-use async_stream::stream;
-use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::convert::TryFrom;
-use tracing_futures::Instrument;
-// ---------- Main Client ----------
 
+pub mod wire;
+
+pub use wire::{Chat, Embeddings, Models, Ollama};
+
+/// The address of a local daemon.
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
 
 /// Stable descriptor name recorded on normalized responses, streams, and
 /// telemetry spans for this provider.
 const PROVIDER_NAME: &str = "ollama";
-
-/// Optional API key for Ollama. By default Ollama requires no authentication,
-/// but proxied or secured deployments may require a Bearer token.
-#[derive(Debug, Default, Clone)]
-pub struct OllamaApiKey(Option<String>);
-
-impl ApiKey for OllamaApiKey {
-    fn into_header(
-        self,
-    ) -> Option<http_client::Result<(http::header::HeaderName, http::header::HeaderValue)>> {
-        self.0.map(http_client::make_auth_header)
-    }
-
-    // Ollama needs no credential by default, so a builder without one is complete.
-    fn absent() -> Option<Self> {
-        Some(Self(None))
-    }
-}
-
-impl From<Nothing> for OllamaApiKey {
-    fn from(_: Nothing) -> Self {
-        Self(None)
-    }
-}
-
-impl From<String> for OllamaApiKey {
-    fn from(key: String) -> Self {
-        if key.is_empty() {
-            Self(None)
-        } else {
-            Self(Some(key))
-        }
-    }
-}
-
-impl From<&str> for OllamaApiKey {
-    fn from(key: &str) -> Self {
-        if key.is_empty() {
-            Self(None)
-        } else {
-            Self(Some(key.to_owned()))
-        }
-    }
-}
-
-/// The Ollama provider.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct Ollama;
-
-pub type Client<H = crate::http_client::BoxedHttpClient> = client::Client<Ollama, H>;
-pub type ClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<Ollama, H>;
-
-impl Provider for Ollama {
-    const NAME: &'static str = PROVIDER_NAME;
-    const BASE_URL: &'static str = OLLAMA_API_BASE_URL;
-    const VERIFY_PATH: &'static str = "api/tags";
-    type ApiKey = OllamaApiKey;
-    type Config = ();
-    type EnvInput = OllamaApiKey;
-
-    fn build(_: (), _: &OllamaApiKey) -> http_client::Result<Self> {
-        Ok(Ollama)
-    }
-
-    /// Read `OLLAMA_API_BASE_URL` (optional) and `OLLAMA_API_KEY` (optional).
-    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<Client<H>> {
-        let api_base = crate::client::optional_env_var("OLLAMA_API_BASE_URL")?
-            .unwrap_or_else(|| OLLAMA_API_BASE_URL.to_string());
-
-        let api_key = crate::client::optional_env_var("OLLAMA_API_KEY")?
-            .map(OllamaApiKey::from)
-            .unwrap_or_default();
-
-        Client::builder()
-            .api_key(api_key)
-            .base_url(&api_base)
-            .http_client(http)
-            .build()
-    }
-
-    fn from_val<H: HttpClientExt>(
-        api_key: OllamaApiKey,
-        http: H,
-    ) -> ProviderClientResult<Client<H>> {
-        Client::new_with(api_key, http)
-    }
-}
-
-impl HasCompletion for Ollama {
-    type Model<H>
-        = CompletionModel<H>
-    where
-        H: ModelTransport;
-
-    fn completion_model<H: ModelTransport>(client: &Client<H>, model: String) -> Self::Model<H> {
-        CompletionModel::new(client.clone(), model)
-    }
-}
-
-impl HasEmbeddings for Ollama {
-    type Model<H>
-        = EmbeddingModel<H>
-    where
-        H: ModelTransport;
-
-    fn embedding_model<H: ModelTransport>(
-        client: &Client<H>,
-        model: String,
-        ndims: Option<usize>,
-    ) -> Self::Model<H> {
-        EmbeddingModel::make(client, model, ndims)
-    }
-}
-
-impl HasModelListing for Ollama {
-    type Lister<H>
-        = OllamaModelLister<H>
-    where
-        H: ModelTransport;
-
-    fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
-        OllamaModelLister::new(client.clone())
-    }
-}
 
 // ---------- Embedding API ----------
 
@@ -231,160 +81,6 @@ pub struct EmbeddingResponse {
     pub load_duration: Option<u64>,
     #[serde(default)]
     pub prompt_eval_count: Option<u64>,
-}
-
-impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
-    fn normalize(
-        self,
-        provider: &str,
-        documents: Vec<String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        if self.embeddings.len() != documents.len() {
-            return Err(EmbeddingError::ResponseError(
-                "Number of returned embeddings does not match input".into(),
-            ));
-        }
-        let usage = crate::completion::Usage {
-            input_tokens: self.prompt_eval_count,
-            total_tokens: self.prompt_eval_count,
-            ..Default::default()
-        };
-        let embeddings = self
-            .embeddings
-            .into_iter()
-            .zip(documents)
-            .map(|(vec, document)| embeddings::Embedding { document, vec })
-            .collect();
-        Ok(embeddings::EmbeddingResponse::new(embeddings, provider)
-            .with_model(self.model)
-            .with_usage(usage))
-    }
-}
-
-// ---------- Embedding Model ----------
-
-#[derive(Clone)]
-pub struct EmbeddingModel<T = crate::http_client::BoxedHttpClient> {
-    client: Client<T>,
-    pub model: String,
-    ndims: usize,
-}
-
-impl<T> EmbeddingModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
-    }
-
-    pub fn with_model(client: Client<T>, model: &str, ndims: usize) -> Self {
-        Self {
-            client,
-            model: model.into(),
-            ndims,
-        }
-    }
-}
-
-impl<T> EmbeddingModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Perform the request and return Ollama's native `/api/embed` response
-    /// instead of the normalized [`embeddings::EmbeddingResponse`]. Same
-    /// request, transport, parser, and error path as
-    /// [`embeddings::EmbeddingModel::embed_texts_response`].
-    pub async fn raw_embed_texts(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
-        let docs: Vec<String> = documents.into_iter().collect();
-        self.raw_embed_texts_slice(&docs).await
-    }
-
-    /// Borrow-shaped twin of [`Self::raw_embed_texts`]: the batch is only
-    /// serialized into the request body, so callers that keep their documents
-    /// (the normalize path) can lend them instead of cloning the batch.
-    async fn raw_embed_texts_slice(
-        &self,
-        docs: &[String],
-    ) -> Result<EmbeddingResponse, EmbeddingError> {
-        let body = serde_json::to_vec(&json!({
-            "model": self.model,
-            "input": docs
-        }))?;
-
-        let req = self
-            .client
-            .post("api/embed")?
-            .body(body)
-            .map_err(|e| EmbeddingError::HttpError(e.into()))?;
-
-        let response = self.client.send::<_, Vec<u8>>(req).await?;
-
-        let (parts, body) = response.into_parts();
-        let status = parts.status;
-        let bytes: Vec<u8> = body.await?;
-        if !status.is_success() {
-            return Err(EmbeddingError::from_http_response(
-                status,
-                String::from_utf8_lossy(&bytes),
-            )
-            .with_response_headers(Some(parts.headers)));
-        }
-
-        let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
-        Ok(api_resp)
-    }
-}
-
-impl<T> embeddings::EmbeddingModel for EmbeddingModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    fn max_documents(&self) -> usize {
-        1024
-    }
-    fn ndims(&self) -> usize {
-        self.ndims
-    }
-
-    async fn embed_texts_response(
-        &self,
-        documents: impl IntoIterator<Item = String>,
-    ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        crate::telemetry::instrument_modality(
-            PROVIDER_NAME,
-            &self.model,
-            crate::telemetry::ModalityOperation::Embeddings,
-            async {
-                use embeddings::NormalizeEmbeddingResponse as _;
-
-                let docs: Vec<String> = documents.into_iter().collect();
-                // Ollama reports no transport request-id header.
-                let response = self.raw_embed_texts_slice(&docs).await?;
-                let captured = serde_json::to_value(&response)?;
-                Ok(response.normalize(PROVIDER_NAME, docs)?.with_raw(captured))
-            },
-        )
-        .await
-    }
-}
-
-impl<T> EmbeddingModel<T>
-where
-    T: HttpClientExt + Clone + 'static,
-{
-    /// Build the model, defaulting `ndims` from the model identifier when the
-    /// caller gave none — the body behind `EmbeddingsClient::embedding_model`.
-    pub fn make(client: &Client<T>, model: String, dims: Option<usize>) -> Self {
-        let dims = dims
-            .or(model_dimensions_from_identifier(&model))
-            .unwrap_or_default();
-        Self::new(client.clone(), model, dims)
-    }
 }
 
 // ---------- Completion API ----------
@@ -470,104 +166,6 @@ fn ollama_usage(prompt_eval_count: Option<u64>, eval_count: Option<u64>) -> Usag
             .zip(eval_count)
             .map(|(input, output)| input + output),
         ..Default::default()
-    }
-}
-
-impl From<&CompletionResponse> for Usage {
-    fn from(response: &CompletionResponse) -> Usage {
-        ollama_usage(response.prompt_eval_count, response.eval_count)
-    }
-}
-
-impl crate::telemetry::ProviderResponseExt for CompletionResponse {
-    type Usage = Usage;
-
-    /// Ollama's chat API carries no response ID.
-    fn response_id(&self) -> Option<&str> {
-        None
-    }
-
-    fn response_model_name(&self) -> Option<&str> {
-        Some(self.model.as_str())
-    }
-
-    fn text_response(&self) -> Option<String> {
-        match &self.message {
-            Message::Assistant { content, .. } if !content.is_empty() => Some(content.clone()),
-            _ => None,
-        }
-    }
-
-    fn usage(&self) -> Option<Self::Usage> {
-        Some(Usage::from(self))
-    }
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse {
-    type Error = CompletionError;
-    fn try_from(resp: CompletionResponse) -> Result<Self, Self::Error> {
-        let usage = Usage::from(&resp);
-        let finish_reason = resp.done_reason.as_deref().map(map_done_reason);
-        let model = resp.model.clone();
-        let permits_omitted_think_start = resp.model.to_ascii_lowercase().contains("qwen3");
-
-        // Process only if an assistant message is present.
-        let Message::Assistant {
-            content,
-            thinking,
-            tool_calls,
-            ..
-        } = resp.message
-        else {
-            return Err(CompletionError::ResponseError(
-                "Chat response does not include an assistant message".into(),
-            ));
-        };
-
-        let mut assistant_contents = Vec::new();
-        let (legacy_thinking, visible_content) = if matches!(thinking.as_deref(), None | Some("")) {
-            split_legacy_thinking(&content, permits_omitted_think_start)
-        } else {
-            (None, content.as_str())
-        };
-        // Preserve the model's reasoning so it round-trips into agent history
-        // and is echoed back to Ollama on the next turn (issue #1926). `choice`
-        // is the only place it can live — the normalized response carries no
-        // provider payload — so dropping it here would lose the reasoning
-        // entirely, unlike the streaming path (see the `thinking` reasoning
-        // deltas in `OllamaAdapter::interpret` below).
-        if let Some(thinking) = thinking.as_deref().filter(|t| !t.is_empty()) {
-            assistant_contents.push(completion::AssistantContent::reasoning(thinking));
-        }
-        if let Some(legacy_thinking) = legacy_thinking {
-            assistant_contents.push(completion::AssistantContent::reasoning(legacy_thinking));
-        }
-        // Add the assistant's text content if any.
-        if !visible_content.is_empty() {
-            assistant_contents.push(completion::AssistantContent::text(visible_content));
-        }
-        // Process tool_calls following Ollama's chat response definition.
-        // Modern daemons issue a call id (`"id":"call_..."`); it is read as
-        // the provider id when present. An absent id mints the correlation
-        // handle and records no provider id — never a name-as-id (which
-        // would collide two same-tool calls) and never an empty sentinel.
-        // Replay drops the id either way (Ollama tool messages correlate
-        // by `tool_name`).
-        for tc in tool_calls.iter() {
-            assistant_contents.push(completion::AssistantContent::tool_call(
-                tc.id.as_deref().unwrap_or(""),
-                tc.function.name.clone(),
-                tc.function.arguments.clone(),
-            ));
-        }
-        crate::message::normalize_missing_tool_call_ids(&mut assistant_contents);
-        let choice = crate::message::require_non_empty_response(assistant_contents)?;
-
-        Ok(
-            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_model(model)
-                .with_optional_finish_reason(finish_reason),
-        )
     }
 }
 
@@ -721,21 +319,6 @@ impl TryFrom<(&str, CompletionRequest)> for OllamaCompletionRequest {
     }
 }
 
-#[derive(Clone)]
-pub struct CompletionModel<T = crate::http_client::BoxedHttpClient> {
-    client: Client<T>,
-    pub model: String,
-}
-
-impl<T> CompletionModel<T> {
-    pub fn new(client: Client<T>, model: impl Into<String>) -> Self {
-        Self {
-            client,
-            model: model.into(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(untagged)]
 enum Think {
@@ -786,133 +369,27 @@ fn stream_final(response: StreamingCompletionResponse) -> StreamFinal {
         .with_model(response.model)
 }
 
-/// Reassembles newline-delimited JSON lines from a chunked HTTP byte stream.
+/// The Ollama NDJSON wire's decoder, serving both replies.
 ///
-/// `bytes_stream` makes no promises about chunk boundaries, so a single NDJSON
-/// line can be split across multiple chunks. `NdjsonBuffer` holds the trailing
-/// fragment between calls and yields only fully terminated lines.
-#[derive(Default)]
-struct NdjsonBuffer {
-    buf: Vec<u8>,
-}
-
-impl NdjsonBuffer {
-    fn new() -> Self {
-        Self::default()
-    }
-
-    /// Appends `chunk` to the buffer and returns any newly completed lines.
-    /// Empty lines are skipped; trailing partial data is retained for the next call.
-    fn decode(&mut self, chunk: &[u8]) -> Vec<Vec<u8>> {
-        self.buf.extend_from_slice(chunk);
-
-        let mut lines = Vec::new();
-        while let Some(pos) = self.buf.iter().position(|&b| b == b'\n') {
-            let mut line: Vec<u8> = self.buf.drain(..=pos).collect();
-            line.pop();
-            if !line.is_empty() {
-                lines.push(line);
-            }
-        }
-        lines
-    }
-}
-
-impl<T> CompletionModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + 'static,
-{
-    /// Execute a completion and return Ollama's own wire response.
-    ///
-    /// This is the escape hatch for Ollama-specific fields rig does not
-    /// normalize (the timing counters, `created_at`). It shares the request
-    /// builder, transport, telemetry, and error handling with
-    /// [`CompletionModel::completion`](completion::CompletionModel::completion),
-    /// which calls it and then applies the provider-local mapping — one network
-    /// request either way.
-    pub async fn raw_completion(
-        &self,
-        completion_request: CompletionRequest,
-    ) -> Result<CompletionResponse, CompletionError> {
-        self.raw_completion_observed(completion_request, None).await
-    }
-
-    /// [`Self::raw_completion`] with observation context owned by this
-    /// invocation.
-    async fn raw_completion_observed(
-        &self,
-        completion_request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<CompletionResponse, CompletionError> {
-        let system_instructions = completion_request.system_instructions().map(str::to_owned);
-        let record_telemetry_content = completion_request.record_telemetry_content;
-        let request = OllamaCompletionRequest::try_from((self.model.as_ref(), completion_request))?;
-        let span =
-            CompletionSpanBuilder::new(PROVIDER_NAME, &request.model, CompletionOperation::Chat)
-                .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-                .build();
-
-        internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Ollama completion request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post("api/chat")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-        if let Some(observation) = observation {
-            observation.attach(&mut req, "/api/chat");
-        }
-
-        let async_block = internal::completion_send::send_completion::<
-            _,
-            internal::envelope::DirectPayload<CompletionResponse>,
-            _,
-        >(
-            &self.client,
-            req,
-            "Ollama completion",
-            // A local Ollama server reports no request-id response header.
-            None,
-            |response| {
-                let span = tracing::Span::current();
-                span.record_response_metadata(response);
-                span.record_token_usage(&Usage::from(response));
-            },
-        );
-
-        tracing::Instrument::instrument(async_block, span)
-            .await
-            .map(|(payload, _)| payload)
-    }
-}
-
-/// The Ollama NDJSON wire as a
-/// [`WireAdapter`](internal::adapter::WireAdapter).
-///
-/// Stateless: every line is a whole response record. Frame-triage policy
-/// (warn-skip `Unknown` — unpopulated on this undiscriminated wire — and
-/// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
-/// still complete the stream) lives in
-/// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
-struct OllamaAdapter {
+/// Ollama answers `/api/chat` with the same record shape either way — a
+/// stream is a sequence of them and a whole reply is one with `done: true`
+/// — so the unary body needs no second variant here, and the two paths
+/// cannot drift. Frame-triage policy (in-band `Err` on `Corrupt`, so a
+/// later genuine `done: true` record can still complete the stream) lives
+/// in the driver, not here.
+pub struct OllamaDecoder {
     /// Owns the constant-key reasoning lifecycle: `thinking` deltas
-    /// accumulate under the per-stream minted key, and the boundary end
+    /// accumulate under the per-reply minted key, and the boundary end
     /// this wire never announces is derived, not hand-rolled here.
     reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Per-stream minter for id-less tool-call keys. Counted across the
-    /// whole stream, not per record — a per-record enumeration would hand
+    /// Per-reply minter for id-less tool-call keys. Counted across the
+    /// whole reply, not per record — a per-record enumeration would hand
     /// two id-less calls in separate records the same `Minted(Tool, 0)`
     /// key, and one would silently swallow the other downstream.
     tool_ids: crate::streaming::SyntheticIds,
 }
 
-impl Default for OllamaAdapter {
+impl Default for OllamaDecoder {
     fn default() -> Self {
         Self {
             reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
@@ -923,31 +400,16 @@ impl Default for OllamaAdapter {
     }
 }
 
-impl internal::adapter::WireAdapter for OllamaAdapter {
-    type Frame = internal::adapter::WireFrame;
-    type Event = CompletionResponse;
-
-    fn classify(&self, frame: Self::Frame) -> internal::wire::WireEvent<CompletionResponse> {
-        match frame {
-            internal::adapter::WireFrame::Bytes(line) => {
-                internal::wire::classify_untyped_line(&line)
-            }
-            internal::adapter::WireFrame::Text(line) => {
-                internal::wire::classify_untyped_line(line.as_bytes())
-            }
-        }
-    }
-
-    fn interpret(
+impl OllamaDecoder {
+    /// Interpret one `/api/chat` record: its content, its tool calls, and —
+    /// when it says `done` — the terminal it carries.
+    fn interpret_record(
         &mut self,
         response: CompletionResponse,
-        out: &mut internal::adapter::AdapterOutput,
+        out: &mut crate::operation::AdapterOutput,
     ) {
-        let span = tracing::Span::current();
-        if response.done {
-            span.record("gen_ai.response.model", &response.model);
-        }
-
+        let done = response.done;
+        let model = response.model;
         if let Message::Assistant {
             content,
             thinking,
@@ -955,12 +417,12 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
             ..
         } = response.message
         {
-            // A daemon-issued call id keys the stream and travels as the
+            // A daemon-issued call id keys the reply and travels as the
             // durable id; an id-less call (older daemons) keys by a
             // distinct minted identity and its durable id stays absent —
             // never the tool name, which would collide two same-tool calls
             // in one turn.
-            let mut tool_events = internal::adapter::AdapterOutput::new();
+            let mut tool_events = crate::operation::AdapterOutput::new();
             for tool_call in tool_calls {
                 let key = match tool_call
                     .id
@@ -978,13 +440,29 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
                 tool_events.tool_call(key, end);
             }
 
+            // Older reasoning models put their reasoning in `content`
+            // instead of `thinking`. Splitting it out needs the WHOLE
+            // content, so only a record that completes the turn is a
+            // candidate: a streamed delta carries a fragment, where a
+            // leading `<think>` has no terminator yet and the content is
+            // left alone (issue #1926 keeps the reasoning either way).
+            let (reasoning, text) = match thinking.as_deref() {
+                None | Some("") if done => {
+                    let permits_omitted_think_start = model.to_ascii_lowercase().contains("qwen3");
+                    let (legacy, visible) =
+                        split_legacy_thinking(&content, permits_omitted_think_start);
+                    (legacy.map(str::to_owned), visible.to_owned())
+                }
+                _ => (thinking, content),
+            };
+
             // Declare what the record carried; the shared lifecycle derives
             // the canonical sequence (boundary end included).
             self.reasoning.emit_chunk(
                 internal::chunk_lifecycle::ChunkParts {
-                    reasoning: thinking,
+                    reasoning,
                     reasoning_signature: None,
-                    text: Some(content),
+                    text: Some(text),
                     tool_events: tool_events
                         .into_items()
                         .into_iter()
@@ -996,12 +474,11 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
         }
 
         // Only a `done: true` record counts as the provider completing the
-        // turn; the driver stops consuming after the terminal record.
-        if response.done {
-            span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
-            span.record("gen_ai.usage.output_tokens", response.eval_count);
+        // turn; the driver stops consuming after the terminal record, and
+        // the span is the driver's to record.
+        if done {
             let native = StreamingCompletionResponse {
-                model: response.model,
+                model,
                 total_duration: response.total_duration,
                 load_duration: response.load_duration,
                 prompt_eval_count: response.prompt_eval_count,
@@ -1017,219 +494,64 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
         }
     }
 
-    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput) {
-        // EOF without a `done: true` record is truncation: no terminal record
-        // may be synthesized.
+    /// Classify one NDJSON line. The wire has no discriminator at all: a
+    /// line either decodes as the record shape or is corrupt.
+    fn classify_line(
+        frame: crate::wire::WireFrame,
+    ) -> internal::wire::WireEvent<CompletionResponse> {
+        match frame {
+            crate::wire::WireFrame::Bytes(line) => internal::wire::classify_untyped_line(&line),
+            crate::wire::WireFrame::Text(line) => {
+                internal::wire::classify_untyped_line(line.as_bytes())
+            }
+        }
     }
 }
 
-impl<T> completion::CompletionModel for CompletionModel<T>
-where
-    T: HttpClientExt + Clone + WasmCompatSend + 'static,
-{
-    async fn completion(
+impl crate::wire::Decoder<Completion> for OllamaDecoder {
+    type Event = CompletionResponse;
+
+    fn classify(
         &self,
-        completion_request: CompletionRequest,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        self.completion_with_context(completion_request, None).await
+        frame: crate::wire::WireFrame,
+    ) -> internal::wire::WireEvent<CompletionResponse> {
+        Self::classify_line(frame)
     }
 
-    async fn stream(
-        &self,
-        request: CompletionRequest,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        self.stream_with_context(request, None).await
+    fn interpret(
+        &mut self,
+        response: CompletionResponse,
+        out: &mut crate::operation::AdapterOutput,
+    ) {
+        self.interpret_record(response, out);
     }
 
-    async fn completion_with_context(
-        &self,
-        completion_request: CompletionRequest,
-        context: Option<crate::observe::AdapterContext>,
-    ) -> Result<completion::CompletionResponse, CompletionError> {
-        // Capture before `try_into` consumes the raw value.
-        let raw = self
-            .raw_completion_observed(completion_request, context)
-            .await?;
-        let captured = serde_json::to_value(&raw)?;
-        let response: completion::CompletionResponse = raw.try_into()?;
-        Ok(response.with_raw(captured))
-    }
-
-    async fn stream_with_context(
-        &self,
-        request: CompletionRequest,
-        observation: Option<crate::observe::AdapterContext>,
-    ) -> Result<streaming::StreamingCompletionResponse, CompletionError> {
-        let system_instructions = request.system_instructions().map(str::to_owned);
-        let record_telemetry_content = request.record_telemetry_content;
-        let mut request = OllamaCompletionRequest::try_from((self.model.as_ref(), request))?;
-        let span = CompletionSpanBuilder::new(
-            PROVIDER_NAME,
-            &request.model,
-            CompletionOperation::ChatStreaming,
-        )
-        .system_instructions(system_instructions.as_deref(), record_telemetry_content)
-        .build();
-        request.stream = true;
-
-        internal::trace_json(
-            crate::providers::internal::LogTarget::Completions,
-            "Ollama streaming completion request",
-            &request,
-        );
-
-        let body = serde_json::to_vec(&request)?;
-
-        let mut req = self
-            .client
-            .post("api/chat")?
-            .body(body)
-            .map_err(http_client::Error::from)?;
-        if let Some(observation) = observation {
-            observation.attach(&mut req, "/api/chat");
-        }
-        // This wire is NDJSON over a plain streaming response, not SSE, so
-        // the transport boundary is observed here rather than by the shared
-        // event source: the request, the response, each frame's bytes, and
-        // the closure the frame driver records. No payload projector is
-        // attached yet, and the SSE slot's frame tail is not fed, so EOF
-        // after a partial final line reports `Eof`, not `PartialFrame`.
-        let observation = crate::observe::AdapterContext::slot_for_request(&req);
-        if let Some(observation) = &observation {
-            observation.start(&req);
-        }
-
-        let response = match self
-            .client
-            .send_streaming(req)
-            .instrument(span.clone())
-            .await
-        {
-            Ok(response) => response,
-            Err(error) => {
-                let error = CompletionError::from_transport_error(error);
-                if let Some(observation) = &observation {
-                    observation.fail(&error);
-                }
-                return Err(error);
-            }
-        };
-        let (parts, mut byte_stream) = response.into_parts();
-        let status = parts.status;
-        if let Some(observation) = &observation {
-            observation.response_with_headers(status, Some(&parts.headers));
-        }
-
-        if !status.is_success() {
-            let mut body = Vec::new();
-            while let Some(chunk) = byte_stream.next().await {
-                match chunk {
-                    Ok(bytes) => body.extend_from_slice(&bytes),
-                    Err(e) => {
-                        tracing::warn!(error = %e, "failed reading Ollama error-response body; preserving partial body");
-                        break;
-                    }
-                }
-            }
-            let error = CompletionError::from_http_response(status, String::from_utf8_lossy(&body))
-                .with_response_headers(Some(parts.headers));
-            if let Some(observation) = &observation {
-                observation.payload(&body);
-                observation.fail(&error);
-            }
-            return Err(error);
-        }
-
-        // Transport layer: HTTP byte chunks → NDJSON-line `WireFrame`s. Byte
-        // splitting and framing only — classification and policy live
-        // downstream.
-        let frame_observation = observation.clone();
-        let transport = stream! {
-            let mut line_buf = NdjsonBuffer::new();
-            while let Some(chunk) = byte_stream.next().await {
-                let bytes = match chunk {
-                    Ok(bytes) => bytes,
-                    Err(e) => {
-                        yield Err(CompletionError::from(http_client::Error::Instance(e.into())));
-                        break;
-                    }
-                };
-
-                for line in line_buf.decode(&bytes) {
-                    tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
-                    if let Some(observation) = &frame_observation {
-                        observation.payload(&line);
-                    }
-                    yield Ok(internal::adapter::WireFrame::Bytes(line));
-                }
-            }
-        };
-
-        let stream: streaming::StreamingResult = Box::pin(
-            internal::adapter::run_wire_stream_observed(
-                transport,
-                OllamaAdapter::default(),
-                observation,
-            )
-            .instrument(span),
-        );
-
-        Ok(streaming::StreamingCompletionResponse::stream(
-            PROVIDER_NAME,
-            stream,
-        ))
-    }
+    /// EOF without a `done: true` record is truncation: no terminal record
+    /// may be synthesized.
+    fn finish(&mut self, _out: &mut crate::operation::AdapterOutput) {}
 }
 
 // ---------- Model Listing  ----------
 
+/// The reply of `GET /api/tags`: every model the daemon has pulled.
 #[derive(Debug, Deserialize)]
-struct ListModelsResponse {
-    models: Vec<ListModelEntry>,
+pub struct ListModelsResponse {
+    /// The installed models, in the daemon's own order.
+    pub models: Vec<ListModelEntry>,
 }
 
+/// One installed model.
 #[derive(Debug, Deserialize)]
-struct ListModelEntry {
-    name: String,
-    model: String,
+pub struct ListModelEntry {
+    /// The tag as the daemon displays it (`qwen3:4b`).
+    pub name: String,
+    /// The identifier a request addresses.
+    pub model: String,
 }
 
 impl From<ListModelEntry> for Model {
     fn from(value: ListModelEntry) -> Self {
         Model::new(value.model, value.name)
-    }
-}
-
-/// [`ModelLister`] implementation for the Ollama API (`GET /api/tags`).
-#[derive(Clone)]
-pub struct OllamaModelLister<H = crate::http_client::BoxedHttpClient> {
-    client: Client<H>,
-}
-
-impl<H> ModelLister<H> for OllamaModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
-{
-    async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        let api_resp: ListModelsResponse = crate::providers::internal::model_listing::get_json(
-            &self.client,
-            "Ollama",
-            "/api/tags",
-        )
-        .await?;
-        let models = api_resp.models.into_iter().map(Model::from).collect();
-
-        Ok(ModelList::new(models))
-    }
-}
-
-impl<H> OllamaModelLister<H>
-where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static + Clone,
-{
-    /// Build the lister over `client`.
-    pub fn new(client: Client<H>) -> Self {
-        Self { client }
     }
 }
 

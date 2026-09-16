@@ -3,7 +3,6 @@
 use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::streaming::StreamEvent;
 use serde_json::json;
@@ -38,7 +37,7 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
     with_chatgpt_cassette(
         "streaming_tools/tool_call_completed_response_without_output",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_4);
+            let model = client.completion(chatgpt::GPT_5_4);
             let request = model
                 .completion_request(
                     "Call the ping tool with no arguments. Do not write any normal text before the tool call.",
@@ -88,7 +87,7 @@ async fn stream_tool_call_completed_response_without_output() {
     with_chatgpt_cassette(
         "streaming_tools/tool_call_completed_response_without_output",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_4);
+            let model = client.completion(chatgpt::GPT_5_4);
             let request = model
                 .completion_request(
                     "Call the ping tool with no arguments. Do not write any normal text before the tool call.",

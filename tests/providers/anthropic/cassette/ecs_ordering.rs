@@ -12,7 +12,7 @@ use crate::{
         TWO_TOOL_STREAM_PROMPT, assert_contains_all_case_insensitive,
     },
 };
-use rig::{prelude::*, providers::anthropic};
+use rig::providers::anthropic;
 
 #[tokio::test]
 async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message() {
@@ -20,7 +20,7 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
         "streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message",
         |client| async move {
             let mut ecs = EcsAgent::new(
-                client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6),
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
                 TWO_TOOL_STREAM_PREAMBLE,
                 1,
             );

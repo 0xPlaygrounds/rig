@@ -1,14 +1,14 @@
 use anyhow::Result;
 use futures::StreamExt;
+use rig::completion::{CompletionRequest, CompletionRequestBuilder};
+use rig::driver::Bound;
 use rig::prelude::*;
-use rig::providers::gemini::{
-    self,
-    interactions_api::{
-        AgentConfig, Content, ContentDelta, CreateInteractionRequest, Interaction,
-        InteractionInput, InteractionSseEvent, InteractionStatus, Step, TextDelta,
-        ThinkingSummaries, ThoughtSummaryContent, ThoughtSummaryDelta,
-    },
+use rig::providers::gemini::Gemini;
+use rig::providers::gemini::interactions_api::{
+    AgentConfig, Content, Interaction, InteractionStatus, Step, ThinkingSummaries,
 };
+use rig::streaming::{Delta, StreamEvent};
+use serde_json::json;
 use std::time::Duration;
 use tokio::time::sleep;
 use tracing_subscriber::EnvFilter;
@@ -30,32 +30,35 @@ fn deep_research_agent() -> String {
         .unwrap_or_else(|| DEFAULT_DEEP_RESEARCH_AGENT.to_string())
 }
 
+/// The Deep Research request.
+///
+/// The Interactions wire reads the fields rig does not model from
+/// `additional_params`, so `agent`, `background` and `agent_config` ride there;
+/// `stream` is not among them, because the wire takes that from whether the
+/// caller asked for `completion` or `stream`.
 fn deep_research_request(
     agent: impl Into<String>,
     prompt: impl Into<String>,
     stream: bool,
-) -> CreateInteractionRequest {
-    CreateInteractionRequest {
-        model: None,
-        agent: Some(agent.into()),
-        input: InteractionInput::Text(prompt.into()),
-        system_instruction: None,
-        tools: None,
-        response_format: None,
-        response_mime_type: None,
-        stream: stream.then_some(true),
-        store: None,
-        background: Some(true),
-        generation_config: None,
-        agent_config: stream.then_some(AgentConfig::DeepResearch {
-            // The Gemini docs recommend enabling thinking summaries for Deep
-            // Research streams; otherwise a stream may only include final text.
+) -> Result<CompletionRequest> {
+    // Deep Research is selected by `agent`, which suppresses `model` in the
+    // outgoing body — matching the official Gemini Deep Research examples.
+    let mut params = json!({
+        "agent": agent.into(),
+        "background": true,
+    });
+
+    if stream {
+        // The Gemini docs recommend enabling thinking summaries for Deep
+        // Research streams; otherwise a stream may only include final text.
+        params["agent_config"] = serde_json::to_value(AgentConfig::DeepResearch {
             thinking_summaries: Some(ThinkingSummaries::Auto),
-        }),
-        response_modalities: None,
-        previous_interaction_id: None,
-        additional_params: None,
+        })?;
     }
+
+    Ok(CompletionRequestBuilder::unbound(prompt.into())
+        .additional_params(params)
+        .build())
 }
 
 fn extract_text(contents: &[Content]) -> String {
@@ -90,12 +93,25 @@ fn print_interaction_result(interaction: &Interaction) {
     }
 }
 
+/// Poll a background interaction until it reaches a terminal state.
+///
+/// The poll wire's reply *is* the interaction document, so it arrives whole on
+/// [`CompletionResponse::raw`](rig::completion::CompletionResponse::raw): the
+/// normalized halves (`choice`, `usage`) are the folded turn, and the
+/// provider's own lifecycle fields — `status`, `steps` — are read back out of
+/// `raw` by deserializing Gemini's own type.
 async fn poll_until_terminal(
-    client: &gemini::InteractionsClient,
+    gemini: &Bound<Gemini>,
     interaction_id: &str,
+    request: &CompletionRequest,
 ) -> Result<Interaction> {
+    let model = gemini
+        .clone()
+        .map_wire(|gemini| gemini.interaction(interaction_id));
+
     loop {
-        let interaction = client.get_interaction(interaction_id).await?;
+        let response = model.completion(request.clone()).await?;
+        let interaction: Interaction = serde_json::from_value(response.raw)?;
         if interaction.is_terminal() {
             return Ok(interaction);
         }
@@ -108,87 +124,63 @@ async fn poll_until_terminal(
     }
 }
 
-fn track_event_id(last_event_id: &mut Option<String>, event_id: Option<String>) {
-    if let Some(event_id) = event_id {
-        *last_event_id = Some(event_id);
-    }
-}
-
 #[derive(Default)]
 struct StreamState {
     interaction_id: Option<String>,
-    last_event_id: Option<String>,
     is_complete: bool,
     saw_text: bool,
+    /// The interaction document off the terminal record, when the stream
+    /// reached one.
+    interaction: Option<Interaction>,
 }
 
-fn handle_stream_event(state: &mut StreamState, event: InteractionSseEvent) {
+fn handle_stream_event(state: &mut StreamState, event: StreamEvent) {
     match event {
-        InteractionSseEvent::InteractionCreated {
-            interaction,
-            event_id,
+        // Deep Research thinking summaries arrive as reasoning; the answer
+        // itself as text. Both are deltas of a block, so the interesting part
+        // of an event is its fragment.
+        StreamEvent::BlockDelta {
+            delta: Delta::Text { text },
+            ..
         } => {
-            track_event_id(&mut state.last_event_id, event_id);
-            state.interaction_id = Some(interaction.id.clone());
-            println!("Interaction started: {}", interaction.id);
+            print!("{text}");
+            state.saw_text = true;
         }
-        InteractionSseEvent::StepStart { step, event_id, .. } => {
-            track_event_id(&mut state.last_event_id, event_id);
-            if let Step::ModelOutput { content } = step {
-                let text = extract_text(&content);
-                if !text.is_empty() {
-                    print!("{text}");
-                    state.saw_text = true;
-                }
+        StreamEvent::BlockDelta {
+            delta: Delta::Reasoning { text },
+            ..
+        } => {
+            println!("\nThought: {text}");
+        }
+        // The terminal record carries the interaction id rig normalizes and,
+        // under `interaction`, Gemini's own document for the finished run.
+        StreamEvent::Final(final_record) => {
+            if let Some(response_id) = final_record.response_id.as_deref() {
+                state.interaction_id = Some(response_id.to_owned());
             }
-        }
-        InteractionSseEvent::StepDelta {
-            delta, event_id, ..
-        } => {
-            track_event_id(&mut state.last_event_id, event_id);
-            match delta {
-                ContentDelta::Text(TextDelta {
-                    text: Some(text), ..
-                }) => {
-                    print!("{text}");
-                    state.saw_text = true;
-                }
-                ContentDelta::ThoughtSummary(ThoughtSummaryDelta {
-                    content: ThoughtSummaryContent::Text(text),
-                }) => {
-                    println!("\nThought: {}", text.text);
-                }
-                _ => {}
-            }
-        }
-        InteractionSseEvent::InteractionCompleted {
-            interaction,
-            event_id,
-        } => {
-            track_event_id(&mut state.last_event_id, event_id);
+            state.interaction = final_record
+                .raw
+                .get("interaction")
+                .cloned()
+                .and_then(|interaction| serde_json::from_value(interaction).ok());
+
             println!("\nResearch complete.");
             if !state.saw_text {
-                match last_model_output_text(&interaction.steps) {
+                match state
+                    .interaction
+                    .as_ref()
+                    .and_then(|interaction| last_model_output_text(&interaction.steps))
+                {
                     Some(text) => println!("{text}"),
                     None => println!("No text output returned."),
                 }
             }
             state.is_complete = true;
         }
-        InteractionSseEvent::InteractionStatusUpdate {
-            status, event_id, ..
-        } => {
-            track_event_id(&mut state.last_event_id, event_id);
-            println!("Status update: {status:?}");
-        }
-        InteractionSseEvent::Error { error, event_id } => {
-            track_event_id(&mut state.last_event_id, event_id);
-            eprintln!("Stream error: {} ({})", error.message, error.code);
-            state.is_complete = true;
-        }
-        InteractionSseEvent::StepStop { event_id, .. } => {
-            track_event_id(&mut state.last_event_id, event_id);
-        }
+        StreamEvent::BlockStart { .. }
+        | StreamEvent::BlockDelta { .. }
+        | StreamEvent::BlockEnd { .. }
+        | StreamEvent::Unknown(_) => {}
     }
 }
 
@@ -200,11 +192,9 @@ async fn main() -> Result<()> {
 
     let use_streaming = std::env::args().any(|arg| arg == "--stream");
     let agent = deep_research_agent();
-    let client = gemini::Client::from_env()?.interactions_api();
+    let gemini = Gemini::from_env()?.bound()?;
 
-    // Deep Research is selected by `request.agent`; the request intentionally
-    // omits `model`, matching the official Gemini Deep Research examples.
-    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming);
+    let request = deep_research_request(agent.clone(), DEFAULT_PROMPT, use_streaming)?;
 
     if use_streaming {
         println!("== Deep Research (streaming) ==");
@@ -213,18 +203,27 @@ async fn main() -> Result<()> {
         let mut attempt = 0usize;
 
         loop {
-            let stream = if attempt == 0 {
-                client.stream_interaction_events(request.clone()).await
+            // The first attempt opens the interaction; a reconnect addresses
+            // the one already running by id. They are two different wires, so
+            // the branches meet at the opened stream rather than at the model.
+            let opened = if attempt == 0 {
+                gemini
+                    .clone()
+                    .map_wire(|gemini| gemini.interactions(agent.as_str()))
+                    .stream(request.clone())
+                    .await
             } else if let Some(interaction_id) = state.interaction_id.as_deref() {
-                client
-                    .stream_interaction_events_by_id(interaction_id, state.last_event_id.as_deref())
+                gemini
+                    .clone()
+                    .map_wire(|gemini| gemini.interaction_resumed(interaction_id, None))
+                    .stream(request.clone())
                     .await
             } else {
-                eprintln!("Stream closed before interaction_id was received.");
+                eprintln!("Stream closed before an interaction id was received.");
                 break;
             };
 
-            let mut stream = match stream {
+            let mut stream = match opened {
                 Ok(stream) => stream,
                 Err(err) => {
                     eprintln!("Failed to open stream: {err}");
@@ -250,13 +249,17 @@ async fn main() -> Result<()> {
                 break;
             }
 
-            let Some(interaction_id) = state.interaction_id.as_deref() else {
+            let Some(interaction_id) = state.interaction_id.clone() else {
                 break;
             };
 
             // Official Deep Research guidance recommends checking the background
             // interaction status before reconnecting a dropped/expired stream.
-            let interaction = client.get_interaction(interaction_id).await?;
+            let probe = gemini
+                .clone()
+                .map_wire(|gemini| gemini.interaction(interaction_id.as_str()));
+            let interaction: Interaction =
+                serde_json::from_value(probe.completion(request.clone()).await?.raw)?;
             if interaction.is_terminal() {
                 println!("Stream ended after interaction reached a terminal state.");
                 print_interaction_result(&interaction);
@@ -275,15 +278,12 @@ async fn main() -> Result<()> {
             && let Some(interaction_id) = state.interaction_id.as_deref()
         {
             println!("Switching to polling for interaction {interaction_id}...");
-            let interaction = poll_until_terminal(&client, interaction_id).await?;
+            let interaction = poll_until_terminal(&gemini, interaction_id, &request).await?;
             print_interaction_result(&interaction);
         }
 
         if let Some(interaction_id) = state.interaction_id {
             println!("Interaction ID: {interaction_id}");
-        }
-        if let Some(last_event_id) = state.last_event_id {
-            println!("Last event ID: {last_event_id}");
         }
 
         return Ok(());
@@ -291,14 +291,20 @@ async fn main() -> Result<()> {
 
     println!("== Deep Research (background polling) ==");
     println!("Agent: {agent}");
-    let interaction = client.create_interaction(request).await?;
-    if interaction.id.is_empty() {
+    let opened = gemini
+        .clone()
+        .map_wire(|gemini| gemini.interactions(agent.as_str()))
+        .completion(request.clone())
+        .await?;
+    // rig normalizes the interaction id onto `response_id`, so opening a
+    // background run needs no reach into `raw`.
+    let Some(interaction_id) = opened.response_id else {
         println!("No interaction id returned; aborting.");
         return Ok(());
-    }
-    println!("Research started: {}", interaction.id);
+    };
+    println!("Research started: {interaction_id}");
 
-    let interaction = poll_until_terminal(&client, &interaction.id).await?;
+    let interaction = poll_until_terminal(&gemini, &interaction_id, &request).await?;
     print_interaction_result(&interaction);
 
     Ok(())

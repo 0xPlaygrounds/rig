@@ -10,7 +10,6 @@
 use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::error::ErrorReport;
-use rig::prelude::*;
 
 use super::super::support::with_gemini_cassette;
 
@@ -19,7 +18,7 @@ async fn nonexistent_model_error_preserves_status_and_body() {
     with_gemini_cassette(
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion_model("gemini-nonexistent-rig-test");
+            let model = client.completion("gemini-nonexistent-rig-test");
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             let error = model
@@ -47,7 +46,7 @@ async fn nonexistent_model_streaming_error_preserves_status_and_body() {
     with_gemini_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
-            let model = client.completion_model("gemini-nonexistent-rig-test");
+            let model = client.completion("gemini-nonexistent-rig-test");
             let request = model.completion_request("Say hi.").max_tokens(16).build();
 
             // The SSE connection opens lazily, so the HTTP error may surface

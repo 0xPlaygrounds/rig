@@ -20,7 +20,8 @@
 #[path = "common/tracing_capture.rs"]
 mod tracing_capture;
 
-use rig_core::client::ModelListingClient;
+use rig_core::model::ModelLister as _;
+use rig_core::prelude::*;
 use rig_core::providers::anthropic;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 
@@ -63,12 +64,12 @@ fn repeated_cursor_pages() -> Vec<MockHttpResponse> {
 
 /// Drive one listing through a mock transport.
 async fn list(pages: Vec<MockHttpResponse>) {
-    let client = anthropic::Client::builder()
-        .api_key("test-key")
-        .http_client(SequencedHttpClient::new(pages))
-        .build()
-        .expect("client should build");
-    client.list_models().await.expect("listing should succeed");
+    anthropic::wire::Anthropic::new("test-key")
+        .models()
+        .bind(SequencedHttpClient::new(pages))
+        .list_all()
+        .await
+        .expect("listing should succeed");
 }
 
 /// Everything `pages` logs at WARN, captured against an anchor that exercises

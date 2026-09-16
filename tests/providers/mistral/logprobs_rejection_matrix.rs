@@ -29,11 +29,9 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result, bail};
 use futures::StreamExt as _;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
-use rig::providers::mistral;
 use serde_json::{Value, json};
 
-use super::support::with_mistral_logprobs_rejection_cassette_result;
+use super::support::{BoundMistral, with_mistral_logprobs_rejection_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -62,8 +60,8 @@ fn model_name(model: Model) -> &'static str {
     }
 }
 
-async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedError) -> Result<()> {
-    let model = client.completion_model(model_name(cell.model));
+async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedError) -> Result<()> {
+    let model = client.completion(model_name(cell.model));
     let request = model
         .completion_request("Reply with exactly: cobalt")
         .additional_params(json!({ "logprobs": true, "top_logprobs": 2 }))
@@ -74,7 +72,7 @@ async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedError) ->
     // fails in-band with the `ErrorReport` it was mapped to. Both display the
     // preserved Mistral body, which is what the matrix asserts on.
     let error = match cell.transport {
-        Transport::Blocking => match model.raw_completion(request).await {
+        Transport::Blocking => match model.completion(request).await {
             Ok(_) => bail!("Mistral unexpectedly accepted blocking logprobs"),
             Err(error) => error.to_string(),
         },
