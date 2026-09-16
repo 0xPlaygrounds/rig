@@ -37,6 +37,7 @@ use crate::wire::{
 struct Echo {
     framing: Framing,
     request_id_header: Option<&'static str>,
+    relaxed_content_type: bool,
 }
 
 impl Echo {
@@ -44,6 +45,7 @@ impl Echo {
         Self {
             framing: Framing::Whole,
             request_id_header: Some("request-id"),
+            relaxed_content_type: false,
         }
     }
 
@@ -51,7 +53,19 @@ impl Echo {
         Self {
             framing: Framing::Sse,
             request_id_header: Some("request-id"),
+            relaxed_content_type: false,
         }
+    }
+
+    /// A wire whose *unary* reply is an event stream — the Responses
+    /// endpoint's shape on a dialect that always streams.
+    fn sse_unary() -> Self {
+        Self::streaming()
+    }
+
+    fn relaxed(mut self) -> Self {
+        self.relaxed_content_type = true;
+        self
     }
 }
 
@@ -155,10 +169,16 @@ impl Wire for Echo {
         let request = http::Request::post("https://echo.invalid/v1/messages")
             .body(Body::Bytes(body))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
-        Ok(Encoded::new(request, self.framing).with_request_id_header(self.request_id_header))
+        let encoded =
+            Encoded::new(request, self.framing).with_request_id_header(self.request_id_header);
+        Ok(if self.relaxed_content_type {
+            encoded.with_relaxed_content_type()
+        } else {
+            encoded
+        })
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         EchoDecoder
     }
 }
@@ -226,6 +246,76 @@ async fn a_unary_reply_carries_its_body_as_raw() {
 }
 
 // ── the non-success funnel: four cells ──────────────────────────────────
+
+// ── the two paths read the same reply the same way ──────────────────────
+
+/// A wire whose unary reply is an event stream: an SSE framer over a JSON
+/// body yields no frames at all, so accepting the reply would fold to a
+/// contentless success instead of naming the wrong endpoint.
+#[tokio::test]
+async fn a_unary_reply_that_is_not_the_event_stream_it_asked_for_fails_the_call() {
+    let http = SequencedHttpClient::new([MockHttpResponse::success_typed(
+        r#"{"error":"this endpoint speaks JSON"}"#,
+        "application/json",
+    )]);
+    let error = call(&Echo::sse_unary(), &http, prompt(), None)
+        .await
+        .expect_err("a JSON reply to an SSE wire is the wrong endpoint");
+    assert!(
+        error.to_string().contains("content type"),
+        "the error names what was wrong: {error}"
+    );
+}
+
+/// The opt-out the gateway that replays Responses bodies without a content
+/// type needs; it is a wire's declaration, not a reply's accident.
+#[tokio::test]
+async fn a_relaxed_wire_still_reads_a_unary_reply_that_names_no_content_type() {
+    let http =
+        SequencedHttpClient::new([MockHttpResponse::success(format!("data: {UNARY_BODY}\n\n"))]);
+    let response = call(&Echo::sse_unary().relaxed(), &http, prompt(), None)
+        .await
+        .expect("the reply decodes");
+    assert_eq!(text_of(&response), Some("hi there"));
+}
+
+/// Projection walks framed payloads, not the raw body: an SSE-framed unary
+/// reply's facts are JSON *inside* `data:` lines, so projecting the body
+/// would hand every projector a document it cannot parse and the trace
+/// would silently lose its usage and verdict.
+#[tokio::test]
+async fn a_unary_reply_projects_the_same_facts_a_streamed_one_does() {
+    let body = format!("data: {UNARY_BODY}\n\n");
+    let (unary_log, unary_context) = observed();
+    let http = SequencedHttpClient::new([MockHttpResponse::success_typed(
+        body.clone(),
+        "text/event-stream",
+    )]);
+    call(&Echo::sse_unary(), &http, prompt(), Some(unary_context))
+        .await
+        .expect("the reply decodes");
+
+    let (streamed_log, streamed_context) = observed();
+    let http = MockStreamingClient {
+        sse_bytes: Bytes::from(body),
+    };
+    let frames = stream(&Echo::streaming(), &http, prompt(), Some(streamed_context))
+        .expect("the stream opens");
+    let _: Vec<_> = frames.collect().await;
+
+    let facts = |log: &ObservationLog| {
+        events(log)
+            .into_iter()
+            .filter(|event| event != "finished")
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(facts(&unary_log), facts(&streamed_log));
+    assert!(
+        facts(&unary_log).contains(&"usage".to_owned()),
+        "the projection ran: {:?}",
+        facts(&unary_log)
+    );
+}
 
 /// A transport that reports the reply as an error, with a request-id header.
 #[tokio::test]
@@ -295,8 +385,13 @@ async fn an_undecodable_body_fails_the_call_as_a_json_error() {
     );
 }
 
+/// The driver itself has no empty-turn policy: a reply that framed to
+/// nothing folds to a response with nothing in it. Whether that is an
+/// answer or a defect is the decoder's to say, from the [`Mode`] it was
+/// built for — see
+/// [`the_mode_a_decoder_is_built_for_decides_what_its_eof_means`].
 #[tokio::test]
-async fn a_reply_with_no_frames_is_truncation_not_an_empty_success() {
+async fn a_reply_with_no_frames_folds_to_an_empty_response_with_no_terminal() {
     let http = RecordingHttpClient::new("");
     let response = call(&Echo::unary(), &http, prompt(), None)
         .await
@@ -580,7 +675,7 @@ impl Wire for Catalogue {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         CatalogueDecoder::default()
     }
 }
@@ -771,4 +866,104 @@ impl tracing::field::Visit for Visit<'_> {
     fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
         self.0.push((field.name().to_owned(), value.to_string()));
     }
+}
+
+/// The text a folded response carries, for the assertions below.
+fn text_of(response: &crate::completion::CompletionResponse) -> Option<&str> {
+    response.choice.first().and_then(|block| match block {
+        crate::message::AssistantContent::Text(text) => Some(text.text.as_str()),
+        _ => None,
+    })
+}
+
+// ── the mode a decoder is built for ─────────────────────────────────────
+
+/// A wire whose decoder runs the whole-reply guard the two real ones run
+/// (`providers::openai::wire::chat`, `providers::gemini::streaming`): a
+/// reply that delivered no content and named no terminal is the provider
+/// answering with nothing when it arrived whole, and truncation when it was
+/// streamed. The [`Mode`] it was built for is the only thing that tells the
+/// two apart, so this wire is what pins that `call` and `stream` each hand
+/// [`Wire::decoder`] the mode they actually are.
+#[derive(Clone, Debug, PartialEq)]
+struct Guarded(Framing);
+
+struct GuardedDecoder {
+    /// This reply arrives whole, so its EOF ends an answer.
+    whole: bool,
+}
+
+impl Decoder<Completion> for GuardedDecoder {
+    type Event = ();
+
+    fn classify(&self, _frame: WireFrame) -> WireEvent<()> {
+        WireEvent::Known(())
+    }
+
+    /// Every frame decodes and none of them delivers content: the state the
+    /// guard exists for, reached without a second frame vocabulary.
+    fn interpret(&mut self, _event: (), _out: &mut Output<Completion>) {}
+
+    fn finish(&mut self, out: &mut Output<Completion>) {
+        if self.whole {
+            out.error(CompletionError::ResponseError(
+                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
+            ));
+        }
+    }
+}
+
+impl Wire for Guarded {
+    type Op = Completion;
+    type Decoder = GuardedDecoder;
+
+    fn name(&self) -> &str {
+        "guarded"
+    }
+
+    fn encode(&self, _request: CompletionRequest, _mode: Mode) -> Result<Encoded, CompletionError> {
+        let request = http::Request::post("https://echo.invalid/v1/messages")
+            .body(Body::Bytes(Vec::new()))
+            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+        Ok(Encoded::new(request, self.0))
+    }
+
+    fn decoder(&self, mode: Mode) -> Self::Decoder {
+        GuardedDecoder {
+            whole: mode == Mode::Unary,
+        }
+    }
+}
+
+#[tokio::test]
+async fn the_mode_a_decoder_is_built_for_decides_what_its_eof_means() {
+    let unary = Bound::new(Guarded(Framing::Whole), RecordingHttpClient::new("{}"));
+    let error = unary
+        .completion(prompt())
+        .await
+        .expect_err("a whole reply that delivered nothing is not an answer");
+    assert!(
+        matches!(&error, CompletionError::ResponseError(message)
+            if message == crate::message::EMPTY_RESPONSE_ERROR),
+        "expected the empty-reply error, got {error:?}"
+    );
+
+    let streaming = Bound::new(
+        Guarded(Framing::Sse),
+        MockStreamingClient {
+            sse_bytes: Bytes::from_static(b"data: {}\n\n"),
+        },
+    );
+    let mut response = streaming.stream(prompt()).await.expect("the stream opens");
+    let mut errors = Vec::new();
+    while let Some(item) = response.next().await {
+        if let Err(error) = item {
+            errors.push(error);
+        }
+    }
+    assert!(
+        errors.is_empty(),
+        "a streamed reply's EOF is truncation — reported by carrying no \
+         terminal record, not by an error: {errors:?}"
+    );
 }
