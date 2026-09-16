@@ -14,7 +14,7 @@
 //! use rig_reqwest::DefaultTransport;
 //!
 //! # fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let grok = ResponsesApi::from_env_with(xai::DIALECT)?
+//! let grok = ResponsesApi::from_env_with(&xai::DIALECT)?
 //!     .bound()?
 //!     .completion(xai::GROK_3);
 //! # let _ = grok;

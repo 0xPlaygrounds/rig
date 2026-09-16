@@ -729,15 +729,17 @@ async fn a_gateway_may_answer_with_a_bare_string() {
     assert_eq!(response.response_id, None);
 
     // Only the dialects measured to do it are tolerant; elsewhere a bare
-    // string is still an unmodeled frame, so the turn yields no answer
-    // rather than one this wire invented.
+    // string is still an unmodeled frame, which the classifier warn-skips
+    // — so the reply delivered nothing and reported nothing, and that is
+    // the shared empty-response rejection rather than a silent, empty
+    // success.
     let strict = Bound::new(wire(), RecordingHttpClient::new(r#""the whole answer""#))
         .completion(prompt("ask"))
         .await;
-    assert!(
-        strict.is_err(),
-        "openai does not answer with a bare string: {strict:?}"
-    );
+    let Err(CompletionError::ResponseError(message)) = &strict else {
+        panic!("openai does not answer with a bare string: {strict:?}");
+    };
+    assert_eq!(message, crate::message::EMPTY_RESPONSE_ERROR);
 }
 
 /// Mistral validates message content as a tagged union of its own chunks, so

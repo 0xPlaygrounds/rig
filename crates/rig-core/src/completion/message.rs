@@ -34,6 +34,27 @@ pub enum Message {
 
 /// The shared wording for a response whose converted choice is empty.
 ///
+/// **The rule, stated here once.** A reply that delivered no assistant
+/// content and reported no error is rejected with this wording; a reply
+/// that delivered content and then ended without its terminal is a
+/// truncation, reported by the missing terminal record rather than by an
+/// error. Where the decoder has a *unary* entry point the rejection sits
+/// there, because the buffered reply is the whole turn
+/// (`providers::anthropic::streaming`'s whole-message path,
+/// `providers::openai::wire::chat`'s whole-body path); where one decoder
+/// serves both transports and the mode is not knowable from a frame
+/// (`providers::gemini::streaming`), it sits at end of reply under the
+/// same nothing-delivered-and-nothing-reported condition, so a caller
+/// whose turn produced nothing at all learns it instead of reading an
+/// empty success.
+///
+/// The only legal empty turns are the ones the provider's own terminal
+/// *names*: Anthropic's `end_turn`, and its `stop_sequence` when the
+/// matched sequence is named. A terminal that merely says the turn
+/// stopped is not such a name — the chat wire's `finish_reason: "stop"`
+/// with empty content is indistinguishable from a gateway that dropped
+/// the answer — so those wires carve nothing out.
+///
 /// Every provider decode rejects that state through
 /// [`require_non_empty_response`]; sharing the literal keeps a wording
 /// change from silently forking the error text across wires. A guard

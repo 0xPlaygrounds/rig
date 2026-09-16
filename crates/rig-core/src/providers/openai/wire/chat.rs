@@ -1317,9 +1317,29 @@ impl ChatDecoder {
             });
         }
 
+        let reasoning = reasoning.filter(|reasoning| !reasoning.is_empty());
+        // The buffered body IS the whole turn, so a decode that delivered
+        // no content at all is the provider defect `EMPTY_RESPONSE_ERROR`
+        // names, and this is this wire's unary entry point where that is
+        // decidable. There is deliberately no carve-out for a natural
+        // terminal here: `finish_reason: "stop"` with empty content is what
+        // a stop sequence that ate the whole answer leaves behind AND what
+        // a gateway that dropped the content leaves behind, and nothing on
+        // this wire tells the two apart — llama.cpp's recorded case
+        // (`tests/cassettes/llamacpp/content_matrix/empty_answer_with_stop.yaml`)
+        // names no matched sequence. Anthropic carves its empty turn out
+        // only because its terminal does name one.
+        if text.is_empty() && tool_events.is_empty() && reasoning.is_none() {
+            out.error(CompletionError::ResponseError(
+                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
+            ));
+            self.failed = true;
+            return;
+        }
+
         self.reasoning.emit_chunk(
             ChunkParts {
-                reasoning: reasoning.filter(|reasoning| !reasoning.is_empty()),
+                reasoning,
                 // The unary body carries no signature-only detail; a
                 // reasoning block it opened is closed by the boundary the
                 // lifecycle derives, or by `close_active_blocks` below.
@@ -1470,6 +1490,23 @@ impl Decoder<Completion> for ChatDecoder {
                 UnparseableToolInput::Error
             };
             out.push(Ok(slot.end_event(on_unparseable)));
+        }
+
+        // A reply in which this wire recognized NOTHING — no chunk, no
+        // whole body, no `[DONE]`, no error envelope — delivered no turn
+        // and reported no defect either: the classifier warn-skips an
+        // unmodeled frame (a gateway answering with a bare JSON string on
+        // a dialect without that quirk) so nothing else will speak. That
+        // is the same nothing-delivered `EMPTY_RESPONSE_ERROR` names, and
+        // reporting it is what keeps such a reply a failed call rather
+        // than a silent, contentless success. A corrupt frame does not
+        // reach here as silence: its parse error was already yielded and
+        // is what the caller sees.
+        if !self.saw_any_valid_frame && !self.saw_terminal {
+            out.error(CompletionError::ResponseError(
+                crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
+            ));
+            return;
         }
 
         // Only `[DONE]` or a frame carrying a finish reason counts as the

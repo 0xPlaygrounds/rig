@@ -383,16 +383,23 @@ where
 
     let http = http.clone();
     let observation = context.as_ref().map(|_| AdapterSlot::default());
-    let attempt = context
-        .as_ref()
-        .and_then(|context| context.attempt_for(&http_request, http_request.uri().path()));
-    if let Some(observation) = &observation {
-        observation.install(attempt);
-    }
     let mut driver = WireDriver::<W::Op, _>::observed(wire.decoder(), observation.clone());
     let recording = span.clone();
 
     let frames = async_stream::stream! {
+        // The attempt is announced on the first poll, not here: a stream
+        // that is built and dropped without being polled never reaches the
+        // transport, and an observation log that already carried its
+        // `Started` would claim a send that never happened. Only the
+        // encoding above is eager, because `stream` returns a `Result` and
+        // an encode failure is not the stream's problem to deliver.
+        if let Some(observation) = &observation {
+            observation.install(
+                context
+                    .as_ref()
+                    .and_then(|context| context.attempt_for(&http_request, http_request.uri().path())),
+            );
+        }
         let response = match http.send_streaming(http_request).await {
             // The bundled transports reject a non-success reply before it
             // gets here; a custom `HttpClientExt` may hand it back as a
@@ -446,10 +453,7 @@ where
                     // non-success status, headers and body a mid-stream
                     // failure carries, and doubled its `Display` prefix.
                     if let Some(observation) = &observation {
-                        observation.error_boundary(AdapterErrorBoundary::from_http(&error));
-                        if let Some(status) = error.non_success_status() {
-                            observation.response_with_headers(status, error.non_success_headers());
-                        }
+                        observation.error_boundary(AdapterErrorBoundary::Transport);
                     }
                     driver.fail(<Error<W> as WireError>::transport(error));
                     for item in driver.drain() {
