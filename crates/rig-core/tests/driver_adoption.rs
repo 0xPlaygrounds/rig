@@ -43,7 +43,9 @@ const ALLOWED_POLICY_HOMES: &[&str] = &[
 /// second policy table, which is what this guard exists to forbid.
 fn is_policy_home(path: &std::path::Path) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
-    if let Some(providers) = unix_path.split_once("rig-core/src/providers/").map(|(_, rest)| rest)
+    if let Some(providers) = unix_path
+        .split_once("rig-core/src/providers/")
+        .map(|(_, rest)| rest)
         && (providers.ends_with("/wire.rs") || providers.contains("/wire/"))
     {
         return true;

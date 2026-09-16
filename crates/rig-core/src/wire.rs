@@ -70,7 +70,10 @@
 //!
 //!     fn interpret(&mut self, event: Self::Event, out: &mut Output<Completion>) {
 //!         out.text(event.text);
-//!         out.push(Ok(StreamEvent::Final(StreamFinal::new("example"))));
+//!         out.push(Ok(StreamEvent::Final(StreamFinal::new(
+//!             "example",
+//!             rig_core::completion::Usage::default(),
+//!         ))));
 //!     }
 //!
 //!     fn finish(&mut self, _out: &mut Output<Completion>) {}
@@ -93,7 +96,8 @@
 //!         request: CompletionRequest,
 //!         _mode: Mode,
 //!     ) -> Result<Encoded, CompletionError> {
-//!         let body = serde_json::json!({ "model": self.model, "prompt": request.prompt });
+//!         let body =
+//!             serde_json::json!({ "model": self.model, "messages": request.chat_history });
 //!         let request = http::Request::post(format!("{}/messages", self.provider.base_url))
 //!             .header("authorization", self.provider.api_key.expose())
 //!             .body(Body::Bytes(serde_json::to_vec(&body)?))
