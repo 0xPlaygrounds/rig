@@ -84,48 +84,46 @@
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
-            "id": "chatcmpl-REDACTED_1",
-            "object": "chat.completion",
-            "created": 0,
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "system_fingerprint": null,
-            "service_tier": "default",
             "choices": [
               {
+                "finish_reason": "stop",
                 "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "Rust is a systems programming language designed to provide memory safety without using a garbage collector, primarily through its unique ownership system. This approach matters because it prevents common memory errors like buffer overflows and data races at compile time, ensuring software is both secure and performant."
-                    }
-                  ]
-                },
                 "logprobs": null,
-                "finish_reason": "stop"
+                "message": {
+                  "content": "Rust is a systems programming language designed to provide memory safety without using a garbage collector, primarily through its unique ownership system. This approach matters because it prevents common memory errors like buffer overflows and data races at compile time, ensuring software is both secure and performant.",
+                  "name": null,
+                  "reasoning_content": null,
+                  "role": "assistant",
+                  "tool_calls": null
+                }
               }
             ],
+            "cost": {
+              "diem": 0,
+              "usd": 0.0006461
+            },
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "object": "chat.completion",
+            "service_tier": "default",
             "usage": {
-              "prompt_tokens": 1008,
               "completion_tokens": 55,
+              "prompt_tokens": 1008,
               "total_tokens": 1063
             },
             "venice_parameters": {
-              "strip_thinking_response": false,
               "disable_thinking": true,
-              "enable_web_search": "off",
-              "enable_web_scraping": false,
-              "enable_x_search": false,
+              "enable_e2ee": true,
               "enable_web_citations": false,
+              "enable_web_scraping": false,
+              "enable_web_search": "off",
+              "enable_x_search": false,
               "include_search_results_in_stream": false,
-              "return_search_results_as_documents": false,
               "include_venice_system_prompt": true,
-              "enable_e2ee": true
-            },
-            "cost": {
-              "usd": 0.0006461,
-              "diem": 0.0
+              "return_search_results_as_documents": false,
+              "strip_thinking_response": false,
+              "web_search_citations": []
             }
           }
         }

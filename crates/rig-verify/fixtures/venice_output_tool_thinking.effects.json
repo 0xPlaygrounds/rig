@@ -136,59 +136,55 @@
           "provider": "venice",
           "model": "qwen3-235b-a22b-thinking-2507",
           "raw": {
-            "id": "chatcmpl-REDACTED_2",
-            "object": "chat.completion",
-            "created": 0,
-            "model": "qwen3-235b-a22b-thinking-2507",
-            "system_fingerprint": null,
-            "service_tier": "default",
             "choices": [
               {
+                "finish_reason": "tool_calls",
                 "index": 0,
+                "logprobs": null,
                 "message": {
-                  "role": "assistant",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": ""
-                    }
-                  ],
+                  "content": "",
+                  "name": null,
                   "reasoning_content": "The user is asking for a concise event object for a local Rust meetup in Seattle. I need to create a structured object representing a Rust meetup event in Seattle. I will generate a realistic-looking event object with relevant fields like title, date, location, description, etc.\n\nSince I don't have access to real-time data, I will create a plausible example of such an event object.\n",
+                  "role": "assistant",
                   "tool_calls": [
                     {
-                      "id": "chatcmpl-REDACTED_1",
-                      "type": "function",
                       "function": {
-                        "name": "final_result",
-                        "arguments": "{\"title\":\"Seattle Rust Meetup: WebAssembly and Performance Optimization\",\"category\":\"Technology/Metaphysical\",\"summary\":\"A local Rust programming meetup in Seattle featuring talks on WebAssembly integration and memory safety best practices.\"}"
-                      }
+                        "arguments": "{\"title\": \"Seattle Rust Meetup: WebAssembly and Performance Optimization\", \"category\": \"Technology/Metaphysical\", \"summary\": \"A local Rust programming meetup in Seattle featuring talks on WebAssembly integration and memory safety best practices.\"}",
+                        "name": "final_result"
+                      },
+                      "id": "chatcmpl-REDACTED_1",
+                      "type": "function"
                     }
                   ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
+                }
               }
             ],
+            "cost": {
+              "diem": 0,
+              "usd": 0.0011727
+            },
+            "created": 0,
+            "id": "chatcmpl-REDACTED_2",
+            "model": "qwen3-235b-a22b-thinking-2507",
+            "object": "chat.completion",
+            "service_tier": "default",
             "usage": {
-              "prompt_tokens": 1346,
               "completion_tokens": 162,
+              "prompt_tokens": 1346,
               "total_tokens": 1508
             },
             "venice_parameters": {
-              "strip_thinking_response": false,
               "disable_thinking": false,
-              "enable_web_search": "off",
-              "enable_web_scraping": false,
-              "enable_x_search": false,
+              "enable_e2ee": true,
               "enable_web_citations": false,
+              "enable_web_scraping": false,
+              "enable_web_search": "off",
+              "enable_x_search": false,
               "include_search_results_in_stream": false,
-              "return_search_results_as_documents": false,
               "include_venice_system_prompt": true,
-              "enable_e2ee": true
-            },
-            "cost": {
-              "usd": 0.0011727,
-              "diem": 0.0
+              "return_search_results_as_documents": false,
+              "strip_thinking_response": false,
+              "web_search_citations": []
             }
           }
         }

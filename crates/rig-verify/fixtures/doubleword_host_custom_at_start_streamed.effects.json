@@ -119,7 +119,14 @@
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
-              }
+              },
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_1",
@@ -171,7 +178,14 @@
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
-              }
+              },
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
+              },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0
             },
             "finish_reason": "stop",
             "response_id": "chatcmpl-REDACTED_1",

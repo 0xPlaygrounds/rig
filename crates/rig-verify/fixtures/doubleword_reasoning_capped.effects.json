@@ -94,42 +94,51 @@
           "provider": "doubleword",
           "model": "Qwen/Qwen3.5-397B-A17B-FP8",
           "raw": {
-            "id": "resp_REDACTED_1",
-            "object": "chat.completion",
-            "created": 0,
-            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
-            "system_fingerprint": null,
             "choices": [
               {
+                "finish_reason": "length",
                 "index": 0,
                 "message": {
-                  "role": "assistant",
                   "reasoning_content": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
                   "reasoning_details": [
                     {
-                      "type": "reasoning.text",
-                      "id": null,
                       "format": "unknown",
                       "index": 0,
                       "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *",
-                      "signature": null
+                      "type": "reasoning.text"
                     }
-                  ]
-                },
-                "logprobs": null,
-                "finish_reason": "length"
+                  ],
+                  "refusal": null,
+                  "role": "assistant"
+                }
               }
             ],
+            "created": 0,
+            "id": "resp_REDACTED_1",
+            "model": "Qwen/Qwen3.5-397B-A17B-FP8",
+            "object": "chat.completion",
             "usage": {
-              "prompt_tokens": 42,
-              "completion_tokens": 16,
-              "total_tokens": 58,
-              "prompt_tokens_details": {
-                "cached_tokens": 0
+              "cache_creation": {
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_24h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "completion_tokens": 16,
               "completion_tokens_details": {
+                "audio_tokens": 0,
+                "image_tokens": 0,
                 "reasoning_tokens": 16
-              }
+              },
+              "prompt_tokens": 42,
+              "prompt_tokens_details": {
+                "audio_tokens": 0,
+                "cache_write_tokens": 0,
+                "cached_tokens": 0,
+                "video_tokens": 0
+              },
+              "total_tokens": 58
             }
           }
         }
