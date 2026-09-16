@@ -132,7 +132,7 @@ impl std::fmt::Display for ToolErrorKind {
 pub struct ToolExecutionError {
     kind: ToolErrorKind,
     message: String,
-    model_output: Box<ToolOutput>,
+    model_output: ToolOutput,
     retryable: Option<bool>,
     code: Option<String>,
     http_status: Option<u16>,
@@ -163,7 +163,7 @@ impl From<ToolExecutionError> for ToolExecutionErrorRepr {
         Self {
             kind: error.kind,
             message: error.message,
-            model_output: *error.model_output,
+            model_output: error.model_output,
             retryable: error.retryable,
             code: error.code,
             http_status: error.http_status,
@@ -177,7 +177,7 @@ impl From<ToolExecutionErrorRepr> for ToolExecutionError {
         Self {
             kind: repr.kind,
             message: repr.message,
-            model_output: Box::new(repr.model_output),
+            model_output: repr.model_output,
             retryable: repr.retryable,
             code: repr.code,
             http_status: repr.http_status,
@@ -194,7 +194,7 @@ impl ToolExecutionError {
         let message = message.into();
         Self {
             kind,
-            model_output: Box::new(ToolOutput::text(message.clone())),
+            model_output: ToolOutput::text(message.clone()),
             message,
             retryable: kind.default_retryable(),
             code: None,
@@ -250,14 +250,14 @@ impl ToolExecutionError {
 
     /// Replace the model-visible output with literal text feedback.
     pub fn with_model_feedback(mut self, feedback: impl Into<String>) -> Self {
-        self.model_output = Box::new(ToolOutput::text(feedback));
+        self.model_output = ToolOutput::text(feedback);
         self
     }
 
     /// Replace the model-visible output with canonical JSON or multimodal
     /// content.
     pub fn with_model_output(mut self, output: ToolOutput) -> Self {
-        self.model_output = Box::new(output);
+        self.model_output = output;
         self
     }
 
@@ -269,7 +269,7 @@ impl ToolExecutionError {
     /// error's operator diagnostic may contain secrets; [`Self::from_error`]
     /// already uses this safe presentation for arbitrary source errors.
     pub(crate) fn redact_model_feedback(mut self) -> Self {
-        self.model_output = Box::new(ToolOutput::text(self.kind.default_model_feedback()));
+        self.model_output = ToolOutput::text(self.kind.default_model_feedback());
         self
     }
 

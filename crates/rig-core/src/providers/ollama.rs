@@ -332,7 +332,7 @@ where
                 status,
                 String::from_utf8_lossy(&bytes),
             )
-            .with_response_headers(Some(Box::new(parts.headers))));
+            .with_response_headers(Some(parts.headers)));
         }
 
         let api_resp: EmbeddingResponse = serde_json::from_slice(&bytes)?;
@@ -1132,7 +1132,7 @@ where
                 }
             }
             let error = CompletionError::from_http_response(status, String::from_utf8_lossy(&body))
-                .with_response_headers(Some(Box::new(parts.headers)));
+                .with_response_headers(Some(parts.headers));
             if let Some(observation) = &observation {
                 observation.payload(&body);
                 observation.fail(&error);

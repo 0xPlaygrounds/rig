@@ -63,7 +63,7 @@ forward_provider_response_helpers!(StructuredOutputError, PromptError, "prompt e
 pub enum StructuredOutputError {
     /// The underlying classic run failed.
     #[error("PromptError: {0}")]
-    PromptError(#[from] Box<PromptError>),
+    PromptError(#[from] PromptError),
     /// The accepted response could not be deserialized.
     #[error("DeserializationError: {0}")]
     DeserializationError(#[from] serde_json::Error),

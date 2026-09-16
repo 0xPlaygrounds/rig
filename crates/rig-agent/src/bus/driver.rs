@@ -564,7 +564,7 @@ impl Future for BusDriver {
                 let commands = this.shared.drain(cx);
                 this.apply_registrations(cx);
                 for command in commands {
-                    this.accept(*command);
+                    this.accept(command);
                 }
                 this.drain_cancelled_queues();
                 this.drain_orphaned_queues();

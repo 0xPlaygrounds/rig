@@ -519,7 +519,7 @@ pub(crate) fn should_evict_distinct_named_tool_call(
 /// One classified event of the chat-completions stream: a decoded chunk, or
 /// the wire's `[DONE]` terminal sentinel.
 pub(crate) enum CompatEvent<U, D> {
-    Chunk(Box<CompatibleChunk<U, D>>),
+    Chunk(CompatibleChunk<U, D>),
     Done,
 }
 
@@ -590,9 +590,7 @@ where
         if data == "[DONE]" {
             return WireEvent::Known(CompatEvent::Done);
         }
-        self.profile
-            .classify_chunk(&data)
-            .map(|chunk| CompatEvent::Chunk(Box::new(chunk)))
+        self.profile.classify_chunk(&data).map(CompatEvent::Chunk)
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut AdapterOutput) {
@@ -601,7 +599,7 @@ where
                 self.saw_terminal = true;
                 return;
             }
-            CompatEvent::Chunk(chunk) => *chunk,
+            CompatEvent::Chunk(chunk) => chunk,
         };
         self.saw_any_valid_frame = true;
 

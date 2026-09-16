@@ -146,14 +146,14 @@ macro_rules! assert_funnel {
 }
 
 /// A 429's rate-limit metadata, as a provider would send it.
-fn retry_after_headers() -> Box<http::HeaderMap> {
+fn retry_after_headers() -> http::HeaderMap {
     let mut headers = http::HeaderMap::new();
     headers.insert(
         http::header::RETRY_AFTER,
         http::HeaderValue::from_static("20"),
     );
     headers.insert("x-ratelimit-remaining", http::HeaderValue::from_static("0"));
-    Box::new(headers)
+    headers
 }
 
 #[test]
@@ -266,7 +266,7 @@ fn attaching_headers_never_overwrites_an_earlier_capture() {
     ] {
         let error = build(StatusCode::TOO_MANY_REQUESTS, "slow down")
             .with_response_headers(Some(retry_after_headers()))
-            .with_response_headers(Some(Box::new(later.clone())));
+            .with_response_headers(Some(later.clone()));
 
         assert_eq!(
             error
@@ -336,7 +336,7 @@ fn display_goldens_for_error_shapes() {
     let details = crate::http_client::Error::InvalidStatusCodeWithDetails {
         status: StatusCode::NOT_FOUND,
         body: "x".to_string(),
-        headers: Box::new(http::HeaderMap::new()),
+        headers: http::HeaderMap::new(),
     };
     assert_eq!(
         details.to_string(),
@@ -375,7 +375,7 @@ fn provider_response_error_round_trips_its_identity_and_not_its_headers() {
     );
     let error = ProviderResponseError::new(http::StatusCode::TOO_MANY_REQUESTS, "slow")
         .with_provider_request_id(Some("req-1".into()))
-        .with_headers(Some(Box::new(headers)));
+        .with_headers(Some(headers));
     let json = serde_json::to_string(&error).unwrap();
     assert!(!json.contains("headers"), "{json}");
     let back: ProviderResponseError = serde_json::from_str(&json).unwrap();

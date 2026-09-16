@@ -16,8 +16,7 @@
     clippy::expect_used,
     clippy::unwrap_used,
     clippy::panic,
-    clippy::indexing_slicing,
-    clippy::type_complexity
+    clippy::indexing_slicing
 )]
 
 use std::{

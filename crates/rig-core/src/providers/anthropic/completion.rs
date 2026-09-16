@@ -720,10 +720,6 @@ where
     Ok(Option::<Vec<T>>::deserialize(deserializer)?.unwrap_or_default())
 }
 
-/// Decoded Anthropic document fields lifted out of [`message::Document::additional_params`]:
-/// optional `title`, optional `context`, and optional [`CitationsConfig`].
-type AnthropicDocParams = (Option<String>, Option<String>, Option<CitationsConfig>);
-
 /// Extract Anthropic-specific document fields (`title`, `context`, `citations`)
 /// from the generic [`message::Document::additional_params`] JSON blob.
 ///
@@ -733,7 +729,7 @@ type AnthropicDocParams = (Option<String>, Option<String>, Option<CitationsConfi
 /// dropped, so users notice typos.
 fn extract_anthropic_doc_params(
     additional_params: Option<message::AdditionalParams>,
-) -> Result<AnthropicDocParams, MessageError> {
+) -> Result<(Option<String>, Option<String>, Option<CitationsConfig>), MessageError> {
     let Some(value) = additional_params else {
         return Ok((None, None, None));
     };

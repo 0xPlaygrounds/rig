@@ -1649,7 +1649,7 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
     let (reply, _receiver) = oneshot::channel();
     let (_guard, cancel) = oneshot::channel();
     let offered = shared.enqueue(
-        Box::new(super::dispatcher::Command {
+        super::dispatcher::Command {
             lineage: super::dispatcher::Lineage::new(rig_core::effect::EffectId::from_raw(9), None),
             id: rig_core::effect::EffectId::from_raw(9),
             key: HandlerKey::from("echo"),
@@ -1662,7 +1662,7 @@ fn a_command_offered_after_the_close_is_refused_under_the_queue_lock() {
             reply: super::dispatcher::Reply::Unary(reply),
             span: tracing::Span::none(),
             cancel,
-        }),
+        },
         &Arc::new(futures::task::AtomicWaker::new()),
         &cx,
     );

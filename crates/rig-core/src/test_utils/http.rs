@@ -36,10 +36,10 @@ pub enum MockHttpResponse {
     ErrorResponse(http::StatusCode, Bytes),
     /// Return a status-code error that preserved the failed response's
     /// headers, exactly as the bundled reqwest transport does (rig#2210).
-    ErrorWithHeaders(http::StatusCode, String, Box<http::HeaderMap>),
+    ErrorWithHeaders(http::StatusCode, String, http::HeaderMap),
     /// Return an HTTP response with the given (typically non-success) status,
     /// body, and response headers, instead of a transport-level error.
-    ErrorResponseWithHeaders(http::StatusCode, Bytes, Box<http::HeaderMap>),
+    ErrorResponseWithHeaders(http::StatusCode, Bytes, http::HeaderMap),
 }
 
 impl MockHttpResponse {
@@ -62,7 +62,7 @@ impl MockHttpResponse {
         message: impl Into<String>,
         headers: http::HeaderMap,
     ) -> Self {
-        Self::ErrorWithHeaders(status, message.into(), Box::new(headers))
+        Self::ErrorWithHeaders(status, message.into(), headers)
     }
 }
 
@@ -137,7 +137,7 @@ impl RecordingHttpClient {
             response: Arc::new(Mutex::new(MockHttpResponse::ErrorResponseWithHeaders(
                 status,
                 body.into(),
-                Box::new(headers),
+                headers,
             ))),
         }
     }
@@ -196,7 +196,7 @@ impl RecordingHttpClient {
         if let Some(headers) = response_headers
             && let Some(slot) = builder.headers_mut()
         {
-            *slot = *headers;
+            *slot = headers;
         }
         builder.body(body).map_err(http_client::Error::Protocol)
     }

@@ -44,7 +44,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> Result<String
         match item {
             Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response.output),
             Ok(_) => {}
-            Err(StreamingError::Prompt(error)) => match *error {
+            Err(StreamingError::Prompt(error)) => match error {
                 PromptError::PromptCancelled { reason, .. } => return Err(reason),
                 other => panic!("the stream yields: {other:?}"),
             },

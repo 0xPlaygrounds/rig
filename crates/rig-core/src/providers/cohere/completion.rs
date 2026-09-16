@@ -26,11 +26,11 @@ pub struct CompletionResponse {
     pub usage: Option<Usage>,
 }
 
-type AssistantMessageParts = (Vec<AssistantContent>, Vec<Citation>, Vec<ToolCall>);
-
 impl CompletionResponse {
     /// Return that parts of the response for assistant messages w/o dealing with the other variants
-    pub fn message(&self) -> Result<AssistantMessageParts, CompletionError> {
+    pub fn message(
+        &self,
+    ) -> Result<(Vec<AssistantContent>, Vec<Citation>, Vec<ToolCall>), CompletionError> {
         let Message::Assistant {
             content,
             citations,

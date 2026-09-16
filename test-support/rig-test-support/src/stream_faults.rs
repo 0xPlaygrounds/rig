@@ -474,7 +474,7 @@ pub fn status_reply(
     rig_agent::test_utils::MockHttpResponse::ErrorWithHeaders(
         rig_core::http_client::StatusCode::from_u16(status).expect("a status"),
         body,
-        Box::new(headers),
+        headers,
     )
 }
 
@@ -542,7 +542,7 @@ pub fn report_of(error: &StreamingError) -> ErrorReport {
     match error {
         StreamingError::Completion(error) => ErrorReport::from(error),
         StreamingError::Report(report) => report.clone(),
-        StreamingError::Prompt(error) => match &**error {
+        StreamingError::Prompt(error) => match error {
             PromptError::Report(report) => report.clone(),
             PromptError::CompletionError(error) => ErrorReport::from(error),
             PromptError::PromptCancelled { reason, .. } => {

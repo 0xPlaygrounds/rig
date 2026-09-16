@@ -277,8 +277,8 @@ pub enum StreamedResolution {
     /// `AgentRun::next_step`.
     TurnAbandoned {
         /// For a skipped call, the synthetic tool result to surface to the
-        /// consumer stream. Boxed: the result dwarfs the other variant.
-        skipped_tool_result: Option<Box<ToolResult>>,
+        /// consumer stream.
+        skipped_tool_result: Option<ToolResult>,
     },
     /// The invalid call is dropped and the turn goes on without it: the
     /// runner's `UnhandledInvalidToolCall::Ignore` on the streaming
@@ -309,7 +309,7 @@ pub enum StreamedTurnEvent {
     /// `AgentRun::resolve_streamed_invalid_tool_call`,
     /// then apply the outcome with
     /// [`StreamedTurnAssembler::resolve_pending_invalid`].
-    InvalidToolCall(Box<StreamedInvalidToolCall>),
+    InvalidToolCall(StreamedInvalidToolCall),
     /// The provider supplied its typed final payload. Record its usage (see
     /// `AgentRun::record_streamed_completion_call`);
     /// this does not establish that the provider stream reached EOF. When
@@ -425,7 +425,7 @@ fn group_reasoning(parts: impl Iterator<Item = ReasoningPart>) -> Vec<Reasoning>
 enum PendingInvalid {
     /// A complete tool call with a disallowed name.
     FullCall {
-        tool_call: Box<ToolCall>,
+        tool_call: ToolCall,
         block_id: BlockId,
     },
     /// A streamed tool-name delta with a disallowed name.
@@ -433,7 +433,7 @@ enum PendingInvalid {
     /// A complete tool call whose arguments were not JSON. The provider's
     /// accumulator already finalized the block; nothing is buffered here
     /// to replay, so the only resolutions are abandon or fail.
-    MalformedArgs { tool_call: Box<ToolCall> },
+    MalformedArgs { tool_call: ToolCall },
 }
 
 /// Sans-IO accumulator that assembles one streamed model turn. See the
@@ -865,7 +865,7 @@ impl StreamedTurnAssembler {
                             &tool_call.function.arguments,
                         )),
                         PendingInvalid::FullCall {
-                            tool_call: Box::new(tool_call.clone()),
+                            tool_call: tool_call.clone(),
                             block_id: block_id.clone(),
                         },
                         InvalidToolCallReason::UnknownTool,
@@ -998,7 +998,7 @@ impl StreamedTurnAssembler {
                 },
             ) => {
                 tool_call.function.name.clone_from(tool_name);
-                self.pending_tool_calls.push((*tool_call, block_id));
+                self.pending_tool_calls.push((tool_call, block_id));
                 Vec::new()
             }
             (
@@ -1133,7 +1133,7 @@ impl StreamedTurnAssembler {
             reason,
         };
         self.pending_invalid = Some(pending);
-        vec![StreamedTurnEvent::InvalidToolCall(Box::new(invalid))]
+        vec![StreamedTurnEvent::InvalidToolCall(invalid)]
     }
 
     /// Surface a tool call whose complete arguments were not JSON
@@ -1170,9 +1170,7 @@ impl StreamedTurnAssembler {
             tool_call.clone(),
             block_id,
             Some(detail.raw.clone()),
-            PendingInvalid::MalformedArgs {
-                tool_call: Box::new(tool_call),
-            },
+            PendingInvalid::MalformedArgs { tool_call },
             InvalidToolCallReason::MalformedArguments {
                 error: detail.error.clone(),
             },

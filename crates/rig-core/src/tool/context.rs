@@ -77,7 +77,7 @@ impl Clone for Box<dyn AnyClone> {
 /// does).
 #[derive(Default, Clone)]
 pub struct TypeMap {
-    map: Option<Box<AnyMap>>,
+    map: AnyMap,
 }
 
 impl TypeMap {
@@ -86,7 +86,6 @@ impl TypeMap {
         T: Clone + WasmCompatSend + WasmCompatSync + 'static,
     {
         self.map
-            .get_or_insert_with(Default::default)
             .insert(TypeId::of::<T>(), Box::new(value))
             .and_then(|previous| previous.into_any().downcast::<T>().ok())
             .map(|value| *value)
@@ -97,8 +96,7 @@ impl TypeMap {
         T: 'static,
     {
         self.map
-            .as_ref()
-            .and_then(|map| map.get(&TypeId::of::<T>()))
+            .get(&TypeId::of::<T>())
             .and_then(|value| (**value).as_any().downcast_ref::<T>())
     }
 
@@ -107,8 +105,7 @@ impl TypeMap {
         T: 'static,
     {
         self.map
-            .as_mut()
-            .and_then(|map| map.get_mut(&TypeId::of::<T>()))
+            .get_mut(&TypeId::of::<T>())
             .and_then(|value| (**value).as_any_mut().downcast_mut::<T>())
     }
 
@@ -117,8 +114,7 @@ impl TypeMap {
         T: 'static,
     {
         self.map
-            .as_mut()
-            .and_then(|map| map.remove(&TypeId::of::<T>()))
+            .remove(&TypeId::of::<T>())
             .and_then(|value| value.into_any().downcast::<T>().ok())
             .map(|value| *value)
     }
@@ -127,19 +123,17 @@ impl TypeMap {
     where
         T: 'static,
     {
-        self.map
-            .as_ref()
-            .is_some_and(|map| map.contains_key(&TypeId::of::<T>()))
+        self.map.contains_key(&TypeId::of::<T>())
     }
 
     /// Number of values held.
     pub fn len(&self) -> usize {
-        self.map.as_ref().map_or(0, |map| map.len())
+        self.map.len()
     }
 
     /// Whether the map holds no values.
     pub fn is_empty(&self) -> bool {
-        self.len() == 0
+        self.map.is_empty()
     }
 }
 

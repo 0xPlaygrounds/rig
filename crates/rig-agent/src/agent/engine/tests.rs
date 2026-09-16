@@ -1205,7 +1205,7 @@ async fn streaming_completion_response_stop_preserves_provider_final() {
         error,
         Some(StreamingError::Prompt(error))
             if matches!(
-                error.as_ref(),
+                &error,
                 PromptError::PromptCancelled { chat_history, reason }
                     if chat_history == &[prompt] && reason == "stop at stream EOF"
             )
@@ -1259,7 +1259,7 @@ async fn streaming_model_turn_stop_preserves_completed_provider_final() {
         error,
         Some(StreamingError::Prompt(error))
             if matches!(
-                error.as_ref(),
+                &error,
                 PromptError::PromptCancelled { reason, .. }
                     if reason == "stop completed model turn"
             )
@@ -1624,7 +1624,7 @@ async fn prompt_surfaces_reject_second_tool_roundtrip_request_at_budget_one() {
     }
     match streaming_err {
         Some(StreamingError::Prompt(err)) => assert!(matches!(
-            *err,
+            err,
             PromptError::MaxTurnsError { max_turns: 1, .. }
         )),
         other => panic!("expected streaming max-turns error, got {other:?}"),
@@ -2800,7 +2800,7 @@ mod span_safety_net {
                         error,
                         super::StreamingError::Prompt(error)
                             if matches!(
-                                error.as_ref(),
+                                &error,
                                 PromptError::PromptCancelled { reason, .. }
                                     if reason == "stop completed model turn"
                             )
@@ -7046,7 +7046,7 @@ async fn dynamic_context_retrieval_failure_stops_before_provider_io_on_both_surf
         error,
         StreamingError::Prompt(prompt_error)
             if matches!(
-                prompt_error.as_ref(),
+                &prompt_error,
                 PromptError::PromptCancelled { reason, .. }
                     if reason.contains("context index unavailable")
             )
@@ -9455,7 +9455,7 @@ async fn streaming_model_turn_retry_respects_max_turns() {
     assert!(matches!(
         error,
         Some(StreamingError::Prompt(error))
-            if matches!(error.as_ref(), PromptError::MaxTurnsError { max_turns: 1, .. })
+            if matches!(error, PromptError::MaxTurnsError { max_turns: 1, .. })
     ));
 }
 
@@ -9554,7 +9554,7 @@ async fn streaming_model_turn_retry_rejects_tool_turn_without_committed_executio
     let PromptError::PromptCancelled {
         chat_history,
         reason,
-    } = error.as_ref()
+    } = error
     else {
         panic!("tool-bearing streaming retry should return PromptCancelled");
     };
@@ -9904,7 +9904,7 @@ mod run_lifecycle {
         assert!(matches!(
             first,
             Err(StreamingError::Prompt(ref err))
-                if matches!(**err, PromptError::PromptCancelled { .. })
+                if matches!(err, PromptError::PromptCancelled { .. })
         ));
         assert!(stream.next().await.is_none());
 

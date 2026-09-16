@@ -81,7 +81,7 @@ pub struct AgentRunner {
 #[derive(Clone)]
 pub(crate) enum RunOrigin {
     Prompt(Message),
-    Resume(Box<AgentRun>),
+    Resume(AgentRun),
 }
 
 /// The `(history_override, memory_handle)` pair resolved for one run by
@@ -101,7 +101,7 @@ impl AgentRunner {
 
     /// Build a runner that continues `run` ([`Agent::resume`]).
     pub(crate) fn resuming(agent: &Agent, run: AgentRun) -> Self {
-        Self::new(agent, RunOrigin::Resume(Box::new(run)))
+        Self::new(agent, RunOrigin::Resume(run))
     }
 
     fn new(agent: &Agent, origin: RunOrigin) -> Self {
@@ -389,7 +389,7 @@ impl AgentRunner {
             // copy is one transcript per resumed run — the order of the runner
             // clone a typed run already makes per attempt — and it spares a
             // "taken" placeholder state in `RunOrigin`.
-            RunOrigin::Resume(run) => return (**run).clone(),
+            RunOrigin::Resume(run) => return run.clone(),
             RunOrigin::Prompt(prompt) => prompt.clone(),
         };
         let run = build_agent_run(
@@ -608,7 +608,7 @@ impl AgentRunner {
             let mut response = None;
             while let Some(item) = driver.next().await {
                 match item {
-                    Ok(DriveItem::Done(done)) => response = Some(*done),
+                    Ok(DriveItem::Done(done)) => response = Some(done),
                     Ok(DriveItem::Item(_)) => {}
                     Err(err) => {
                         // The engine settles an error ending *after* yielding

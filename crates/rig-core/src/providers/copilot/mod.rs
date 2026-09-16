@@ -593,8 +593,8 @@ fn route_for_model(model: &str) -> CompletionRoute {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "api", rename_all = "snake_case")]
 pub enum CopilotCompletionResponse {
-    Chat(Box<openai::completion::CompletionResponse>),
-    Responses(Box<responses_api::CompletionResponse>),
+    Chat(openai::completion::CompletionResponse),
+    Responses(responses_api::CompletionResponse),
 }
 
 /// The forward direction for the route-tagged raw type, so
@@ -981,13 +981,13 @@ where
             CompletionRoute::ChatCompletions => self
                 .raw_completion_chat(completion_request)
                 .await
-                .map(|(response, id)| (CopilotCompletionResponse::Chat(Box::new(response)), id)),
+                .map(|(response, id)| (CopilotCompletionResponse::Chat(response), id)),
             CompletionRoute::Responses => self
                 .raw_completion_responses(completion_request)
                 .await
                 .map(|response| {
                     let id = response.provider_request_id.clone();
-                    (CopilotCompletionResponse::Responses(Box::new(response)), id)
+                    (CopilotCompletionResponse::Responses(response), id)
                 }),
         }
     }
@@ -1210,7 +1210,7 @@ where
                             String::from_utf8_lossy(&body).into_owned(),
                         )
                         .with_provider_request_id(provider_request_id)
-                        .with_response_headers(Some(Box::new(parts.headers))));
+                        .with_response_headers(Some(parts.headers)));
                     }
 
                     let preview = String::from_utf8_lossy(&body);
@@ -1233,7 +1233,7 @@ where
                 String::from_utf8_lossy(&body).into_owned(),
             )
             .with_provider_request_id(provider_request_id)
-            .with_response_headers(Some(Box::new(parts.headers))))
+            .with_response_headers(Some(parts.headers)))
         }
     }
 }

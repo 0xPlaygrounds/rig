@@ -448,7 +448,7 @@ where
 
         Err(
             CompletionError::from_http_response(parts.status, String::from_utf8_lossy(&body))
-                .with_response_headers(Some(Box::new(parts.headers))),
+                .with_response_headers(Some(parts.headers)),
         )
     }
 }

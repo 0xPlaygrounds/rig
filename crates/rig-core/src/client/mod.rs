@@ -631,7 +631,7 @@ where
             // a rejected verification (rig#2210).
             status if status.is_success() => Ok(()),
             status => {
-                let headers = Box::new(response.headers().clone());
+                let headers = response.headers().clone();
                 let body: String = String::from_utf8_lossy(&response.into_body().await?).into();
                 Err(VerifyError::from_http_response(status, body)
                     .with_response_headers(Some(headers)))

@@ -922,7 +922,6 @@ impl SearchFilter for SqliteSearchFilter {
 }
 
 impl SqliteSearchFilter {
-    #[allow(clippy::should_implement_trait)]
     /// Negates a filter.
     ///
     /// SQLite vector search lowers `NOT` over simple indexed metadata

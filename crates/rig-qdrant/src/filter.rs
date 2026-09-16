@@ -59,7 +59,6 @@ impl SearchFilter for QdrantFilter {
 }
 
 impl QdrantFilter {
-    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(json!({ "must_not": [ self.0 ]}))
     }

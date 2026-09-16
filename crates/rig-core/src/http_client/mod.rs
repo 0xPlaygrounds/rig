@@ -32,7 +32,7 @@ pub enum Error {
         /// The raw response body.
         body: String,
         /// The failed response's headers, verbatim.
-        headers: Box<http::HeaderMap>,
+        headers: http::HeaderMap,
     },
     #[error("Header value outside of legal range: {0}")]
     InvalidHeaderValue(#[from] http::header::InvalidHeaderValue),
@@ -82,7 +82,7 @@ impl Error {
         Self::InvalidStatusCodeWithDetails {
             status,
             body,
-            headers: Box::new(headers),
+            headers,
         }
     }
 

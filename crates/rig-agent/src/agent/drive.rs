@@ -291,9 +291,9 @@ impl AgentBus {
     /// Move the driver out. Fails when another clone of the agent still
     /// shares it — every clone drives, so the driver cannot leave while
     /// one of them may still run.
-    pub(crate) fn try_into_parts(self) -> Result<(Dispatcher, BusDriver), Box<Self>> {
+    pub(crate) fn try_into_parts(self) -> Result<(Dispatcher, BusDriver), Self> {
         let Some(driver) = self.driver else {
-            return Err(Box::new(self));
+            return Err(self);
         };
         match Arc::try_unwrap(driver) {
             Ok(mutex) => Ok((
@@ -302,10 +302,10 @@ impl AgentBus {
                     .into_inner()
                     .unwrap_or_else(std::sync::PoisonError::into_inner),
             )),
-            Err(driver) => Err(Box::new(Self {
+            Err(driver) => Err(Self {
                 driver: Some(driver),
                 ..self
-            })),
+            }),
         }
     }
 

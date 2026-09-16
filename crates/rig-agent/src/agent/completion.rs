@@ -658,7 +658,7 @@ impl Agent {
     /// so whoever gets the dispatcher also gets the duty to drive. Fails
     /// when the agent was built over a host's bus or when another clone of
     /// it still shares the driver.
-    pub fn into_parts(self) -> Result<AgentParts, Box<Agent>> {
+    pub fn into_parts(self) -> Result<AgentParts, Agent> {
         let Agent {
             mut config,
             tool_server_handle,
@@ -677,11 +677,11 @@ impl Agent {
                 },
             }),
             Err(bus) => {
-                config.bus = *bus;
-                Err(Box::new(Agent {
+                config.bus = bus;
+                Err(Agent {
                     config,
                     tool_server_handle,
-                }))
+                })
             }
         }
     }

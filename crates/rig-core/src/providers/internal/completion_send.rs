@@ -121,7 +121,7 @@ where
                 .filter(|value| !value.is_empty())
                 .map(str::to_string)
         });
-        let response_headers = Some(Box::new(parts.headers));
+        let response_headers = Some(parts.headers);
         let body = body.await.map_err(CompletionError::HttpError)?;
         if let Some(attempt) = &mut attempt {
             attempt.payload(&body);

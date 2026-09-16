@@ -206,7 +206,7 @@ fn invalid_tool_diagnostics_require_rejected_call_history() {
         tool_name: "missing".to_string(),
         available_tools: vec!["add".to_string()],
         allowed_tools: Vec::new(),
-        chat_history: Box::new(history),
+        chat_history: history,
     };
     assert!(validate_unknown_tool_failure(&error, "missing", &[]).is_ok());
     assert!(validate_unknown_tool_failure(&error, "other", &[]).is_err());

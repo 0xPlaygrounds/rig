@@ -493,7 +493,7 @@ where
         let text = String::from(String::from_utf8_lossy(&body.await?));
         if !status.is_success() {
             return Err(CompletionError::from_http_response(status, text)
-                .with_response_headers(Some(Box::new(parts.headers))));
+                .with_response_headers(Some(parts.headers)));
         }
 
         // The `/responses` endpoint answers with an SSE body even for a

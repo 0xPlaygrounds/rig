@@ -186,7 +186,7 @@ where
     let (parts, body) = response.into_parts();
     let status = parts.status;
     let provider_request_id = super::request_id_from_headers(&parts.headers, request_id_header);
-    let headers = Box::new(parts.headers);
+    let headers = parts.headers;
     let response_body = body.into_future().await?;
 
     if !status.is_success() {

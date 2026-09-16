@@ -64,10 +64,6 @@ pub type CandidateView = (
 ///   for a handler that is a system, puts
 ///   the effect on the entity as `Asked<E>` (an open key adds nothing: the
 ///   entity is the question); then marks it [`InFlight`].
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one system, one pass: every parameter is a distinct world access it needs"
-)]
 pub fn dispatch(
     mut commands: Commands,
     policy: Res<Policy>,

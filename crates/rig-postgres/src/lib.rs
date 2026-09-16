@@ -124,7 +124,6 @@ impl PgSearchFilter {
         self.0.into_parts()
     }
 
-    #[allow(clippy::should_implement_trait)]
     pub fn not(self) -> Self {
         Self(self.0.not())
     }

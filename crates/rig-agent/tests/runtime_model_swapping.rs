@@ -682,7 +682,7 @@ async fn model_selection_stop_cancels_before_provider_execution() {
     assert!(matches!(
         error,
         StreamingError::Prompt(error)
-            if matches!(*error, PromptError::PromptCancelled { ref reason, .. }
+            if matches!(&error, PromptError::PromptCancelled { reason, .. }
                 if reason == "routing denied")
     ));
     assert!(streaming_script.requests().is_empty());
@@ -1747,7 +1747,7 @@ async fn a_stopped_completion_call_hook_suppresses_selection_on_both_surfaces() 
             assert!(matches!(
                 error,
                 StreamingError::Prompt(error)
-                    if matches!(*error, PromptError::PromptCancelled { ref reason, .. }
+                    if matches!(&error, PromptError::PromptCancelled { reason, .. }
                         if reason == "completion denied")
             ));
         } else {

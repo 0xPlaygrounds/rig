@@ -127,7 +127,7 @@ mod slow_stream {
         while let Some(item) = stream.next().await {
             if let Err(crate::agent::StreamingError::Prompt(error)) = item {
                 stopped = matches!(
-                    *error,
+                    error,
                     crate::completion::PromptError::PromptCancelled { .. }
                 );
             }
@@ -174,7 +174,7 @@ mod slow_stream {
         while let Some(item) = stream.next().await {
             if let Err(crate::agent::StreamingError::Prompt(error)) = item {
                 assert!(matches!(
-                    *error,
+                    error,
                     crate::completion::PromptError::PromptCancelled { .. }
                 ));
             }

@@ -139,9 +139,8 @@ pub enum Served {
 #[derive(Clone)]
 pub struct WorldServe {
     /// What the key is bound as: the family a same-borrow re-registration
-    /// is checked against (boxed: a descriptor is large next to the task
-    /// arm's pointer).
-    pub family: Box<FamilyDescriptor>,
+    /// is checked against.
+    pub family: FamilyDescriptor,
     /// What the dispatch lands as: for a [`WorldHandler`], deserialize the
     /// payload and insert `Asked<E>` on the effect entity (or say why the
     /// payload is not an `E`); for an open key, nothing — the effect
@@ -178,9 +177,9 @@ impl<E: WorldEffect> WorldHandler<E> {
     /// How it is served.
     pub fn served() -> Served {
         Served::World(WorldServe {
-            family: Box::new(FamilyDescriptor::Custom {
+            family: FamilyDescriptor::Custom {
                 kind: E::KIND.to_owned(),
-            }),
+            },
             ask: ask::<E>,
         })
     }
@@ -424,10 +423,7 @@ impl Handlers<'_, '_> {
         self.bind(
             key,
             descriptor,
-            Served::World(WorldServe {
-                family: Box::new(family),
-                ask: open,
-            }),
+            Served::World(WorldServe { family, ask: open }),
         )
     }
 

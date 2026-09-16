@@ -128,7 +128,7 @@ fn unknown_tool_call_error(
         tool_name,
         available_tools,
         allowed_tools,
-        chat_history: Box::new(chat_history),
+        chat_history,
     }
 }
 
@@ -213,9 +213,8 @@ pub enum AgentRunStep {
         /// The tool calls of the current assistant turn, in emission order.
         calls: Vec<PendingToolCall>,
     },
-    /// The run is complete. Boxed: a response carries the whole run's
-    /// messages and usage, and a step is otherwise a few words.
-    Done(Box<PromptResponse>),
+    /// The run is complete.
+    Done(PromptResponse),
 }
 
 /// One tool call awaiting execution by the driver.
@@ -381,7 +380,7 @@ pub enum ModelTurnOutcome {
     /// turn. The driver must decide how to recover (typically by asking its
     /// invalid tool-call hook) and answer via
     /// [`AgentRun::resolve_invalid_tool_call`].
-    NeedsResolution(Box<InvalidToolCallContext>),
+    NeedsResolution(InvalidToolCallContext),
     /// The turn was rolled back with corrective feedback appended to the
     /// history. Call [`AgentRun::next_step`] to obtain the retry
     /// [`AgentRunStep::CallModel`].
@@ -453,16 +452,16 @@ enum RunState {
     AwaitingModel,
     /// Scanning the model turn's tool calls for validity; may be waiting for
     /// [`AgentRun::resolve_invalid_tool_call`].
-    ResolvingToolCalls(Box<ResolvingState>),
+    ResolvingToolCalls(ResolvingState),
     /// The turn was accepted; ready to emit [`AgentRunStep::CallTools`] or
     /// [`AgentRunStep::Done`].
-    AwaitingAdvance(Box<TurnState>),
+    AwaitingAdvance(TurnState),
     /// Waiting for [`AgentRun::tool_results`] for these pending tool calls.
     /// Carrying the calls in the state keeps a serialized run self-contained:
     /// a resumed process re-obtains them from [`AgentRun::next_step`].
     ExecutingTools(Vec<PendingToolCall>),
     /// Terminal: the run completed successfully.
-    Done(Box<PromptResponse>),
+    Done(PromptResponse),
     /// Terminal: the run returned an error.
     Failed,
 }
@@ -1030,8 +1029,8 @@ impl AgentRun {
                 if self.current_turn >= self.max_turns {
                     return Err(PromptError::MaxTurnsError {
                         max_turns: self.max_turns,
-                        chat_history: self.full_history().into(),
-                        prompt: prompt.into(),
+                        chat_history: self.full_history(),
+                        prompt,
                     });
                 }
 
@@ -1054,7 +1053,7 @@ impl AgentRun {
                     has_tool_calls,
                     skipped,
                     mut block_ids,
-                } = *turn_state;
+                } = turn_state;
                 // Tool output mode (#1928): a call to the synthetic output tool
                 // finalizes the run with the call's arguments as the response,
                 // instead of executing it as a tool. First match wins; any
@@ -1305,7 +1304,7 @@ impl AgentRun {
         let items: Vec<AssistantContent> = turn.choice.clone();
         let has_tool_calls = has_tool_calls(&items);
 
-        self.state = RunState::ResolvingToolCalls(Box::new(ResolvingState {
+        self.state = RunState::ResolvingToolCalls(ResolvingState {
             message_id: turn.message_id,
             original_choice: turn.choice,
             items,
@@ -1316,7 +1315,7 @@ impl AgentRun {
             recovered: false,
             any_skipped: false,
             has_tool_calls,
-        }));
+        });
 
         self.advance_resolution()
     }
@@ -1380,7 +1379,6 @@ impl AgentRun {
             .with_completion_calls(self.completion_calls.clone())
             .with_output_tool_calls(output_tool_calls)
             .with_content(content);
-        let response = Box::new(response);
         self.state = RunState::Done(response.clone());
         AgentRunStep::Done(response)
     }
@@ -1397,13 +1395,13 @@ impl AgentRun {
         skipped: BTreeMap<usize, UserContent>,
         block_ids: Vec<(rig_core::message::ToolCallId, BlockId)>,
     ) {
-        self.state = RunState::AwaitingAdvance(Box::new(TurnState {
+        self.state = RunState::AwaitingAdvance(TurnState {
             message_id,
             items,
             has_tool_calls,
             skipped,
             block_ids,
-        }));
+        });
     }
 
     /// Validate the recovery policy shared by buffered and streamed turns.
@@ -1647,7 +1645,7 @@ impl AgentRun {
     /// Take the resolving state out of `self.state`, leaving `Failed` behind;
     /// callers restore it on their rejection paths so an out-of-protocol call
     /// does not corrupt a drivable run.
-    fn take_resolving(&mut self, violation: &str) -> Result<Box<ResolvingState>, PromptError> {
+    fn take_resolving(&mut self, violation: &str) -> Result<ResolvingState, PromptError> {
         match std::mem::replace(&mut self.state, RunState::Failed) {
             RunState::ResolvingToolCalls(resolving) => Ok(resolving),
             other => {
@@ -1678,7 +1676,7 @@ impl AgentRun {
         if resolving.next_index < resolving.items.len() {
             self.state = RunState::ResolvingToolCalls(resolving);
             return match self.pending_invalid_tool_call() {
-                Some(context) => Ok(ModelTurnOutcome::NeedsResolution(Box::new(context))),
+                Some(context) => Ok(ModelTurnOutcome::NeedsResolution(context)),
                 None => Err(self.protocol_violation(
                     "internal: pending invalid tool call could not be derived",
                 )),
@@ -1693,7 +1691,7 @@ impl AgentRun {
             any_skipped,
             has_tool_calls,
             ..
-        } = *resolving;
+        } = resolving;
 
         // When any tool call was skipped, none of the turn's tool calls
         // execute: peers get a synthetic "not executed" result.
@@ -1842,7 +1840,7 @@ impl AgentRun {
                     reason,
                     diagnostic_history,
                     "invalid tool call skip produced no recovery messages",
-                    Some(Box::new(skipped_tool_result)),
+                    Some(skipped_tool_result),
                 )
             }
         }
@@ -1872,7 +1870,7 @@ impl AgentRun {
         feedback: String,
         diagnostic_history: Vec<Message>,
         no_messages_reason: &str,
-        skipped_tool_result: Option<Box<ToolResult>>,
+        skipped_tool_result: Option<ToolResult>,
     ) -> Result<StreamedResolution, PromptError> {
         let Some((assistant_message, user_message)) =
             partial.rollback_messages(invalid.tool_call.clone(), feedback)

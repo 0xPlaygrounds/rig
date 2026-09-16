@@ -2724,25 +2724,25 @@ pub async fn bus_engine_reproduces(program: &Program) {
                     }
                     Err(StreamingError::Prompt(error))
                         if program.ending == Ending::MaxTurns
-                            && matches!(*error, PromptError::MaxTurnsError { .. }) =>
+                            && matches!(error, PromptError::MaxTurnsError { .. }) =>
                     {
                         failed_as_expected = true;
                     }
                     Err(StreamingError::Prompt(error))
                         if program.ending == Ending::UnknownToolCall
-                            && matches!(*error, PromptError::UnknownToolCall { .. }) =>
+                            && matches!(error, PromptError::UnknownToolCall { .. }) =>
                     {
                         failed_as_expected = true;
                     }
                     Err(StreamingError::Prompt(error))
                         if program.ending == Ending::MemoryError
-                            && matches!(*error, PromptError::MemoryError(_)) =>
+                            && matches!(error, PromptError::MemoryError(_)) =>
                     {
                         failed_as_expected = true;
                     }
                     Err(StreamingError::Prompt(error))
                         if matches!(
-                            (&*error, program.ending),
+                            (&error, program.ending),
                             (PromptError::PromptCancelled { reason, .. }, Ending::Cancelled(expected))
                                 if reason == expected
                         ) =>
@@ -3225,7 +3225,7 @@ async fn resumed_tail(
             match item {
                 Ok(MultiTurnStreamItem::FinalResponse(response)) => output = Some(response),
                 Ok(_) => {}
-                Err(StreamingError::Prompt(error)) => failure = Some(*error),
+                Err(StreamingError::Prompt(error)) => failure = Some(error),
                 Err(error) => panic!("the resumed stream: {error:?}"),
             }
         }
@@ -4046,7 +4046,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                         break None;
                     }
                 }
-                AgentRunStep::Done(response) => break Some(*response),
+                AgentRunStep::Done(response) => break Some(response),
             }
         };
         let response = match resumed.take() {

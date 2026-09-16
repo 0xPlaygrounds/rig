@@ -86,7 +86,7 @@ async fn streamed(
 
 fn cancelled_reason(error: &rig::agent::StreamingError) -> &str {
     match error {
-        rig::agent::StreamingError::Prompt(error) => match &**error {
+        rig::agent::StreamingError::Prompt(error) => match error {
             PromptError::PromptCancelled { reason, .. } => reason,
             other => panic!("a cancelled run, not {other:?}"),
         },
@@ -312,7 +312,7 @@ async fn delta_fail_effect_log_is_the_golden_fixture() {
         .await
         .expect_err("the unknown call fails the run");
     assert!(
-        matches!(&error, rig::agent::StreamingError::Prompt(error) if matches!(**error, PromptError::UnknownToolCall { .. })),
+        matches!(&error, rig::agent::StreamingError::Prompt(error) if matches!(error, PromptError::UnknownToolCall { .. })),
         "{error:?}"
     );
     let log = agent.take_effect_log().expect("recording");

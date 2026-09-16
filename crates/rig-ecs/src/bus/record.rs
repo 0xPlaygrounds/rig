@@ -329,16 +329,6 @@ impl rig_core::serve::Observe for WorldObserver {
     }
 }
 
-/// State needed to record cancellation and any output published before it.
-pub type CancellationView = (
-    &'static Issued,
-    Option<&'static EffectOutcome>,
-    Has<super::collect::CollectedOutcome>,
-    Option<&'static super::effect::Publishing>,
-    Option<&'static super::effect::ToolOutputs>,
-    Option<&'static Observed>,
-);
-
 /// An in-flight effect losing `InFlight` without an outcome — a despawn,
 /// its own or an ancestor's — is a cancelled dispatch: the record says so,
 /// as it does when a consumer drops its `Pending` on rig-bus.
@@ -350,7 +340,14 @@ pub type CancellationView = (
 /// the handler gave, as `settle` would have closed it.
 pub fn record_cancelled(
     removed: On<Remove, InFlight>,
-    effects: Query<CancellationView>,
+    effects: Query<(
+        &Issued,
+        Option<&EffectOutcome>,
+        Has<super::collect::CollectedOutcome>,
+        Option<&super::effect::Publishing>,
+        Option<&super::effect::ToolOutputs>,
+        Option<&Observed>,
+    )>,
     recording: Option<Res<Recording>>,
     batch: Res<DeliveryBatch>,
 ) {

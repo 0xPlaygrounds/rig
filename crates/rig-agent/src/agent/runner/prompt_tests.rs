@@ -1552,7 +1552,7 @@ async fn typed_prompt_default_invalid_tool_call_fails_fast() {
         .expect_err("typed prompt should preserve fail-fast default");
 
     match err {
-        StructuredOutputError::PromptError(err) => match *err {
+        StructuredOutputError::PromptError(err) => match err {
             PromptError::UnknownToolCall { tool_name, .. } => {
                 assert_eq!(tool_name, "default_api");
             }
@@ -1630,7 +1630,7 @@ async fn typed_prompt_invalid_tool_call_retry_budget_exhaustion_fails() {
         .expect_err("typed prompt should fail when retry budget is exhausted");
 
     match err {
-        StructuredOutputError::PromptError(err) => match *err {
+        StructuredOutputError::PromptError(err) => match err {
             PromptError::UnknownToolCall { tool_name, .. } => {
                 assert_eq!(tool_name, "default_api");
             }
