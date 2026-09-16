@@ -40,6 +40,16 @@ impl Operation for Completion {
         }
     }
 
+    /// A stream of assistant content is the one operation with somewhere to
+    /// put a frame nothing models: the consumer sees it verbatim and the
+    /// aggregator never folds it into the answer. Every provider's
+    /// conformance suite asserts exactly one passthrough item per unknown
+    /// frame, which is what makes a gateway's new event type visible to a
+    /// caller instead of silently dropped.
+    fn unknown(payload: crate::streaming::UnknownPayload) -> Option<Self::Event> {
+        Some(StreamEvent::Unknown(payload))
+    }
+
     fn stamp_request_id(event: &mut Self::Event, request_id: &Option<String>) {
         // The terminal's own id wins: it saw the reply that carried it.
         if let StreamEvent::Final(terminal) = event
