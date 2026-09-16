@@ -105,7 +105,10 @@ async fn prompt_typed_extended_details_structured_output() {
             .await
             .expect("extended prompt_typed should succeed");
         assert_weather_forecast(&extended.output, &["los angeles", "la"]);
-        assert!(extended.usage.total_tokens > 0, "usage should be populated");
+        assert!(
+            extended.usage.total_tokens.is_some_and(|n| n > 0),
+            "usage should be populated"
+        );
     })
     .await;
 }

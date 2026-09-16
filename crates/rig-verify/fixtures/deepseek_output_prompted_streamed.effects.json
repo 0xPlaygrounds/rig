@@ -73,10 +73,7 @@
             "input_tokens": 96,
             "output_tokens": 33,
             "total_tokens": 129,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 0
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_1",
@@ -383,10 +380,7 @@
             "input_tokens": 96,
             "output_tokens": 33,
             "total_tokens": 129,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 0
           },
           "finish_reason": "stop",
           "message_id": null,

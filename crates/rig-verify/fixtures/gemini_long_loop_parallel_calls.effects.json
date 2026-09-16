@@ -267,9 +267,6 @@
             "input_tokens": 473,
             "output_tokens": 76,
             "total_tokens": 687,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 138
           },
           "message_id": null,
@@ -691,9 +688,6 @@
             "input_tokens": 787,
             "output_tokens": 10,
             "total_tokens": 832,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 35
           },
           "message_id": null,
@@ -1050,9 +1044,6 @@
             "input_tokens": 990,
             "output_tokens": 68,
             "total_tokens": 1193,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 135
           },
           "message_id": null,
@@ -1450,9 +1441,6 @@
             "input_tokens": 1084,
             "output_tokens": 10,
             "total_tokens": 1113,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 19
           },
           "message_id": null,
@@ -1888,9 +1876,6 @@
             "input_tokens": 1290,
             "output_tokens": 53,
             "total_tokens": 1499,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 156
           },
           "message_id": null,
@@ -2368,8 +2353,6 @@
             "output_tokens": 10,
             "total_tokens": 1397,
             "cached_input_tokens": 1191,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 19
           },
           "message_id": null,
@@ -2893,8 +2876,6 @@
             "output_tokens": 1,
             "total_tokens": 1480,
             "cached_input_tokens": 1205,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 22
           },
           "message_id": null,

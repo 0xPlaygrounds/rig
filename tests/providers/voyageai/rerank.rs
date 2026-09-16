@@ -35,7 +35,10 @@ async fn rerank_smoke() {
         response.results[0].index == 0,
         "Paris should be the top result"
     );
-    assert!(response.usage.total_tokens > 0, "usage should be positive");
+    assert!(
+        response.usage.total_tokens.is_some_and(|n| n > 0),
+        "usage should be positive"
+    );
     assert!(
         response
             .model

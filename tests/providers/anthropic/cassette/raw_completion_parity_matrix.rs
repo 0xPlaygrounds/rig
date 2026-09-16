@@ -192,6 +192,7 @@ fn assert_identity_matches_fixture(
         .iter()
         .map(|reported| reported.usage.output_tokens)
         .collect();
+    let recorded_output_tokens: Vec<_> = recorded_output_tokens.into_iter().map(Some).collect();
     assert_eq!(
         observed_output_tokens, recorded_output_tokens,
         "{scenario}: each route reports the output tokens its own exchange recorded"
@@ -336,7 +337,7 @@ async fn streamed_body(
             .expect("the terminal's raw is the provider record");
     assert_eq!(
         typed.usage.input_tokens.map(|n| n as u64),
-        Some(second_record.usage.input_tokens),
+        second_record.usage.input_tokens,
         "the raw record and the normalized record agree on usage"
     );
 

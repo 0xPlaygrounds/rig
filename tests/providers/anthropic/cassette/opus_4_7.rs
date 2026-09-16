@@ -174,7 +174,10 @@ async fn messages_extractor_smoke() {
                     .as_deref()
                     .expect("last name should be present"),
             );
-            assert!(response.usage.total_tokens > 0, "usage should be populated");
+            assert!(
+                response.usage.total_tokens.is_some_and(|n| n > 0),
+                "usage should be populated"
+            );
         },
     )
     .await;

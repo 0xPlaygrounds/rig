@@ -126,9 +126,9 @@ async fn incomplete_turn_keeps_streamed_partial_output() {
     // The streamed partial text survives, and normalization maps the incomplete
     // status to the same finish reason as the unary path.
     assert_eq!(normalized.finish_reason(), Some(FinishReason::Length));
-    assert_eq!(normalized.usage.input_tokens, 1);
-    assert_eq!(normalized.usage.output_tokens, 2);
-    assert_eq!(normalized.usage.total_tokens, 3);
+    assert_eq!(normalized.usage.input_tokens, Some(1));
+    assert_eq!(normalized.usage.output_tokens, Some(2));
+    assert_eq!(normalized.usage.total_tokens, Some(3));
     assert!(matches!(
         normalized.choice.first(),
         Some(AssistantContent::Text(text)) if text.text == "partial"
@@ -716,7 +716,10 @@ async fn websocket_conformance_replays_sse_fixture_frames() {
         })
         .collect();
     assert_eq!(tool_names, vec![fixture.expected_tool_name]);
-    assert_eq!(normalized.usage.total_tokens, fixture.expected_usage_total);
+    assert_eq!(
+        normalized.usage.total_tokens,
+        Some(fixture.expected_usage_total)
+    );
     // The fixture's expected finish reason applies to its text-only sequences;
     // this combined replay carries a tool call, which the shared normalization
     // maps to `ToolCalls` on every transport.

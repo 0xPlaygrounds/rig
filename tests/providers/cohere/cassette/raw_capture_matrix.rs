@@ -143,7 +143,7 @@ async fn raw_roundtrips_cohere_completion_response() {
                     .and_then(|usage| usage.tokens.as_ref())
                     .and_then(|tokens| tokens.input_tokens)
                     .map(|tokens| tokens as u64),
-                Some(response.usage.input_tokens)
+                response.usage.input_tokens
             );
             *sink.lock().expect("observation lock") = Some(raw.clone());
 

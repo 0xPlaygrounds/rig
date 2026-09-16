@@ -114,7 +114,7 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
                 response.choice
             );
             assert!(
-                response.usage.output_tokens > 0,
+                response.usage.output_tokens.is_some_and(|n| n > 0),
                 "the rest of the turn survives, usage included: {:?}",
                 response.usage
             );

@@ -65,7 +65,7 @@ impl Serve for Scripted {
     async fn serve(&self, kind: EffectKind, _dispatch: Dispatch) -> Reply {
         match kind {
             EffectKind::Completion { stream: false, .. } => {
-                let response = CompletionResponse::new(self.next(), Usage::new(), "scripted");
+                let response = CompletionResponse::new(self.next(), Usage::default(), "scripted");
                 Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             EffectKind::Completion { stream: true, .. } => {
@@ -95,7 +95,7 @@ impl Serve for Scripted {
                     }
                     let _ = writer
                         .finish(StreamFinal {
-                            usage: Usage::new(),
+                            usage: Usage::default(),
                             finish_reason: None,
                             message_id: None,
                             response_id: None,

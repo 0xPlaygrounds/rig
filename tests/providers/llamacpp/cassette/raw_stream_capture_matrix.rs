@@ -144,13 +144,14 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 
             // The typed terminal agrees with the normalized one on usage and
             // identity: raw is the record the adapter's `final_record` mapped.
+            let typed_usage = typed.usage.as_ref().expect("terminal carries usage");
             assert_eq!(
-                typed.usage.prompt_tokens as u64,
+                Some(typed_usage.prompt_tokens as u64),
                 terminal.usage.input_tokens
             );
             assert_eq!(
-                typed.usage.completion_tokens.map(|tokens| tokens as u64),
-                Some(terminal.usage.output_tokens)
+                typed_usage.completion_tokens.map(|tokens| tokens as u64),
+                terminal.usage.output_tokens
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.model, terminal.model);

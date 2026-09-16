@@ -1467,7 +1467,7 @@ pub fn assert_normalized_embedding_response(
     }
     assert_eq!(response.provider, expectations.provider);
     assert_eq!(
-        response.usage.has_values(),
+        response.usage.is_reported(),
         expectations.reports_usage,
         "usage mismatch for {}: got {:?}",
         expectations.provider,

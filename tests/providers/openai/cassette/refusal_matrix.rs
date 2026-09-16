@@ -256,7 +256,7 @@ async fn chat_blocking_refusal_finishes_with_stop() {
                 response.finish_reason(),
                 Some(rig::completion::FinishReason::Stop)
             );
-            assert!(response.usage.output_tokens > 0);
+            assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;
@@ -336,7 +336,7 @@ async fn chat_streaming_terminal_carries_usage() {
 
             assert_nonempty_response(&text);
             let terminal = terminal.expect("the stream must still deliver a terminal record");
-            assert!(terminal.usage.output_tokens > 0);
+            assert!(terminal.usage.output_tokens.is_some_and(|n| n > 0));
             assert_eq!(
                 terminal.finish_reason,
                 Some(rig::completion::FinishReason::Stop)

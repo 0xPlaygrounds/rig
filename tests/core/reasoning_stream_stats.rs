@@ -41,7 +41,7 @@ async fn collect_stream_stats_tracks_only_final_turn_text() {
         ))),
         Ok(MultiTurnStreamItem::final_response(
             vec![AssistantContent::text("It's 72F and sunny in Tokyo.")],
-            Usage::new(),
+            Usage::default(),
         )),
     ];
 

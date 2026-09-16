@@ -447,7 +447,8 @@ fn assert_response_metadata(
         "raw DeepSeek choices should preserve finish reasons"
     );
     assert!(
-        response.usage.input_tokens > 0 && response.usage.output_tokens > 0,
+        response.usage.input_tokens.is_some_and(|n| n > 0)
+            && response.usage.output_tokens.is_some_and(|n| n > 0),
         "usage should be populated: {:?}",
         response.usage
     );
@@ -844,7 +845,7 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 "DeepSeek reasoning response should preserve reasoning_content separately"
             );
             anyhow::ensure!(
-                response.usage.reasoning_tokens > 0,
+                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "core usage should preserve DeepSeek reasoning tokens: {:?}",
                 response.usage
             );
@@ -853,9 +854,10 @@ async fn reasoning_enabled_preserves_reasoning_content_deltas_and_usage() -> Res
                 .completion_tokens_details
                 .as_ref()
                 .and_then(|details| details.reasoning_tokens)
-                .unwrap_or_default() as u64;
+                .map(u64::from);
             anyhow::ensure!(
-                response.usage.reasoning_tokens == raw_reasoning_tokens && raw_reasoning_tokens > 0,
+                response.usage.reasoning_tokens == raw_reasoning_tokens
+                    && raw_reasoning_tokens.is_some_and(|n| n > 0),
                 "usage reasoning tokens should match raw provider details"
             );
             assert_response_metadata(&response, &raw);
@@ -934,7 +936,7 @@ async fn chat_alias_vs_reasoner_alias_behavior() -> Result<()> {
                 "deepseek-reasoner alias should emit reasoning content"
             );
             anyhow::ensure!(
-                reasoner.usage.reasoning_tokens > 0,
+                reasoner.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "deepseek-reasoner usage should surface reasoning tokens"
             );
 

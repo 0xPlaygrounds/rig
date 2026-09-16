@@ -266,13 +266,12 @@ pub struct Usage {
 impl Usage {
     /// Returns the number of cached prompt tokens, preferring the structured
     /// `prompt_tokens_details.cached_tokens` field and falling back to the
-    /// top-level `num_cached_tokens`. Returns 0 when neither is present.
-    pub fn cached_tokens(&self) -> u64 {
+    /// top-level `num_cached_tokens`. `None` when neither is present.
+    pub fn cached_tokens(&self) -> Option<u64> {
         self.prompt_tokens_details
             .as_ref()
             .map(|d| d.cached_tokens)
             .or(self.num_cached_tokens)
-            .unwrap_or(0)
     }
 
     /// Tokens charged for audio in the prompt. 0 for every non-audio turn.
@@ -296,12 +295,13 @@ impl Usage {
 
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> Self {
-        crate::providers::internal::completion_usage(
-            usage.input_tokens(),
-            usage.completion_tokens as u64,
-            usage.total_tokens as u64,
-            usage.cached_tokens(),
-        )
+        Self {
+            input_tokens: Some(usage.input_tokens()),
+            output_tokens: Some(usage.completion_tokens as u64),
+            total_tokens: Some(usage.total_tokens as u64),
+            cached_input_tokens: usage.cached_tokens(),
+            ..Default::default()
+        }
     }
 }
 

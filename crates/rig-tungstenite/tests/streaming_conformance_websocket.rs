@@ -111,7 +111,7 @@ async fn drain_openai_responses_websocket_events(
         RawChoiceAccumulator, ResponseChunkKind, ResponsesStreamOptions,
     };
 
-    let mut accumulator = RawChoiceAccumulator::new(provider, ResponsesUsage::new());
+    let mut accumulator = RawChoiceAccumulator::new(provider, None);
     let mut out = AdapterOutput::new();
     let mut errored = false;
     for event in events {

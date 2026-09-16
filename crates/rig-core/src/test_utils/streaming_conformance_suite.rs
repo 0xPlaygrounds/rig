@@ -199,7 +199,7 @@ macro_rules! streaming_conformance_suite {
             gated refusal_frames_deliver_text_without_error => refusal;
             gated bare_terminal_after_only_unparseable_frames_fabricates_nothing
                 => bare_terminal && malformed_frame;
-            ungated usage_variants_are_reported_or_zero_sentinel;
+            ungated usage_variants_are_reported_or_absent;
             gated interleaved_constant_id_reasoning_preserves_order => interleaved_reasoning;
         }
 

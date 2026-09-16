@@ -247,7 +247,7 @@ async fn streaming_interaction() {
                         ..
                     } => text.push_str(&delta),
                     StreamEvent::Final(response) => {
-                        saw_usage = response.usage.has_values();
+                        saw_usage = response.usage.is_reported();
                     }
                     _ => {}
                 }
@@ -287,7 +287,7 @@ async fn streaming_final_metadata_exposes_model_version() {
                     } => text.push_str(&delta),
                     StreamEvent::Final(response) => {
                         final_response_count += 1;
-                        saw_usage = response.usage.has_values();
+                        saw_usage = response.usage.is_reported();
                         final_model_version = response.model.clone();
                     }
                     _ => {}
@@ -347,12 +347,16 @@ async fn interactions_usage_surfaces_thinking_and_cached_tokens() {
             let usage = response.usage;
 
             assert!(
-                usage.reasoning_tokens > 0,
+                usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "the recorded interaction reports total_thought_tokens; dropping it loses the \
                  largest component of the spend. got {usage:?}"
             );
             assert_eq!(
-                usage.input_tokens + usage.output_tokens + usage.reasoning_tokens,
+                Some(
+                    usage.input_tokens.unwrap_or(0)
+                        + usage.output_tokens.unwrap_or(0)
+                        + usage.reasoning_tokens.unwrap_or(0)
+                ),
                 usage.total_tokens,
                 "on this surface thinking is reported beside input/output, so the components \
                  should account for the provider's own total: {usage:?}"

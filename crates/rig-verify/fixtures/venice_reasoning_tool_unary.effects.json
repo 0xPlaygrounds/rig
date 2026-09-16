@@ -152,11 +152,7 @@
           "usage": {
             "input_tokens": 1308,
             "output_tokens": 190,
-            "total_tokens": 1498,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 1498
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_2",
@@ -388,11 +384,7 @@
           "usage": {
             "input_tokens": 1515,
             "output_tokens": 28,
-            "total_tokens": 1543,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 1543
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_3",

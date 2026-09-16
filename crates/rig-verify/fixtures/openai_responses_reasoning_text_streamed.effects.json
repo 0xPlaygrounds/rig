@@ -96,8 +96,6 @@
             "output_tokens": 156,
             "total_tokens": 193,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 64
           },
           "message_id": "msg_REDACTED_1",
@@ -1221,8 +1219,6 @@
             "output_tokens": 156,
             "total_tokens": 193,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 64
           },
           "finish_reason": "stop",

@@ -562,12 +562,12 @@ fn test_completion_response_usage_preserves_cached_and_reasoning_tokens() {
     let converted: crate::completion::CompletionResponse =
         response.try_into().expect("convert response");
 
-    assert_eq!(converted.usage.input_tokens, 40);
-    assert_eq!(converted.usage.cached_input_tokens, 20);
-    assert_eq!(converted.usage.output_tokens, 30);
-    assert_eq!(converted.usage.reasoning_tokens, 10);
-    assert_eq!(converted.usage.tool_use_prompt_tokens, 12);
-    assert_eq!(converted.usage.total_tokens, 100);
+    assert_eq!(converted.usage.input_tokens, Some(40));
+    assert_eq!(converted.usage.cached_input_tokens, Some(20));
+    assert_eq!(converted.usage.output_tokens, Some(30));
+    assert_eq!(converted.usage.reasoning_tokens, Some(10));
+    assert_eq!(converted.usage.tool_use_prompt_tokens, Some(12));
+    assert_eq!(converted.usage.total_tokens, Some(100));
 }
 
 #[test]
@@ -718,7 +718,7 @@ fn test_unary_response_with_unknown_finish_reason_stays_parseable() {
         converted.choice.first(),
         Some(message::AssistantContent::Text(text)) if text.text == "hi"
     ));
-    assert_eq!(converted.usage.total_tokens, 5);
+    assert_eq!(converted.usage.total_tokens, Some(5));
     assert_eq!(
         converted.finish_reason(),
         Some(crate::completion::FinishReason::Other(

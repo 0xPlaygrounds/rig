@@ -53,7 +53,7 @@ async fn manual_prompt_caching_reuses_tool_cache() {
                 send_cache_probe(model, CACHE_PROBE_PROMPT, cache_probe_preamble(), tools).await;
             assert_response_contains_cache_probe(&second, CACHE_PROBE_RESPONSE);
             assert!(
-                second.usage.cached_input_tokens > 0,
+                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "second prompt-cached request should read cached tokens, got usage: {:?}",
                 second.usage
             );
@@ -91,7 +91,7 @@ async fn streaming_prompt_caching_reuses_tool_cache() {
             .await;
             assert_text_contains_cache_probe(&second.text, STREAMING_CACHE_PROBE_RESPONSE);
             assert!(
-                second.usage.cached_input_tokens > 0,
+                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "second streaming prompt-cached request should read cached tokens, got usage: {:?}",
                 second.usage
             );
@@ -130,7 +130,7 @@ async fn prompt_and_automatic_caching_reuses_tool_cache() {
             .await;
             assert_response_contains_cache_probe(&second, AUTOMATIC_CACHE_PROBE_RESPONSE);
             assert!(
-                second.usage.cached_input_tokens > 0,
+                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "second prompt+automatic cached request should read cached tokens, got usage: {:?}",
                 second.usage
             );
@@ -253,7 +253,7 @@ async fn run_matrix_body(
         let second = send_matrix_streaming_probe(&model, preamble, tools).await;
         assert_text_contains_cache_probe(&second.text, STREAMING_CACHE_PROBE_RESPONSE);
         assert!(
-            second.usage.cached_input_tokens > 0,
+            second.usage.cached_input_tokens.is_some_and(|n| n > 0),
             "warm streamed matrix request should read cached tokens, got usage: {:?}",
             second.usage
         );
@@ -1423,7 +1423,8 @@ fn assert_text_contains_cache_probe(text: &str, expected: &str) {
 
 fn assert_cache_created_or_read(usage: &Usage, context: &str) {
     assert!(
-        usage.cache_creation_input_tokens > 0 || usage.cached_input_tokens > 0,
+        usage.cache_creation_input_tokens.is_some_and(|n| n > 0)
+            || usage.cached_input_tokens.is_some_and(|n| n > 0),
         "{context} should create or read cache tokens, got usage: {usage:?}"
     );
 }

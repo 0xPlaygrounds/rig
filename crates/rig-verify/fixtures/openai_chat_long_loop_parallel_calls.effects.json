@@ -280,8 +280,6 @@
             "output_tokens": 82,
             "total_tokens": 485,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -728,8 +726,6 @@
             "output_tokens": 10,
             "total_tokens": 667,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -1119,8 +1115,6 @@
             "output_tokens": 58,
             "total_tokens": 864,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -1554,8 +1548,6 @@
             "output_tokens": 10,
             "total_tokens": 891,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -2036,8 +2028,6 @@
             "output_tokens": 46,
             "total_tokens": 1084,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -2562,8 +2552,6 @@
             "output_tokens": 10,
             "total_tokens": 1111,
             "cached_input_tokens": 1024,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -3120,8 +3108,6 @@
             "output_tokens": 2,
             "total_tokens": 1169,
             "cached_input_tokens": 1024,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,

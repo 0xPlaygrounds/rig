@@ -122,7 +122,7 @@ async fn caching_and_identity_share_the_wire_streaming() {
             assert_transport_request_id(second.provider_request_id.as_deref(), "warm stream");
             assert_ne!(first.provider_request_id, second.provider_request_id);
             assert!(
-                second.usage.cached_input_tokens > 0,
+                second.usage.cached_input_tokens.is_some_and(|n| n > 0),
                 "warm stream reads the cache, got {:?}",
                 second.usage
             );

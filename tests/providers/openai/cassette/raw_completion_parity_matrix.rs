@@ -187,12 +187,12 @@ fn assert_side_matches_fixture(
         "{context}: model"
     );
     assert_eq!(
-        Some(response.usage.input_tokens),
+        response.usage.input_tokens,
         body["usage"][usage_input_key].as_u64(),
         "{context}: input tokens"
     );
     assert_eq!(
-        Some(response.usage.output_tokens),
+        response.usage.output_tokens,
         body["usage"][usage_output_key].as_u64(),
         "{context}: output tokens"
     );
@@ -426,7 +426,7 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     );
     assert_eq!(plain.model.as_deref(), first["model"].as_str());
     assert_eq!(
-        Some(plain.usage.input_tokens),
+        plain.usage.input_tokens,
         first["usage"]["prompt_tokens"].as_u64()
     );
     assert_eq!(plain.finish_reason(), Some(FinishReason::Stop));

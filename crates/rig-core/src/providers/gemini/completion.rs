@@ -1798,17 +1798,16 @@ pub mod gemini_api_types {
 
     impl From<&UsageMetadata> for crate::completion::Usage {
         fn from(value: &UsageMetadata) -> crate::completion::Usage {
-            let mut usage = crate::completion::Usage::new();
-
-            usage.input_tokens = value.prompt_token_count as u64;
-            usage.output_tokens = value.candidates_token_count.unwrap_or_default() as u64;
-            usage.cached_input_tokens = value.cached_content_token_count.unwrap_or_default() as u64;
-            usage.reasoning_tokens = value.thoughts_token_count.unwrap_or_default() as u64;
-            usage.tool_use_prompt_tokens =
-                value.tool_use_prompt_token_count.unwrap_or_default() as u64;
-            usage.total_tokens = value.total_token_count as u64;
-
-            usage
+            let count = |count: i32| count as u64;
+            crate::completion::Usage {
+                input_tokens: Some(count(value.prompt_token_count)),
+                output_tokens: value.candidates_token_count.map(count),
+                cached_input_tokens: value.cached_content_token_count.map(count),
+                reasoning_tokens: value.thoughts_token_count.map(count),
+                tool_use_prompt_tokens: value.tool_use_prompt_token_count.map(count),
+                total_tokens: Some(count(value.total_token_count)),
+                cache_creation_input_tokens: None,
+            }
         }
     }
 

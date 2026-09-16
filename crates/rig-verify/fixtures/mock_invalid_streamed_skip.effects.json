@@ -130,30 +130,14 @@
               "additional_params": null
             }
           ],
-          "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
-          },
+          "usage": {},
           "message_id": null,
           "response_id": null,
           "finish_reason": null,
           "provider": "mock",
           "model": null,
           "raw": {
-            "usage": {
-              "input_tokens": 0,
-              "output_tokens": 0,
-              "total_tokens": 0,
-              "cached_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
-              "tool_use_prompt_tokens": 0,
-              "reasoning_tokens": 0
-            },
+            "usage": {},
             "finish_reason": null,
             "message_id": null,
             "response_id": null,
@@ -205,30 +189,14 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
-          },
+          "usage": {},
           "finish_reason": null,
           "message_id": null,
           "response_id": null,
           "provider": "mock",
           "model": null,
           "raw": {
-            "usage": {
-              "input_tokens": 0,
-              "output_tokens": 0,
-              "total_tokens": 0,
-              "cached_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
-              "tool_use_prompt_tokens": 0,
-              "reasoning_tokens": 0
-            },
+            "usage": {},
             "finish_reason": null,
             "message_id": null,
             "response_id": null,
@@ -347,30 +315,14 @@
               "text": "2 + 3 = 5"
             }
           ],
-          "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
-          },
+          "usage": {},
           "message_id": null,
           "response_id": null,
           "finish_reason": null,
           "provider": "mock",
           "model": null,
           "raw": {
-            "usage": {
-              "input_tokens": 0,
-              "output_tokens": 0,
-              "total_tokens": 0,
-              "cached_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
-              "tool_use_prompt_tokens": 0,
-              "reasoning_tokens": 0
-            },
+            "usage": {},
             "finish_reason": null,
             "message_id": null,
             "response_id": null,
@@ -397,30 +349,14 @@
         },
         {
           "event": "final",
-          "usage": {
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "total_tokens": 0,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
-          },
+          "usage": {},
           "finish_reason": null,
           "message_id": null,
           "response_id": null,
           "provider": "mock",
           "model": null,
           "raw": {
-            "usage": {
-              "input_tokens": 0,
-              "output_tokens": 0,
-              "total_tokens": 0,
-              "cached_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
-              "tool_use_prompt_tokens": 0,
-              "reasoning_tokens": 0
-            },
+            "usage": {},
             "finish_reason": null,
             "message_id": null,
             "response_id": null,

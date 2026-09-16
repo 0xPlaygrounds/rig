@@ -30,7 +30,7 @@ use serde_json::{Map, Value};
 use std::time::Duration;
 
 use crate::providers::openai::responses_api::{
-    CompletionResponse, ResponseStatus, ResponsesCompletionModel, ResponsesUsage,
+    CompletionResponse, ResponseStatus, ResponsesCompletionModel,
 };
 
 /// The websocket endpoint's path, appended to the client's configured base URL.
@@ -582,8 +582,7 @@ where
     async fn wait_for_terminal_response(
         &mut self,
     ) -> Result<(CompletionResponse, Vec<StreamEvent>), CompletionError> {
-        let mut accumulator =
-            RawChoiceAccumulator::new(self.model.provider_name(), ResponsesUsage::new());
+        let mut accumulator = RawChoiceAccumulator::new(self.model.provider_name(), None);
         let mut out = AdapterOutput::new();
         loop {
             match self.next_event().await? {

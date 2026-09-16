@@ -155,10 +155,17 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
                 *raw,
                 "the chat record must round-trip through its own serde"
             );
-            assert_eq!(chat.usage.prompt_tokens as u64, terminal.usage.input_tokens);
+            let chat_usage = chat
+                .usage
+                .as_ref()
+                .expect("the chat terminal carries usage");
             assert_eq!(
-                chat.usage.completion_tokens.map(|tokens| tokens as u64),
-                Some(terminal.usage.output_tokens)
+                Some(chat_usage.prompt_tokens as u64),
+                terminal.usage.input_tokens
+            );
+            assert_eq!(
+                chat_usage.completion_tokens.map(|tokens| tokens as u64),
+                terminal.usage.output_tokens
             );
             assert_eq!(chat.provider_request_id, terminal.provider_request_id);
             *sink.lock().expect("capture mutex") = Some(raw.clone());
@@ -292,7 +299,10 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
                 *raw,
                 "the Responses record must round-trip through its own serde"
             );
-            assert_eq!(responses.usage.total_tokens, terminal.usage.total_tokens);
+            assert_eq!(
+                responses.usage.as_ref().map(|usage| usage.total_tokens),
+                terminal.usage.total_tokens
+            );
             assert_eq!(responses.response_id, terminal.response_id);
             assert_eq!(responses.message_id, terminal.message_id);
             assert_eq!(responses.provider_request_id, terminal.provider_request_id);

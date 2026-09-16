@@ -193,9 +193,9 @@ fn test_deserialize_stream_response_with_usage_only_chunk() {
         .as_ref()
         .map(crate::completion::Usage::from)
         .unwrap();
-    assert_eq!(usage.input_tokens, 10);
-    assert_eq!(usage.output_tokens, 5);
-    assert_eq!(usage.total_tokens, 15);
+    assert_eq!(usage.input_tokens, Some(10));
+    assert_eq!(usage.output_tokens, Some(5));
+    assert_eq!(usage.total_tokens, Some(15));
 }
 
 #[test]
@@ -442,12 +442,12 @@ fn test_partial_usage_token_calculation() {
     };
 
     let token_usage = crate::completion::Usage::from(&usage);
-    assert_eq!(token_usage.input_tokens, 40);
-    assert_eq!(token_usage.cached_input_tokens, 20);
-    assert_eq!(token_usage.output_tokens, 30);
-    assert_eq!(token_usage.reasoning_tokens, 10);
-    assert_eq!(token_usage.tool_use_prompt_tokens, 12);
-    assert_eq!(token_usage.total_tokens, 100);
+    assert_eq!(token_usage.input_tokens, Some(40));
+    assert_eq!(token_usage.cached_input_tokens, Some(20));
+    assert_eq!(token_usage.output_tokens, Some(30));
+    assert_eq!(token_usage.reasoning_tokens, Some(10));
+    assert_eq!(token_usage.tool_use_prompt_tokens, Some(12));
+    assert_eq!(token_usage.total_tokens, Some(100));
 }
 
 #[test]
@@ -467,11 +467,11 @@ fn test_partial_usage_with_missing_counts() {
     };
 
     let token_usage = crate::completion::Usage::from(&usage);
-    assert_eq!(token_usage.input_tokens, 20);
-    assert_eq!(token_usage.cached_input_tokens, 0);
-    assert_eq!(token_usage.output_tokens, 30);
-    assert_eq!(token_usage.reasoning_tokens, 0);
-    assert_eq!(token_usage.total_tokens, 50);
+    assert_eq!(token_usage.input_tokens, Some(20));
+    assert_eq!(token_usage.cached_input_tokens, None);
+    assert_eq!(token_usage.output_tokens, Some(30));
+    assert_eq!(token_usage.reasoning_tokens, None);
+    assert_eq!(token_usage.total_tokens, Some(50));
 }
 
 #[test]
@@ -537,11 +537,11 @@ fn test_streaming_completion_response_token_usage() {
     };
 
     let token_usage = crate::completion::Usage::from(&response);
-    assert_eq!(token_usage.input_tokens, 75);
-    assert_eq!(token_usage.output_tokens, 75);
-    assert_eq!(token_usage.reasoning_tokens, 0);
-    assert_eq!(token_usage.cached_input_tokens, 0);
-    assert_eq!(token_usage.total_tokens, 150);
+    assert_eq!(token_usage.input_tokens, Some(75));
+    assert_eq!(token_usage.output_tokens, Some(75));
+    assert_eq!(token_usage.reasoning_tokens, None);
+    assert_eq!(token_usage.cached_input_tokens, None);
+    assert_eq!(token_usage.total_tokens, Some(150));
     assert!(matches!(response.finish_reason, Some(FinishReason::Stop)));
     assert_eq!(
         response.model_version.as_deref(),
@@ -592,12 +592,12 @@ fn test_partial_usage_serde_roundtrip_with_all_optional_fields() {
     ));
 
     let token_usage = crate::completion::Usage::from(&usage);
-    assert_eq!(token_usage.input_tokens, 100);
-    assert_eq!(token_usage.cached_input_tokens, 25);
-    assert_eq!(token_usage.output_tokens, 50);
-    assert_eq!(token_usage.reasoning_tokens, 15);
-    assert_eq!(token_usage.tool_use_prompt_tokens, 12);
-    assert_eq!(token_usage.total_tokens, 190);
+    assert_eq!(token_usage.input_tokens, Some(100));
+    assert_eq!(token_usage.cached_input_tokens, Some(25));
+    assert_eq!(token_usage.output_tokens, Some(50));
+    assert_eq!(token_usage.reasoning_tokens, Some(15));
+    assert_eq!(token_usage.tool_use_prompt_tokens, Some(12));
+    assert_eq!(token_usage.total_tokens, Some(190));
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]

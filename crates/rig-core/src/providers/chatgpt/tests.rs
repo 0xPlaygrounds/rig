@@ -188,7 +188,7 @@ data: [DONE]"#;
         .collect();
 
     assert_eq!(text, "hi");
-    assert_eq!(response.usage.total_tokens, 2);
+    assert_eq!(response.usage.total_tokens, Some(2));
 }
 
 #[tokio::test]
@@ -318,7 +318,7 @@ data: [DONE]"#;
             assert_eq!(raw["service_tier"], "default", "{case}");
             assert_eq!(typed.id, "resp_chatgpt_raw", "{case}");
 
-            assert_eq!(response.usage.total_tokens, 2, "{case}");
+            assert_eq!(response.usage.total_tokens, Some(2), "{case}");
             assert_eq!(
                 response.choice,
                 vec![completion::AssistantContent::text("hi")],

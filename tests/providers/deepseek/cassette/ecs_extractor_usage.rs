@@ -60,9 +60,18 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
                 response.output.age
             );
             assert_compatible_professions(response.output.profession.as_deref(), "data scientist")?;
-            anyhow::ensure!(response.usage.input_tokens > 0, "expected input tokens");
-            anyhow::ensure!(response.usage.output_tokens > 0, "expected output tokens");
-            anyhow::ensure!(response.usage.total_tokens > 0, "expected total tokens");
+            anyhow::ensure!(
+                response.usage.input_tokens.is_some_and(|n| n > 0),
+                "expected input tokens"
+            );
+            anyhow::ensure!(
+                response.usage.output_tokens.is_some_and(|n| n > 0),
+                "expected output tokens"
+            );
+            anyhow::ensure!(
+                response.usage.total_tokens.is_some_and(|n| n > 0),
+                "expected total tokens"
+            );
             Ok(())
         },
     )
@@ -107,8 +116,14 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
                 "expected zip code 62701, got {:?}",
                 response.output.zip_code
             );
-            anyhow::ensure!(response.usage.input_tokens > 0, "expected input tokens");
-            anyhow::ensure!(response.usage.total_tokens > 0, "expected total tokens");
+            anyhow::ensure!(
+                response.usage.input_tokens.is_some_and(|n| n > 0),
+                "expected input tokens"
+            );
+            anyhow::ensure!(
+                response.usage.total_tokens.is_some_and(|n| n > 0),
+                "expected total tokens"
+            );
             Ok(())
         },
     )
@@ -152,7 +167,10 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
                 response.output.profession.as_deref(),
                 "retired teacher",
             )?;
-            anyhow::ensure!(response.usage.total_tokens > 0, "usage should be populated");
+            anyhow::ensure!(
+                response.usage.total_tokens.is_some_and(|n| n > 0),
+                "usage should be populated"
+            );
             Ok(())
         },
     )
@@ -172,7 +190,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
                 .extract("Alice is a 25 year old developer.", &[])
                 .await?;
             anyhow::ensure!(
-                person_response.usage.total_tokens > 0,
+                person_response.usage.total_tokens.is_some_and(|n| n > 0),
                 "expected person usage tokens"
             );
             let mut address_extractor = EcsExtractor::<Address>::new(
@@ -184,7 +202,7 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
                 .extract("456 Oak Avenue, Cambridge, MA 02139", &[])
                 .await?;
             anyhow::ensure!(
-                address_response.usage.total_tokens > 0,
+                address_response.usage.total_tokens.is_some_and(|n| n > 0),
                 "expected address usage tokens"
             );
             Ok(())

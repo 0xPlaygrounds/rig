@@ -45,11 +45,11 @@ async fn pre_tool_text_is_not_hidden_by_final_answer() {
         vec![
             MockStreamEvent::text("premature text"),
             MockStreamEvent::tool_call("call", "lookup_harbor_label", serde_json::json!({})),
-            MockStreamEvent::FinalResponse(mock_final(rig::completion::Usage::new())),
+            MockStreamEvent::FinalResponse(mock_final(rig::completion::Usage::default())),
         ],
         vec![
             MockStreamEvent::text(ALPHA_SIGNAL_OUTPUT),
-            MockStreamEvent::FinalResponse(mock_final(rig::completion::Usage::new())),
+            MockStreamEvent::FinalResponse(mock_final(rig::completion::Usage::default())),
         ],
     ]);
     let mut ecs = EcsAgent::new(model, ORDERED_TOOL_STREAM_PREAMBLE, 1);

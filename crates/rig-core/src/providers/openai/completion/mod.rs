@@ -1600,21 +1600,26 @@ impl From<Usage> for crate::completion::Usage {
 impl Usage {
     /// Normalize this provider usage payload into rig's [`crate::completion::Usage`].
     pub fn to_normalized(&self) -> crate::completion::Usage {
-        let mut usage = crate::providers::internal::completion_usage(
-            self.prompt_tokens as u64,
-            self.completion_tokens
-                .unwrap_or_else(|| self.total_tokens.saturating_sub(self.prompt_tokens))
-                as u64,
-            self.total_tokens as u64,
-            self.prompt_tokens_details
+        crate::completion::Usage {
+            input_tokens: Some(self.prompt_tokens as u64),
+            // Gateways that omit `completion_tokens` still send the total, so
+            // the completion count is the remainder.
+            output_tokens: Some(
+                self.completion_tokens
+                    .unwrap_or_else(|| self.total_tokens.saturating_sub(self.prompt_tokens))
+                    as u64,
+            ),
+            total_tokens: Some(self.total_tokens as u64),
+            cached_input_tokens: self
+                .prompt_tokens_details
                 .as_ref()
-                .map_or(0, |d| d.cached_tokens as u64),
-        );
-        usage.reasoning_tokens = self
-            .completion_tokens_details
-            .as_ref()
-            .map_or(0, |d| d.reasoning_tokens as u64);
-        usage
+                .map(|d| d.cached_tokens as u64),
+            reasoning_tokens: self
+                .completion_tokens_details
+                .as_ref()
+                .map(|d| d.reasoning_tokens as u64),
+            ..Default::default()
+        }
     }
 }
 
@@ -1743,7 +1748,6 @@ pub trait OpenAICompatibleProvider: crate::client::Provider {
     /// providers with richer usage accounting (e.g. Mistral's cached-token
     /// fallbacks, DeepSeek's cache hit/miss counters) substitute their own.
     type StreamingUsage: Clone
-        + Default
         + Into<crate::completion::Usage>
         + Serialize
         + serde::de::DeserializeOwned

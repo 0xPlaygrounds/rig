@@ -50,7 +50,7 @@ async fn streaming_smoke() {
             })
             .expect("provider terminal stream record");
         assert_eq!(final_event.provider, "anthropic");
-        assert!(final_event.usage.total_tokens > 0);
+        assert!(final_event.usage.total_tokens.is_some_and(|n| n > 0));
     })
     .await;
 }

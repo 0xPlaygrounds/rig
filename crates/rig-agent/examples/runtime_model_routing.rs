@@ -22,8 +22,8 @@ use serde::Deserialize;
 
 fn usage(total_tokens: u64) -> Usage {
     Usage {
-        total_tokens,
-        ..Usage::new()
+        total_tokens: Some(total_tokens),
+        ..Usage::default()
     }
 }
 

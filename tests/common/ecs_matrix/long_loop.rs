@@ -797,14 +797,18 @@ fn usage(record: &EffectRecord) -> Option<&Usage> {
 
 /// The wire's own report of a completion's prompt-side usage, read off the
 /// record's raw payload: `(input, cached_input, cache_creation)` in the
-/// dialect's own fields. Usage is what the adapter parsed *from* this
-/// payload, so the two must agree on every record.
-fn raw_usage(thinking: ThinkingWire, record: &EffectRecord) -> (u64, u64, u64) {
+/// dialect's own fields, `None` where the dialect has no such field or the
+/// wire omitted it. Usage is what the adapter parsed *from* this payload,
+/// so the two must agree on every record.
+fn raw_usage(
+    thinking: ThinkingWire,
+    record: &EffectRecord,
+) -> (Option<u64>, Option<u64>, Option<u64>) {
     let Ok(Outcome::Completion(response)) = &record.outcome else {
         panic!("a completion record")
     };
     let raw = &response.raw;
-    let count = |value: &serde_json::Value| value.as_u64().unwrap_or(0);
+    let count = |value: &serde_json::Value| value.as_u64();
     match thinking {
         ThinkingWire::Anthropic => {
             let usage = &raw["usage"];
@@ -824,7 +828,7 @@ fn raw_usage(thinking: ThinkingWire, record: &EffectRecord) -> (u64, u64, u64) {
             (
                 count(&usage["prompt_tokens"]),
                 count(&usage["prompt_tokens_details"]["cached_tokens"]),
-                0,
+                None,
             )
         }
         ThinkingWire::DeepSeek => {
@@ -836,7 +840,7 @@ fn raw_usage(thinking: ThinkingWire, record: &EffectRecord) -> (u64, u64, u64) {
             (
                 count(&usage["prompt_tokens"]),
                 count(&usage["prompt_cache_hit_tokens"]),
-                0,
+                None,
             )
         }
         ThinkingWire::OpenAiResponses => {
@@ -848,7 +852,7 @@ fn raw_usage(thinking: ThinkingWire, record: &EffectRecord) -> (u64, u64, u64) {
             (
                 count(&usage["input_tokens"]),
                 count(&usage["input_tokens_details"]["cached_tokens"]),
-                0,
+                None,
             )
         }
         ThinkingWire::Gemini => {
@@ -864,7 +868,7 @@ fn raw_usage(thinking: ThinkingWire, record: &EffectRecord) -> (u64, u64, u64) {
             (
                 count(&usage["promptTokenCount"]),
                 count(&usage["cachedContentTokenCount"]),
-                0,
+                None,
             )
         }
         other => panic!("no long-loop column on the {other:?} wire"),
@@ -874,12 +878,15 @@ fn raw_usage(thinking: ThinkingWire, record: &EffectRecord) -> (u64, u64, u64) {
 /// The wire's cache accounting, for the usage table (row 7):
 /// `cache_conformance::CacheAccounting` by dialect.
 fn prompt_tokens(thinking: ThinkingWire, usage: &Usage) -> u64 {
+    let input = usage.input_tokens.unwrap_or(0);
     match thinking {
         // Anthropic reports reads and writes *beside* `input_tokens`.
         ThinkingWire::Anthropic => {
-            usage.input_tokens + usage.cached_input_tokens + usage.cache_creation_input_tokens
+            input
+                + usage.cached_input_tokens.unwrap_or(0)
+                + usage.cache_creation_input_tokens.unwrap_or(0)
         }
-        _ => usage.input_tokens,
+        _ => input,
     }
 }
 
@@ -1087,10 +1094,10 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
         table.push(UsageRow {
             turn: n,
             prompt,
-            input: usage.input_tokens,
-            cached_input: usage.cached_input_tokens,
-            cache_creation: usage.cache_creation_input_tokens,
-            output: usage.output_tokens,
+            input: usage.input_tokens.unwrap_or(0),
+            cached_input: usage.cached_input_tokens.unwrap_or(0),
+            cache_creation: usage.cache_creation_input_tokens.unwrap_or(0),
+            output: usage.output_tokens.unwrap_or(0),
         });
     }
     eprintln!(

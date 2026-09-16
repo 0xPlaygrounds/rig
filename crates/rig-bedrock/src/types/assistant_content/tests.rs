@@ -71,9 +71,9 @@ fn provider_response_ext_response_id_is_none() {
 fn provider_response_ext_usage_with_tokens() {
     let out = make_output("x", Some(make_usage(100, 50, 150)));
     let usage = out.usage().unwrap();
-    assert_eq!(usage.input_tokens, 100);
-    assert_eq!(usage.output_tokens, 50);
-    assert_eq!(usage.total_tokens, 150);
+    assert_eq!(usage.input_tokens, Some(100));
+    assert_eq!(usage.output_tokens, Some(50));
+    assert_eq!(usage.total_tokens, Some(150));
 }
 
 #[test]
@@ -88,21 +88,12 @@ fn token_usage_delegates_to_provider_response_ext() {
     assert_eq!(
         out.usage().unwrap_or_default(),
         completion::Usage {
-            input_tokens: 10,
-            output_tokens: 20,
-            total_tokens: 30,
-            ..completion::Usage::new()
+            input_tokens: Some(10),
+            output_tokens: Some(20),
+            total_tokens: Some(30),
+            ..Default::default()
         }
     );
-}
-
-#[test]
-fn token_usage_zero_when_no_usage() {
-    let out = make_output("x", None);
-    // Zero-valued usage is rig's documented sentinel for "the provider
-    // reported no usage metrics".
-    assert_eq!(out.usage().unwrap_or_default(), completion::Usage::new());
-    assert!(!out.usage().unwrap_or_default().has_values());
 }
 
 #[test]

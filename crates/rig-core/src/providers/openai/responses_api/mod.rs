@@ -985,36 +985,21 @@ pub struct ResponsesUsage {
     pub total_tokens: u64,
 }
 
-impl ResponsesUsage {
-    /// Create a new ResponsesUsage instance
-    #[doc(hidden)]
-    pub fn new() -> Self {
-        Self {
-            input_tokens: 0,
-            input_tokens_details: Some(InputTokensDetails::new()),
-            output_tokens: 0,
-            output_tokens_details: Some(OutputTokensDetails::new()),
-            total_tokens: 0,
-        }
-    }
-}
-
 impl From<&ResponsesUsage> for crate::completion::Usage {
     fn from(usage: &ResponsesUsage) -> Self {
         crate::completion::Usage {
-            input_tokens: usage.input_tokens,
-            output_tokens: usage.output_tokens,
-            total_tokens: usage.total_tokens,
+            input_tokens: Some(usage.input_tokens),
+            output_tokens: Some(usage.output_tokens),
+            total_tokens: Some(usage.total_tokens),
             cached_input_tokens: usage
                 .input_tokens_details
                 .as_ref()
-                .map_or(0, |details| details.cached_tokens),
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
+                .map(|details| details.cached_tokens),
             reasoning_tokens: usage
                 .output_tokens_details
                 .as_ref()
-                .map_or(0, |details| details.reasoning_tokens),
+                .map(|details| details.reasoning_tokens),
+            ..Default::default()
         }
     }
 }
@@ -1062,12 +1047,6 @@ pub struct InputTokensDetails {
     pub cached_tokens: u64,
 }
 
-impl InputTokensDetails {
-    pub(crate) fn new() -> Self {
-        Self { cached_tokens: 0 }
-    }
-}
-
 impl Add for InputTokensDetails {
     type Output = Self;
     fn add(self, rhs: Self) -> Self::Output {
@@ -1082,14 +1061,6 @@ impl Add for InputTokensDetails {
 pub struct OutputTokensDetails {
     /// Reasoning tokens
     pub reasoning_tokens: u64,
-}
-
-impl OutputTokensDetails {
-    pub(crate) fn new() -> Self {
-        Self {
-            reasoning_tokens: 0,
-        }
-    }
 }
 
 impl Add for OutputTokensDetails {

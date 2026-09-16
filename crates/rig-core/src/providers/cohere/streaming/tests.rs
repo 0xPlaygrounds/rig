@@ -93,9 +93,9 @@ async fn stream_terminal_record_is_normalized() {
         terminal.finish_reason,
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(terminal.usage.input_tokens, 10);
-    assert_eq!(terminal.usage.output_tokens, 4);
-    assert_eq!(terminal.usage.total_tokens, 14);
+    assert_eq!(terminal.usage.input_tokens, Some(10));
+    assert_eq!(terminal.usage.output_tokens, Some(4));
+    assert_eq!(terminal.usage.total_tokens, Some(14));
     // Cohere's stream never names the model.
     assert_eq!(terminal.model, None);
 }
@@ -199,8 +199,8 @@ async fn malformed_frame_is_surfaced_and_the_terminal_still_arrives() {
     assert_eq!(texts, ["hi"]);
     assert!(saw_error, "the malformed frame must reach the consumer");
     let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, 10);
-    assert_eq!(terminal.usage.output_tokens, 4);
+    assert_eq!(terminal.usage.input_tokens, Some(10));
+    assert_eq!(terminal.usage.output_tokens, Some(4));
 }
 
 #[tokio::test]
@@ -255,7 +255,7 @@ async fn known_event_with_malformed_field_is_surfaced_as_an_error() {
         "a known event with a malformed field must surface an error item"
     );
     let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, 10);
+    assert_eq!(terminal.usage.input_tokens, Some(10));
 }
 
 #[tokio::test]
@@ -303,7 +303,7 @@ async fn unknown_event_type_is_skipped_and_the_terminal_still_arrives() {
 
     assert_eq!(texts, ["hi"]);
     let terminal = terminal.expect("the genuine terminal record must still arrive");
-    assert_eq!(terminal.usage.output_tokens, 4);
+    assert_eq!(terminal.usage.output_tokens, Some(4));
 }
 
 #[tokio::test]

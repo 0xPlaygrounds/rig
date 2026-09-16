@@ -44,7 +44,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
             let response = ecs.prompt(STREAMING_PROMPT, true).await;
             let provider_final = ecs_lifecycle::provider_final(&mut ecs);
             assert_nonempty_response(&response);
-            assert!(provider_final.usage.total_tokens > 0);
+            assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;

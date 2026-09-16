@@ -81,8 +81,8 @@ async fn openai_embeddings_preserve_path_parameters_and_usage() {
         .await
         .expect("embedding should succeed");
 
-    assert_eq!(response.usage.input_tokens, 4);
-    assert_eq!(response.usage.total_tokens, 4);
+    assert_eq!(response.usage.input_tokens, Some(4));
+    assert_eq!(response.usage.total_tokens, Some(4));
     let requests = http_client.requests();
     assert_eq!(requests[0].uri, "https://api.openai.com/v1/embeddings");
     let body: serde_json::Value =

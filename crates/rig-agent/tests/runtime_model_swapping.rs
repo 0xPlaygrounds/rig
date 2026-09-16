@@ -86,8 +86,8 @@ impl AgentHook for StopSelection {
 
 fn usage(total_tokens: u64) -> Usage {
     Usage {
-        total_tokens,
-        ..Usage::new()
+        total_tokens: Some(total_tokens),
+        ..Usage::default()
     }
 }
 
@@ -149,7 +149,7 @@ impl Turn {
             Self::Text { usage, .. } | Self::Tool { usage, .. } | Self::Rich { usage, .. } => {
                 *usage
             }
-            Self::Error(_) => Usage::new(),
+            Self::Error(_) => Usage::default(),
         }
     }
 
@@ -1502,7 +1502,7 @@ impl CompletionModel for PendingStreamingModel {
     ) -> Result<CompletionResponse, CompletionError> {
         Ok(CompletionResponse::new(
             vec![AssistantContent::text("unused")],
-            Usage::new(),
+            Usage::default(),
             "pending",
         ))
     }

@@ -307,7 +307,7 @@ async fn streamed_skip_abandons_the_turn_and_recovers() {
             assert_eq!(texts, [REASON]);
             let total = turns
                 .iter()
-                .fold(rig::completion::Usage::new(), |total, turn| {
+                .fold(rig::completion::Usage::default(), |total, turn| {
                     total + turn.usage
                 });
             assert_eq!(
@@ -339,7 +339,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         // There is no native record-completion API to call on a fresh run.
         // Its graph has no completion or usage before the first scheduled turn.
         assert_eq!(ecs.app.world_mut().query::<&PendingEffect>().iter(ecs.app.world()).count(), 0);
-        assert_eq!(ecs.app.world().get::<rig_ecs::agent::Usage>(run).expect("fresh usage").0, rig::completion::Usage::new());
+        assert_eq!(ecs.app.world().get::<rig_ecs::agent::Usage>(run).expect("fresh usage").0, rig::completion::Usage::default());
         let output = ecs.wait_for_success(run).await;
         let turns = completed_turns(&mut ecs, run);
         let streamed_text: String = turns.iter().map(|turn| turn.text.as_str()).collect();
@@ -348,9 +348,9 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
         let begun = ecs.app.world().get::<rig_ecs::agent::Cursor>(run).expect("cursor").turn;
         assert!(begun >= 2);
         assert_eq!(turns.len(), begun, "exactly one actual completion per turn");
-        let total = turns.iter().fold(rig::completion::Usage::new(), |total, turn| total + turn.usage);
+        let total = turns.iter().fold(rig::completion::Usage::default(), |total, turn| total + turn.usage);
         assert_eq!(ecs.app.world().get::<rig_ecs::agent::Usage>(run).expect("usage").0, total);
-        assert!(total.total_tokens > 0);
+        assert!(total.total_tokens.is_some_and(|n| n > 0));
         for event in turns.iter().flat_map(|turn| &turn.events) {
             if let StreamEvent::BlockEnd { id: BlockId::Wire(id), block: Some(AssistantContent::ToolCall(call)), .. } = event {
                 assert_eq!(call.provider.as_ref().map(|provider| provider.call_id.as_str()), Some(id.as_str()), "{call:?}");

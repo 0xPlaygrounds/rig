@@ -128,11 +128,7 @@
           "usage": {
             "input_tokens": 1083,
             "output_tokens": 16,
-            "total_tokens": 1099,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 1099
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_1",
@@ -209,11 +205,7 @@
           "usage": {
             "input_tokens": 1083,
             "output_tokens": 16,
-            "total_tokens": 1099,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 1099
           },
           "finish_reason": "tool_calls",
           "message_id": null,
@@ -311,11 +303,7 @@
           "usage": {
             "input_tokens": 970,
             "output_tokens": 2,
-            "total_tokens": 972,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 972
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_2",
@@ -483,11 +471,7 @@
           "usage": {
             "input_tokens": 1122,
             "output_tokens": 2,
-            "total_tokens": 1124,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 1124
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_3",
@@ -536,11 +520,7 @@
           "usage": {
             "input_tokens": 1122,
             "output_tokens": 2,
-            "total_tokens": 1124,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 1124
           },
           "finish_reason": "stop",
           "message_id": null,

@@ -178,10 +178,10 @@ async fn chat_blocking_usage_survives_the_empty_turn() {
 
             let response = model.completion(request).await.expect("truncated turn");
 
-            assert!(response.usage.input_tokens > 0);
-            assert_eq!(response.usage.output_tokens, TINY_CAP);
+            assert!(response.usage.input_tokens.is_some_and(|n| n > 0));
+            assert_eq!(response.usage.output_tokens, Some(TINY_CAP));
             assert!(
-                response.usage.reasoning_tokens > 0,
+                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "the reasoning tokens are what consumed the cap: {:?}",
                 response.usage
             );

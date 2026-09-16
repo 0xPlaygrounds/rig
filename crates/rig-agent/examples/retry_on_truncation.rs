@@ -63,10 +63,12 @@ impl CompletionModel for BudgetedModel {
         request: CompletionRequest,
     ) -> Result<CompletionResponse, CompletionError> {
         let (text, reason) = Self::answer_under(request.max_tokens);
-        Ok(
-            CompletionResponse::new(vec![AssistantContent::text(text)], Usage::new(), "budgeted")
-                .with_finish_reason(reason),
+        Ok(CompletionResponse::new(
+            vec![AssistantContent::text(text)],
+            Usage::default(),
+            "budgeted",
         )
+        .with_finish_reason(reason))
     }
 
     async fn stream(
@@ -81,7 +83,7 @@ impl CompletionModel for BudgetedModel {
             Box::pin(stream::iter([
                 Ok(StreamEvent::text(BlockId::wire("text-1"), text)),
                 Ok(StreamEvent::Final(
-                    StreamFinal::new("budgeted", Usage::new()).with_finish_reason(reason),
+                    StreamFinal::new("budgeted", Usage::default()).with_finish_reason(reason),
                 )),
             ])),
         ))

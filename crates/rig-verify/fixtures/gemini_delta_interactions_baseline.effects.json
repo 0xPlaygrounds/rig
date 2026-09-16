@@ -151,7 +151,6 @@
             "output_tokens": 20,
             "total_tokens": 197,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
             "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 75
           },
@@ -271,7 +270,6 @@
             "output_tokens": 20,
             "total_tokens": 197,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
             "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 75
           },
@@ -477,7 +475,6 @@
             "output_tokens": 2,
             "total_tokens": 213,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
             "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },
@@ -561,7 +558,6 @@
             "output_tokens": 2,
             "total_tokens": 213,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
             "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 0
           },

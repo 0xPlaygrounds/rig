@@ -1345,7 +1345,7 @@ fn scripted_turn() -> Vec<StreamEvent> {
         },
         StreamEvent::Final(crate::streaming::StreamFinal::new(
             "test",
-            crate::completion::Usage::new(),
+            crate::completion::Usage::default(),
         )),
     ]
 }

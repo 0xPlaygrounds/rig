@@ -83,7 +83,7 @@ fn tool_call_item(id: &str, name: &str) -> StreamEvent {
 }
 
 fn final_item() -> StreamEvent {
-    StreamEvent::Final(mock_final(Usage::new()))
+    StreamEvent::Final(mock_final(Usage::default()))
 }
 
 fn name_delta(id: &str, name: &str) -> StreamEvent {
@@ -810,10 +810,10 @@ fn streamed_run_completes_a_tool_roundtrip() {
             .is_empty()
     );
     let usage = Usage {
-        input_tokens: 5,
-        output_tokens: 7,
-        total_tokens: 12,
-        ..Usage::new()
+        input_tokens: Some(5),
+        output_tokens: Some(7),
+        total_tokens: Some(12),
+        ..Usage::default()
     };
     run.record_streamed_completion_call(
         usage,
@@ -844,7 +844,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
     };
     let asm = assembler();
     run.record_streamed_completion_call(
-        Usage::new(),
+        Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::Value::Null,
@@ -861,7 +861,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
     assert_eq!(response.usage, usage);
     assert_eq!(response.completion_calls.len(), 2);
     assert_eq!(response.completion_calls[0].usage, usage);
-    assert_eq!(response.completion_calls[1].usage, Usage::new());
+    assert_eq!(response.completion_calls[1].usage, Usage::default());
     // prompt, assistant tool call, tool result, final assistant text
     assert_eq!(
         response
@@ -910,7 +910,7 @@ fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
 
     // Usage from the drained stream is recorded after the rollback.
     run.record_streamed_completion_call(
-        Usage::new(),
+        Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::Value::Null,
@@ -986,7 +986,7 @@ fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
         }
     ));
     run.record_streamed_completion_call(
-        Usage::new(),
+        Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::Value::Null,
@@ -1109,7 +1109,7 @@ fn streamed_completion_call_record_requires_a_model_call() {
     let mut run = AgentRun::new("hello");
     let err = run
         .record_streamed_completion_call(
-            Usage::new(),
+            Usage::default(),
             rig_core::completion::ResponseIdentity::default(),
             None,
             serde_json::Value::Null,
@@ -1120,7 +1120,7 @@ fn streamed_completion_call_record_requires_a_model_call() {
     // The run stays drivable.
     run.next_step().expect("next_step should still succeed");
     run.record_streamed_completion_call(
-        Usage::new(),
+        Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::Value::Null,
@@ -1139,7 +1139,7 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
     asm.ingest(&completed_tool_call(tool_call("tc_1", "add"), iid_for("b")))
         .expect("ingest should succeed");
     run.record_streamed_completion_call(
-        Usage::new(),
+        Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::Value::Null,
@@ -1178,7 +1178,7 @@ fn streamed_turn_records_the_completion_call_when_the_driver_did_not() {
     // Exactly one CompletionCall per model call, even without an explicit
     // record; usage is simply unreported.
     assert_eq!(run.completion_calls().len(), 1);
-    assert_eq!(run.completion_calls()[0].usage, Usage::new());
+    assert_eq!(run.completion_calls()[0].usage, Usage::default());
 }
 
 #[test]
@@ -1187,7 +1187,7 @@ fn streamed_completion_call_is_recorded_once_per_turn() {
     run.next_step().expect("next_step");
 
     run.record_streamed_completion_call(
-        Usage::new(),
+        Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::Value::Null,
@@ -1195,7 +1195,7 @@ fn streamed_completion_call_is_recorded_once_per_turn() {
     .expect("first record succeeds");
     let err = run
         .record_streamed_completion_call(
-            Usage::new(),
+            Usage::default(),
             rig_core::completion::ResponseIdentity::default(),
             None,
             serde_json::Value::Null,
@@ -1214,7 +1214,7 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
     asm.ingest(&tool_call_item("tc_1", "add"))
         .expect("ingest should succeed");
     run.record_streamed_completion_call(
-        Usage::new(),
+        Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
         serde_json::Value::Null,
@@ -1495,7 +1495,7 @@ fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
                     vec![ToolResultContent::text("use add instead")]
                 );
                 run.record_streamed_completion_call(
-                    Usage::new(),
+                    Usage::default(),
                     Default::default(),
                     None,
                     serde_json::Value::Null,

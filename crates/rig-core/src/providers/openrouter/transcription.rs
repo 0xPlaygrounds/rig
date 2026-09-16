@@ -59,10 +59,10 @@ impl NormalizeTranscriptionResponse for TranscriptionResponse {
             .usage
             .as_ref()
             .map(|usage| Usage {
-                input_tokens: usage.input_tokens.unwrap_or(0) as u64,
-                output_tokens: usage.output_tokens.unwrap_or(0) as u64,
-                total_tokens: usage.total_tokens.unwrap_or(0) as u64,
-                ..Usage::new()
+                input_tokens: usage.input_tokens.map(|n| n as u64),
+                output_tokens: usage.output_tokens.map(|n| n as u64),
+                total_tokens: usage.total_tokens.map(|n| n as u64),
+                ..Default::default()
             })
             .unwrap_or_default();
         Ok(transcription::TranscriptionResponse::new(self.text, provider).with_usage(usage))

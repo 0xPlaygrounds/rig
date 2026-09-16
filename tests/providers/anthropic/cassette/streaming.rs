@@ -25,7 +25,7 @@ async fn streaming_smoke() {
 
         assert_nonempty_response(&response);
         assert_eq!(provider_final.provider, "anthropic");
-        assert!(provider_final.usage.total_tokens > 0);
+        assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
     })
     .await;
 }
@@ -82,7 +82,8 @@ async fn gateway_reports_input_tokens_on_message_delta() {
                 "a max_tokens truncation must be distinguishable from a natural stop"
             );
             assert_eq!(
-                provider_final.usage.input_tokens, 32,
+                provider_final.usage.input_tokens,
+                Some(32),
                 "the prompt size the gateway reported on message_delta must reach the consumer"
             );
         },
@@ -136,7 +137,7 @@ async fn anthropic_proper_agrees_on_input_tokens_across_both_frames() {
                     .expect("streaming prompt should succeed");
 
             assert!(
-                provider_final.usage.input_tokens > 0,
+                provider_final.usage.input_tokens.is_some_and(|n| n > 0),
                 "Anthropic proper reports a real prompt size"
             );
         },

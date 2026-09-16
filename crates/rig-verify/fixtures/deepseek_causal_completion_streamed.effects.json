@@ -129,10 +129,7 @@
             "input_tokens": 329,
             "output_tokens": 42,
             "total_tokens": 371,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 0
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_1",
@@ -323,10 +320,7 @@
             "input_tokens": 329,
             "output_tokens": 42,
             "total_tokens": 371,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 0
           },
           "finish_reason": "tool_calls",
           "message_id": null,
@@ -426,10 +420,7 @@
             "input_tokens": 17,
             "output_tokens": 1,
             "total_tokens": 18,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 0
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_2",
@@ -580,10 +571,7 @@
             "input_tokens": 384,
             "output_tokens": 1,
             "total_tokens": 385,
-            "cached_input_tokens": 128,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 128
           },
           "message_id": null,
           "response_id": "chatcmpl-REDACTED_3",
@@ -634,10 +622,7 @@
             "input_tokens": 384,
             "output_tokens": 1,
             "total_tokens": 385,
-            "cached_input_tokens": 128,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "cached_input_tokens": 128
           },
           "finish_reason": "stop",
           "message_id": null,

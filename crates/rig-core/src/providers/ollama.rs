@@ -245,9 +245,9 @@ impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
             ));
         }
         let usage = crate::completion::Usage {
-            input_tokens: self.prompt_eval_count.unwrap_or(0),
-            total_tokens: self.prompt_eval_count.unwrap_or(0),
-            ..crate::completion::Usage::new()
+            input_tokens: self.prompt_eval_count,
+            total_tokens: self.prompt_eval_count,
+            ..Default::default()
         };
         let embeddings = self
             .embeddings
@@ -460,16 +460,22 @@ pub(crate) fn map_done_reason(reason: &str) -> completion::FinishReason {
     }
 }
 
+/// Ollama reports prompt and generation counts but no total; the total is
+/// derived only when both are present.
+fn ollama_usage(prompt_eval_count: Option<u64>, eval_count: Option<u64>) -> Usage {
+    Usage {
+        input_tokens: prompt_eval_count,
+        output_tokens: eval_count,
+        total_tokens: prompt_eval_count
+            .zip(eval_count)
+            .map(|(input, output)| input + output),
+        ..Default::default()
+    }
+}
+
 impl From<&CompletionResponse> for Usage {
     fn from(response: &CompletionResponse) -> Usage {
-        let input_tokens = response.prompt_eval_count.unwrap_or(0);
-        let output_tokens = response.eval_count.unwrap_or(0);
-        crate::providers::internal::completion_usage(
-            input_tokens,
-            output_tokens,
-            input_tokens + output_tokens,
-            0,
-        )
+        ollama_usage(response.prompt_eval_count, response.eval_count)
     }
 }
 
@@ -766,14 +772,7 @@ pub struct StreamingCompletionResponse {
 
 impl From<&StreamingCompletionResponse> for Usage {
     fn from(response: &StreamingCompletionResponse) -> Usage {
-        let input_tokens = response.prompt_eval_count.unwrap_or_default();
-        let output_tokens = response.eval_count.unwrap_or_default();
-        crate::providers::internal::completion_usage(
-            input_tokens,
-            output_tokens,
-            input_tokens + output_tokens,
-            0,
-        )
+        ollama_usage(response.prompt_eval_count, response.eval_count)
     }
 }
 

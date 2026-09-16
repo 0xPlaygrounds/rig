@@ -1004,13 +1004,13 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
                     "the stream should carry final usage; losing it on the streaming path is the \
                      exact bug this cell exists to catch",
                 );
-                let ratio = usage.cached_input_tokens as f64 / usage.input_tokens as f64;
+                let cached = usage.cached_input_tokens.unwrap_or(0);
+                let input = usage.input_tokens.unwrap_or(0);
+                let ratio = cached as f64 / input as f64;
                 assert!(
                     ratio >= 0.95,
                     "a streamed request against a cache handle should read essentially the whole \
-                     prefix from cache, got {} of {} ({:.1}%)",
-                    usage.cached_input_tokens,
-                    usage.input_tokens,
+                     prefix from cache, got {cached} of {input} ({:.1}%)",
                     ratio * 100.0
                 );
             })

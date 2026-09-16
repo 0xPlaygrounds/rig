@@ -634,7 +634,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
 
             assert_contains_all_case_insensitive(&text, &["teal", ALPHA_SIGNAL_OUTPUT, "canary"]);
             anyhow::ensure!(
-                response.usage.input_tokens > 0 && response.usage.output_tokens > 0,
+                response.usage.input_tokens.is_some_and(|n| n > 0) && response.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should be populated on long-history replay: {:?}",
                 response.usage
             );

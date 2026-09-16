@@ -231,7 +231,7 @@ fn assert_chat_fixture_premise(
         "{scenario}: normalized finish reason"
     );
     assert_eq!(
-        Some(response.usage.input_tokens),
+        response.usage.input_tokens,
         body["usage"]["prompt_tokens"].as_u64()
     );
 }
@@ -246,7 +246,7 @@ fn assert_responses_fixture_premise(scenario: &str, response: &CompletionRespons
     );
     assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
     assert_eq!(
-        Some(response.usage.input_tokens),
+        response.usage.input_tokens,
         body["usage"]["input_tokens"].as_u64()
     );
 }

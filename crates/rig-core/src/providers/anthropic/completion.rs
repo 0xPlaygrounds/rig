@@ -217,35 +217,32 @@ impl std::fmt::Display for Usage {
 /// already counted there, so it populates `reasoning_tokens` without entering
 /// the total. Shared with the streaming path, whose `PartialUsage` carries the
 /// same counters — the parameter is required rather than defaulted so a new
-/// caller cannot silently drop it.
+/// caller cannot silently drop it. `input_tokens` is optional because a
+/// streaming `message_delta` frame omits it; without it there is no total.
 pub(super) fn anthropic_usage_totals(
-    input_tokens: u64,
+    input_tokens: Option<u64>,
     output_tokens: u64,
     cache_read: Option<u64>,
     cache_creation: Option<u64>,
     output_tokens_details: Option<OutputTokensDetails>,
 ) -> crate::completion::Usage {
-    let mut usage = crate::completion::Usage::new();
-
-    usage.input_tokens = input_tokens;
-    usage.output_tokens = output_tokens;
-    usage.cached_input_tokens = cache_read.unwrap_or_default();
-    usage.cache_creation_input_tokens = cache_creation.unwrap_or_default();
-    usage.reasoning_tokens = output_tokens_details
-        .map(|details| details.thinking_tokens)
-        .unwrap_or_default();
-    usage.total_tokens = usage.input_tokens
-        + usage.cached_input_tokens
-        + usage.cache_creation_input_tokens
-        + usage.output_tokens;
-
-    usage
+    crate::completion::Usage {
+        input_tokens,
+        output_tokens: Some(output_tokens),
+        cached_input_tokens: cache_read,
+        cache_creation_input_tokens: cache_creation,
+        reasoning_tokens: output_tokens_details.map(|details| details.thinking_tokens),
+        total_tokens: input_tokens.map(|input| {
+            input + cache_read.unwrap_or(0) + cache_creation.unwrap_or(0) + output_tokens
+        }),
+        tool_use_prompt_tokens: None,
+    }
 }
 
 impl From<&Usage> for crate::completion::Usage {
     fn from(value: &Usage) -> crate::completion::Usage {
         anthropic_usage_totals(
-            value.input_tokens,
+            Some(value.input_tokens),
             value.output_tokens,
             value.cache_read_input_tokens,
             value.cache_creation_input_tokens,

@@ -150,9 +150,6 @@
             "input_tokens": 166,
             "output_tokens": 26,
             "total_tokens": 282,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 90
           },
           "message_id": null,
@@ -369,11 +366,7 @@
           "usage": {
             "input_tokens": 321,
             "output_tokens": 14,
-            "total_tokens": 335,
-            "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
-            "reasoning_tokens": 0
+            "total_tokens": 335
           },
           "message_id": null,
           "response_id": "id_REDACTED_2",

@@ -316,8 +316,8 @@ pub enum StreamedTurnEvent {
     /// `emit_final` is set, the turn streamed text and the driver should buffer
     /// the final item until EOF finalizes the turn.
     Completed {
-        /// Provider-reported usage for this call. Zero-valued usage means the
-        /// provider reported no usage metrics.
+        /// Provider-reported usage for this call. Usage whose counters are
+        /// all `None` means the provider reported no usage metrics.
         usage: Usage,
         /// Whether the ingested final item should be forwarded to the
         /// consumer (set when the turn streamed text).

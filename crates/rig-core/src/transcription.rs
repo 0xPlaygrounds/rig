@@ -37,9 +37,9 @@ crate::provider_response::provider_error_enum!(
 pub struct TranscriptionResponse {
     /// The transcribed text.
     pub text: String,
-    /// Token or duration usage as the provider reported it. Zero-valued when
-    /// the provider reported none — the same sentinel [`Usage`] documents for
-    /// completions. Duration-billed endpoints report no token counts.
+    /// Token or duration usage as the provider reported it; every counter is
+    /// `None` when the provider reported none (see [`Usage`]). Duration-billed
+    /// endpoints report no token counts.
     #[serde(default)]
     pub usage: Usage,
     /// Stable descriptor name of the provider that produced this response,
@@ -74,7 +74,7 @@ impl TranscriptionResponse {
     pub fn new(text: impl Into<String>, provider: impl Into<String>) -> Self {
         Self {
             text: text.into(),
-            usage: Usage::new(),
+            usage: Usage::default(),
             provider: provider.into(),
             model: None,
             response_id: None,

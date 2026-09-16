@@ -19,7 +19,7 @@ fn client(http_client: RecordingHttpClient) -> openrouter::Client<RecordingHttpC
 }
 
 #[tokio::test]
-async fn openrouter_embeddings_preserve_supported_parameters_and_zero_absent_usage() {
+async fn openrouter_embeddings_preserve_supported_parameters_and_leave_absent_usage_unreported() {
     let http_client = RecordingHttpClient::new(RESPONSE_BODY);
     let model = client(http_client.clone())
         .embedding_model_with_ndims("openai/text-embedding-3-small", 2)
@@ -32,7 +32,7 @@ async fn openrouter_embeddings_preserve_supported_parameters_and_zero_absent_usa
         .expect("embedding request should succeed");
 
     assert_eq!(response.embeddings.len(), 1);
-    assert_eq!(response.usage.total_tokens, 0);
+    assert!(!response.usage.is_reported());
     let requests = http_client.requests();
     assert_eq!(requests[0].uri, "https://openrouter.ai/api/v1/embeddings");
     let body: serde_json::Value =

@@ -23,13 +23,13 @@ fn recorded() -> InteractionUsage {
 #[test]
 fn thinking_tokens_survive_the_interactions_mapping() {
     let usage = Usage::from(&recorded());
-    assert_eq!(usage.input_tokens, 14);
-    assert_eq!(usage.output_tokens, 34);
-    assert_eq!(usage.total_tokens, 270);
-    assert_eq!(usage.reasoning_tokens, 222);
+    assert_eq!(usage.input_tokens, Some(14));
+    assert_eq!(usage.output_tokens, Some(34));
+    assert_eq!(usage.total_tokens, Some(270));
+    assert_eq!(usage.reasoning_tokens, Some(222));
     assert_eq!(
-        usage.input_tokens + usage.output_tokens + usage.reasoning_tokens,
         usage.total_tokens,
+        Some(14 + 34 + 222),
         "the components should account for the provider's total"
     );
 }
@@ -41,14 +41,14 @@ fn thinking_tokens_survive_the_interactions_mapping() {
 fn cached_tokens_survive_the_interactions_mapping() {
     let mut wire = recorded();
     wire.total_cached_tokens = Some(9_000);
-    assert_eq!(Usage::from(&wire).cached_input_tokens, 9_000);
+    assert_eq!(Usage::from(&wire).cached_input_tokens, Some(9_000));
 }
 
 #[test]
 fn tool_use_tokens_survive_the_interactions_mapping() {
     let mut wire = recorded();
     wire.total_tool_use_tokens = Some(77);
-    assert_eq!(Usage::from(&wire).tool_use_prompt_tokens, 77);
+    assert_eq!(Usage::from(&wire).tool_use_prompt_tokens, Some(77));
 }
 
 /// With no provider total, the fallback must count every component. Summing
@@ -58,11 +58,12 @@ fn the_total_fallback_counts_thinking_and_tool_use() {
     let mut wire = recorded();
     wire.total_tokens = None;
     wire.total_tool_use_tokens = Some(5);
-    assert_eq!(Usage::from(&wire).total_tokens, 14 + 34 + 222 + 5);
+    assert_eq!(Usage::from(&wire).total_tokens, Some(14 + 34 + 222 + 5));
 }
 
 /// A wire that omits the new fields entirely must still map, so an older
-/// recorded interaction keeps replaying.
+/// recorded interaction keeps replaying; the counters it never sent are
+/// absent rather than zero.
 #[test]
 fn the_older_three_field_shape_still_maps() {
     let wire: InteractionUsage = serde_json::from_value(serde_json::json!({
@@ -72,7 +73,7 @@ fn the_older_three_field_shape_still_maps() {
     }))
     .expect("the three-field shape should still deserialize");
     let usage = Usage::from(&wire);
-    assert_eq!(usage.total_tokens, 7);
-    assert_eq!(usage.reasoning_tokens, 0);
-    assert_eq!(usage.cached_input_tokens, 0);
+    assert_eq!(usage.total_tokens, Some(7));
+    assert_eq!(usage.reasoning_tokens, None);
+    assert_eq!(usage.cached_input_tokens, None);
 }

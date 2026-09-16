@@ -420,7 +420,7 @@ async fn stream_from_events_terminal_carries_raw() {
     let typed: proto::GenerateContentResponse =
         serde_json::from_value(raw.clone()).expect("raw must deserialize");
     assert_eq!(typed, terminal_frame());
-    assert_eq!(terminal.usage.total_tokens, 5);
+    assert_eq!(terminal.usage.total_tokens, Some(5));
 }
 
 /// The load-bearing streaming capture property at the seam

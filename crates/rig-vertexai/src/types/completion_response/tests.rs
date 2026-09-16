@@ -309,9 +309,9 @@ fn test_usage_metadata_conversion() {
 
     assert!(completion_response.is_ok());
     let response = completion_response.unwrap();
-    assert_eq!(response.usage.input_tokens, 10);
-    assert_eq!(response.usage.output_tokens, 20);
-    assert_eq!(response.usage.total_tokens, 30);
+    assert_eq!(response.usage.input_tokens, Some(10));
+    assert_eq!(response.usage.output_tokens, Some(20));
+    assert_eq!(response.usage.total_tokens, Some(30));
 }
 
 #[test]

@@ -360,7 +360,8 @@ async fn usage_survives_a_requested_width() {
             assert_eq!(response.embeddings.len(), 1);
             assert_eq!(response.embeddings[0].vec.len(), model.ndims());
             assert!(
-                response.usage.input_tokens > 0 && response.usage.total_tokens > 0,
+                response.usage.input_tokens.is_some_and(|n| n > 0)
+                    && response.usage.total_tokens.is_some_and(|n| n > 0),
                 "Doubleword reports embedding usage: {:?}",
                 response.usage
             );
@@ -387,7 +388,8 @@ async fn usage_at_the_default_width() {
             assert_eq!(response.embeddings.len(), 1);
             assert_eq!(response.embeddings[0].vec.len(), model.ndims());
             assert!(
-                response.usage.input_tokens > 0 && response.usage.total_tokens > 0,
+                response.usage.input_tokens.is_some_and(|n| n > 0)
+                    && response.usage.total_tokens.is_some_and(|n| n > 0),
                 "Doubleword reports embedding usage: {:?}",
                 response.usage
             );

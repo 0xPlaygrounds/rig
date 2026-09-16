@@ -76,10 +76,10 @@ fn normalize_one(
         Some("chatcmpl-1"),
         Some("test-model"),
         crate::completion::Usage {
-            input_tokens: 16,
-            output_tokens: 16,
-            total_tokens: 32,
-            reasoning_tokens: 16,
+            input_tokens: Some(16),
+            output_tokens: Some(16),
+            total_tokens: Some(32),
+            reasoning_tokens: Some(16),
             ..Default::default()
         },
         |(): &()| finish_reason,
@@ -103,7 +103,7 @@ fn empty_choice_survives_a_truncated_turn() {
 
         assert_eq!(response.finish_reason(), Some(expected));
         assert!(response.choice.is_empty());
-        assert_eq!(response.usage.reasoning_tokens, 16);
+        assert_eq!(response.usage.reasoning_tokens, Some(16));
     }
 }
 

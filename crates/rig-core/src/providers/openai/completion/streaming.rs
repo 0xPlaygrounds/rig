@@ -204,8 +204,11 @@ struct StreamingCompletionChunk<U = Usage> {
 /// [`StreamFinal`] exactly once (and serializes onto [`StreamFinal::raw`]).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse<U = Usage> {
-    /// Usage reported on the stream's terminal event.
-    pub usage: U,
+    /// Usage reported on the stream's terminal event; `None` when the stream
+    /// never carried one (a compatible service that ignores
+    /// `stream_options.include_usage`, or a `usage: null` terminal chunk).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<U>,
     /// Why the model stopped generating, when the stream reported it.
     ///
     /// Normalized out of the OpenAI-compatible `finish_reason` vocabulary, with
@@ -248,7 +251,7 @@ pub struct StreamingCompletionResponse<U = Usage> {
 impl<U> StreamingCompletionResponse<U> {
     /// Create a terminal record carrying `usage`; the optional metadata starts
     /// unset.
-    pub fn new(usage: U) -> Self {
+    pub fn new(usage: Option<U>) -> Self {
         Self {
             usage,
             finish_reason: None,
@@ -290,7 +293,7 @@ where
     /// OpenAI-compatible provider, so baking in `"openai"` here would
     /// mislabel Groq, Together, DeepSeek and the rest.
     pub fn into_stream_final(self, provider: &str) -> StreamFinal {
-        StreamFinal::new(provider, self.usage.into())
+        StreamFinal::new(provider, self.usage.map(Into::into).unwrap_or_default())
             .with_optional_finish_reason(self.finish_reason)
             .with_optional_response_id(self.response_id)
             .with_optional_provider_request_id(self.provider_request_id)
@@ -426,7 +429,6 @@ impl<Ext, U> CompatibleStreamProfile for OpenAICompatibleProfile<Ext, U>
 where
     Ext: OpenAICompatibleProvider + Clone + crate::wasm_compat::WasmCompatSend,
     U: Clone
-        + Default
         + Into<crate::completion::Usage>
         + serde::Serialize
         + serde::de::DeserializeOwned

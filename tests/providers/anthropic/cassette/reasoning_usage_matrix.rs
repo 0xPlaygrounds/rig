@@ -187,32 +187,35 @@ impl Observed {
             "{scenario}: the recorded turn must actually have spent thinking tokens",
         );
         assert_eq!(
-            usage.reasoning_tokens, recorded,
+            usage.reasoning_tokens,
+            Some(recorded),
             "{scenario}: reasoning_tokens must equal the recorded thinking_tokens",
         );
+        let reasoning = usage.reasoning_tokens.unwrap_or(0);
+        let output = usage.output_tokens.unwrap_or(0);
         assert!(
-            usage.reasoning_tokens <= usage.output_tokens,
-            "{scenario}: thinking is a breakdown of output_tokens ({} > {})",
-            usage.reasoning_tokens,
-            usage.output_tokens,
+            reasoning <= output,
+            "{scenario}: thinking is a breakdown of output_tokens ({reasoning} > {output})",
         );
         assert_eq!(
             usage.total_tokens,
-            usage.input_tokens
-                + usage.cached_input_tokens
-                + usage.cache_creation_input_tokens
-                + usage.output_tokens,
+            Some(
+                usage.input_tokens.unwrap_or(0)
+                    + usage.cached_input_tokens.unwrap_or(0)
+                    + usage.cache_creation_input_tokens.unwrap_or(0)
+                    + output
+            ),
             "{scenario}: reasoning tokens must not be added into the total",
         );
     }
 
     /// Control: thinking was never requested, so the provider omits the
-    /// breakdown entirely and `reasoning_tokens` stays `0` — while the turn
+    /// breakdown entirely and `reasoning_tokens` stays `None` — while the turn
     /// still produced output, proving the cell drove a real completion.
     ///
     /// Asserting *absent* rather than "absent or zero" is deliberate: the two
-    /// zero shapes reach `reasoning_tokens` through different serde paths
-    /// (`None` vs `Some(0)`), and this suite covers both separately.
+    /// shapes reach `reasoning_tokens` as `None` vs `Some(0)`, and this suite
+    /// covers both separately.
     fn assert_breakdown_absent(&self, scenario: &str, recorded: Option<u64>) {
         let usage = self.take(scenario);
         assert_eq!(
@@ -220,18 +223,18 @@ impl Observed {
             "{scenario}: a turn with thinking off reports no breakdown at all",
         );
         assert_eq!(
-            usage.reasoning_tokens, 0,
-            "{scenario}: an absent breakdown reports zero reasoning tokens",
+            usage.reasoning_tokens, None,
+            "{scenario}: an absent breakdown reports no reasoning counter",
         );
         assert!(
-            usage.output_tokens > 0,
+            usage.output_tokens.is_some_and(|n| n > 0),
             "{scenario}: the control turn still produced output",
         );
     }
 
     /// Control: adaptive thinking was requested and the model chose not to
     /// think, so the breakdown is *present and zero* — the other zero shape,
-    /// which reaches `reasoning_tokens` through `Some(0)` rather than `None`.
+    /// which reaches `reasoning_tokens` as `Some(0)` rather than `None`.
     fn assert_breakdown_present_and_zero(&self, scenario: &str, recorded: Option<u64>) {
         let usage = self.take(scenario);
         assert_eq!(
@@ -240,11 +243,12 @@ impl Observed {
             "{scenario}: adaptive thinking that declines still reports the bucket",
         );
         assert_eq!(
-            usage.reasoning_tokens, 0,
-            "{scenario}: a zero breakdown reports zero reasoning tokens",
+            usage.reasoning_tokens,
+            Some(0),
+            "{scenario}: a zero breakdown reports a zero reasoning counter",
         );
         assert!(
-            usage.output_tokens > 0,
+            usage.output_tokens.is_some_and(|n| n > 0),
             "{scenario}: the turn still produced output",
         );
     }
@@ -1032,9 +1036,9 @@ async fn agent_blocking_thinking() {
 
 // ----------------------------------------------------------------- unit ---
 
-/// Serde: a turn that reports no breakdown yields zero, not a parse failure.
+/// Serde: a turn that reports no breakdown yields no counter, not a parse failure.
 #[test]
-fn unit_absent_details_reports_zero() {
+fn unit_absent_details_reports_none() {
     let usage: anthropic::completion::Usage = serde_json::from_value(json!({
         "input_tokens": 10,
         "output_tokens": 20,
@@ -1044,7 +1048,7 @@ fn unit_absent_details_reports_zero() {
     .expect("usage without a breakdown should parse");
 
     assert!(usage.output_tokens_details.is_none());
-    assert_eq!(Usage::from(&usage).reasoning_tokens, 0);
+    assert_eq!(Usage::from(&usage).reasoning_tokens, None);
 }
 
 /// Serde: a bucket Anthropic adds later must not break the known one.
@@ -1059,7 +1063,7 @@ fn unit_unknown_detail_bucket_is_ignored() {
     }))
     .expect("an unknown detail bucket should be ignored");
 
-    assert_eq!(Usage::from(&usage).reasoning_tokens, 7);
+    assert_eq!(Usage::from(&usage).reasoning_tokens, Some(7));
 }
 
 /// The breakdown is inside `output_tokens`, so the total must not grow.
@@ -1084,13 +1088,13 @@ fn unit_thinking_tokens_stay_out_of_the_total() {
     let with_thinking = Usage::from(&with_thinking);
     let without = Usage::from(&without);
 
-    assert_eq!(with_thinking.reasoning_tokens, 15);
-    assert_eq!(without.reasoning_tokens, 0);
+    assert_eq!(with_thinking.reasoning_tokens, Some(15));
+    assert_eq!(without.reasoning_tokens, None);
     assert_eq!(
         with_thinking.total_tokens, without.total_tokens,
         "the breakdown is already counted in output_tokens",
     );
-    assert_eq!(with_thinking.total_tokens, 10 + 3 + 4 + 20);
+    assert_eq!(with_thinking.total_tokens, Some(10 + 3 + 4 + 20));
 }
 
 /// Blocking and streaming go through the same totals helper, so the same
@@ -1117,5 +1121,5 @@ fn unit_streaming_and_blocking_share_the_mapping() {
     .expect("partial usage should parse");
 
     assert_eq!(Usage::from(&blocking), Usage::from(&streamed));
-    assert_eq!(Usage::from(&streamed).reasoning_tokens, 42);
+    assert_eq!(Usage::from(&streamed).reasoning_tokens, Some(42));
 }

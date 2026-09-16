@@ -108,7 +108,7 @@ impl Serve for Latched {
         };
         rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
             choice,
-            Usage::new(),
+            Usage::default(),
             "latched",
         ))))
     }
@@ -251,7 +251,7 @@ fn answer_coincident_models(
         commands
             .entity(entity)
             .insert(rig_ecs::bus::WorldOutcome::new(Ok(Outcome::Completion(
-                CompletionResponse::new(choice, Usage::new(), "coincident"),
+                CompletionResponse::new(choice, Usage::default(), "coincident"),
             ))));
     }
 }

@@ -249,7 +249,7 @@ async fn raw_roundtrips_streaming_completion_response() {
             assert_eq!(typed.model_version, terminal.model);
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(
-                typed.usage_metadata.total_token_count as u64,
+                Some(typed.usage_metadata.total_token_count as u64),
                 terminal.usage.total_tokens
             );
             *sink.lock().expect("observation lock") = Some(raw.clone());
@@ -372,7 +372,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(
-                typed.usage_metadata.total_token_count as u64,
+                Some(typed.usage_metadata.total_token_count as u64),
                 terminal.usage.total_tokens
             );
 

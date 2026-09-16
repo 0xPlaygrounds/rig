@@ -63,8 +63,8 @@ async fn rejected_response_is_retried_with_feedback() {
 
             assert_eq!(response.output.trim(), "ACCEPTED");
             assert_eq!(response.completion_calls.len(), 2);
-            assert!(response.usage.input_tokens > 0);
-            assert!(response.usage.output_tokens > 0);
+            assert!(response.usage.input_tokens.is_some_and(|n| n > 0));
+            assert!(response.usage.output_tokens.is_some_and(|n| n > 0));
             let transcript = response
                 .messages
                 .expect("response history")

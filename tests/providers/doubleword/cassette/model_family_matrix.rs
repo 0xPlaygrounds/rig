@@ -183,7 +183,7 @@ async fn default_qwen_family_streaming() {
                 .expect("the default model stream should connect");
             let (_, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("the stream should end with a terminal record");
-            assert!(terminal.usage.total_tokens > 0);
+            assert!(terminal.usage.total_tokens.is_some_and(|n| n > 0));
         },
     )
     .await;

@@ -102,7 +102,7 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                 // Bedrock's per-account throttling behavior unchanged.
                 let mut results = Vec::new();
                 let mut raw = Vec::new();
-                let mut usage = rig_core::completion::Usage::new();
+                let mut usage = rig_core::completion::Usage::default();
                 let mut first_error = None;
                 for doc in documents {
                     let request = EmbeddingRequest {
@@ -112,8 +112,12 @@ impl embeddings::EmbeddingModel for EmbeddingModel {
                     };
                     match self.document_to_embeddings(request).await {
                         Ok(response) => {
-                            usage.input_tokens += response.input_text_token_count as u64;
-                            usage.total_tokens += response.input_text_token_count as u64;
+                            let tokens = response.input_text_token_count as u64;
+                            usage += rig_core::completion::Usage {
+                                input_tokens: Some(tokens),
+                                total_tokens: Some(tokens),
+                                ..Default::default()
+                            };
                             raw.push(serde_json::to_value(&response)?);
                             results.push(Embedding {
                                 document: doc,

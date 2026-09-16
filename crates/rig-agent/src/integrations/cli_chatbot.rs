@@ -263,6 +263,8 @@ where
                             ..
                         }) = self.0.usage()
                     {
+                        let input_tokens = input_tokens.unwrap_or(0);
+                        let output_tokens = output_tokens.unwrap_or(0);
                         println!("Input {input_tokens} tokens\nOutput {output_tokens} tokens");
                     }
                 }

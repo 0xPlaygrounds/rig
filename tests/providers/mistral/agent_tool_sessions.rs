@@ -483,14 +483,17 @@ fn assert_response_metadata(
         .as_ref()
         .expect("raw response should preserve usage");
     assert!(
-        response.usage.input_tokens > 0,
+        response.usage.input_tokens.is_some_and(|n| n > 0),
         "usage should include input tokens"
     );
     assert_eq!(
         response.usage.output_tokens,
-        raw_usage.completion_tokens as u64
+        Some(raw_usage.completion_tokens as u64)
     );
-    assert_eq!(response.usage.total_tokens, raw_usage.total_tokens as u64);
+    assert_eq!(
+        response.usage.total_tokens,
+        Some(raw_usage.total_tokens as u64)
+    );
 }
 
 crate::matrix::case_matrix! {

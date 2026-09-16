@@ -154,7 +154,7 @@ impl Serve for MockModel {
                 self.counters.unary_served.fetch_add(1, Ordering::SeqCst);
                 Reply::Outcome(Ok(Outcome::Completion(CompletionResponse::new(
                     vec![AssistantContent::text(&self.text)],
-                    Usage::new(),
+                    Usage::default(),
                     "mock",
                 ))))
             }
@@ -174,7 +174,7 @@ impl Serve for MockModel {
                         let sent = counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
                         if sent >= cap {
                             guard.finished = out
-                                .finish(StreamFinal::new("mock", Usage::new()))
+                                .finish(StreamFinal::new("mock", Usage::default()))
                                 .await
                                 .is_ok();
                             return;

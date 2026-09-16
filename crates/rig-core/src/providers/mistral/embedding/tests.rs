@@ -51,8 +51,8 @@ async fn codestral_embeddings_map_dimensions_and_mistral_usage() {
         .expect("embedding request should succeed");
 
     assert_eq!(response.embeddings[0].vec.len(), 512);
-    assert_eq!(response.usage.input_tokens, 5);
-    assert_eq!(response.usage.total_tokens, 5);
+    assert_eq!(response.usage.input_tokens, Some(5));
+    assert_eq!(response.usage.total_tokens, Some(5));
 
     let requests = http_client.requests();
     assert_eq!(requests.len(), 1);

@@ -158,14 +158,14 @@ async fn responses_without_a_cache_key_does_not_hit_until_the_third_turn() {
         let turns = &observation.turns;
         assert_eq!(
             turns[1].cached_input_tokens,
-            0,
+            Some(0),
             "un-keyed Responses caching was observed to still be cold on turn 2; if OpenAI has \
              changed that, this cell is the notification — drop it and fold the scenario into the \
              keyed probe.\n{}",
             observation.report(&OPENAI_CACHE_SUPPORT)
         );
         assert!(
-            turns[2].cached_input_tokens > 0,
+            turns[2].cached_input_tokens.is_some_and(|n| n > 0),
             "un-keyed Responses caching was observed to be warm by turn 3, so a turn-3 miss means \
              caching stopped working on this surface entirely.\n{}",
             observation.report(&OPENAI_CACHE_SUPPORT)

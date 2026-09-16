@@ -259,7 +259,7 @@ async fn raw_roundtrips_generate_content_response() {
                     .usage_metadata
                     .as_ref()
                     .map(|usage| usage.prompt_token_count as u64),
-                Some(response.usage.input_tokens)
+                response.usage.input_tokens
             );
 
             // And re-normalizing it by hand tells the same story the typed

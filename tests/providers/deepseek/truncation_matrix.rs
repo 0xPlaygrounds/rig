@@ -274,7 +274,8 @@ async fn assert_blocking_truncation_survives(
         normalized.choice
     );
     assert!(
-        normalized.usage.total_tokens > 0 && normalized.usage.input_tokens > 0,
+        normalized.usage.total_tokens.is_some_and(|n| n > 0)
+            && normalized.usage.input_tokens.is_some_and(|n| n > 0),
         "usage survives the truncated call: {:?}",
         normalized.usage
     );
@@ -330,7 +331,7 @@ async fn assert_streaming_truncation_survives(
         .map(|record| record.usage)
         .unwrap_or_default();
     assert!(
-        usage.total_tokens > 0,
+        usage.total_tokens.is_some_and(|n| n > 0),
         "streamed usage survives the truncated call: {usage:?}"
     );
     Ok(())
@@ -920,7 +921,7 @@ async fn blocking_reasoner_truncated_call_keeps_the_reasoning_block() {
                 normalized.choice
             );
             assert!(tool_calls(&normalized.choice).is_empty());
-            assert!(normalized.usage.reasoning_tokens > 0);
+            assert!(normalized.usage.reasoning_tokens.is_some_and(|n| n > 0));
             Ok::<(), anyhow::Error>(())
         },
     )
@@ -1300,8 +1301,8 @@ fn a_truncated_call_is_dropped_at_decode_and_the_turn_survives() {
         "only the truncated call is dropped: {:?}",
         normalized.choice
     );
-    assert_eq!(normalized.usage.total_tokens, 396);
-    assert_eq!(normalized.usage.cached_input_tokens, 256);
+    assert_eq!(normalized.usage.total_tokens, Some(396));
+    assert_eq!(normalized.usage.cached_input_tokens, Some(256));
 }
 
 fn tool_calls_names(choice: &[AssistantContent]) -> Vec<&str> {

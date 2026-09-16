@@ -258,13 +258,13 @@ fn test_bedrock_streaming_response_with_usage() {
     assert_eq!(
         rig_core::completion::Usage::from(&response),
         rig_core::completion::Usage {
-            input_tokens: 200,
-            output_tokens: 75,
-            total_tokens: 275,
-            cached_input_tokens: 40,
-            cache_creation_input_tokens: 10,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
+            input_tokens: Some(200),
+            output_tokens: Some(75),
+            total_tokens: Some(275),
+            cached_input_tokens: Some(40),
+            cache_creation_input_tokens: Some(10),
+            tool_use_prompt_tokens: None,
+            reasoning_tokens: None,
         }
     );
 }
@@ -277,13 +277,8 @@ fn test_bedrock_streaming_response_without_usage() {
         provider_request_id: None,
     };
 
-    // Zero-valued usage is rig's documented sentinel for "the provider
-    // reported no usage metrics".
-    assert_eq!(
-        rig_core::completion::Usage::from(&response),
-        rig_core::completion::Usage::new()
-    );
-    assert!(!rig_core::completion::Usage::from(&response).has_values());
+    // No wire usage means no reported counter.
+    assert!(!rig_core::completion::Usage::from(&response).is_reported());
 }
 
 #[test]
@@ -304,13 +299,13 @@ fn test_streaming_response_normalizes_usage() {
     assert_eq!(
         rig_core::completion::Usage::from(&response),
         rig_core::completion::Usage {
-            input_tokens: 448,
-            output_tokens: 68,
-            total_tokens: 516,
-            cached_input_tokens: 80,
-            cache_creation_input_tokens: 20,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
+            input_tokens: Some(448),
+            output_tokens: Some(68),
+            total_tokens: Some(516),
+            cached_input_tokens: Some(80),
+            cache_creation_input_tokens: Some(20),
+            tool_use_prompt_tokens: None,
+            reasoning_tokens: None,
         }
     );
 }
@@ -798,7 +793,7 @@ async fn stream_from_events_terminal_carries_raw() {
     let typed: BedrockStreamingResponse =
         serde_json::from_value(raw.clone()).expect("raw must deserialize");
     assert_eq!(typed.stop_reason, Some(StopReason::EndTurn));
-    assert_eq!(terminal.usage.total_tokens, 4);
+    assert_eq!(terminal.usage.total_tokens, Some(4));
 }
 
 /// The load-bearing streaming capture property at the seam

@@ -514,13 +514,16 @@ fn assert_response_metadata(
         .as_ref()
         .expect("raw response should preserve usage");
     assert!(
-        response.usage.input_tokens > 0,
+        response.usage.input_tokens.is_some_and(|n| n > 0),
         "usage should include input tokens"
     );
     if let Some(completion_tokens) = raw_usage.completion_tokens {
-        assert_eq!(response.usage.output_tokens, completion_tokens as u64);
+        assert_eq!(response.usage.output_tokens, Some(completion_tokens as u64));
     }
-    assert_eq!(response.usage.total_tokens, raw_usage.total_tokens as u64);
+    assert_eq!(
+        response.usage.total_tokens,
+        Some(raw_usage.total_tokens as u64)
+    );
     if let Some(queue_time) = raw_usage.queue_time {
         assert!(queue_time >= 0.0);
     }
@@ -799,10 +802,12 @@ async fn low_latency_streaming_text_surfaces_final_usage() -> Result<()> {
 
             anyhow::ensure!(text_chunks > 0, "stream should emit text deltas");
             let usage = final_usage.ok_or_else(|| anyhow::anyhow!("stream should emit final usage"))?;
-            anyhow::ensure!(usage.input_tokens > 0, "stream usage should include input tokens");
-            anyhow::ensure!(usage.output_tokens > 0, "stream usage should include output tokens");
+            let input_tokens = usage.input_tokens.unwrap_or(0);
+            let output_tokens = usage.output_tokens.unwrap_or(0);
+            anyhow::ensure!(input_tokens > 0, "stream usage should include input tokens");
+            anyhow::ensure!(output_tokens > 0, "stream usage should include output tokens");
             anyhow::ensure!(
-                usage.total_tokens >= usage.input_tokens + usage.output_tokens,
+                usage.total_tokens.unwrap_or(0) >= input_tokens + output_tokens,
                 "stream usage totals should cover input + output tokens: {usage:?}"
             );
 

@@ -13,9 +13,8 @@ pub struct CompletionCall {
     pub call_index: usize,
     /// Token usage reported for this completion request.
     ///
-    /// Zero-valued usage is [`Usage`]'s documented sentinel for missing
-    /// provider usage metrics; rig does not distinguish "reported all zeros"
-    /// from "unreported".
+    /// A counter the provider did not report is `None`; a reported zero is
+    /// `Some(0)`. Every counter is `None` when no usage was reported at all.
     pub usage: Usage,
     /// Provider-assigned assistant message ID for this call, when reported.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -125,8 +124,8 @@ pub struct PromptResponse {
     ///
     /// `usage` remains the aggregate across the whole run. Use the last
     /// entry's usage to inspect the final completion request's prompt/context
-    /// length. Zero-valued entry usage means the provider reported no usage
-    /// metrics for that request.
+    /// length. An entry whose counters are all `None` means the provider
+    /// reported no usage metrics for that request.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub completion_calls: Vec<CompletionCall>,
     /// The run's transcript: the prompt, every accepted assistant turn, every
@@ -219,7 +218,7 @@ impl PromptResponse {
 
     /// An empty run result (empty output, zero usage, no history).
     pub fn empty() -> Self {
-        Self::new(String::new(), Usage::new())
+        Self::new(String::new(), Usage::default())
     }
 
     /// Attach the run's accumulated message history.
@@ -286,8 +285,8 @@ impl PromptResponse {
 
     /// Returns successfully completed completion requests made by this agent run.
     ///
-    /// Zero-valued entry usage means the provider reported no usage metrics
-    /// for that request.
+    /// An entry whose counters are all `None` means the provider reported no
+    /// usage metrics for that request.
     pub fn completion_calls(&self) -> &[CompletionCall] {
         &self.completion_calls
     }

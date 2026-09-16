@@ -21,7 +21,7 @@ fn completion_response_without_request_id_still_deserializes() {
 fn identity_accessor_mirrors_flat_fields() {
     let response = CompletionResponse::new(
         vec![crate::completion::AssistantContent::text("hi")],
-        Usage::new(),
+        Usage::default(),
         "test",
     )
     .with_message_id("msg_1")

@@ -886,7 +886,10 @@ async fn streaming_reports_eos_and_excludes_the_stop_token()
     assert!(raw.text.is_empty());
     assert_eq!(raw.finish_reason, FinishReason::Eos);
     assert_eq!(raw.generated_tokens, 1);
-    assert_eq!(rig_core::completion::Usage::from(&raw).output_tokens, 1);
+    assert_eq!(
+        rig_core::completion::Usage::from(&raw).output_tokens,
+        Some(1)
+    );
     Ok(())
 }
 
@@ -1008,7 +1011,10 @@ fn inference_clamps_context_and_uses_fresh_generation_state()
     assert_eq!(first.requested_max_tokens, 10);
     assert_eq!(first.effective_max_tokens, 2);
     assert_eq!(first.finish_reason, FinishReason::MaxTokens);
-    assert_eq!(rig_core::completion::Usage::from(&first).output_tokens, 2);
+    assert_eq!(
+        rig_core::completion::Usage::from(&first).output_tokens,
+        Some(2)
+    );
     assert!(!first.text.contains("hello"));
     Ok(())
 }
@@ -1025,7 +1031,7 @@ fn eos_is_counted_but_excluded_from_decoded_text()
     assert_eq!(response.generated_tokens, 1);
     assert_eq!(
         rig_core::completion::Usage::from(&response).output_tokens,
-        1
+        Some(1)
     );
     assert!(response.text.is_empty());
     Ok(())
@@ -1515,9 +1521,9 @@ fn converts_finish_reason_and_usage() -> Result<(), CandleError> {
         tokens_per_second: Some(100.0),
     };
     let usage = rig_core::completion::Usage::from(&response);
-    assert_eq!(usage.input_tokens, 5);
-    assert_eq!(usage.output_tokens, 2);
-    assert_eq!(usage.total_tokens, 7);
+    assert_eq!(usage.input_tokens, Some(5));
+    assert_eq!(usage.output_tokens, Some(2));
+    assert_eq!(usage.total_tokens, Some(7));
     assert_eq!(response.finish_reason, FinishReason::Eos);
     assert_eq!(response.text, "done");
     assert_eq!(response.requested_max_tokens, 4);
@@ -1610,7 +1616,7 @@ async fn stream_from_events_terminal_carries_raw()
     let raw = &terminal.raw;
     let typed: CandleCompletionResponse = serde_json::from_value(raw.clone())?;
     assert_eq!(typed, terminal_record);
-    assert_eq!(terminal.usage.total_tokens, 4);
+    assert_eq!(terminal.usage.total_tokens, Some(4));
     Ok(())
 }
 
@@ -1654,9 +1660,9 @@ async fn completion_raw_round_trips_into_the_local_record()
     assert_eq!(typed.finish_reason, escape_hatch.finish_reason);
     assert_eq!(typed.generated_tokens, 2);
 
-    assert_eq!(response.usage.input_tokens, typed.prompt_tokens);
-    assert_eq!(response.usage.output_tokens, typed.generated_tokens);
-    assert_eq!(response.usage.output_tokens, 2);
+    assert_eq!(response.usage.input_tokens, Some(typed.prompt_tokens));
+    assert_eq!(response.usage.output_tokens, Some(typed.generated_tokens));
+    assert_eq!(response.usage.output_tokens, Some(2));
     Ok(())
 }
 
@@ -1713,6 +1719,6 @@ async fn stream_terminal_raw_round_trips_into_the_local_record()
     assert_eq!(terminal.finish_reason, renormalized.finish_reason);
     assert_eq!(terminal.model, renormalized.model);
     assert_eq!(terminal.usage, renormalized.usage);
-    assert_eq!(terminal.usage.output_tokens, 2);
+    assert_eq!(terminal.usage.output_tokens, Some(2));
     Ok(())
 }

@@ -54,18 +54,16 @@ impl embeddings::NormalizeEmbeddingResponse for CompatibleEmbeddingResponse {
 
         let usage = match &self.usage {
             Some(usage) => crate::completion::Usage {
-                input_tokens: usage.prompt_tokens as u64,
-                output_tokens: 0,
-                total_tokens: usage.total_tokens as u64,
+                input_tokens: Some(usage.prompt_tokens as u64),
+                output_tokens: usage.completion_tokens.map(|n| n as u64),
+                total_tokens: Some(usage.total_tokens as u64),
                 cached_input_tokens: usage
                     .prompt_tokens_details
                     .as_ref()
-                    .map_or(0, |details| details.cached_tokens as u64),
-                cache_creation_input_tokens: 0,
-                tool_use_prompt_tokens: 0,
-                reasoning_tokens: 0,
+                    .map(|details| details.cached_tokens as u64),
+                ..Default::default()
             },
-            None => crate::completion::Usage::new(),
+            None => crate::completion::Usage::default(),
         };
 
         let embeddings: Vec<embeddings::Embedding> = self

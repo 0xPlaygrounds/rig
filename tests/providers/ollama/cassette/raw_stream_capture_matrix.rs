@@ -142,13 +142,11 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             // record the adapter mapped, not a divergent copy.
             assert_eq!(Some(typed.model.as_str()), terminal.model.as_deref());
             assert_eq!(
-                typed.eval_count.unwrap_or_default(),
-                terminal.usage.output_tokens,
+                typed.eval_count, terminal.usage.output_tokens,
                 "normalized output tokens come from the raw eval_count"
             );
             assert_eq!(
-                typed.prompt_eval_count.unwrap_or_default(),
-                terminal.usage.input_tokens,
+                typed.prompt_eval_count, terminal.usage.input_tokens,
                 "normalized input tokens come from the raw prompt_eval_count"
             );
             *sink.lock().expect("capture mutex") = Some(raw.clone());

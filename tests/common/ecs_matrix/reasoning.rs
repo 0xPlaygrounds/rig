@@ -266,7 +266,7 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
             )
         {
             assert!(
-                response.usage.reasoning_tokens > 0,
+                response.usage.reasoning_tokens.is_some_and(|n| n > 0),
                 "{}: reasoning usage: {:?}",
                 cell.name,
                 response.usage
@@ -274,7 +274,8 @@ pub(crate) fn assert_log(cell: &Cell, wire: ThinkingWire, log: &EffectLog) {
         }
         if !thinking {
             assert_eq!(
-                response.usage.reasoning_tokens, 0,
+                response.usage.reasoning_tokens.unwrap_or(0),
+                0,
                 "{}: reasoning explicitly off",
                 cell.name
             );
@@ -445,8 +446,7 @@ pub(crate) fn assert_witness(cell: &Cell, log: &EffectLog, trace: &ObservationLo
     }
     for (response, reported) in completions(log).iter().zip(reported) {
         assert_eq!(
-            response.usage.reasoning_tokens,
-            reported.unwrap_or(0),
+            response.usage.reasoning_tokens, reported,
             "{}: record usage equals the provider's witnessed counter",
             cell.name
         );

@@ -73,9 +73,9 @@ async fn nonstreaming_tool_call_completed_response_without_output() {
             });
             let tool_call = tool_call.expect("completion should include the ping tool call");
             assert_eq!(tool_call.function.arguments, json!({}));
-            assert!(response.usage.input_tokens > 0, "usage should have input tokens");
+            assert!(response.usage.input_tokens.is_some_and(|n| n > 0), "usage should have input tokens");
             assert!(
-                response.usage.output_tokens > 0,
+                response.usage.output_tokens.is_some_and(|n| n > 0),
                 "usage should have output tokens"
             );
         },
@@ -119,8 +119,8 @@ async fn stream_tool_call_completed_response_without_output() {
 
             assert!(saw_ping_tool_call, "stream should emit the ping tool call");
             let usage = final_usage.expect("stream should emit terminal usage");
-            assert!(usage.input_tokens > 0, "usae should have input tokens");
-            assert!(usage.output_tokens > 0, "usae should have output tokens");
+            assert!(usage.input_tokens.is_some_and(|n| n > 0), "usae should have input tokens");
+            assert!(usage.output_tokens.is_some_and(|n| n > 0), "usae should have output tokens");
         },
     )
     .await;

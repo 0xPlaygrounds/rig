@@ -1067,8 +1067,7 @@ impl embeddings::NormalizeEmbeddingResponse for CopilotEmbeddingResponse {
         provider: &str,
         documents: Vec<String>,
     ) -> Result<embeddings::EmbeddingResponse, EmbeddingError> {
-        // Embeddings consume only prompt tokens, so a missing usage
-        // payload normalizes to the documented zero-usage sentinel.
+        // A missing usage payload reports no counter at all.
         let usage = self
             .usage
             .as_ref()

@@ -164,13 +164,13 @@ fn normalized_response_round_trips_through_serde() {
     let response = CompletionResponse::new(
         vec![AssistantContent::text("hello")],
         Usage {
-            input_tokens: 3,
-            output_tokens: 2,
-            total_tokens: 5,
-            cached_input_tokens: 1,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 1,
+            input_tokens: Some(3),
+            output_tokens: Some(2),
+            total_tokens: Some(5),
+            cached_input_tokens: Some(1),
+            cache_creation_input_tokens: Some(0),
+            tool_use_prompt_tokens: Some(0),
+            reasoning_tokens: Some(1),
         },
         "example",
     )
@@ -195,7 +195,7 @@ fn normalized_response_round_trips_through_serde() {
 fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
     let mut encoded = serde_json::to_value(CompletionResponse::new(
         tool_call_choice(),
-        Usage::new(),
+        Usage::default(),
         "example",
     ))
     .expect("serialize response");
@@ -213,7 +213,7 @@ fn deserializing_stop_with_a_tool_call_reconciles_to_tool_calls() {
 fn deserializing_empty_identifiers_yields_none() {
     let mut encoded = serde_json::to_value(CompletionResponse::new(
         vec![AssistantContent::text("hello")],
-        Usage::new(),
+        Usage::default(),
         "example",
     ))
     .expect("serialize response");
@@ -240,7 +240,7 @@ fn unknown_finish_reason_survives_a_serde_round_trip_verbatim() {
 
 #[test]
 fn stop_with_a_tool_call_reconciles_to_tool_calls() {
-    let response = CompletionResponse::new(tool_call_choice(), Usage::new(), "example")
+    let response = CompletionResponse::new(tool_call_choice(), Usage::default(), "example")
         .with_finish_reason(FinishReason::Stop);
 
     assert_eq!(response.finish_reason, Some(FinishReason::ToolCalls));
@@ -251,9 +251,9 @@ fn stop_with_a_tool_call_reconciles_to_tool_calls() {
 /// have to choose between ergonomics and correctness.
 #[test]
 fn optional_setter_reconciles_exactly_like_the_plain_setter() {
-    let via_option = CompletionResponse::new(tool_call_choice(), Usage::new(), "example")
+    let via_option = CompletionResponse::new(tool_call_choice(), Usage::default(), "example")
         .with_optional_finish_reason(Some(FinishReason::Stop));
-    let via_plain = CompletionResponse::new(tool_call_choice(), Usage::new(), "example")
+    let via_plain = CompletionResponse::new(tool_call_choice(), Usage::default(), "example")
         .with_finish_reason(FinishReason::Stop);
 
     assert_eq!(via_option.finish_reason, Some(FinishReason::ToolCalls));
@@ -269,7 +269,7 @@ fn reconciliation_only_upgrades_a_natural_stop() {
         FinishReason::ContentFilter,
         FinishReason::Other("provider_specific".to_owned()),
     ] {
-        let response = CompletionResponse::new(tool_call_choice(), Usage::new(), "example")
+        let response = CompletionResponse::new(tool_call_choice(), Usage::default(), "example")
             .with_finish_reason(reason.clone());
 
         assert_eq!(response.finish_reason, Some(reason));
@@ -280,7 +280,7 @@ fn reconciliation_only_upgrades_a_natural_stop() {
 fn reconciliation_leaves_a_stop_without_tool_calls_alone() {
     let response = CompletionResponse::new(
         vec![AssistantContent::text("done")],
-        Usage::new(),
+        Usage::default(),
         "example",
     )
     .with_finish_reason(FinishReason::Stop);
@@ -298,14 +298,31 @@ fn provider_capabilities_are_externally_configurable_from_default() {
 }
 
 #[test]
-fn usage_has_values_reflects_the_zero_sentinel() {
+fn usage_is_reported_when_any_counter_is_present() {
     use super::Usage;
 
-    assert!(!Usage::new().has_values());
+    assert!(!Usage::default().is_reported());
 
-    let mut usage = Usage::new();
-    usage.reasoning_tokens = 1;
-    assert!(usage.has_values());
+    let zero = Usage {
+        reasoning_tokens: Some(0),
+        ..Usage::default()
+    };
+    assert!(zero.is_reported(), "a reported zero is still a report");
+}
+
+#[test]
+fn usage_sum_keeps_a_reported_counter_when_the_other_side_is_absent() {
+    use super::Usage;
+
+    let reported = Usage {
+        input_tokens: Some(3),
+        output_tokens: Some(0),
+        ..Usage::default()
+    };
+    let sum = Usage::default() + reported + reported;
+    assert_eq!(sum.input_tokens, Some(6));
+    assert_eq!(sum.output_tokens, Some(0));
+    assert_eq!(sum.total_tokens, None);
 }
 
 use super::*;
@@ -358,7 +375,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
     });
     let response = CompletionResponse::new(
         vec![AssistantContent::text("hello")],
-        Usage::new(),
+        Usage::default(),
         "example",
     )
     .with_response_id("chatcmpl-1")
@@ -377,7 +394,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
 
     let without_raw = serde_json::json!({
         "choice": [{"type": "text", "text": "hello"}],
-        "usage": serde_json::to_value(Usage::new()).unwrap(),
+        "usage": serde_json::to_value(Usage::default()).unwrap(),
         "provider": "example"
     });
     let decoded: CompletionResponse =
@@ -386,7 +403,7 @@ fn normalized_response_raw_round_trips_through_serde_mirror() {
 
     let bare = serde_json::to_value(CompletionResponse::new(
         vec![AssistantContent::text("hello")],
-        Usage::new(),
+        Usage::default(),
         "example",
     ))
     .unwrap();

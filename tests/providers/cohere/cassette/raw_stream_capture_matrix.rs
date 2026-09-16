@@ -165,7 +165,7 @@ async fn raw_roundtrips_streaming_completion_response() {
                     .and_then(|usage| usage.tokens.as_ref())
                     .and_then(|tokens| tokens.input_tokens)
                     .map(|tokens| tokens as u64),
-                Some(terminal.usage.input_tokens)
+                terminal.usage.input_tokens
             );
             *sink.lock().expect("observation lock") = Some(raw.clone());
         },

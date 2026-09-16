@@ -30,9 +30,9 @@ fn thinking_tokens_survive_the_real_conversion() {
     let converted = CompletionResponse::try_from(VertexGenerateContentOutput(response))
         .expect("a response with content should convert");
 
-    assert_eq!(converted.usage.reasoning_tokens, 222);
-    assert_eq!(converted.usage.cached_input_tokens, 9);
-    assert_eq!(converted.usage.input_tokens, 14);
-    assert_eq!(converted.usage.output_tokens, 34);
-    assert_eq!(converted.usage.total_tokens, 270);
+    assert_eq!(converted.usage.reasoning_tokens, Some(222));
+    assert_eq!(converted.usage.cached_input_tokens, Some(9));
+    assert_eq!(converted.usage.input_tokens, Some(14));
+    assert_eq!(converted.usage.output_tokens, Some(34));
+    assert_eq!(converted.usage.total_tokens, Some(270));
 }

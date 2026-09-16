@@ -38,8 +38,8 @@ crate::provider_response::provider_error_enum!(
 pub struct AudioGenerationResponse {
     /// The generated audio bytes.
     pub audio: Vec<u8>,
-    /// Usage as the provider reported it. Zero-valued when the provider
-    /// reported none — the same sentinel [`Usage`] documents for completions.
+    /// Usage as the provider reported it; every counter is `None` when the
+    /// provider reported none (see [`Usage`]).
     #[serde(default)]
     pub usage: Usage,
     /// Stable descriptor name of the provider that produced this response,
@@ -73,7 +73,7 @@ impl AudioGenerationResponse {
     pub fn new(audio: Vec<u8>, provider: impl Into<String>) -> Self {
         Self {
             audio,
-            usage: Usage::new(),
+            usage: Usage::default(),
             provider: provider.into(),
             model: None,
             response_id: None,

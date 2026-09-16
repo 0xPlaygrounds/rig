@@ -74,7 +74,7 @@ impl Serve for BrowserModel {
                 self.served.set(self.served.get() + 1);
                 let response = CompletionResponse::new(
                     vec![AssistantContent::text("hello from the browser")],
-                    Usage::new(),
+                    Usage::default(),
                     "browser",
                 );
                 Reply::Outcome(Ok(Outcome::Completion(response)))
@@ -93,7 +93,9 @@ impl Serve for BrowserModel {
                             break;
                         }
                     }
-                    let _ = out.finish(StreamFinal::new("browser", Usage::new())).await;
+                    let _ = out
+                        .finish(StreamFinal::new("browser", Usage::default()))
+                        .await;
                 })
             }
             other => Reply::Outcome(Err(ErrorReport::new(
@@ -345,7 +347,7 @@ fn a_local_writer_keeps_post_final_work_alive_until_resume_or_cancellation() {
         let (release, wait) = futures::channel::oneshot::channel::<()>();
         let mut stream = Reply::written(move |writer| async move {
             writer
-                .finish(StreamFinal::new("local", Usage::new()))
+                .finish(StreamFinal::new("local", Usage::default()))
                 .await
                 .unwrap();
             wait.await.unwrap();

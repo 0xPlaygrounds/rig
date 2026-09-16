@@ -103,9 +103,9 @@ fn assert_terminal_reproduces_event(
             terminal.usage.total_tokens
         ),
         (
-            response["usage"]["input_tokens"].as_u64().expect("input"),
-            response["usage"]["output_tokens"].as_u64().expect("output"),
-            response["usage"]["total_tokens"].as_u64().expect("total"),
+            response["usage"]["input_tokens"].as_u64(),
+            response["usage"]["output_tokens"].as_u64(),
+            response["usage"]["total_tokens"].as_u64(),
         ),
         "usage"
     );

@@ -568,54 +568,49 @@ pub trait NormalizeCompletionResponse {
     fn normalize(self, provider: &str) -> Result<CompletionResponse, CompletionError>;
 }
 
-/// Struct representing the token usage for a completion request.
-/// If tokens used are `0`, then the provider failed to supply token usage metrics.
-#[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
+/// The token usage a provider reported for one completion.
+///
+/// A counter the provider did not send is `None`; a reported zero is
+/// `Some(0)`. Serialized as the same keys, absent when `None`.
+#[derive(Debug, Default, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub struct Usage {
     /// The number of input ("prompt") tokens used in a given request.
-    pub input_tokens: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u64>,
     /// The number of output ("completion") tokens used in a given request.
-    pub output_tokens: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u64>,
     /// We store this separately as some providers may only report one number
-    pub total_tokens: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_tokens: Option<u64>,
     /// The number of input tokens read from a provider-managed cache
-    pub cached_input_tokens: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_input_tokens: Option<u64>,
     /// The number of input tokens written to a provider-managed cache
-    pub cache_creation_input_tokens: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cache_creation_input_tokens: Option<u64>,
     /// The number of tool-use prompt tokens used in a given request.
-    #[serde(default)]
-    pub tool_use_prompt_tokens: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_use_prompt_tokens: Option<u64>,
     /// The number of tokens spent on internal reasoning / "thoughts" by reasoning-capable
     /// models (e.g. Gemini thinking, Anthropic extended thinking, OpenAI o-series).
-    pub reasoning_tokens: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reasoning_tokens: Option<u64>,
 }
 
 impl Usage {
-    /// Creates a new instance of `Usage`.
-    pub fn new() -> Self {
-        Self {
-            input_tokens: 0,
-            output_tokens: 0,
-            total_tokens: 0,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
-        }
-    }
-
-    /// Whether any usage values are set and non-zero.
-    ///
-    /// Zero-valued usage is this type's documented sentinel for "the provider
-    /// supplied no usage metrics", so `false` means usage was not reported.
-    pub fn has_values(&self) -> bool {
-        *self != Self::new()
+    /// Whether the provider reported any counter at all.
+    pub fn is_reported(&self) -> bool {
+        *self != Self::default()
     }
 }
 
-impl Default for Usage {
-    fn default() -> Self {
-        Self::new()
+/// Sum two counters where an unreported side does not turn a reported one
+/// into "unreported".
+fn add_counter(lhs: Option<u64>, rhs: Option<u64>) -> Option<u64> {
+    match (lhs, rhs) {
+        (None, None) => None,
+        (lhs, rhs) => Some(lhs.unwrap_or(0) + rhs.unwrap_or(0)),
     }
 }
 
@@ -630,13 +625,17 @@ impl Add for Usage {
 
 impl AddAssign for Usage {
     fn add_assign(&mut self, other: Self) {
-        self.input_tokens += other.input_tokens;
-        self.output_tokens += other.output_tokens;
-        self.total_tokens += other.total_tokens;
-        self.cached_input_tokens += other.cached_input_tokens;
-        self.cache_creation_input_tokens += other.cache_creation_input_tokens;
-        self.tool_use_prompt_tokens += other.tool_use_prompt_tokens;
-        self.reasoning_tokens += other.reasoning_tokens;
+        self.input_tokens = add_counter(self.input_tokens, other.input_tokens);
+        self.output_tokens = add_counter(self.output_tokens, other.output_tokens);
+        self.total_tokens = add_counter(self.total_tokens, other.total_tokens);
+        self.cached_input_tokens = add_counter(self.cached_input_tokens, other.cached_input_tokens);
+        self.cache_creation_input_tokens = add_counter(
+            self.cache_creation_input_tokens,
+            other.cache_creation_input_tokens,
+        );
+        self.tool_use_prompt_tokens =
+            add_counter(self.tool_use_prompt_tokens, other.tool_use_prompt_tokens);
+        self.reasoning_tokens = add_counter(self.reasoning_tokens, other.reasoning_tokens);
     }
 }
 

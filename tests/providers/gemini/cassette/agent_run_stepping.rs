@@ -83,7 +83,7 @@ async fn hand_driven_single_turn_completes() {
                 "aggregate usage must equal the sum of per-call usage"
             );
             assert!(
-                response.usage.total_tokens > 0,
+                response.usage.total_tokens.is_some_and(|n| n > 0),
                 "cassette-recorded usage should be non-zero"
             );
 

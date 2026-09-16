@@ -301,7 +301,7 @@ pub fn validate_extraction_fields(
     let fields_match = first_name.is_some_and(|value| value.eq_ignore_ascii_case("Ada"))
         && last_name.is_some_and(|value| value.eq_ignore_ascii_case("Lovelace"))
         && job.is_some_and(|value| value.to_ascii_lowercase().contains("mathematician"));
-    if !fields_match || !usage.has_values() {
+    if !fields_match || !usage.is_reported() {
         return Err(ScenarioError::contract(
             scenario,
             format!(
@@ -319,9 +319,11 @@ pub struct ScenarioReport {
     pub name: &'static str,
     /// Number of model-invoked tool calls observed by the scenario.
     pub tool_calls: usize,
-    /// Aggregated prompt tokens reported by the model across all turns.
+    /// Aggregated prompt tokens reported by the model across all turns; zero
+    /// when the model reported none.
     pub prompt_tokens: u64,
-    /// Aggregated generated tokens reported by the model across all turns.
+    /// Aggregated generated tokens reported by the model across all turns;
+    /// zero when the model reported none.
     pub generated_tokens: u64,
     /// Number of messages retained in the completed run history.
     pub history_messages: usize,
@@ -950,8 +952,8 @@ fn report_from_response(
     Ok(ScenarioReport {
         name,
         tool_calls,
-        prompt_tokens: response.usage.input_tokens,
-        generated_tokens: response.usage.output_tokens,
+        prompt_tokens: response.usage.input_tokens.unwrap_or(0),
+        generated_tokens: response.usage.output_tokens.unwrap_or(0),
         history_messages: response.messages.as_ref().map_or(0, Vec::len),
         duration: started.elapsed(),
         response: response.output,
@@ -1288,8 +1290,8 @@ where
     let streamed_answer = normalize(&streamed_text);
     if !buffered_answer.eq_ignore_ascii_case("Paris")
         || !streamed_answer.eq_ignore_ascii_case("Paris")
-        || !buffered.usage.has_values()
-        || !usage.has_values()
+        || !buffered.usage.is_reported()
+        || !usage.is_reported()
     {
         return Err(ScenarioError::contract(
             SCENARIO,
@@ -1302,8 +1304,8 @@ where
     Ok(ScenarioReport {
         name: SCENARIO,
         tool_calls: 0,
-        prompt_tokens: usage.input_tokens,
-        generated_tokens: usage.output_tokens,
+        prompt_tokens: usage.input_tokens.unwrap_or(0),
+        generated_tokens: usage.output_tokens.unwrap_or(0),
         history_messages: 0,
         duration: started.elapsed(),
         response: streamed_text,
@@ -1335,8 +1337,8 @@ where
     Ok(ScenarioReport {
         name: SCENARIO,
         tool_calls: 1,
-        prompt_tokens: response.usage.input_tokens,
-        generated_tokens: response.usage.output_tokens,
+        prompt_tokens: response.usage.input_tokens.unwrap_or(0),
+        generated_tokens: response.usage.output_tokens.unwrap_or(0),
         history_messages: 0,
         duration: started.elapsed(),
         response: format!(
@@ -1561,8 +1563,8 @@ where
     Ok(ScenarioReport {
         name: SCENARIO,
         tool_calls: emitted,
-        prompt_tokens: turn.usage.input_tokens,
-        generated_tokens: turn.usage.output_tokens,
+        prompt_tokens: turn.usage.input_tokens.unwrap_or(0),
+        generated_tokens: turn.usage.output_tokens.unwrap_or(0),
         history_messages: 2,
         duration: started.elapsed(),
         response: "fail, retry, repair, rejected repair, and skip passed".to_string(),
@@ -1814,7 +1816,7 @@ where
         .stream();
     let mut final_response = None;
     let mut final_count = 0_usize;
-    let mut completion_usage = crate::completion::Usage::new();
+    let mut completion_usage = crate::completion::Usage::default();
     let mut streamed_call_ids = Vec::new();
     let mut streamed_result_ids = Vec::new();
     while let Some(item) = stream.next().await {
@@ -1875,8 +1877,8 @@ where
     Ok(ScenarioReport {
         name: "streaming_tool",
         tool_calls,
-        prompt_tokens: result.usage.input_tokens,
-        generated_tokens: result.usage.output_tokens,
+        prompt_tokens: result.usage.input_tokens.unwrap_or(0),
+        generated_tokens: result.usage.output_tokens.unwrap_or(0),
         history_messages,
         duration: started.elapsed(),
         response,
@@ -2012,15 +2014,12 @@ where
         ));
     }
 
+    let usage = none.usage + required.usage + specific.usage;
     Ok(ScenarioReport {
         name: "tool_choice_modes",
         tool_calls: required_calls + specific_calls.len(),
-        prompt_tokens: none.usage.input_tokens
-            + required.usage.input_tokens
-            + specific.usage.input_tokens,
-        generated_tokens: none.usage.output_tokens
-            + required.usage.output_tokens
-            + specific.usage.output_tokens,
+        prompt_tokens: usage.input_tokens.unwrap_or(0),
+        generated_tokens: usage.output_tokens.unwrap_or(0),
         history_messages: 0,
         duration: started.elapsed(),
         response: "none, required, and specific modes passed".to_string(),

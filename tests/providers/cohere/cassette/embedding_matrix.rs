@@ -164,10 +164,10 @@ async fn image_normalized_and_raw_round_trip() {
             assert_eq!(response.provider, "cohere");
             assert_eq!(response.embeddings[0].vec.len(), model.ndims());
             // Cohere bills image embeds as `billed_units.images`, not tokens
-            // — `Usage` is token-denominated, so the normalized usage is
-            // honestly zero and the image count is read off the raw payload.
+            // — `Usage` is token-denominated, so no counter is reported and
+            // the image count is read off the raw payload.
             assert!(
-                !response.usage.has_values(),
+                !response.usage.is_reported(),
                 "no token usage exists to report for an image embed: {:?}",
                 response.usage
             );

@@ -163,9 +163,12 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             // The typed terminal agrees with the normalized one: raw is the
             // record the adapter's `final_record` mapped.
             let usage = typed.usage.expect("terminal carries usage");
-            assert_eq!(usage.total_tokens as u64, terminal.usage.total_tokens);
-            assert_eq!(usage.input_tokens as u64, terminal.usage.input_tokens);
-            assert_eq!(usage.output_tokens as u64, terminal.usage.output_tokens);
+            assert_eq!(Some(usage.total_tokens as u64), terminal.usage.total_tokens);
+            assert_eq!(Some(usage.input_tokens as u64), terminal.usage.input_tokens);
+            assert_eq!(
+                Some(usage.output_tokens as u64),
+                terminal.usage.output_tokens
+            );
             assert_eq!(typed.provider_request_id, terminal.provider_request_id);
             *sink.lock().expect("capture mutex") = Some(raw.clone());
         },

@@ -127,9 +127,9 @@ fn assert_reproduces_fixture(
             response.usage.total_tokens
         ),
         (
-            body["usage"]["input_tokens"].as_u64().expect("input"),
-            body["usage"]["output_tokens"].as_u64().expect("output"),
-            body["usage"]["total_tokens"].as_u64().expect("total"),
+            body["usage"]["input_tokens"].as_u64(),
+            body["usage"]["output_tokens"].as_u64(),
+            body["usage"]["total_tokens"].as_u64(),
         ),
         "{context}: usage"
     );

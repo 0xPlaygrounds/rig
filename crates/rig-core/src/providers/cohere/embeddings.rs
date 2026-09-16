@@ -42,12 +42,15 @@ pub struct ApiVersion {
     pub is_experimental: Option<bool>,
 }
 
+/// Cohere's `meta.billed_units`. Token counters are absent when the request
+/// was not billed in tokens (image embeds bill `images`), so they are
+/// `Option`; the non-token counters default to zero.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BilledUnits {
-    #[serde(default)]
-    pub input_tokens: u32,
-    #[serde(default)]
-    pub output_tokens: u32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input_tokens: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<u32>,
     #[serde(default)]
     pub search_units: u32,
     #[serde(default)]
@@ -61,7 +64,10 @@ impl std::fmt::Display for BilledUnits {
         write!(
             f,
             "Input tokens: {}\nOutput tokens: {}\nSearch units: {}\nClassifications: {}",
-            self.input_tokens, self.output_tokens, self.search_units, self.classifications
+            self.input_tokens.unwrap_or(0),
+            self.output_tokens.unwrap_or(0),
+            self.search_units,
+            self.classifications
         )?;
         if self.images > 0 {
             write!(f, "\nImages: {}", self.images)?;
@@ -88,12 +94,21 @@ pub struct FloatEmbeddings {
 }
 
 impl BilledUnits {
+    /// Maps the billed token counters straight through; `total_tokens` is
+    /// the sum of whichever counters Cohere sent (an embed bills input only,
+    /// so it reports `input_tokens` and `total_tokens`, no `output_tokens`).
     fn to_usage(&self) -> crate::completion::Usage {
+        let input_tokens = self.input_tokens.map(u64::from);
+        let output_tokens = self.output_tokens.map(u64::from);
+        let total_tokens = match (input_tokens, output_tokens) {
+            (None, None) => None,
+            (input, output) => Some(input.unwrap_or(0) + output.unwrap_or(0)),
+        };
         crate::completion::Usage {
-            input_tokens: self.input_tokens as u64,
-            output_tokens: self.output_tokens as u64,
-            total_tokens: (self.input_tokens + self.output_tokens) as u64,
-            ..crate::completion::Usage::new()
+            input_tokens,
+            output_tokens,
+            total_tokens,
+            ..Default::default()
         }
     }
 }
@@ -350,7 +365,7 @@ where
                 let (responses, documents) = self.raw_embed_images_with_documents(images).await?;
                 let captured = serde_json::to_value(&responses)?;
                 let mut embeddings = Vec::with_capacity(responses.len());
-                let mut usage = crate::completion::Usage::new();
+                let mut usage = crate::completion::Usage::default();
                 for (response, document) in responses.into_iter().zip(documents) {
                     if let Some(meta) = &response.meta {
                         usage += meta.billed_units.to_usage();

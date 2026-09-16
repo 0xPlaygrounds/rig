@@ -383,8 +383,7 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
                 .normalize(LLAMACPP_PROVIDER)
                 .expect("raw should normalize");
             assert_eq!(
-                timings.cache_n.unwrap_or_default(),
-                normalized.usage.cached_input_tokens,
+                timings.cache_n, normalized.usage.cached_input_tokens,
                 "timings.cache_n and usage.prompt_tokens_details.cached_tokens \
              describe the same thing"
             );

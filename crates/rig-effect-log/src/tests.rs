@@ -36,7 +36,7 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
         };
         record.outcome = Ok(Outcome::Completion(CompletionResponse::new(
             vec![AssistantContent::text("ok")],
-            Usage::new(),
+            Usage::default(),
             "composing-model",
         )));
     }
@@ -288,7 +288,7 @@ fn effect_record_and_log_round_trip() {
             },
             outcome: Ok(Outcome::Completion(CompletionResponse::new(
                 vec![AssistantContent::text("hi")],
-                Usage::new(),
+                Usage::default(),
                 "mock",
             ))),
             events: None,
@@ -735,7 +735,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     };
     records[0].outcome = Ok(Outcome::Completion(CompletionResponse::new(
         choice,
-        Usage::new(),
+        Usage::default(),
         "test",
     )));
     records[0].events = Some(events);
@@ -745,7 +745,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
     };
     records[1].outcome = Ok(Outcome::Completion(CompletionResponse::new(
         vec![AssistantContent::text("done")],
-        Usage::new(),
+        Usage::default(),
         "test",
     )));
     let log = EffectLog::from_records(records);

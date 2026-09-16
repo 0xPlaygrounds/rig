@@ -45,7 +45,7 @@ use rig_core::{
 fn stream(late_error: bool) -> MockCompletionModel {
     let mut events = vec![
         MockStreamEvent::text("answer"),
-        MockStreamEvent::FinalResponse(mock_final(Usage::new())),
+        MockStreamEvent::FinalResponse(mock_final(Usage::default())),
     ];
     if late_error {
         events.push(MockStreamEvent::Error(MockError::provider("after final")));

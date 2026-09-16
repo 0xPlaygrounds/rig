@@ -255,7 +255,7 @@ pub struct PartialUsage {
 impl From<&PartialUsage> for crate::completion::Usage {
     fn from(value: &PartialUsage) -> crate::completion::Usage {
         anthropic_usage_totals(
-            value.input_tokens.unwrap_or_default() as u64,
+            value.input_tokens.map(|tokens| tokens as u64),
             value.output_tokens as u64,
             value.cache_read_input_tokens,
             value.cache_creation_input_tokens,

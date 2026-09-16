@@ -97,7 +97,7 @@ fn classify_reasoning_text_done_is_known_and_decodes() {
 /// a no-op: replaying it would double every raw-reasoning block.
 #[test]
 fn reasoning_text_done_emits_nothing() {
-    let mut accumulator = RawChoiceAccumulator::new("openai", ResponsesUsage::new());
+    let mut accumulator = RawChoiceAccumulator::new("openai", None);
     let chunk: ItemChunk = serde_json::from_value(json!({
         "type": "response.reasoning_text.done",
         "item_id": "rs_1",
@@ -423,8 +423,8 @@ fn reasoning_output_item_done_emits_reasoning_text_content() {
         })
     );
 
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
-        .expect("sse body should decode");
+    let events =
+        stream_events_from_sse_body("openai", &body, None).expect("sse body should decode");
 
     // The done item opens its block under the item's `rs_*` id and closes
     // it with one wire-sent end restatement whose single block is the
@@ -495,7 +495,7 @@ fn envelope_less_reasoning_then_text_decodes_without_violation() {
         }),
     );
 
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("sse body should decode without a sequence-law violation");
     assert!(events.iter().any(|event| matches!(
         event,
@@ -517,8 +517,8 @@ fn reasoning_text_delta_emits_reasoning_delta() {
         })
     );
 
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
-        .expect("sse body should decode");
+    let events =
+        stream_events_from_sse_body("openai", &body, None).expect("sse body should decode");
 
     // The first delta for an unseen id opens its block, carrying the
     // wire's `rs_*` id as the durable provider id.
@@ -560,8 +560,8 @@ fn unknown_output_item_surfaces_as_raw_unknown_choice() {
         })
     );
 
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
-        .expect("sse body should decode");
+    let events =
+        stream_events_from_sse_body("openai", &body, None).expect("sse body should decode");
 
     let unknown = events.iter().find_map(|event| match event {
         StreamEvent::Unknown(value) => Some(value),
@@ -828,9 +828,9 @@ async fn response_incomplete_chunk_is_a_successful_terminal_with_mapped_finish_r
         final_response.finish_reason,
         Some(crate::completion::FinishReason::Length)
     );
-    assert_eq!(final_response.usage.input_tokens, 10);
-    assert_eq!(final_response.usage.output_tokens, 5);
-    assert_eq!(final_response.usage.total_tokens, 15);
+    assert_eq!(final_response.usage.input_tokens, Some(10));
+    assert_eq!(final_response.usage.output_tokens, Some(5));
+    assert_eq!(final_response.usage.total_tokens, Some(15));
 }
 
 /// A multi-block reasoning done item (summaries + `encrypted_content`)
@@ -1350,7 +1350,7 @@ fn corrupt_known_frame_fails_the_buffered_body() {
     });
     let body = format!("data: {corrupt}\ndata: {completed}\n");
 
-    let err = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let err = stream_events_from_sse_body("openai", &body, None)
         .expect_err("a corrupt known frame must fail the buffered decode");
     assert!(
         err.to_string().contains("response.output_text.delta"),
@@ -1359,13 +1359,13 @@ fn corrupt_known_frame_fails_the_buffered_body() {
 
     // Syntactically invalid JSON fails too.
     let body = format!("data: {{not json\ndata: {completed}\n");
-    stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    stream_events_from_sse_body("openai", &body, None)
         .expect_err("invalid JSON must fail the buffered decode");
 
     // Unknown event types stay skippable.
     let unknown = json!({ "type": "response.rocket_launch", "count": 3 });
     let body = format!("data: {unknown}\ndata: {completed}\n");
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("unknown event types must stay skippable");
     assert!(
         events
@@ -1390,7 +1390,7 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
         "data: {}\ndata: {completed}\n",
         json!({ "type": "response.output_text.delta", "delta": "hi" })
     );
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("an envelope-less delta must repair and decode");
     assert!(events.iter().any(|event| matches!(
         event,
@@ -1405,7 +1405,7 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
         "data: {}\ndata: {completed}\n",
         json!({ "type": "response.function_call_arguments.delta", "delta": "{}" })
     );
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("an id-less args delta must repair and decode");
     assert!(events.iter().any(|event| matches!(
         event,
@@ -1420,7 +1420,7 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
         "data: {}\ndata: {completed}\n",
         json!({ "type": "response.output_text.done", "text": "hi" })
     );
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("an envelope-less done event must repair to the live no-op");
     assert!(
         events
@@ -1434,7 +1434,7 @@ fn envelope_less_frames_repair_onto_the_shared_interpreter() {
         "data: {}\ndata: {completed}\n",
         json!({ "type": "response.reasoning_summary_text.delta", "delta": "think" })
     );
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("an envelope-less summary delta must repair and decode");
     assert!(events.iter().any(|event| matches!(
         event,
@@ -1480,7 +1480,7 @@ data: {done}
 "
     );
 
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("the truncated shape must decode");
     let raw_fragments: Vec<&str> = events
         .iter()
@@ -1522,7 +1522,7 @@ fn a_fragmentless_unparseable_restatement_still_reaches_the_buffer() {
 "
     );
 
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("the replayed truncated shape must decode");
     let raw_fragments = events
         .iter()
@@ -1581,8 +1581,8 @@ async fn mixed_id_and_id_less_reasoning_frames_share_one_slot_key() {
     });
     let body = format!("data: {with_id}\ndata: {id_less}\ndata: {done}\ndata: {completed}\n");
 
-    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
-        .expect("the mixed slot must decode");
+    let raw_choices =
+        stream_events_from_sse_body("openai", &body, None).expect("the mixed slot must decode");
     let mut keys = std::collections::HashSet::new();
     for event in &raw_choices {
         match event {
@@ -1655,7 +1655,7 @@ async fn envelope_less_reasoning_deltas_are_superseded_by_their_done_item() {
     });
     let body = format!("data: {delta}\ndata: {done}\ndata: {completed}\n");
 
-    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, None)
         .expect("the envelope-less reasoning replay must decode");
     // The done item's restatement shares the minted per-slot identity.
     assert!(raw_choices.iter().any(|event| matches!(
@@ -1746,7 +1746,7 @@ async fn same_item_text_resumes_as_one_part_across_interleaved_reasoning() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, None)
         .expect("the interleaved stream must decode");
     // The resumed item re-announces its block: two text `BlockStart { msg_1 }`.
     let starts = raw_choices
@@ -1848,7 +1848,7 @@ async fn mixed_id_and_id_less_events_share_one_slot_key() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, None)
         .expect("the mixed-id stream must decode");
 
     // Every tool event (block start, name delta, args delta, end) carries
@@ -1956,7 +1956,7 @@ async fn parallel_id_less_function_calls_assemble_distinctly() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, None)
         .expect("the id-less parallel-call stream must decode");
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
@@ -2028,8 +2028,8 @@ async fn a_lost_done_frame_does_not_discard_a_provider_completed_call() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
-        .expect("the stream must decode");
+    let raw_choices =
+        stream_events_from_sse_body("openai", &body, None).expect("the stream must decode");
     let raw_response = sample_response(ResponseStatus::Completed);
     let response =
         super::completion_response_from_stream_events("openai", raw_choices, &raw_response)
@@ -2086,7 +2086,7 @@ async fn id_less_args_deltas_surface_and_truncation_fabricates_no_call() {
         .map(|event| format!("data: {event}\n"))
         .collect::<String>();
 
-    let raw_choices = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let raw_choices = stream_events_from_sse_body("openai", &body, None)
         .expect("the truncated id-less stream must decode");
     // The fragment flowed into assembly under the minted identity.
     assert!(
@@ -2147,7 +2147,7 @@ data: {completed}
 "
     );
 
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("refusal content-part frames must not fail the buffered decode");
     assert!(
         events.iter().any(|event| matches!(
@@ -2222,7 +2222,7 @@ fn streaming_error_event_preserves_full_payload() {
     let payload = r#"{"type":"error","error":{"message":"boom","code":"server_error","type":"server_error"}}"#;
     let body = format!("data: {payload}\n");
 
-    let err = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let err = stream_events_from_sse_body("openai", &body, None)
         .expect_err("error event should surface as a provider response error");
 
     assert_eq!(err.provider_response_status(), None);
@@ -2289,7 +2289,10 @@ async fn response_completed_chunk_populates_final_usage() {
         "response": response,
     });
 
-    let usage = final_response_from_event(event).await.usage;
+    let usage = final_response_from_event(event)
+        .await
+        .usage
+        .expect("the terminal carries usage");
     assert_eq!(usage.input_tokens, 10);
     assert_eq!(usage.output_tokens, 5);
     assert_eq!(usage.total_tokens, 15);
@@ -2317,7 +2320,10 @@ async fn response_completed_chunk_tolerates_object_shaped_top_p() {
         "response": response,
     });
 
-    let usage = final_response_from_event(event).await.usage;
+    let usage = final_response_from_event(event)
+        .await
+        .usage
+        .expect("the terminal carries usage");
     assert_eq!(usage.input_tokens, 10);
     assert_eq!(usage.total_tokens, 15);
 }
@@ -2378,9 +2384,9 @@ async fn terminal_record_normalizes_into_the_stream_final() {
         final_response.finish_reason,
         Some(crate::completion::FinishReason::Stop)
     );
-    assert_eq!(final_response.usage.input_tokens, 10);
-    assert_eq!(final_response.usage.output_tokens, 5);
-    assert_eq!(final_response.usage.total_tokens, 15);
+    assert_eq!(final_response.usage.input_tokens, Some(10));
+    assert_eq!(final_response.usage.output_tokens, Some(5));
+    assert_eq!(final_response.usage.total_tokens, Some(15));
 }
 
 #[tokio::test]
@@ -2442,7 +2448,7 @@ fn terminal_record_preserves_an_unknown_incomplete_reason() {
         }),
         model: Some("gpt-5.4".to_string()),
         message_id: Some("msg_1".to_string()),
-        ..super::StreamingCompletionResponse::new(ResponsesUsage::new())
+        ..super::StreamingCompletionResponse::new(None)
     };
 
     let final_response =
@@ -2538,9 +2544,9 @@ async fn done_sentinel_is_ignored_without_debug_parse_noise() {
     }
 
     let usage = final_usage.expect("expected final response");
-    assert_eq!(usage.input_tokens, 4);
-    assert_eq!(usage.output_tokens, 2);
-    assert_eq!(usage.total_tokens, 6);
+    assert_eq!(usage.input_tokens, Some(4));
+    assert_eq!(usage.output_tokens, Some(2));
+    assert_eq!(usage.total_tokens, Some(6));
 
     let logs = String::from_utf8(
         captured
@@ -2655,7 +2661,7 @@ fn empty_item_ids_identify_nothing_and_do_not_panic() {
             },
         }),
     );
-    let events = stream_events_from_sse_body("openai", &body, ResponsesUsage::new())
+    let events = stream_events_from_sse_body("openai", &body, None)
         .expect("an empty id is not a decode failure");
     assert!(events.iter().any(|event| matches!(
         event,

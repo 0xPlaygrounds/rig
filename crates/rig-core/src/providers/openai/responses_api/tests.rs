@@ -1349,11 +1349,11 @@ fn responses_usage_token_usage_preserves_reasoning_tokens() {
 
     let token_usage = crate::completion::Usage::from(&usage);
 
-    assert_eq!(token_usage.input_tokens, 100);
-    assert_eq!(token_usage.cached_input_tokens, 25);
-    assert_eq!(token_usage.output_tokens, 50);
-    assert_eq!(token_usage.reasoning_tokens, 15);
-    assert_eq!(token_usage.total_tokens, 150);
+    assert_eq!(token_usage.input_tokens, Some(100));
+    assert_eq!(token_usage.cached_input_tokens, Some(25));
+    assert_eq!(token_usage.output_tokens, Some(50));
+    assert_eq!(token_usage.reasoning_tokens, Some(15));
+    assert_eq!(token_usage.total_tokens, Some(150));
 }
 
 #[test]
@@ -1372,11 +1372,11 @@ fn responses_usage_deserializes_without_output_token_details() {
 
     let token_usage = crate::completion::Usage::from(&usage);
 
-    assert_eq!(token_usage.input_tokens, 100);
-    assert_eq!(token_usage.cached_input_tokens, 25);
-    assert_eq!(token_usage.output_tokens, 50);
-    assert_eq!(token_usage.reasoning_tokens, 0);
-    assert_eq!(token_usage.total_tokens, 150);
+    assert_eq!(token_usage.input_tokens, Some(100));
+    assert_eq!(token_usage.cached_input_tokens, Some(25));
+    assert_eq!(token_usage.output_tokens, Some(50));
+    assert_eq!(token_usage.reasoning_tokens, None);
+    assert_eq!(token_usage.total_tokens, Some(150));
 }
 
 #[test]
@@ -2312,11 +2312,11 @@ fn responses_usage_add_preserves_rhs_details_when_lhs_details_are_absent() {
     let usage = lhs + rhs;
     let token_usage = crate::completion::Usage::from(&usage);
 
-    assert_eq!(token_usage.input_tokens, 13);
-    assert_eq!(token_usage.cached_input_tokens, 2);
-    assert_eq!(token_usage.output_tokens, 25);
-    assert_eq!(token_usage.reasoning_tokens, 4);
-    assert_eq!(token_usage.total_tokens, 38);
+    assert_eq!(token_usage.input_tokens, Some(13));
+    assert_eq!(token_usage.cached_input_tokens, Some(2));
+    assert_eq!(token_usage.output_tokens, Some(25));
+    assert_eq!(token_usage.reasoning_tokens, Some(4));
+    assert_eq!(token_usage.total_tokens, Some(38));
 }
 
 #[test]

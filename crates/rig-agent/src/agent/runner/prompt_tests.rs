@@ -469,13 +469,10 @@ impl Tool for CountingAddTool {
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
     Usage {
-        input_tokens,
-        output_tokens,
-        total_tokens: input_tokens + output_tokens,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        tool_use_prompt_tokens: 0,
-        reasoning_tokens: 0,
+        input_tokens: Some(input_tokens),
+        output_tokens: Some(output_tokens),
+        total_tokens: Some(input_tokens + output_tokens),
+        ..Usage::default()
     }
 }
 
@@ -484,13 +481,10 @@ fn typed_prompt_response_serializes_with_serialize_only_output() {
     let response = TypedPromptResponse::new(
         SerializeOnly { value: "ok" },
         Usage {
-            input_tokens: 1,
-            output_tokens: 2,
-            total_tokens: 3,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
+            input_tokens: Some(1),
+            output_tokens: Some(2),
+            total_tokens: Some(3),
+            ..Usage::default()
         },
     );
 
@@ -507,38 +501,29 @@ fn typed_prompt_response_deserializes_with_deserialize_only_output() {
 
     assert_eq!(response.requests(), 0);
     assert_eq!(response.output.value, "ok");
-    assert_eq!(response.usage.input_tokens, 1);
-    assert_eq!(response.usage.output_tokens, 2);
-    assert_eq!(response.usage.total_tokens, 3);
+    assert_eq!(response.usage.input_tokens, Some(1));
+    assert_eq!(response.usage.output_tokens, Some(2));
+    assert_eq!(response.usage.total_tokens, Some(3));
 }
 
 #[test]
 fn prompt_response_serializes_completion_calls_with_missing_usage() {
     let reported_usage = usage(3, 4);
     let response = PromptResponse::new("ok", reported_usage).with_completion_calls(vec![
-        CompletionCall::new(0, Usage::new()),
+        CompletionCall::new(0, Usage::default()),
         CompletionCall::new(1, reported_usage),
     ]);
 
     let value = serde_json::to_value(&response).expect("serialize prompt response");
 
-    // Unreported usage serializes as a plain zero-valued object: zero is
-    // Usage's documented sentinel for missing provider metrics, so there
-    // is no null encoding to keep in sync.
+    // Unreported usage serializes as an empty object: every counter is
+    // `None`, and `None` counters are omitted rather than encoded as zero.
     assert_eq!(
         value.get("completion_calls"),
         Some(&json!([
             {
                 "call_index": 0,
-                "usage": {
-                    "input_tokens": 0,
-                    "output_tokens": 0,
-                    "total_tokens": 0,
-                    "cached_input_tokens": 0,
-                    "cache_creation_input_tokens": 0,
-                    "tool_use_prompt_tokens": 0,
-                    "reasoning_tokens": 0,
-                }
+                "usage": {}
             },
             {
                 "call_index": 1,
@@ -546,10 +531,6 @@ fn prompt_response_serializes_completion_calls_with_missing_usage() {
                     "input_tokens": 3,
                     "output_tokens": 4,
                     "total_tokens": 7,
-                    "cached_input_tokens": 0,
-                    "cache_creation_input_tokens": 0,
-                    "tool_use_prompt_tokens": 0,
-                    "reasoning_tokens": 0,
                 }
             }
         ]))
@@ -560,7 +541,7 @@ fn prompt_response_serializes_completion_calls_with_missing_usage() {
     assert_eq!(
         response.completion_calls(),
         &[
-            CompletionCall::new(0, Usage::new()),
+            CompletionCall::new(0, Usage::default()),
             CompletionCall::new(1, reported_usage)
         ]
     );
@@ -663,7 +644,7 @@ fn prompt_response_roundtrip_preserves_explicit_content() {
     // An explicitly-set `content` (e.g. the streaming surface's structured
     // final turn) must survive a serialize/deserialize round-trip intact —
     // `content` and `output` are independent fields.
-    let response = PromptResponse::new("visible text", Usage::new())
+    let response = PromptResponse::new("visible text", Usage::default())
         .with_content(vec![AssistantContent::text("structured")]);
 
     let value = serde_json::to_value(&response).expect("serialize prompt response");
@@ -725,23 +706,20 @@ async fn prompt_response_records_completion_call_without_reported_usage() {
     let response = agent.prompt("say ok").await.expect("prompt should succeed");
 
     assert_eq!(response.output, "ok");
-    assert_eq!(response.usage, Usage::new());
+    assert_eq!(response.usage, Usage::default());
     assert_eq!(
         response.completion_calls(),
-        &[CompletionCall::new(0, Usage::new())]
+        &[CompletionCall::new(0, Usage::default())]
     );
 }
 
 #[tokio::test]
 async fn typed_prompt_response_preserves_completion_calls() {
     let call_usage = Usage {
-        input_tokens: 4,
-        output_tokens: 6,
-        total_tokens: 10,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        tool_use_prompt_tokens: 0,
-        reasoning_tokens: 0,
+        input_tokens: Some(4),
+        output_tokens: Some(6),
+        total_tokens: Some(10),
+        ..Usage::default()
     };
     let model =
         MockCompletionModel::new([MockTurn::text(r#"{"value":"ok"}"#).with_usage(call_usage)]);
@@ -1717,22 +1695,16 @@ async fn allowed_specific_tool_call_executes_normally() {
 #[tokio::test]
 async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     let first_call_usage = Usage {
-        input_tokens: 1,
-        output_tokens: 1,
-        total_tokens: 2,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        tool_use_prompt_tokens: 0,
-        reasoning_tokens: 0,
+        input_tokens: Some(1),
+        output_tokens: Some(1),
+        total_tokens: Some(2),
+        ..Usage::default()
     };
     let second_call_usage = Usage {
-        input_tokens: 1,
-        output_tokens: 1,
-        total_tokens: 2,
-        cached_input_tokens: 0,
-        cache_creation_input_tokens: 0,
-        tool_use_prompt_tokens: 0,
-        reasoning_tokens: 0,
+        input_tokens: Some(1),
+        output_tokens: Some(1),
+        total_tokens: Some(2),
+        ..Usage::default()
     };
     let model = MockCompletionModel::new([
         MockTurn::tool_call("tool_call_1", "add", json!({"x": 1, "y": 2}))
@@ -1752,13 +1724,10 @@ async fn prompt_request_stops_cleanly_on_empty_terminal_turn() {
     assert_eq!(
         response.usage,
         Usage {
-            input_tokens: 2,
-            output_tokens: 2,
-            total_tokens: 4,
-            cached_input_tokens: 0,
-            cache_creation_input_tokens: 0,
-            tool_use_prompt_tokens: 0,
-            reasoning_tokens: 0,
+            input_tokens: Some(2),
+            output_tokens: Some(2),
+            total_tokens: Some(4),
+            ..Usage::default()
         }
     );
     assert_eq!(
@@ -2311,12 +2280,13 @@ fn completion_call_without_identity_fields_still_deserializes() {
 /// And a populated record round-trips the identity losslessly.
 #[test]
 fn completion_call_identity_round_trips() {
-    let call =
-        CompletionCall::new(0, crate::completion::Usage::new()).with_identity(ResponseIdentity {
+    let call = CompletionCall::new(0, crate::completion::Usage::default()).with_identity(
+        ResponseIdentity {
             message_id: Some("msg_1".into()),
             response_id: Some("resp_1".into()),
             provider_request_id: Some("req_1".into()),
-        });
+        },
+    );
     let json = serde_json::to_string(&call).expect("serialize");
     let restored: CompletionCall = serde_json::from_str(&json).expect("deserialize");
     assert_eq!(restored, call);

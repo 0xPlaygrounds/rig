@@ -90,8 +90,6 @@
             "output_tokens": 104,
             "total_tokens": 161,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 47
           },
           "message_id": null,
@@ -978,8 +976,6 @@
             "output_tokens": 104,
             "total_tokens": 161,
             "cached_input_tokens": 0,
-            "cache_creation_input_tokens": 0,
-            "tool_use_prompt_tokens": 0,
             "reasoning_tokens": 47
           },
           "finish_reason": "stop",

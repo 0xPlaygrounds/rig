@@ -44,7 +44,7 @@ async fn streaming_smoke() {
                 .expect("streaming prompt should succeed");
 
         assert_nonempty_response(&response);
-        assert!(provider_final.usage.total_tokens > 0);
+        assert!(provider_final.usage.total_tokens.is_some_and(|n| n > 0));
     })
     .await;
 }
@@ -129,7 +129,7 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
                 "expected resolved Gemini model version to be surfaced"
             );
             assert!(
-                final_response.usage.has_values(),
+                final_response.usage.is_reported(),
                 "expected final response to expose token usage"
             );
         },
@@ -184,15 +184,16 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
             );
             let usage = final_response.usage;
             assert!(
-                usage.input_tokens > 0,
+                usage.input_tokens.is_some_and(|n| n > 0),
                 "expected positive input token usage, got {usage:?}"
             );
             assert!(
-                usage.output_tokens > 0,
+                usage.output_tokens.is_some_and(|n| n > 0),
                 "expected positive output token usage, got {usage:?}"
             );
             assert!(
-                usage.total_tokens >= usage.input_tokens + usage.output_tokens,
+                usage.total_tokens.unwrap_or(0)
+                    >= usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0),
                 "expected total token usage to include input and output tokens, got {usage:?}"
             );
         },

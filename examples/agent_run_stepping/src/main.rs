@@ -186,7 +186,7 @@ async fn main() -> Result<()> {
                 println!(
                     "  {} model call(s), {} total tokens",
                     response.completion_calls.len(),
-                    response.usage.total_tokens
+                    response.usage.total_tokens.unwrap_or(0)
                 );
                 break;
             }
@@ -215,7 +215,7 @@ async fn main() -> Result<()> {
     println!(
         "  {} model call(s), {} total tokens",
         resp.completion_calls.len(),
-        resp.usage.total_tokens
+        resp.usage.total_tokens.unwrap_or(0)
     );
 
     Ok(())

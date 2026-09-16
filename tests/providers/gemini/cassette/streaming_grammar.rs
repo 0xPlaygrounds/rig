@@ -109,7 +109,7 @@ fn assert_terminal(run: &StreamRun, expected_finish: FinishReason) {
         "unexpected finish reason"
     );
     assert!(
-        terminal.usage.total_tokens > 0,
+        terminal.usage.total_tokens.is_some_and(|n| n > 0),
         "terminal record should carry non-zero usage, got {:?}",
         terminal.usage
     );
@@ -610,7 +610,7 @@ async fn interactions_thinking_stream_keeps_reasoning_and_text_discrete() {
                 "unexpected finish reason"
             );
             assert!(
-                terminal.usage.total_tokens > 0,
+                terminal.usage.total_tokens.is_some_and(|n| n > 0),
                 "terminal record should carry non-zero usage, got {:?}",
                 terminal.usage
             );
@@ -764,7 +764,7 @@ async fn interactions_requires_action_roundtrip() {
                 "requires_action should normalize to a ToolCalls finish"
             );
             assert!(
-                normalized.usage.total_tokens > 0,
+                normalized.usage.total_tokens.is_some_and(|n| n > 0),
                 "interaction should report usage, got {:?}",
                 normalized.usage
             );

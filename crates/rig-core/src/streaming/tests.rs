@@ -20,8 +20,10 @@ fn fixture_params(value: serde_json::Value) -> crate::message::AdditionalParams 
 
 /// Terminal record with a known total-token count.
 fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
-    let mut usage = Usage::new();
-    usage.total_tokens = total_tokens;
+    let usage = Usage {
+        total_tokens: Some(total_tokens),
+        ..Usage::default()
+    };
     StreamFinal::new(TEST_PROVIDER, usage)
 }
 
@@ -152,7 +154,7 @@ async fn a_long_run_of_non_yielding_events_does_not_grow_the_stack() {
         terminals, 1,
         "the first terminal latched; duplicates never yield"
     );
-    assert_eq!(stream.usage().total_tokens, 1);
+    assert_eq!(stream.usage().total_tokens, Some(1));
     // The last id recorded wins.
     assert_eq!(stream.message_id.as_deref(), Some("msg_49999"));
 }
@@ -302,11 +304,11 @@ async fn finish_derives_usage_from_final_response() {
     while stream.next().await.is_some() {}
 
     // usage() surfaces the final response's token usage...
-    assert_eq!(stream.usage().total_tokens, 15);
+    assert_eq!(stream.usage().total_tokens, Some(15));
 
     // ...and finishing carries it instead of a zero sentinel.
     let response: CompletionResponse = stream.finish();
-    assert_eq!(response.usage.total_tokens, 15);
+    assert_eq!(response.usage.total_tokens, Some(15));
     assert_eq!(response.provider, TEST_PROVIDER);
 }
 
@@ -318,7 +320,7 @@ async fn finish_carries_the_terminal_request_id() {
     let mut stream = scripted(|out| {
         out.text("hi");
         out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::new())
+            StreamFinal::new(TEST_PROVIDER, Usage::default())
                 .with_response_id("resp_1")
                 .with_provider_request_id("req_transport_1"),
         );
@@ -349,7 +351,7 @@ async fn a_stream_without_a_terminal_record_still_names_its_provider() {
 
     let response: CompletionResponse = stream.finish();
     assert_eq!(response.provider, TEST_PROVIDER);
-    assert_eq!(response.usage, Usage::new());
+    assert_eq!(response.usage, Usage::default());
     assert_eq!(response.finish_reason(), None);
     assert_eq!(response.model, None);
 }
@@ -392,7 +394,8 @@ async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
         let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
         out.tool_call(id, end);
         out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::new()).with_finish_reason(FinishReason::Stop),
+            StreamFinal::new(TEST_PROVIDER, Usage::default())
+                .with_finish_reason(FinishReason::Stop),
         );
     });
     while stream.next().await.is_some() {}
@@ -411,7 +414,8 @@ async fn a_stop_without_tool_calls_is_left_alone() {
     let mut stream = scripted(|out| {
         out.text("done");
         out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::new()).with_finish_reason(FinishReason::Stop),
+            StreamFinal::new(TEST_PROVIDER, Usage::default())
+                .with_finish_reason(FinishReason::Stop),
         );
     });
     while stream.next().await.is_some() {}
@@ -430,13 +434,13 @@ fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
     let final_record = StreamFinal::new(
         "example",
         Usage {
-            input_tokens: 4,
-            output_tokens: 6,
-            total_tokens: 10,
-            cached_input_tokens: 1,
-            cache_creation_input_tokens: 2,
-            tool_use_prompt_tokens: 3,
-            reasoning_tokens: 4,
+            input_tokens: Some(4),
+            output_tokens: Some(6),
+            total_tokens: Some(10),
+            cached_input_tokens: Some(1),
+            cache_creation_input_tokens: Some(2),
+            tool_use_prompt_tokens: Some(3),
+            reasoning_tokens: Some(4),
         },
     )
     .with_finish_reason(FinishReason::Other("future_reason".to_owned()))
@@ -473,7 +477,7 @@ fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
 #[test]
 fn deserializing_stream_final_filters_empty_identifiers() {
     let decoded = serde_json::from_value::<StreamFinal>(serde_json::json!({
-        "usage": Usage::new(),
+        "usage": Usage::default(),
         "message_id": "",
         "response_id": "",
         "model": "",
@@ -501,10 +505,10 @@ struct ProviderTerminal {
 fn provider_terminal_stream() -> StreamingResult {
     let terminal = ProviderTerminal {
         usage: Usage {
-            input_tokens: 3,
-            output_tokens: 5,
-            total_tokens: 8,
-            ..Usage::new()
+            input_tokens: Some(3),
+            output_tokens: Some(5),
+            total_tokens: Some(8),
+            ..Usage::default()
         },
         provider_only: "kept".to_string(),
     };
@@ -536,7 +540,7 @@ async fn the_terminal_record_captures_the_providers_raw_terminal() {
     assert_eq!(typed.provider_only, "kept");
     assert_eq!(&serde_json::to_value(&typed).expect("re-serialize"), raw);
 
-    assert_eq!(final_record.usage.total_tokens, 8);
+    assert_eq!(final_record.usage.total_tokens, Some(8));
     assert_eq!(final_record.provider, TEST_PROVIDER);
     assert_eq!(final_record.finish_reason, None);
 }
@@ -548,7 +552,7 @@ async fn finish_reason_is_reconciled_with_raw_attached() {
     let events = to_stream_result(futures::stream::iter(script(|out| {
         let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
         out.tool_call(id, end);
-        let usage = Usage::new();
+        let usage = Usage::default();
         out.final_record(
             StreamFinal::new(TEST_PROVIDER, usage)
                 .with_finish_reason(FinishReason::Stop)
@@ -571,7 +575,7 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
         "usage": {"total_tokens": 8},
         "provider_only": "kept"
     });
-    let final_record = StreamFinal::new("example", Usage::new())
+    let final_record = StreamFinal::new("example", Usage::default())
         .with_message_id("msg_123")
         .with_raw(payload.clone());
 
@@ -592,7 +596,7 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
 
     // No `raw` key: the shape an unset `raw` is written as.
     let without_raw = serde_json::json!({
-        "usage": serde_json::to_value(Usage::new()).unwrap(),
+        "usage": serde_json::to_value(Usage::default()).unwrap(),
         "provider": "example"
     });
     let decoded = serde_json::from_value::<StreamFinal>(without_raw).expect("loads without `raw`");
@@ -600,7 +604,7 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
 
     // Unset `raw` is not written, so a record without capture serializes
     // exactly as it did before the field existed.
-    let bare = serde_json::to_value(StreamFinal::new("example", Usage::new())).unwrap();
+    let bare = serde_json::to_value(StreamFinal::new("example", Usage::default())).unwrap();
     assert!(bare.get("raw").is_none());
 }
 
@@ -611,13 +615,13 @@ fn stream_final_serde_round_trip_is_identity() {
     let final_record = StreamFinal::new(
         "example",
         Usage {
-            input_tokens: 4,
-            output_tokens: 6,
-            total_tokens: 10,
-            cached_input_tokens: 1,
-            cache_creation_input_tokens: 2,
-            tool_use_prompt_tokens: 3,
-            reasoning_tokens: 4,
+            input_tokens: Some(4),
+            output_tokens: Some(6),
+            total_tokens: Some(10),
+            cached_input_tokens: Some(1),
+            cache_creation_input_tokens: Some(2),
+            tool_use_prompt_tokens: Some(3),
+            reasoning_tokens: Some(4),
         },
     )
     .with_finish_reason(FinishReason::Stop)
@@ -636,12 +640,12 @@ fn stream_final_serde_round_trip_is_identity() {
 }
 
 #[tokio::test]
-async fn usage_is_zero_sentinel_before_final_response() {
-    // A stream that never yields a FinalResponse reports the zero sentinel.
+async fn usage_is_unreported_before_final_response() {
+    // A stream that never yields a FinalResponse reports no usage at all.
     let stream = scripted(|out| {
         out.text("no final response");
     });
-    assert_eq!(stream.usage().total_tokens, 0);
+    assert!(!stream.usage().is_reported());
 }
 
 #[tokio::test]

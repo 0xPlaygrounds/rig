@@ -257,10 +257,10 @@ where
                     // Authoritative usage. A premature clean close (shape #3)
                     // never emits a Final at all — the absence of a terminal
                     // record is itself the truncation signal — so reaching this
-                    // arm means the stream completed. Still guard on non-zero
-                    // usage in case the provider reported none.
+                    // arm means the stream completed. Still guard on reported
+                    // usage in case the provider sent none.
                     let usage = resp.usage;
-                    if usage.has_values() {
+                    if usage.is_reported() {
                         authoritative = Some(usage);
                     }
                 }
@@ -277,10 +277,12 @@ where
             let input_tokens = count_tokens(http, api_key, prompt_text).await?;
             let output_tokens = count_tokens(http, api_key, &output).await?;
 
-            let mut usage = Usage::new();
-            usage.input_tokens = input_tokens;
-            usage.output_tokens = output_tokens;
-            usage.total_tokens = input_tokens + output_tokens;
+            let usage = Usage {
+                input_tokens: Some(input_tokens),
+                output_tokens: Some(output_tokens),
+                total_tokens: Some(input_tokens + output_tokens),
+                ..Default::default()
+            };
 
             Outcome::Estimated {
                 usage,
@@ -371,14 +373,21 @@ fn print_report(report: &Report) {
             println!("result: CLEAN — authoritative usage from final chunk");
             println!(
                 "  input={} output={} reasoning={} total={}",
-                usage.input_tokens, usage.output_tokens, usage.reasoning_tokens, usage.total_tokens
+                usage.input_tokens.unwrap_or(0),
+                usage.output_tokens.unwrap_or(0),
+                usage
+                    .reasoning_tokens
+                    .map_or_else(|| "unreported".to_string(), |n| n.to_string()),
+                usage.total_tokens.unwrap_or(0)
             );
         }
         Outcome::Estimated { usage, reason } => {
             println!("result: ESTIMATED via countTokens (cut: {reason})");
             println!(
                 "  input={} output={} total={}  (output is a lower bound; hidden thoughts uncounted)",
-                usage.input_tokens, usage.output_tokens, usage.total_tokens
+                usage.input_tokens.unwrap_or(0),
+                usage.output_tokens.unwrap_or(0),
+                usage.total_tokens.unwrap_or(0)
             );
         }
     }

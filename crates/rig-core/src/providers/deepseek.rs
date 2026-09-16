@@ -230,22 +230,26 @@ pub struct Usage {
 
 impl From<&Usage> for crate::completion::Usage {
     fn from(usage: &Usage) -> Self {
-        let mut normalized = crate::providers::internal::completion_usage(
-            usage.prompt_tokens as u64,
-            usage.completion_tokens as u64,
-            usage.total_tokens as u64,
-            usage
-                .prompt_tokens_details
+        Self {
+            input_tokens: Some(u64::from(usage.prompt_tokens)),
+            output_tokens: Some(u64::from(usage.completion_tokens)),
+            total_tokens: Some(u64::from(usage.total_tokens)),
+            // DeepSeek always reports `prompt_cache_hit_tokens`; the
+            // OpenAI-style details block, when present, is the same count.
+            cached_input_tokens: Some(
+                usage
+                    .prompt_tokens_details
+                    .as_ref()
+                    .and_then(|details| details.cached_tokens)
+                    .map_or(u64::from(usage.prompt_cache_hit_tokens), u64::from),
+            ),
+            reasoning_tokens: usage
+                .completion_tokens_details
                 .as_ref()
-                .and_then(|details| details.cached_tokens)
-                .map_or(u64::from(usage.prompt_cache_hit_tokens), u64::from),
-        );
-        normalized.reasoning_tokens = usage
-            .completion_tokens_details
-            .as_ref()
-            .and_then(|details| details.reasoning_tokens)
-            .map_or(0, u64::from);
-        normalized
+                .and_then(|details| details.reasoning_tokens)
+                .map(u64::from),
+            ..Default::default()
+        }
     }
 }
 

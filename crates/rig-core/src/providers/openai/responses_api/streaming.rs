@@ -46,8 +46,10 @@ pub enum StreamingCompletionChunk {
 /// Responses-API terminal fields rig does not normalize.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct StreamingCompletionResponse {
-    /// Token usage
-    pub usage: ResponsesUsage,
+    /// Token usage from the terminal response event; `None` when the event
+    /// carried no `usage` object.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<ResponsesUsage>,
     /// The complete object-shaped reasoning metadata from the terminal response event.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
@@ -85,7 +87,7 @@ pub struct StreamingCompletionResponse {
 impl StreamingCompletionResponse {
     /// Create a terminal record carrying only usage; the remaining metadata is
     /// filled in from the terminal `response.completed` event as it arrives.
-    pub fn new(usage: ResponsesUsage) -> Self {
+    pub fn new(usage: Option<ResponsesUsage>) -> Self {
         Self {
             usage,
             provider_request_id: None,
@@ -123,7 +125,7 @@ fn terminal_record(
         .and_then(|status| super::map_finish_reason(status, response.incomplete_details.as_ref()));
 
     Ok(
-        StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
+        StreamFinal::new(provider, crate::completion::Usage::from(&response))
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(response.message_id)
             .with_optional_response_id(response.response_id)
@@ -166,7 +168,7 @@ pub(crate) fn reasoning_from_done_item(
 
 impl From<&StreamingCompletionResponse> for crate::completion::Usage {
     fn from(response: &StreamingCompletionResponse) -> Self {
-        Self::from(&response.usage)
+        response.usage.as_ref().map(Self::from).unwrap_or_default()
     }
 }
 
@@ -363,7 +365,7 @@ pub struct RawChoiceAccumulator {
     /// Copilot stream this exact wire shape, so it is an input rather than
     /// a baked-in `"openai"`.
     provider: String,
-    final_usage: ResponsesUsage,
+    final_usage: Option<ResponsesUsage>,
     reasoning_metadata: Option<serde_json::Map<String, serde_json::Value>>,
     reasoning_context: Option<String>,
     status: Option<ResponseStatus>,
@@ -419,8 +421,10 @@ pub struct RawChoiceAccumulator {
 }
 
 impl RawChoiceAccumulator {
+    /// `initial_usage` seeds the terminal's usage for replayed bodies whose
+    /// SSE frames may not carry one (the unary Responses body's own `usage`).
     #[doc(hidden)]
-    pub fn new(provider: impl Into<String>, initial_usage: ResponsesUsage) -> Self {
+    pub fn new(provider: impl Into<String>, initial_usage: Option<ResponsesUsage>) -> Self {
         Self {
             provider: provider.into(),
             final_usage: initial_usage,
@@ -626,8 +630,8 @@ impl RawChoiceAccumulator {
                 if response.incomplete_details.is_some() {
                     self.incomplete_details = response.incomplete_details;
                 }
-                if let Some(usage) = response.usage {
-                    self.final_usage = usage;
+                if response.usage.is_some() {
+                    self.final_usage = response.usage;
                 }
                 if response.reasoning_metadata.is_some() {
                     self.reasoning_metadata = response.reasoning_metadata;
@@ -888,7 +892,7 @@ fn repair_envelope_less_frame(data: &str) -> Option<String> {
 pub(crate) fn stream_events_from_sse_body(
     provider: &str,
     body: &str,
-    initial_usage: ResponsesUsage,
+    initial_usage: Option<ResponsesUsage>,
 ) -> Result<Vec<StreamEvent>, CompletionError> {
     // Framing layer for the buffered (unary) Responses SSE body: line
     // splitting, sentinel skipping, and the provider `error` envelope
@@ -918,11 +922,7 @@ pub(crate) async fn completion_response_from_sse_body(
     body: &str,
     raw_response: CompletionResponse,
 ) -> Result<completion::CompletionResponse, CompletionError> {
-    let events = stream_events_from_sse_body(
-        provider,
-        body,
-        raw_response.usage.unwrap_or_else(ResponsesUsage::new),
-    )?;
+    let events = stream_events_from_sse_body(provider, body, raw_response.usage)?;
     completion_response_from_stream_events(provider, events, &raw_response)
         .await?
         .ok_or_else(|| CompletionError::ResponseError("Response contained no parts".to_owned()))
@@ -1131,14 +1131,14 @@ pub(crate) struct ResponsesAdapter {
 impl ResponsesAdapter {
     fn live(provider: &str, options: ResponsesStreamOptions) -> Self {
         Self {
-            accumulator: RawChoiceAccumulator::new(provider, ResponsesUsage::new()),
+            accumulator: RawChoiceAccumulator::new(provider, None),
             options,
             repair_envelopes: false,
             finished: false,
         }
     }
 
-    fn buffered(provider: &str, initial_usage: ResponsesUsage) -> Self {
+    fn buffered(provider: &str, initial_usage: Option<ResponsesUsage>) -> Self {
         Self {
             accumulator: RawChoiceAccumulator::new(provider, initial_usage),
             options: ResponsesStreamOptions::strict(),
@@ -1224,7 +1224,7 @@ impl WireAdapter for ResponsesAdapter {
         let provider = self.accumulator.provider.clone();
         let accumulator = std::mem::replace(
             &mut self.accumulator,
-            RawChoiceAccumulator::new(provider, ResponsesUsage::new()),
+            RawChoiceAccumulator::new(provider, None),
         );
         let final_usage = accumulator.final_usage;
 
@@ -1233,14 +1233,16 @@ impl WireAdapter for ResponsesAdapter {
         // accumulator withholds the record (deferral, never synthesis).
         accumulator.finish(out);
 
-        let span = tracing::Span::current();
-        span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
-        span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
-        let cached_tokens = final_usage
-            .input_tokens_details
-            .as_ref()
-            .map_or(0, |d| d.cached_tokens);
-        span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
+        if let Some(final_usage) = final_usage {
+            let span = tracing::Span::current();
+            span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
+            span.record("gen_ai.usage.output_tokens", final_usage.output_tokens);
+            let cached_tokens = final_usage
+                .input_tokens_details
+                .as_ref()
+                .map_or(0, |d| d.cached_tokens);
+            span.record("gen_ai.usage.cache_read.input_tokens", cached_tokens);
+        }
     }
 
     fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {

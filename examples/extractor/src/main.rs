@@ -31,7 +31,7 @@ async fn main() -> Result<()> {
 
     let response = extractor.extract(SECOND_INPUT).await?;
     println!("{}", serde_json::to_string_pretty(&response.output)?);
-    println!("total tokens: {}", response.usage.total_tokens);
+    println!("total tokens: {}", response.usage.total_tokens.unwrap_or(0));
 
     Ok(())
 }

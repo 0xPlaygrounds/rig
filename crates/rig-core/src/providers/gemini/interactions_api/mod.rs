@@ -1241,24 +1241,31 @@ pub mod interactions_api_types {
 
     impl From<&InteractionUsage> for Usage {
         fn from(value: &InteractionUsage) -> Usage {
-            let mut usage = Usage::new();
-            usage.input_tokens = value.total_input_tokens.unwrap_or_default();
-            usage.output_tokens = value.total_output_tokens.unwrap_or_default();
-            usage.cached_input_tokens = value.total_cached_tokens.unwrap_or_default();
-            usage.reasoning_tokens = value.total_thought_tokens.unwrap_or_default();
-            usage.tool_use_prompt_tokens = value.total_tool_use_tokens.unwrap_or_default();
             // The provider's own total is authoritative. The fallback sums every
             // component rather than just input+output, because on this surface
             // thinking and tool-use tokens are reported *beside* those two, not
             // inside them — summing only the first pair understated the total by
-            // the whole thinking spend.
-            usage.total_tokens = value.total_tokens.unwrap_or(
-                usage.input_tokens
-                    + usage.output_tokens
-                    + usage.reasoning_tokens
-                    + usage.tool_use_prompt_tokens,
-            );
-            usage
+            // the whole thinking spend. Without both input and output there is
+            // nothing to derive a total from.
+            let derived_total =
+                value
+                    .total_input_tokens
+                    .zip(value.total_output_tokens)
+                    .map(|(input, output)| {
+                        input
+                            + output
+                            + value.total_thought_tokens.unwrap_or(0)
+                            + value.total_tool_use_tokens.unwrap_or(0)
+                    });
+            Usage {
+                input_tokens: value.total_input_tokens,
+                output_tokens: value.total_output_tokens,
+                cached_input_tokens: value.total_cached_tokens,
+                reasoning_tokens: value.total_thought_tokens,
+                tool_use_prompt_tokens: value.total_tool_use_tokens,
+                total_tokens: value.total_tokens.or(derived_total),
+                cache_creation_input_tokens: None,
+            }
         }
     }
 

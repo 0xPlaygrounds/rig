@@ -145,9 +145,9 @@ fn response_metadata_is_normalized() {
     );
     // Ollama assigns no message identifier.
     assert_eq!(normalized.message_id, None);
-    assert_eq!(normalized.usage.input_tokens, 12);
-    assert_eq!(normalized.usage.output_tokens, 3);
-    assert_eq!(normalized.usage.total_tokens, 15);
+    assert_eq!(normalized.usage.input_tokens, Some(12));
+    assert_eq!(normalized.usage.output_tokens, Some(3));
+    assert_eq!(normalized.usage.total_tokens, Some(15));
 }
 
 // A `done_reason` of `stop` on a turn that actually called a tool must be
@@ -198,7 +198,7 @@ fn streaming_terminal_record_is_normalized() {
         final_record.finish_reason,
         Some(completion::FinishReason::Other("dragons".to_owned()))
     );
-    assert_eq!(final_record.usage.total_tokens, 12);
+    assert_eq!(final_record.usage.total_tokens, Some(12));
 }
 
 #[test]
@@ -1312,8 +1312,8 @@ async fn malformed_line_is_surfaced_and_the_terminal_still_arrives() {
     assert_eq!(texts, ["hi", " there"]);
     assert!(saw_error, "the malformed line must reach the consumer");
     let terminal = terminal.expect("the genuine done record must still arrive");
-    assert_eq!(terminal.usage.input_tokens, 10);
-    assert_eq!(terminal.usage.output_tokens, 4);
+    assert_eq!(terminal.usage.input_tokens, Some(10));
+    assert_eq!(terminal.usage.output_tokens, Some(4));
 }
 
 // Proves the `done: true` record ends the stream: a content line that
@@ -1374,8 +1374,8 @@ async fn content_after_the_done_record_is_not_yielded() {
         "content after the done record must not be yielded"
     );
     let terminal = terminal.expect("the done record must yield the terminal record");
-    assert_eq!(terminal.usage.input_tokens, 10);
-    assert_eq!(terminal.usage.output_tokens, 4);
+    assert_eq!(terminal.usage.input_tokens, Some(10));
+    assert_eq!(terminal.usage.output_tokens, Some(4));
 }
 
 // Proves a non-success HTTP response from `/api/chat` preserves the
@@ -1520,7 +1520,7 @@ mod raw_capture {
             Some(completion::FinishReason::Stop)
         );
         assert_eq!(response.model.as_deref(), Some("llama3.2"));
-        assert_eq!(response.usage.total_tokens, 31);
+        assert_eq!(response.usage.total_tokens, Some(31));
     }
 }
 

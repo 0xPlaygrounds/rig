@@ -83,8 +83,10 @@ impl CompatibleStreamProfile for ErrorAfterPendingToolCallProfile {
         provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
     ) -> Result<StreamFinal, CompletionError> {
-        Ok(StreamFinal::new(provider, terminal.usage)
-            .with_optional_finish_reason(terminal.finish_reason))
+        Ok(
+            StreamFinal::new(provider, terminal.usage.unwrap_or_default())
+                .with_optional_finish_reason(terminal.finish_reason),
+        )
     }
 }
 
@@ -150,8 +152,10 @@ impl CompatibleStreamProfile for DistinctToolCallEvictionProfile {
         provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
     ) -> Result<StreamFinal, CompletionError> {
-        Ok(StreamFinal::new(provider, terminal.usage)
-            .with_optional_finish_reason(terminal.finish_reason))
+        Ok(
+            StreamFinal::new(provider, terminal.usage.unwrap_or_default())
+                .with_optional_finish_reason(terminal.finish_reason),
+        )
     }
 
     fn uses_distinct_tool_call_eviction(&self) -> bool {
@@ -229,8 +233,10 @@ impl CompatibleStreamProfile for ReasoningAroundToolCallProfile {
         provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
     ) -> Result<StreamFinal, CompletionError> {
-        Ok(StreamFinal::new(provider, terminal.usage)
-            .with_optional_finish_reason(terminal.finish_reason))
+        Ok(
+            StreamFinal::new(provider, terminal.usage.unwrap_or_default())
+                .with_optional_finish_reason(terminal.finish_reason),
+        )
     }
 }
 
@@ -279,7 +285,9 @@ impl CompatibleStreamProfile for FinishReasonCleanupProfile {
         provider: &str,
         terminal: CompatibleTerminal<Self::Usage>,
     ) -> Result<StreamFinal, CompletionError> {
-        Ok(StreamFinal::new(provider, terminal.usage)
-            .with_optional_finish_reason(terminal.finish_reason))
+        Ok(
+            StreamFinal::new(provider, terminal.usage.unwrap_or_default())
+                .with_optional_finish_reason(terminal.finish_reason),
+        )
     }
 }

@@ -146,11 +146,11 @@ impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
             ));
         }
 
+        // Voyage reports one count; every token of an embedding is input.
         let usage = crate::completion::Usage {
-            input_tokens: self.usage.total_tokens as u64,
-            output_tokens: 0,
-            total_tokens: self.usage.total_tokens as u64,
-            ..crate::completion::Usage::new()
+            input_tokens: Some(self.usage.total_tokens as u64),
+            total_tokens: Some(self.usage.total_tokens as u64),
+            ..Default::default()
         };
 
         let embeddings = self
@@ -402,9 +402,9 @@ pub struct RerankApiResponse {
 impl rerank::NormalizeRerankResponse for RerankApiResponse {
     fn normalize(self, provider: &str) -> Result<rerank::RerankResponse, RerankError> {
         let usage = crate::completion::Usage {
-            input_tokens: self.usage.total_tokens as u64,
-            total_tokens: self.usage.total_tokens as u64,
-            ..crate::completion::Usage::new()
+            input_tokens: Some(self.usage.total_tokens as u64),
+            total_tokens: Some(self.usage.total_tokens as u64),
+            ..Default::default()
         };
         let results = self
             .data
