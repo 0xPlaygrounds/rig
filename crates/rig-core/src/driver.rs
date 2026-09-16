@@ -220,6 +220,16 @@ where
     }
 }
 
+/// Ceiling on the pages one [`call`] will follow.
+///
+/// Generous by orders of magnitude: a model catalog's page holds hundreds of
+/// entries, so a real listing finishes in one or two requests. This exists
+/// only so a cursor that keeps *changing* without advancing — a gateway
+/// alternating `c1, c2, c1, …`, or minting a fresh cursor per request —
+/// terminates. It bounds continuation-following only; the requests a batched
+/// wire encodes up front are all sent however many there are.
+const MAX_CONTINUATION_PAGES: usize = 1000;
+
 /// Send one request and fold its whole reply into the operation's response.
 ///
 /// `context` observes the attempt; `None` records nothing. A paged operation
@@ -255,6 +265,8 @@ where
     // not the reply.
     let mut documents: Vec<serde_json::Value> = Vec::new();
     let mut pending: std::collections::VecDeque<http::Request<Body>> = requests.into();
+    // Replies read in this call, which is what MAX_CONTINUATION_PAGES bounds.
+    let mut pages: usize = 0;
     while let Some(mut http_request) = pending.pop_front() {
         accept_header(&mut http_request, framing);
         // Two different facts, deliberately not one variable. `route` is the
@@ -264,6 +276,9 @@ where
         // route gets one bucket per endpoint rather than one per base URL.
         let route = http_request.uri().path().to_owned();
         let declared = wire.route().unwrap_or(&route);
+        // What was sent, kept to recognize a continuation that would re-send
+        // it. `Uri` and `Method` clones are refcount-cheap.
+        let sent_target = (http_request.method().clone(), http_request.uri().clone());
         let observation = context.as_ref().map(|_| AdapterSlot::default());
         let attempt = context
             .as_ref()
@@ -345,8 +360,39 @@ where
         );
         documents.push(document);
 
+        pages += 1;
+        // When the loop stops following a cursor the provider is still
+        // naming, the catalog handed back is truncated, so say which rule
+        // stopped it. Both of these are unbounded loops if left unchecked
+        // (rig#2334): the listing never returns and the fold grows without
+        // limit.
+        //
+        // Only running out of budget is a ceiling. A reply naming no
+        // continuation is the provider ending the listing — the normal path,
+        // and silent. Inferring the ceiling from "a cursor is still held"
+        // would report one on every listing past its first page.
         if let Some(next) = page.continuation() {
-            pending.push_front(next);
+            if (next.method(), next.uri()) == (&sent_target.0, &sent_target.1) {
+                // The next request would be identical to the one just
+                // answered, so the page would repeat forever.
+                tracing::warn!(
+                    provider = wire.name(),
+                    operation = <W::Op as Operation>::NAME,
+                    pages,
+                    "listing repeated its pagination cursor; returning the pages fetched \
+                     so far"
+                );
+            } else if pages >= MAX_CONTINUATION_PAGES {
+                tracing::warn!(
+                    provider = wire.name(),
+                    operation = <W::Op as Operation>::NAME,
+                    pages,
+                    "listing hit its page ceiling with a cursor still advancing; returning \
+                     the pages fetched so far"
+                );
+            } else {
+                pending.push_front(next);
+            }
         }
     }
 
