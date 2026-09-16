@@ -7,7 +7,7 @@ use rig::prelude::*;
 
 use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_sdk::trace::SdkTracerProvider;
-use rig::providers::openai::{self, wire::OpenAI};
+use rig::providers::openai::{self, Route, wire::OpenAI};
 use tracing::Level;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -41,11 +41,11 @@ async fn main() -> Result<(), anyhow::Error> {
         .with(otel_layer)
         .init();
 
-    // Create the Chat Completions provider
+    // Route the configuration to Chat Completions once; the agent follows.
     let agent = OpenAI::from_env()?
+        .with_route(Route::Chat)
         .bound()?
-        .chat(openai::GPT_4O)
-        .into_agent_builder()
+        .agent(openai::GPT_4O)
         .preamble("You are a helpful assistant")
         .build();
 

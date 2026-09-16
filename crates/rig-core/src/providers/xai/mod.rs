@@ -1,12 +1,10 @@
-//! xAI's model identifiers, its dialect, and its own request shape.
+//! xAI's model identifiers and its dialect.
 //!
 //! xAI speaks the OpenAI wires, so it has no client and no completion model
 //! of its own: [`DIALECT`] carries the base URL, the `XAI_API_KEY` variable,
 //! the `x-request-id` header and the quirks below — its completion is the
 //! Responses endpoint at `/v1/responses`, and its image and speech endpoints
-//! are OpenAI-shaped under `/v1`. The one thing xAI does not share is its
-//! Responses input shape, selected by [`RequestShape::Xai`] and built by
-//! this crate's internal `api` module.
+//! are OpenAI-shaped under `/v1`.
 //!
 //! # Example
 //! ```no_run
@@ -21,7 +19,6 @@
 //! # }
 //! ```
 
-pub(crate) mod api;
 #[cfg(feature = "audio")]
 pub mod audio_generation;
 #[cfg(feature = "image")]
@@ -44,7 +41,7 @@ pub const GROK_4: &str = "grok-4-0709";
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::wire::{
-    Dialect, ImageBody, OutputCap, Quirks, RequestShape, ResponsesQuirks, Route, SpeechBody,
+    Dialect, ImageBody, OutputCap, Quirks, ResponsesQuirks, Route, SpeechBody,
 };
 
 /// xAI, as an OpenAI dialect.
@@ -52,11 +49,10 @@ use crate::providers::openai::wire::{
 /// Every field is what this gateway does differently. Its endpoints live
 /// under `/v1` on a bare host; its text-to-speech endpoint is `/v1/tts` and
 /// takes a body of its own, as does its image endpoint. Its Responses
-/// endpoint takes its own input shape ([`RequestShape::Xai`]), rejects
-/// top-level `instructions` so system messages stay in `input`, answers a
-/// 200 with its error envelope, publishes a finished function call at its
-/// `output_item.done` rather than at the terminal, and its native
-/// structured output does not compose with tool calls.
+/// endpoint rejects top-level `instructions` so system messages stay in
+/// `input`, answers a 200 with its error envelope, publishes a finished
+/// function call at its `output_item.done` rather than at the terminal, and
+/// its native structured output does not compose with tool calls.
 pub const DIALECT: Dialect = Dialect {
     name: "xai",
     base_url: "https://api.x.ai",
@@ -79,7 +75,6 @@ pub const DIALECT: Dialect = Dialect {
         responses: ResponsesQuirks {
             path: "/v1/responses",
             system_instructions: SystemInstructionsPlacement::InputSystemMessages,
-            request: RequestShape::Xai,
             error_envelope_in_success: true,
             native_output_with_tools: false,
             ..ResponsesQuirks::openai()

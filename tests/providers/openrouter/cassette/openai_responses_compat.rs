@@ -1,9 +1,9 @@
-//! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI Responses provider.
+//! Cassette-backed OpenRouter compatibility coverage through Rig's OpenAI
+//! Responses wire: the `OPENROUTER` dialect routed to `/responses` once.
 
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::responses_api::CompletionResponse;
-use rig::providers::openai::responses_api::wire::Responses;
 use serde::Deserialize as _;
 
 use crate::support::{assert_nonempty_response, collect_stream_final_response};
@@ -17,9 +17,7 @@ async fn openai_responses_raw_response_accepts_service_tier_metadata() {
     with_openrouter_openai_cassette(
         "openai_responses_compat/openai_responses_raw_response_accepts_service_tier_metadata",
         |client| async move {
-            let model = client
-                .responses(DEFAULT_OPENAI_COMPAT_MODEL)
-                .map_wire(Responses::with_system_instructions_as_messages);
+            let model = client.completion(DEFAULT_OPENAI_COMPAT_MODEL);
             let request = model
                 .completion_request("Reply with exactly: openrouter responses service tier ok")
                 .preamble(
@@ -58,9 +56,7 @@ async fn openai_responses_agent_prompt_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_agent_prompt_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .responses(DEFAULT_OPENAI_COMPAT_MODEL)
-                .map_wire(Responses::with_system_instructions_as_messages)
-                .into_agent_builder()
+                .agent(DEFAULT_OPENAI_COMPAT_MODEL)
                 .preamble("You are concise. Answer with one short sentence.")
                 .build();
 
@@ -81,9 +77,7 @@ async fn openai_responses_stream_against_openrouter_completes() {
         "openai_responses_compat/openai_responses_stream_against_openrouter_completes",
         |client| async move {
             let agent = client
-                .responses(DEFAULT_OPENAI_COMPAT_MODEL)
-                .map_wire(Responses::with_system_instructions_as_messages)
-                .into_agent_builder()
+                .agent(DEFAULT_OPENAI_COMPAT_MODEL)
                 .preamble("You are concise. Answer directly.")
                 .build();
 

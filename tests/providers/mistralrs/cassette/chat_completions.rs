@@ -63,9 +63,7 @@ async fn chat_completions_agent_prompt_completes() {
     with_mistralrs_completions_cassette(
         "chat_completions/chat_completions_agent_prompt_completes",
         |client| async move {
-            let agent = client
-                .chat(model_name())
-                .into_agent_builder()
+            let agent = client.agent(model_name())
                 .preamble(SYSTEM_PROMPT)
                 .max_tokens(128)
                 .build();

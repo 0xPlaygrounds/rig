@@ -417,27 +417,147 @@ async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
     }
 }
 
-/// xAI's endpoint lives under `/v1` and takes its own input shape.
+fn xai() -> Responses {
+    OpenAI::with_key(&XAI, "test-key").responses("grok-4")
+}
+
+/// xAI's endpoint lives under `/v1` and rejects top-level `instructions`, so
+/// every system message — the leading run and the mid-conversation ones —
+/// stays in `input` where it was, and the turn's documents follow the
+/// preamble as the shared history conversion places them.
 #[test]
-fn the_xai_dialect_posts_its_own_request_shape() {
-    let wire = OpenAI::with_key(&XAI, "test-key").responses("grok-4");
+fn the_xai_dialect_keeps_every_system_message_in_input() {
+    let wire = xai();
     let encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.first().expect("one request");
-
-    assert_eq!(request.uri(), "https://api.x.ai/v1/responses");
-    let body = encoded_body(&wire, Mode::Unary);
-    assert!(
-        body.get("input")
-            .and_then(serde_json::Value::as_array)
-            .is_some_and(|input| input
-                .first()
-                .and_then(|item| item.get("type"))
-                .and_then(serde_json::Value::as_str)
-                == Some("message")),
-        "xAI's input items are its own shape: {body}"
+    assert_eq!(
+        encoded.requests.first().expect("one request").uri(),
+        "https://api.x.ai/v1/responses"
     );
+
+    let body = encoded_body_of(
+        &wire,
+        CompletionRequest {
+            documents: vec![crate::completion::Document {
+                id: "doc_1".to_owned(),
+                text: "Definition of glarb-glarb: an ancient tool.".to_owned(),
+                additional_props: Default::default(),
+            }],
+            ..turn(vec![
+                Message::system("System prompt"),
+                Message::assistant("Earlier assistant turn"),
+                Message::system("Mid-conversation instruction"),
+                Message::user("What is glarb-glarb?"),
+            ])
+        },
+        Mode::Unary,
+    );
+
+    assert_eq!(body.get("instructions"), None, "{body}");
+    let input = body["input"].as_array().expect("input is an array");
+    let roles: Vec<_> = input
+        .iter()
+        .map(|item| item["role"].as_str().unwrap_or_default())
+        .collect();
+    assert_eq!(
+        roles,
+        ["system", "user", "assistant", "system", "user"],
+        "{body}"
+    );
+    assert_eq!(
+        input
+            .iter()
+            .filter(|item| item.to_string().contains("<file id: doc_1>"))
+            .count(),
+        1,
+        "the document rides one user item, after the preamble: {body}"
+    );
+    assert!(input[1].to_string().contains("<file id: doc_1>"), "{body}");
+}
+
+/// A user turn interleaving text and a tool result keeps its order on the
+/// wire: text before the result is one message item, the result is a
+/// `function_call_output` under its call id, text after is another message.
+#[test]
+fn the_xai_dialect_folds_tool_results_between_user_text_in_order() {
+    let body = encoded_body_of(
+        &xai(),
+        turn(vec![Message::User {
+            content: vec![
+                message::UserContent::text("before"),
+                message::UserContent::tool_result_with_call_id(
+                    "result-id",
+                    "call-id".to_owned(),
+                    "tool",
+                    vec![message::ToolResultContent::json(
+                        serde_json::json!({ "ok": true }),
+                    )],
+                ),
+                message::UserContent::text("after"),
+            ],
+        }]),
+        Mode::Unary,
+    );
+
+    let input = body["input"].as_array().expect("input is an array");
+    assert_eq!(input.len(), 3, "{body}");
+    assert_eq!(input[0]["type"], "message");
+    assert_eq!(input[0]["role"], "user");
+    assert_eq!(input[0]["content"][0]["text"], "before");
+    assert_eq!(input[1]["type"], "function_call_output");
+    assert_eq!(input[1]["call_id"], "call-id");
+    assert_eq!(input[1]["output"], r#"{"ok":true}"#);
+    assert_eq!(input[2]["type"], "message");
+    assert_eq!(input[2]["content"][0]["text"], "after");
+}
+
+/// A replayed reasoning turn goes back under the id the wire issued, its
+/// summary as `summary` and its opaque block as the one `encrypted_content`
+/// — never as summary text — ahead of the tool call it preceded.
+#[test]
+fn the_xai_dialect_replays_reasoning_by_wire_id_with_its_encrypted_payload() {
+    let body = encoded_body_of(
+        &xai(),
+        turn(vec![
+            Message::user("Use the tool."),
+            Message::Assistant {
+                id: Some("msg_1".to_owned()),
+                content: vec![
+                    message::AssistantContent::Reasoning(message::Reasoning {
+                        id: Some("rs_1".to_owned()),
+                        content: vec![
+                            message::ReasoningContent::Summary("explain".to_owned()),
+                            message::ReasoningContent::Redacted {
+                                data: "opaque-redacted".to_owned(),
+                            },
+                        ],
+                    }),
+                    message::AssistantContent::tool_call(
+                        "call_1",
+                        "my_tool",
+                        serde_json::json!({"arg": "value"}),
+                    ),
+                ],
+            },
+        ]),
+        Mode::Unary,
+    );
+
+    let input = body["input"].as_array().expect("input is an array");
+    assert_eq!(input.len(), 3, "{body}");
+    let reasoning = &input[1];
+    assert_eq!(reasoning["type"], "reasoning");
+    assert_eq!(reasoning["id"], "rs_1");
+    assert_eq!(
+        reasoning["summary"],
+        serde_json::json!([{"type": "summary_text", "text": "explain"}])
+    );
+    assert_eq!(reasoning["encrypted_content"], "opaque-redacted");
+    assert_eq!(reasoning.get("content"), None, "{reasoning}");
+    assert_eq!(input[2]["type"], "function_call");
+    assert_eq!(input[2]["call_id"], "call_1");
+    assert_eq!(input[2]["name"], "my_tool");
 }
 
 /// A success carrying the provider's error envelope instead of a response is
@@ -445,9 +565,8 @@ fn the_xai_dialect_posts_its_own_request_shape() {
 /// that way.
 #[tokio::test]
 async fn an_error_envelope_on_a_success_fails_the_xai_call() {
-    let wire = OpenAI::with_key(&XAI, "test-key").responses("grok-4");
     let error = Bound::new(
-        wire,
+        xai(),
         RecordingHttpClient::new(Bytes::from_static(
             br#"{"error":{"message":"no capacity","code":"overloaded"}}"#,
         )),

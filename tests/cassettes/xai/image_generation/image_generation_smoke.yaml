@@ -13,4 +13,6 @@ then:
   header:
   - name: content-type
     value: application/json
+  - name: x-request-id
+    value: req_REDACTED_1
   body: '{"data":[{"b64_json":"aGVsbG8=","mime_type":"image/png"}],"usage":{"cost_in_usd_ticks":700000000}}'

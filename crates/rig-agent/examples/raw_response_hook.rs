@@ -30,7 +30,7 @@ use rig_agent::{
     prelude::*,
 };
 use rig_core::providers::openai;
-use rig_core::providers::openai::wire::OpenAI;
+use rig_core::providers::openai::wire::{OpenAI, Route};
 use rig_reqwest::prelude::*;
 use serde::Deserialize;
 
@@ -85,11 +85,11 @@ impl AgentHook for PrintOpenAiFields {
 #[tokio::main]
 async fn main() -> Result<()> {
     // The Chat Completions route, whose response carries `system_fingerprint`;
-    // OpenAI's default route is the Responses API, so it is named.
-    let client = OpenAI::from_env()?.bound()?;
+    // OpenAI's default route is the Responses API, so the configuration is
+    // routed once and the agent follows.
+    let client = OpenAI::from_env()?.with_route(Route::Chat).bound()?;
     let agent = client
-        .chat(openai::GPT_5_2)
-        .into_agent_builder()
+        .agent(openai::GPT_5_2)
         .preamble("Answer in one short sentence.")
         .add_hook(PrintOpenAiFields)
         .build();

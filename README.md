@@ -127,8 +127,8 @@ use rig::providers::openai::{self, OpenAI};
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
     // Create an agent over OpenAI on the bundled transport. OpenAI's default
-    // completion route is the Responses API; `.chat(model)` selects Chat
-    // Completions instead.
+    // completion route is the Responses API; `.with_route(Route::Chat)` on the
+    // configuration selects Chat Completions for every agent built on it.
     let comedian_agent = OpenAI::from_env()?
         .bound()?
         .agent(openai::GPT_5_2)

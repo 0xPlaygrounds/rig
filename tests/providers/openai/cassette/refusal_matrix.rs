@@ -173,9 +173,8 @@ async fn chat_blocking_agent_prompt_surfaces_refusal() {
         "refusal_matrix/chat_blocking_agent_prompt_surfaces_refusal",
         |client| async move {
             let agent = client
-                .openai
-                .chat(REFUSING_MODEL)
-                .into_agent_builder()
+                .chat
+                .agent(REFUSING_MODEL)
                 .additional_params(chat_response_format())
                 .build();
 
@@ -297,9 +296,8 @@ async fn chat_streaming_agent_surfaces_refusal() {
         "refusal_matrix/chat_streaming_agent_surfaces_refusal",
         |client| async move {
             let agent = client
-                .openai
-                .chat(REFUSING_MODEL)
-                .into_agent_builder()
+                .chat
+                .agent(REFUSING_MODEL)
                 .additional_params(chat_response_format())
                 .build();
 
@@ -431,9 +429,8 @@ async fn chat_refusal_turn_survives_into_history() {
         "refusal_matrix/chat_refusal_turn_survives_into_history",
         |client| async move {
             let agent = client
-                .openai
-                .chat(REFUSING_MODEL)
-                .into_agent_builder()
+                .chat
+                .agent(REFUSING_MODEL)
                 .additional_params(chat_response_format())
                 .build();
 

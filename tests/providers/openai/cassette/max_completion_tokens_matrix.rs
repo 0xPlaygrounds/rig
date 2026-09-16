@@ -176,9 +176,8 @@ async fn reasoning_gpt5_nano_agent_blocking_cap() {
         "max_completion_tokens_matrix/reasoning_gpt5_nano_agent_blocking_cap",
         |client| async move {
             let agent = client
-                .openai
-                .chat("gpt-5-nano")
-                .into_agent_builder()
+                .chat
+                .agent("gpt-5-nano")
                 .preamble(PREAMBLE)
                 .max_tokens(CAP)
                 .build();
@@ -201,9 +200,8 @@ async fn reasoning_gpt5_nano_agent_streaming_cap() {
         "max_completion_tokens_matrix/reasoning_gpt5_nano_agent_streaming_cap",
         |client| async move {
             let agent = client
-                .openai
-                .chat("gpt-5-nano")
-                .into_agent_builder()
+                .chat
+                .agent("gpt-5-nano")
                 .preamble(PREAMBLE)
                 .max_tokens(CAP)
                 .build();
@@ -224,9 +222,8 @@ async fn reasoning_gpt5_nano_tool_turn_cap() {
         "max_completion_tokens_matrix/reasoning_gpt5_nano_tool_turn_cap",
         |client| async move {
             let agent = client
-                .openai
-                .chat("gpt-5-nano")
-                .into_agent_builder()
+                .chat
+                .agent("gpt-5-nano")
                 .preamble("Use the add tool to answer arithmetic questions.")
                 .max_tokens(TOOL_CAP)
                 .tool(Adder)
@@ -251,9 +248,8 @@ async fn reasoning_gpt5_nano_tool_turn_streaming_cap() {
         "max_completion_tokens_matrix/reasoning_gpt5_nano_tool_turn_streaming_cap",
         |client| async move {
             let agent = client
-                .openai
-                .chat("gpt-5-nano")
-                .into_agent_builder()
+                .chat
+                .agent("gpt-5-nano")
                 .preamble("Use the add tool to answer arithmetic questions.")
                 .max_tokens(TOOL_CAP)
                 .tool(Adder)

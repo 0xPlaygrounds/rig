@@ -13,8 +13,9 @@
 //! [`GROQ`](crate::providers::openai::wire::GROQ),
 //! [`xai::DIALECT`](crate::providers::xai::DIALECT), …) rather than a type
 //! implementing a trait. A dialect names which of the two endpoints is its
-//! default under [`Quirks::completion_route`], and a dialect that speaks the
-//! Responses endpoint differently says so under [`Quirks::responses`].
+//! default under [`Quirks::completion_route`](crate::providers::openai::wire::Quirks::completion_route), a configuration may pick
+//! the other one once under [`OpenAI::with_route`](crate::providers::openai::wire::OpenAI::with_route), and a dialect that speaks the
+//! Responses endpoint differently says so under [`Quirks::responses`](crate::providers::openai::wire::Quirks::responses).
 //!
 //! ```
 //! use rig_core::providers::openai;
@@ -30,6 +31,22 @@
 //! let groq = openai::OpenAI::new("gsk_…").with_dialect(&openai::wire::GROQ);
 //! assert_eq!(groq.base_url, "https://api.groq.com/openai/v1");
 //! assert!(matches!(groq.completion("llama"), openai::wire::OpenAiWire::Chat(_)));
+//! // The endpoint is configuration, chosen once: every completion this
+//! // configuration builds — and every agent built on it — is Chat.
+//! let on_chat = openai::OpenAI::new("sk-…").with_route(openai::Route::Chat);
+//! assert!(matches!(on_chat.completion("gpt-5.2"), openai::wire::OpenAiWire::Chat(_)));
+//! ```
+//!
+//! ```ignore
+//! use rig_core::providers::openai::{self, OpenAI, Route};
+//! // `.bound()` is `rig-reqwest`'s transport; `.agent()` is `rig-agent`'s sugar.
+//! use rig_reqwest::prelude::*;
+//! use rig_agent::client::AgentProviderExt;
+//!
+//! # fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let agent = OpenAI::from_env()?.with_route(Route::Chat).bound()?.agent(openai::GPT_5_2);
+//! # Ok(())
+//! # }
 //! ```
 
 use serde::{Deserialize, Serialize};
@@ -487,15 +504,6 @@ impl EmbeddingQuirks {
     }
 }
 
-/// Which request body a dialect's Responses endpoint accepts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum RequestShape {
-    /// OpenAI's own Responses request.
-    Responses,
-    /// xAI's input shape, whose types live with that provider.
-    Xai,
-}
-
 /// The caller identity a gateway requires on every request.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Identity {
@@ -541,8 +549,6 @@ pub struct ResponsesQuirks {
     pub path: &'static str,
     /// Where Rig's system instructions go in the request.
     pub system_instructions: SystemInstructionsPlacement,
-    /// Which request body this gateway accepts.
-    pub request: RequestShape,
     /// The gateway answers with an event stream whether or not a stream was
     /// asked for, so a unary call reads a replayed SSE body.
     pub always_streams: bool,
@@ -571,7 +577,6 @@ impl ResponsesQuirks {
         Self {
             path: "/responses",
             system_instructions: SystemInstructionsPlacement::Instructions,
-            request: RequestShape::Responses,
             always_streams: false,
             relaxed_content_type: false,
             codex_parameter_subset: false,
@@ -816,9 +821,10 @@ impl<'de> Deserialize<'de> for Dialect {
 /// An OpenAI-shaped provider's configuration: plain data, key redacted.
 ///
 /// Holds no transport and no type parameter, so a host can store one. Pair
-/// it with a socket through [`Bound`](crate::driver::Bound) to get a model:
-/// [`completion`](Self::completion) for the dialect's default endpoint,
-/// [`responses`](Self::responses) for the Responses endpoint,
+/// it with a socket through [`Bound`] to get a model:
+/// [`completion`](Self::completion) for the configured endpoint — the
+/// dialect's flagship unless [`with_route`](Self::with_route) chose the
+/// other one — [`responses`](Self::responses) for the Responses endpoint,
 /// [`chat`](Self::chat) for Chat Completions, and one constructor per
 /// modality endpoint.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -829,6 +835,11 @@ pub struct OpenAI {
     pub base_url: String,
     /// Which OpenAI-shaped provider this is.
     pub dialect: Dialect,
+    /// The completion endpoint this configuration uses when asked for "a
+    /// completion", when it differs from the dialect's flagship
+    /// ([`Quirks::completion_route`]). Set by [`with_route`](Self::with_route).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route: Option<Route>,
     /// Azure's `api-version` query parameter, which every Azure route
     /// requires. `None` for every other dialect.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -875,6 +886,7 @@ impl OpenAI {
             api_key: api_key.into(),
             base_url: dialect.base_url.to_owned(),
             dialect: *dialect,
+            route: None,
             // Azure carries an `api-version` on every route, and formatting
             // an empty one would silently address an unversioned endpoint.
             // This is the version its deleted client builder defaulted to.
@@ -1042,9 +1054,24 @@ impl OpenAI {
         self
     }
 
-    /// The completion wire for `model` on the dialect's default route
-    /// ([`Quirks::completion_route`]): Responses for OpenAI, xAI and
-    /// ChatGPT, Chat Completions for every compatible gateway.
+    /// Serve every completion — [`completion`](Self::completion) and the
+    /// agent sugar on top of it — from `route` instead of the dialect's
+    /// flagship endpoint.
+    pub fn with_route(mut self, route: Route) -> Self {
+        self.route = Some(route);
+        self
+    }
+
+    /// The completion endpoint this configuration serves: the dialect's
+    /// flagship unless [`with_route`](Self::with_route) chose otherwise.
+    pub fn completion_route(&self) -> Route {
+        self.route.unwrap_or(self.dialect.quirks.completion_route)
+    }
+
+    /// The completion wire for `model` on this configuration's
+    /// [`completion_route`](Self::completion_route): Responses for OpenAI,
+    /// xAI and ChatGPT, Chat Completions for every compatible gateway,
+    /// unless [`with_route`](Self::with_route) chose the other one.
     pub fn completion(&self, model: impl Into<String>) -> OpenAiWire {
         OpenAiWire::new(self.clone(), model)
     }
@@ -1198,8 +1225,9 @@ impl OpenAI {
 }
 
 /// The completion wire a bound `OpenAI` builds without being asked which:
-/// the dialect's flagship route. Either endpoint is asked for by name,
-/// `.chat(model)` or `.responses(model)`.
+/// its [`completion_route`](OpenAI::completion_route) — the dialect's
+/// flagship unless [`with_route`](OpenAI::with_route) chose the other one.
+/// The agent sugar on the bound configuration follows the same route.
 impl HasCompletion for OpenAI {
     type Wire = OpenAiWire;
 
@@ -1208,7 +1236,9 @@ impl HasCompletion for OpenAI {
     }
 }
 
-/// The two completion endpoints, on a bound configuration.
+/// The two completion endpoints named on a bound configuration, as their
+/// typed wires — for a caller who reads the native reply or sets a
+/// route-specific option, whatever the configured route.
 impl<H: Clone> Bound<OpenAI, H> {
     /// The chat-completions wire for `model`, on this socket.
     pub fn chat(&self, model: impl Into<String>) -> Bound<Chat, H> {

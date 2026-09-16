@@ -1097,10 +1097,7 @@ fn serde_wall_scopes_by_machinery_content() {
     );
     let future_helper = std::path::Path::new("crates/rig-core/src/providers/somegateway/sse.rs");
     assert!(
-        is_serde_wall_target(
-            future_helper,
-            "let out = run_wire_buffered(adapter, frames);"
-        ),
+        is_serde_wall_target(future_helper, "let mut driver = WireDriver::new(decoder);"),
         "any future compat/sse helper opts in the moment it names the machinery"
     );
     assert!(

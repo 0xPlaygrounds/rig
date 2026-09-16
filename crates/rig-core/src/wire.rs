@@ -27,7 +27,9 @@
 //! };
 //!
 //! /// What differs between gateways speaking this format: data, `const`.
-//! #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+//! /// A dialect serializes as its name and deserializes by looking the
+//! /// name up, so a config stays plain data without copying the constant.
+//! #[derive(Clone, Debug, PartialEq)]
 //! pub struct Dialect {
 //!     pub name: &'static str,
 //!     pub base_url: &'static str,
@@ -39,6 +41,22 @@
 //!     base_url: "https://example.invalid/v1",
 //!     api_key_env: "EXAMPLE_API_KEY",
 //! };
+//! const ALL: &[Dialect] = &[EXAMPLE];
+//!
+//! impl serde::Serialize for Dialect {
+//!     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+//!         serializer.serialize_str(self.name)
+//!     }
+//! }
+//! impl<'de> serde::Deserialize<'de> for Dialect {
+//!     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+//!         let name = String::deserialize(deserializer)?;
+//!         ALL.iter()
+//!             .find(|dialect| dialect.name == name)
+//!             .cloned()
+//!             .ok_or_else(|| serde::de::Error::custom(format!("unknown dialect `{name}`")))
+//!     }
+//! }
 //!
 //! /// The provider's shared configuration: plain data, key redacted.
 //! #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

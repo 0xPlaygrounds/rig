@@ -262,8 +262,7 @@ async fn chat_completions_agent_loop_keeps_hitting_across_tool_turns() {
         "prompt_caching/chat_completions_agent_loop",
         |client| async move {
             let response = client
-                .chat(CACHE_MODEL)
-                .into_agent_builder()
+                .agent(CACHE_MODEL)
                 .preamble(&probe().preamble)
                 .tool(CacheProbeLookupTool)
                 .temperature(0.0)

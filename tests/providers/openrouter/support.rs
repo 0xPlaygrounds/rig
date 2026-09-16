@@ -1,7 +1,7 @@
 use rig::driver::Bound;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
-use rig::providers::openai::wire::{OPENROUTER, OpenAI};
+use rig::providers::openai::wire::{OPENROUTER, OpenAI, Route};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -17,9 +17,10 @@ const OPENROUTER_BASE_URL: &str = "https://openrouter.ai/api/v1";
 /// needs to spell the provider out agrees on one type.
 pub(super) type BoundOpenRouter = Bound<OpenAI, BoxedHttpClient>;
 
-/// The same OpenRouter host reached through the OpenAI *Responses* wire,
-/// for the compatibility suite: OpenRouter serves `/responses` as well, and
-/// the point of those cells is that rig's Responses wire drives it unchanged.
+/// The same OpenRouter host on its `/responses` route, for the compatibility
+/// suite: OpenRouter serves `/responses` as well, and the point of those
+/// cells is that rig's Responses wire drives it once the configuration is
+/// routed there.
 pub(super) type BoundOpenRouterResponses = Bound<OpenAI, BoxedHttpClient>;
 
 async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundOpenRouter) {
@@ -48,10 +49,11 @@ async fn openrouter_openai_cassette(
         OPENROUTER_BASE_URL,
     )
     .await;
-    let bound = OpenAI::new(cassette.api_key("OPENROUTER_API_KEY"))
+    let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
         .with_base_url(cassette.base_url())
+        .with_route(Route::Responses)
         .bound()
-        .expect("OpenRouter OpenAI-compatible cassette transport should build");
+        .expect("OpenRouter Responses cassette transport should build");
 
     (cassette, bound)
 }

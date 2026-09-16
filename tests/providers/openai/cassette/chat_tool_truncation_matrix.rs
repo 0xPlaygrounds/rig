@@ -245,9 +245,8 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
 async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
     let agent = client
-        .openai
-        .chat(model_name(cell.model))
-        .into_agent_builder()
+        .chat
+        .agent(model_name(cell.model))
         .preamble(PREAMBLE)
         .tool(FileReport {
             invocations: Arc::clone(&invocations),

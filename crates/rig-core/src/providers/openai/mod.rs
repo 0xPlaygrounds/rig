@@ -27,7 +27,7 @@ pub mod responses_api;
 /// `Dialect` constant per OpenAI-shaped provider.
 pub mod wire;
 
-pub use wire::OpenAI;
+pub use wire::{OpenAI, Route};
 
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]

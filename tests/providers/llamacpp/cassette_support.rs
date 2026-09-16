@@ -46,7 +46,7 @@
 use futures::FutureExt;
 use rig::driver::{Bind, Bound};
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::providers::openai::wire::{LLAMACPP, OpenAI};
+use rig::providers::openai::wire::{LLAMACPP, OpenAI, Route};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -460,9 +460,11 @@ pub(super) async fn with_llamacpp_bare_openai_cassette<F, Fut>(
     .await;
     // Note the `/v1`: the `OPENAI` dialect composes paths straight onto its
     // base URL and its own default already carries the prefix, so a caller
-    // aiming it at `llama-server` supplies that prefix themselves.
+    // aiming it at `llama-server` supplies that prefix themselves — and,
+    // the dialect's flagship being `/responses`, routes it to Chat once.
     let bare = OpenAI::new("llamacpp-local")
         .with_base_url(versioned(&cassette.base_url()))
+        .with_route(Route::Chat)
         .bind(socket());
     let result = AssertUnwindSafe(test_body(bare)).catch_unwind().await;
     cassette.finish_after_test(result).await;

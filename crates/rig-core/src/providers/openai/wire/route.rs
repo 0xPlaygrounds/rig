@@ -1,15 +1,16 @@
-//! The completion wire a dialect builds when asked for "a completion":
-//! whichever of its two endpoints is its flagship.
+//! The completion wire a configuration builds when asked for "a
+//! completion": whichever of its two endpoints it is routed to.
 //!
 //! OpenAI, xAI and ChatGPT serve `/responses` as their primary completion
 //! API and keep `/chat/completions` beside it; every OpenAI-*compatible*
 //! gateway serves only the latter. So a [`Dialect`](super::Dialect) names
-//! its [`Route`], and [`OpenAiWire`] is that route's wire — a wire choosing
-//! a wire, with every [`Wire`] and [`Decoder`] method dispatching on the
-//! variant. There is no second request conversion, no second decoder and no
-//! second observation projection: the two arms are the two wires that
-//! already exist. Naming a route explicitly is
-//! [`OpenAI::chat`](super::OpenAI::chat) or
+//! its flagship [`Route`], a configuration may pick the other one once with
+//! [`OpenAI::with_route`](super::OpenAI::with_route), and [`OpenAiWire`] is
+//! that route's wire — a wire choosing a wire, with every [`Wire`] and
+//! [`Decoder`] method dispatching on the variant. There is no second
+//! request conversion, no second decoder and no second observation
+//! projection: the two arms are the two wires that already exist. Naming a
+//! route for one model is [`OpenAI::chat`](super::OpenAI::chat) or
 //! [`OpenAI::responses`](super::OpenAI::responses).
 
 use serde::{Deserialize, Serialize};
@@ -26,7 +27,7 @@ use crate::wire::{
 use super::OpenAI;
 use super::chat::{Chat, ChatDecoder, ChatEvent};
 
-/// Which completion endpoint a dialect serves as its default.
+/// Which completion endpoint a configuration serves.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Route {
     /// `POST /chat/completions`: the one endpoint every dialect serves.
@@ -51,9 +52,10 @@ pub enum OpenAiWire {
 }
 
 impl OpenAiWire {
-    /// The wire for `model` on `provider`'s default route.
+    /// The wire for `model` on `provider`'s
+    /// [`completion_route`](OpenAI::completion_route).
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
-        match provider.dialect.quirks.completion_route {
+        match provider.completion_route() {
             Route::Chat => Self::Chat(Chat::new(provider, model)),
             Route::Responses => Self::Responses(Responses::new(provider, model)),
         }

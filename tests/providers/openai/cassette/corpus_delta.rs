@@ -21,9 +21,8 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 async fn chat_baseline_effect_log_is_the_golden_fixture() {
     with_openai_corpus_delta_cassette("corpus_delta/chat_baseline", |client| async move {
         let agent = client
-            .openai
-            .chat(openai::GPT_4O)
-            .into_agent_builder()
+            .chat
+            .agent(openai::GPT_4O)
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)

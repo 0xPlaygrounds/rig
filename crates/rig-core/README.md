@@ -48,8 +48,8 @@ use rig_reqwest::prelude::*;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Read `OPENAI_API_KEY` into the provider's configuration, bind it to a
     // transport, and pick a model: a model is a wire plus its socket.
-    // OpenAI's default completion route is the Responses API; `.chat(model)`
-    // selects Chat Completions instead.
+    // OpenAI's default completion route is the Responses API;
+    // `.with_route(Route::Chat)` on the configuration selects Chat Completions.
     let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
 
     let request = model.completion_request("Who are you?").build();

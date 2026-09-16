@@ -14,8 +14,8 @@
 
 use super::{
     AcceptedWidths, Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks,
-    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, Route, Routing, SpeechBody,
-    TranscriptionBody,
+    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, ResponsesQuirks, Route, Routing,
+    SpeechBody, SystemInstructionsPlacement, TranscriptionBody,
 };
 
 /// Azure reads its API version from the environment because every Azure
@@ -413,6 +413,12 @@ pub const OPENROUTER: Dialect = Dialect {
         embedding: EmbeddingQuirks {
             requires_usage: false,
             ..EmbeddingQuirks::openai()
+        },
+        // Its `/responses` route takes the system prompt as `system` items
+        // in `input`; the compatibility cassettes were recorded that way.
+        responses: ResponsesQuirks {
+            system_instructions: SystemInstructionsPlacement::InputSystemMessages,
+            ..ResponsesQuirks::openai()
         },
         ..Quirks::openai()
     },

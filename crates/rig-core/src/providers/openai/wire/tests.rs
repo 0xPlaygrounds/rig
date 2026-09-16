@@ -126,6 +126,37 @@ fn the_default_completion_wire_is_the_dialects_route_and_round_trips() {
     }
 }
 
+/// The endpoint is configuration: a route chosen once on the configuration
+/// overrides the dialect's flagship for every completion it builds, and it
+/// is stored beside the dialect rather than inside it — a dialect
+/// serializes as its name alone, so an override written into its quirks
+/// would not survive a round trip.
+#[test]
+fn a_configured_route_overrides_the_dialects_and_round_trips() {
+    use crate::wire::Wire as _;
+    let on_chat = OpenAI::new("sk-secret").with_route(Route::Chat);
+    let on_responses = OpenAI::with_key(&GROQ, "gsk-secret").with_route(Route::Responses);
+    assert_eq!(on_chat.completion_route(), Route::Chat);
+    assert_eq!(on_responses.completion_route(), Route::Responses);
+    assert_eq!(
+        on_chat.completion("gpt-5.2").route(),
+        Some("/chat/completions")
+    );
+    assert_eq!(on_responses.completion("llama").route(), Some("/responses"));
+
+    let restored: OpenAI =
+        serde_json::from_str(&serde_json::to_string(&on_chat).expect("serializes"))
+            .expect("deserializes");
+    assert_eq!(restored.completion_route(), Route::Chat);
+    assert!(
+        matches!(restored.completion("gpt-5.2"), OpenAiWire::Chat(_)),
+        "the configured route survives storage"
+    );
+    // Without an override, the stored form names no route at all.
+    let json = serde_json::to_string(&OpenAI::new("sk-secret")).expect("serializes");
+    assert!(!json.contains("route"), "{json}");
+}
+
 /// A dialect is an identity, so its wire format is its name.
 #[test]
 fn a_dialect_round_trips_through_its_name() {

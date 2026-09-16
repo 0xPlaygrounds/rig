@@ -17,7 +17,7 @@
 
 use crate::completion::{self, CompletionError, ProviderCapabilities};
 use crate::operation::Completion;
-use crate::providers::openai::wire::{OpenAI, RequestShape};
+use crate::providers::openai::wire::OpenAI;
 use crate::wire::{
     AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing, Mode,
     ObservationSink, Wire,
@@ -221,34 +221,13 @@ impl Wire for Responses {
         // one whatever the caller wanted: the reply is framed the same way
         // either way, and the driver folds it.
         let streaming = matches!(mode, Mode::Streaming) || quirks.always_streams;
-        let body = match quirks.request {
-            RequestShape::Responses => {
-                let request = self.responses_request(request, streaming)?;
-                crate::providers::internal::trace_json(
-                    crate::providers::internal::LogTarget::Completions,
-                    "Responses completion request",
-                    &request,
-                );
-                serde_json::to_vec(&request)?
-            }
-            // xAI's own input shape; its types live with the provider that
-            // needs them.
-            RequestShape::Xai => {
-                let (_, body) = crate::providers::xai::api::create_completion_request(
-                    self.model.clone(),
-                    request,
-                    &self.tools,
-                    self.strict_tools,
-                    streaming,
-                )?;
-                crate::providers::internal::trace_json(
-                    crate::providers::internal::LogTarget::Completions,
-                    "Responses completion request",
-                    &body,
-                );
-                serde_json::to_vec(&body)?
-            }
-        };
+        let request = self.responses_request(request, streaming)?;
+        crate::providers::internal::trace_json(
+            crate::providers::internal::LogTarget::Completions,
+            "Responses completion request",
+            &request,
+        );
+        let body = serde_json::to_vec(&request)?;
 
         let request = self
             .headers(http::Request::post(format!(

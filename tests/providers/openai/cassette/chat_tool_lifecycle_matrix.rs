@@ -315,10 +315,7 @@ async fn run_model(client: OpenAiCassette, cell: Cell) -> Observation {
 
 async fn run_agent(client: OpenAiCassette, cell: Cell) -> Observation {
     let invocations = InvocationLog::default();
-    let builder = client
-        .openai
-        .chat(model_name(cell.model))
-        .into_agent_builder()
+    let builder = client.chat.agent(model_name(cell.model))
         .preamble(PREAMBLE)
         .additional_params(json!({ "tool_choice": "required", "parallel_tool_calls": cell.shape == Shape::Parallel }))
         .max_tokens(128)

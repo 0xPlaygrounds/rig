@@ -8,7 +8,7 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
 use rig::prelude::*;
-use rig::providers::openai::wire::OpenAI;
+use rig::providers::openai::wire::{OpenAI, Route};
 use rig::providers::openai::{self, FileData, UserContent as OpenAiUserContent};
 use serde::Deserialize;
 use std::future::Future;
@@ -230,10 +230,10 @@ async fn chat_completions_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
         let client = OpenAI::from_env()
             .expect("config should build from env")
+            .with_route(Route::Chat)
             .bound()
             .expect("transport should build");
-        let agent = client
-            .chat(openai::GPT_5_5).into_agent_builder()
+        let agent = client.agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)
             .build();
         let mut history = Vec::new();

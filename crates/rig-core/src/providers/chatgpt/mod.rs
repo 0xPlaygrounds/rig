@@ -26,9 +26,7 @@
 pub mod auth;
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
-use crate::providers::openai::wire::{
-    Dialect, Identity, Quirks, RequestShape, ResponsesQuirks, Route,
-};
+use crate::providers::openai::wire::{Dialect, Identity, Quirks, ResponsesQuirks, Route};
 
 const CHATGPT_API_BASE_URL: &str = "https://chatgpt.com/backend-api/codex";
 const DEFAULT_ORIGINATOR: &str = "rig";
@@ -79,7 +77,6 @@ pub const DIALECT: Dialect = Dialect {
         }),
         responses: ResponsesQuirks {
             system_instructions: SystemInstructionsPlacement::AllInstructions,
-            request: RequestShape::Responses,
             always_streams: true,
             relaxed_content_type: true,
             codex_parameter_subset: true,

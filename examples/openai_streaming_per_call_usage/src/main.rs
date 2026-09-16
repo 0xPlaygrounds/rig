@@ -24,7 +24,7 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::prelude::*;
-use rig::providers::openai::{self, wire::OpenAI};
+use rig::providers::openai::{self, Route, wire::OpenAI};
 use rig::streaming::{Delta, StreamEvent};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -91,10 +91,12 @@ fn print_usage(label: &str, usage: Usage) {
 async fn main() -> Result<()> {
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| openai::GPT_4O_MINI.to_string());
 
+    // Chat Completions: the route every OpenAI-compatible server speaks,
+    // chosen once on the configuration.
     let agent = OpenAI::from_env()?
+        .with_route(Route::Chat)
         .bound()?
-        .chat(model)
-        .into_agent_builder()
+        .agent(model)
         .preamble(
             "You are a concise release assistant. The user will ask about an \
              internal ticket. Call `lookup_project_status` exactly once before \

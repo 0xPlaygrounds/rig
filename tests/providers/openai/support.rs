@@ -1,6 +1,6 @@
 use rig::driver::{Bind, Bound};
 use rig::http_client::{BoxedHttpClient, ReqwestClient};
-use rig::providers::openai::OpenAI;
+use rig::providers::openai::{OpenAI, Route};
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
@@ -14,29 +14,35 @@ use futures::FutureExt;
 #[cfg(feature = "audio")]
 use crate::cassettes::DirectRecordingHttpClient;
 
-/// The one OpenAI configuration a recorded endpoint serves, bound.
+/// The one OpenAI configuration a recorded endpoint serves, bound — twice.
 ///
 /// `openai::Client` was `Client<OpenAIResponses, H>` — the Responses API —
 /// and the client layer swapped a marker type to reach `/chat/completions`
-/// on the same credential and base URL. In the wire model one [`OpenAI`]
-/// configuration hands out both request shapes: `.completion(model)` is the
-/// dialect's default route, `POST /responses`; `.chat(model)` names
-/// `/chat/completions`; and the modality wires serve every other OpenAI
-/// REST route (embeddings, transcriptions, images, speech, model listing,
-/// verification). Wrapped rather than handed out bare so a cell reads
-/// `client.openai.chat(model)` beside `client.openai.completion(model)` —
-/// the route it drives is spelled at the call site.
+/// on the same credential and base URL. In the wire model the endpoint is
+/// configuration: [`OpenAI`] routes every completion it is asked for to
+/// the dialect's flagship, `POST /responses`, unless
+/// [`OpenAI::with_route`] chose `/chat/completions` once, and the modality
+/// wires serve every other OpenAI REST route (embeddings, transcriptions,
+/// images, speech, model listing, verification). So the same credential is
+/// held here on both routes, and a cell spells the route it drives by the
+/// field it reads: `client.openai.agent(model)` beside
+/// `client.chat.agent(model)`, with `.chat(model)` / `.responses(model)`
+/// still naming a typed wire when a cell reads the native reply.
 pub(super) struct OpenAiCassette<H = BoxedHttpClient> {
-    /// The configuration, over the cassette's socket.
+    /// The configuration on its flagship route, over the cassette's socket.
     pub(super) openai: Bound<OpenAI, H>,
+    /// The same configuration routed to Chat Completions.
+    pub(super) chat: Bound<OpenAI, H>,
 }
 
 impl<H: Clone> OpenAiCassette<H> {
     /// The configuration for `api_key` at `base_url`, over `http`.
     fn new(api_key: impl Into<String>, base_url: impl Into<String>, http: H) -> Self {
-        Self {
-            openai: OpenAI::new(api_key).with_base_url(base_url).bind(http),
-        }
+        let openai = OpenAI::new(api_key).with_base_url(base_url).bind(http);
+        let chat = openai
+            .clone()
+            .map_wire(|openai| openai.with_route(Route::Chat));
+        Self { openai, chat }
     }
 }
 
@@ -66,7 +72,7 @@ async fn openai_completions_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, Bound<OpenAI>) {
     let (cassette, openai) = openai_cassette(spec).await;
-    (cassette, openai.openai)
+    (cassette, openai.chat)
 }
 
 /// Like [`with_openai_cassette`], but the client sends through the erased
@@ -249,7 +255,7 @@ where
 /// Per-bug wrapper for the Chat Completions refusal matrix
 /// (`tests/cassettes/openai/refusal_matrix/`).
 ///
-/// Yields both configurations; cells that drive Chat Completions take
+/// Yields both routes; cells that drive Chat Completions take
 /// [`OpenAiCassette::chat`], so one wrapper covers both surfaces of a bug
 /// whose logic lives in the shared chat-completions types.
 pub(super) async fn with_openai_refusal_cassette<F, Fut>(

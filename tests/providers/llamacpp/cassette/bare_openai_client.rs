@@ -19,7 +19,7 @@
 //! | base-URL composition — the caller supplies `/v1`, the dialect's default carries it | [`caller_supplies_the_v1_prefix_the_provider_would_add`] |
 //! | the `Authorization` header — `Auth::Bearer` always sends one | [`bare_openai_client_always_sends_an_authorization_header`] |
 //! | the absence of this dialect's quirk flags — a fragmented tool-call stream still reassembles | [`a_fragmented_tool_call_stream_reassembles_without_the_provider_consts`] |
-//! | the Responses/Completions split — the `OPENAI` dialect defaults to `/responses`, so a local server is reached by naming `.chat(model)` | [`agent_prompt_through_completions_api`] |
+//! | the Responses/Completions split — the `OPENAI` dialect defaults to `/responses`, so a local server is reached by routing the configuration to Chat once | [`agent_prompt_through_completions_api`] |
 //! | `raw` under the `openai` descriptor name, not `llamacpp` | [`raw_response_text_matches_normalized_choice_text`] |
 //!
 //! Recorded against the default server (`--jinja --seed 42 --temp 0 -c 4096`,
@@ -54,8 +54,7 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
         "bare_openai_client/caller_supplies_the_v1_prefix",
         |client| async move {
             let agent = client
-                .chat(CASSETTE_MODEL)
-                .into_agent_builder()
+                .agent(CASSETTE_MODEL)
                 .preamble("You are a concise assistant.")
                 .max_tokens(256)
                 .build();
@@ -205,8 +204,7 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
         "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
         |client| async move {
             let agent = client
-                .chat(CASSETTE_MODEL)
-                .into_agent_builder()
+                .agent(CASSETTE_MODEL)
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
                 .tool(Subtract)
@@ -254,21 +252,17 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
     assert!(parsed.is_object(), "{parsed}");
 }
 
-/// The Responses/Completions split survives as two *configurations* rather
-/// than one client's two surfaces, and llama.cpp is reachable through the
-/// chat-completions one.
-///
-/// The model-first construction — build the bound completion model, then turn
-/// it into an agent builder — is this cell's own spelling, and the only place
-/// in the suite it is exercised.
+/// The Responses/Completions split is configuration rather than one client's
+/// two surfaces: the `OPENAI` dialect's flagship is `/responses`, and llama.cpp
+/// is reachable by routing the configuration to Chat once, after which the
+/// agent sugar follows.
 #[tokio::test]
 async fn agent_prompt_through_completions_api() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/agent_prompt_through_completions_api",
         |client| async move {
             let agent = client
-                .chat(CASSETTE_MODEL)
-                .into_agent_builder()
+                .agent(CASSETTE_MODEL)
                 .preamble("You are a helpful assistant.")
                 .build();
 

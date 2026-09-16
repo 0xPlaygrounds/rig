@@ -5,7 +5,7 @@ use futures::FutureExt;
 use rig::driver::Bound;
 use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
-use rig::providers::openai::wire::OpenAI;
+use rig::providers::openai::wire::{OpenAI, Route};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
@@ -23,7 +23,9 @@ pub(super) const SYSTEM_PROMPT: &str =
 /// explicit base URL.
 pub(super) type BoundResponses = Bound<OpenAI, BoxedHttpClient>;
 
-/// mistral.rs's chat-completions surface, bound to the bundled transport.
+/// mistral.rs's chat-completions surface, bound to the bundled transport:
+/// the same dialect routed to `/chat/completions` once, so a cell's
+/// `client.agent(model)` lands there.
 pub(super) type BoundCompletions = Bound<OpenAI, BoxedHttpClient>;
 
 pub(super) fn model_name() -> String {
@@ -69,6 +71,7 @@ async fn mistralrs_completions_cassette(
     .await;
     let completions = OpenAI::new(api_key)
         .with_base_url(cassette.base_url())
+        .with_route(Route::Chat)
         .bound()
         .expect("mistral.rs chat-completions transport should build");
 
