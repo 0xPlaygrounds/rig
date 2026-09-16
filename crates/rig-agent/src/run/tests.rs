@@ -255,7 +255,7 @@ fn expect_call_tools(run: &mut AgentRun) -> Vec<PendingToolCall> {
 
 fn expect_done(run: &mut AgentRun) -> PromptResponse {
     match run.next_step().expect("next_step should succeed") {
-        AgentRunStep::Done(response) => response,
+        AgentRunStep::Done(response) => *response,
         step => panic!("expected Done, got {step:?}"),
     }
 }

@@ -718,8 +718,10 @@ fn raw_payload(attempt: &str) -> serde_json::Value {
 /// The mock's terminal type is `StreamFinal` itself, so the terminal's
 /// `raw` is exactly this record serialized.
 fn stream_final_for_attempt(attempt: &str, total_tokens: u64) -> rig_core::streaming::StreamFinal {
-    let mut usage = Usage::default();
-    usage.total_tokens = Some(total_tokens);
+    let usage = Usage {
+        total_tokens: Some(total_tokens),
+        ..Default::default()
+    };
     rig_core::streaming::StreamFinal::new("mock", usage)
         .with_response_id(format!("resp-{attempt}"))
         .with_provider_request_id(format!("req-{attempt}"))

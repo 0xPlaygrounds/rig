@@ -213,8 +213,9 @@ pub enum AgentRunStep {
         /// The tool calls of the current assistant turn, in emission order.
         calls: Vec<PendingToolCall>,
     },
-    /// The run is complete.
-    Done(PromptResponse),
+    /// The run is complete. Boxed: a response carries the whole run's
+    /// messages and usage, and a step is otherwise a few words.
+    Done(Box<PromptResponse>),
 }
 
 /// One tool call awaiting execution by the driver.
@@ -1250,7 +1251,7 @@ impl AgentRun {
                 Ok(step)
             }
             RunState::Done(response) => {
-                let step = AgentRunStep::Done((*response).clone());
+                let step = AgentRunStep::Done(response.clone());
                 self.state = RunState::Done(response);
                 Ok(step)
             }
@@ -1379,7 +1380,8 @@ impl AgentRun {
             .with_completion_calls(self.completion_calls.clone())
             .with_output_tool_calls(output_tool_calls)
             .with_content(content);
-        self.state = RunState::Done(Box::new(response.clone()));
+        let response = Box::new(response);
+        self.state = RunState::Done(response.clone());
         AgentRunStep::Done(response)
     }
 

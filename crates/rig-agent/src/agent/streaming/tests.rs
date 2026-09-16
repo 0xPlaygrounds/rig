@@ -2485,10 +2485,14 @@ async fn invalid_tool_call_hook_retries_mixed_streaming_turn_without_executing_v
 
     assert_eq!(final_response_text.as_deref(), Some("retried"));
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let mut first_usage = Usage::default();
-    first_usage.total_tokens = Some(4);
-    let mut second_usage = Usage::default();
-    second_usage.total_tokens = Some(6);
+    let first_usage = Usage {
+        total_tokens: Some(4),
+        ..Default::default()
+    };
+    let second_usage = Usage {
+        total_tokens: Some(6),
+        ..Default::default()
+    };
     let expected_completion_calls = vec![
         streamed_call(0, first_usage),
         streamed_call(1, second_usage),
@@ -2891,10 +2895,14 @@ async fn invalid_tool_call_delta_retry_uses_structured_tool_feedback() {
     assert_eq!(final_response_text.as_deref(), Some("retried"));
     assert!(delta_hook.observed().is_empty());
     assert_eq!(add_calls.load(Ordering::SeqCst), 0);
-    let mut first_usage = Usage::default();
-    first_usage.total_tokens = Some(4);
-    let mut second_usage = Usage::default();
-    second_usage.total_tokens = Some(6);
+    let first_usage = Usage {
+        total_tokens: Some(4),
+        ..Default::default()
+    };
+    let second_usage = Usage {
+        total_tokens: Some(6),
+        ..Default::default()
+    };
     let expected_completion_calls = vec![
         streamed_call(0, first_usage),
         streamed_call(1, second_usage),
