@@ -3812,3 +3812,106 @@ fn request_reserves_raw_server_tool_handles_without_rewriting_them() {
     assert_eq!(content[1], serde_json::to_value(raw_call).unwrap());
     assert_eq!(content[2], serde_json::to_value(raw_result).unwrap());
 }
+
+fn adaptive_request(
+    model: &str,
+    additional: serde_json::Value,
+    schema: Option<schemars::Schema>,
+) -> Result<AnthropicCompletionRequest, CompletionError> {
+    let mut request = completion_request_with_tools(vec![], Some(additional));
+    request.output_schema = schema;
+    AnthropicCompletionRequest::try_from(AnthropicRequestParams {
+        model,
+        request,
+        prompt_caching: false,
+        automatic_caching: false,
+        automatic_caching_ttl: None,
+        static_prefix_cache_ttl: None,
+    })
+}
+
+/// Internal serialization precedence needs no live response; existing Anthropic
+/// cassettes separately cover provider traffic. This catches duplicate JSON keys
+/// which parsing a response fixture cannot reveal.
+#[test]
+fn adaptive_parameters_merge_schema_effort_tools_and_passthrough() {
+    let schema =
+        serde_json::from_value(json!({"type":"object","properties":{"answer":{"type":"string"}}}))
+            .expect("valid adaptive request fixture");
+    let request = adaptive_request(
+        CLAUDE_SONNET_4_6,
+        json!({
+            "thinking": {"type":"adaptive", "display":"omitted"},
+            "output_config": {"effort":"max", "format":{"type":"json_schema","schema":{"type":"string"}}, "custom_option":true},
+            "tools":[{"type":"web_search_20250305","name":"web_search"}],
+            "metadata":{"user_id":"test-only"}
+        }),
+        Some(schema),
+    ).expect("valid adaptive request fixture");
+    let serialized = serde_json::to_string(&request).expect("valid adaptive request fixture");
+    assert_eq!(serialized.matches("\"output_config\"").count(), 1);
+    assert_eq!(serialized.matches("\"thinking\"").count(), 1);
+    let value: serde_json::Value =
+        serde_json::from_str(&serialized).expect("valid adaptive request fixture");
+    assert_eq!(
+        value["thinking"],
+        json!({"type":"adaptive","display":"omitted"})
+    );
+    assert_eq!(value["output_config"]["effort"], "max");
+    assert_eq!(value["output_config"]["custom_option"], true);
+    assert_eq!(value["output_config"]["format"]["schema"]["type"], "object");
+    assert_eq!(value["tools"].as_array().map(Vec::len), Some(1));
+    assert_eq!(value["metadata"]["user_id"], "test-only");
+}
+
+/// Local validation and unknown-model passthrough are conversion rules rather
+/// than provider response behavior, so a deterministic unit test is sufficient.
+#[test]
+fn adaptive_parameters_validate_legacy_models_without_rejecting_newer_ones() {
+    for model in [
+        "claude-sonnet-4-5",
+        "claude-opus-4-1-20250805",
+        "claude-3-7-sonnet-latest",
+    ] {
+        assert!(adaptive_request(model, json!({"thinking":{"type":"adaptive"}}), None).is_err());
+        assert!(adaptive_request(model, json!({"output_config":{"effort":"max"}}), None).is_err());
+    }
+    for model in [
+        CLAUDE_OPUS_4_6,
+        CLAUDE_SONNET_4_6,
+        CLAUDE_OPUS_4_8,
+        "custom-model",
+    ] {
+        adaptive_request(
+            model,
+            json!({"thinking":{"type":"adaptive"},"output_config":{"effort":"max"}}),
+            None,
+        )
+        .expect("valid adaptive request fixture");
+    }
+    adaptive_request(
+        CLAUDE_OPUS_4_8,
+        json!({"output_config":{"effort":"xhigh"}}),
+        None,
+    )
+    .expect("valid adaptive request fixture");
+    for thinking in [
+        json!({"type":"disabled"}),
+        json!({"type":"enabled","budget_tokens":1024}),
+    ] {
+        let request = adaptive_request(CLAUDE_OPUS_4_6, json!({"thinking":thinking}), None)
+            .expect("valid adaptive request fixture");
+        assert_eq!(
+            serde_json::to_value(request).expect("valid adaptive request fixture")["thinking"],
+            thinking
+        );
+    }
+    assert!(
+        adaptive_request(
+            CLAUDE_OPUS_4_6,
+            json!({"thinking":{"type":"enabled","budget_tokens":"invalid"}}),
+            None
+        )
+        .is_err()
+    );
+}

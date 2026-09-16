@@ -2189,10 +2189,55 @@ enum OutputFormat {
     JsonSchema { schema: serde_json::Value },
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(tag = "type", rename_all = "snake_case")]
+enum Thinking {
+    Enabled {
+        budget_tokens: u64,
+        #[serde(flatten)]
+        additional: serde_json::Map<String, serde_json::Value>,
+    },
+    Adaptive {
+        #[serde(flatten)]
+        additional: serde_json::Map<String, serde_json::Value>,
+    },
+    Disabled,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+enum ReasoningEffort {
+    Low,
+    Medium,
+    High,
+    Xhigh,
+    Max,
+}
+
 /// Configuration for the model's output format.
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Default)]
 struct OutputConfig {
-    format: OutputFormat,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    format: Option<OutputFormat>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    effort: Option<ReasoningEffort>,
+    #[serde(flatten)]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
+    additional: serde_json::Map<String, serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Default)]
+struct AdditionalParameters {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<Thinking>,
+    #[serde(rename = "output_config")]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    output_config: Option<OutputConfig>,
+    #[serde(flatten)]
+    #[serde(default)]
+    #[serde(skip_serializing_if = "serde_json::Map::is_empty")]
+    passthrough: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -2211,6 +2256,8 @@ pub(super) struct AnthropicCompletionRequest {
     tools: Vec<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     output_config: Option<OutputConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    thinking: Option<Thinking>,
     #[serde(flatten, skip_serializing_if = "Option::is_none")]
     additional_params: Option<serde_json::Value>,
     /// Top-level cache_control for Anthropic's automatic caching mode. When set, the API
@@ -2755,16 +2802,77 @@ impl AnthropicCompletionRequest {
             top_level_cache_control.as_ref(),
         )?;
 
-        let output_config = if let Some(schema) = req.output_schema {
+        let typed_additional_params = if additional_params_payload.is_null() {
+            AdditionalParameters::default()
+        } else {
+            serde_json::from_value::<AdditionalParameters>(additional_params_payload).map_err(
+                |err| {
+                    CompletionError::RequestError(
+                        format!("Invalid Anthropic additional_params payload: {err}").into(),
+                    )
+                },
+            )?
+        };
+        if matches!(
+            typed_additional_params.thinking,
+            Some(Thinking::Adaptive { .. })
+        ) && is_known_pre_adaptive_model(model)
+        {
+            return Err(CompletionError::RequestError(
+                format!("Adaptive thinking is not supported by {model}").into(),
+            ));
+        }
+
+        // Map output_schema to Anthropic's output_config field
+        let mut output_config = req.output_schema.map(|schema| {
             let mut schema_value = schema.to_value();
             sanitize_schema(&mut schema_value);
-            Some(OutputConfig {
-                format: OutputFormat::JsonSchema {
+            OutputConfig {
+                format: Some(OutputFormat::JsonSchema {
                     schema: schema_value,
-                },
-            })
-        } else {
+                }),
+                ..Default::default()
+            }
+        });
+
+        if let Some(user_output_config) = typed_additional_params.output_config {
+            let has_schema_format = output_config.is_some();
+            let mut merged = output_config.take().unwrap_or_default();
+            merged.effort = user_output_config.effort;
+            merged.additional.extend(user_output_config.additional);
+            if has_schema_format {
+                merged.additional.remove("format");
+            } else if user_output_config.format.is_some() {
+                merged.format = user_output_config.format;
+            }
+
+            output_config = if merged.format.is_some()
+                || merged.effort.is_some()
+                || !merged.additional.is_empty()
+            {
+                Some(merged)
+            } else {
+                None
+            };
+        }
+
+        if output_config.as_ref().is_some_and(|config| {
+            matches!(
+                config.effort,
+                Some(ReasoningEffort::Max | ReasoningEffort::Xhigh)
+            )
+        }) && is_known_pre_adaptive_model(model)
+        {
+            return Err(CompletionError::RequestError(
+                format!("The requested effort level is not supported by {model}").into(),
+            ));
+        }
+        let additional_params = if typed_additional_params.passthrough.is_empty() {
             None
+        } else {
+            Some(serde_json::Value::Object(
+                typed_additional_params.passthrough,
+            ))
         };
 
         Ok(Self {
@@ -2776,15 +2884,39 @@ impl AnthropicCompletionRequest {
             tool_choice: req.tool_choice.map(ToolChoice::try_from).transpose()?,
             tools,
             output_config,
+            thinking: typed_additional_params.thinking,
             // Automatic caching: one top-level field; the API moves the breakpoint automatically.
             cache_control: top_level_cache_control,
-            additional_params: if additional_params_payload.is_null() {
-                None
-            } else {
-                Some(additional_params_payload)
-            },
+            additional_params,
         })
     }
+}
+
+// Reject only known legacy families; custom endpoints and newer models keep
+// their provider-defined capabilities instead of inheriting a stale allowlist.
+fn is_known_pre_adaptive_model(model: &str) -> bool {
+    [
+        "claude-opus-4-5",
+        "claude-opus-4-1",
+        "claude-opus-4-0",
+        "claude-sonnet-4-5",
+        "claude-sonnet-4-0",
+        "claude-haiku-4-5",
+    ]
+    .iter()
+    .any(|base| {
+        model == *base
+            || model
+                .strip_prefix(base)
+                .is_some_and(|suffix| suffix.starts_with('-'))
+    }) || [
+        "claude-3-",
+        "claude-opus-4-2025",
+        "claude-sonnet-4-2025",
+        "claude-haiku-4-2025",
+    ]
+    .iter()
+    .any(|prefix| model.starts_with(prefix))
 }
 
 impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
