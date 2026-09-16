@@ -165,8 +165,6 @@ pub enum Message {
         #[serde(skip_serializing_if = "Option::is_none")]
         refusal: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
-        audio: Option<AudioAssistant>,
-        #[serde(skip_serializing_if = "Option::is_none")]
         name: Option<String>,
         #[serde(
             default,
@@ -179,11 +177,6 @@ pub enum Message {
         /// providers that do not emit or accept them.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         reasoning_details: Vec<ReasoningDetails>,
-        /// Generated images returned by image-generation models (OpenRouter's
-        /// sibling `images` array). Inbound only — never serialized back into
-        /// a request.
-        #[serde(default, skip_serializing)]
-        images: Vec<ResponseImage>,
     },
     #[serde(rename = "tool")]
     ToolResult {
@@ -205,11 +198,6 @@ fn history_contains_tool_result(messages: &[Message]) -> bool {
     messages
         .iter()
         .any(|message| matches!(message, Message::ToolResult { .. }))
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct AudioAssistant {
-    pub id: String,
 }
 
 /// Structured reasoning blocks attached to assistant messages by
@@ -242,15 +230,6 @@ pub enum ReasoningDetails {
         text: Option<String>,
         signature: Option<String>,
     },
-}
-
-/// An image emitted by an image-generation model. OpenRouter returns generated
-/// images out-of-band from `content`, as a sibling `images` array on the
-/// assistant message. Each entry mirrors the request-side `image_url` content
-/// part structure.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
-pub struct ResponseImage {
-    pub image_url: ImageUrl,
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -405,14 +384,6 @@ pub enum ToolResultContentValue {
 }
 
 impl ToolResultContentValue {
-    pub fn from_string(s: String, use_array_format: bool) -> Self {
-        if use_array_format {
-            ToolResultContentValue::Array(vec![ToolResultContent::from(s)])
-        } else {
-            ToolResultContentValue::String(s)
-        }
-    }
-
     /// The text of this tool result, with any non-text parts skipped.
     ///
     /// Lossy by construction: an image part has no textual rendering, so a
@@ -430,39 +401,6 @@ impl ToolResultContentValue {
         }
     }
 
-    /// Convert into rig's tool-result content blocks, preserving image parts.
-    ///
-    /// The counterpart of the outbound conversion. A round trip through the
-    /// wire and back must not quietly become text-only, or a replayed history
-    /// says less than the one that produced it.
-    pub fn into_message_content(self) -> Vec<message::ToolResultContent> {
-        match self {
-            ToolResultContentValue::String(text) => vec![message::ToolResultContent::text(text)],
-            ToolResultContentValue::Array(parts) => parts
-                .into_iter()
-                .map(|part| match part {
-                    ToolResultContent::Text { text } => message::ToolResultContent::text(text),
-                    ToolResultContent::Image { image_url } => {
-                        // A base64 data URI round-trips back to its parts;
-                        // anything else stays a URL reference.
-                        match parse_image_data_uri(&image_url.url) {
-                            Some((mime, data)) => message::ToolResultContent::image_base64(
-                                data,
-                                message::ImageMediaType::from_mime_type(mime),
-                                image_url.detail,
-                            ),
-                            None => message::ToolResultContent::image_url(
-                                image_url.url,
-                                None,
-                                image_url.detail,
-                            ),
-                        }
-                    }
-                })
-                .collect(),
-        }
-    }
-
     /// Whether any part of this result is an image.
     pub fn has_image(&self) -> bool {
         matches!(self, ToolResultContentValue::Array(arr)
@@ -477,16 +415,6 @@ impl ToolResultContentValue {
             }
         }
     }
-}
-
-/// Split a base64 data URI into `(mime, base64)`, or `None` for a plain URL.
-///
-/// `rsplit_once` on the marker rather than `split_once`, so a URL that happens
-/// to contain `;base64,` earlier does not truncate the payload.
-fn parse_image_data_uri(url: &str) -> Option<(&str, &str)> {
-    let rest = url.strip_prefix("data:")?;
-    let (mime, data) = rest.rsplit_once(";base64,")?;
-    (!data.is_empty()).then_some((mime, data))
 }
 
 #[derive(Debug, Serialize, Deserialize, PartialEq, Clone)]
@@ -1052,14 +980,12 @@ pub fn assistant_content_to_messages(
             Some(reasoning_parts.join("\n"))
         },
         refusal: None,
-        audio: None,
         name: None,
         tool_calls: tool_calls
             .into_iter()
             .map(std::convert::Into::into)
             .collect::<Vec<_>>(),
         reasoning_details: details,
-        images: Vec::new(),
     }])
 }
 
@@ -1153,166 +1079,6 @@ impl From<message::ToolCall> for ToolCall {
                 name: tool_call.function.name,
                 arguments: tool_call.function.arguments,
             },
-        }
-    }
-}
-
-impl From<ToolCall> for message::ToolCall {
-    fn from(tool_call: ToolCall) -> Self {
-        message::ToolCall::from_wire(
-            tool_call.id,
-            message::ToolFunction {
-                name: tool_call.function.name,
-                arguments: tool_call.function.arguments,
-            },
-        )
-    }
-}
-
-impl TryFrom<Message> for message::Message {
-    type Error = message::MessageError;
-
-    fn try_from(message: Message) -> Result<Self, Self::Error> {
-        Ok(match message {
-            Message::User { content, .. } => message::Message::User {
-                content: content.into_iter().map(std::convert::Into::into).collect(),
-            },
-            Message::Assistant {
-                content,
-                tool_calls,
-                reasoning,
-                refusal,
-                ..
-            } => {
-                let mut assistant_content = Vec::new();
-
-                if let Some(reasoning) = reasoning
-                    && !reasoning.is_empty()
-                {
-                    assistant_content.push(message::AssistantContent::reasoning(reasoning));
-                }
-
-                // Either/or, not both: the fallback fires only when no part
-                // carried text, so every part left is an empty one. Appending
-                // them anyway would put an empty text block on the wire beside
-                // the refusal and make this view of the message disagree with
-                // the one `normalize` builds, which drops empty parts.
-                if let Some(refusal) = assistant_refusal_fallback(&content, refusal.as_deref()) {
-                    assistant_content.push(message::AssistantContent::text(refusal));
-                } else {
-                    assistant_content.extend(content.into_iter().map(|content| match content {
-                        AssistantContent::Text { text, .. } => {
-                            message::AssistantContent::text(text)
-                        }
-                        AssistantContent::Refusal { refusal } => {
-                            message::AssistantContent::text(refusal)
-                        }
-                    }));
-                }
-
-                assistant_content.extend(
-                    tool_calls
-                        .into_iter()
-                        .map(|tool_call| Ok(message::AssistantContent::ToolCall(tool_call.into())))
-                        .collect::<Result<Vec<_>, _>>()?,
-                );
-
-                crate::message::normalize_missing_tool_call_ids(&mut assistant_content);
-                message::Message::Assistant {
-                    id: None,
-                    content: crate::message::require_non_empty(assistant_content, || {
-                        message::MessageError::ConversionError(
-                            "Neither `content` nor `tool_calls` was provided to the Message"
-                                .to_owned(),
-                        )
-                    })?,
-                }
-            }
-
-            Message::ToolResult {
-                tool_call_id,
-                content,
-            } => message::Message::User {
-                // OpenAI chat tool messages carry no tool name; this
-                // conversion is lossy for name-keyed wires.
-                // Every part is carried back, images included. Flattening with
-                // `as_text()` would drop an image silently — the same loss the
-                // outbound gate refuses to commit, and worse here because it
-                // used to be impossible: before `ToolResultContent` grew an
-                // image variant, such a body failed to deserialize at all, so
-                // the loss was at least visible.
-                content: vec![message::UserContent::tool_result_from_wire(
-                    tool_call_id,
-                    "",
-                    content.into_message_content(),
-                )],
-            },
-
-            // System messages should get stripped out when converting messages, this is just a
-            // stop gap to avoid obnoxious error handling or panic occurring.
-            Message::System { content, .. } => message::Message::User {
-                content: content
-                    .into_iter()
-                    .map(|content| message::UserContent::text(content.text))
-                    .collect(),
-            },
-        })
-    }
-}
-
-impl From<UserContent> for message::UserContent {
-    fn from(content: UserContent) -> Self {
-        match content {
-            UserContent::Text { text, .. } => message::UserContent::text(text),
-            UserContent::Image { image_url } => {
-                message::UserContent::image_url(image_url.url, None, image_url.detail)
-            }
-            UserContent::Audio { input_audio } => {
-                message::UserContent::audio(input_audio.data, Some(input_audio.format))
-            }
-            UserContent::File {
-                file: FileData {
-                    file_data, file_id, ..
-                },
-            } => match file_data {
-                Some(data_url) => {
-                    let kind = match data_url.strip_prefix("data:application/pdf;base64,") {
-                        Some(b64) => DocumentSourceKind::Base64(b64.to_string()),
-                        None => DocumentSourceKind::String(data_url),
-                    };
-                    message::UserContent::Document(message::Document {
-                        data: kind,
-                        media_type: Some(message::DocumentMediaType::PDF),
-                        additional_params: None,
-                    })
-                }
-                None => match file_id {
-                    Some(id) => message::UserContent::Document(message::Document {
-                        data: DocumentSourceKind::FileId(id),
-                        media_type: None,
-                        additional_params: None,
-                    }),
-                    None => message::UserContent::text(String::new()),
-                },
-            },
-            UserContent::Video { video_url } => {
-                let decomposed = video_url
-                    .url
-                    .strip_prefix("data:")
-                    .and_then(|rest| rest.split_once(";base64,"))
-                    .and_then(|(mime, data)| {
-                        // Only decompose data URIs whose media type survives
-                        // the round trip; unrecognized MIMEs (e.g.
-                        // video/quicktime, parameterized types) stay as URLs
-                        // so re-serialization reproduces the original URI.
-                        crate::message::VideoMediaType::from_mime_type(mime)
-                            .map(|media_type| (media_type, data))
-                    });
-                match decomposed {
-                    Some((media_type, data)) => message::UserContent::video(data, Some(media_type)),
-                    None => message::UserContent::video_url(video_url.url, None),
-                }
-            }
         }
     }
 }
@@ -2138,24 +1904,6 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
         };
 
         Ok(res)
-    }
-}
-
-impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
-    type Error = CompletionError;
-
-    fn try_from((model, req): (String, CoreCompletionRequest)) -> Result<Self, Self::Error> {
-        CompletionRequest::try_from(OpenAIRequestParams {
-            model,
-            request: req,
-            strict_tools: false,
-            tool_result_array_content: false,
-            supports_response_format: true,
-            response_format_with_tools: false,
-            supports_image_tool_results: false,
-            supports_tools: true,
-            reasoning_details: false,
-        })
     }
 }
 

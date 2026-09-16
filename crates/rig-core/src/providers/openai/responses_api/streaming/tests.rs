@@ -7,8 +7,8 @@ use crate::completion::{CompletionError, CompletionModel};
 use crate::driver::{Bound, WireDriver};
 use crate::error::{ErrorKind, ErrorReport};
 use crate::message::{AssistantContent, ReasoningContent};
+use crate::operation::AdapterOutput;
 use crate::operation::Completion;
-use crate::providers::internal::adapter::{AdapterOutput, WireFrame};
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
     sse_bytes_from_data_lines, sse_bytes_from_json_events,
 };
@@ -20,6 +20,7 @@ use crate::providers::openai::responses_api::{
 };
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, StreamEvent};
 use crate::test_utils::MockStreamingClient;
+use crate::wire::WireFrame;
 use crate::wire::{Fold, Operation, Reply};
 use futures::StreamExt;
 use serde_json::{self, json};

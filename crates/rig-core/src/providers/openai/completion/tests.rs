@@ -147,43 +147,14 @@ fn mixed_user_content_preserves_order_around_tool_results() {
 }
 
 #[test]
-fn video_data_uri_with_unrecognized_mime_round_trips_as_url() {
+fn video_url_with_unrecognized_mime_stays_a_url_on_the_wire() {
     let original = "data:video/quicktime;base64,AAAA";
-    let openai_content = UserContent::Video {
-        video_url: VideoUrl {
-            url: original.to_string(),
-        },
-    };
-
-    let rig_content: message::UserContent = openai_content.into();
-    // Unrecognized MIME: kept as a URL source, not decomposed.
-    assert!(matches!(
-        &rig_content,
-        message::UserContent::Video(video)
-            if matches!(&video.data, message::DocumentSourceKind::Url(url) if url == original)
-    ));
+    let rig_content = message::UserContent::video_url(original.to_string(), None);
 
     let back = UserContent::try_from(rig_content).expect("video should convert back");
     assert!(matches!(
         back,
         UserContent::Video { video_url } if video_url.url == original
-    ));
-}
-
-#[test]
-fn video_data_uri_with_known_mime_decomposes_to_base64() {
-    let openai_content = UserContent::Video {
-        video_url: VideoUrl {
-            url: "data:video/mp4;base64,AAAA".to_string(),
-        },
-    };
-
-    let rig_content: message::UserContent = openai_content.into();
-    assert!(matches!(
-        &rig_content,
-        message::UserContent::Video(video)
-            if video.media_type == Some(crate::message::VideoMediaType::MP4)
-                && matches!(&video.data, message::DocumentSourceKind::Base64(data) if data == "AAAA")
     ));
 }
 
@@ -642,33 +613,6 @@ fn assistant_reasoning_is_attached_to_tool_call_message() {
     assert_eq!(json["reasoning_content"], "hidden");
 }
 
-#[test]
-fn assistant_reasoning_roundtrips_back_to_rig_message() {
-    let assistant = Message::Assistant {
-        content: vec![AssistantContent::Text {
-            text: "visible".to_string(),
-        }],
-        reasoning: Some("hidden".to_string()),
-        refusal: None,
-        audio: None,
-        name: None,
-        tool_calls: vec![],
-        reasoning_details: vec![],
-        images: vec![],
-    };
-
-    let rig_msg: message::Message = assistant.try_into().expect("convert back");
-
-    let message::Message::Assistant { content, .. } = rig_msg else {
-        panic!("expected assistant");
-    };
-
-    let items: Vec<_> = content.into_iter().collect();
-    assert_eq!(items.len(), 2);
-    assert!(matches!(items[0], message::AssistantContent::Reasoning(_)));
-    assert!(matches!(items[1], message::AssistantContent::Text(_)));
-}
-
 /// The raw text view of an assistant turn joins its non-empty parts in
 /// order, refusal parts included. This is the helper every unary path on
 /// this wire reads text through.
@@ -688,11 +632,9 @@ fn assistant_message_text_joins_every_non_empty_part() {
         ],
         reasoning: Some("hidden".to_owned()),
         refusal: None,
-        audio: None,
         name: None,
         tool_calls: vec![],
         reasoning_details: vec![],
-        images: vec![],
     };
 
     assert_eq!(
@@ -917,91 +859,6 @@ fn refusal_content_part_suppresses_the_sibling_fallback() {
         assistant_message_text_response(&message).as_deref(),
         Some("part refusal")
     );
-}
-
-/// The history round trip: a stored refusal-only assistant message used to
-/// fail conversion outright.
-#[test]
-fn refusal_only_message_converts_into_rig_history() {
-    let wire: Message = serde_json::from_value(json!({
-        "role": "assistant",
-        "content": null,
-        "refusal": "I'm sorry, I can't help with that."
-    }))
-    .expect("wire message");
-
-    let converted = message::Message::try_from(wire).expect("history conversion");
-
-    assert_eq!(
-        converted,
-        message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::text(
-                "I'm sorry, I can't help with that."
-            )],
-        }
-    );
-}
-
-/// `"content": ""` decodes to a *present but empty* text part, so the
-/// fallback and the parts must be either/or: appending both would put an
-/// empty text block back on the wire beside the refusal and make this view
-/// of the message disagree with the one `normalize` builds.
-#[test]
-fn refusal_beside_an_empty_content_string_converts_to_the_refusal_alone() {
-    let wire: Message = serde_json::from_value(json!({
-        "role": "assistant",
-        "content": "",
-        "refusal": "I'm sorry, I can't help with that."
-    }))
-    .expect("wire message");
-
-    let converted = message::Message::try_from(wire).expect("history conversion");
-
-    assert_eq!(
-        converted,
-        message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::text(
-                "I'm sorry, I can't help with that."
-            )],
-        },
-        "the empty part must not ride along beside the refusal"
-    );
-}
-
-/// The other side of that branch: content that carries text keeps every
-/// part, and the refusal is not appended.
-#[test]
-fn refusal_beside_real_content_converts_to_the_content_alone() {
-    let wire: Message = serde_json::from_value(json!({
-        "role": "assistant",
-        "content": "here is the answer",
-        "refusal": "I'm sorry, I can't help with that."
-    }))
-    .expect("wire message");
-
-    let converted = message::Message::try_from(wire).expect("history conversion");
-
-    assert_eq!(
-        converted,
-        message::Message::Assistant {
-            id: None,
-            content: vec![message::AssistantContent::text("here is the answer")],
-        }
-    );
-}
-
-#[test]
-fn refusal_only_message_with_empty_refusal_still_fails_conversion() {
-    let wire: Message = serde_json::from_value(json!({
-        "role": "assistant",
-        "content": null,
-        "refusal": ""
-    }))
-    .expect("wire message");
-
-    assert!(message::Message::try_from(wire).is_err());
 }
 
 #[test]
@@ -1890,37 +1747,12 @@ fn file_user_content_deserializes_from_wire_json() {
 }
 
 #[test]
-fn file_variant_round_trips_back_to_pdf_document() {
-    let wire = UserContent::File {
-        file: FileData {
-            file_data: Some("data:application/pdf;base64,QUJD".to_string()),
-            file_id: None,
-            filename: Some("document.pdf".to_string()),
-        },
+fn document_file_id_serializes_as_a_file_part() {
+    let doc = message::Document {
+        data: DocumentSourceKind::FileId("file_abc".to_string()),
+        media_type: None,
+        additional_params: None,
     };
-    let rig: message::UserContent = wire.into();
-    let message::UserContent::Document(doc) = rig else {
-        panic!("expected Document");
-    };
-    assert_eq!(doc.media_type, Some(message::DocumentMediaType::PDF));
-    assert!(matches!(doc.data, DocumentSourceKind::Base64(ref b) if b == "QUJD"));
-}
-
-#[test]
-fn file_variant_with_file_id_only_round_trips_to_document_file_id() {
-    let wire = UserContent::File {
-        file: FileData {
-            file_data: None,
-            file_id: Some("file_abc".to_string()),
-            filename: None,
-        },
-    };
-    let rig: message::UserContent = wire.into();
-    let message::UserContent::Document(doc) = rig else {
-        panic!("expected Document");
-    };
-    assert_eq!(doc.media_type, None);
-    assert!(matches!(doc.data, DocumentSourceKind::FileId(ref id) if id == "file_abc"));
 
     let converted: UserContent = message::UserContent::Document(doc)
         .try_into()

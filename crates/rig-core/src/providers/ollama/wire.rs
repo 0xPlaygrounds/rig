@@ -177,7 +177,7 @@ impl Wire for Chat {
         ))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         OllamaDecoder::default()
     }
 }
@@ -216,7 +216,7 @@ impl Wire for Embeddings {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         EmbeddingsDecoder
     }
 
@@ -297,7 +297,7 @@ impl Wire for Models {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         ModelsDecoder
     }
 }

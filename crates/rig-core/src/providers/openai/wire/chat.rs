@@ -22,11 +22,12 @@ use crate::providers::openai::completion::{
 };
 use crate::streaming::{BlockId, Delta, MintKind, StreamEvent, ToolCallEnd, UnparseableToolInput};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
+    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Decoder, Encoded,
+    Framing, Mode, ObservationSink, Output, Wire, WireEvent, WireFrame,
 };
 
 use super::dto::{ChatFrame, ChatUsage, StreamingCompletionResponse, delta_text};
-use super::{BodyRewrite, OpenAI, OutputCap, Routing};
+use super::{BodyRewrite, OpenAI, OutputCap};
 
 /// The chat-completions wire: a provider configuration, a model, and the
 /// per-turn options the endpoint takes.
@@ -880,15 +881,14 @@ impl Wire for Chat {
 
         // Deliberately the configured model, not the per-request override:
         // Azure's deployment URL is pinned to the model handle.
-        let deployment = match quirks.routing {
-            Routing::AzureDeployment => Some(self.model.as_str()),
-            Routing::Path => None,
-        };
-        let builder = http::Request::post(self.provider.uri(quirks.completion_path, deployment))
-            .header("Content-Type", "application/json");
+        let uri = self.provider.uri(
+            quirks.completion_path,
+            self.provider.deployment(&self.model),
+        );
+        let builder = http::Request::post(uri).header("Content-Type", "application/json");
         let request = self
             .provider
-            .authenticate(builder)
+            .headers(builder)
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
 
@@ -901,8 +901,12 @@ impl Wire for Chat {
             .with_request_id_header(self.provider.dialect.request_id_header))
     }
 
-    fn decoder(&self) -> ChatDecoder {
-        ChatDecoder::new(self.provider.dialect.name, self.provider.dialect.quirks)
+    fn decoder(&self, mode: Mode) -> ChatDecoder {
+        ChatDecoder::new(
+            self.provider.dialect.name,
+            self.provider.dialect.quirks,
+            mode,
+        )
     }
 
     fn capabilities(&self) -> ProviderCapabilities {
@@ -970,14 +974,14 @@ pub struct ChatDecoder {
     saw_any_valid_frame: bool,
     /// Whether the wire's own in-band failure was consumed.
     failed: bool,
-    /// Whether this reply arrives whole rather than as a stream
-    /// ([`Decoder::whole_reply`]): a buffered reply's EOF is the end of
-    /// the answer, a stream's may be truncation.
-    whole_reply: bool,
+    /// Whether this reply arrives whole rather than as a stream — the
+    /// [`Mode`] this decoder was built for: a buffered reply's EOF is the
+    /// end of the answer, a stream's may be truncation.
+    whole: bool,
 }
 
 impl ChatDecoder {
-    fn new(provider: &'static str, quirks: super::Quirks) -> Self {
+    fn new(provider: &'static str, quirks: super::Quirks, mode: Mode) -> Self {
         Self {
             provider,
             quirks,
@@ -992,7 +996,7 @@ impl ChatDecoder {
             saw_terminal: false,
             saw_any_valid_frame: false,
             failed: false,
-            whole_reply: false,
+            whole: mode == Mode::Unary,
         }
     }
 
@@ -1562,10 +1566,6 @@ impl Decoder<Completion> for ChatDecoder {
         }
     }
 
-    fn whole_reply(&mut self) {
-        self.whole_reply = true;
-    }
-
     fn finish(&mut self, out: &mut Output<Completion>) {
         // Tool calls the provider fully delivered are content, so a truncated
         // reply still flushes them. Partial calls drop in the accumulator.
@@ -1606,7 +1606,7 @@ impl Decoder<Completion> for ChatDecoder {
         // truncation, reported by the missing terminal record. A corrupt
         // frame never reaches here as silence: its parse error was
         // already yielded and is what the caller sees.
-        if self.whole_reply && !self.saw_any_valid_frame && !self.saw_terminal {
+        if self.whole && !self.saw_any_valid_frame && !self.saw_terminal {
             out.error(CompletionError::ResponseError(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
@@ -1637,9 +1637,109 @@ impl Decoder<Completion> for ChatDecoder {
         self.failed
     }
 
+    /// Verdict, model, response id, usage and error envelope, read off a raw
+    /// payload before normalization discards them. The driver calls it for
+    /// the unary reply and for every stream frame without anyone having to
+    /// attach it.
     fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
-        super::observation::project_chat(payload, sink);
+        let Ok(payload) = serde_json::from_slice::<ObservedPayload>(payload) else {
+            return;
+        };
+        if let Some(usage) = payload.usage {
+            sink.emit(AdapterEvent::Usage {
+                usage: AdapterUsage {
+                    input_tokens: usage.prompt_tokens,
+                    output_tokens: usage.completion_tokens,
+                    total_tokens: usage.total_tokens,
+                    cached_input_tokens: usage
+                        .prompt_tokens_details
+                        .and_then(|details| details.cached_tokens),
+                    reasoning_tokens: usage
+                        .completion_tokens_details
+                        .and_then(|details| details.reasoning_tokens),
+                    tool_input_tokens: None,
+                },
+            });
+        }
+        // Every chunk names the model; only the chunk that carries the finish
+        // reason is a verdict, so the model rides with it rather than on each
+        // delta. The id still lands on the terminal verdict or the closure.
+        let choice = payload.choices.into_iter().next().unwrap_or_default();
+        let verdict = match choice.finish_reason {
+            Some(reason) => AdapterVerdict {
+                finish_reason: Some(sink.scrub(&reason)),
+                block_reason: None,
+                detail: None,
+                model: payload.model.map(|value| sink.scrub(&value)),
+            },
+            None => AdapterVerdict::default(),
+        };
+        let response_id = payload.id.map(|value| sink.scrub(&value));
+        sink.provider(verdict, response_id);
+        if let Some(error) = payload.error {
+            let code = error.code.map(|code| match code {
+                serde_json::Value::String(code) => sink.scrub(&code),
+                serde_json::Value::Number(code) => code.to_string(),
+                _ => "[invalid]".to_owned(),
+            });
+            sink.emit(AdapterEvent::ErrorEnvelope {
+                error: AdapterErrorEnvelope {
+                    code,
+                    status: error.kind.map(|value| sink.scrub(&value)),
+                    message: error.message.map(|value| sink.scrub(&value)),
+                },
+            });
+        }
     }
+}
+
+/// One object for the unary reply and each stream chunk `project` above
+/// sees. Every field is optional: a chunk carries a delta, the last chunk
+/// (or the reply) carries the usage, and `[DONE]` is not JSON at all.
+#[derive(Deserialize)]
+struct ObservedPayload {
+    id: Option<String>,
+    model: Option<String>,
+    usage: Option<ObservedUsage>,
+    #[serde(default)]
+    choices: Vec<ObservedChoice>,
+    error: Option<ObservedError>,
+}
+
+#[derive(Deserialize)]
+struct ObservedUsage {
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    prompt_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    completion_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    total_tokens: Option<u64>,
+    #[serde(default)]
+    prompt_tokens_details: Option<ObservedTokenDetails>,
+    #[serde(default)]
+    completion_tokens_details: Option<ObservedTokenDetails>,
+}
+
+#[derive(Default, Deserialize)]
+struct ObservedTokenDetails {
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    cached_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    reasoning_tokens: Option<u64>,
+}
+
+#[derive(Default, Deserialize)]
+struct ObservedChoice {
+    finish_reason: Option<String>,
+}
+
+/// The error envelope this wire sends: `{"error": {code, message, type}}`.
+#[derive(Deserialize)]
+struct ObservedError {
+    code: Option<serde_json::Value>,
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    message: Option<String>,
 }
 
 /// A gateway's encrypted-reasoning detail as a whole reasoning block.

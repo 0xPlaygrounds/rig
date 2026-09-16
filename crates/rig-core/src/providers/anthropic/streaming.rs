@@ -4,11 +4,13 @@ use serde_json::{Value, json};
 use super::completion::{Content, Usage, anthropic_usage_totals, map_finish_reason};
 use crate::completion::CompletionError;
 use crate::message::ReasoningContent;
-use crate::operation::Completion;
-use crate::providers::internal::adapter::{AdapterOutput, WireFrame};
+use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{self, BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
-use crate::wire::{Decoder, ObservationSink};
+use crate::wire::{
+    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, ObservationSink,
+    WireFrame,
+};
 use std::collections::HashMap;
 
 /// The `type` values this client models on the Anthropic Messages SSE wire.
@@ -824,8 +826,57 @@ impl Decoder<Completion> for MessagesDecoder {
         // partial, and no terminal record may be synthesized.
     }
 
+    /// Messages metadata projected before normalization can discard it: the
+    /// stop reason, the model, the message id, the usage and any error
+    /// envelope, on the unary reply and on the stream's `message_start`,
+    /// `message_delta` and `error` events.
     fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
-        super::observation::project(payload, sink);
+        let Ok(payload) = serde_json::from_slice::<ObservedPayload>(payload) else {
+            return;
+        };
+        let usage = payload.usage;
+        let (id, model, stop_reason, nested_usage) = match payload.message {
+            Some(message) => (
+                message.id,
+                message.model,
+                message.stop_reason,
+                message.usage,
+            ),
+            None => (payload.id, payload.model, payload.stop_reason, None),
+        };
+        // Anthropic reports the prompt on `message_start` and the answer's
+        // running total on each `message_delta`: each is a snapshot of what it
+        // knows, never a sum.
+        if let Some(usage) = usage.or(nested_usage) {
+            sink.emit(AdapterEvent::Usage {
+                usage: AdapterUsage {
+                    input_tokens: usage.input_tokens,
+                    output_tokens: usage.output_tokens,
+                    total_tokens: None,
+                    cached_input_tokens: usage.cache_read_input_tokens,
+                    reasoning_tokens: None,
+                    tool_input_tokens: None,
+                },
+            });
+        }
+        let stop_reason = stop_reason.or(payload.delta.and_then(|delta| delta.stop_reason));
+        let verdict = AdapterVerdict {
+            finish_reason: stop_reason.map(|v| sink.scrub(&v)),
+            block_reason: None,
+            detail: None,
+            model: model.map(|v| sink.scrub(&v)),
+        };
+        let response_id = id.map(|v| sink.scrub(&v));
+        sink.provider(verdict, response_id);
+        if let Some(error) = payload.error {
+            sink.emit(AdapterEvent::ErrorEnvelope {
+                error: AdapterErrorEnvelope {
+                    code: None,
+                    status: error.kind.map(|v| sink.scrub(&v)),
+                    message: error.message.map(|v| sink.scrub(&v)),
+                },
+            });
+        }
     }
 
     fn is_finished(&self) -> bool {
@@ -835,6 +886,43 @@ impl Decoder<Completion> for MessagesDecoder {
         // would otherwise dress the aborted turn up as a completed one.
         self.failed
     }
+}
+
+/// One object covers every payload `project` above sees — the unary reply and
+/// each stream event: a `message_start` nests the message, a `message_delta`
+/// carries the stop reason under `delta` and the cumulative output usage
+/// beside it.
+#[derive(Deserialize)]
+struct ObservedPayload {
+    id: Option<String>,
+    model: Option<String>,
+    stop_reason: Option<String>,
+    usage: Option<ObservedUsage>,
+    message: Option<Box<ObservedPayload>>,
+    delta: Option<ObservedDelta>,
+    error: Option<ObservedError>,
+}
+
+#[derive(Deserialize)]
+struct ObservedUsage {
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    input_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    output_tokens: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    cache_read_input_tokens: Option<u64>,
+}
+
+#[derive(Deserialize)]
+struct ObservedDelta {
+    stop_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ObservedError {
+    #[serde(rename = "type")]
+    kind: Option<String>,
+    message: Option<String>,
 }
 
 /// Anthropic's own terminal stream record.

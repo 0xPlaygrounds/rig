@@ -575,7 +575,7 @@ impl Wire for Messages {
         .with_request_id_header(self.provider.dialect.request_id_header))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         MessagesDecoder::new(self.provider.dialect.name)
     }
 
@@ -606,7 +606,7 @@ impl Wire for Models {
         Ok(Encoded::new(self.models_request(None)?, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         ModelsDecoder {
             provider: self.provider.clone(),
             next: None,
@@ -724,7 +724,7 @@ impl Wire for Verify {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         VerifyDecoder
     }
 }

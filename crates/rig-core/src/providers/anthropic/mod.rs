@@ -17,7 +17,6 @@
 //! implements the consumer-facing model traits.
 
 pub mod completion;
-mod observation;
 pub mod streaming;
 pub mod wire;
 

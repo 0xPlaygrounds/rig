@@ -131,6 +131,15 @@ pub struct AdapterErrorEnvelope {
     pub message: Option<String>,
 }
 
+/// Deserialize one [`AdapterUsage`] counter a provider may send as a number,
+/// a string or `null`: anything that is not a `u64` stays unknown rather
+/// than failing the payload that carried it.
+pub(crate) fn lenient_count<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<u64>, D::Error> {
+    Ok(serde_json::Value::deserialize(deserializer)?.as_u64())
+}
+
 /// A provider's cumulative usage snapshot for one HTTP attempt.
 ///
 /// Missing, invalid or negative counts remain unknown. A present zero is a

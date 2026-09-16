@@ -9,7 +9,8 @@ use serde_json::{Value, json};
 /// path a unary reply takes in production, minus the transport.
 fn fold_document<W: Wire<Op = Completion>>(wire: &W, body: &Value) -> CompletionResponse {
     let body = body.to_string();
-    let mut driver = crate::driver::WireDriver::<Completion, _>::new(wire.decoder());
+    let mut driver =
+        crate::driver::WireDriver::<Completion, _>::new(wire.decoder(crate::wire::Mode::Unary));
     driver.push(WireFrame::Text(body.clone()));
     driver.finish();
     let mut fold = <Completion as Operation>::fold(&crate::completion::CompletionRequest {

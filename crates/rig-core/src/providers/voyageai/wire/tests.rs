@@ -3,6 +3,7 @@ use crate::driver::Bound;
 use crate::embeddings::EmbeddingModel as _;
 use crate::rerank::RerankModel as _;
 use crate::test_utils::RecordingHttpClient;
+use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
 fn voyage() -> VoyageAi {
     VoyageAi::new("voyage-test-key")
@@ -175,17 +176,20 @@ fn a_rerank_wire_declares_the_batch_limit() {
 
 #[test]
 fn a_serialized_config_carries_no_key_material() {
-    let wire = voyage().embeddings("voyage-3.5", None);
-    let serialized = serde_json::to_string(&wire).expect("the wire serializes");
-
-    assert!(
-        !serialized.contains("voyage-test-key"),
-        "a wire a host may persist must not carry the credential: {serialized}"
+    a_config_reloads_without_its_credential(
+        &VoyageAi::new("voyage-test-key"),
+        "voyage-test-key",
+        |voyage| &voyage.api_key,
     );
-    assert!(serialized.contains("[redacted]"));
-    assert!(!format!("{wire:?}").contains("voyage-test-key"));
 
-    let rerank = voyage().rerank("rerank-2.5");
-    let serialized = serde_json::to_string(&rerank).expect("the wire serializes");
-    assert!(!serialized.contains("voyage-test-key"));
+    for wire in [
+        serde_json::to_string(&voyage().embeddings("voyage-3.5", None)),
+        serde_json::to_string(&voyage().rerank("rerank-2.5")),
+    ] {
+        let serialized = wire.expect("the wire serializes");
+        assert!(
+            !serialized.contains("voyage-test-key"),
+            "a wire a host may persist must not carry the credential: {serialized}"
+        );
+    }
 }

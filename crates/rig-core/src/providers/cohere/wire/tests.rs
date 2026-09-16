@@ -6,6 +6,7 @@ use crate::message::AssistantContent;
 use crate::test_utils::{
     MockHttpResponse, MockStreamingClient, RecordingHttpClient, SequencedHttpClient,
 };
+use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use futures::StreamExt;
 
 /// The recorded request of `tests/cassettes/cohere/agent/
@@ -159,15 +160,14 @@ fn the_mode_is_the_only_difference_between_the_two_requests() {
 
 #[test]
 fn a_serialized_config_carries_no_key_material() {
+    a_config_reloads_without_its_credential(&cohere(), "cohere-test-key", |cohere| &cohere.api_key);
+
     let wire = cohere().chat("command-a-03-2025");
     let serialized = serde_json::to_string(&wire).expect("the wire serializes");
-
     assert!(
         !serialized.contains("cohere-test-key"),
         "a wire a host may persist must not carry the credential: {serialized}"
     );
-    assert!(serialized.contains("[redacted]"));
-    assert!(!format!("{wire:?}").contains("cohere-test-key"));
 }
 
 /// A `/v1/embed` reply, shaped as `tests/cassettes/cohere/embeddings/

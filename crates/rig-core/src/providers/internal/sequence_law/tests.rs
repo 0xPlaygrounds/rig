@@ -1,6 +1,6 @@
-use super::super::adapter::AdapterOutput;
 use super::super::wire::WireEvent;
 use crate::driver::WireDriver;
+use crate::operation::AdapterOutput;
 use crate::operation::Completion;
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, ToolCallEnd};
 use crate::wire::Decoder;

@@ -1,14 +1,15 @@
 //! The streaming module for the OpenAI Responses API.
 //! Please see the `openai_streaming` or `openai_streaming_with_tools` example for more practical usage.
 use crate::completion::CompletionError;
+use crate::operation::AdapterOutput;
 use crate::operation::Completion;
-use crate::providers::internal::adapter::{AdapterOutput, WireFrame};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::providers::openai::responses_api::{
     IncompleteDetailsReason, ReasoningSummary, ResponseStatus, ResponsesUsage,
 };
 use crate::streaming::{BlockId, StreamFinal, ToolCallEnd, UnparseableToolInput};
 use crate::wire::Decoder;
+use crate::wire::WireFrame;
 use serde::{Deserialize, Serialize};
 
 use super::{CompletionResponse, Output};

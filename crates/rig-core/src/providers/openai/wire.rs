@@ -65,16 +65,15 @@ mod dialects;
 /// there must be exactly one definition of each while both exist.
 pub(crate) mod dto;
 mod modality;
-mod observation;
 mod route;
 
 pub use chat::{Chat, ChatDecoder, ChatEvent};
 pub use dialects::*;
 pub use dto::{ChatChoice, ChatFrame, ChatUsage, FinishReason, StreamingCompletionResponse};
 pub use modality::{
-    EmbeddingDatum, Embeddings, EmbeddingsDecoder, EmbeddingsReply, ModelEntry, Models,
-    ModelsDecoder, ModelsReply, Rerank, RerankDecoder, RerankReply, RerankResultEntry, RerankUsage,
-    Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
+    Embeddings, EmbeddingsDecoder, ModelEntry, Models, ModelsDecoder, ModelsReply, Rerank,
+    RerankDecoder, RerankReply, RerankResultEntry, RerankUsage, Transcriptions,
+    TranscriptionsDecoder, Verify, VerifyDecoder,
 };
 pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiWire, Route};
 
@@ -236,9 +235,10 @@ pub enum ImageBody {
 }
 
 /// Which body a speech endpoint takes.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SpeechBody {
     /// OpenAI: `{model, input, voice, speed}`.
+    #[default]
     OpenAi,
     /// xAI: `{text, voice_id, language}`, with `eve` as the default voice.
     Xai,
@@ -537,38 +537,50 @@ fn default_user_agent(originator: &str) -> String {
     )
 }
 
-/// The behaviours a dialect's Responses endpoint varies in.
+/// Which Responses contract a dialect speaks.
 ///
-/// Every field has a caller: each is something a recorded cassette shows one
-/// of the Responses dialects (OpenAI, ChatGPT, xAI, Copilot) doing and the
-/// others not.
+/// One value rather than a flag per departure, because a gateway's
+/// departures are one fact about that gateway and not independent
+/// switches: nothing replays an unlabelled event stream without also
+/// taking the codex parameter subset, and nothing answers a success with
+/// its error envelope without also refusing structured output beside tool
+/// calls. A dialect that departs in a new way is a new arm here, read in
+/// the one place the departure matters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResponsesContract {
+    /// OpenAI's own contract, which Copilot relays verbatim and OpenRouter
+    /// serves — both differ only in where the system preamble goes, which
+    /// is [`ResponsesQuirks::system_instructions`].
+    OpenAi,
+    /// xAI's `/v1/responses`: it answers a success with its error envelope
+    /// as the whole body and publishes a finished tool call at
+    /// `output_item.done`, and its native structured output does not
+    /// compose with tool calls. The stream's own `error` event is not this:
+    /// that is protocol on every dialect and the decoder always reads it.
+    Xai,
+    /// The ChatGPT/Codex gateway: it answers every request with an event
+    /// stream whether or not one was asked for and names no content type
+    /// on it, its replayed frames may omit their envelope bookkeeping
+    /// (`sequence_number`, `output_index`, …), and it accepts only the
+    /// codex parameter subset — no sampling controls, no storage, no
+    /// metadata, no structured output.
+    Codex,
+}
+
+/// What a dialect's Responses endpoint is: where it lives, where the system
+/// preamble goes, and which contract it speaks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub struct ResponsesQuirks {
     /// The endpoint path, appended to the base URL.
     pub path: &'static str,
-    /// Where Rig's system instructions go in the request.
+    /// Where Rig's system instructions go in the request. Not part of
+    /// [`Self::contract`]: OpenAI's contract is served with all three
+    /// placements (OpenAI's own `instructions`, Copilot's and OpenRouter's
+    /// `system` items in `input`).
     pub system_instructions: SystemInstructionsPlacement,
-    /// The gateway answers with an event stream whether or not a stream was
-    /// asked for, so a unary call reads a replayed SSE body.
-    pub always_streams: bool,
-    /// The gateway's streamed reply may name no content type at all.
-    pub relaxed_content_type: bool,
-    /// The gateway accepts only the codex parameter subset: no sampling
-    /// controls, no storage, no metadata, no structured output.
-    pub codex_parameter_subset: bool,
-    /// The gateway answers a success with its error envelope as the whole
-    /// body, and publishes a finished tool call at `output_item.done`. The
-    /// stream's own `error` event is not this: that is protocol on every
-    /// dialect and the decoder always reads it.
-    pub error_envelope_in_success: bool,
-    /// The gateway's replayed frames may omit their envelope bookkeeping
-    /// (`sequence_number`, `output_index`, …), which the typed decode
-    /// salvages. Off elsewhere: on a gateway whose frames do carry
-    /// envelopes, an envelope-less frame is a defect worth surfacing.
-    pub repair_envelope_less_frames: bool,
-    /// Native structured output composes with tool calls.
-    pub native_output_with_tools: bool,
+    /// Which contract this dialect's endpoint speaks.
+    pub contract: ResponsesContract,
 }
 
 impl ResponsesQuirks {
@@ -577,12 +589,7 @@ impl ResponsesQuirks {
         Self {
             path: "/responses",
             system_instructions: SystemInstructionsPlacement::Instructions,
-            always_streams: false,
-            relaxed_content_type: false,
-            codex_parameter_subset: false,
-            error_envelope_in_success: false,
-            repair_envelope_less_frames: false,
-            native_output_with_tools: true,
+            contract: ResponsesContract::OpenAi,
         }
     }
 }
@@ -720,10 +727,12 @@ pub struct Quirks {
 
 impl Quirks {
     /// OpenAI's own contract, which every dialect starts from and overrides
-    /// only where it was measured to differ — except the completion route,
-    /// whose baseline is the endpoint every dialect serves rather than
-    /// OpenAI's own flagship, so that a compatible gateway added with
-    /// `..Quirks::openai()` cannot inherit a `/responses` it never served.
+    /// only where it was measured to differ — except the completion route
+    /// and the output cap, whose baselines are what every dialect serves
+    /// rather than OpenAI's own flagship, so that a compatible gateway
+    /// added with `..Quirks::openai()` cannot inherit a `/responses` it
+    /// never served or a `max_completion_tokens` its API rejects. Those two
+    /// are the fields OpenAI itself states.
     pub const fn openai() -> Self {
         Self {
             auth: Auth::Bearer,
@@ -742,7 +751,7 @@ impl Quirks {
             supports_image_tool_results: false,
             stream_include_usage: true,
             emits_complete_single_chunk_tool_calls: false,
-            output_cap: OutputCap::OpenAiReasoningFamilies,
+            output_cap: OutputCap::Legacy,
             native_finish_reason: false,
             reasoning_details: false,
             accepts_bare_string_reply: false,
@@ -791,6 +800,33 @@ pub struct Dialect {
     pub alternate_auth: Option<AuthAlternative>,
     /// Everything that is not identity.
     pub quirks: Quirks,
+}
+
+impl Dialect {
+    /// The base every dialect constant spreads: an OpenAI-compatible
+    /// gateway identified by `name`, served at `base_url`, credentialed
+    /// from `api_key_env`, on [`Quirks::openai`].
+    ///
+    /// The optional identity facts — a base-URL override, a request-id
+    /// header, a second credential — are absent here, so a dialect that has
+    /// one states that one and the rest say nothing rather than each
+    /// writing `None` out three times. Nothing is defaulted that a provider
+    /// could serve differently: this names only what it takes.
+    pub const fn gateway(
+        name: &'static str,
+        base_url: &'static str,
+        api_key_env: &'static str,
+    ) -> Self {
+        Self {
+            name,
+            base_url,
+            api_key_env,
+            base_url_env: None,
+            request_id_header: None,
+            alternate_auth: None,
+            quirks: Quirks::openai(),
+        }
+    }
 }
 
 /// A dialect serializes as its [`name`](Dialect::name), and deserializes by
@@ -1176,6 +1212,19 @@ impl OpenAI {
         }
     }
 
+    /// The deployment segment Azure routes `model` through, or `None` for
+    /// every dialect that names the model in the body.
+    ///
+    /// One derivation: [`Self::uri`] takes the segment, and the endpoints
+    /// that resolve a path all ask here rather than each matching on
+    /// [`Routing`] again.
+    pub(crate) fn deployment<'a>(&self, model: &'a str) -> Option<&'a str> {
+        match self.dialect.quirks.routing {
+            Routing::AzureDeployment => Some(model),
+            Routing::Path => None,
+        }
+    }
+
     /// The URL a modality endpoint addresses.
     ///
     /// Most dialects resolve a fixed path and name the model in the body.
@@ -1190,11 +1239,7 @@ impl OpenAI {
         model: &str,
     ) -> Result<String, String> {
         if !self.dialect.quirks.model_is_modality_path {
-            let deployment = match self.dialect.quirks.routing {
-                Routing::AzureDeployment => Some(model),
-                Routing::Path => None,
-            };
-            return Ok(self.uri(fixed, deployment));
+            return Ok(self.uri(fixed, self.deployment(model)));
         }
         let route = self.route();
         if !route.serves_model_routed_endpoints() {
@@ -1221,6 +1266,38 @@ impl OpenAI {
             }
             Auth::ApiKeyHeader => builder.header("api-key", self.api_key.expose()),
         }
+    }
+
+    /// Every header a request from this configuration carries: the
+    /// credential, and the caller identity a gateway that asks for one
+    /// requires.
+    ///
+    /// One derivation for both completion endpoints and the websocket
+    /// handshake — the identity is a property of the configuration, not of
+    /// the route, so a dialect that asks who is calling is answered
+    /// whichever endpoint serves the turn.
+    pub(crate) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
+        let mut builder = self.authenticate(builder);
+        if let Some(identity) = &self.identity {
+            builder = builder
+                .header("originator", &identity.originator)
+                .header(http::header::USER_AGENT, &identity.user_agent);
+        }
+        if self
+            .dialect
+            .quirks
+            .identity
+            .is_some_and(|identity| identity.session_ids)
+        {
+            // A fresh per-request correlator, minted in the provider that
+            // asks for it — which is where the record-replay guard
+            // (`tests/core/no_random_ids.rs`) pins the one call site.
+            builder = builder.header("session_id", crate::providers::chatgpt::session_id());
+        }
+        if let Some(account_id) = &self.account_id {
+            builder = builder.header("ChatGPT-Account-Id", account_id);
+        }
+        builder
     }
 }
 

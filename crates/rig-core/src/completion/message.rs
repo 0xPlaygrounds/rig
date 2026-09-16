@@ -66,9 +66,9 @@ pub enum Message {
 /// because the buffered reply is the whole turn
 /// (`providers::anthropic::streaming`'s whole-message path,
 /// `providers::openai::wire::chat`'s whole-body path). Where one decoder
-/// serves both transports, [`crate::wire::Decoder::whole_reply`] is what
-/// the buffered driver states before the first frame, and the guard runs
-/// at end of reply under it (`providers::gemini::streaming`,
+/// serves both transports, the [`Mode`](crate::wire::Mode) it was built
+/// for is the difference (see [`crate::wire::Wire::decoder`]), and the
+/// guard runs at end of reply under it (`providers::gemini::streaming`,
 /// `providers::openai::wire::chat`'s nothing-recognized case) — so a
 /// stream that stopped early stays a truncation while a whole reply that
 /// produced nothing at all is reported instead of read as an empty

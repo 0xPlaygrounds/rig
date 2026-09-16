@@ -42,10 +42,16 @@ pub enum EncodingFormat {
     Base64,
 }
 
+/// One embedded input.
+///
+/// `object` and `index` carry no meaning past the envelope and a compatible
+/// gateway may omit either, so neither is required: the vector is the datum.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingData {
+    #[serde(default)]
     pub object: String,
     pub embedding: Vec<serde_json::Number>,
+    #[serde(default)]
     pub index: usize,
 }
 

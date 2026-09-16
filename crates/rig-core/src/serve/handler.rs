@@ -241,7 +241,7 @@ pub(crate) fn events_from_response(
 ) -> Vec<Result<StreamEvent, ErrorReport>> {
     use crate::{
         message::AssistantContent,
-        providers::internal::adapter::AdapterOutput,
+        operation::AdapterOutput,
         streaming::{BlockId, MintKind, ToolCallEnd},
     };
 

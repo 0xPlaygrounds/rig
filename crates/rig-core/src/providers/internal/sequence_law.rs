@@ -83,7 +83,7 @@ impl SequenceLaws {
     /// Check one `interpret` batch (the `out` buffer for a single frame)
     /// against the boundary law, updating cross-frame state. Violations log
     /// always and panic only in rig's own harness builds (see `violation`).
-    pub fn check_batch(&mut self, batch: &super::adapter::AdapterOutput) {
+    pub fn check_batch(&mut self, batch: &crate::operation::AdapterOutput) {
         for item in batch.iter() {
             let Ok(choice) = item else { continue };
 

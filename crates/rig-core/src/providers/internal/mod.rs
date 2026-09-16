@@ -1,15 +1,15 @@
-//! Shared provider infrastructure: the completion decoders' vocabulary and
-//! the decode-then-validate classify layer.
+//! Shared provider infrastructure: the decode-then-validate classify layer
+//! and the assembly helpers every completion decoder shares.
 //!
-//! [`adapter`], [`wire`], [`tool_call_bridge`], and [`chunk_lifecycle`] are
-//! public so out-of-tree providers implement
-//! [`Decoder`](crate::wire::Decoder) and inherit the shared fold
-//! ([`WireDriver`](crate::driver::WireDriver)), frame-triage policy,
-//! index→identity tool-call bridging, and the boundary-less reasoning
-//! lifecycle derivation instead of hand-rolling per-provider assemblers; the
-//! remaining helpers are crate-private.
+//! [`wire`], [`tool_call_bridge`], and [`chunk_lifecycle`] are public so
+//! out-of-tree providers implement [`Decoder`](crate::wire::Decoder) and
+//! inherit the shared fold ([`WireDriver`](crate::driver::WireDriver)),
+//! frame-triage policy, index→identity tool-call bridging, and the
+//! boundary-less reasoning lifecycle derivation instead of hand-rolling
+//! per-provider assemblers; the remaining helpers are crate-private. The
+//! output buffer those decoders write through is the completion operation's
+//! own ([`AdapterOutput`](crate::operation::AdapterOutput)).
 
-pub mod adapter;
 pub(crate) mod auth;
 pub mod chunk_lifecycle;
 #[cfg(not(target_family = "wasm"))]

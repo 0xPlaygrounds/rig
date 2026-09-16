@@ -11,6 +11,7 @@ use crate::embeddings::EmbeddingModel as _;
 use crate::message::Message;
 use crate::model::ModelLister as _;
 use crate::test_utils::RecordingHttpClient;
+use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use bytes::Bytes;
 
 /// One recorded interaction's request or reply body, read out of a cassette.
@@ -326,6 +327,48 @@ fn the_embeddings_request_sends_the_resolved_width() {
     assert!(body.get("dimensions").is_none(), "{body}");
 }
 
+/// The embeddings route carries the same editor envelope the completion
+/// routes do. It is the shared embeddings wire under Copilot's headers, so
+/// the stamp is the only thing standing between it and the 400 the API
+/// answers a request without the envelope, regardless of the body.
+#[test]
+fn the_embeddings_route_carries_copilots_editor_envelope() {
+    let wire = copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None);
+    let mut encoded = wire
+        .encode(vec!["one".to_owned()], Mode::Unary)
+        .expect("the request encodes");
+    let request = encoded.requests.remove(0);
+    assert_eq!(request.uri().path(), "/embeddings");
+    let headers = request.headers();
+    assert_eq!(
+        headers.get_all(http::header::AUTHORIZATION).iter().count(),
+        1,
+        "the shared wire's credential header is replaced, not duplicated"
+    );
+    assert_eq!(
+        headers
+            .get(http::header::AUTHORIZATION)
+            .and_then(|value| value.to_str().ok()),
+        Some("Bearer tid=copilot-session-token")
+    );
+    assert_eq!(
+        headers.get("copilot-integration-id").map(|v| v.as_bytes()),
+        Some(&b"vscode-chat"[..])
+    );
+    assert_eq!(
+        headers.get("editor-version").map(|v| v.as_bytes()),
+        Some(super::super::EDITOR_VERSION.as_bytes())
+    );
+    assert_eq!(
+        headers.get("openai-intent").map(|v| v.as_bytes()),
+        Some(&b"conversation-panel"[..])
+    );
+    assert_eq!(
+        headers.get("x-initiator").map(|v| v.as_bytes()),
+        Some(&b"user"[..])
+    );
+}
+
 /// Copilot's catalogue names the vendor behind each model and nests the
 /// modality under `capabilities.type`, which is what distinguishes it from
 /// the OpenAI-shaped listing.
@@ -354,10 +397,11 @@ async fn the_model_listing_folds_its_recorded_catalogue() {
 /// file, so the credential must not travel with it.
 #[test]
 fn a_serialized_config_carries_no_credential() {
-    let json = serde_json::to_string(&Copilot::new("tid=super-secret-session-token"))
-        .expect("the config serializes");
-    assert!(!json.contains("super-secret"), "{json}");
-    assert!(json.contains("[redacted]"), "{json}");
+    a_config_reloads_without_its_credential(
+        &Copilot::new("tid=super-secret-session-token"),
+        "super-secret",
+        |copilot| &copilot.api_key,
+    );
 
     // And the wires built from it, whichever route.
     for model in [super::super::GPT_4O, super::super::GPT_5_3_CODEX] {
