@@ -136,6 +136,7 @@
             "output_tokens": 37,
             "total_tokens": 375,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -149,7 +150,8 @@
               "completion_tokens": 37,
               "total_tokens": 375,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -240,6 +242,7 @@
             "output_tokens": 37,
             "total_tokens": 375,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "tool_calls",
@@ -253,7 +256,8 @@
               "completion_tokens": 37,
               "total_tokens": 375,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -425,6 +429,7 @@
             "output_tokens": 7,
             "total_tokens": 404,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -438,7 +443,8 @@
               "completion_tokens": 7,
               "total_tokens": 404,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0
@@ -524,6 +530,7 @@
             "output_tokens": 7,
             "total_tokens": 404,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "finish_reason": "stop",
@@ -537,7 +544,8 @@
               "completion_tokens": 7,
               "total_tokens": 404,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 0

@@ -152,6 +152,7 @@
             "output_tokens": 88,
             "total_tokens": 432,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 47
           },
           "message_id": null,
@@ -165,7 +166,8 @@
               "completion_tokens": 88,
               "total_tokens": 432,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 47
@@ -399,6 +401,7 @@
             "output_tokens": 88,
             "total_tokens": 432,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 47
           },
           "finish_reason": "tool_calls",
@@ -412,7 +415,8 @@
               "completion_tokens": 88,
               "total_tokens": 432,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 47
@@ -602,6 +606,7 @@
             "output_tokens": 53,
             "total_tokens": 501,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 46
           },
           "message_id": null,
@@ -615,7 +620,8 @@
               "completion_tokens": 53,
               "total_tokens": 501,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 46
@@ -796,6 +802,7 @@
             "output_tokens": 53,
             "total_tokens": 501,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 46
           },
           "finish_reason": "stop",
@@ -809,7 +816,8 @@
               "completion_tokens": 53,
               "total_tokens": 501,
               "prompt_tokens_details": {
-                "cached_tokens": 0
+                "cached_tokens": 0,
+                "cache_write_tokens": 0
               },
               "completion_tokens_details": {
                 "reasoning_tokens": 46

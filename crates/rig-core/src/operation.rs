@@ -6,15 +6,18 @@
 //!
 //! [`Completion`] is the only operation whose replies stream; the rest are
 //! unary, so their `Event` *is* their `Response` and the fold takes the one
-//! event ([`Take`]). [`ModelListing`] is unary per page and folds pages.
+//! event ([`Take`]). [`ModelListing`] and [`ContextCache`] are unary per
+//! page and fold pages.
 
 use crate::wire::{Fold, Operation, Reply, Sink, WireError};
 
+mod cached_content;
 mod completion;
 mod listing;
 mod modality;
 mod verify;
 
+pub use cached_content::{CachedContentFold, ContextCache};
 pub use completion::{Completion, CompletionEvent, CompletionFold};
 pub use listing::{ModelListing, ModelListingFold};
 #[cfg(feature = "audio")]

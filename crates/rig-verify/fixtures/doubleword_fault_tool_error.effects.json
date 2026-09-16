@@ -136,6 +136,7 @@
             "output_tokens": 37,
             "total_tokens": 375,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
@@ -343,6 +344,7 @@
             "output_tokens": 7,
             "total_tokens": 404,
             "cached_input_tokens": 0,
+            "cache_creation_input_tokens": 0,
             "reasoning_tokens": 0
           },
           "message_id": null,
