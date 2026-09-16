@@ -3,7 +3,7 @@
 
 use super::One;
 use crate::providers::gemini::cached_content::{
-    CachedContentError, CachedContentRequest, CachedContentResponse,
+    CachedContentError, CachedContentReply, CachedContentRequest,
 };
 use crate::wire::{Fold, Operation, Reply};
 
@@ -11,8 +11,8 @@ use crate::wire::{Fold, Operation, Reply};
 ///
 /// A resource lifecycle rather than an assistant turn, but the same shape
 /// as every other unary operation: one request, one reply document. The
-/// verb is the request ([`CachedContentRequest`]), and the reply envelope
-/// ([`CachedContentResponse`]) is read for the part the verb asked for. A
+/// verb is the request ([`CachedContentRequest`]), and the reply is the one
+/// of [`CachedContentReply`]'s three shapes the provider answered with. A
 /// listing is paged on a cursor the decoder returns from
 /// [`Decoder::continuation`](crate::wire::Decoder::continuation), and the
 /// fold concatenates the pages.
@@ -21,8 +21,8 @@ pub struct ContextCache;
 
 impl Operation for ContextCache {
     type Request = CachedContentRequest;
-    type Event = CachedContentResponse;
-    type Response = CachedContentResponse;
+    type Event = CachedContentReply;
+    type Response = CachedContentReply;
     type Error = CachedContentError;
     type Capabilities = ();
     type Output = One<Self>;
@@ -41,25 +41,32 @@ impl Operation for ContextCache {
 /// Takes the one reply a verb answers with, concatenating a listing's pages
 /// in arrival order.
 ///
-/// A second reply to a single-document verb is a provider defect and the
+/// The starting state is [`CachedContentReply::Acknowledged`], which is
+/// what a 2xx carrying nothing to read *is* — how `delete` is answered, and
+/// how an empty collection lists. So there is no "nothing absorbed yet" to
+/// tell apart from it: the fold holds a reply rather than an `Option`, and
+/// finishing cannot fail. A second resource is a provider defect and the
 /// first one latches, matching [`Take`](super::Take).
 #[derive(Default)]
 pub struct CachedContentFold {
-    reply: Option<CachedContentResponse>,
+    reply: CachedContentReply,
 }
 
 impl Fold<ContextCache> for CachedContentFold {
-    fn absorb(&mut self, page: CachedContentResponse) -> Result<(), CachedContentError> {
-        match &mut self.reply {
-            Some(reply) => reply.cached_contents.extend(page.cached_contents),
-            None => self.reply = Some(page),
+    fn absorb(&mut self, page: CachedContentReply) -> Result<(), CachedContentError> {
+        match (&mut self.reply, page) {
+            (CachedContentReply::Page(held), CachedContentReply::Page(page)) => {
+                held.cached_contents.extend(page.cached_contents);
+            }
+            (CachedContentReply::Acknowledged, page) => self.reply = page,
+            // A second answer to a single-document verb, or a page after a
+            // resource: the first one stands.
+            _ => {}
         }
         Ok(())
     }
 
-    fn finish(self, _reply: Reply) -> Result<CachedContentResponse, CachedContentError> {
-        self.reply.ok_or_else(|| {
-            CachedContentError::ResponseError("cached content reply carried no payload".to_owned())
-        })
+    fn finish(self, _reply: Reply) -> Result<CachedContentReply, CachedContentError> {
+        Ok(self.reply)
     }
 }

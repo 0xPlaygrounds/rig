@@ -8,11 +8,13 @@ use super::completion::{
     PROVIDER_NAME, blocked_prompt_error, function_call_finish_reason_error, part_kind_name,
 };
 use crate::completion::CompletionError;
-use crate::operation::Completion;
-use crate::providers::internal::adapter::{AdapterOutput, WireFrame};
+use crate::operation::{AdapterOutput, Completion};
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
-use crate::wire::{Decoder, ObservationSink, Output};
+use crate::wire::{
+    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Decoder, Mode,
+    ObservationSink, Output, WireFrame,
+};
 
 /// Part-kind interpretation shared by the Gemini wires whose payloads
 /// coincide: REST `streamGenerateContent` and the Interactions API both
@@ -145,9 +147,9 @@ const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
 /// which for a one-frame unary reply fires immediately after that frame.
 ///
 /// The one difference the two modes cannot share is what an EOF *means*,
-/// and that is not a mode but the reply's shape: the driver states it
-/// through [`Decoder::whole_reply`], which is the only thing this decoder
-/// knows about how its bytes arrived.
+/// and the decoder is built knowing it: [`Wire::decoder`](crate::wire::Wire::decoder)
+/// is handed the [`Mode`], which is the only thing this decoder knows about
+/// how its bytes arrived.
 ///
 /// Holds the per-reply state (thought lifecycle, tool-id minter, terminal
 /// metadata); frame-triage policy is the driver's.
@@ -192,8 +194,8 @@ pub struct GenerateContentDecoder {
     /// keeps reporting truncation the way it always has — by carrying no
     /// terminal record.
     delivered: bool,
-    /// The driver read this reply whole, so its EOF ends an answer rather
-    /// than a stream (see [`Decoder::whole_reply`]).
+    /// This reply arrived whole, so its EOF ends an answer rather than a
+    /// stream — the [`Mode`] this decoder was built for.
     whole: bool,
     /// A tool-protocol finish reason or a blocked prompt ended the turn; later frames are dead —
     /// the provider aborted, and interpreting more output (or a terminal)
@@ -201,8 +203,9 @@ pub struct GenerateContentDecoder {
     failed: bool,
 }
 
-impl Default for GenerateContentDecoder {
-    fn default() -> Self {
+impl GenerateContentDecoder {
+    /// A decoder for one reply read in `mode`.
+    pub(super) fn new(mode: Mode) -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 crate::streaming::MintKind::Reasoning,
@@ -216,7 +219,7 @@ impl Default for GenerateContentDecoder {
             final_response_id: None,
             saw_finish_reason: false,
             delivered: false,
-            whole: false,
+            whole: mode == Mode::Unary,
             failed: false,
         }
     }
@@ -340,10 +343,6 @@ impl Decoder<Completion> for GenerateContentDecoder {
         }
     }
 
-    fn whole_reply(&mut self) {
-        self.whole = true;
-    }
-
     fn finish(&mut self, out: &mut Output<Completion>) {
         // A whole reply is the entire turn, so reaching its end having
         // mapped no assistant content is the provider answering with
@@ -436,8 +435,115 @@ impl Decoder<Completion> for GenerateContentDecoder {
     /// the verdict, the usage report, the response id and the error
     /// envelope — the facts the normalized response does not keep.
     fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
-        super::observation::project(payload, sink);
+        // The observation projection must not inherit native response
+        // defaults: omitted prompt/total counts in UsageMetadata otherwise
+        // become zero. Parsing failure has no effect on the provider's
+        // authoritative decoder.
+        if let Ok(ObservedUsageOnly { usage: Some(usage) }) =
+            serde_json::from_slice::<ObservedUsageOnly>(payload)
+        {
+            sink.emit(AdapterEvent::Usage {
+                usage: AdapterUsage {
+                    input_tokens: usage.prompt_token_count,
+                    output_tokens: usage.candidates_token_count,
+                    total_tokens: usage.total_token_count,
+                    cached_input_tokens: usage.cached_content_token_count,
+                    reasoning_tokens: usage.thoughts_token_count,
+                    tool_input_tokens: usage.tool_use_prompt_token_count,
+                },
+            });
+        }
+        // Project metadata independently so malformed candidate fields cannot
+        // erase an otherwise valid usage report from a rejected response.
+        let Ok(metadata) = serde_json::from_slice::<ObservedMetadata>(payload) else {
+            return;
+        };
+        let candidate = metadata.candidates.into_iter().next().unwrap_or_default();
+        let scrub = |value: String| sink.scrub(&value);
+        let verdict = AdapterVerdict {
+            finish_reason: candidate.finish_reason.map(scrub),
+            block_reason: metadata
+                .prompt_feedback
+                .and_then(|f| f.block_reason)
+                .map(scrub),
+            detail: candidate.finish_message.map(scrub),
+            model: metadata.model_version.map(scrub),
+        };
+        let response_id = metadata.response_id.map(scrub);
+        sink.provider(verdict, response_id);
+        if let Some(error) = metadata.error {
+            let code = error.code.map(|code| match code {
+                serde_json::Value::String(code) => sink.scrub(&code),
+                serde_json::Value::Number(code) => code.to_string(),
+                _ => "[invalid]".to_owned(),
+            });
+            sink.emit(AdapterEvent::ErrorEnvelope {
+                error: AdapterErrorEnvelope {
+                    code,
+                    status: error.status.map(|value| sink.scrub(&value)),
+                    message: error.message.map(|value| sink.scrub(&value)),
+                },
+            });
+        }
     }
+}
+
+/// The usage report alone, read off the payload before the verdict so a
+/// malformed candidate cannot erase it.
+#[derive(Deserialize)]
+struct ObservedUsageOnly {
+    #[serde(rename = "usageMetadata")]
+    usage: Option<ObservedUsage>,
+}
+
+// Ignore all unrelated response fields rather than allocating another tree
+// containing the completion text, tools, signatures and media.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ObservedUsage {
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    prompt_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    candidates_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    total_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    cached_content_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    thoughts_token_count: Option<u64>,
+    #[serde(default, deserialize_with = "crate::observe::lenient_count")]
+    tool_use_prompt_token_count: Option<u64>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ObservedMetadata {
+    #[serde(default)]
+    candidates: Vec<ObservedCandidate>,
+    prompt_feedback: Option<ObservedFeedback>,
+    model_version: Option<String>,
+    response_id: Option<String>,
+    error: Option<ObservedError>,
+}
+
+#[derive(Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ObservedCandidate {
+    finish_reason: Option<String>,
+    finish_message: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ObservedFeedback {
+    block_reason: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct ObservedError {
+    code: Option<serde_json::Value>,
+    status: Option<String>,
+    message: Option<String>,
 }
 
 impl GenerateContentDecoder {

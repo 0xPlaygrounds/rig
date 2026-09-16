@@ -198,7 +198,7 @@ impl Wire for Images {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         ImagesDecoder
     }
 }

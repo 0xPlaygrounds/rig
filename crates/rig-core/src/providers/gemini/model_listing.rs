@@ -204,7 +204,7 @@ impl Wire for Models {
         ))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         ModelsDecoder::new(self.provider.clone(), Auth::Query)
     }
 }
@@ -240,7 +240,7 @@ impl Wire for InteractionsModels {
         ))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         ModelsDecoder::new(self.provider.clone(), Auth::Header)
     }
 }
@@ -337,7 +337,7 @@ impl Wire for VerifyKey {
         Ok(Encoded::new(request, Framing::Whole))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         VerifyKeyDecoder::default()
     }
 }

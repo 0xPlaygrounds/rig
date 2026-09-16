@@ -60,8 +60,8 @@ pub const PROVIDER_NAME: &str = "gcp.gemini";
 /// The two are one wire because they are one endpoint family answering with
 /// one document shape — only the delivery differs, which is what [`Mode`]
 /// names. The decoder is
-/// [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder), the
-/// same in both modes.
+/// [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder) in
+/// both modes; the mode it is built for decides only what its EOF means.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenerateContent {
     /// The key and the API root.
@@ -154,8 +154,8 @@ impl Wire for GenerateContent {
         Ok(Encoded::new(request, framing))
     }
 
-    fn decoder(&self) -> Self::Decoder {
-        super::streaming::GenerateContentDecoder::default()
+    fn decoder(&self, mode: Mode) -> Self::Decoder {
+        super::streaming::GenerateContentDecoder::new(mode)
     }
 }
 
@@ -450,23 +450,6 @@ pub(crate) fn completion_endpoint(model: &str) -> String {
 
 pub(crate) fn streaming_endpoint(model: &str) -> String {
     format!("/v1beta/models/{model}:streamGenerateContent")
-}
-
-impl TryFrom<completion::ToolDefinition> for Tool {
-    type Error = CompletionError;
-
-    fn try_from(tool: completion::ToolDefinition) -> Result<Self, Self::Error> {
-        let parameters = tool_parameters_to_schema(tool.parameters)?;
-
-        Ok(Self {
-            function_declarations: vec![FunctionDeclaration {
-                name: tool.name,
-                description: tool.description,
-                parameters,
-            }],
-            code_execution: None,
-        })
-    }
 }
 
 impl TryFrom<Vec<completion::ToolDefinition>> for Tool {
@@ -1443,21 +1426,6 @@ pub mod gemini_api_types {
         ProvisionedThroughput,
     }
 
-    impl std::fmt::Display for UsageMetadata {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(
-                f,
-                "Prompt token count: {}\nCached content token count: {}\nCandidates token count: {}\nTotal token count: {}",
-                self.prompt_token_count,
-                self.cached_content_token_count
-                    .map_or_else(|| "n/a".to_string(), |count| count.to_string()),
-                self.candidates_token_count
-                    .map_or_else(|| "n/a".to_string(), |count| count.to_string()),
-                self.total_token_count
-            )
-        }
-    }
-
     impl From<&UsageMetadata> for crate::completion::Usage {
         fn from(value: &UsageMetadata) -> crate::completion::Usage {
             let count = |count: i32| count as u64;
@@ -1470,12 +1438,6 @@ pub mod gemini_api_types {
                 total_tokens: Some(count(value.total_token_count)),
                 cache_creation_input_tokens: None,
             }
-        }
-    }
-
-    impl From<UsageMetadata> for crate::completion::Usage {
-        fn from(value: UsageMetadata) -> crate::completion::Usage {
-            (&value).into()
         }
     }
 

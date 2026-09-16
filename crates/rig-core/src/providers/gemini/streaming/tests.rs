@@ -826,7 +826,7 @@ mod terminal_emission {
     }
 
     /// What an *undelivered* reply means depends on how it arrived, which is
-    /// the only thing `Decoder::whole_reply` tells this decoder.
+    /// the only thing the `Mode` this decoder was built for tells it.
     ///
     /// A buffered reply is the whole turn: one that names no terminal and
     /// carried no content is the provider answering with nothing, and the

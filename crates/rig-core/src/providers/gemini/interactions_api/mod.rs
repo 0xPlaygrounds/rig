@@ -114,7 +114,7 @@ impl crate::wire::Wire for Interactions {
         Ok(crate::wire::Encoded::new(request, framing))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         streaming::InteractionsDecoder::default()
     }
 }
@@ -218,7 +218,7 @@ impl crate::wire::Wire for InteractionResume {
         Ok(crate::wire::Encoded::new(request, framing))
     }
 
-    fn decoder(&self) -> Self::Decoder {
+    fn decoder(&self, _mode: Mode) -> Self::Decoder {
         streaming::InteractionsDecoder::default()
     }
 }
