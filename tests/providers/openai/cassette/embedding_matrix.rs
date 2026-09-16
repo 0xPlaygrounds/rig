@@ -3,12 +3,13 @@
 //!
 //! Cells asserted from recordings, not assumptions: response completeness
 //! (order, provider, usage/model/request-id exactly as the wire reports),
-//! `raw` round-tripping to the provider's own type, raw-route parity,
-//! the single-text convenience, and the error path preserving the body.
+//! `raw` deserializing back to the provider's own response type with its
+//! native fields agreeing with the normalized view, that agreement holding
+//! per reply across two exchanges, the single-text convenience, and the
+//! error path preserving the body.
 
 use super::super::support::with_openai_cassette;
-use rig::client::EmbeddingsClient;
-use rig::embeddings::{EmbeddingModel as _, NormalizeEmbeddingResponse as _};
+use rig::embeddings::{EmbeddingModel as _, EmbeddingResponse};
 use rig::providers::openai;
 
 use crate::support::{
@@ -28,12 +29,31 @@ fn inputs() -> Vec<String> {
     EMBEDDING_INPUTS.iter().map(|s| (*s).to_string()).collect()
 }
 
+/// The provider-native fields of one reply's own payload, read back out of
+/// [`EmbeddingResponse::raw`], asserted against the normalized view of that
+/// same reply.
+///
+/// One decoder produces both views, so this pins that mapping rather than
+/// comparing it to a second copy of itself.
+fn assert_raw_agrees_with_normalized(response: &EmbeddingResponse) {
+    let reply: openai::CompatibleEmbeddingResponse = serde_json::from_value(response.raw.clone())
+        .expect("`raw` is the serialized openai::CompatibleEmbeddingResponse");
+    assert_eq!(reply.data.len(), response.embeddings.len());
+    assert_eq!(Some(reply.model.as_str()), response.model.as_deref());
+    for (datum, embedding) in reply.data.iter().zip(&response.embeddings) {
+        assert_eq!(datum.embedding.len(), embedding.vec.len());
+    }
+    let usage = reply.usage.expect("OpenAI reports embedding usage");
+    assert_eq!(response.usage.input_tokens, Some(usage.prompt_tokens as u64));
+    assert_eq!(response.usage.total_tokens, Some(usage.total_tokens as u64));
+}
+
 #[tokio::test]
 async fn normalized_response_is_complete() {
     with_openai_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+            let model = client.chat.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
             let response = model
                 .embed_texts_response(inputs())
                 .await
@@ -44,52 +64,42 @@ async fn normalized_response_is_complete() {
     .await;
 }
 
-/// `raw` is the provider's own payload, serialized: it deserializes back to
-/// the wire type and normalizing that value reproduces the normalized view.
+/// `raw` is the provider's own payload, verbatim: it deserializes back to the
+/// provider's own response type, whose native fields are what the normalized
+/// view reports.
 #[tokio::test]
 async fn raw_round_trips() {
     with_openai_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+        let model = client.chat.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
         let response = model
             .embed_texts_response(inputs())
             .await
             .expect("embedding request should succeed");
 
-        let raw: openai::CompatibleEmbeddingResponse =
-            serde_json::from_value(response.raw.clone()).expect("raw round-trips");
-        assert_eq!(raw.data.len(), response.embeddings.len());
-
-        let renormalized = raw
-            .normalize(response.provider.as_str(), inputs())
-            .expect("re-normalization succeeds");
-        assert_eq!(renormalized.embeddings.len(), response.embeddings.len());
-        assert_eq!(renormalized.model, response.model);
-        assert_eq!(renormalized.usage, response.usage);
+        assert_raw_agrees_with_normalized(&response);
     })
     .await;
 }
 
-/// The inherent raw route answers with the payload whose normalization agrees
-/// with the normalized call — two live exchanges in one recording, following
-/// the raw-parity matrices' shape.
+/// Two identical live exchanges in one recording: each reply carries both
+/// views, so the second reply's `raw` agrees with its own normalized view
+/// just as the first one's does, and the two exchanges report the same model.
 #[tokio::test]
 async fn raw_route_parity() {
     with_openai_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
-        let normalized = model
+        let model = client.chat.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
+        let first = model
             .embed_texts_response(inputs())
             .await
-            .expect("normalized call should succeed");
-        let raw = model
-            .raw_embed_texts(inputs())
+            .expect("first call should succeed");
+        let second = model
+            .embed_texts_response(inputs())
             .await
-            .expect("raw call should succeed");
+            .expect("second call should succeed");
 
-        assert_eq!(raw.data.len(), normalized.embeddings.len());
-        let renormalized = raw
-            .normalize(normalized.provider.as_str(), inputs())
-            .expect("raw payload normalizes");
-        assert_eq!(renormalized.model, normalized.model);
+        assert_raw_agrees_with_normalized(&first);
+        assert_raw_agrees_with_normalized(&second);
+        assert_eq!(first.model, second.model);
     })
     .await;
 }
@@ -101,7 +111,7 @@ async fn single_text_convenience() {
     with_openai_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+            let model = client.chat.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
             let response = model
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
@@ -119,7 +129,7 @@ async fn single_text_convenience() {
     .await;
 }
 
-/// `embedding_model_with_ndims` round-trips the requested width — the
+/// An embedding wire asked for an explicit width round-trips it — the
 /// provider either honors it or the driver errors honestly with
 /// `MismatchedDimensions`; a silent mismatch is the bug this cell exists to
 /// catch.
@@ -127,7 +137,7 @@ async fn single_text_convenience() {
 async fn dimensions_request() {
     with_openai_cassette("embedding_matrix/dimensions_request", |client| async move {
         let ndims = 512;
-        let model = client.embedding_model_with_ndims(openai::TEXT_EMBEDDING_3_SMALL, ndims);
+        let model = client.chat.embedding(openai::TEXT_EMBEDDING_3_SMALL, Some(ndims));
         let response = model
             .embed_texts_response(inputs())
             .await
@@ -145,7 +155,7 @@ async fn error_preserves_provider_body() {
     with_openai_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding_model("no-such-embedding-model");
+            let model = client.chat.embedding("no-such-embedding-model", None);
             let error = model
                 .embed_texts_response(inputs())
                 .await

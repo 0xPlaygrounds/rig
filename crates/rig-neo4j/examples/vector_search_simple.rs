@@ -10,11 +10,10 @@ use rig_reqwest::prelude::*;
 use std::env;
 
 use futures::{StreamExt, TryStreamExt};
-use rig_core::client::EmbeddingsClient;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai::Client,
+    Embed, embeddings::EmbeddingsBuilder, providers::openai::wire::OpenAI,
     vector_store::VectorStoreIndex as _,
 };
 use rig_neo4j::{Neo4jClient, ToBoltType};
@@ -28,8 +27,8 @@ pub struct Word {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client
-    let openai_client = Client::from_env()?;
+    // Bind the OpenAI embeddings endpoint
+    let openai_client = OpenAI::from_env()?.bound()?;
 
     // Initialize Neo4j client
     let neo4j_uri = env::var("NEO4J_URI")?;
@@ -39,7 +38,7 @@ async fn main() -> Result<(), anyhow::Error> {
     let neo4j_client = Neo4jClient::connect(&neo4j_uri, &neo4j_username, &neo4j_password).await?;
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let embeddings = EmbeddingsBuilder::new(model.clone())
         .document(Word {

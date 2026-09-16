@@ -5,19 +5,22 @@
 //!
 //! The streamed twin of `raw_capture_matrix`: every terminal
 //! `StreamedAssistantContent::Final` carries `raw` — the route's
-//! provider-native terminal record, the `R` of that route's `raw_stream`,
-//! serialized at the adapter's `final_record` seam. There is no switch
-//! behind it; a terminal `raw` is `Value::Null` only on a record built by
-//! hand, never on one a stream yielded. It round-trips into that terminal type and
-//! re-serializes equal, it exposes a terminal-only field the normalized
-//! `StreamFinal` does not model, and — because capture is unconditional and
-//! must stay an escape hatch — re-normalizing the typed terminal reproduces
-//! the `usage`, `finish_reason`, `model` and identity the stream reported.
+//! provider-native terminal record, serialized at the decoder's
+//! `final_record` seam. There is no switch behind it; a terminal `raw` is
+//! `Value::Null` only on a record built by hand, never on one a stream
+//! yielded. Unlike a unary `raw` — which is the provider's verbatim reply
+//! document — a streamed `raw` is the record the decoder assembled from the
+//! reply's frames, because no single frame is the terminal. So it
+//! round-trips into that terminal type and re-serializes equal, it exposes a
+//! terminal-only field the normalized `StreamFinal` does not model, and —
+//! because capture is unconditional and must stay an escape hatch — running
+//! the decoder's own mapper over the captured record reproduces the `usage`,
+//! `finish_reason`, `model` and identity the stream reported.
 //!
-//! Terminal types: Chat Completions'
-//! `openai::completion::streaming::StreamingCompletionResponse` (whose
-//! `additional_params` accumulates the unmodeled top-level chunk fields —
-//! `service_tier`, `system_fingerprint`), and the Responses API's
+//! Terminal types: Chat Completions' `openai::wire::StreamingCompletionResponse`
+//! (whose `additional_params` accumulates the unmodeled top-level chunk
+//! fields — `service_tier`, `system_fingerprint` — and whose `ChatUsage`
+//! keeps the dialect's extra usage counters), and the Responses API's
 //! `openai::responses_api::streaming::StreamingCompletionResponse` (whose
 //! `status` and `message_id` come from the terminal `response.completed`
 //! event alone).
@@ -34,9 +37,9 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | chat terminal type round trip; re-normalized `raw` ≡ terminal | recorded |
+//! | 1 | `chat_stream_raw_round_trips_typed` | chat, streamed | chat terminal type round trip; the decoder's mapper over `raw` ≡ terminal | recorded |
 //! | 2 | `chat_stream_raw_exposes_service_tier` | chat, terminal-only field | `raw["additional_params"]["service_tier"]` = last chunk | recorded |
-//! | 3 | `responses_stream_raw_round_trips_typed` | Responses, streamed | Responses terminal type round trip; re-normalized `raw` ≡ terminal | recorded |
+//! | 3 | `responses_stream_raw_round_trips_typed` | Responses, streamed | Responses terminal type round trip; its fields ≡ terminal | recorded |
 //! | 4 | `responses_stream_raw_exposes_status` | Responses, terminal-only field | `raw["status"]` = `response.completed` status | recorded |
 //! | 5 | `responses_reasoning_stream_raw_round_trips_typed` | Responses, reasoning stream (`reasoning: { effort, summary }`) | terminal round trip; `raw["reasoning_metadata"]` = `response.completed`'s `reasoning`; premise: a `reasoning` output item with `encrypted_content` | recorded |
 //! | 6 | `chat_tool_call_stream_raw_round_trips_typed` | chat, forced tool call (`tool_choice: required`) | terminal round trip; `raw["finish_reason"] == "tool_calls"` = last finish chunk; normalized terminal reports `ToolCalls` | recorded |
@@ -55,14 +58,19 @@ use std::pin::Pin;
 
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
+use rig::driver::Bound;
 use rig::message::ToolChoice;
 use rig::prelude::*;
 use rig::providers::openai;
+use rig::providers::openai::responses_api::wire::Responses;
+use rig::providers::openai::wire::Chat;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize as _;
 use serde_json::{Value, json};
 
-use super::super::support::{assert_matches_recorded_token, sse_json_frames, with_openai_cassette};
+use super::super::support::{
+    OpenAiCassette, assert_matches_recorded_token, sse_json_frames, with_openai_cassette,
+};
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
@@ -78,7 +86,7 @@ const REASONING_PROMPT: &str = "A train leaves at 09:30 and travels 150 km at 60
      At what time does it arrive? Reply with only the time in HH:MM.";
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
 
-type ChatTerminal = openai::completion::streaming::StreamingCompletionResponse;
+type ChatTerminal = openai::wire::StreamingCompletionResponse<openai::wire::ChatUsage>;
 type ResponsesTerminal = openai::responses_api::streaming::StreamingCompletionResponse;
 
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
@@ -142,17 +150,17 @@ type Observed = std::sync::Arc<std::sync::Mutex<Option<StreamFinal>>>;
 /// A cassette test body: boxed so the cell can build it in a helper while the
 /// wrapper call — and its string-literal scenario, which the cassette safety
 /// scan reads — stays in the test itself.
-type Body = Box<dyn FnOnce(openai::Client) -> Pin<Box<dyn Future<Output = ()>>>>;
+type Body = Box<dyn FnOnce(OpenAiCassette) -> Pin<Box<dyn Future<Output = ()>>>>;
 
 /// One stream on the chat route with the request `build` makes for the
 /// model; its terminal record is saved onto `sink`.
 fn chat_body_with(
     sink: Observed,
-    build: impl FnOnce(&openai::CompletionModel) -> CompletionRequest + 'static,
+    build: impl FnOnce(&Bound<Chat>) -> CompletionRequest + 'static,
 ) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let model = client.completions_api().completion_model(MODEL);
+            let model = client.chat.completion(MODEL);
             let stream = model
                 .stream(build(&model))
                 .await
@@ -171,11 +179,11 @@ fn chat_body(sink: Observed) -> Body {
 fn responses_body_with(
     sink: Observed,
     model_name: &'static str,
-    build: impl FnOnce(&openai::ResponsesCompletionModel) -> CompletionRequest + 'static,
+    build: impl FnOnce(&Bound<Responses>) -> CompletionRequest + 'static,
 ) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
-            let model = client.completion_model(model_name);
+            let model = client.responses.completion(model_name);
             let stream = model
                 .stream(build(&model))
                 .await
@@ -255,11 +263,11 @@ fn captured_raw<'a>(scenario: &str, terminal: &'a StreamFinal) -> &'a Value {
     &terminal.raw
 }
 
-/// `raw` and the normalized terminal tell one story: mapping the typed
-/// terminal through the route's own `From<(&str, R)> for StreamFinal` — the
-/// mapper `final_record` ran — reproduces every normalized field. A text
-/// turn emits no tool call, so the reconciliation `normalize_stream` layers
-/// on top leaves `finish_reason` untouched and the comparison is exact.
+/// `raw` and the normalized terminal are two views of one record: the
+/// provider-native fields the decoder assembled are the fields it reported.
+/// A text turn emits no tool call, so the reconciliation the normalized
+/// stream layers on top leaves `finish_reason` untouched and the comparison
+/// is exact.
 fn assert_responses_raw_matches_terminal(
     scenario: &str,
     terminal: &StreamFinal,
@@ -281,7 +289,10 @@ fn assert_responses_raw_matches_terminal(
     );
 }
 
-fn assert_raw_renormalizes_to(scenario: &str, terminal: &StreamFinal, renormalized: &StreamFinal) {
+/// Running the decoder's own terminal mapper over the captured record
+/// reproduces the record the stream yielded — so `raw` lost nothing the
+/// normalized terminal carries.
+fn assert_raw_maps_back_to(scenario: &str, terminal: &StreamFinal, renormalized: &StreamFinal) {
     assert_eq!(terminal.usage, renormalized.usage, "{scenario}: usage");
     assert_eq!(
         terminal.finish_reason, renormalized.finish_reason,
@@ -301,7 +312,7 @@ fn assert_raw_renormalizes_to(scenario: &str, terminal: &StreamFinal, renormaliz
         "{scenario}: response id"
     );
     // The transport id is stamped by the transport onto the normalized
-    // terminal; renormalizing the native record alone cannot recover it.
+    // terminal; mapping the native record alone cannot recover it.
     assert_eq!(
         renormalized.provider_request_id, None,
         "{scenario}: transport id is not in the native record"
@@ -356,7 +367,10 @@ async fn chat_stream_raw_round_trips_typed() {
     assert_eq!(typed.finish_reason, Some(FinishReason::Stop));
     let usage = last_chunk_field(&frames, "usage");
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.prompt_tokens as u64),
+        typed
+            .usage
+            .as_ref()
+            .map(|usage| usage.openai.prompt_tokens as u64),
         usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );
@@ -364,7 +378,7 @@ async fn chat_stream_raw_round_trips_typed() {
         typed
             .usage
             .as_ref()
-            .and_then(|usage| usage.completion_tokens)
+            .and_then(|usage| usage.openai.completion_tokens)
             .map(|tokens| tokens as u64),
         usage["completion_tokens"].as_u64(),
         "{SCENARIO}: terminal completion tokens"
@@ -375,9 +389,9 @@ async fn chat_stream_raw_round_trips_typed() {
         typed.provider_request_id, None,
         "{SCENARIO}: the native record never carries the transport id"
     );
-    // One story: the typed terminal re-normalizes to what the stream yielded.
+    // The decoder's own mapper over the captured record reproduces it.
     let renormalized = typed.into_stream_final(PROVIDER);
-    assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
+    assert_raw_maps_back_to(SCENARIO, &terminal, &renormalized);
 }
 
 #[tokio::test]
@@ -688,7 +702,10 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
     );
     let usage = last_chunk_field(&frames, "usage");
     assert_eq!(
-        typed.usage.as_ref().map(|usage| usage.prompt_tokens as u64),
+        typed
+            .usage
+            .as_ref()
+            .map(|usage| usage.openai.prompt_tokens as u64),
         usage["prompt_tokens"].as_u64(),
         "{SCENARIO}: terminal prompt tokens"
     );
@@ -696,10 +713,10 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
         typed.provider_request_id, None,
         "{SCENARIO}: the native record never carries the transport id"
     );
-    // One story: the typed terminal re-normalizes to what the stream yielded.
+    // The decoder's own mapper over the captured record reproduces it.
     // The wire already said `tool_calls`, so the `Stop -> ToolCalls`
     // reconciliation `StreamingCompletionResponse` layers on has nothing to change and
     // the comparison stays exact.
     let renormalized = typed.into_stream_final(PROVIDER);
-    assert_raw_renormalizes_to(SCENARIO, &terminal, &renormalized);
+    assert_raw_maps_back_to(SCENARIO, &terminal, &renormalized);
 }

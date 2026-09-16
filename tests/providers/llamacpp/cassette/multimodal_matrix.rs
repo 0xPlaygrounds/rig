@@ -40,7 +40,6 @@
 //! other OpenAI-shaped part to send — and the refusal is clean, so this is a
 //! recorded boundary rather than a defect.
 
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, ImageMediaType, Message, UserContent, VideoMediaType};
 use serde_json::Value;
@@ -87,7 +86,7 @@ async fn two_images_in_one_turn_keep_their_order() {
     with_llamacpp_large_vision_cassette(
         "multimodal_matrix/two_images_keep_their_order",
         |client| async move {
-            let model = client.completion_model(CASSETTE_LARGE_VISION_MODEL);
+            let model = client.completion(CASSETTE_LARGE_VISION_MODEL);
 
             let ask = |content: Vec<UserContent>| {
                 let model = model.clone();
@@ -165,7 +164,7 @@ async fn two_images_in_one_turn_keep_their_order() {
 #[tokio::test]
 async fn an_image_and_a_tool_reach_the_model_together() {
     with_llamacpp_vision_cassette("multimodal_matrix/image_plus_tools", |client| async move {
-        let model = client.completion_model(CASSETTE_VISION_MODEL);
+        let model = client.completion(CASSETTE_VISION_MODEL);
         let response = model
             .completion(
                 model
@@ -236,7 +235,7 @@ async fn a_malformed_data_uri_is_a_400() {
     with_llamacpp_vision_cassette(
         "multimodal_matrix/malformed_data_uri",
         |client| async move {
-            let model = client.completion_model(CASSETTE_VISION_MODEL);
+            let model = client.completion(CASSETTE_VISION_MODEL);
             let error = model
                 .completion(
                     model
@@ -297,7 +296,7 @@ async fn a_url_the_server_cannot_fetch_is_a_500() {
     with_llamacpp_vision_cassette(
         "multimodal_matrix/unfetchable_image_url",
         |client| async move {
-            let model = client.completion_model(CASSETTE_VISION_MODEL);
+            let model = client.completion(CASSETTE_VISION_MODEL);
             let error = model
                 .completion(
                     model
@@ -345,7 +344,7 @@ async fn an_image_to_a_text_only_server_names_the_missing_mmproj() {
     with_llamacpp_cassette(
         "multimodal_matrix/image_without_mmproj",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let error = model
                 .completion(
                     model
@@ -389,7 +388,7 @@ async fn a_video_part_is_refused_even_though_props_advertises_video() {
         |client| async move {
             let bytes =
                 std::fs::read(VIDEO_FIXTURE_PATH).expect("video fixture should be readable");
-            let model = client.completion_model(CASSETTE_VISION_MODEL);
+            let model = client.completion(CASSETTE_VISION_MODEL);
             let error = model
                 .completion(
                     model

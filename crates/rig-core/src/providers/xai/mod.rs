@@ -23,12 +23,19 @@ pub mod image_generation;
 #[cfg(feature = "audio")]
 pub use audio_generation::{AudioGenerationModel, TTS_1};
 pub use client::Client;
-pub use completion::{
-    CompletionModel, CompletionResponse, GROK_2_1212, GROK_2_IMAGE_1212, GROK_2_VISION_1212,
-    GROK_3, GROK_3_FAST, GROK_3_MINI, GROK_3_MINI_FAST, GROK_4,
-};
+pub use completion::{CompletionModel, CompletionResponse};
 #[cfg(feature = "image")]
 pub use image_generation::{GROK_IMAGINE_IMAGE, GROK_IMAGINE_IMAGE_PRO, ImageGenerationModel};
+
+/// xAI completion models.
+pub const GROK_2_1212: &str = "grok-2-1212";
+pub const GROK_2_VISION_1212: &str = "grok-2-vision-1212";
+pub const GROK_3: &str = "grok-3";
+pub const GROK_3_FAST: &str = "grok-3-fast";
+pub const GROK_3_MINI: &str = "grok-3-mini";
+pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
+pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
+pub const GROK_4: &str = "grok-4-0709";
 
 use crate::providers::openai::responses_api::SystemInstructionsPlacement;
 use crate::providers::openai::responses_api::wire::{Dialect, Quirks, RequestShape};

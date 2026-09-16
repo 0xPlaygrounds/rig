@@ -1,7 +1,7 @@
 use super::*;
 use crate::client::transcription::TranscriptionClient;
 use crate::providers::gemini::Client;
-use crate::providers::gemini::completion::GEMINI_2_0_FLASH;
+use crate::providers::gemini::completion::{GEMINI_2_0_FLASH, GEMINI_3_FLASH_PREVIEW};
 use crate::test_utils::RecordingHttpClient;
 use crate::transcription::TranscriptionModel as _;
 
@@ -51,7 +51,7 @@ async fn transcription_non_success_preserves_status_and_body() {
 fn the_wire_encodes_the_recorded_generate_content_request() {
     let wire = Transcriptions::new(
         crate::providers::gemini::Gemini::new("test-key"),
-        "gemini-3-flash-preview",
+        GEMINI_3_FLASH_PREVIEW,
     );
 
     let encoded = wire

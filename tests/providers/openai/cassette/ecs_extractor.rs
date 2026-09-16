@@ -8,8 +8,11 @@ use rig_agent::test_utils::validate_extraction_fields;
 #[tokio::test]
 async fn extractor_smoke() {
     with_openai_cassette("extractor/extractor_smoke", |client| async move {
-        let mut extractor =
-            EcsExtractor::<SmokePerson>::new(client.completion_model(openai::GPT_4O), None, None);
+        let mut extractor = EcsExtractor::<SmokePerson>::new(
+            client.responses.completion(openai::GPT_4O),
+            None,
+            None,
+        );
         let response = extractor
             .extract(EXTRACTOR_TEXT, &[])
             .await

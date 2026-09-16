@@ -33,8 +33,9 @@
 //! in the response says so. The cell reads the recorded request bytes rather
 //! than trusting the builder.
 
-use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, FinishReason};
+use rig::providers::openai::wire::{LLAMACPP, OpenAI};
+use rig::wire::{Body, Mode, Wire};
 use serde_json::{Value, json};
 
 use crate::cassettes::{recorded_json_request, recorded_statuses_and_bodies};
@@ -82,7 +83,7 @@ fn recorded_finish_reason(scenario: &str) -> String {
 #[tokio::test]
 async fn temperature_zero_and_nonzero_both_reach_the_wire() {
     with_llamacpp_cassette("sampling_matrix/temperature_zero", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         model
             .completion(
                 model
@@ -97,7 +98,7 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
     .await;
 
     with_llamacpp_cassette("sampling_matrix/temperature_nonzero", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         model
             .completion(
                 model
@@ -129,7 +130,7 @@ async fn temperature_zero_and_nonzero_both_reach_the_wire() {
 #[tokio::test]
 async fn a_one_token_cap_truncates_with_finish_reason_length() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_one", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -167,7 +168,7 @@ async fn a_one_token_cap_truncates_with_finish_reason_length() {
 #[tokio::test]
 async fn a_normal_cap_lets_the_turn_stop_on_its_own() {
     with_llamacpp_cassette("sampling_matrix/max_tokens_normal", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -214,7 +215,7 @@ fn a_cap_past_the_context_is_clamped() {
 #[tokio::test]
 async fn a_single_stop_sequence_truncates_the_answer() {
     with_llamacpp_cassette("sampling_matrix/stop_single", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -259,7 +260,7 @@ async fn a_single_stop_sequence_truncates_the_answer() {
 #[tokio::test]
 async fn several_stop_sequences_fire_on_whichever_comes_first() {
     with_llamacpp_cassette("sampling_matrix/stop_multiple", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -297,7 +298,7 @@ async fn several_stop_sequences_fire_on_whichever_comes_first() {
 #[tokio::test]
 async fn a_stop_sequence_that_never_matches_changes_nothing() {
     with_llamacpp_cassette("sampling_matrix/stop_never_fires", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -332,7 +333,7 @@ async fn a_stop_sequence_that_never_matches_changes_nothing() {
 #[tokio::test]
 async fn stop_matching_is_case_sensitive() {
     with_llamacpp_cassette("sampling_matrix/stop_case_sensitive", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -377,7 +378,7 @@ async fn stop_matching_is_case_sensitive() {
 #[tokio::test]
 async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     with_llamacpp_cassette("sampling_matrix/seed_fixed", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         model
             .completion(
                 model
@@ -392,7 +393,7 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
     .await;
 
     with_llamacpp_cassette("sampling_matrix/seed_absent", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         model
             .completion(
                 model
@@ -440,7 +441,7 @@ async fn a_fixed_seed_and_an_absent_seed_are_both_accepted() {
 /// llama.cpp's parsing, so it is checked without a server.
 #[test]
 fn additional_params_wins_over_the_typed_field_it_collides_with() {
-    use rig::providers::openai::completion::OpenAICompatibleProvider as _;
+    // `encode` needs no socket, so this stays a plain unit test.
 
     let request = rig::completion::CompletionRequest {
         model: None,
@@ -457,10 +458,14 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
         record_telemetry_content: false,
     };
 
-    let typed = rig::providers::llamacpp::Llamacpp
-        .build_completion_request("m".to_string(), request, Default::default())
-        .expect("the request should build");
-    let body = serde_json::to_value(&typed).expect("the request should serialize");
+    let encoded = OpenAI::with_key(&LLAMACPP, "")
+        .chat("m")
+        .encode(request, Mode::Unary)
+        .expect("the request should encode");
+    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+        panic!("the chat wire sends a serialized body, not a multipart form")
+    };
+    let body: Value = serde_json::from_slice(bytes).expect("the chat body is JSON");
 
     assert_eq!(
         body["max_tokens"],

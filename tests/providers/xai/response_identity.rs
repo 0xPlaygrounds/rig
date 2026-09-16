@@ -4,8 +4,10 @@
 use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
+use rig::providers::openai::responses_api;
 use rig::providers::xai;
 use rig::streaming::StreamEvent;
+use serde::Deserialize;
 
 use super::support::with_xai_cassette;
 
@@ -22,7 +24,7 @@ async fn nonstreaming_response_carries_identity() {
     with_xai_cassette(
         "response_identity/nonstreaming_response_carries_identity",
         |client| async move {
-            let model = client.completion_model(xai::completion::GROK_3_MINI);
+            let model = client.completion(xai::completion::GROK_3_MINI);
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -48,7 +50,7 @@ async fn streaming_terminal_carries_identity() {
     with_xai_cassette(
         "response_identity/streaming_terminal_carries_identity",
         |client| async move {
-            let model = client.completion_model(xai::completion::GROK_3_MINI);
+            let model = client.completion(xai::completion::GROK_3_MINI);
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
@@ -108,30 +110,36 @@ async fn streamed_agent_run_reports_identity() {
     .await;
 }
 
-/// Family D (edge matrix): one interaction, two views — xAI's raw wire value
-/// and its normalized form agree on the transport id.
+/// Family D (edge matrix): one interaction, two views — the provider reply
+/// captured in [`rig::completion::CompletionResponse::raw`] and the
+/// normalized response describe the same interaction, and the transport id
+/// rides on the normalized view because the wire body has no slot for a
+/// response header.
 #[tokio::test]
 async fn raw_and_normalized_views_agree_on_identity() {
     with_xai_cassette(
         "response_identity/raw_and_normalized_views_agree_on_identity",
         |client| async move {
-            let model = client.completion_model(xai::completion::GROK_3_MINI);
+            let model = client.completion(xai::completion::GROK_3_MINI);
             let request = model
                 .completion_request("Reply with exactly: two views probe")
                 .build();
-            let raw = model
-                .raw_completion(request)
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw completion should succeed");
-            let raw_id = raw.provider_request_id.clone();
-            assert_request_id(raw_id.as_deref(), "raw view");
+                .expect("completion should succeed");
+            assert_request_id(response.provider_request_id.as_deref(), "normalized view");
 
-            let normalized: rig::completion::CompletionResponse =
-                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")
-                    .expect("raw response should normalize");
+            let raw_view = responses_api::CompletionResponse::deserialize(&response.raw)
+                .expect("`raw` is the serialized Responses CompletionResponse");
             assert_eq!(
-                normalized.provider_request_id, raw_id,
+                Some(raw_view.id.as_str()),
+                response.response_id.as_deref(),
                 "raw and normalized views describe the same interaction"
+            );
+            assert_eq!(
+                raw_view.provider_request_id, None,
+                "the mirrored wire body carries no response header"
             );
         },
     )
@@ -148,7 +156,7 @@ async fn provider_error_classifies_with_contract_but_reports_no_id() {
     with_xai_cassette(
         "response_identity/provider_error_classifies_with_contract_but_reports_no_id",
         |client| async move {
-            let model = client.completion_model("grok-nonexistent-model-for-identity-edge");
+            let model = client.completion("grok-nonexistent-model-for-identity-edge");
             let error = model
                 .completion_request("Never answered")
                 .send()
@@ -179,7 +187,7 @@ async fn auth_rejection_classifies_with_contract() {
     with_xai_cassette_bogus_key(
         "response_identity/auth_rejection_classifies_with_contract",
         |client| async move {
-            let model = client.completion_model(xai::completion::GROK_3_MINI);
+            let model = client.completion(xai::completion::GROK_3_MINI);
             let error = model
                 .completion_request("Never authenticated")
                 .send()

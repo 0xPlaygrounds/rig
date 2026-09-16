@@ -21,7 +21,7 @@ use crate::{
 async fn completion_smoke_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             false,
         );
@@ -36,7 +36,7 @@ async fn memory_conversation_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
         let mut memory = None;
         let mut ecs = EcsAgent::for_golden_with_setup(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             false,
             |world| {

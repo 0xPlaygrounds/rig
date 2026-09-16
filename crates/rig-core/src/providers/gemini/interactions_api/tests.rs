@@ -1345,3 +1345,87 @@ fn the_interactions_wire_keeps_its_span_names() {
         CompletionOperation::InteractionsStreaming
     );
 }
+
+/// A `background: true` interaction outlives its create request and a
+/// dropped stream resumes from the last event seen. Both are the same
+/// interaction read again, so both are requests on one wire: the poll GETs
+/// the resource, the resume GETs the event stream from `last_event_id`
+/// onward \u2014 byte-for-byte the two requests the client layer sent.
+#[test]
+fn one_interaction_is_polled_unary_and_resumed_streamed() {
+    let gemini = crate::providers::gemini::Gemini::new("test-key");
+
+    let poll = gemini
+        .interaction("v1_REDACTED_1")
+        .encode(probe(), Mode::Unary)
+        .expect("the poll request encodes");
+    assert_eq!(sole(&poll).method(), http::Method::GET);
+    assert_eq!(
+        sole(&poll).uri().path(),
+        "/v1beta/interactions/v1_REDACTED_1"
+    );
+    assert_eq!(sole(&poll).uri().query(), None);
+    assert_eq!(poll.framing, crate::http_client::framing::Framing::Whole);
+    assert_eq!(
+        sole(&poll)
+            .headers()
+            .get("x-goog-api-key")
+            .and_then(|value| value.to_str().ok()),
+        Some("test-key")
+    );
+
+    let resumed = gemini
+        .interaction_resumed("v1_REDACTED_1", Some("42"))
+        .encode(probe(), Mode::Streaming)
+        .expect("the resume request encodes");
+    assert_eq!(sole(&resumed).method(), http::Method::GET);
+    assert_eq!(
+        sole(&resumed).uri().path(),
+        "/v1beta/interactions/v1_REDACTED_1"
+    );
+    assert_eq!(
+        sole(&resumed).uri().query(),
+        Some("stream=true&last_event_id=42&alt=sse")
+    );
+    assert_eq!(resumed.framing, crate::http_client::framing::Framing::Sse);
+
+    // Resuming without a cursor asks for the stream from its beginning,
+    // which is the API's own default and what the client layer sent.
+    let from_start = gemini
+        .interaction_resumed("v1_REDACTED_1", None)
+        .encode(probe(), Mode::Streaming)
+        .expect("the resume request encodes");
+    assert_eq!(
+        sole(&from_start).uri().query(),
+        Some("stream=true&alt=sse")
+    );
+}
+
+/// The poll's reply is the whole interaction resource, so it decodes
+/// through the same decoder as the stream and the document survives on the
+/// response's `raw` for a caller that wants the provider's own vocabulary.
+#[tokio::test]
+async fn a_polled_interaction_folds_its_steps_and_keeps_the_document() {
+    use crate::completion::CompletionModel as _;
+
+    let response = Bound::new(
+        crate::providers::gemini::Gemini::new("test-key").interaction("v1_REDACTED_1"),
+        RecordingHttpClient::new(UNARY_INTERACTION),
+    )
+    .completion(probe())
+    .await
+    .expect("the recorded interaction resource decodes");
+
+    assert_eq!(
+        shape(&response),
+        (
+            vec!["reasoning", "text"],
+            Some("signature_REDACTED_1".to_owned())
+        )
+    );
+    assert_eq!(response.response_id.as_deref(), Some("v1_REDACTED_1"));
+    let interaction: Interaction =
+        serde_json::from_value(response.raw.clone()).expect("`raw` is the interaction document");
+    assert_eq!(interaction.id, "v1_REDACTED_1");
+    assert!(interaction.is_terminal(), "status: {:?}", interaction.status);
+}

@@ -68,7 +68,7 @@ async fn streamed_web_search_preserves_server_tool_blocks() {
     with_anthropic_cassette(
         "streamed_server_tools/streamed_web_search_preserves_server_tool_blocks",
         |client| async move {
-            let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let model = client.completion(CLAUDE_OPUS_4_8);
             let request = model
                 .completion_request(WEB_SEARCH_PROMPT)
                 .provider_tool(web_search_tool())
@@ -133,7 +133,7 @@ async fn blocking_web_search_preserves_server_tool_blocks() {
     with_anthropic_cassette(
         "streamed_server_tools/blocking_web_search_preserves_server_tool_blocks",
         |client| async move {
-            let model = client.completion_model(CLAUDE_OPUS_4_8);
+            let model = client.completion(CLAUDE_OPUS_4_8);
             let request = model
                 .completion_request(WEB_SEARCH_PROMPT)
                 .provider_tool(web_search_tool())

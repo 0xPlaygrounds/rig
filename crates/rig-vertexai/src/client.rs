@@ -2,8 +2,8 @@ use crate::completion::CompletionModel;
 use google_cloud_aiplatform_v1 as vertexai;
 use google_cloud_auth::credentials;
 use google_cloud_auth::credentials::Credentials;
-use rig_core::client::{CompletionClient, Nothing};
-use rig_core::prelude::*;
+use rig_core::client::VerifyError;
+use rig_core::driver::CompletionProvider;
 use std::sync::Arc;
 use thiserror::Error;
 use tokio::sync::OnceCell;
@@ -194,10 +194,11 @@ impl Client {
         Client::new()
     }
 
-    /// Vertex AI takes no explicit input: use [`Client::from_env`] or
-    /// [`ClientBuilder`].
-    pub fn from_val(_: Nothing) -> Result<Self, VertexAiClientError> {
-        Err(VertexAiClientError::InvalidInput)
+    /// Vertex AI exposes no credential-check endpoint: Application Default
+    /// Credentials are validated on first use, so there is nothing to call
+    /// here.
+    pub async fn verify(&self) -> Result<(), VerifyError> {
+        Ok(())
     }
 
     pub fn project(&self) -> &str {
@@ -225,17 +226,10 @@ impl Client {
     }
 }
 
-impl CompletionClient for Client {
-    type CompletionModel = CompletionModel;
+impl CompletionProvider for Client {
+    type Model = CompletionModel;
 
-    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
+    fn completion(&self, model: impl Into<String>) -> Self::Model {
         CompletionModel::new(self.clone(), model.into())
-    }
-}
-
-impl VerifyClient for Client {
-    async fn verify(&self) -> Result<(), VerifyError> {
-        // No API endpoint to verify credentials - they're validated on first use
-        Ok(())
     }
 }

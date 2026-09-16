@@ -15,12 +15,12 @@
 //!
 //! # The matrix
 //!
-//! The fixed code path is `map_response_part`, which every blocking caller
-//! reaches through `TryFrom<GenerateContentResponse>`. Its inputs are the
-//! *kinds* of parts in a candidate, their *order*, and which surface is
-//! reading them — so the matrix multiplies part composition × transport ×
-//! surface, and pins the streaming twin of every blocking cell so parity is
-//! asserted rather than assumed.
+//! The fixed code path is the part mapper the GenerateContent decoder runs on
+//! every part it reads, on both transports. Its inputs are the *kinds* of
+//! parts in a candidate, their *order*, and which surface is reading them —
+//! so the matrix multiplies part composition × transport × surface, and pins
+//! the streaming twin of every blocking cell so parity is asserted rather
+//! than assumed.
 //!
 //! | # | cell | transport | surface | dimension pinned |
 //! |---|------|-----------|---------|------------------|
@@ -28,7 +28,7 @@
 //! | 2 | `streaming_raw_model_answers_after_code_execution` | streaming | `CompletionModel::stream` | parity twin of 1 |
 //! | 3 | `blocking_agent_prompt_answers_after_code_execution` | blocking | `Agent::prompt` | agent surface |
 //! | 4 | `streaming_agent_prompt_answers_after_code_execution` | streaming | `Agent::prompt` | parity twin of 3 |
-//! | 5 | `blocking_raw_completion_keeps_native_code_parts` | blocking | `CompletionModel::raw_completion` | escape hatch still exposes the parts |
+//! | 5 | `blocking_raw_completion_keeps_native_code_parts` | blocking | `CompletionResponse::raw` | escape hatch still exposes the parts |
 //! | 6 | `blocking_failed_code_execution_outcome` | blocking | `completion` | `OUTCOME_FAILED` result part |
 //! | 7 | `streaming_failed_code_execution_outcome` | streaming | `stream` | parity twin of 6 |
 //! | 8 | `blocking_multiple_code_execution_rounds` | blocking | `completion` | several code/result pairs in one turn |
@@ -68,11 +68,13 @@ use rig::completion::CompletionModel;
 use rig::message::{AssistantContent, Message};
 use rig::prelude::*;
 use rig::providers::gemini;
+use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
 use rig::streaming::{Delta, StreamEvent};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::{
-    assert_recorded_response_contains, with_gemini_code_execution_cassette,
+    BoundGemini, assert_recorded_response_contains, with_gemini_code_execution_cassette,
 };
 
 /// Wire markers of the two code-execution part kinds, as Gemini spells them.
@@ -174,7 +176,7 @@ async fn drain(
 /// One blocking cell: run the prompt with code execution enabled and assert
 /// the turn survived with its answer intact.
 async fn blocking_body(
-    client: gemini::Client,
+    client: BoundGemini,
     scenario: &'static str,
     model_id: &'static str,
     prompt: &'static str,
@@ -182,7 +184,7 @@ async fn blocking_body(
     max_tokens: Option<u64>,
     expected_substring: &'static str,
 ) {
-    let model = client.completion_model(model_id);
+    let model = client.completion(model_id);
     let mut request = model
         .completion_request(prompt)
         .temperature(0.0)
@@ -205,7 +207,7 @@ async fn blocking_body(
 
 /// The streaming twin of [`blocking_body`], over the same request.
 async fn streaming_body(
-    client: gemini::Client,
+    client: BoundGemini,
     scenario: &'static str,
     model_id: &'static str,
     prompt: &'static str,
@@ -213,7 +215,7 @@ async fn streaming_body(
     max_tokens: Option<u64>,
     expected_substring: &'static str,
 ) {
-    let model = client.completion_model(model_id);
+    let model = client.completion(model_id);
     let mut request = model
         .completion_request(prompt)
         .temperature(0.0)
@@ -374,7 +376,7 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
         |client| async move {
             use rig::providers::gemini::completion::gemini_api_types::PartKind;
 
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(
                     "Use the code execution tool to sum the integers from 1 to 100. \
@@ -385,38 +387,40 @@ async fn blocking_raw_completion_keeps_native_code_parts() {
                 .additional_params(code_execution_params())
                 .build();
 
-            let raw = model
-                .raw_completion(request)
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw_completion should succeed");
+                .expect("a turn carrying code-execution parts must still convert");
 
-            let parts = raw
+            let document = GenerateContentResponse::deserialize(&response.raw)
+                .expect("raw is Gemini's own generateContent document");
+            let parts = document
                 .candidates
                 .first()
                 .and_then(|candidate| candidate.content.as_ref())
                 .map(|content| content.parts.as_slice())
                 .expect("the recorded candidate carries content");
 
-            // The escape hatch is the supported way to reach what the normalized
-            // choice cannot represent: the code and its output are still here.
+            // `raw` is the supported way to reach what the normalized choice
+            // cannot represent: the code and its output are still here,
+            // verbatim, on the document the reply arrived as.
             assert!(
                 parts
                     .iter()
                     .any(|part| matches!(part.part, PartKind::ExecutableCode(_))),
-                "raw_completion must expose the executableCode part verbatim"
+                "`raw` must expose the executableCode part verbatim"
             );
             assert!(
                 parts
                     .iter()
                     .any(|part| matches!(part.part, PartKind::CodeExecutionResult(_))),
-                "raw_completion must expose the codeExecutionResult part verbatim"
+                "`raw` must expose the codeExecutionResult part verbatim"
             );
 
-            // And the same payload normalizes rather than erroring.
-            let normalized: rig::completion::CompletionResponse =
-                raw.try_into().expect("the same payload must normalize");
+            // And the same bytes reached the caller as an answer rather than
+            // an error — the bug this matrix is about.
             assert!(
-                states(&text_of(&normalized.choice), "5050"),
+                states(&text_of(&response.choice), "5050"),
                 "normalized answer should carry the computed value"
             );
         },
@@ -544,7 +548,7 @@ async fn blocking_code_execution_with_visible_thoughts() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_code_execution_with_visible_thoughts",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .temperature(0.0)
@@ -584,7 +588,7 @@ async fn streaming_code_execution_with_visible_thoughts() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/streaming_code_execution_with_visible_thoughts",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(THINKING_PROMPT)
                 .temperature(0.0)
@@ -629,7 +633,7 @@ async fn blocking_code_execution_with_preamble() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/blocking_code_execution_with_preamble",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -660,7 +664,7 @@ async fn streaming_code_execution_with_preamble() {
     with_gemini_code_execution_cassette(
         "code_execution_matrix/streaming_code_execution_with_preamble",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(PREAMBLE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -966,8 +970,10 @@ async fn blocking_code_execution_replayed_in_chat_history() {
 // --- 23-25: states a live turn cannot be made to produce ------------------
 
 mod unit {
-    use rig::completion::CompletionResponse;
-    use rig::providers::gemini::completion::gemini_api_types::GenerateContentResponse;
+    use rig::completion::{CompletionError, CompletionModel, CompletionResponse};
+    use rig::prelude::*;
+    use rig::providers::gemini::Gemini;
+    use rig::test_utils::RecordingHttpClient;
     use serde_json::{Value, json};
 
     /// One `executableCode` part, exactly as recorded in
@@ -988,8 +994,9 @@ mod unit {
         })
     }
 
-    fn response_with(parts: Vec<Value>) -> GenerateContentResponse {
-        serde_json::from_value(json!({
+    /// The recorded reply shape, with `parts` as the candidate's content.
+    fn reply_with(parts: Vec<Value>) -> String {
+        json!({
             "candidates": [{
                 "content": { "parts": parts, "role": "model" },
                 "finishReason": "STOP",
@@ -998,8 +1005,22 @@ mod unit {
             "modelVersion": "gemini-2.5-flash",
             "responseId": "unit-response",
             "usageMetadata": { "promptTokenCount": 13, "candidatesTokenCount": 65, "totalTokenCount": 152 }
-        }))
-        .expect("recorded-shape payload should deserialize")
+        })
+        .to_string()
+    }
+
+    /// One turn through the one seam, answered by a stub transport with
+    /// `parts`.
+    ///
+    /// These part compositions cannot be produced live, so the bytes are
+    /// stated here and carried by the real wire, driver and decoder — the
+    /// same path every recorded cell above runs, with the reply substituted.
+    async fn completion_of(parts: Vec<Value>) -> Result<CompletionResponse, CompletionError> {
+        let model = Gemini::new("unit-key")
+            .bind(RecordingHttpClient::new(reply_with(parts)))
+            .completion("gemini-2.5-flash");
+        let request = model.completion_request("unit").build();
+        model.completion(request).await
     }
 
     /// Not a recording: Gemini always narrates a code round, so a candidate
@@ -1007,13 +1028,13 @@ mod unit {
     /// contract is that skipping them does not invent content — an otherwise
     /// empty choice must still be rejected by rig's shared empty-response
     /// rule, not silently returned as a blank answer.
-    #[test]
-    fn code_execution_only_turn_is_an_empty_response() {
-        let response = response_with(vec![executable_code_part(), code_result_part()]);
-        let error = CompletionResponse::try_from(response)
+    #[tokio::test]
+    async fn code_execution_only_turn_is_an_empty_response() {
+        let error = completion_of(vec![executable_code_part(), code_result_part()])
+            .await
             .expect_err("a turn with no modeled content must not convert to a blank answer");
         assert!(
-            matches!(error, rig::completion::CompletionError::ResponseError(_)),
+            matches!(error, CompletionError::ResponseError(_)),
             "expected the shared empty-response rejection, got {error:?}"
         );
     }
@@ -1021,8 +1042,8 @@ mod unit {
     /// Not a recording: one live turn emits one ordering. The skip must not
     /// depend on where the code parts sit relative to the text, so every
     /// position is asserted from the recorded part shapes.
-    #[test]
-    fn code_execution_parts_are_skipped_in_every_position() {
+    #[tokio::test]
+    async fn code_execution_parts_are_skipped_in_every_position() {
         let text = json!({ "text": "The 7 factorial is 5040." });
         let orderings = [
             vec![executable_code_part(), code_result_part(), text.clone()],
@@ -1038,7 +1059,8 @@ mod unit {
         ];
 
         for (index, parts) in orderings.into_iter().enumerate() {
-            let response = CompletionResponse::try_from(response_with(parts))
+            let response = completion_of(parts)
+                .await
                 .unwrap_or_else(|error| panic!("ordering {index} should convert: {error:?}"));
             assert_eq!(
                 response.choice.len(),
@@ -1061,17 +1083,17 @@ mod unit {
     /// the arm that must keep failing has no live source. Widening the skip to
     /// every unmodeled kind would turn a genuinely unaccountable payload into
     /// a silent content drop.
-    #[test]
-    fn unmodeled_part_kinds_still_fail_loudly() {
+    #[tokio::test]
+    async fn unmodeled_part_kinds_still_fail_loudly() {
         for part in [
             json!({ "functionResponse": { "name": "add", "response": { "result": 3 } } }),
             json!({ "fileData": { "mimeType": "text/plain", "fileUri": "https://example.invalid/f" } }),
         ] {
-            let response = response_with(vec![part.clone(), json!({ "text": "done" })]);
-            let error = CompletionResponse::try_from(response)
+            let error = completion_of(vec![part.clone(), json!({ "text": "done" })])
+                .await
                 .expect_err("an unaccountable part must still fail the response");
             assert!(
-                matches!(error, rig::completion::CompletionError::ResponseError(_)),
+                matches!(error, CompletionError::ResponseError(_)),
                 "part {part} should be a ResponseError, got {error:?}"
             );
         }

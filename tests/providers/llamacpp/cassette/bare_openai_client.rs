@@ -1,30 +1,33 @@
-//! What a bare `openai::Client` pointed at a local server does differently.
+//! What a plain OpenAI configuration pointed at a local server does
+//! differently.
 //!
 //! **This suite is deliberately small and must stay small.** Rig's llama.cpp
 //! coverage used to exist twice — once through `providers::llamafile` and once
-//! through a bare `openai::Client` aimed at the same server — and 19 of 61
-//! fixtures were the same scenario recorded down two code paths. Re-recording
-//! the generation matrix here is how that happens again.
+//! through an unconfigured OpenAI client aimed at the same server — and 19 of
+//! 61 fixtures were the same scenario recorded down two code paths.
+//! Re-recording the generation matrix here is how that happens again.
 //!
-//! What this path is still worth covering is the part that genuinely differs,
-//! and that is not generation:
+//! Since the wire unification the two paths are the *same type*: an
+//! [`OpenAI`](rig::providers::openai::wire::OpenAI) configuration bound to a
+//! socket. What differs is the
+//! [`Dialect`](rig::providers::openai::wire::Dialect) it carries — `OPENAI`
+//! here, `LLAMACPP` everywhere else in this suite — and that difference is
+//! exactly what is still worth covering, because it is not generation:
 //!
 //! | Difference | Cell |
 //! | --- | --- |
-//! | base-URL composition — the caller supplies `/v1`, the provider does not | [`caller_supplies_the_v1_prefix_the_provider_would_add`] |
-//! | the `Authorization` header — `openai::Client` always sends one | [`bare_openai_client_always_sends_an_authorization_header`] |
-//! | the absence of this provider's consts — a fragmented tool-call stream still reassembles | [`a_fragmented_tool_call_stream_reassembles_without_the_provider_consts`] |
-//! | the Responses/Completions split, which `llamacpp::Client` does not have | [`agent_prompt_through_completions_api`] |
-//! | `raw_completion` normalization under the `openai` descriptor name | [`raw_response_text_matches_normalized_choice_text`] |
+//! | base-URL composition — the caller supplies `/v1`, the dialect's default carries it | [`caller_supplies_the_v1_prefix_the_provider_would_add`] |
+//! | the `Authorization` header — `Auth::Bearer` always sends one | [`bare_openai_client_always_sends_an_authorization_header`] |
+//! | the absence of this dialect's quirk flags — a fragmented tool-call stream still reassembles | [`a_fragmented_tool_call_stream_reassembles_without_the_provider_consts`] |
+//! | the Responses/Completions split, which is two configurations rather than one client | [`agent_prompt_through_completions_api`] |
+//! | `raw` under the `openai` descriptor name, not `llamacpp` | [`raw_response_text_matches_normalized_choice_text`] |
 //!
 //! Recorded against the default server (`--jinja --seed 42 --temp 0 -c 4096`,
 //! `unsloth/Qwen3-1.7B-GGUF` Q4_K_M, `llama-server` b10499-6d05498).
 
 use rig::completion::CompletionModel;
-use rig::completion::NormalizeCompletionResponse;
 use rig::prelude::*;
-use rig::providers::{llamacpp, openai};
-use rig::telemetry::ProviderResponseExt;
+use rig::providers::openai::wire::{LLAMACPP, OpenAI};
 
 use crate::support::{
     Adder, RAW_TEXT_RESPONSE_PREAMBLE, RAW_TEXT_RESPONSE_PROMPT, STREAMING_TOOLS_PREAMBLE,
@@ -35,10 +38,11 @@ use crate::support::{
 
 use super::super::cassette_support::*;
 
-/// The caller carries the `/v1` that `llamacpp::Client` adds for them.
+/// The caller carries the `/v1` the `LLAMACPP` dialect's default base URL
+/// carries for them.
 ///
 /// The recorded path is identical on both sides of the boundary; what differs
-/// is who put the prefix there. This cell fails the moment `openai::Client`
+/// is who put the prefix there. This cell fails the moment the OpenAI wire
 /// starts composing a base URL differently, which would silently 404 every
 /// local-server user who followed rig's own OpenAI-compatible instructions.
 #[tokio::test]
@@ -50,7 +54,6 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
         "bare_openai_client/caller_supplies_the_v1_prefix",
         |client| async move {
             let agent = client
-                .completions_api()
                 .agent(CASSETTE_MODEL)
                 .preamble("You are a concise assistant.")
                 .max_tokens(256)
@@ -59,7 +62,7 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
             let response = agent
                 .prompt("Say the single word: ok")
                 .await
-                .expect("a bare openai client should reach the local server");
+                .expect("a plain OpenAI configuration should reach the local server");
             assert_nonempty_response(&response.output);
         },
     )
@@ -78,23 +81,24 @@ async fn caller_supplies_the_v1_prefix_the_provider_would_add() {
     );
 }
 
-/// `openai::Client` has no optional-key form, so it always sends
+/// The `OPENAI` dialect authenticates with `Auth::Bearer`, so it always sends
 /// `Authorization` — and llama.cpp accepts any bearer token when it was not
 /// started with `--api-key`.
 ///
-/// `llamacpp::Client` sends no header at all in the same situation. That
-/// asymmetry is the whole reason the provider needed its own key type, and it
-/// is why a server started *with* `--api-key` was unreachable before this PR.
+/// The `LLAMACPP` dialect's `Auth::OptionalBearer` sends no header at all for
+/// an empty key in the same situation. That asymmetry is the whole reason the
+/// dialect names its own `Auth`, and it is why a server started *with*
+/// `--api-key` was unreachable before this PR.
 ///
 /// The header cannot be read back from a fixture — `authorization` is
 /// sensitive and is scrubbed out of every recording — so the cell proves it
-/// two ways instead. In process, both clients are driven through the same
-/// recording HTTP backend and their headers compared directly; on the wire,
-/// the recorded turn shows the local server accepting the request the header
-/// rode on.
+/// two ways instead. In process, both configurations are bound to the same
+/// recording socket and their headers compared directly; on the wire, the
+/// recorded turn shows the local server accepting the request the header rode
+/// on.
 #[tokio::test]
 async fn bare_openai_client_always_sends_an_authorization_header() {
-    // The in-process half: two clients, one backend, one comparison.
+    // The in-process half: two configurations, one socket, one comparison.
     {
         use rig::embeddings::EmbeddingModel as _;
         use rig::test_utils::RecordingHttpClient;
@@ -103,13 +107,9 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let bare = openai::Client::builder()
-            .api_key("llamacpp-local")
-            .http_client(recorder.clone())
-            .build()
-            .expect("client should build");
+        let bare = OpenAI::new("llamacpp-local").bind(recorder.clone());
         let _ = bare
-            .embedding_model_with_ndims("m", 1)
+            .embedding("m", Some(1))
             .embed_texts(["probe".to_string()])
             .await;
         let sent = &recorder.requests()[0];
@@ -118,20 +118,16 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
                 .get("authorization")
                 .map(|value| value.to_str().unwrap_or_default()),
             Some("Bearer llamacpp-local"),
-            "a bare openai::Client has no way *not* to send one"
+            "the `OPENAI` dialect has no way *not* to send one"
         );
 
         let recorder = RecordingHttpClient::new(
             r#"{"object":"list","model":"m","usage":{"prompt_tokens":1,"total_tokens":1},
                 "data":[{"object":"embedding","index":0,"embedding":[0.1]}]}"#,
         );
-        let provider = llamacpp::Client::builder()
-            .api_key(llamacpp::LlamacppApiKey::default())
-            .http_client(recorder.clone())
-            .build()
-            .expect("client should build");
+        let provider = OpenAI::with_key(&LLAMACPP, "").bind(recorder.clone());
         let _ = provider
-            .embedding_model_with_ndims("m", 1)
+            .embedding("m", Some(1))
             .embed_texts(["probe".to_string()])
             .await;
         assert!(
@@ -139,8 +135,8 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
                 .headers
                 .get("authorization")
                 .is_none(),
-            "and the provider has a way not to, which is the asymmetry this cell \
-             exists for"
+            "and `Auth::OptionalBearer` with an empty key has a way not to, \
+             which is the asymmetry this cell exists for"
         );
     }
 
@@ -148,7 +144,7 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/authorization_header_is_always_sent",
         |client| async move {
-            let model = client.completions_api().completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(
                     model
@@ -185,20 +181,21 @@ async fn bare_openai_client_always_sends_an_authorization_header() {
     }
 }
 
-/// The same tool-call stream, decoded by a provider that is **not**
-/// `llamacpp` — and reassembled identically.
+/// The same tool-call stream, decoded under a dialect that is **not**
+/// `LLAMACPP` — and reassembled identically.
 ///
 /// This cell used to be framed around
 /// `EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS` differing between the two paths.
-/// It no longer does: this PR measured llama.cpp's streaming and set the
-/// llamacpp const to `false`, which is also `openai`'s trait default, so both
-/// paths now take the same branch. Keeping the old framing would have left a
-/// cell whose doc described a difference that does not exist.
+/// It no longer does: this PR measured llama.cpp's streaming and left
+/// `emits_complete_single_chunk_tool_calls` at the OpenAI default of `false`
+/// for both dialects, so both take the same branch. Keeping the old framing
+/// would have left a cell whose doc described a difference that does not
+/// exist.
 ///
 /// What it is worth instead is the *reassembly* claim, which no other cell in
 /// this file makes: llama.cpp streams tool-call arguments one token at a time,
-/// and a caller who reaches it through a bare `openai::Client` — with none of
-/// this provider's associated consts — must still get one complete call with
+/// and a caller who reaches it through a plain `OPENAI` configuration — with
+/// none of the `LLAMACPP` quirk flags — must still get one complete call with
 /// parseable arguments. The premise is re-derived from the fixture: the
 /// recorded stream must genuinely be fragmented, or the cell tests nothing.
 #[tokio::test]
@@ -207,7 +204,6 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
         "bare_openai_client/tool_call_stream_without_the_single_chunk_const",
         |client| async move {
             let agent = client
-                .completions_api()
                 .agent(CASSETTE_MODEL)
                 .preamble(STREAMING_TOOLS_PREAMBLE)
                 .tool(Adder)
@@ -256,17 +252,20 @@ async fn a_fragmented_tool_call_stream_reassembles_without_the_provider_consts()
     assert!(parsed.is_object(), "{parsed}");
 }
 
-/// `openai::Client` exposes a Responses/Completions split that
-/// `llamacpp::Client` does not have.
+/// The Responses/Completions split survives as two *configurations* rather
+/// than one client's two surfaces, and llama.cpp is reachable through the
+/// chat-completions one.
+///
+/// The model-first construction — build the bound completion model, then turn
+/// it into an agent builder — is this cell's own spelling, and the only place
+/// in the suite it is exercised.
 #[tokio::test]
 async fn agent_prompt_through_completions_api() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/agent_prompt_through_completions_api",
         |client| async move {
             let agent = client
-                .clone()
-                .completion_model(CASSETTE_MODEL)
-                .completions_api()
+                .completion(CASSETTE_MODEL)
                 .into_agent_builder()
                 .preamble("You are a helpful assistant.")
                 .build();
@@ -282,39 +281,40 @@ async fn agent_prompt_through_completions_api() {
     .await;
 }
 
-/// `raw_completion` on this path normalizes under the `openai` descriptor
-/// name, not `llamacpp`.
+/// `raw` on this path is the server's verbatim chat-completions payload, and
+/// it rides under the `openai` descriptor name rather than `llamacpp`.
 #[tokio::test]
 async fn raw_response_text_matches_normalized_choice_text() {
     with_llamacpp_bare_openai_cassette(
         "bare_openai_client/raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let client = client.completions_api();
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .build();
-            // One request, two views: `raw_completion` returns llama.cpp's own
-            // wire response and the provider-local conversion produces exactly
-            // what `CompletionModel::completion` would have returned for it.
-            let raw = model
-                .raw_completion(request)
+            // One request, two views of the one reply: `raw` holds the
+            // server's own chat-completions JSON verbatim, and `choice` holds
+            // what the decoder folded it into. The assistant text must be the
+            // same text either way.
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw completions api request should succeed");
-            let raw_text = raw
-                .text_response()
-                .expect("raw completions api response should contain assistant text");
-            let response: rig::completion::CompletionResponse = raw
-                .normalize("openai")
-                .expect("raw completions api response should normalize");
+                .expect("completions api request should succeed");
+            assert_eq!(
+                response.provider, "openai",
+                "the `OPENAI` dialect names itself, whatever server answered"
+            );
+            let raw_text = response.raw["choices"][0]["message"]["content"]
+                .as_str()
+                .expect("raw response should carry the assistant text");
 
             let normalized_text = assistant_text_response(&response.choice)
                 .expect("normalized completions api response should contain assistant text");
 
             assert_nonempty_response(&normalized_text);
-            assert_nonempty_response(&raw_text);
-            assert_contains_all_case_insensitive(&raw_text, &["cedar", "maple"]);
+            assert_nonempty_response(raw_text);
+            assert_contains_all_case_insensitive(raw_text, &["cedar", "maple"]);
             assert_eq!(raw_text.trim(), normalized_text.trim());
         },
     )

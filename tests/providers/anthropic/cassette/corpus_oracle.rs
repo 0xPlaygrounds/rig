@@ -37,7 +37,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                     "default",
-                    client.completion_model(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6),
                 )),
             )
             .expect("a fresh key");

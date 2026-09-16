@@ -1,8 +1,7 @@
 use anyhow::{Context, Result};
-use rig::client::Nothing;
 use rig::integrations::cli_chatbot::ChatBotBuilder;
 use rig::prelude::*;
-use rig::providers::ollama;
+use rig::providers::ollama::wire::Ollama;
 use rig::{
     Embed, embeddings::EmbeddingsBuilder, loaders::PdfFileLoader,
     vector_store::in_memory_store::InMemoryVectorStore,
@@ -54,12 +53,12 @@ fn load_pdf(path: &Path) -> Result<Vec<String>> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize Ollama client
-    // because Ollama is local and does not require an api key, we pass in `Nothing`
-    let client = ollama::Client::builder()
-        .api_key(Nothing)
-        .base_url("http://localhost:11434/v1")
-        .build()?;
+    // Initialize the Ollama provider
+    // because Ollama is local and does not require an api key, we leave the
+    // credential unset
+    let client = Ollama::new()
+        .with_base_url("http://localhost:11434/v1")
+        .bound()?;
 
     // Load PDFs using Rig's built-in PDF loader
     let documents_dir = std::env::current_dir()?.join("examples/documents");
@@ -68,7 +67,7 @@ async fn main() -> Result<()> {
     println!("Successfully loaded and chunked PDF documents");
 
     // Create embedding model
-    let model = client.embedding_model("bge-m3");
+    let model = client.embedding("bge-m3", None);
 
     // Create embeddings builder
     let mut builder = EmbeddingsBuilder::new(model.clone());

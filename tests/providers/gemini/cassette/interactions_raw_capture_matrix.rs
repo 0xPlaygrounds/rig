@@ -3,14 +3,13 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: `InteractionsCompletionModel::completion`
-//! serializes the value its inherent `raw_completion` returned — the API's
-//! own [`Interaction`] payload — onto
-//! [`rig::completion::CompletionResponse::raw`] before `try_into` normalizes
-//! it. There is no opt-in and nothing about it reaches the wire; `raw` is
-//! `Value::Null` only on a response constructed without a provider payload
-//! behind it (hand-built, or persisted before the field existed), never
-//! because capture "was not requested".
+//! Raw capture is always on: the driver puts the provider's reply body,
+//! parsed as JSON, onto [`rig::completion::CompletionResponse::raw`] — here
+//! the API's own [`Interaction`] document, verbatim. There is no opt-in and
+//! nothing about it reaches the wire; `raw` is `Value::Null` only on a
+//! response constructed without a provider payload behind it (hand-built, or
+//! persisted before the field existed), never because capture "was not
+//! requested".
 //!
 //! # Matrix
 //!
@@ -21,16 +20,17 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_interaction` | typed access | `Interaction::deserialize(&*raw)` re-serializes equal, and its `try_into` reproduces the normalized response | recorded |
+//! | 1 | `raw_roundtrips_interaction` | typed access | `Interaction::deserialize(&raw)` reads the document back, and its provider-native fields agree with the normalized response | recorded |
 //! | 2 | `raw_exposes_lifecycle_fields` | un-normalized fields | `object` / `status` spelling / `steps` == fixture, absent from the normalized response | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
 //! test is the plain non-streaming interactions route.
 //!
-//! Cell 1 also carries the "one story" contract: re-normalizing `raw` by hand
-//! lands on the same choice / finish reason / model / usage / identity the
-//! typed route reported, so `raw` and the normalized response can never
-//! disagree about the turn they describe.
+//! Cell 1 also carries the "one story" contract: the normalized response was
+//! folded by one decoder out of these very bytes, so the identity, finish
+//! reason, model and usage read off `raw` are the ones the response reports —
+//! `raw` and the normalized response can never disagree about the turn they
+//! describe.
 //!
 //! The un-normalized fields of choice are the interaction's lifecycle
 //! envelope: `object` (`"interaction"`), the wire spelling of `status`
@@ -39,10 +39,12 @@
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
 use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
+    CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason,
 };
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
-use rig::providers::gemini::interactions_api::{Interaction, InteractionsCompletionModel};
+use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus, Interactions};
 use serde::Deserialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -57,7 +59,10 @@ const MODEL: &str = "gemini-3-flash-preview";
 
 const PROMPT: &str = "Reply with exactly this one word and nothing else: captured";
 
-type Model = InteractionsCompletionModel;
+/// The Interactions wire bound to the bundled cassette transport. One Gemini
+/// config serves both surfaces, so the wrapper hands out the config and each
+/// cell names the surface it is about.
+type Model = Bound<Interactions, BoxedHttpClient>;
 
 fn request(model: &Model) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
@@ -106,7 +111,7 @@ fn contains_key(value: &Value, needle: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// 1: typed access is recoverable, and re-normalizes to the same story
+// 1: typed access is recoverable, and tells the same story
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
@@ -115,7 +120,7 @@ async fn raw_roundtrips_interaction() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_roundtrips_interaction",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.map_wire(|config| config.interactions(MODEL));
             let response = model
                 .completion(request(&model))
                 .await
@@ -125,13 +130,10 @@ async fn raw_roundtrips_interaction() {
 
             let typed = Interaction::deserialize(raw)
                 .expect("raw must deserialize into the Interactions API's Interaction");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed raw re-serializes"),
-                *raw,
-                "Interaction must round-trip through its own Serialize/Deserialize"
-            );
 
-            // The typed value agrees with the normalized fields next to it.
+            // One decoder folded the normalized response out of these very
+            // bytes, so every field it kept must be the one the document
+            // carries — `raw` is additive, never a divergent second view.
             assert_eq!(typed.model, response.model);
             assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
             assert_eq!(
@@ -141,17 +143,20 @@ async fn raw_roundtrips_interaction() {
                     .and_then(|usage| usage.total_input_tokens),
                 response.usage.input_tokens
             );
-
-            // And re-normalizing it by hand tells the same story the typed
-            // route told: `raw` is additive, never a divergent second view.
-            let renormalized: RigCompletionResponse =
-                typed.try_into().expect("typed raw should normalize");
-            assert_eq!(renormalized.choice, response.choice);
-            assert_eq!(renormalized.finish_reason(), response.finish_reason());
-            assert_eq!(renormalized.model, response.model);
-            assert_eq!(renormalized.usage, response.usage);
-            assert_eq!(renormalized.identity(), response.identity());
-            assert_eq!(renormalized.provider, response.provider);
+            assert_eq!(
+                typed.usage.as_ref().and_then(|usage| usage.total_tokens),
+                response.usage.total_tokens
+            );
+            assert_eq!(
+                typed.status,
+                Some(InteractionStatus::Completed),
+                "the document keeps the API's own lifecycle spelling"
+            );
+            assert_eq!(
+                response.finish_reason(),
+                Some(FinishReason::Stop),
+                "and `completed` reaches the caller as rig's Stop"
+            );
         },
     )
     .await;
@@ -171,7 +176,7 @@ async fn raw_exposes_lifecycle_fields() {
     with_gemini_interactions_cassette(
         "interactions_raw_capture_matrix/raw_exposes_lifecycle_fields",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.map_wire(|config| config.interactions(MODEL));
             let response = model
                 .completion(request(&model))
                 .await

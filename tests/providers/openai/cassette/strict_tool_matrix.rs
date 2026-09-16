@@ -31,7 +31,6 @@
 //! `crates/rig-core/src/providers/openai/responses_api/tests.rs`
 //! (`responses_function_tools_are_non_strict_by_default`).
 
-use rig::client::completion::CompletionClient;
 use rig::completion::{CompletionModel, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::prelude::*;
@@ -125,7 +124,7 @@ async fn non_strict_tool_omits_optional_argument_blocking() {
     with_openai_cassette(
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_blocking",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O_MINI);
+            let model = client.responses.completion(openai::GPT_4O_MINI);
             let request = model
                 .completion_request(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -153,7 +152,7 @@ async fn non_strict_tool_omits_optional_argument_streaming() {
     with_openai_cassette(
         "strict_tool_matrix/non_strict_tool_omits_optional_argument_streaming",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O_MINI);
+            let model = client.responses.completion(openai::GPT_4O_MINI);
             let request = model
                 .completion_request(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -193,8 +192,9 @@ async fn strict_tools_opt_in_sends_strict_true() {
         "strict_tool_matrix/strict_tools_opt_in_sends_strict_true",
         |client| async move {
             let model = client
-                .completion_model(openai::GPT_4O_MINI)
-                .with_strict_tools();
+                .responses
+                .completion(openai::GPT_4O_MINI)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request(OMIT_SOURCE_PROMPT)
                 .preamble(PREAMBLE.to_string())
@@ -237,6 +237,7 @@ async fn agent_tool_turn_sends_strict_false() {
         "strict_tool_matrix/agent_tool_turn_sends_strict_false",
         |client| async move {
             let agent = client
+                .responses
                 .agent(openai::GPT_4O_MINI)
                 .preamble("You are a calculator. Use the add tool for arithmetic, then answer.")
                 .tool(Adder)

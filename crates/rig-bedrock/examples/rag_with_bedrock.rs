@@ -4,7 +4,6 @@ use rig_agent::prelude::*;
 use rig_bedrock::client::Client;
 use rig_bedrock::completion::AMAZON_NOVA_LITE;
 use rig_bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0;
-use rig_core::client::EmbeddingsClient;
 use rig_core::{embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore};
 use serde::Serialize;
 use tracing::info;
@@ -28,7 +27,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .init();
 
     let client = Client::from_env()?;
-    let embedding_model = client.embedding_model_with_ndims(AMAZON_TITAN_EMBED_TEXT_V2_0, 256);
+    let embedding_model = client.embedding(AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

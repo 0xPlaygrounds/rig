@@ -9,27 +9,27 @@ use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::{GPT_4O, GPT_5_MINI, GPT_5_NANO};
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{
     Wire, cells,
     extra::{Approval, ErrorProbe, batch_hold, despawn_waits_for_the_stream, error_facts},
 };
 
-fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_5_MINI),
-        route: Some(client.completion_model(GPT_5_NANO)),
+        model: client.responses.completion(GPT_5_MINI),
+        route: Some(client.responses.completion(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
     }
 }
 
 /// The recording's own model, for the cell over a breadth recording.
-fn legacy(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn legacy(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_4O),
+        model: client.responses.completion(GPT_4O),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -59,7 +59,9 @@ async fn error_facts_unary() {
         "error_envelope/nonexistent_model_error_preserves_status_and_body",
         |client| async move {
             error_facts(
-                client.completion_model("gpt-4o-mini-nonexistent-rig-test"),
+                client
+                    .responses
+                    .completion("gpt-4o-mini-nonexistent-rig-test"),
                 ErrorProbe {
                     prompt: "Say hi.",
                     max_tokens: Some(16),
@@ -82,7 +84,9 @@ async fn error_facts_streamed() {
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
             error_facts(
-                client.completion_model("gpt-4o-mini-nonexistent-rig-test"),
+                client
+                    .responses
+                    .completion("gpt-4o-mini-nonexistent-rig-test"),
                 ErrorProbe {
                     prompt: "Say hi.",
                     max_tokens: Some(16),

@@ -29,30 +29,36 @@
 //! including `additional_params` flattening, is pinned separately by
 //! `providers::internal::transcription`'s own unit tests
 //! (`flattens_additional_params_onto_the_form` and its siblings). The model
-//! and client axes below likewise select a fixture rather than exercising a
-//! branch — `Client` and `CompletionsClient` build the identical request — and
-//! are here because the decode runs through each of them end to end.
+//! axis below likewise selects a fixture rather than exercising a branch —
+//! every cell builds the identical request — and the cells are here because
+//! the decode runs end to end for each recorded payload.
 //!
 //! **Why this matrix is smaller than the others.** The *response* space it
 //! covers is small: the endpoint reports usage in exactly two shapes, and both
-//! are recorded, through both client extensions, alongside a richer response
-//! format and a rejected request. The shapes rig must tolerate but no live
+//! are recorded twice over, alongside a richer response format and a
+//! rejected request. The shapes rig must tolerate but no live
 //! model produces — a third `type`, a payload carrying both a duration and
 //! token counts, a partial token payload, an absent `usage`, an explicit
 //! `null` — are unit cells beside the fix, because no recording can produce
 //! them. Groq, Azure OpenAI, Venice and HuggingFace share this response type;
 //! their own usage shapes are outside this matrix.
 //!
-//! | # | cell | model | client | usage shape | status |
-//! |---|------|-------|--------|-------------|--------|
-//! | 1 | `whisper_reports_duration_usage` | whisper-1 | responses | duration | recorded |
-//! | 2 | `gpt_4o_transcribe_reports_token_usage` | gpt-4o-transcribe | responses | tokens | recorded |
-//! | 3 | `gpt_4o_mini_transcribe_reports_token_usage` | gpt-4o-mini-transcribe | responses | tokens | recorded |
-//! | 4 | `completions_client_reports_duration_usage` | whisper-1 | completions | duration | recorded |
-//! | 5 | `completions_client_reports_token_usage` | gpt-4o-transcribe | completions | tokens | recorded |
-//! | 6 | `verbose_json_still_reports_duration_usage` | whisper-1 | responses | duration (richer body) | recorded |
-//! | 7 | `transcript_still_reaches_the_normalized_response` | whisper-1 | responses | duration | recorded |
-//! | 8 | `rejected_request_surfaces_the_provider_body` | whisper-1 | responses | none (400) | recorded |
+//! | # | cell | model | usage shape | status |
+//! |---|------|-------|-------------|--------|
+//! | 1 | `whisper_reports_duration_usage` | whisper-1 | duration | recorded |
+//! | 2 | `gpt_4o_transcribe_reports_token_usage` | gpt-4o-transcribe | tokens | recorded |
+//! | 3 | `gpt_4o_mini_transcribe_reports_token_usage` | gpt-4o-mini-transcribe | tokens | recorded |
+//! | 4 | `completions_client_reports_duration_usage` | whisper-1 | duration | recorded |
+//! | 5 | `completions_client_reports_token_usage` | gpt-4o-transcribe | tokens | recorded |
+//! | 6 | `verbose_json_still_reports_duration_usage` | whisper-1 | duration (richer body) | recorded |
+//! | 7 | `transcript_still_reaches_the_normalized_response` | whisper-1 | duration | recorded |
+//! | 8 | `rejected_request_surfaces_the_provider_body` | whisper-1 | none (400) | recorded |
+//!
+//! Cells 4 and 5 were recorded while the two completion APIs were two client
+//! extensions over one credential. `/audio/transcriptions` belongs to the
+//! `OpenAI` configuration alone — whichever completion API a caller pairs it
+//! with — so they now run the same wire as cells 1 and 2 and stand as a
+//! second recording of each billing shape.
 //!
 //! Unit cells beside the fix
 //! (`usage_decodes_both_billing_shapes_and_keeps_unknown_ones`): both live
@@ -61,7 +67,6 @@
 //! duration and drop the counts), a partial token payload, an unmodeled third
 //! shape carried verbatim, an absent `usage`, and an explicit `null`.
 
-use rig::client::transcription::TranscriptionClient;
 use rig::providers::openai::{self, TranscriptionUsage};
 use rig::transcription::TranscriptionModel;
 use serde_json::json;
@@ -74,7 +79,7 @@ fn audio() -> Vec<u8> {
 }
 
 /// The provider's own payload, recovered from the normalized response's
-/// `raw` field — the same value `raw_transcription` would have returned.
+/// `raw` field — the endpoint's reply, beside the normalized view of it.
 fn raw(response: &rig::transcription::TranscriptionResponse) -> openai::TranscriptionResponse {
     serde_json::from_value(response.raw.clone())
         .expect("raw payload should round-trip to OpenAI's own transcription type")
@@ -99,7 +104,8 @@ async fn whisper_reports_duration_usage() {
         "transcription_usage_matrix/whisper_reports_duration_usage",
         |client| async move {
             let response = client
-                .transcription_model(openai::WHISPER_1)
+                .chat
+                .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
                 .filename(Some("audio.mp3".to_owned()))
@@ -123,7 +129,8 @@ async fn gpt_4o_transcribe_reports_token_usage() {
         "transcription_usage_matrix/gpt_4o_transcribe_reports_token_usage",
         |client| async move {
             let response = client
-                .transcription_model("gpt-4o-transcribe")
+                .chat
+                .transcription("gpt-4o-transcribe")
                 .transcription_request()
                 .data(audio())
                 .filename(Some("audio.mp3".to_owned()))
@@ -160,7 +167,8 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
         "transcription_usage_matrix/gpt_4o_mini_transcribe_reports_token_usage",
         |client| async move {
             let response = client
-                .transcription_model("gpt-4o-mini-transcribe")
+                .chat
+                .transcription("gpt-4o-mini-transcribe")
                 .transcription_request()
                 .data(audio())
                 .filename(Some("audio.mp3".to_owned()))
@@ -178,16 +186,16 @@ async fn gpt_4o_mini_transcribe_reports_token_usage() {
     .await;
 }
 
-/// The Chat Completions client reaches the same shared transcription model, so
-/// both extensions must decode the same payload.
+/// A second recording of the duration shape, taken through the Chat
+/// Completions credential: the same transcription wire must decode it.
 #[tokio::test]
 async fn completions_client_reports_duration_usage() {
     with_openai_transcription_cassette(
         "transcription_usage_matrix/completions_client_reports_duration_usage",
         |client| async move {
             let response = client
-                .completions_api()
-                .transcription_model(openai::WHISPER_1)
+                .chat
+                .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
                 .filename(Some("audio.mp3".to_owned()))
@@ -211,8 +219,8 @@ async fn completions_client_reports_token_usage() {
         "transcription_usage_matrix/completions_client_reports_token_usage",
         |client| async move {
             let response = client
-                .completions_api()
-                .transcription_model("gpt-4o-transcribe")
+                .chat
+                .transcription("gpt-4o-transcribe")
                 .transcription_request()
                 .data(audio())
                 .filename(Some("audio.mp3".to_owned()))
@@ -240,7 +248,8 @@ async fn verbose_json_still_reports_duration_usage() {
         "transcription_usage_matrix/verbose_json_still_reports_duration_usage",
         |client| async move {
             let response = client
-                .transcription_model(openai::WHISPER_1)
+                .chat
+                .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
                 .filename(Some("audio.mp3".to_owned()))
@@ -274,7 +283,8 @@ async fn transcript_still_reaches_the_normalized_response() {
         "transcription_usage_matrix/transcript_still_reaches_the_normalized_response",
         |client| async move {
             let response = client
-                .transcription_model(openai::WHISPER_1)
+                .chat
+                .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
                 .filename(Some("audio.mp3".to_owned()))
@@ -300,7 +310,8 @@ async fn rejected_request_surfaces_the_provider_body() {
         "transcription_usage_matrix/rejected_request_surfaces_the_provider_body",
         |client| async move {
             let Err(error) = client
-                .transcription_model(openai::WHISPER_1)
+                .chat
+                .transcription(openai::WHISPER_1)
                 .transcription_request()
                 .data(audio())
                 .filename(Some("audio.mp3".to_owned()))

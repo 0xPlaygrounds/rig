@@ -3,21 +3,28 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. llama.cpp is driven by the shared OpenAI Chat
-//! Completions model (`openai::GenericCompletionModel<Llamacpp>`), whose
-//! wire type for this provider is [`llamacpp::CompletionResponse`] — OpenAI's
-//! payload plus llama.cpp's `timings`. Every completion the seam returns
-//! therefore carries `raw`: the value
-//! [`raw_completion`](rig::providers::openai::GenericCompletionModel::raw_completion)
-//! would have returned, serialized with `serde_json::to_value` before
-//! normalization. Nothing about it is sent to the server. `raw == Value::Null`
-//! means only that a `CompletionResponse` was built by hand without a provider
-//! response behind it, which no cell here can produce.
+//! Capture is always on. llama.cpp is the `LLAMACPP` dialect of the OpenAI
+//! `Chat` wire, and the driver sets `raw` from the reply's bytes, so `raw` is
+//! the server's response *document* — not a re-serialization of whatever type
+//! the decoder parsed. Nothing about it is sent to the server.
+//! `raw == Value::Null` means only that a `CompletionResponse` was built by
+//! hand with no provider payload behind it, which no cell here can produce.
+//!
+//! Two things follow from `raw` being the document, and this file pins both.
 //!
 //! The chat-completions body carries fields the normalized
 //! [`rig::completion::CompletionResponse`] has no home for — `object`,
-//! `created`, `system_fingerprint`, and llama.cpp's own `timings` — and those
-//! are what cells 2 and 4 read back through `raw`.
+//! `created`, `system_fingerprint`, and llama.cpp's own `timings` — and a
+//! caller reaches them through `raw`. That is cells 2 and 4.
+//!
+//! And `raw` reads back into llama.cpp's own response type,
+//! [`llamacpp::CompletionResponse`](rig::providers::llamacpp::CompletionResponse),
+//! which is the documented typed escape hatch. Cells 1 and 3 use it: 1 that
+//! the document parses, 3 that every normalized field the decoder produced
+//! agrees with the provider-native field it came from. Cell 3 is deliberately
+//! *not* a comparison of two normalizations — there is one decoder and one
+//! mapping now, so comparing it to a second mapping would compare it to a
+//! copy of itself.
 //!
 //! # Matrix
 //!
@@ -27,9 +34,9 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_provider_type` | typed access | `llamacpp::CompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
+//! | 1 | `raw_reads_back_as_the_provider_type` | typed access | `raw` is the recorded reply document and `llamacpp::CompletionResponse::deserialize(&raw)` parses it | recorded |
 //! | 2 | `raw_exposes_envelope_fields` | provider-only fields | `object`/`created`/`system_fingerprint` in `raw` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized response equals `raw` re-normalized (`normalize`) and the fixture body re-normalized | recorded |
+//! | 3 | `normalized_fields_match_the_typed_raw` | normalized view | every normalized field equals the provider-native field on `raw` that produced it | recorded |
 //! | 4 | `raw_preserves_the_timings_the_openai_type_drops` | Part 4: dropped fields | `timings` survives into `raw`; the same bytes read as `openai::CompletionResponse` lose it | recorded |
 //!
 //! Cell 4 is the one that justifies this provider having its own response
@@ -37,19 +44,25 @@
 //! the only such accounting a caller gets — for local inference,
 //! `predicted_per_second` is the number people watch. The shared
 //! `openai::CompletionResponse` has neither a field for it nor a catch-all, so
-//! a provider that reuses that type drops it silently, while the *streaming*
-//! path keeps it, because `StreamingCompletionChunk` does carry a
-//! `#[serde(flatten)]` catch-all. The asymmetry is real and cell 4 plus
-//! `raw_stream_capture_matrix`'s timings cell are what pin both halves.
+//! a caller who reads `raw` through that type drops it silently, while
+//! `llamacpp::CompletionResponse` keeps it. The asymmetry is real and cell 4
+//! plus `raw_stream_capture_matrix`'s timings cell are what pin both halves.
+//!
+//! The scenario literals — and therefore the fixture filenames — keep the
+//! names they were recorded under; two cell names changed because the old
+//! ones described a re-serialization fixed point and a re-normalization that
+//! the code no longer performs.
 //!
 //! **Server**: the default configuration — `unsloth/Qwen3-1.7B-GGUF` Q4_K_M,
 //! `--jinja --seed 42 --temp 0 -c 4096`, `llama-server` b10499-6d05498.
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_capture_matrix -- --test-threads=1`
 
-use rig::completion::NormalizeCompletionResponse as _;
-use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
-use rig::prelude::*;
+use rig::completion::{
+    CompletionModel, CompletionRequest, CompletionResponse as RigCompletionResponse,
+    FinishReason,
+};
+use rig::message::AssistantContent;
 use rig::providers::{llamacpp, openai};
 use serde::Deserialize;
 use serde_json::Value;
@@ -63,7 +76,7 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 /// Qwen3 spends tokens on a reasoning trace before the one-word answer and the
 /// chat-completions route has no `think` switch, so the cap is generous
 /// enough that the turn stops on its own (`finish_reason: "stop"`).
-fn request(model: &llamacpp::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
 }
 
@@ -136,47 +149,87 @@ fn assert_wire_value_matches(live: &Value, recorded: &Value, field: &str) {
     }
 }
 
-fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = Value::Null;
-    serde_json::to_value(&response).expect("normalized response should serialize")
+/// The normalized finish reason a recorded `finish_reason` string maps to.
+fn finish_reason_of(native: &str) -> FinishReason {
+    match native {
+        "stop" => FinishReason::Stop,
+        "length" => FinishReason::Length,
+        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
+    }
+}
+
+fn text_of(choice: &[AssistantContent]) -> String {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Run one recorded turn and hand back the response it produced.
+async fn observe(scenario: &'static str) -> RigCompletionResponse {
+    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let sink = std::sync::Arc::clone(&observed);
+    with_llamacpp_cassette(scenario, |client| async move {
+        let model = client.completion(CASSETTE_MODEL);
+        let response = model
+            .completion(request(&model))
+            .await
+            .expect("completion should succeed");
+        *sink.lock().expect("observation lock") = Some(response);
+    })
+    .await;
+
+    observed
+        .lock()
+        .expect("observation lock")
+        .take()
+        .expect("the test body must have captured the response")
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the raw_completion value, serialized
+// 1: raw is the reply document, and it reads back as the provider's type
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
-async fn raw_round_trips_provider_type() {
+async fn raw_reads_back_as_the_provider_type() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
-    with_llamacpp_cassette(
-        "raw_capture_matrix/raw_round_trips_provider_type",
-        |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
-            let response = model
-                .completion(request(&model))
-                .await
-                .expect("completion should succeed");
-
-            let raw = &response.raw;
-            let typed = llamacpp::CompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into llamacpp::CompletionResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("provider type should serialize"),
-                *raw,
-                "llamacpp::CompletionResponse must round-trip through its own serde"
-            );
-
-            // The typed view agrees with the normalized one on what the model
-            // said, so raw is a superset, not a divergent copy.
-            assert_eq!(Some(typed.openai.model.as_str()), response.model.as_deref());
-            assert_eq!(response.provider, LLAMACPP_PROVIDER);
-            assert!(!response.choice.is_empty());
-        },
-    )
-    .await;
+    let response = observe("raw_capture_matrix/raw_round_trips_provider_type").await;
 
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_envelope(&body, scenario);
+
+    // `raw` is the reply document. On replay the harness serves the scrubbed
+    // fixture back, so the two are the same bytes; a recording pass sees the
+    // live values behind the scrubber's placeholders, and the claim it can
+    // make is that the document has the same fields.
+    match CassetteMode::current() {
+        CassetteMode::Replay => assert_eq!(
+            response.raw, body,
+            "raw must be the reply document the server sent, verbatim"
+        ),
+        CassetteMode::Record => {
+            let (live, recorded) = (
+                response.raw.as_object().expect("raw is an object"),
+                body.as_object().expect("the recorded body is an object"),
+            );
+            assert_eq!(
+                live.keys().collect::<Vec<_>>(),
+                recorded.keys().collect::<Vec<_>>(),
+                "raw and the recording must be the same document shape"
+            );
+        }
+    }
+
+    // And the document reads back through llama.cpp's own response type,
+    // which is the typed escape hatch `raw`'s documentation points at.
+    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
+        .expect("raw must deserialize into llamacpp::CompletionResponse");
+    assert_eq!(Some(typed.openai.model.as_str()), response.model.as_deref());
+    assert_eq!(response.provider, LLAMACPP_PROVIDER);
+    assert!(!response.choice.is_empty());
     llamacpp::CompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response");
 }
@@ -188,36 +241,20 @@ async fn raw_round_trips_provider_type() {
 #[tokio::test]
 async fn raw_exposes_envelope_fields() {
     let scenario = "raw_capture_matrix/raw_exposes_envelope_fields";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
-    with_llamacpp_cassette(
-        "raw_capture_matrix/raw_exposes_envelope_fields",
-        |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
-            let response = model
-                .completion(request(&model))
-                .await
-                .expect("completion should succeed");
+    let response = observe("raw_capture_matrix/raw_exposes_envelope_fields").await;
 
-            let normalized = normalized_without_raw(response.clone());
-            for field in ["object", "created", "system_fingerprint"] {
-                assert!(
-                    normalized.get(field).is_none(),
-                    "normalized CompletionResponse must not grow a `{field}` field"
-                );
-            }
+    let mut normalized = response.clone();
+    normalized.raw = Value::Null;
+    let normalized =
+        serde_json::to_value(&normalized).expect("normalized response should serialize");
+    for field in ["object", "created", "system_fingerprint"] {
+        assert!(
+            normalized.get(field).is_none(),
+            "normalized CompletionResponse must not grow a `{field}` field"
+        );
+    }
 
-            let raw = response.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
-        },
-    )
-    .await;
-
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = response.raw;
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_envelope(&body, scenario);
     for field in ["object", "system_fingerprint"] {
@@ -245,89 +282,81 @@ async fn raw_exposes_envelope_fields() {
 }
 
 // ---------------------------------------------------------------------------
-// 3: raw and the typed route tell one story
+// 3: the normalized view agrees with the provider-native one it came from
 // ---------------------------------------------------------------------------
 
-/// The normalized response, with `raw` stripped, must equal the normalization
-/// of `raw` read back through the provider type — and equal the normalization
-/// of the recorded wire body. Capture is a pure serialization of the value
-/// normalization consumed: it neither alters a normalized field nor diverges
-/// from the bytes the server sent.
+/// Every normalized field must equal the provider-native field on `raw` that
+/// produced it.
+///
+/// This is the decoder's mapping, asserted against the document it read
+/// rather than against a second mapping of the same document: there is one
+/// decoder now, so `raw.normalize(..)` would have compared the mapping to a
+/// copy of itself.
 #[tokio::test]
-async fn normalized_fields_equal_raw_renormalized() {
+async fn normalized_fields_match_the_typed_raw() {
     let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
-    with_llamacpp_cassette(
-        "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
-        |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
-            let response = model
-                .completion(request(&model))
-                .await
-                .expect("completion should succeed");
+    let response = observe("raw_capture_matrix/normalized_fields_equal_raw_renormalized").await;
 
-            let raw = &response.raw;
-            // The transport request id lives in the response headers, not the
-            // body, so the raw-derived normalization is given the same one.
-            let from_raw = llamacpp::CompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into llamacpp::CompletionResponse")
-                .normalize(LLAMACPP_PROVIDER)
-                .expect("raw must normalize")
-                .with_optional_provider_request_id(response.provider_request_id.clone());
+    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
+        .expect("raw must deserialize into llamacpp::CompletionResponse");
+    let native = &typed.openai;
+    let choice = native
+        .choices
+        .first()
+        .expect("the recorded turn must carry a choice");
 
-            assert_eq!(response.provider, LLAMACPP_PROVIDER);
-            assert_eq!(from_raw.provider, response.provider);
-            assert_eq!(from_raw.model, response.model);
-            assert_eq!(from_raw.finish_reason(), response.finish_reason());
-            assert_eq!(from_raw.identity(), response.identity());
-            assert_eq!(from_raw.usage, response.usage);
-            assert!(!response.choice.is_empty());
-            assert_eq!(
-                normalized_without_raw(from_raw),
-                normalized_without_raw(response.clone()),
-                "re-normalizing raw must reproduce the normalized response field-for-field"
-            );
+    assert_eq!(response.provider, LLAMACPP_PROVIDER);
+    assert_eq!(response.model.as_deref(), Some(native.model.as_str()));
+    assert_eq!(response.response_id.as_deref(), Some(native.id.as_str()));
+    assert_eq!(
+        response.finish_reason(),
+        Some(finish_reason_of(&choice.finish_reason))
+    );
+    let usage = native
+        .usage
+        .as_ref()
+        .expect("llama.cpp reports usage on every chat completion");
+    assert_eq!(
+        response.usage.input_tokens,
+        Some(usage.prompt_tokens as u64)
+    );
+    assert_eq!(
+        response.usage.output_tokens,
+        usage.completion_tokens.map(|tokens| tokens as u64)
+    );
+    assert_eq!(response.usage.total_tokens, Some(usage.total_tokens as u64));
+    // llama.cpp reports no request-id response header, so the driver has
+    // nothing to attach — a documented outcome rather than a gap.
+    assert_eq!(response.provider_request_id, None);
 
-            *sink.lock().expect("capture mutex") = Some(response);
-        },
-    )
-    .await;
-
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
+    // And the same fields against the fixture bytes, so a recording that
+    // stopped carrying them fails here rather than silently agreeing with an
+    // empty document.
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_envelope(&body, scenario);
-    let from_wire = llamacpp::CompletionResponse::deserialize(&body)
-        .expect("recorded body must be a chat-completions response")
-        .normalize(LLAMACPP_PROVIDER)
-        .expect("recorded body must normalize")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
-    let mut live = normalized_without_raw(response);
-    let mut from_wire = normalized_without_raw(from_wire);
-    // The response id is a generated per-call id the scrubber placeholders
-    // on disk; only a replay compares it exactly. Live, it must still be
-    // present on both sides with the wire's shape. `model` is the same
-    // situation for a different reason: llama.cpp echoes the *filesystem
-    // path* of the loaded GGUF, and `scrub_local_filesystem_paths` rewrites
-    // it to `/REDACTED_PATH/<basename>` on the way to disk — so the live
-    // value and the recorded value cannot be equal on a recording pass, and
-    // demanding it would make this cell unrecordable rather than correct.
-    for field in ["response_id", "model"] {
-        assert_wire_value_matches(&live, &from_wire, field);
-        if matches!(CassetteMode::current(), CassetteMode::Record) {
-            live[field] = Value::Null;
-            from_wire[field] = Value::Null;
-        }
-    }
     assert_eq!(
-        live, from_wire,
-        "the normalized response must equal the normalization of the wire bytes \
-         it was built from"
+        text_of(&response.choice),
+        body["choices"][0]["message"]["content"]
+            .as_str()
+            .expect("the recorded turn must carry assistant text")
     );
+    assert_eq!(
+        response.finish_reason(),
+        Some(finish_reason_of(
+            body["choices"][0]["finish_reason"]
+                .as_str()
+                .expect("the recorded turn must carry a finish reason")
+        ))
+    );
+    // The response id is a generated per-call id the scrubber placeholders on
+    // disk; only a replay compares it exactly. `model` is the same situation
+    // for a different reason: llama.cpp echoes the *filesystem path* of the
+    // loaded GGUF, and `scrub_local_filesystem_paths` rewrites it to
+    // `/REDACTED_PATH/<basename>` on the way to disk, so the live value and
+    // the recorded value cannot be equal on a recording pass.
+    for field in ["id", "model"] {
+        assert_wire_value_matches(&response.raw, &body, field);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -346,62 +375,39 @@ async fn normalized_fields_equal_raw_renormalized() {
 #[tokio::test]
 async fn raw_preserves_the_timings_the_openai_type_drops() {
     let scenario = "raw_capture_matrix/raw_preserves_timings";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let response = observe("raw_capture_matrix/raw_preserves_timings").await;
 
-    with_llamacpp_cassette(
-        "raw_capture_matrix/raw_preserves_timings",
-        |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
-            let raw = model
-                .raw_completion(request(&model))
-                .await
-                .expect("raw completion should succeed");
+    let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
+        .expect("raw must deserialize into llamacpp::CompletionResponse");
+    let timings = typed
+        .timings
+        .clone()
+        .expect("llama.cpp reports timings on every chat completion");
+    assert!(
+        timings.predicted_n.is_some_and(|n| n > 0),
+        "the turn generated tokens, so predicted_n must be positive: {timings:?}"
+    );
+    assert!(
+        timings.predicted_per_second.is_some_and(|rate| rate > 0.0),
+        "tokens-per-second is the accounting this field exists for: {timings:?}"
+    );
+    assert_eq!(
+        typed.predicted_tokens_per_second(),
+        timings.predicted_per_second,
+        "the convenience accessor must read the field it documents"
+    );
 
-            let timings = raw
-                .timings
-                .clone()
-                .expect("llama.cpp reports timings on every chat completion");
-            assert!(
-                timings.predicted_n.is_some_and(|n| n > 0),
-                "the turn generated tokens, so predicted_n must be positive: {timings:?}"
-            );
-            assert!(
-                timings.predicted_per_second.is_some_and(|rate| rate > 0.0),
-                "tokens-per-second is the accounting this field exists for: {timings:?}"
-            );
-            assert_eq!(
-                raw.predicted_tokens_per_second(),
-                timings.predicted_per_second,
-                "the convenience accessor must read the field it documents"
-            );
+    // `cache_n` and the normalized cached-token count are populated
+    // independently by the server; they must agree.
+    assert_eq!(
+        timings.cache_n, response.usage.cached_input_tokens,
+        "timings.cache_n and usage.prompt_tokens_details.cached_tokens \
+         describe the same thing"
+    );
 
-            // `cache_n` and the normalized cached-token count are populated
-            // independently by the server; they must agree.
-            let normalized = raw
-                .clone()
-                .normalize(LLAMACPP_PROVIDER)
-                .expect("raw should normalize");
-            assert_eq!(
-                timings.cache_n, normalized.usage.cached_input_tokens,
-                "timings.cache_n and usage.prompt_tokens_details.cached_tokens \
-             describe the same thing"
-            );
-
-            *sink.lock().expect("capture mutex") =
-                Some(serde_json::to_value(&raw).expect("raw should serialize"));
-        },
-    )
-    .await;
-
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
     let (_, body) = recorded_json_interaction(scenario);
     assert_eq!(
-        raw.get("timings"),
+        response.raw.get("timings"),
         body.get("timings"),
         "raw.timings must be the recorded wire value verbatim"
     );

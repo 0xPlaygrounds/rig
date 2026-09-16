@@ -33,14 +33,12 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, Message, NormalizeCompletionResponse};
+use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
-use rig::prelude::*;
-use rig::providers::mistral;
 use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
-use super::support::with_mistral_history_roundtrip_cassette_result;
+use super::support::{BoundMistral, with_mistral_history_roundtrip_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -163,7 +161,10 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(model: &mistral::CompletionModel, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl CompletionModel + Clone),
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     let mut builder = model.completion_request(prompt(cell.shape)).max_tokens(24);
     for message in history(cell.shape) {
         builder = builder.message(message);
@@ -188,14 +189,16 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: mistral::Client, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client.completion_model(model_name(cell.model));
+async fn run_cell(client: BoundMistral, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.completion(model_name(cell.model));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
-            let response = model.raw_completion(request(&model, cell)).await?;
-            let normalized = response.normalize("mistral")?;
+            // The provider-native surface: the reply's verbatim JSON, which
+            // the driver keeps on `CompletionResponse::raw`, read the way a
+            // caller reaching past the normalized view reads it.
+            let response = model.completion(request(&model, cell)).await?;
             Observation {
-                text: normalized_text(&normalized.choice),
+                text: content_text(&response.raw["choices"][0]["message"]["content"]),
                 saw_terminal: true,
             }
         }

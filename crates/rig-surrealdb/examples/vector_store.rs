@@ -1,5 +1,4 @@
-use rig_core::client::EmbeddingsClient;
-use rig_core::providers::openai;
+use rig_core::providers::openai::{self, wire::OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     Embed,
@@ -29,9 +28,9 @@ impl std::fmt::Display for TopicDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = openai::Client::from_env()?;
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Bind the OpenAI embeddings endpoint
+    let openai_client = OpenAI::from_env()?.bound()?;
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let surreal = Surreal::new::<Mem>(()).await?;
 

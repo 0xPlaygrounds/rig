@@ -10,10 +10,11 @@
 //! split — and always exposes the runtime-independent contracts explicitly as
 //! `PortableTool`, `PortableToolEmbedding`, and `PortableDynamicTool`. The
 //! classic API also lives at [`crate::agent::tool`]. Classic construction
-//! methods such as `client.agent(...)` come from
-//! [`crate::client::AgentClientExt`]; `use rig::prelude::*;` brings it in
-//! alongside the canonical `CompletionClient`, the same surface as before the
-//! split.
+//! methods such as `provider.agent(...)` come from
+//! [`crate::client::AgentProviderExt`]; `use rig::prelude::*;` brings it in
+//! alongside the model traits and the transport conveniences, so
+//! `openai::wire::OpenAI::from_env()?.bound()?.agent(openai::GPT_5_2)` needs
+//! no other import.
 //!
 //! # Companion integrations
 //!
@@ -38,34 +39,35 @@
 
 pub use rig_core::*;
 
-/// The bundled `reqwest` transport and its construction conveniences
-/// (`rig-reqwest`). Provider types default to the erased
-/// [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient) in every
-/// configuration; with the default `reqwest` feature, [`prelude`] carries
-/// [`rig_reqwest::client::DefaultTransportClient`] /
-/// [`rig_reqwest::client::DefaultTransportBuilder`], which fill that default
-/// with a [`rig_reqwest::ReqwestClient`] so `Client::new(key)` and
-/// `Client::from_env()` work without naming a transport. Without the feature,
-/// construct clients with `new_with(..)` / `.http_client(..)` and any
-/// `HttpClientExt` implementation.
+/// The bundled `reqwest` transport and its construction convenience
+/// (`rig-reqwest`). A provider's wire is bound to a transport to become a
+/// model, and that transport defaults to the erased
+/// [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient); with the
+/// default `reqwest` feature, [`prelude`] carries
+/// [`rig_reqwest::client::DefaultTransport`], which fills that default with a
+/// [`rig_reqwest::ReqwestClient`] so `Provider::from_env()?.bound()?` works
+/// without naming a transport. Without the feature, bind explicitly with
+/// [`Bind::bind`](rig_core::driver::Bind::bind) and any `HttpClientExt`
+/// implementation.
 #[cfg(feature = "reqwest")]
 #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
 pub use rig_reqwest;
 
 /// The bundled `tokio-tungstenite` websocket backend and its default-backend
 /// conveniences (`rig-tungstenite`), on native targets. With the `websocket`
-/// feature,
-/// `client.responses_websocket("gpt-5.4")` opens a session over it with no
+/// feature, `bound.responses_websocket()` opens a session over it with no
 /// backend named; without it, rig has no websocket backend and a session is
-/// opened with `connect_with(..)` and any
+/// opened with `responses_websocket_with(..)` and any
 /// [`rig_core::ws_client::WebSocketClientExt`] implementation.
 #[cfg(all(feature = "websocket", not(target_family = "wasm")))]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub use rig_tungstenite;
 
-/// Provider clients and models. Every transport-generic type defaults to the
-/// erased [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient); the
-/// `reqwest` feature supplies the value behind it.
+/// Provider configurations and their wires. A wire says what to send and how
+/// to read the reply; bind it to a transport with
+/// [`Bound`](rig_core::driver::Bound) to get a model. The transport defaults
+/// to the erased [`BoxedHttpClient`](rig_core::http_client::BoxedHttpClient);
+/// the `reqwest` feature supplies the value behind it.
 pub mod providers {
     pub use rig_core::providers::*;
 }
@@ -126,25 +128,30 @@ pub mod agent {
     }
 }
 
-/// Provider clients plus classic agent/extractor constructors.
+/// Provider construction: bind a wire to a transport, then build agents.
 pub mod client {
-    // Classic-runtime construction extensions: `agent()` / `extractor()` on any
-    // completion client (`AgentClientExt`) and `into_agent_builder()` on any
-    // completion model (`AgentModelExt`).
+    // Classic-runtime construction extensions: `agent()` / `extractor()` on
+    // any completion provider (`AgentProviderExt`) and `into_agent_builder()`
+    // on any completion model (`AgentModelExt`).
     #[cfg(feature = "agent")]
-    pub use rig_agent::client::{AgentClientExt, AgentModelExt};
+    pub use rig_agent::client::{AgentModelExt, AgentProviderExt};
 
-    // The full portable provider-client surface, including the canonical
-    // `CompletionClient`. `AgentClientExt` is a distinct name, so there is no
-    // shadow — just one canonical completion-client trait plus the classic
-    // construction extension.
+    // Binding a provider configuration (or a bare wire) to the transport it
+    // speaks over: `Bound` is the one model type, `Bind::bind` names the
+    // socket, and `CompletionProvider` is the seam `agent()` / `extractor()`
+    // hang on — satisfied by `Bound` for every wire-backed provider and
+    // implemented directly by the typed-transport ones.
+    pub use rig_core::driver::{Bind, Bound, CompletionProvider};
+
+    // The construction errors and environment handling every provider shares:
+    // `EnvError`, `ProviderClientError`, `VerifyError`.
     pub use rig_core::client::*;
 
-    // Default-transport construction (`Client::new(key)`, `from_env()`,
-    // `builder().…build()`) over the bundled reqwest transport.
+    // Default-transport construction — `Provider::from_env()?.bound()?` —
+    // over the bundled reqwest transport.
     #[cfg(feature = "reqwest")]
     #[cfg_attr(docsrs, doc(cfg(feature = "reqwest")))]
-    pub use rig_reqwest::client::{DefaultTransportBuilder, DefaultTransportClient};
+    pub use rig_reqwest::client::DefaultTransport;
 }
 
 /// Low-level completion contracts plus the classic runtime's errors.
@@ -175,21 +182,23 @@ pub mod prelude {
     // impl Tool for X {…}` keeps working.
     #[cfg(feature = "agent")]
     pub use crate::tool::{Tool, ToolContext};
-    // The classic construction extensions: `AgentClientExt` on a provider
-    // client and `AgentProviderExt` on a `Bound<P, H>` (both adding `agent()`
-    // / `extractor()`), alongside the canonical `CompletionClient` brought in
-    // by the `rig_core::prelude::*` glob below. None of the three share a
-    // method name with another, so all resolve without ambiguity and together
-    // restore the pre-split `client.completion_model(m)` / `client.agent(m)`
-    // surface as well as `provider.bound()?.agent(m)`.
+    // The construction extensions. `AgentProviderExt` adds `agent()` /
+    // `extractor()` to everything that builds a completion model
+    // (`rig_core::driver::CompletionProvider`, which every `Bound<P, H>` and
+    // every typed-transport client satisfies). `AgentClientExt` is the same
+    // sugar on the old provider clients, and goes with them; it shares no
+    // method name with the canonical `CompletionClient` brought in by the
+    // `rig_core::prelude::*` glob below, so both resolve unambiguously until
+    // then.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
         Agent, AgentClientExt, AgentModelExt, AgentProviderExt, MultiTurnStreamItem, PromptError,
         RunEvents, StreamingResult, StructuredOutputError, ToolSet,
     };
     pub use rig_core::prelude::*;
-    // Default-transport construction traits: `Client::new(..)` / `from_env()` /
-    // `builder().build()` over the bundled reqwest transport.
+    // Default-transport construction: `provider.bound()` over the bundled
+    // reqwest transport, plus the client layer's `Client::new(..)` /
+    // `from_env()` / `builder().build()` while it lasts.
     #[cfg(feature = "reqwest")]
     pub use rig_reqwest::prelude::*;
     // Default-backend websocket traits: `client.responses_websocket(..)` and

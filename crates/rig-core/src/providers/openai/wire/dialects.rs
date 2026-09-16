@@ -11,11 +11,20 @@
 //! Xiaomi MiMo) are here; their Anthropic halves belong to the Anthropic
 //! wire.
 
-use super::{Auth, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks, OutputCap, Quirks, Routing};
+use super::{
+    Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks, ImageBody,
+    OutputCap, Quirks, RerankQuirks, Routing, SpeechBody,
+};
 
 /// Azure reads its API version from the environment because every Azure
 /// route carries it and no default addresses the right API.
 pub(super) const AZURE_API_VERSION_ENV: &str = "AZURE_API_VERSION";
+
+/// Azure versions its speech endpoint separately from the rest.
+pub(super) const AZURE_AUDIO_API_VERSION_ENV: &str = "AZURE_AUDIO_API_VERSION";
+
+/// The speech `api-version` the Azure client defaulted to.
+pub(super) const AZURE_DEFAULT_AUDIO_API_VERSION: &str = "2025-04-01-preview";
 
 /// Official OpenAI Chat Completions.
 pub const OPENAI: Dialect = Dialect {
@@ -24,6 +33,7 @@ pub const OPENAI: Dialect = Dialect {
     api_key_env: "OPENAI_API_KEY",
     base_url_env: Some("OPENAI_BASE_URL"),
     request_id_header: Some("x-request-id"),
+    alternate_auth: None,
     quirks: Quirks::openai(),
 };
 
@@ -36,6 +46,13 @@ pub const AZURE: Dialect = Dialect {
     api_key_env: "AZURE_API_KEY",
     base_url_env: Some("AZURE_ENDPOINT"),
     request_id_header: None,
+    // `azure::Azure::from_env` accepted `AZURE_API_KEY` or `AZURE_TOKEN`,
+    // and they are not two spellings of one credential: the key goes out as
+    // `api-key`, the token as `Authorization: Bearer`.
+    alternate_auth: Some(AuthAlternative {
+        api_key_env: "AZURE_TOKEN",
+        auth: Auth::Bearer,
+    }),
     quirks: Quirks {
         auth: Auth::ApiKeyHeader,
         routing: Routing::AzureDeployment,
@@ -65,6 +82,7 @@ pub const DEEPSEEK: Dialect = Dialect {
     api_key_env: "DEEPSEEK_API_KEY",
     base_url_env: None,
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         // DeepSeek accepts only `json_object` response formats, passed
@@ -85,6 +103,7 @@ pub const GROQ: Dialect = Dialect {
     api_key_env: "GROQ_API_KEY",
     base_url_env: None,
     request_id_header: Some("x-request-id"),
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         emits_complete_single_chunk_tool_calls: true,
@@ -101,6 +120,7 @@ pub const HYPERBOLIC: Dialect = Dialect {
     api_key_env: "HYPERBOLIC_API_KEY",
     base_url_env: None,
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         // Hyperbolic does not support tool calling, and its
@@ -125,6 +145,7 @@ pub const MIRA: Dialect = Dialect {
     api_key_env: "MIRA_API_KEY",
     base_url_env: None,
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         // The gateway rejects tool parameters, OpenAI structured-output
@@ -147,6 +168,7 @@ pub const PERPLEXITY: Dialect = Dialect {
     api_key_env: "PERPLEXITY_API_KEY",
     base_url_env: None,
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         supports_tools: false,
@@ -167,6 +189,7 @@ pub const TOGETHER: Dialect = Dialect {
     api_key_env: "TOGETHER_API_KEY",
     base_url_env: None,
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         // Structured-output support is per model on Together, so the schema
@@ -193,6 +216,7 @@ pub const HUGGINGFACE: Dialect = Dialect {
     api_key_env: "HUGGINGFACE_API_KEY",
     base_url_env: None,
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         supports_response_format: false,
@@ -201,6 +225,9 @@ pub const HUGGINGFACE: Dialect = Dialect {
         // in the base URL.
         completion_path: "/v1/chat/completions",
         verify_path: "/api/whoami-v2",
+        // Transcription and image generation address `/{model}` at the
+        // router root, not a fixed path under `/v1`.
+        model_is_modality_path: true,
         rewrite: BodyRewrite::HuggingFaceRouter,
         ..Quirks::openai()
     },
@@ -213,6 +240,7 @@ pub const LLAMACPP: Dialect = Dialect {
     api_key_env: "LLAMACPP_API_KEY",
     base_url_env: Some("LLAMACPP_API_BASE_URL"),
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         // A server started without `--api-key` rejects a request that
         // carries an `Authorization` header.
@@ -225,6 +253,18 @@ pub const LLAMACPP: Dialect = Dialect {
         // `llama-server` serves its operational routes unversioned.
         verify_path: "/props",
         rewrite: BodyRewrite::LlamaCpp,
+        rerank: RerankQuirks {
+            // `llama-server` serves one rerank handler behind four aliases
+            // (`/rerank`, `/reranking`, `/v1/rerank`, `/v1/reranking`); the
+            // base URL already carries `/v1`.
+            path: "/rerank",
+            // It posts one task per document and waits for all of them,
+            // bounded only by memory — there is no documented cap, so this
+            // is the batching hint, matching the embeddings default rather
+            // than a number the server enforces.
+            max_documents: 1024,
+            sends_model_field: true,
+        },
         embedding: EmbeddingQuirks {
             // `llama-server`'s embeddings handler reads no width field, so
             // sending one would leave `ndims()` describing vectors the
@@ -244,6 +284,7 @@ pub const MISTRAL: Dialect = Dialect {
     api_key_env: "MISTRAL_API_KEY",
     base_url_env: None,
     request_id_header: Some("mistral-correlation-id"),
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         // Mistral rejects `stream_options` and reports usage on its final
@@ -274,6 +315,7 @@ pub const OPENROUTER: Dialect = Dialect {
     api_key_env: "OPENROUTER_API_KEY",
     base_url_env: None,
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         stream_include_usage: false,
@@ -282,6 +324,8 @@ pub const OPENROUTER: Dialect = Dialect {
         // reasoning blobs.
         native_finish_reason: true,
         reasoning_details: true,
+        // Its message conversion refused a provider file id outright.
+        accepts_file_ids: false,
         rewrite: BodyRewrite::OpenRouter,
         embedding: EmbeddingQuirks {
             requires_usage: false,
@@ -298,6 +342,7 @@ pub const VENICE: Dialect = Dialect {
     api_key_env: "VENICE_API_KEY",
     base_url_env: Some("VENICE_BASE_URL"),
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         image_generation_path: "/image/generate",
@@ -312,6 +357,7 @@ pub const DOUBLEWORD: Dialect = Dialect {
     api_key_env: "DOUBLEWORD_API_KEY",
     base_url_env: Some("DOUBLEWORD_BASE_URL"),
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         embedding: EmbeddingQuirks {
@@ -331,6 +377,7 @@ pub const ZAI: Dialect = Dialect {
     api_key_env: "ZAI_API_KEY",
     base_url_env: Some("ZAI_API_BASE"),
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         ..Quirks::openai()
@@ -350,6 +397,7 @@ pub const MINIMAX: Dialect = Dialect {
     api_key_env: "MINIMAX_API_KEY",
     base_url_env: Some("MINIMAX_API_BASE"),
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         ..Quirks::openai()
@@ -369,6 +417,7 @@ pub const MOONSHOT: Dialect = Dialect {
     api_key_env: "MOONSHOT_API_KEY",
     base_url_env: Some("MOONSHOT_API_BASE"),
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         // Moonshot rejects `json_schema` response formats.
@@ -391,8 +440,40 @@ pub const XIAOMIMIMO: Dialect = Dialect {
     api_key_env: "XIAOMI_MIMO_API_KEY",
     base_url_env: Some("XIAOMI_MIMO_API_BASE"),
     request_id_header: None,
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
+        ..Quirks::openai()
+    },
+};
+
+/// xAI.
+///
+/// xAI's *completion* is a Responses wire (`/v1/responses`), not this one;
+/// this dialect exists because its image and speech endpoints are
+/// OpenAI-shaped and were served by the shared generic models. The
+/// chat-completions path is xAI's own spelling, for a caller that wants it.
+pub const XAI: Dialect = Dialect {
+    name: "xai",
+    // The bare host: every path carries its own `/v1`.
+    base_url: "https://api.x.ai",
+    api_key_env: "XAI_API_KEY",
+    base_url_env: None,
+    request_id_header: None,
+    alternate_auth: None,
+    quirks: Quirks {
+        output_cap: OutputCap::Legacy,
+        completion_path: "/v1/chat/completions",
+        embeddings_path: "/v1/embeddings",
+        models_path: "/v1/models",
+        verify_path: "/v1/api-key",
+        transcription_path: "/v1/audio/transcriptions",
+        image_generation_path: "/v1/images/generations",
+        // xAI spells its text-to-speech endpoint `/v1/tts` and takes a body
+        // of its own.
+        audio_generation_path: "/v1/tts",
+        image_body: ImageBody::Xai,
+        speech_body: SpeechBody::Xai,
         ..Quirks::openai()
     },
 };
@@ -408,6 +489,7 @@ pub const COPILOT_CHAT: Dialect = Dialect {
     api_key_env: "GITHUB_COPILOT_API_KEY",
     base_url_env: Some("GITHUB_COPILOT_API_BASE"),
     request_id_header: Some("x-request-id"),
+    alternate_auth: None,
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         // Copilot verifies through its token exchange, not a path.
@@ -445,6 +527,7 @@ const ALL: &[&Dialect] = &[
     &MINIMAX,
     &MOONSHOT,
     &XIAOMIMIMO,
+    &XAI,
     &COPILOT_CHAT,
 ];
 

@@ -4,9 +4,8 @@ use schemars::JsonSchema;
 use serde::Serialize;
 
 use crate::{agent::AgentBuilder, extractor::ExtractorBuilder};
-use rig_core::driver::{Bound, Socket};
+use rig_core::driver::CompletionProvider;
 use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
-use rig_core::wire::HasCompletion;
 
 /// Classic-runtime construction sugar layered on any portable completion client.
 ///
@@ -49,19 +48,24 @@ pub trait AgentClientExt: rig_core::client::completion::CompletionClient {
 
 impl<C: rig_core::client::completion::CompletionClient> AgentClientExt for C {}
 
-/// Classic-runtime construction sugar on a bound provider configuration.
+/// Classic-runtime construction sugar on anything that builds a completion
+/// model: [`rig_core::driver::CompletionProvider`].
 ///
-/// A provider config that names its completion wire
-/// ([`rig_core::wire::HasCompletion`]), bundled with the socket it speaks
-/// over ([`Bound`]), is already everything an agent needs: one impl serves
-/// every provider, and no provider contributes an `agent` forwarder.
+/// One blanket impl covers both kinds of provider. A wire-backed provider
+/// arrives as a `Bound<P, H>` — a provider config that names its completion
+/// wire, bundled with the socket it speaks over — and a typed-transport
+/// provider (Bedrock, Vertex AI, gemini-grpc, in-process inference)
+/// implements `CompletionProvider` directly. No provider contributes an
+/// `agent` forwarder either way.
 ///
 /// This is a trait of its own rather than a second impl of
-/// [`AgentClientExt`] because the two receivers overlap as far as the
-/// compiler can tell: one blanket impl over
+/// [`AgentClientExt`] because the two blanket impls overlap as far as the
+/// compiler can tell: one over
 /// [`CompletionClient`](rig_core::client::completion::CompletionClient) and
-/// one over `Bound<P, H>` on the same trait would need `Bound<P, H>:
-/// !CompletionClient` to be provable, and negative bounds are not.
+/// one over `CompletionProvider` on a single trait would need
+/// `P: !CompletionClient` to be provable, and negative bounds are not. The
+/// two share no method name, so a type that somehow implemented both would
+/// still resolve. `AgentClientExt` goes when the client layer does.
 ///
 /// ```ignore
 /// use rig_agent::prelude::*;
@@ -70,9 +74,14 @@ impl<C: rig_core::client::completion::CompletionClient> AgentClientExt for C {}
 /// let provider = Anthropic::from_env()?.bound()?;
 /// let agent = provider.agent("claude-sonnet-4-5").preamble("Be brief.").build();
 /// ```
-pub trait AgentProviderExt {
+pub trait AgentProviderExt: CompletionProvider {
     /// Construct a classic agent builder for `model`.
-    fn agent(&self, model: impl Into<String>) -> AgentBuilder;
+    fn agent(&self, model: impl Into<String>) -> AgentBuilder
+    where
+        Self::Model: 'static,
+    {
+        AgentBuilder::new(self.completion(model))
+    }
 
     /// Construct a classic typed extractor builder for `model`.
     fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<T>
@@ -82,30 +91,14 @@ pub trait AgentProviderExt {
             + Serialize
             + WasmCompatSend
             + WasmCompatSync
-            + 'static;
-}
-
-impl<P, H> AgentProviderExt for Bound<P, H>
-where
-    P: HasCompletion,
-    H: Socket,
-{
-    fn agent(&self, model: impl Into<String>) -> AgentBuilder {
-        AgentBuilder::new(self.completion(model))
-    }
-
-    fn extractor<T>(&self, model: impl Into<String>) -> ExtractorBuilder<T>
-    where
-        T: JsonSchema
-            + serde::de::DeserializeOwned
-            + Serialize
-            + WasmCompatSend
-            + WasmCompatSync
             + 'static,
+        Self::Model: 'static,
     {
         ExtractorBuilder::new(self.completion(model))
     }
 }
+
+impl<P: CompletionProvider> AgentProviderExt for P {}
 
 /// Adds classic agent construction to every portable completion model.
 pub trait AgentModelExt: rig_core::completion::CompletionModel + Sized {

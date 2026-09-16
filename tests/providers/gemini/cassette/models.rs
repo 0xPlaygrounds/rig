@@ -1,6 +1,6 @@
 //! Gemini model listing smoke test.
 
-use rig::client::ModelListingClient;
+use rig::model::ModelLister;
 
 use super::super::support::{with_gemini_cassette, with_gemini_cassette_bogus_key};
 
@@ -8,7 +8,8 @@ use super::super::support::{with_gemini_cassette, with_gemini_cassette_bogus_key
 async fn list_models_smoke() {
     with_gemini_cassette("models/list_models_smoke", |client| async move {
         let models = client
-            .list_models()
+            .model_listing()
+            .list_all()
             .await
             .expect("listing Gemini models should succeed");
 
@@ -75,7 +76,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .list_models()
+                .model_listing()
+                .list_all()
                 .await
                 .expect_err("a bogus key must not list models");
 

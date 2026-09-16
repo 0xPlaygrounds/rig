@@ -40,7 +40,7 @@ pub(super) async fn with_anthropic_boxed_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Bound<Anthropic, BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(
@@ -68,7 +68,7 @@ pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
     test_body: F,
 ) where
     M: rig::http_client::HttpMiddleware + 'static,
-    F: FnOnce(Bound<Anthropic>) -> Fut,
+    F: FnOnce(Bound<Anthropic, BoxedHttpClient>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start(

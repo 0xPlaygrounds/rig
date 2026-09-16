@@ -42,17 +42,16 @@ use std::sync::{
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{
-    AssistantContent, CompletionModel, FinishReason, NormalizeCompletionResponse,
-};
+use rig::completion::{AssistantContent, CompletionModel, FinishReason};
 use rig::prelude::*;
-use rig::providers::openrouter;
 use rig::streaming::StreamEvent;
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_tool_truncation_cassette_result;
+use super::super::support::{
+    BoundOpenRouter, with_openrouter_tool_truncation_cassette_result,
+};
 
 const PREAMBLE: &str = "Call file_report exactly once. Copy the entire user incident verbatim into the required summary argument. Do not answer in prose.";
 const PROMPT: &str = "The cache warmer raced the artifact uploader, the retry storm saturated the queue, three regions were drained by hand, dashboards lagged nine minutes, and rollback took forty minutes.";
@@ -136,7 +135,10 @@ fn tool_definition() -> rig::completion::ToolDefinition {
     }
 }
 
-fn request(model: &openrouter::CompletionModel, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl CompletionModel + Clone),
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .preamble(PREAMBLE.to_owned())
@@ -196,20 +198,14 @@ impl Tool for FileReport {
     }
 }
 
-async fn run_model(client: openrouter::Client, cell: Cell) -> Observation {
-    let model = client.completion_model(model_name(cell.model));
+async fn run_model(client: BoundOpenRouter, cell: Cell) -> Observation {
+    let model = client.completion(model_name(cell.model));
     match cell.transport {
-        Transport::Blocking => match model.raw_completion(request(&model, cell)).await {
-            Ok(raw) => match raw.normalize("openrouter") {
-                Ok(response) => Observation {
-                    finish_reason: response.finish_reason(),
-                    arguments: calls(&response.choice),
-                    ..Default::default()
-                },
-                Err(error) => Observation {
-                    errors: vec![error.to_string()],
-                    ..Default::default()
-                },
+        Transport::Blocking => match model.completion(request(&model, cell)).await {
+            Ok(response) => Observation {
+                finish_reason: response.finish_reason(),
+                arguments: calls(&response.choice),
+                ..Default::default()
             },
             Err(error) => Observation {
                 errors: vec![error.to_string()],
@@ -248,7 +244,7 @@ async fn run_model(client: openrouter::Client, cell: Cell) -> Observation {
     }
 }
 
-async fn run_agent(client: openrouter::Client, cell: Cell) -> Observation {
+async fn run_agent(client: BoundOpenRouter, cell: Cell) -> Observation {
     let invocations = Arc::new(AtomicUsize::new(0));
     let agent = client
         .agent(model_name(cell.model))
@@ -289,7 +285,7 @@ async fn run_agent(client: openrouter::Client, cell: Cell) -> Observation {
 }
 
 async fn run_cell(
-    client: openrouter::Client,
+    client: BoundOpenRouter,
     cell: Cell,
     observed: SharedObservation,
 ) -> Result<()> {

@@ -1,8 +1,12 @@
 //! ChatGPT OAuth device flow and refresh smoke tests.
 
 use assert_fs::TempDir;
+use rig::driver::{Bind as _, Bound};
+use rig::http_client::BoxedHttpClient;
 use rig::prelude::*;
 use rig::providers::chatgpt;
+use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::rig_reqwest::client::bundled;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
@@ -12,16 +16,41 @@ use crate::support::{
     BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response, collect_stream_final_response,
 };
 
-fn oauth_builder_with_auth_file(path: &Path) -> chatgpt::ClientBuilder {
-    let mut builder = chatgpt::Client::builder().oauth().auth_file(path);
+/// Resolve the OAuth credential cached in `path` — refreshing it, or running
+/// the device flow, on `http` — and hand back the provider configuration that
+/// already holds it.
+///
+/// The exchange is not a wire: `ResponsesApi` stores an access token, so the
+/// conversation that produces one runs first, on the transport the completion
+/// then speaks over.
+async fn oauth_provider_with_auth_file(path: &Path, http: &BoxedHttpClient) -> ResponsesApi {
+    let context = chatgpt::auth::Authenticator::new(
+        chatgpt::auth::AuthSource::OAuth,
+        Some(path.to_path_buf()),
+        chatgpt::auth::DeviceCodeHandler::default(),
+        true,
+    )
+    .auth_context(http)
+    .await
+    .expect("ChatGPT OAuth should resolve an access token");
 
+    let mut provider = ResponsesApi::with_dialect(context.access_token, chatgpt::DIALECT);
+    if let Some(account_id) = context.account_id {
+        provider = provider.with_account_id(account_id);
+    }
     if let Ok(base_url) =
         std::env::var("CHATGPT_API_BASE").or_else(|_| std::env::var("OPENAI_CHATGPT_API_BASE"))
     {
-        builder = builder.base_url(base_url);
+        provider = provider.with_base_url(base_url);
     }
 
-    builder
+    provider
+}
+
+/// [`oauth_provider_with_auth_file`], bound to a fresh bundled transport.
+async fn oauth_client_with_auth_file(path: &Path) -> Bound<ResponsesApi> {
+    let http = bundled().expect("the bundled transport should build");
+    oauth_provider_with_auth_file(path, &http).await.bind(http)
 }
 
 fn seed_refresh_auth_file(path: &Path) {
@@ -51,14 +80,9 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     let temp = TempDir::new().expect("temp dir");
     let auth_file = temp.path().join("auth.json");
 
-    let client = oauth_builder_with_auth_file(&auth_file)
-        .build()
-        .expect("ChatGPT OAuth client should build");
-
-    client
-        .authorize()
-        .await
-        .expect("device authorization should succeed");
+    // Building the provider *is* the authorization: the credential has to be
+    // in hand before a wire can carry it, so the device flow runs here.
+    let client = oauth_client_with_auth_file(&auth_file).await;
 
     assert!(
         auth_file.is_file(),
@@ -73,9 +97,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
 
     assert_nonempty_response(&response);
 
-    let cached_client = oauth_builder_with_auth_file(&auth_file)
-        .build()
-        .expect("cached ChatGPT OAuth client should build");
+    let cached_client = oauth_client_with_auth_file(&auth_file).await;
 
     let cached_agent = cached_client.agent(LIVE_MODEL).build();
     let mut cached_stream = cached_agent
@@ -95,14 +117,7 @@ async fn refresh_token_cache_authorize_and_completion_smoke() {
     let auth_file = temp.path().join("auth.json");
     seed_refresh_auth_file(&auth_file);
 
-    let client = oauth_builder_with_auth_file(&auth_file)
-        .build()
-        .expect("ChatGPT refresh client should build");
-
-    client
-        .authorize()
-        .await
-        .expect("refresh authorization should succeed");
+    let client = oauth_client_with_auth_file(&auth_file).await;
 
     let record: serde_json::Value =
         serde_json::from_slice(&fs::read(&auth_file).expect("auth file should exist"))

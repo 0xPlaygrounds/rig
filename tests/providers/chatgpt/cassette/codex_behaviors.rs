@@ -10,7 +10,9 @@ use rig::completion::{CompletionModel, Message};
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::chatgpt;
+use rig::providers::openai::responses_api;
 use rig::tool::Tool;
+use serde::Deserialize;
 
 use super::super::support::{with_chatgpt_cassette, with_chatgpt_cassette_default_instructions};
 use crate::support::{Adder, TOOLS_PREAMBLE};
@@ -24,8 +26,8 @@ async fn strict_tools_opt_in_roundtrip() {
             // `strict: true` plus the sanitized schema (additionalProperties
             // false, all properties required) must be accepted by the backend.
             let model = client
-                .completion_model(chatgpt::GPT_5_4)
-                .with_strict_tools();
+                .completion(chatgpt::GPT_5_4)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request("Use the add tool to add 7 and 5.")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -76,18 +78,16 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
     with_chatgpt_cassette(
         "codex_behaviors/store_false_and_prompt_cache_fields_roundtrip",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_4);
-            // `store` and `prompt_cache_key` are Responses-API wire fields with
-            // no normalized home, so they are read off the backend's own
-            // response type. ChatGPT's terminal `response.completed` payload
-            // carries no output items, so this raw record cannot be normalized
-            // locally (the SSE rebuild `CompletionModel::completion` performs is
-            // crate-private) and the cassette records a single interaction, so
-            // the assistant-text check that used to ride along here now lives
-            // only in `codex_sessions`. The marker prompt itself is kept
-            // verbatim so the request still matches the recorded cassette.
-            let raw = model
-                .raw_completion(
+            let model = client.completion(chatgpt::GPT_5_4);
+            // `store` and `prompt_cache_key` are Responses-API wire fields
+            // with no normalized home, so they are read off the backend's own
+            // response type, deserialized from the one reply's `raw`. The
+            // cassette records a single interaction, so the assistant-text
+            // check that used to ride along here lives only in
+            // `codex_sessions`; the marker prompt is kept verbatim so the
+            // request still matches the recorded cassette.
+            let response = model
+                .completion(
                     model
                         .completion_request("Reply with exactly this marker: CODEX-STORE-FALSE")
                         .preamble("Return only the requested marker.".to_string())
@@ -95,6 +95,9 @@ async fn store_false_and_prompt_cache_fields_roundtrip() {
                 )
                 .await
                 .expect("basic ChatGPT/Codex completion should succeed");
+            let raw = responses_api::CompletionResponse::deserialize(&response.raw).expect(
+                "`raw` is the serialized responses_api::CompletionResponse",
+            );
 
             assert_eq!(
                 raw.additional_parameters.store,

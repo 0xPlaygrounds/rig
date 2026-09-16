@@ -20,10 +20,10 @@ struct WordDefinition {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let fastembed_client = rig_fastembed::Client::new();
+    // Create the local Fastembed client and its embedding model
+    let fastembed = rig_fastembed::Client::new();
 
-    let embedding_model = fastembed_client.embedding_model(&FastembedModel::AllMiniLML6V2Q)?;
+    let embedding_model = fastembed.embedding(&FastembedModel::AllMiniLML6V2Q, None)?;
 
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())
         .documents(vec![

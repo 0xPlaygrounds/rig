@@ -310,3 +310,46 @@ fn the_output_cap_spelling_follows_the_model_family() {
     assert!(body.get("max_tokens").is_some());
     assert!(body.get("max_completion_tokens").is_none());
 }
+
+/// OpenRouter's message conversion refused a document carrying only a
+/// provider file id. A refusal is behaviour: dropping it would turn a legible
+/// local error into an opaque gateway 400.
+#[test]
+fn openrouter_refuses_a_document_that_is_only_a_file_id() {
+    use crate::message::{Document, DocumentSourceKind, Message, UserContent};
+    use crate::providers::openai::wire::OPENROUTER;
+
+    let with_file_id = || {
+        let mut request = prompt("read this");
+        request.chat_history = vec![Message::User {
+            content: vec![UserContent::Document(Document {
+                data: DocumentSourceKind::FileId("file-abc".to_owned()),
+                media_type: None,
+                additional_params: None,
+            })],
+        }];
+        request
+    };
+
+    let error = OpenAI::new("k")
+        .with_dialect(&OPENROUTER)
+        .chat("openai/gpt-4o")
+        .encode(with_file_id(), Mode::Unary)
+        .expect_err("OpenRouter refuses a bare file id");
+    assert!(
+        error
+            .to_string()
+            .contains("Provider file IDs are not supported for OpenRouter document inputs"),
+        "the message is the one the conversion returned: {error}"
+    );
+
+    // Every other dialect on this wire accepted them, so the refusal is
+    // OpenRouter's and not the wire's.
+    assert!(
+        OpenAI::new("k")
+            .chat("gpt-4.1-nano")
+            .encode(with_file_id(), Mode::Unary)
+            .is_ok(),
+        "only OpenRouter refuses a file id"
+    );
+}

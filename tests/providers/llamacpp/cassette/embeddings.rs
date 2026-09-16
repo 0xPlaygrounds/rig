@@ -8,7 +8,6 @@
 //! `embedding_matrix.rs`, and the difference is why this suite states its
 //! model.
 
-use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
 
 use super::super::cassette_support::*;
@@ -26,7 +25,7 @@ struct Greetings {
 #[tokio::test]
 async fn embeddings_smoke() {
     with_llamacpp_embeddings_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client.embedding_model(CASSETTE_EMBEDDING_MODEL);
+        let model = client.embedding(CASSETTE_EMBEDDING_MODEL, None);
 
         let embeddings = model
             .embed_texts(EMBEDDING_INPUTS.iter().map(|input| (*input).to_string()))

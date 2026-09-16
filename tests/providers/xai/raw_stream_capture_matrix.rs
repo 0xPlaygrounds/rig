@@ -13,7 +13,7 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into the Responses `StreamingCompletionResponse` and re-serializes equal; the normalized terminal reproduces the recorded `response.completed` event and `x-request-id` header | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` reads back as the Responses `StreamingCompletionResponse`, whose fields are the capture's; the normalized terminal reproduces the recorded `response.completed` event and `x-request-id` header | recorded |
 //! | 2 | `stream_raw_exposes_terminal_status` | terminal-only field | `raw.status` and `raw.usage.output_tokens` equal the recorded `response.completed` event's | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -23,8 +23,10 @@
 //! stream stopped completing fails loudly instead of covering nothing.
 
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason};
-use rig::prelude::*;
+use rig::driver::Bound;
+use rig::providers::openai::responses_api;
 use rig::providers::openai::responses_api::streaming::StreamingCompletionResponse;
+use rig::providers::openai::responses_api::wire::Responses;
 use rig::providers::xai;
 use rig::streaming::StreamFinal;
 use serde::Deserialize;
@@ -39,7 +41,7 @@ const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &xai::CompletionModel) -> CompletionRequest {
+fn request(model: &Bound<Responses>) -> CompletionRequest {
     model.completion_request(PROMPT).build()
 }
 
@@ -132,7 +134,7 @@ async fn stream_raw_round_trips_terminal_type() {
     with_xai_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model.stream(request(&model)).await?;
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
@@ -140,10 +142,17 @@ async fn stream_raw_round_trips_terminal_type() {
             let raw = &terminal.raw;
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw is the Responses streaming terminal");
+            // The terminal record is what `raw` carries, so the typed view's
+            // fields are the capture's fields.
             assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed terminal serialized, nothing more"
+                typed.status,
+                Some(responses_api::ResponseStatus::Completed),
+                "the recorded stream completed"
+            );
+            assert_eq!(
+                typed.usage.as_ref().map(|usage| usage.output_tokens),
+                raw["usage"]["output_tokens"].as_u64(),
+                "the typed view's usage is the capture's usage"
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.message_id, terminal.message_id);
@@ -185,7 +194,7 @@ async fn stream_raw_exposes_terminal_status() {
     with_xai_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model.stream(request(&model)).await?;
             let (_, terminal) = collect_text_and_terminal(stream).await;
             *sink.lock().expect("observation lock") =

@@ -171,3 +171,119 @@ fn a_dialect_without_a_verify_endpoint_refuses_to_invent_one() {
     );
     assert!(OpenAI::new("k").verify_wire().encode((), Mode::Unary).is_ok());
 }
+
+/// Azure accepts an account key *or* an Entra bearer token, and they are not
+/// two spellings of one credential: the key goes out as `api-key`, the token
+/// as `Authorization: Bearer`.
+#[test]
+fn azure_accepts_either_credential_under_its_own_header() {
+    fn headers(provider: &OpenAI) -> http::HeaderMap {
+        provider
+            .authenticate(http::Request::get("https://example.invalid/"))
+            .body(())
+            .expect("builds")
+            .headers()
+            .clone()
+    }
+
+    // The dialect names the alternative, which is what `from_env_with` reads
+    // when the primary variable is unset.
+    let alternative = AZURE
+        .alternate_auth
+        .expect("azure accepts a second credential");
+    assert_eq!(alternative.api_key_env, "AZURE_TOKEN");
+    assert_eq!(alternative.auth, Auth::Bearer);
+    assert_eq!(AZURE.api_key_env, "AZURE_API_KEY");
+
+    let keyed = headers(&OpenAI::with_key(&AZURE, "account-key"));
+    assert_eq!(keyed["api-key"], "account-key");
+    assert!(!keyed.contains_key("authorization"));
+
+    let token = headers(&OpenAI::with_alternate_key(&AZURE, "entra-token"));
+    assert_eq!(token["authorization"], "Bearer entra-token");
+    assert!(
+        !token.contains_key("api-key"),
+        "an Entra token is not an account key"
+    );
+}
+
+/// Hugging Face's router picks a sub-provider, and the choice is observable:
+/// Fireworks addresses models by a qualified id, and only the default
+/// sub-provider serves the endpoints that put the model in the URL.
+#[test]
+fn the_huggingface_sub_route_decides_the_model_and_the_routes() {
+    assert_eq!(
+        SubRoute::Fireworks.model_identifier("llama-3.3-70b"),
+        "accounts/fireworks/models/llama-3.3-70b"
+    );
+    // Idempotent: the rewrite runs on the resolved request model, so an
+    // already-qualified per-request override must not be prefixed twice.
+    assert_eq!(
+        SubRoute::Fireworks.model_identifier("accounts/fireworks/models/llama-3.3-70b"),
+        "accounts/fireworks/models/llama-3.3-70b"
+    );
+    assert_eq!(
+        SubRoute::Together.model_identifier("llama-3.3-70b"),
+        "llama-3.3-70b"
+    );
+
+    // The slugs the router routes by.
+    assert_eq!(SubRoute::HFInference.slug(), "hf-inference/models");
+    assert_eq!(SubRoute::Fireworks.slug(), "fireworks-ai");
+    assert_eq!(SubRoute::from("my-route").slug(), "my-route");
+
+    // `None` behaves as the router's own default, which is the only
+    // sub-provider that serves the model-routed endpoints.
+    let default = OpenAI::with_key(&HUGGINGFACE, "hf");
+    assert_eq!(
+        default
+            .modality_uri("transcription", "/audio/transcriptions", "openai/whisper-large-v3")
+            .expect("hf-inference serves transcription"),
+        "https://router.huggingface.co/openai/whisper-large-v3"
+    );
+
+    let routed = default.clone().with_sub_route(SubRoute::Together);
+    let error = routed
+        .modality_uri("transcription", "/audio/transcriptions", "whisper")
+        .expect_err("only hf-inference serves transcription");
+    assert_eq!(error, "transcription endpoint is not supported yet for together");
+    assert!(
+        routed
+            .modality_uri("image generation", "/images/generations", "sd")
+            .is_err()
+    );
+
+    // A dialect that does not route keeps its fixed path.
+    assert_eq!(
+        OpenAI::new("k")
+            .modality_uri("transcription", "/audio/transcriptions", "whisper-1")
+            .expect("openai serves transcription"),
+        "https://api.openai.com/v1/audio/transcriptions"
+    );
+}
+
+/// A dialect that offers no reranking says so, rather than posting to a path
+/// its server never served.
+#[test]
+fn only_a_dialect_with_a_rerank_path_reranks() {
+    use crate::operation::RerankRequest;
+    use crate::wire::{Mode, Wire};
+
+    let request = || RerankRequest {
+        query: "q".to_owned(),
+        documents: vec!["a".to_owned(), "b".to_owned()],
+    };
+    assert!(
+        OpenAI::new("k")
+            .reranker("any")
+            .encode(request(), Mode::Unary)
+            .is_err(),
+        "OpenAI has no reranking endpoint"
+    );
+    assert!(
+        OpenAI::with_key(&LLAMACPP, "")
+            .reranker("bge-reranker-v2-m3")
+            .encode(request(), Mode::Unary)
+            .is_ok()
+    );
+}

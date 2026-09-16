@@ -1,14 +1,14 @@
 //! Ollama model listing smoke test.
 
-use rig::client::DefaultTransportClient as _;
-use rig::client::{ModelListingClient, Nothing};
-use rig::providers::ollama;
+use rig::model::ModelLister;
+use rig::prelude::*;
+use rig::providers::ollama::wire::Ollama;
 
 #[tokio::test]
 #[ignore = "requires a local Ollama server"]
 async fn list_models_smoke() {
-    let client = ollama::Client::new(Nothing).expect("client should build");
-    let models = match client.list_models().await {
+    let ollama = Ollama::new().bound().expect("transport should build");
+    let models = match ollama.model_listing().list_all().await {
         Ok(models) => models,
         Err(error) => {
             panic!("listing Ollama models should succeed\nDisplay: {error}\nDebug: {error:#?}")

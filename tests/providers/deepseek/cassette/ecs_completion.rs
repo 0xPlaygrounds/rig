@@ -9,7 +9,7 @@ use rig_ecs::agent::DefaultMaxTurns;
 async fn completion_smoke() {
     with_deepseek_cassette("agent/completion_smoke", |client| async move {
         let mut ecs = EcsAgent::new(
-            client.completion_model(deepseek::DEEPSEEK_V4_FLASH),
+            client.completion(deepseek::DEEPSEEK_V4_FLASH),
             BASIC_PREAMBLE,
             1,
         );

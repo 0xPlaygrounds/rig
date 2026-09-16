@@ -38,11 +38,15 @@
 //! Unit cells for the (de)serializers live in
 //! `crates/rig-core/src/providers/openai/responses_api/stateless_replay_tests.rs`.
 
-use rig::completion::{CompletionModel, NormalizeCompletionResponse};
+use rig::completion::CompletionModel;
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::providers::openai::responses_api::{InputItem, Output};
+use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::responses_api::{
+    CompletionResponse as ProviderResponse, InputItem, Output,
+};
+use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_openai_cassette;
@@ -82,28 +86,29 @@ fn assistant_items(request: &Value) -> Vec<&Value> {
         .unwrap_or_default()
 }
 
+/// The Responses API's own reply, read back out of
+/// [`rig::completion::CompletionResponse::raw`] — the same value the
+/// normalized response beside it was derived from.
+fn provider_reply(response: &rig::completion::CompletionResponse) -> ProviderResponse {
+    ProviderResponse::deserialize(&response.raw)
+        .expect("`raw` is the serialized responses_api::CompletionResponse")
+}
+
 /// Two blocking turns, threading turn 1's normalized response back as history.
 async fn two_turn_conversation(
-    client: openai::Client,
-) -> (
-    openai::responses_api::CompletionResponse,
-    openai::responses_api::CompletionResponse,
-) {
-    let model = client.completion_model(openai::GPT_5_6_SOL);
+    client: Bound<ResponsesApi>,
+) -> (ProviderResponse, ProviderResponse) {
+    let model = client.completion(openai::GPT_5_6_SOL);
     let first = model
-        .raw_completion(model.completion_request(TURN_ONE).build())
+        .completion(model.completion_request(TURN_ONE).build())
         .await
         .expect("turn 1 should succeed");
-    let normalized = first
-        .clone()
-        .normalize("openai")
-        .expect("turn 1 normalizes");
     let assistant = Message::Assistant {
-        id: normalized.message_id.clone(),
-        content: normalized.choice,
+        id: first.message_id.clone(),
+        content: first.choice.clone(),
     };
     let second = model
-        .raw_completion(
+        .completion(
             model
                 .completion_request(TURN_TWO)
                 .messages([Message::user(TURN_ONE), assistant])
@@ -111,7 +116,7 @@ async fn two_turn_conversation(
         )
         .await
         .expect("turn 2 should succeed");
-    (first, second)
+    (provider_reply(&first), provider_reply(&second))
 }
 
 #[tokio::test]
@@ -119,7 +124,7 @@ async fn phase_round_trips_on_follow_up() {
     with_openai_cassette(
         "stateless_replay_matrix/phase_round_trips_on_follow_up",
         |client| async move {
-            let (first, _second) = two_turn_conversation(client).await;
+            let (first, _second) = two_turn_conversation(client.responses).await;
             let phases: Vec<&str> = first
                 .output
                 .iter()
@@ -160,11 +165,12 @@ async fn compaction_item_decodes_on_the_response() {
     with_openai_cassette(
         "stateless_replay_matrix/compaction_item_decodes_on_the_response",
         |client| async move {
-            let model = client.completion_model(openai::GPT_5_6_SOL);
-            let first = model
-                .raw_completion(model.completion_request(TURN_ONE).build())
+            let model = client.responses.completion(openai::GPT_5_6_SOL);
+            let response = model
+                .completion(model.completion_request(TURN_ONE).build())
                 .await
                 .expect("a response carrying a compaction item must decode");
+            let first = provider_reply(&response);
             let compaction = first
                 .output
                 .iter()
@@ -177,11 +183,7 @@ async fn compaction_item_decodes_on_the_response() {
             assert!(compaction.get("type").is_none());
 
             // The regular items beside it still decode and normalize.
-            let normalized = first
-                .clone()
-                .normalize("openai")
-                .expect("turn 1 normalizes");
-            assert!(!normalized.choice.is_empty());
+            assert!(!response.choice.is_empty());
 
             // The same item, re-serialized, is accepted on the input side
             // byte-for-byte — this is what a stateless client sends back.

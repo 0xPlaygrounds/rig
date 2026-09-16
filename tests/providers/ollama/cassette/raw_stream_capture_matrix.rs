@@ -48,7 +48,9 @@ const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &ollama::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl rig::completion::CompletionModel + Clone),
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .max_tokens(64)
@@ -122,7 +124,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model
                 .stream(request(&model))
                 .await
@@ -178,7 +180,7 @@ async fn stream_raw_exposes_terminal_durations() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model
                 .stream(request(&model))
                 .await

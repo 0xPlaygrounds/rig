@@ -44,9 +44,9 @@ async fn temperature_from_the_typed_builder() {
     with_doubleword_cassette(
         "request_parameter_matrix/temperature_from_the_typed_builder",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             model
-                .raw_completion(
+                .completion(
                     model
                         .completion_request(PROMPT)
                         .temperature(0.0)
@@ -67,9 +67,9 @@ async fn max_tokens_from_the_typed_builder() {
     with_doubleword_cassette(
         "request_parameter_matrix/max_tokens_from_the_typed_builder",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             model
-                .raw_completion(model.completion_request(PROMPT).max_tokens(7).build())
+                .completion(model.completion_request(PROMPT).max_tokens(7).build())
                 .await
                 .expect("Doubleword should accept max_tokens");
         },
@@ -84,9 +84,9 @@ async fn top_p_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/top_p_from_additional_params",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             model
-                .raw_completion(
+                .completion(
                     model
                         .completion_request(PROMPT)
                         .additional_params(json!({ "top_p": 0.25 }))
@@ -107,9 +107,9 @@ async fn seed_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/seed_from_additional_params",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             model
-                .raw_completion(
+                .completion(
                     model
                         .completion_request(PROMPT)
                         .additional_params(json!({ "seed": 31_415 }))
@@ -130,9 +130,9 @@ async fn stop_sequence_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/stop_sequence_from_additional_params",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             model
-                .raw_completion(
+                .completion(
                     model
                         .completion_request("Write alpha BANANA omega.")
                         .additional_params(json!({ "stop": ["BANANA"] }))
@@ -154,9 +154,9 @@ async fn json_object_response_format_from_additional_params() {
     with_doubleword_cassette(
         "request_parameter_matrix/json_object_response_format_from_additional_params",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             model
-                .raw_completion(
+                .completion(
                     model
                         .completion_request("Return a JSON object with ok set to true.")
                         .additional_params(json!({

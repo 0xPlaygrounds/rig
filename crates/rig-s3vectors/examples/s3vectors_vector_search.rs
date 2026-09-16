@@ -2,9 +2,8 @@ use aws_config::meta::region::RegionProviderChain;
 use aws_sdk_s3vectors::Client;
 use aws_sdk_s3vectors::config::Credentials;
 use rig_core::Embed;
-use rig_core::client::EmbeddingsClient;
 use rig_core::embeddings::EmbeddingsBuilder;
-use rig_core::providers::openai::{self, Client as OpenAIClient};
+use rig_core::providers::openai::{self, wire::OpenAI};
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::vector_store::{InsertDocuments, VectorStoreIndex};
 use rig_reqwest::prelude::*;
@@ -40,11 +39,11 @@ async fn main() -> Result<(), anyhow::Error> {
     create_vector_bucket(&s3vectors_client).await?;
     create_index(&s3vectors_client).await?;
 
-    // Initialize OpenAI client.
+    // Bind the OpenAI embeddings endpoint.
     // Get your API key from https://platform.openai.com/api-keys
-    let openai_client = OpenAIClient::from_env()?;
+    let openai_client = OpenAI::from_env()?.bound()?;
 
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     let documents = EmbeddingsBuilder::new(model.clone())
         .document(Word {

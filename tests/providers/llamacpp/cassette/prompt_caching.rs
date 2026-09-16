@@ -38,7 +38,6 @@
 //!     prompt_caching:: -- --test-threads=1
 //! ```
 
-use rig::client::CompletionClient as _;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
 use serde_json::{Value, json};
@@ -134,7 +133,7 @@ fn recorded_cache_counters(scenario: &str) -> Vec<(u64, u64, u64)> {
 #[tokio::test]
 async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     with_llamacpp_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let observation = run_cache_probe(&model, &probe_for("llamacpp blocking probe")).await;
         assert_cache_conformance(&observation, &LLAMACPP_CACHE_SUPPORT, "blocking probe");
     })
@@ -166,7 +165,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
 #[tokio::test]
 async fn streaming_probe_survives_the_streaming_accumulator() {
     with_llamacpp_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let observation =
             run_cache_probe_streaming(&model, &probe_for("llamacpp streaming probe")).await;
         assert_cache_conformance(&observation, &LLAMACPP_CACHE_SUPPORT, "streaming probe");
@@ -194,7 +193,7 @@ async fn cache_prompt_false_turns_the_cache_off_for_that_turn_only() {
     with_llamacpp_prompt_caching_cassette(
         "prompt_caching/cache_prompt_disabled",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let probe = probe_for("llamacpp cache_prompt switch");
 
             // Warm the slot.

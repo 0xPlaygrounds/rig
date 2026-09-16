@@ -23,7 +23,7 @@ async fn sequential_complex_tool_calls_nonstreaming() -> Result<()> {
             let (ping, manifest, labels, echo) = complex_tools(&log);
             let mut agent = {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(SESSION_MODEL),
+                    client.completion(SESSION_MODEL),
                     COMPLEX_SESSION_PREAMBLE,
                     10,
                 );
@@ -71,7 +71,7 @@ async fn sequential_complex_tool_calls_streaming() -> Result<()> {
             let (ping, manifest, labels, echo) = complex_tools(&log);
             let mut agent = {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(SESSION_MODEL),
+                    client.completion(SESSION_MODEL),
                     COMPLEX_SESSION_PREAMBLE,
                     1,
                 );
@@ -133,7 +133,7 @@ async fn parallel_tool_calls_single_turn_nonstreaming() -> Result<()> {
         |client| async move {
             let mut agent = {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(SESSION_MODEL),
+                    client.completion(SESSION_MODEL),
                     TWO_TOOL_STREAM_PREAMBLE,
                     5,
                 );
@@ -186,7 +186,7 @@ async fn parallel_tool_calls_single_turn_streaming() -> Result<()> {
         |client| async move {
             let mut agent = {
                 let mut ecs = EcsAgent::new(
-                    client.completion_model(SESSION_MODEL),
+                    client.completion(SESSION_MODEL),
                     TWO_TOOL_STREAM_PREAMBLE,
                     1,
                 );

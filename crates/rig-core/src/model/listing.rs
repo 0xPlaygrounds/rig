@@ -509,6 +509,33 @@ impl crate::wire::WireError for ModelListingError {
         }
     }
 
+    /// A failed catalog fetch names no response a caller can inspect, so the
+    /// diagnostic has to carry what it was: which provider, which path, and
+    /// the reply's status and body (rig#2079).
+    fn with_route(self, provider: &str, path: &str) -> Self {
+        match self {
+            Self::ApiError {
+                status_code,
+                message,
+            } => Self::api_error(
+                status_code,
+                format_response_context(
+                    provider,
+                    path,
+                    format_args!("status={status_code}"),
+                    message.as_bytes(),
+                ),
+            ),
+            Self::ParseError { message } => Self::parse_error(format_response_context(
+                provider,
+                path,
+                format_args!("parse_error"),
+                message.as_bytes(),
+            )),
+            other => other,
+        }
+    }
+
     /// The listing error's `ApiError` message *is* the reply's body (with
     /// its request context), which is what a projector would read.
     fn provider_response_body(&self) -> Option<&str> {

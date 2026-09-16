@@ -14,8 +14,8 @@ async fn conformance_agent_loop_keeps_hitting_across_tool_turns() {
         |client| async move {
             let ecs = EcsAgent::new(
                 client
-                    .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                    .with_prompt_caching(),
+                    .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                    .map_wire(|wire| wire.with_prompt_caching()),
                 &conformance_probe().preamble,
                 1,
             );

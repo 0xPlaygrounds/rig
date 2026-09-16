@@ -24,7 +24,7 @@ use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;
 use rig::completion::Usage;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, wire::OpenAI};
 use rig::streaming::{Delta, StreamEvent};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
@@ -91,7 +91,8 @@ fn print_usage(label: &str, usage: Usage) {
 async fn main() -> Result<()> {
     let model = std::env::var("OPENAI_MODEL").unwrap_or_else(|_| openai::GPT_4O_MINI.to_string());
 
-    let agent = openai::CompletionsClient::from_env()?
+    let agent = OpenAI::from_env()?
+        .bound()?
         .agent(model)
         .preamble(
             "You are a concise release assistant. The user will ask about an \

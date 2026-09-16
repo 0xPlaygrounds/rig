@@ -5,13 +5,13 @@
 //!
 //! # Example
 //! ```no_run
-//! use rig_core::client::CompletionClient;
+//! use rig_core::driver::CompletionProvider;
 //! use rig_gemini_grpc::{Client, completion::GEMINI_2_0_FLASH};
 //!
 //! # async fn example() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 //! let client = Client::new("YOUR_API_KEY").await?;
 //!
-//! let completion_model = client.completion_model(GEMINI_2_0_FLASH);
+//! let completion_model = client.completion(GEMINI_2_0_FLASH);
 //! # Ok(())
 //! # }
 //! ```

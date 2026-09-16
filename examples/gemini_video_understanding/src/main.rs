@@ -6,7 +6,7 @@ use anyhow::Result;
 use rig::message::{Message, UserContent, Video};
 use rig::prelude::*;
 use rig::providers::gemini::completion::gemini_api_types::AdditionalParameters;
-use rig::providers::gemini::{self, completion::gemini_api_types::GenerationConfig};
+use rig::providers::gemini::{self, Gemini, completion::gemini_api_types::GenerationConfig};
 use serde_json::json;
 
 const MODEL: &str = gemini::completion::GEMINI_2_5_PRO_EXP_03_25;
@@ -42,7 +42,7 @@ fn build_additional_params() -> Result<serde_json::Value> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = gemini::Client::from_env()?;
+    let client = Gemini::from_env()?.bound()?;
     let additional_params = build_additional_params()?;
     let agent = client
         .agent(MODEL)

@@ -241,10 +241,11 @@ where
     let mut pending: std::collections::VecDeque<http::Request<Body>> = requests.into();
     while let Some(mut http_request) = pending.pop_front() {
         accept_header(&mut http_request, framing);
+        let route = http_request.uri().path().to_owned();
         let observation = context.as_ref().map(|_| AdapterSlot::default());
         let attempt = context
             .as_ref()
-            .and_then(|context| context.attempt_for(&http_request, http_request.uri().path()));
+            .and_then(|context| context.attempt_for(&http_request, &route));
         if let Some(observation) = &observation {
             observation.install(attempt);
         }
@@ -257,6 +258,7 @@ where
         let page_reply = match sent {
             Ok(page_reply) => page_reply,
             Err(error) => {
+                let error = error.with_route(wire.name(), &route);
                 // The reply the failure carries is still the provider's:
                 // project its facts before reporting the ending.
                 if let Some(body) = error.provider_response_body() {
@@ -291,6 +293,7 @@ where
         }
         if let Some(error) = failure {
             let error = error
+                .with_route(wire.name(), &route)
                 .with_provider_status(Some(page_reply.status))
                 .with_provider_request_id(page_reply.provider_request_id.clone())
                 .with_response_headers(Some(page_reply.headers.clone()));
@@ -560,9 +563,27 @@ fn request_id_from(headers: &http::HeaderMap, header: Option<&str>) -> Option<St
     crate::providers::internal::request_id_from_headers(headers, header)
 }
 
+/// Every JSON request carries `Content-Type: application/json`, including a
+/// bodyless `GET`.
+///
+/// The deleted client layer put it in the default headers of every request
+/// it built, so recorded traffic pins it on the catalog and verification
+/// GETs as well as the POSTs. It is one line here rather than a line in
+/// every wire's `encode`, and a wire that needs another content type sets
+/// it itself.
+fn content_type(request: &mut http::Request<Body>) {
+    if matches!(request.body(), Body::Bytes(_)) {
+        request
+            .headers_mut()
+            .entry(http::header::CONTENT_TYPE)
+            .or_insert(http::HeaderValue::from_static("application/json"));
+    }
+}
+
 /// Add `Accept: text/event-stream` to an SSE request, without overriding an
 /// `Accept` the wire set itself.
 fn accept_header(request: &mut http::Request<Body>, framing: Framing) {
+    content_type(request);
     if framing == Framing::Sse {
         request
             .headers_mut()

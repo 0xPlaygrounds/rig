@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use rig::prelude::*;
-use rig::providers::mistral;
+use rig::providers::openai::wire::{MISTRAL, OpenAI};
 use rig::tool::Tool;
 
 use crate::support::assert_weather_tool_roundtrip_response;
@@ -73,7 +73,10 @@ impl Tool for WeatherTool {
 #[ignore = "requires MISTRAL_API_KEY"]
 async fn prompt_typed_with_tool_call_roundtrip() -> Result<()> {
     let call_count = Arc::new(AtomicUsize::new(0));
-    let client = mistral::Client::from_env().expect("client should build");
+    let client = OpenAI::from_env_with(&MISTRAL)
+        .expect("MISTRAL_API_KEY should be set")
+        .bound()
+        .expect("client should build");
     let agent = client
         .agent(TOOL_MODEL)
         .preamble(

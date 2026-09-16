@@ -1,10 +1,9 @@
 use fixture::{as_record_batch, words};
-use rig_core::client::EmbeddingsClient;
 use rig_core::providers::openai;
 use rig_core::vector_store::request::VectorSearchRequest;
 use rig_core::{
     embeddings::{EmbeddingModel, EmbeddingsBuilder},
-    providers::openai::Client,
+    providers::openai::wire::OpenAI,
     vector_store::VectorStoreIndex,
 };
 use rig_lancedb::{LanceDbVectorIndex, SearchParams};
@@ -15,11 +14,11 @@ mod fixture;
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Initialize OpenAI client. Use this to generate embeddings (and generate test data for RAG demo).
-    let openai_client = Client::from_env()?;
+    // Initialize the OpenAI embeddings endpoint. Use this to generate embeddings (and generate test data for RAG demo).
+    let openai_client = OpenAI::from_env()?.bound()?;
 
     // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Generate embeddings for the test data.
     let embeddings = EmbeddingsBuilder::new(model.clone())

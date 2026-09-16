@@ -5,16 +5,15 @@
 //! cell's own test.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::venice::MISTRAL_SMALL_3_2_24B;
 
-use super::super::support::with_venice_cassette;
+use super::super::support::{BoundVenice, with_venice_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
-fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion_model(MISTRAL_SMALL_3_2_24B),
+        model: client.completion(MISTRAL_SMALL_3_2_24B),
         route: None,
         temperature: Some(0.0),
         additional_params: None,
@@ -22,12 +21,10 @@ fn wire(client: &rig::providers::venice::Client) -> Wire<impl CompletionModel + 
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &rig::providers::venice::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(client: &BoundVenice) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::Venice,
-        model: client.completion_model("venice-nonexistent-rig-test"),
+        model: client.completion("venice-nonexistent-rig-test"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

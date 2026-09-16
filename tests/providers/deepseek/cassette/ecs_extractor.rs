@@ -8,7 +8,7 @@ use rig::providers::deepseek;
 async fn extractor_smoke() {
     with_deepseek_cassette("extractor/extractor_smoke", |client| async move {
         let mut extractor = EcsExtractor::<SmokePerson>::new(
-            client.completion_model(deepseek::DEEPSEEK_V4_FLASH),
+            client.completion(deepseek::DEEPSEEK_V4_FLASH),
             None,
             None,
         );

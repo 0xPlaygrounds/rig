@@ -629,6 +629,279 @@ where
     }
 }
 
+/// Gemini's `cachedContents` resource, over a bound provider.
+///
+/// Not a [`Wire`](crate::wire::Wire), deliberately: `create`/`get`/`list`/
+/// `update_expiry`/`delete` manage a *resource* whose replies are
+/// [`CachedContent`] documents rather than assistant turns, and exactly one
+/// provider has them — an operation is a shape many providers share, so
+/// inventing one here would be a per-provider fiction. It manages the inputs
+/// a wire later references (`GenerateContent::with_cached_content`), which is
+/// why it is allowed to `.await`.
+///
+/// Obtained from `Bound<Gemini, H>::cached_contents()`.
+#[derive(Clone, Debug)]
+pub struct CachedContents<H = crate::http_client::BoxedHttpClient> {
+    provider: super::Gemini,
+    http: H,
+}
+
+impl<H> crate::driver::Bound<super::Gemini, H>
+where
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    /// Gemini's explicit context cache (`cachedContents`).
+    ///
+    /// Explicit caching is a different feature from the implicit prefix
+    /// caching that happens automatically: it hits on the first request and
+    /// across unrelated conversations, at the cost of billing storage per
+    /// token-hour. See this module's docs for when each pays.
+    pub fn cached_contents(&self) -> CachedContents<H> {
+        CachedContents {
+            provider: self.wire.clone(),
+            http: self.http.clone(),
+        }
+    }
+}
+
+impl<H> CachedContents<H>
+where
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    /// Upload content and get a handle back.
+    ///
+    /// The returned [`CachedContent::usage_metadata`] reports how many tokens
+    /// are now being stored — and therefore billed — so log it if cost matters.
+    pub async fn create(
+        &self,
+        request: NewCachedContent,
+    ) -> Result<CachedContent, CachedContentError> {
+        request.validate()?;
+        let body = serde_json::to_vec(&request)?;
+        let http = http_client::Request::post(self.provider.uri(CACHED_CONTENTS_PATH)).body(body)?;
+        send_json(&self.http, http, None).await
+    }
+
+    /// Fetch one cached content by handle.
+    pub async fn get(&self, name: &str) -> Result<CachedContent, CachedContentError> {
+        let http = http_client::Request::get(self.provider.uri(&resource_path(name)?))
+            .body(Vec::new())?;
+        send_json(&self.http, http, Some(name)).await
+    }
+
+    /// Every cached content this API key can see, following pagination.
+    pub async fn list(&self) -> Result<Vec<CachedContent>, CachedContentError> {
+        self.list_with_page_size(MAX_PAGE_SIZE).await
+    }
+
+    /// [`Self::list`] with an explicit page size.
+    ///
+    /// A caller holding thousands of caches may want smaller responses, and —
+    /// less obviously but more importantly — the cursor-following loop is
+    /// otherwise unreachable in a test: Gemini returns up to 1,000 entries per
+    /// page, so proving the loop works would mean creating a thousand billed
+    /// caches. With a page size of 1 and three caches it is three pages.
+    pub async fn list_with_page_size(
+        &self,
+        page_size: usize,
+    ) -> Result<Vec<CachedContent>, CachedContentError> {
+        list_pages(&self.http, page_size, |path| self.provider.uri(path)).await
+    }
+
+    /// Extend (or shorten) a cache's life.
+    ///
+    /// Expiry is the only mutable part of the resource — the content itself is
+    /// immutable, so refreshing a corpus means creating a new cache and
+    /// deleting the old one.
+    pub async fn update_expiry(
+        &self,
+        name: &str,
+        expiry: CacheExpiry,
+    ) -> Result<CachedContent, CachedContentError> {
+        let (patch, mask) = expiry_patch(expiry)?;
+        // The `?` below is only ours because `resource_path` refuses an id
+        // that carries one: an unvalidated handle would put `updateMask`
+        // inside the caller's query string on a resource we did not mean to
+        // patch.
+        let path = format!("{}?updateMask={mask}", resource_path(name)?);
+        let http = http_client::Request::patch(self.provider.uri(&path)).body(patch)?;
+        send_json(&self.http, http, Some(name)).await
+    }
+
+    /// Delete a cached content.
+    ///
+    /// Storage bills until this is called, so a cache created for the duration
+    /// of a task should be deleted on the failure path too. A handle that is
+    /// not a plain `cachedContents/<id>` (or a bare `<id>`) is refused with
+    /// [`CachedContentError::Invalid`] before anything is sent.
+    pub async fn delete(&self, name: &str) -> Result<(), CachedContentError> {
+        let http = http_client::Request::delete(self.provider.uri(&resource_path(name)?))
+            .body(Vec::new())?;
+        let _: serde_json::Value = send_json(&self.http, http, Some(name)).await?;
+        Ok(())
+    }
+}
+
+/// The `PATCH` body and its `updateMask` for one expiry, so the two cannot
+/// disagree about which field is being written.
+fn expiry_patch(expiry: CacheExpiry) -> Result<(Vec<u8>, &'static str), CachedContentError> {
+    #[derive(Serialize)]
+    #[serde(rename_all = "camelCase")]
+    struct Patch {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        ttl: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        expire_time: Option<String>,
+    }
+
+    let (patch, mask) = match expiry {
+        CacheExpiry::Ttl(ttl) => (
+            Patch {
+                ttl: Some(CacheExpiry::ttl_string(ttl)),
+                expire_time: None,
+            },
+            "ttl",
+        ),
+        CacheExpiry::ExpireTime(at) => (
+            Patch {
+                ttl: None,
+                expire_time: Some(at),
+            },
+            "expireTime",
+        ),
+    };
+    Ok((serde_json::to_vec(&patch)?, mask))
+}
+
+/// Follow the listing's cursor to its end, bounded.
+///
+/// `uri` builds the absolute request URI from a path, so the caller decides
+/// how the credential travels.
+async fn list_pages<H>(
+    http: &H,
+    page_size: usize,
+    uri: impl Fn(&str) -> String,
+) -> Result<Vec<CachedContent>, CachedContentError>
+where
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
+{
+    let mut all = Vec::new();
+    let mut page_token: Option<String> = None;
+    // Only the loop running out of iterations is a ceiling. Every `break`
+    // below is Gemini ending the listing, which is the normal path and must
+    // stay silent.
+    let mut exhausted_page_budget = true;
+
+    for _ in 0..MAX_LISTING_PAGES {
+        // Percent-encoded through the same helper `list_models_path` uses:
+        // concatenating the cursor raw would let a `+`, `&`, `=` or `/` in it
+        // truncate the cursor or inject a query parameter, silently dropping
+        // pages.
+        let page_size = page_size.to_string();
+        let mut pairs: Vec<(&str, &str)> = vec![("pageSize", page_size.as_str())];
+        if let Some(token) = &page_token {
+            pairs.push(("pageToken", token.as_str()));
+        }
+        let path = crate::providers::internal::model_listing::with_query_pairs(
+            CACHED_CONTENTS_PATH,
+            &pairs,
+        );
+        let request = http_client::Request::get(uri(&path)).body(Vec::new())?;
+        let page: ListCachedContentsResponse = send_json(http, request, None).await?;
+        all.extend(page.cached_contents);
+
+        // An empty cursor counts as absent: re-sending an empty `pageToken`
+        // returns the same page forever.
+        let Some(token) = page.next_page_token.filter(|token| !token.is_empty()) else {
+            exhausted_page_budget = false;
+            break;
+        };
+        // A cursor that does not advance is a server bug: the next request
+        // would be byte-identical to the one just answered.
+        if page_token.as_deref() == Some(token.as_str()) {
+            tracing::warn!(
+                provider = "Gemini",
+                cached_contents = all.len(),
+                "cachedContents listing repeated its pagination cursor; returning the \
+                 pages fetched so far"
+            );
+            exhausted_page_budget = false;
+            break;
+        }
+        page_token = Some(token);
+    }
+
+    if exhausted_page_budget {
+        tracing::warn!(
+            provider = "Gemini",
+            cached_contents = all.len(),
+            pages = MAX_LISTING_PAGES,
+            "cachedContents listing hit its page ceiling with a cursor still advancing; \
+             returning the pages fetched so far"
+        );
+    }
+
+    Ok(all)
+}
+
+/// Send one `cachedContents` request and decode its reply, triaging every
+/// non-success shape a transport can report.
+///
+/// The body both the bound surface above and the client layer below it use,
+/// so the status triage this module documents is stated once.
+async fn send_json<H, T>(
+    http: &H,
+    request: http_client::Request<Vec<u8>>,
+    name: Option<&str>,
+) -> Result<T, CachedContentError>
+where
+    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+    T: serde::de::DeserializeOwned,
+{
+    let response = HttpClientExt::send::<_, Vec<u8>>(http, request).await;
+
+    let bytes = match response {
+        // A transport is free to hand the non-success status back as an `Ok`
+        // response rather than an error, and rig's own test double does
+        // exactly that. Without this arm the *error* body fell through to the
+        // decode below and surfaced as "missing field `name`" — a
+        // deserialization failure standing in for a 404, with `Expired`
+        // unreachable.
+        Ok(response) if !response.status().is_success() => {
+            let status = response.status().as_u16();
+            // A failed body read must not cancel the triage: the status is
+            // already in hand.
+            let message = http_client::text(response)
+                .await
+                .unwrap_or_else(|error| format!("failed to read error response body: {error}"));
+            return Err(classify_failure(status, message, name));
+        }
+        Ok(response) => http_client::text(response)
+            .await
+            .map_err(CachedContentError::Http)?,
+        // Triage on the *status*: a transport that rejected the reply as an
+        // error still carries it, and the recovery this module documents —
+        // recreate the cache on `Expired` — must fire on it.
+        Err(error) => {
+            let Some(status) = error.non_success_status() else {
+                // No status at all: a genuine transport failure (DNS, TLS, a
+                // dropped connection), which recreating a cache does not
+                // answer.
+                return Err(CachedContentError::Http(error));
+            };
+            let message = error.non_success_body().unwrap_or_default().to_owned();
+            return Err(classify_failure(status.as_u16(), message, name));
+        }
+    };
+
+    // DELETE answers `{}`; `serde_json::Value` absorbs that, and a typed
+    // caller never asks for one.
+    if bytes.trim().is_empty() {
+        return Ok(serde_json::from_str("null")?);
+    }
+    Ok(serde_json::from_str(&bytes)?)
+}
+
 /// `models/x` from `x`, idempotently.
 fn qualify_model(model: &str) -> String {
     if model.starts_with("models/") {

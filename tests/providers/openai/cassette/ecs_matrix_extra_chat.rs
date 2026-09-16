@@ -9,25 +9,17 @@ use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::{GPT_4O, GPT_5_MINI, GPT_5_NANO};
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{
     Wire, cells,
     extra::{Approval, ErrorProbe, batch_hold, despawn_waits_for_the_stream, error_facts},
 };
 
-fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiChat,
-        model: client
-            .clone()
-            .completions_api()
-            .completion_model(GPT_5_MINI),
-        route: Some(
-            client
-                .clone()
-                .completions_api()
-                .completion_model(GPT_5_NANO),
-        ),
+        model: client.chat.completion(GPT_5_MINI),
+        route: Some(client.chat.completion(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
     }
@@ -56,7 +48,7 @@ async fn error_facts_unary() {
         "error_identity_edge/chat_completions_validation_error_carries_identity",
         |client| async move {
             error_facts(
-                client.clone().completions_api().completion_model(GPT_4O),
+                client.chat.completion(GPT_4O),
                 ErrorProbe {
                     prompt: "Never validated",
                     max_tokens: None,
@@ -79,10 +71,7 @@ async fn error_facts_streamed() {
         "corpus_matrix_chat/error_facts_streamed",
         |client| async move {
             error_facts(
-                client
-                    .clone()
-                    .completions_api()
-                    .completion_model("gpt-5-mini-nonexistent-rig-test"),
+                client.chat.completion("gpt-5-mini-nonexistent-rig-test"),
                 ErrorProbe {
                     prompt: "Say hi.",
                     max_tokens: Some(16),

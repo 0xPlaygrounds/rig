@@ -141,7 +141,7 @@ async fn raw_followup_empty_end_turn_normalizes_to_an_empty_choice() {
     super::super::support::with_anthropic_cassette(
         "empty_end_turn/raw_followup_empty_end_turn_normalizes_to_empty_text_choice",
         |client| async move {
-            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6);
 
             let first_turn = model
                 .completion_request(TERMINAL_NOTIFY_PROMPT)

@@ -19,11 +19,11 @@
 //! # Example
 //! ```no_run
 //! use rig_agent::prelude::*;
-//! use rig_core::providers::openai;
+//! use rig_core::providers::openai::{self, responses_api::wire::ResponsesApi};
 //! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let openai = openai::Client::from_env()?;
+//! let openai = ResponsesApi::from_env()?.bound()?;
 //!
 //! // Configure the agent
 //! let agent = openai.agent(openai::GPT_5_2)
@@ -58,18 +58,20 @@
 //! use rig_agent::prelude::*;
 //! use rig_reqwest::prelude::*;
 //! use rig_core::{
-//!     client::EmbeddingsClient,
 //!     embeddings::EmbeddingsBuilder,
-//!     providers::openai,
+//!     providers::openai::{self, responses_api::wire::ResponsesApi, wire::OpenAI},
 //!     vector_store::in_memory_store::InMemoryVectorStore,
 //! };
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize OpenAI client
-//! let openai = openai::Client::from_env()?;
+//! // Completions come off the Responses config; embeddings are the same
+//! // OpenAI REST surface whichever completion API you use, so they come off
+//! // the chat-shaped one.
+//! let openai = ResponsesApi::from_env()?.bound()?;
+//! let openai_rest = OpenAI::from_env()?.bound()?;
 //!
 //! // Initialize OpenAI embedding model
-//! let embedding_model = openai.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+//! let embedding_model = openai_rest.embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 //!
 //! // Create vector store, compute embeddings and load them in the store
 //! let mut vector_store = InMemoryVectorStore::default();

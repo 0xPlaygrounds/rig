@@ -33,14 +33,15 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, Message, NormalizeCompletionResponse};
+use rig::completion::{CompletionModel, Message};
+use rig::driver::Bound;
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
-use rig::prelude::*;
 use rig::providers::openai;
+use rig::providers::openai::wire::Chat;
 use rig::streaming::{Delta, StreamEvent};
 use serde_json::{Value, json};
 
-use super::super::support::with_openai_history_roundtrip_cassette_result;
+use super::super::support::{OpenAiCassette, with_openai_history_roundtrip_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -161,7 +162,7 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(model: &openai::CompletionModel, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(model: &Bound<Chat>, cell: Cell) -> rig::completion::CompletionRequest {
     let mut builder = model.completion_request(prompt(cell.shape)).max_tokens(24);
     for message in history(cell.shape) {
         builder = builder.message(message);
@@ -179,6 +180,26 @@ fn normalized_text(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
+/// The text the provider's own reply carried, read out of
+/// [`rig::completion::CompletionResponse::raw`] — the value the deleted raw
+/// surface returned, serialized.
+fn provider_text(raw: &Value) -> Result<String> {
+    let reply = serde_json::from_value::<openai::completion::CompletionResponse>(raw.clone())?;
+    Ok(reply
+        .choices
+        .iter()
+        .filter_map(|choice| match &choice.message {
+            openai::completion::Message::Assistant { content, .. } => Some(content),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|content| match content {
+            openai::completion::AssistantContent::Text { text } => Some(text.as_str()),
+            openai::completion::AssistantContent::Refusal { .. } => None,
+        })
+        .collect())
+}
+
 fn model_name(model: ModelVariant) -> &'static str {
     match model {
         ModelVariant::Gpt4oMini => "gpt-4o-mini",
@@ -186,16 +207,17 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client
-        .completions_api()
-        .completion_model(model_name(cell.model));
+async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.chat.completion(model_name(cell.model));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
-            let response = model.raw_completion(request(&model, cell)).await?;
-            let normalized = response.normalize("openai")?;
+            // The raw surface is the same reply: the native chat-completions
+            // response rides serialized on `CompletionResponse::raw`, so this
+            // cell reads the text off the provider's own fields where the
+            // normalized cell below reads rig's.
+            let response = model.completion(request(&model, cell)).await?;
             Observation {
-                text: normalized_text(&normalized.choice),
+                text: provider_text(&response.raw)?,
                 saw_terminal: true,
             }
         }

@@ -1,8 +1,8 @@
 //! OpenAI scenarios replayed through the erased transport.
 //!
-//! `BoxedHttpClient` must be byte-transparent: the same recorded exchanges the
-//! generic `Client<Ext, ReqwestClient>` produced must match when the client is
-//! `Client<Ext, BoxedHttpClient>` over the same transport. The replay server
+//! `BoxedHttpClient` must be byte-transparent: the same recorded exchanges a
+//! `Bound<W, ReqwestClient>` produced must match when the bound provider is
+//! `Bound<W, BoxedHttpClient>` over the same transport. The replay server
 //! matches on method, path, allowlisted headers and body bytes, so a boxed
 //! request that differed in any of them would not find its interaction.
 
@@ -19,6 +19,7 @@ use crate::support::{
 async fn completion_smoke_through_boxed_transport() {
     with_openai_boxed_cassette("agent/completion_smoke", |client| async move {
         let agent = client
+            .responses
             .agent(openai::GPT_4O)
             .preamble(BASIC_PREAMBLE)
             .build();
@@ -38,6 +39,7 @@ async fn completion_smoke_through_boxed_transport() {
 async fn streaming_smoke_through_boxed_transport() {
     with_openai_boxed_cassette("streaming/streaming_smoke", |client| async move {
         let agent = client
+            .responses
             .agent(openai::GPT_4O)
             .preamble(STREAMING_PREAMBLE)
             .build();

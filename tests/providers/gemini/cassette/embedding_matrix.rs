@@ -6,7 +6,6 @@
 //! its documented `None`/zero outcome, which is exactly what these cells
 //! assert rather than skip. Dimensions ride `output_dimensionality`.
 
-use rig::client::EmbeddingsClient;
 use rig::embeddings::{EmbeddingModel as _, NormalizeEmbeddingResponse as _};
 use rig::providers::gemini;
 
@@ -33,7 +32,7 @@ async fn normalized_response_is_complete() {
     with_gemini_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+            let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
             let response = model
                 .embed_texts_response(inputs())
                 .await
@@ -47,7 +46,7 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_gemini_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+        let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
         let response = model
             .embed_texts_response(inputs())
             .await
@@ -68,7 +67,7 @@ async fn raw_round_trips() {
 #[tokio::test]
 async fn raw_route_parity() {
     with_gemini_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+        let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
         let normalized = model
             .embed_texts_response(inputs())
             .await
@@ -87,7 +86,7 @@ async fn single_text_convenience() {
     with_gemini_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding_model(gemini::embedding::EMBEDDING_001);
+            let model = client.embedding(gemini::embedding::EMBEDDING_001, None);
             let response = model
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
@@ -105,7 +104,7 @@ async fn single_text_convenience() {
 #[tokio::test]
 async fn dimensions_request() {
     with_gemini_cassette("embedding_matrix/dimensions_request", |client| async move {
-        let model = client.embedding_model_with_ndims(gemini::embedding::EMBEDDING_001, 256);
+        let model = client.embedding(gemini::embedding::EMBEDDING_001, Some(256));
         let response = model
             .embed_texts_response(inputs())
             .await
@@ -122,7 +121,7 @@ async fn error_preserves_provider_body() {
     with_gemini_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding_model("no-such-embedding-model");
+            let model = client.embedding("no-such-embedding-model", None);
             let error = model
                 .embed_texts_response(inputs())
                 .await

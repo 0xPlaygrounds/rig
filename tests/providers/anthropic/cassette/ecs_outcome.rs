@@ -50,7 +50,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
         "corpus_outcome/cancel_after_tool_call_delta",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                delivery::FirstDelta::tool(client.completion_model(CLAUDE_SONNET_4_6)),
+                delivery::FirstDelta::tool(client.completion(CLAUDE_SONNET_4_6)),
                 NOTE_PREAMBLE,
                 true,
             );
@@ -102,7 +102,7 @@ async fn cancel_after_tool_call_delta_effect_log_is_the_golden_fixture() {
 async fn tool_error_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_outcome_cassette("corpus_outcome/tool_error", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             TOOLS_PREAMBLE,
             false,
         );
@@ -138,7 +138,7 @@ async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
         "corpus_outcome/tool_error_streamed",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
                 TOOLS_PREAMBLE,
                 true,
             );
@@ -173,7 +173,7 @@ async fn tool_error_streamed_effect_log_is_the_golden_fixture() {
 async fn model_error_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette_bogus_key("corpus_outcome/model_error", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             false,
         );
@@ -213,7 +213,7 @@ async fn model_error_effect_log_is_the_golden_fixture() {
 async fn model_error_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette_bogus_key("corpus_outcome/model_error_streamed", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             true,
         );
@@ -258,7 +258,7 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
         "corpus_outcome/max_turns_exhausted",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
                 TOOLS_PREAMBLE,
                 false,
             );
@@ -296,7 +296,7 @@ async fn max_turns_exhausted_effect_log_is_the_golden_fixture() {
 async fn default_max_turns_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             TOOLS_PREAMBLE,
             false,
         );

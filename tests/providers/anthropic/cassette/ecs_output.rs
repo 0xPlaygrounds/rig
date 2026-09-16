@@ -14,7 +14,7 @@ use rig_ecs::agent::*;
 async fn tool_unary_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_unary", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             false,
         );
@@ -56,7 +56,7 @@ async fn tool_unary_effect_log_is_the_golden_fixture() {
 async fn tool_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_streamed", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             true,
         );
@@ -89,7 +89,7 @@ async fn tool_streamed_effect_log_is_the_golden_fixture() {
 async fn prompted_unary_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/prompted_unary", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             false,
         );
@@ -128,7 +128,7 @@ async fn prompted_unary_effect_log_is_the_golden_fixture() {
 async fn prompted_streamed_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/prompted_streamed", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             true,
         );
@@ -162,7 +162,7 @@ async fn tool_with_real_tool_effect_log_is_the_golden_fixture() {
         "corpus_output/tool_with_real_tool",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
                 TOOLS_PREAMBLE,
                 false,
             );
@@ -205,7 +205,7 @@ async fn prompted_with_real_tool_effect_log_is_the_golden_fixture() {
         "corpus_output/prompted_with_real_tool",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
                 TOOLS_PREAMBLE,
                 false,
             );
@@ -248,7 +248,7 @@ async fn tool_choice_specific_output_effect_log_is_the_golden_fixture() {
         "corpus_output/tool_choice_specific_output",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
                 BASIC_PREAMBLE,
                 false,
             );
@@ -293,7 +293,7 @@ async fn tool_choice_required_effect_log_is_the_golden_fixture() {
         "corpus_output/tool_choice_required",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
                 BASIC_PREAMBLE,
                 false,
             );
@@ -332,7 +332,7 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
         "corpus_output/tool_under_none_degrades",
         |client| async move {
             let mut ecs = EcsAgent::for_golden(
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
                 BASIC_PREAMBLE,
                 false,
             );
@@ -374,7 +374,7 @@ async fn tool_under_none_degrades_effect_log_is_the_golden_fixture() {
 async fn tool_thinking_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_output_cassette("corpus_output/tool_thinking", |client| async move {
         let mut ecs = EcsAgent::for_golden(
-            client.completion_model(CLAUDE_SONNET_4_6),
+            client.completion(CLAUDE_SONNET_4_6),
             BASIC_PREAMBLE,
             false,
         );

@@ -1,5 +1,6 @@
 //! Copilot agent completion smoke test.
 
+use rig::model::ModelLister;
 use rig::prelude::*;
 
 use crate::copilot::{LIVE_MODEL, live_client, with_copilot_cassette};
@@ -25,10 +26,11 @@ async fn completion_smoke() {
 #[tokio::test]
 #[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn all_models_completion_smoke() {
-    let client = live_client();
+    let client = live_client().await;
 
     let models = client
-        .list_models()
+        .model_listing()
+        .list_all()
         .await
         .expect("listing Copilot models should succeed");
 

@@ -12,8 +12,10 @@ use crate::audio_generation::AudioGenerationError;
 use crate::client::VerifyError;
 use crate::embeddings::{self, EmbeddingError};
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::rerank::RerankError;
 use crate::operation::{
-    Embedding, EmbeddingCapabilities, ModelListing, Transcription, Verify as VerifyOp,
+    Embedding, EmbeddingCapabilities, ModelListing, Rerank as RerankOp, Transcription,
+    Verify as VerifyOp,
 };
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::completion::Usage;
@@ -24,6 +26,11 @@ use crate::wire::{
 };
 
 use super::{DimensionsField, OpenAI, Routing};
+// Each is read by exactly one feature-gated wire.
+#[cfg(feature = "image")]
+use super::ImageBody;
+#[cfg(feature = "audio")]
+use super::SpeechBody;
 
 /// Build the JSON request this dialect's endpoint expects.
 ///
@@ -36,9 +43,18 @@ fn json_request<E: crate::wire::WireError>(
     deployment: Option<&str>,
     body: &serde_json::Value,
 ) -> Result<http::Request<Body>, E> {
+    json_request_to(provider, provider.uri(path, deployment), body)
+}
+
+/// [`json_request`] against an already-resolved URL, for the endpoints whose
+/// URL is derived rather than a fixed path under the base.
+fn json_request_to<E: crate::wire::WireError>(
+    provider: &OpenAI,
+    uri: String,
+    body: &serde_json::Value,
+) -> Result<http::Request<Body>, E> {
     let bytes = serde_json::to_vec(body).map_err(E::json)?;
-    let builder = http::Request::post(provider.uri(path, deployment))
-        .header("Content-Type", "application/json");
+    let builder = http::Request::post(uri).header("Content-Type", "application/json");
     provider
         .authenticate(builder)
         .body(Body::Bytes(bytes))
@@ -123,22 +139,22 @@ impl Embeddings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingsReply {
     #[serde(default)]
-    pub(crate) object: String,
-    pub(crate) data: Vec<EmbeddingDatum>,
+    pub object: String,
+    pub data: Vec<EmbeddingDatum>,
     #[serde(default)]
-    pub(crate) model: String,
+    pub model: String,
     /// Optional because compatible dialects may omit it.
     #[serde(default)]
-    pub(crate) usage: Option<Usage>,
+    pub usage: Option<Usage>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EmbeddingDatum {
     #[serde(default)]
-    pub(crate) object: String,
-    pub(crate) embedding: Vec<serde_json::Number>,
+    pub object: String,
+    pub embedding: Vec<serde_json::Number>,
     #[serde(default)]
-    pub(crate) index: usize,
+    pub index: usize,
 }
 
 /// The embeddings decoder.
@@ -384,10 +400,15 @@ impl Wire for Transcriptions {
             }
         }
 
-        let builder = http::Request::post(self.provider.uri(
-            self.provider.dialect.quirks.transcription_path,
-            deployment(&self.provider, &self.model),
-        ));
+        let uri = self
+            .provider
+            .modality_uri(
+                "transcription",
+                self.provider.dialect.quirks.transcription_path,
+                &self.model,
+            )
+            .map_err(TranscriptionError::ProviderError)?;
+        let builder = http::Request::post(uri);
         let request = self
             .provider
             .authenticate(builder)
@@ -434,9 +455,34 @@ pub struct ImagesDecoder {
     provider: &'static str,
 }
 
+/// One generated image, as every dialect on this wire returns it.
+#[cfg(feature = "image")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImageDatum {
+    /// The image, base64-encoded.
+    pub b64_json: String,
+}
+
+/// The image-generation reply.
+///
+/// `created` is optional and the rest of the object is kept verbatim: OpenAI
+/// sends `{created, data}` and xAI sends `{data}` alone, so a required
+/// `created` would fail every xAI reply.
+#[cfg(feature = "image")]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ImagesReply {
+    /// The generated images.
+    #[serde(default)]
+    pub data: Vec<ImageDatum>,
+    /// Whatever else the dialect sent (`created`, and any field this build
+    /// does not model), so the raw payload loses nothing.
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
+}
+
 #[cfg(feature = "image")]
 impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
-    type Event = crate::providers::openai::image_generation::ImageGenerationResponse;
+    type Event = ImagesReply;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         classify_untyped_line(frame.as_str().as_bytes())
@@ -447,15 +493,26 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
         event: Self::Event,
         out: &mut Output<crate::operation::ImageGeneration>,
     ) {
-        use crate::image_generation::{ImageGenerationError, NormalizeImageGenerationResponse};
+        use base64::Engine;
+        use crate::image_generation::{ImageGenerationError, ImageGenerationResponse};
 
-        match serde_json::to_value(&event) {
-            Ok(raw) => match event.normalize(self.provider) {
-                Ok(response) => out.push(Ok(response.with_raw(raw))),
-                Err(error) => out.push(Err(error)),
-            },
-            Err(error) => out.push(Err(ImageGenerationError::from(error))),
-        }
+        let Some(encoded) = event.data.first().map(|image| image.b64_json.as_str()) else {
+            out.push(Err(ImageGenerationError::ResponseError(
+                "missing image data".to_owned(),
+            )));
+            return;
+        };
+        let image = match base64::prelude::BASE64_STANDARD.decode(encoded) {
+            Ok(image) => image,
+            Err(error) => {
+                out.push(Err(ImageGenerationError::ResponseError(error.to_string())));
+                return;
+            }
+        };
+        let raw = serde_json::to_value(&event).unwrap_or(serde_json::Value::Null);
+        out.push(Ok(
+            ImageGenerationResponse::new(image, self.provider).with_raw(raw)
+        ));
     }
 }
 
@@ -477,24 +534,42 @@ impl Wire for Images {
         request: crate::image_generation::ImageGenerationRequest,
         _mode: Mode,
     ) -> Result<Encoded, crate::image_generation::ImageGenerationError> {
-        // `response_format` is deliberately absent: it is no longer part of
-        // this endpoint's request schema, which rejects it before it even
-        // looks at the model. A compatible endpoint that still takes the
-        // field gets it through `additional_params`, which is merged last so
-        // a caller can also override what is derived here.
-        let mut body = serde_json::json!({
-            "model": self.model,
-            "prompt": request.prompt,
-            "size": format!("{}x{}", request.width, request.height),
-        });
+        let mut body = match self.provider.dialect.quirks.image_body {
+            // `response_format` is deliberately absent: it is no longer part
+            // of OpenAI's request schema, which rejects it before it even
+            // looks at the model. A compatible endpoint that still takes the
+            // field gets it through `additional_params`.
+            ImageBody::OpenAi => serde_json::json!({
+                "model": self.model,
+                "prompt": request.prompt,
+                "size": format!("{}x{}", request.width, request.height),
+            }),
+            // xAI takes no `size` and answers with a URL unless asked for
+            // base64, which is the only form this wire decodes.
+            ImageBody::Xai => serde_json::json!({
+                "model": self.model,
+                "prompt": request.prompt,
+                "response_format": "b64_json",
+                "aspect_ratio": "1:1",
+            }),
+        };
+        // Merged last, so a caller can reach the endpoint's other parameters
+        // and override what is derived above.
         if let Some(additional_params) = request.additional_params {
             crate::json_utils::merge_inplace(&mut body, additional_params);
         }
 
-        let request = json_request::<crate::image_generation::ImageGenerationError>(
+        let uri = self
+            .provider
+            .modality_uri(
+                "image generation",
+                self.provider.dialect.quirks.image_generation_path,
+                &self.model,
+            )
+            .map_err(crate::image_generation::ImageGenerationError::ProviderError)?;
+        let request = json_request_to::<crate::image_generation::ImageGenerationError>(
             &self.provider,
-            self.provider.dialect.quirks.image_generation_path,
-            deployment(&self.provider, &self.model),
+            uri,
             &body,
         )?;
         Ok(Encoded::new(request, Framing::Whole)
@@ -584,12 +659,21 @@ impl Wire for Speech {
         request: crate::audio_generation::AudioGenerationRequest,
         _mode: Mode,
     ) -> Result<Encoded, AudioGenerationError> {
-        let mut body = serde_json::json!({
-            "model": self.model,
-            "input": request.text,
-            "voice": request.voice,
-            "speed": request.speed,
-        });
+        let mut body = match self.provider.dialect.quirks.speech_body {
+            SpeechBody::OpenAi => serde_json::json!({
+                "model": self.model,
+                "input": request.text,
+                "voice": request.voice,
+                "speed": request.speed,
+            }),
+            // xAI's `/v1/tts` names the voice `voice_id` and takes no model
+            // in the body; `eve` is the voice its client defaulted to.
+            SpeechBody::Xai => serde_json::json!({
+                "text": request.text,
+                "voice_id": if request.voice.is_empty() { "eve" } else { request.voice.as_str() },
+                "language": "en",
+            }),
+        };
         // Last, so a caller can reach the endpoint's other parameters —
         // `response_format`, `instructions` — and override what is derived
         // above. They demonstrably change the reply: `response_format: "wav"`
@@ -598,12 +682,14 @@ impl Wire for Speech {
             crate::json_utils::merge_inplace(&mut body, additional_params);
         }
 
-        let request = json_request::<AudioGenerationError>(
-            &self.provider,
+        // Azure versions its speech endpoint separately from every other
+        // route, so this one request carries its own `api-version`.
+        let uri = self.provider.uri_versioned(
             self.provider.dialect.quirks.audio_generation_path,
             deployment(&self.provider, &self.model),
-            &body,
-        )?;
+            self.provider.speech_api_version(),
+        );
+        let request = json_request_to::<AudioGenerationError>(&self.provider, uri, &body)?;
         Ok(Encoded::new(request, Framing::Whole)
             .with_request_id_header(self.provider.dialect.request_id_header))
     }
@@ -639,24 +725,24 @@ impl Models {
 /// fields rather than being dropped.
 #[derive(Debug, Deserialize)]
 pub struct ModelEntry {
-    id: String,
+    pub id: String,
     #[serde(default)]
-    name: Option<String>,
+    pub name: Option<String>,
     #[serde(default)]
-    created: Option<u64>,
+    pub created: Option<u64>,
     #[serde(default)]
-    owned_by: Option<String>,
+    pub owned_by: Option<String>,
     #[serde(default)]
-    context_window: Option<u32>,
+    pub context_window: Option<u32>,
     #[serde(default)]
-    max_completion_tokens: Option<u32>,
+    pub max_completion_tokens: Option<u32>,
 }
 
 /// The `{ "data": [...] }` envelope.
 #[derive(Debug, Deserialize)]
 pub struct ModelsReply {
     #[serde(default)]
-    data: Vec<ModelEntry>,
+    pub data: Vec<ModelEntry>,
 }
 
 /// The model-listing decoder.
@@ -717,6 +803,191 @@ impl Wire for Models {
 
     fn decoder(&self) -> ModelsDecoder {
         ModelsDecoder
+    }
+}
+
+// ── reranking ───────────────────────────────────────────────────────────
+
+/// The rerank wire.
+///
+/// There is no reranking endpoint in the OpenAI API, so the compatible
+/// servers that offer one converged on Jina's shape:
+/// `{model, query, documents, top_n}` answered with
+/// `{model, results:[{index, relevance_score}], usage}`. `llama-server`
+/// serves exactly that.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Rerank {
+    /// Which provider, and how to reach it.
+    pub provider: OpenAI,
+    /// The reranker model.
+    pub model: String,
+    /// Return only the `top_n` highest-scoring documents, when the caller
+    /// asked for a cut.
+    pub top_n: Option<usize>,
+}
+
+impl Rerank {
+    /// The rerank wire for `model`.
+    pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
+        Self {
+            provider,
+            model: model.into(),
+            top_n: None,
+        }
+    }
+
+    /// Ask the server to return only the `top_n` highest-scoring documents.
+    pub fn with_top_n(mut self, top_n: usize) -> Self {
+        self.top_n = Some(top_n);
+        self
+    }
+}
+
+/// One scored document.
+///
+/// The score key is `relevance_score` on the Jina-shaped path and `score` on
+/// the text-embeddings-inference path the same llama.cpp handler switches to;
+/// both are accepted, so a server answering either shape decodes rather than
+/// silently scoring every document zero.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RerankResultEntry {
+    /// Which input document this scored.
+    pub index: usize,
+    /// The score.
+    #[serde(alias = "score")]
+    pub relevance_score: f64,
+    /// Present only on servers that echo the document back; llama.cpp does
+    /// not on this path.
+    #[serde(default, alias = "text")]
+    pub document: Option<String>,
+}
+
+/// What a rerank reply reports besides its ranking.
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct RerankUsage {
+    /// Tokens the query and documents cost.
+    #[serde(default)]
+    pub prompt_tokens: u64,
+    /// Total tokens, as the provider reported them.
+    #[serde(default)]
+    pub total_tokens: u64,
+}
+
+/// The rerank reply.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RerankReply {
+    /// The model the server ranked with, when it named one.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// The ranking.
+    pub results: Vec<RerankResultEntry>,
+    /// What it cost.
+    #[serde(default)]
+    pub usage: Option<RerankUsage>,
+}
+
+/// The rerank decoder.
+#[derive(Default)]
+pub struct RerankDecoder {
+    provider: &'static str,
+}
+
+impl Decoder<RerankOp> for RerankDecoder {
+    type Event = RerankReply;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        classify_untyped_line(frame.as_str().as_bytes())
+    }
+
+    fn interpret(&mut self, event: Self::Event, out: &mut Output<RerankOp>) {
+        let raw = serde_json::to_value(&event).unwrap_or(serde_json::Value::Null);
+        let usage = event
+            .usage
+            .map(|usage| crate::completion::Usage {
+                input_tokens: Some(usage.prompt_tokens),
+                total_tokens: Some(usage.total_tokens),
+                ..Default::default()
+            })
+            .unwrap_or_default();
+        let results = event
+            .results
+            .into_iter()
+            .map(|result| crate::rerank::RerankResult {
+                index: result.index,
+                document: result.document,
+                relevance_score: result.relevance_score,
+            })
+            .collect();
+        // A server that omits `model` still produced a ranking; `None` is the
+        // honest report.
+        out.push(Ok(crate::rerank::RerankResponse::new(results, self.provider)
+            .with_optional_model(event.model)
+            .with_usage(usage)
+            .with_raw(raw)));
+    }
+}
+
+impl Wire for Rerank {
+    type Op = RerankOp;
+    type Decoder = RerankDecoder;
+
+    fn name(&self) -> &str {
+        self.provider.dialect.name
+    }
+
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    fn capabilities(&self) -> usize {
+        self.provider.dialect.quirks.rerank.max_documents
+    }
+
+    fn encode(
+        &self,
+        request: crate::operation::RerankRequest,
+        _mode: Mode,
+    ) -> Result<Encoded, RerankError> {
+        let quirks = &self.provider.dialect.quirks.rerank;
+        // Empty means the dialect does not offer reranking, stated rather
+        // than defaulted: a future dialect that leaves it out is refused
+        // here instead of posting to a path its server never served.
+        if quirks.path.is_empty() {
+            return Err(RerankError::ProviderError(format!(
+                "{} offers no reranking endpoint",
+                self.provider.dialect.name
+            )));
+        }
+        let mut body = serde_json::json!({
+            "query": request.query,
+            "documents": request.documents,
+        });
+        let Some(object) = body.as_object_mut() else {
+            return Err(RerankError::ResponseError(
+                "rerank request body must be an object".into(),
+            ));
+        };
+        if quirks.sends_model_field {
+            object.insert("model".to_owned(), serde_json::json!(self.model));
+        }
+        if let Some(top_n) = self.top_n {
+            object.insert("top_n".to_owned(), serde_json::json!(top_n));
+        }
+
+        let request = json_request::<RerankError>(
+            &self.provider,
+            quirks.path,
+            deployment(&self.provider, &self.model),
+            &body,
+        )?;
+        Ok(Encoded::new(request, Framing::Whole)
+            .with_request_id_header(self.provider.dialect.request_id_header))
+    }
+
+    fn decoder(&self) -> RerankDecoder {
+        RerankDecoder {
+            provider: self.provider.dialect.name,
+        }
     }
 }
 

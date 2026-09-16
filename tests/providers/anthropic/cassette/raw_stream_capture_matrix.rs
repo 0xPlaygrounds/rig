@@ -3,12 +3,11 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. `stream()` opens `raw_stream` and hands it to
-//! the adapter's `final_record`, which serializes the provider-native terminal —
-//! `anthropic::streaming::StreamingCompletionResponse`, the `R` of
-//! `raw_stream` — onto the terminal `StreamFinal::raw` before mapping it. So
-//! `raw` is the **terminal record only**: what `raw_stream` would have yielded
-//! as its `FinalResponse`, not the stream's frames. Anthropic's terminal is
+//! Capture is always on. The wire's decoder assembles the provider-native
+//! terminal — `anthropic::streaming::StreamingCompletionResponse` — and the
+//! driver serializes it onto the terminal `StreamFinal::raw` before mapping it
+//! to the normalized terminal. So `raw` is the **terminal record only**: the
+//! provider's own final record, not the stream's frames. Anthropic's terminal is
 //! assembled from `message_start` (id, model) and the closing `message_delta`
 //! (`stop_reason`, `stop_sequence`, usage), plus the transport `request-id`
 //! header the driver stamps. `raw` is `Value::Null` only on a `StreamFinal`
@@ -24,7 +23,7 @@
 //! |---|------|-----------|----------|--------|
 //! | 1 | `terminal_raw_round_trips_into_provider_type` | plain text request | terminal `raw` populated; deserializes into the Anthropic terminal type and re-serializes equal; terminal-only shape (no frames) | recorded |
 //! | 2 | `raw_exposes_stop_sequence` | streamed twin of the `stop_sequences: ["alpha"]` request | `raw["stop_sequence"] == "alpha"`, `raw["stop_reason"] == "stop_sequence"` (verbatim spelling) | recorded |
-//! | 3 | `normalized_terminal_matches_raw_renormalized` | plain text request | the adapter's terminal mapping over `StreamingCompletionResponse::deserialize(raw)` reproduces `identity()`, `finish_reason`, `model`, `usage` | recorded |
+//! | 3 | `normalized_terminal_matches_raw_renormalized` | plain text request | reading `raw` back into `StreamingCompletionResponse` reproduces `identity()`, `finish_reason`, `model`, `usage` | recorded |
 //! | 4 | `terminal_raw_round_trips_for_thinking_stream` | streamed twin of the `thinking.enabled` request | terminal `raw` round-trips; `raw["usage"]["output_tokens_details"]["thinking_tokens"]` is the terminal `message_delta`'s, verbatim; normalized terminal folds it into `reasoning_tokens` and never spells `thinking`; the stream yielded the `thinking` block as `Reasoning` | recorded |
 //! | 5 | `terminal_raw_round_trips_for_tool_use_stream` | streamed twin of the forced tool call | terminal `raw` round-trips; `raw["stop_reason"] == "tool_use"` verbatim; normalized terminal `finish_reason == ToolCalls`; the stream yielded the `tool_use` block as a `ToolCall` whose provider id is the frame's | recorded |
 //!
@@ -51,10 +50,12 @@ use rig::message::AssistantContent;
 
 use futures::StreamExt;
 use rig::completion::{CompletionModel as _, FinishReason, ToolDefinition};
+use rig::driver::Bound;
 use rig::message::{ReasoningContent, ToolChoice};
-use rig::prelude::*;
-use rig::providers::anthropic;
 use rig::providers::anthropic::streaming::StreamingCompletionResponse;
+use rig::providers::anthropic::wire::Anthropic;
+use rig::providers::anthropic::wire::Messages;
+use rig::providers::anthropic;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -85,7 +86,7 @@ const THINKING_SCENARIO: &str =
 const TOOL_USE_SCENARIO: &str =
     "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream";
 
-type AnthropicModel = anthropic::CompletionModel;
+type AnthropicModel = Bound<Messages>;
 
 fn probe_request(model: &AnthropicModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(32).build()
@@ -158,11 +159,11 @@ async fn drain_terminal(stream: rig::streaming::StreamingCompletionResponse) -> 
 /// keep its terminal record for the assertions that run after the wrapper has
 /// written the fixture.
 async fn probe_body(
-    client: anthropic::Client,
+    client: Bound<Anthropic>,
     build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
     sink: TerminalSink,
 ) {
-    let model = client.completion_model(anthropic::completion::CLAUDE_HAIKU_4_5);
+    let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
     let stream = model
         .stream(build(&model))
         .await
@@ -173,12 +174,12 @@ async fn probe_body(
 /// The body of cells 4 and 5: the same, on the model the cell names, keeping
 /// the streamed items as well as the terminal.
 async fn streamed_body(
-    client: anthropic::Client,
+    client: Bound<Anthropic>,
     model_name: &str,
     build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
     sink: StreamedSink,
 ) {
-    let model = client.completion_model(model_name);
+    let model = client.completion(model_name);
     let stream = model
         .stream(build(&model))
         .await
@@ -501,11 +502,9 @@ async fn raw_exposes_stop_sequence() {
 // ---------------------------------------------------------------------------
 
 /// The normalized terminal and `raw` describe the same stream: reading `raw`
-/// back into the provider terminal type and mapping it through the public
-/// the adapter's terminal mapping (`terminal_record`) — the same
-/// mapping `stream()` applies — reproduces every normalized field delivered
-/// beside it: identity, finish reason, model, usage. And each of those is
-/// what the fixture recorded.
+/// back into the provider terminal type reproduces every normalized field
+/// delivered beside it: identity, finish reason, model, usage. And each of
+/// those is what the fixture recorded.
 #[tokio::test]
 async fn normalized_terminal_matches_raw_renormalized() {
     let sink = TerminalSink::default();

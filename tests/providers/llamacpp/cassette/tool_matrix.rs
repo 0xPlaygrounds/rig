@@ -35,7 +35,8 @@
 //! (`common_chat_tool_choice_parse_oaicompat`). An OpenAI-shaped object
 //! type-mismatches that read and falls through to the default, so the request
 //! is served as `auto` and the caller silently gets whichever tool the model
-//! felt like. `Llamacpp::prepare_request` refuses it locally instead.
+//! felt like. The `BodyRewrite::LlamaCpp` arm of `Chat::encode` refuses it
+//! locally instead.
 //!
 //! And `tool_choice: "none"`:
 //!
@@ -50,13 +51,13 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolChoice, ToolResult,
     ToolResultContent, UserContent,
 };
 use rig::prelude::*;
+use rig::providers::openai::wire::{LLAMACPP, OpenAI};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -132,7 +133,7 @@ fn recorded_tool_names(scenario: &str) -> Vec<String> {
 #[tokio::test]
 async fn a_zero_argument_tool_is_called_with_an_empty_object() {
     with_llamacpp_competent_cassette("tool_matrix/zero_argument_tool", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -257,7 +258,7 @@ async fn a_one_argument_tool_round_trips_its_value() {
 #[tokio::test]
 async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
     with_llamacpp_competent_cassette("tool_matrix/three_tools", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -304,7 +305,7 @@ async fn three_tools_are_all_advertised_and_the_right_one_is_chosen() {
 #[tokio::test]
 async fn two_independent_calls_arrive_in_one_turn() {
     with_llamacpp_competent_cassette("tool_matrix/parallel_calls", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -437,7 +438,7 @@ async fn a_tool_that_errors_reports_the_error_back_to_the_model() {
 #[tokio::test]
 async fn tool_choice_auto_lets_the_model_decide() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_auto", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -478,7 +479,7 @@ async fn tool_choice_auto_lets_the_model_decide() {
 #[tokio::test]
 async fn tool_choice_none_suppresses_the_parsed_call() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_none", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -559,7 +560,7 @@ async fn tool_choice_none_suppresses_the_parsed_call() {
 #[tokio::test]
 async fn tool_choice_required_forces_a_call() {
     with_llamacpp_competent_cassette("tool_matrix/tool_choice_required", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -603,20 +604,18 @@ async fn tool_choice_required_forces_a_call() {
 ///
 /// **There is no cassette, deliberately.** The behaviour under test is that
 /// *nothing is sent*, and a cassette recording zero interactions is not a
-/// shape the harness can write. The client is pointed at a port nothing
-/// listens on instead, which turns "no request was made" into something the
-/// cell proves rather than asserts: any request would fail as a connection
-/// error, and the error this cell requires is a `ProviderError` raised in
-/// process.
+/// shape the harness can write. The configuration is pointed at a port
+/// nothing listens on instead, which turns "no request was made" into
+/// something the cell proves rather than asserts: any request would fail as a
+/// connection error, and the error this cell requires is a `ProviderError`
+/// raised in process.
 #[tokio::test]
 async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
     // Port 1 on the loopback interface: reserved, and nothing binds it.
-    let client = rig::providers::llamacpp::Client::from_url_with(
-        "http://127.0.0.1:1",
-        rig::http_client::ReqwestClient::default(),
-    )
-    .expect("client should build");
-    let model = client.completion_model(CASSETTE_MODEL);
+    let model = OpenAI::with_key(&LLAMACPP, "")
+        .with_base_url("http://127.0.0.1:1/v1")
+        .bind(rig::http_client::ReqwestClient::default())
+        .completion(CASSETTE_MODEL);
 
     let error = model
         .completion(
@@ -660,17 +659,15 @@ async fn tool_choice_specific_is_refused_before_the_request_is_sent() {
 ///
 /// A guard that only covered one surface would be worse than none: a caller
 /// who moved from `completion` to `stream` would silently get the old
-/// behaviour back. `prepare_request` is invoked by both paths
-/// (`openai/completion/mod.rs` and `openai/completion/streaming.rs`), and this
-/// cell is what makes that a checked fact rather than a reading.
+/// behaviour back. `Chat::prepare` runs from `Chat::encode`, which both
+/// `Mode::Unary` and `Mode::Stream` go through, and this cell is what makes
+/// that a checked fact rather than a reading.
 #[tokio::test]
 async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
-    let client = rig::providers::llamacpp::Client::from_url_with(
-        "http://127.0.0.1:1",
-        rig::http_client::ReqwestClient::default(),
-    )
-    .expect("client should build");
-    let model = client.completion_model(CASSETTE_MODEL);
+    let model = OpenAI::with_key(&LLAMACPP, "")
+        .with_base_url("http://127.0.0.1:1/v1")
+        .bind(rig::http_client::ReqwestClient::default())
+        .completion(CASSETTE_MODEL);
 
     let error = model
         .stream(
@@ -704,7 +701,7 @@ async fn tool_choice_specific_is_refused_on_the_streaming_path_too() {
 #[tokio::test]
 async fn a_tool_result_carrying_text_reaches_the_model() {
     with_llamacpp_competent_cassette("tool_matrix/tool_result_text", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model
@@ -766,7 +763,7 @@ async fn a_tool_result_carrying_text_reaches_the_model() {
 #[tokio::test]
 async fn a_tool_result_carrying_json_reaches_the_model() {
     with_llamacpp_competent_cassette("tool_matrix/tool_result_json", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model

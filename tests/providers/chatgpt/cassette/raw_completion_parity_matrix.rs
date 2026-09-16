@@ -1,34 +1,30 @@
-//! Matrix for the typed escape hatch's parity with the normalized path on
-//! ChatGPT: `raw_completion(req).normalize("chatgpt")` must reproduce what
-//! `completion(req)` reports for `identity()`, `finish_reason()`, `model` and
-//! `usage`.
+//! Matrix for the two views of one ChatGPT reply: the normalized
+//! [`CompletionResponse`](rig::completion::CompletionResponse) the driver
+//! returns and the provider envelope it captured on
+//! [`raw`](rig::completion::CompletionResponse::raw). Both must tell the same
+//! story about `identity()`, `finish_reason()`, `model` and `usage`.
 //!
 //! # The contract
 //!
-//! [`ResponsesCompletionModel::raw_completion`](rig::providers::chatgpt::ResponsesCompletionModel::raw_completion)
-//! and [`CompletionModel::completion`](rig::completion::CompletionModel::completion)
-//! share one transport (`send_completion`): both reassemble the Responses
-//! wire type from the SSE body's terminal `response.completed` event, and the
-//! normalized path is `raw.normalize(PROVIDER_NAME)` plus the captured `raw`.
-//! ChatGPT reads no transport request-id header, so the whole identity — the
-//! `resp_…` response id and the `msg_…` message id — lives in the body and
-//! the typed route needs no `with_optional_provider_request_id` reassembly:
-//! `provider_request_id` is `None` on both routes.
+//! One call yields both views. The driver reassembles the Responses wire type
+//! from the SSE body's terminal `response.completed` event, folds it into the
+//! normalized response, and serializes the same value onto `raw`. ChatGPT
+//! reads no transport request-id header, so the whole identity — the
+//! `resp_…` response id and the `msg_…` message id — lives in the body:
+//! `provider_request_id` is `None`.
 //!
-//! The one place the two routes diverge is the empty-`output` fallback: when
-//! the terminal event carries no items, `completion` rebuilds the content from
-//! the preceding events (`completion_response_from_sse_body`) while
-//! `raw_completion` returns the terminal envelope as-is with `output: []`, and
-//! `raw.normalize(..)` returns the empty-response error. `normalized_completion`
-//! captures `raw` on that branch too — the same `raw_response` value.
+//! The state worth its own cell is the empty-`output` terminal event: the
+//! assistant content is folded from the preceding stream events while the
+//! captured envelope still carries `output: []`, so the two views disagree on
+//! where the content came from and agree on everything the envelope states.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_normalize_reproduces_completion` | typed route vs `completion` | identity/finish_reason/model/usage each equal their own recorded terminal frame; response-independent fields equal across routes | unrecorded (no CHATGPT credentials in this environment) |
-//! | 2 | `raw_normalize_reproduces_completion_with_tool_call` | tool-call turn | same, with `finish_reason == ToolCalls` and the call id from the frame | unrecorded (no CHATGPT credentials in this environment) |
-//! | 3 | `empty_output_fallback_still_carries_raw` | empty-`output` terminal event | `completion` rebuilds content from events **and** carries `raw` whose `output` is empty | unrecorded (no CHATGPT credentials in this environment) |
+//! | 1 | `raw_normalize_reproduces_completion` | text turn | the normalized view's identity/finish_reason/model/usage equal the recorded terminal frame's, and `raw` reads back as the same envelope | unrecorded (no CHATGPT credentials in this environment) |
+//! | 2 | `raw_normalize_reproduces_completion_with_tool_call` | tool-call turn | same, with `finish_reason == ToolCalls` and the call on the choice matching the frame's `function_call` item | unrecorded (no CHATGPT credentials in this environment) |
+//! | 3 | `empty_output_fallback_still_carries_raw` | empty-`output` terminal event | the content folds from the events **and** `raw` carries the envelope whose `output` is empty | unrecorded (no CHATGPT credentials in this environment) |
 //!
 //! Every cell is unrecorded: neither `CHATGPT_ACCESS_TOKEN`/`CHATGPT_ACCOUNT_ID`
 //! nor a usable ChatGPT OAuth cache was present when this matrix was written,
@@ -47,14 +43,14 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_completion_parity_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/chatgpt/raw_completion_parity_matrix/`.
 
-use rig::completion::NormalizeCompletionResponse as _;
 use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition,
 };
+use rig::driver::Bound;
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
+use rig::providers::openai::responses_api::wire::Responses;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -78,16 +74,26 @@ fn weather_tool() -> ToolDefinition {
     }
 }
 
-fn request(model: &chatgpt::ResponsesCompletionModel) -> rig::completion::CompletionRequest {
+type ChatGptModel = Bound<Responses>;
+
+fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
-fn tool_request(model: &chatgpt::ResponsesCompletionModel) -> rig::completion::CompletionRequest {
+fn tool_request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
         .tool(weather_tool())
         .max_tokens(128)
         .build()
+}
+
+/// The `msg_…` id of the envelope's output message, when it issued one.
+fn wire_message_id(envelope: &responses_api::CompletionResponse) -> Option<String> {
+    envelope.output.iter().find_map(|item| match item {
+        responses_api::Output::Message(message) => Some(message.id.clone()),
+        _ => None,
+    })
 }
 
 /// The recorded terminal `response.completed` frame's `response` for each
@@ -124,133 +130,122 @@ fn recorded_terminal_responses(scenario: &str) -> Vec<Value> {
         .collect()
 }
 
-/// A route's normalized response must be exactly the normalization of its own
-/// recorded terminal envelope — the on-disk proof that the route did not add,
-/// drop or reshape anything the wire said.
-fn assert_matches_own_wire(response: &RigCompletionResponse, terminal: &Value, route: &str) {
+/// A reply's normalized view must say exactly what its own recorded terminal
+/// envelope says — the on-disk proof that the fold did not add, drop or
+/// reshape anything the wire said.
+fn assert_matches_own_wire(response: &RigCompletionResponse, terminal: &Value) {
     let from_wire = responses_api::CompletionResponse::deserialize(terminal)
-        .expect("recorded terminal envelope must be a Responses response")
-        .normalize(CHATGPT_PROVIDER)
-        .expect("recorded terminal envelope must normalize");
+        .expect("recorded terminal envelope must be a Responses response");
 
     assert_eq!(
-        response.finish_reason(),
-        from_wire.finish_reason(),
-        "{route}: finish_reason"
+        response.model.as_deref(),
+        Some(from_wire.model.as_str()),
+        "model"
     );
-    assert_eq!(response.model, from_wire.model, "{route}: model");
-    assert_eq!(response.usage, from_wire.usage, "{route}: usage");
-    assert_eq!(response.provider, CHATGPT_PROVIDER, "{route}: provider");
-    // The transport id is `None` on both routes: ChatGPT reads no header.
+    assert_eq!(response.provider, CHATGPT_PROVIDER, "provider");
+    let usage = from_wire
+        .usage
+        .as_ref()
+        .expect("the terminal envelope must report usage");
     assert_eq!(
-        response.identity().provider_request_id,
-        None,
-        "{route}: transport id"
+        (
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+            response.usage.total_tokens
+        ),
+        (
+            Some(usage.input_tokens),
+            Some(usage.output_tokens),
+            Some(usage.total_tokens)
+        ),
+        "usage"
     );
+    // The transport id is `None`: ChatGPT reads no header.
+    let identity = response.identity();
+    assert_eq!(identity.provider_request_id, None, "transport id");
     match CassetteMode::current() {
         // Replay reads the scrubbed ids back, so identity compares exactly.
-        CassetteMode::Replay => assert_eq!(response.identity(), from_wire.identity(), "{route}"),
-        // Live, the fixture holds placeholders; the shape claim is that the
-        // route populated the same identity axes the wire populated.
-        CassetteMode::Record => {
-            let live = response.identity();
-            let wire = from_wire.identity();
+        CassetteMode::Replay => {
             assert_eq!(
-                live.response_id.is_some(),
-                wire.response_id.is_some(),
-                "{route}"
+                identity.response_id.as_deref(),
+                Some(from_wire.id.as_str()),
+                "response id"
             );
+            assert_eq!(identity.message_id, wire_message_id(&from_wire), "message id");
+        }
+        // Live, the fixture holds placeholders; the shape claim is that the
+        // fold populated the same identity axes the wire populated.
+        CassetteMode::Record => {
             assert_eq!(
-                live.message_id.is_some(),
-                wire.message_id.is_some(),
-                "{route}"
+                identity.message_id.is_some(),
+                wire_message_id(&from_wire).is_some(),
+                "message id"
             );
             assert!(
-                live.response_id
+                identity
+                    .response_id
                     .as_deref()
                     .is_some_and(|id| id.starts_with("resp_")),
-                "{route}: response id should be a resp_ id, got {:?}",
-                live.response_id
+                "response id should be a resp_ id, got {:?}",
+                identity.response_id
             );
         }
     }
 }
 
 // ---------------------------------------------------------------------------
-// 1: text turn — one scenario, two interactions: raw route, then completion
+// 1: text turn — one reply, both views
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn raw_normalize_reproduces_completion() {
     let scenario = "raw_completion_parity_matrix/raw_normalize_reproduces_completion";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
 
-            let raw = model
-                .raw_completion(request(&model))
-                .await
-                .expect("raw completion should succeed");
-            assert!(
-                !raw.output.is_empty(),
-                "premise: the terminal envelope carried items"
-            );
-            let via_raw = raw
-                .normalize(CHATGPT_PROVIDER)
-                .expect("raw route must normalize");
-
-            let via_completion = model
+            let response = model
                 .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
-            // Response-independent parity across the two routes.
-            assert_eq!(via_raw.finish_reason(), via_completion.finish_reason());
-            assert_eq!(via_raw.finish_reason(), Some(FinishReason::Stop));
-            assert_eq!(via_raw.model, via_completion.model);
-            assert_eq!(via_raw.provider, via_completion.provider);
-            assert_eq!(
-                via_raw.identity().provider_request_id,
-                via_completion.identity().provider_request_id
+            let envelope = responses_api::CompletionResponse::deserialize(&response.raw)
+                .expect("`raw` is the serialized responses_api::CompletionResponse");
+            assert!(
+                !envelope.output.is_empty(),
+                "premise: the terminal envelope carried items"
             );
+            assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
             assert_eq!(
-                via_raw.identity().response_id.is_some(),
-                via_completion.identity().response_id.is_some()
+                envelope.status,
+                responses_api::ResponseStatus::Completed,
+                "the envelope's own verdict is what the finish reason folded from"
             );
-            assert_eq!(
-                via_raw.identity().message_id.is_some(),
-                via_completion.identity().message_id.is_some()
+            assert!(
+                response
+                    .choice
+                    .iter()
+                    .any(|content| matches!(content, AssistantContent::Text(_))),
+                "the text turn must fold to assistant text"
             );
-            assert_eq!(
-                via_raw.usage.input_tokens,
-                via_completion.usage.input_tokens
-            );
-            // The typed route carries no `raw` (it *is* the raw); the
-            // normalized route always carries the same wire type serialized,
-            // so it reads back as a `responses_api::CompletionResponse`.
-            assert!(via_raw.raw.is_null());
-            let completion_raw = &via_completion.raw;
-            responses_api::CompletionResponse::deserialize(completion_raw)
-                .expect("completion's raw must be the same wire type raw_completion returns");
 
-            *sink.lock().expect("capture mutex") = vec![via_raw, via_completion];
+            *sink.lock().expect("capture mutex") = Some(response);
         },
     )
     .await;
 
-    let responses = std::mem::take(&mut *captured.lock().expect("capture mutex"));
+    let response = captured
+        .lock()
+        .expect("capture mutex")
+        .take()
+        .expect("the test body must have captured the response");
     let terminals = recorded_terminal_responses(scenario);
-    assert_eq!(
-        terminals.len(),
-        2,
-        "{scenario}: expected the raw and the completion turns"
-    );
-    assert_matches_own_wire(&responses[0], &terminals[0], "raw_completion + normalize");
-    assert_matches_own_wire(&responses[1], &terminals[1], "completion");
+    assert_eq!(terminals.len(), 1, "{scenario}: expected one turn");
+    assert_matches_own_wire(&response, &terminals[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -262,65 +257,60 @@ async fn raw_normalize_reproduces_completion() {
 async fn raw_normalize_reproduces_completion_with_tool_call() {
     let scenario =
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = std::sync::Arc::clone(&captured);
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
 
-            let raw = model
-                .raw_completion(tool_request(&model))
-                .await
-                .expect("raw completion should succeed");
-            let via_raw = raw
-                .normalize(CHATGPT_PROVIDER)
-                .expect("raw route must normalize");
-            let via_completion = model
+            let response = model
                 .completion(tool_request(&model))
                 .await
                 .expect("completion should succeed");
 
-            for (route, response) in [("raw", &via_raw), ("completion", &via_completion)] {
-                assert_eq!(
-                    response.finish_reason(),
-                    Some(FinishReason::ToolCalls),
-                    "{route}: a tool-call turn normalizes to ToolCalls"
-                );
-                assert!(
-                    response
-                        .choice
-                        .iter()
-                        .any(|content| matches!(content, AssistantContent::ToolCall(call) if call.function.name == "get_weather")),
-                    "{route}: the get_weather call must be on the choice"
-                );
-            }
-            assert_eq!(via_raw.model, via_completion.model);
-            assert_eq!(via_raw.provider, via_completion.provider);
-            *sink.lock().expect("capture mutex") = vec![via_raw, via_completion];
+            assert_eq!(
+                response.finish_reason(),
+                Some(FinishReason::ToolCalls),
+                "a tool-call turn normalizes to ToolCalls"
+            );
+            assert!(
+                response.choice.iter().any(|content| matches!(
+                    content,
+                    AssistantContent::ToolCall(call) if call.function.name == "get_weather"
+                )),
+                "the get_weather call must be on the choice"
+            );
+
+            let envelope = responses_api::CompletionResponse::deserialize(&response.raw)
+                .expect("`raw` is the serialized responses_api::CompletionResponse");
+            assert!(
+                envelope.output.iter().any(|item| matches!(
+                    item,
+                    responses_api::Output::FunctionCall(call) if call.name == "get_weather"
+                )),
+                "the captured envelope must carry the provider's own function_call item"
+            );
+
+            *sink.lock().expect("capture mutex") = Some(response);
         },
     )
     .await;
 
-    let responses = std::mem::take(&mut *captured.lock().expect("capture mutex"));
+    let response = captured
+        .lock()
+        .expect("capture mutex")
+        .take()
+        .expect("the test body must have captured the response");
     let terminals = recorded_terminal_responses(scenario);
-    assert_eq!(
-        terminals.len(),
-        2,
-        "{scenario}: expected the raw and the completion turns"
+    assert_eq!(terminals.len(), 1, "{scenario}: expected one turn");
+    assert!(
+        terminals[0]["output"]
+            .as_array()
+            .is_some_and(|items| items.iter().any(|item| item["type"] == "function_call")),
+        "{scenario}: premise — the recorded terminal envelope carries a function_call item"
     );
-    for (terminal, (response, route)) in terminals.iter().zip([
-        (&responses[0], "raw_completion + normalize"),
-        (&responses[1], "completion"),
-    ]) {
-        assert!(
-            terminal["output"]
-                .as_array()
-                .is_some_and(|items| items.iter().any(|item| item["type"] == "function_call")),
-            "{scenario}: premise — the recorded terminal envelope carries a function_call item"
-        );
-        assert_matches_own_wire(response, terminal, route);
-    }
+    assert_matches_own_wire(&response, &terminals[0]);
 }
 
 // ---------------------------------------------------------------------------
@@ -337,28 +327,28 @@ async fn empty_output_fallback_still_carries_raw() {
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/empty_output_fallback_still_carries_raw",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion(model.completion_request(PROMPT).max_tokens(64).build())
                 .await
                 .expect("the fallback rebuilds the response from the event stream");
 
-            // The normalized content came from the events…
+            // The normalized content folded from the events…
             assert!(
                 !response.choice.is_empty(),
-                "the fallback must rebuild the assistant content from the events"
+                "the content must fold from the events the terminal event lacks"
             );
             // …and raw is still the terminal envelope, whose output is empty.
-            let raw = &response.raw;
-            let typed = responses_api::CompletionResponse::deserialize(raw)
+            let typed = responses_api::CompletionResponse::deserialize(&response.raw)
                 .expect("raw must deserialize into responses_api::CompletionResponse");
             assert!(
                 typed.output.is_empty(),
                 "premise: this cell exists for the empty-output terminal event"
             );
             assert_eq!(
-                serde_json::to_value(&typed).expect("provider type should serialize"),
-                *raw
+                typed.status,
+                responses_api::ResponseStatus::Completed,
+                "the contentless terminal event still reported completion"
             );
         },
     )

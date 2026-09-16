@@ -4,15 +4,16 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use rig::completion::{CompletionModel, ToolDefinition};
+use rig::driver::Bound;
 use rig::message::{AssistantContent, ToolChoice};
-use rig::prelude::*;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic;
 use serde_json::json;
 
 use super::super::support::with_anthropic_cassette;
 
 pub(super) async fn assert_strict_tool_call(
-    client: anthropic::Client,
+    client: Bound<Anthropic>,
     tool_name: &str,
     prompt: &str,
     parameters: serde_json::Value,
@@ -23,14 +24,14 @@ pub(super) async fn assert_strict_tool_call(
 }
 
 pub(super) async fn strict_tool_call_arguments(
-    client: anthropic::Client,
+    client: Bound<Anthropic>,
     tool_name: &str,
     prompt: &str,
     parameters: serde_json::Value,
 ) -> serde_json::Value {
     let model = client
-        .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-        .with_strict_tools();
+        .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+        .map_wire(|wire| wire.with_strict_tools());
     let request = model
         .completion_request(prompt)
         .preamble(
@@ -74,8 +75,8 @@ async fn strict_tools_opt_in_roundtrip() {
         "messages_strict_tools/strict_tools_opt_in_roundtrip",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request(
                     "Call record_booking exactly once with passengers = 2 and cabin = economy.",

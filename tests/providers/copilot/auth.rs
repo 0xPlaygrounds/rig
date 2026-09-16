@@ -1,15 +1,17 @@
 //! Copilot OAuth and bootstrap smoke tests.
 
 use assert_fs::TempDir;
+use rig::driver::Bind;
+use rig::http_client::{BoxedHttpClient, ReqwestClient};
 use rig::prelude::*;
-use rig::providers::copilot;
+use rig::providers::copilot::auth::AuthSource;
+use rig::providers::copilot::wire::Copilot;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
 
 use crate::copilot::{
-    LIVE_MODEL, api_key_builder, copilot_api_key, copilot_github_access_token,
-    github_access_token_builder, oauth_builder,
+    LIVE_MODEL, authorize, copilot_api_key, copilot_github_access_token,
 };
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
@@ -22,21 +24,27 @@ fn required_copilot_github_access_token() -> String {
         .expect("COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN should be set")
 }
 
-fn oauth_builder_with_token_dir(path: &Path) -> copilot::ClientBuilder {
-    oauth_builder().token_dir(path)
+/// Resolve the OAuth credential against `path`'s token cache.
+///
+/// This is what `Client::authorize` did: the exchange is a conversation, so
+/// it runs before the provider configuration exists rather than on it.
+async fn authorize_oauth(path: &Path) -> Copilot {
+    authorize(AuthSource::OAuth, Some(path), true)
+        .await
+        .expect("device authorization should succeed")
+}
+
+fn transport() -> BoxedHttpClient {
+    ReqwestClient::default().boxed()
 }
 
 #[tokio::test]
 #[ignore = "requires GITHUB_COPILOT_API_KEY or COPILOT_API_KEY"]
 async fn api_key_completion_smoke() {
-    let client = api_key_builder(required_copilot_api_key())
-        .build()
-        .expect("Copilot API key client should build");
-
-    client
-        .authorize()
+    let client = authorize(AuthSource::ApiKey(required_copilot_api_key()), None, false)
         .await
-        .expect("api key auth should succeed");
+        .expect("api key auth should succeed")
+        .bind(transport());
 
     let response = client
         .agent(LIVE_MODEL)
@@ -52,14 +60,14 @@ async fn api_key_completion_smoke() {
 #[tokio::test]
 #[ignore = "requires COPILOT_GITHUB_ACCESS_TOKEN or GITHUB_TOKEN"]
 async fn github_access_token_completion_smoke() {
-    let client = github_access_token_builder(required_copilot_github_access_token())
-        .build()
-        .expect("Copilot bootstrap-token client should build");
-
-    client
-        .authorize()
-        .await
-        .expect("bootstrap-token auth should succeed");
+    let client = authorize(
+        AuthSource::GitHubAccessToken(required_copilot_github_access_token()),
+        None,
+        false,
+    )
+    .await
+    .expect("bootstrap-token auth should succeed")
+    .bind(transport());
 
     let response = client
         .agent(LIVE_MODEL)
@@ -78,14 +86,7 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
     let temp = TempDir::new().expect("temp dir");
     let token_dir = temp.path();
 
-    let client = oauth_builder_with_token_dir(token_dir)
-        .build()
-        .expect("Copilot OAuth client should build");
-
-    client
-        .authorize()
-        .await
-        .expect("device authorization should succeed");
+    let provider = authorize_oauth(token_dir).await;
 
     assert!(
         token_dir.join("access-token").is_file(),
@@ -96,12 +97,16 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
         "device flow should cache the Copilot API key"
     );
 
-    client
-        .authorize()
-        .await
-        .expect("cached oauth auth should succeed");
+    // The second resolve reads the cache the first one wrote.
+    assert_eq!(
+        authorize_oauth(token_dir).await,
+        provider,
+        "cached oauth auth should resolve the same credential"
+    );
 
-    let response = client
+    let response = provider
+        .clone()
+        .bind(transport())
         .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build()
@@ -111,14 +116,9 @@ async fn oauth_device_flow_authorize_and_cached_completion_smoke() {
 
     assert_nonempty_response(&response.output);
 
-    let cached_client = oauth_builder_with_token_dir(token_dir)
-        .build()
-        .expect("cached Copilot client should build");
-    cached_client
-        .authorize()
+    let cached_response = authorize_oauth(token_dir)
         .await
-        .expect("cached oauth auth should succeed");
-    let cached_response = cached_client
+        .bind(transport())
         .agent(LIVE_MODEL)
         .build()
         .prompt("Reply with the single word cached.")
@@ -149,14 +149,7 @@ async fn access_token_bootstrap_refresh_and_completion_smoke() {
     )
     .expect("expired api key record should be written");
 
-    let client = oauth_builder_with_token_dir(token_dir)
-        .build()
-        .expect("Copilot OAuth client should build");
-
-    client
-        .authorize()
-        .await
-        .expect("bootstrap refresh should succeed");
+    let client = authorize_oauth(token_dir).await.bind(transport());
 
     let api_key_record: serde_json::Value = serde_json::from_slice(
         &fs::read(token_dir.join("api-key.json")).expect("api key record should exist"),

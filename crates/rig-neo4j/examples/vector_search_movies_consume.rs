@@ -21,8 +21,7 @@ use rig_reqwest::prelude::*;
 
 use std::env;
 
-use rig_core::client::EmbeddingsClient;
-use rig_core::{providers::openai::Client, vector_store::VectorStoreIndex};
+use rig_core::{providers::openai::wire::OpenAI, vector_store::VectorStoreIndex};
 use serde::{Deserialize, Serialize};
 
 #[path = "./display/lib.rs"]
@@ -37,9 +36,9 @@ async fn main() -> Result<(), anyhow::Error> {
 
     const INDEX_NAME: &str = "moviePlotsEmbedding";
 
-    // Initialize OpenAI client
+    // Bind the OpenAI embeddings endpoint
     let openai_api_key = env::var("OPENAI_API_KEY")?;
-    let openai_client: Client<_> = Client::new(&openai_api_key)?;
+    let openai_client = OpenAI::new(&openai_api_key).bound()?;
 
     let neo4j_uri = "neo4j+s://demo.neo4jlabs.com:7687";
     let neo4j_username = "recommendations";
@@ -56,7 +55,7 @@ async fn main() -> Result<(), anyhow::Error> {
     .await?;
 
     // // Select the embedding model and generate our embeddings
-    let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Define the properties that will be retrieved from querying the graph nodes
     #[derive(Debug, Deserialize, Serialize)]

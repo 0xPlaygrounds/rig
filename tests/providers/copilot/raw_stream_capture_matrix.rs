@@ -3,22 +3,31 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. The terminal record of every stream the seam yields
-//! carries `raw`: the value
-//! [`CompletionModel::raw_stream`](rig::providers::copilot::CompletionModel::raw_stream)
-//! would have yielded as its `FinalResponse` — the route-tagged
-//! [`CopilotStreamingResponse`](rig::providers::copilot::CopilotStreamingResponse)
-//! (`{"api":"chat", …}` wrapping the chat-completions terminal record,
-//! `{"api":"responses", …}` wrapping the Responses one) — serialized with
-//! `serde_json::to_value`. It is the terminal record only, and nothing about it
-//! is sent to Copilot. `raw == Value::Null` means only that a `StreamFinal` was
-//! built by hand without a provider terminal behind it, which no cell here can
-//! produce.
+//! Capture is always on. The terminal record of every stream the driver
+//! yields carries `raw`: the route's own terminal record, serialized by the
+//! decoder that built it from the stream's frames. On the chat-completions
+//! route that is the shared chat terminal type, on the Responses route the
+//! shared Responses one, and each cell reads `raw` back through the type its
+//! route owns. It is the terminal record only, and nothing about it is sent
+//! to Copilot. `raw == Value::Null` means only that a `StreamFinal` was built
+//! by hand without a provider terminal behind it, which no cell here can
+//! produce. Which route a stream took is a fact about the wire rather than
+//! about `raw`, so each typed-access cell asserts it on the bound wire
+//! itself.
+//!
+//! A stream has no single reply body, so this `raw` is unlike its blocking
+//! twin: it is `serde_json::to_value` of the terminal record the decoder
+//! assembled (`openai::wire::chat`'s `emit_terminal`, and the Responses
+//! decoder's `terminal_record`), not a document read off the socket. That is
+//! why a cell here may assert the record re-serializes *equal* to `raw`,
+//! which on the blocking path would be false: nothing the stream carried and
+//! the terminal type does not model is silently dropped, because the shared
+//! terminal type accumulates it under `additional_params`.
 //!
 //! Terminal-only fields per route: on the chat route the shared terminal type
-//! accumulates unknown top-level chunk fields under `additional_params`, which
-//! is where Copilot's own `copilot_usage` block (with `total_nano_aiu`) and
-//! the `system_fingerprint` land — neither has a home on the normalized
+//! accumulates unknown top-level chunk fields under `additional_params`,
+//! which is where Copilot's own `copilot_usage` block (with `total_nano_aiu`)
+//! and the `system_fingerprint` land — neither has a home on the normalized
 //! [`StreamFinal`](rig::streaming::StreamFinal); on the Responses route the
 //! terminal `status`.
 //!
@@ -26,9 +35,9 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `chat_stream_raw_terminal_round_trips_provider_type` | chat route, typed access | `CopilotStreamingResponse::deserialize(&*raw)` is `Chat(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
+//! | 1 | `chat_stream_raw_terminal_round_trips_provider_type` | chat route, typed access | the wire is `CopilotWire::Chat`; `raw` reads back as the chat terminal record and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
 //! | 2 | `chat_stream_raw_exposes_copilot_usage` | chat route, terminal-only fields | `raw.additional_params.copilot_usage` equals the terminal frame's; usage equals the frame's | unrecorded (no COPILOT credentials in this environment) |
-//! | 3 | `responses_stream_raw_terminal_round_trips_provider_type` | responses route, typed access | `CopilotStreamingResponse::deserialize(&*raw)` is `Responses(_)` and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
+//! | 3 | `responses_stream_raw_terminal_round_trips_provider_type` | responses route, typed access | the wire is `CopilotWire::Responses`; `raw` reads back as the Responses terminal record and re-serializes equal | unrecorded (no COPILOT credentials in this environment) |
 //! | 4 | `responses_stream_raw_exposes_terminal_status` | responses route, terminal-only field | `raw.status == "completed"` as the recorded `response.completed` frame says | unrecorded (no COPILOT credentials in this environment) |
 //!
 //! Every cell is unrecorded: none of `GITHUB_COPILOT_API_KEY`,
@@ -41,9 +50,11 @@
 
 use futures::StreamExt;
 use rig::completion::CompletionModel as _;
-use rig::prelude::*;
+use rig::driver::Bound;
 use rig::providers::copilot;
+use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai::responses_api;
+use rig::providers::openai::wire::StreamingCompletionResponse;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde_json::Value;
 
@@ -55,7 +66,7 @@ const CHAT_MODEL: &str = copilot::GPT_4O;
 const RESPONSES_MODEL: &str = copilot::GPT_5_3_CODEX;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &copilot::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &Bound<CopilotWire>) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
@@ -138,7 +149,11 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     with_copilot_cassette(
         "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(CHAT_MODEL);
+            let model = client.completion(CHAT_MODEL);
+            assert!(
+                matches!(model.wire, CopilotWire::Chat { .. }),
+                "premise: gpt-4o routes through chat completions"
+            );
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -147,9 +162,13 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
             let raw = &terminal.raw;
-            let chat: rig::providers::openai::completion::streaming::StreamingCompletionResponse =
-                serde_json::from_value(raw.clone())
-                    .expect("chat-route raw must read back as the OpenAI chat record");
+            // The accounting is read as JSON rather than as the wire's
+            // [`ChatUsage`]: serde's field default on the record's generic
+            // `usage` bounds it `Default`, which `ChatUsage` does not
+            // implement, and a `Value` keeps every key the dialect added — so
+            // the round trip below is lossless over the whole record.
+            let chat: StreamingCompletionResponse<Value> = serde_json::from_value(raw.clone())
+                .expect("chat-route raw must read back as the chat terminal record");
             assert_eq!(
                 serde_json::to_value(&chat).expect("terminal type should serialize"),
                 *raw,
@@ -160,11 +179,11 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
                 .as_ref()
                 .expect("the chat terminal carries usage");
             assert_eq!(
-                Some(chat_usage.prompt_tokens as u64),
+                chat_usage.get("prompt_tokens").and_then(Value::as_u64),
                 terminal.usage.input_tokens
             );
             assert_eq!(
-                chat_usage.completion_tokens.map(|tokens| tokens as u64),
+                chat_usage.get("completion_tokens").and_then(Value::as_u64),
                 terminal.usage.output_tokens
             );
             assert_eq!(chat.provider_request_id, terminal.provider_request_id);
@@ -194,7 +213,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
     with_copilot_cassette(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage",
         |client| async move {
-            let model = client.completion_model(CHAT_MODEL);
+            let model = client.completion(CHAT_MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -254,9 +273,8 @@ async fn chat_stream_raw_exposes_copilot_usage() {
             "raw.additional_params.system_fingerprint must carry the chunk fingerprint"
         ),
     }
-    let typed: rig::providers::openai::completion::streaming::StreamingCompletionResponse =
-        serde_json::from_value(raw.clone())
-            .expect("chat-route raw must read back as the OpenAI chat record");
+    let typed: StreamingCompletionResponse<Value> = serde_json::from_value(raw.clone())
+        .expect("chat-route raw must read back as the chat terminal record");
     let typed_params = typed
         .additional_params
         .expect("typed terminal must carry additional_params");
@@ -282,7 +300,11 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
     with_copilot_cassette(
         "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(RESPONSES_MODEL);
+            let model = client.completion(RESPONSES_MODEL);
+            assert!(
+                matches!(model.wire, CopilotWire::Responses { .. }),
+                "premise: the codex model routes through the Responses API"
+            );
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -332,7 +354,7 @@ async fn responses_stream_raw_exposes_terminal_status() {
     with_copilot_cassette(
         "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status",
         |client| async move {
-            let model = client.completion_model(RESPONSES_MODEL);
+            let model = client.completion(RESPONSES_MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))

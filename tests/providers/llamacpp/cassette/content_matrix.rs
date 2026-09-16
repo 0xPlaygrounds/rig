@@ -28,7 +28,6 @@
 //! the fixture holds the 200 beside the error, so a maintainer looking at
 //! this failure mode does not have to guess whether the server broke.
 
-use rig::client::CompletionClient;
 use rig::completion::CompletionModel;
 use rig::message::{
     AssistantContent, Message, ProviderCallId, ToolCallId, ToolResult, ToolResultContent,
@@ -65,7 +64,7 @@ async fn an_answer_fully_consumed_by_a_stop_sequence_surfaces_as_an_empty_respon
     with_llamacpp_cassette(
         "content_matrix/empty_answer_with_stop",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let error = model
                 .completion(
                     model
@@ -137,7 +136,7 @@ async fn consecutive_same_role_messages_are_sent_as_sent() {
     with_llamacpp_cassette(
         "content_matrix/consecutive_same_role",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(
                     model
@@ -269,7 +268,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
     with_llamacpp_cassette(
         "content_matrix/long_tool_output",
         move |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(
                     model
@@ -332,7 +331,7 @@ async fn a_very_long_tool_output_survives_the_round_trip() {
 #[tokio::test]
 async fn a_system_message_plus_history_keeps_its_order() {
     with_llamacpp_cassette("content_matrix/system_plus_history", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        let model = client.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model

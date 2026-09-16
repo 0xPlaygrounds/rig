@@ -1,7 +1,7 @@
 //! Groq tools smoke test.
 
 use rig::prelude::*;
-use rig::providers::groq;
+use rig::providers::openai::wire::{GROQ, OpenAI};
 
 use crate::support::{Adder, Subtract, assert_mentions_expected_number};
 
@@ -10,8 +10,11 @@ use super::TOOLS_MODEL;
 #[tokio::test]
 #[ignore = "requires GROQ_API_KEY"]
 async fn tools_smoke() {
-    let client = groq::Client::from_env().expect("client should build");
-    let agent = client
+    let groq = OpenAI::from_env_with(&GROQ)
+        .expect("GROQ_API_KEY should be set")
+        .bound()
+        .expect("transport should build");
+    let agent = groq
         .agent(TOOLS_MODEL)
         .preamble(
             "You are a calculator. For arithmetic requests, call the appropriate tool exactly once. \

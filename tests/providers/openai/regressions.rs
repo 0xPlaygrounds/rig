@@ -1,7 +1,7 @@
 //! OpenAI-compatible response regressions that use an in-memory HTTP backend.
 
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::responses_api::wire::ResponsesApi;
 use rig_core::test_utils::RecordingHttpClient;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -57,12 +57,9 @@ async fn extractor_accepts_nullable_strict_in_echoed_tool_definition() {
         }]
     });
     let http_client = RecordingHttpClient::new(response.to_string());
-    let client = openai::Client::builder()
-        .api_key("test-key")
-        .base_url("http://localhost:8000/v1")
-        .http_client(http_client.clone())
-        .build()
-        .expect("OpenAI-compatible client should build");
+    let client = ResponsesApi::new("test-key")
+        .with_base_url("http://localhost:8000/v1")
+        .bind(http_client.clone());
 
     let extracted = client
         .extractor::<KeywordPayload>("gpt-oss-120b")

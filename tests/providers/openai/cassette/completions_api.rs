@@ -1,10 +1,8 @@
 //! Migrated from `examples/openai_agent_completions_api.rs`.
 use rig::completion::CompletionModel;
-use rig::completion::NormalizeCompletionResponse;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openai;
-use rig::telemetry::ProviderResponseExt;
 
 use super::super::support::with_openai_completions_cassette;
 use crate::support::{
@@ -25,7 +23,7 @@ async fn completions_api_agent_prompt() {
         "completions_api/completions_api_agent_prompt",
         |client| async move {
             let agent = client
-                .completion_model(openai::GPT_4O)
+                .completion(openai::GPT_4O)
                 .into_agent_builder()
                 .preamble("You are a helpful assistant.")
                 .build();
@@ -47,26 +45,38 @@ async fn completions_api_raw_response_text_matches_normalized_choice_text() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_response_text_matches_normalized_choice_text",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.completion(openai::GPT_4O);
             let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble(RAW_TEXT_RESPONSE_PREAMBLE.to_string())
                 .build();
 
-            // The cassette records exactly one interaction, so the raw wire
-            // response is fetched once and normalized through the provider's own
-            // conversion instead of issuing a second identical request.
-            let raw = model
-                .raw_completion(request)
+            // The cassette records exactly one interaction, and one is all this
+            // needs: the provider's own reply rides serialized on
+            // `CompletionResponse::raw` beside the normalized view, so both
+            // texts come off a single request.
+            let response = model
+                .completion(request)
                 .await
-                .expect("raw completions api request should succeed");
-            let raw_text = raw
-                .text_response()
-                .expect("raw completions api response should contain assistant text");
+                .expect("completions api request should succeed");
+            let reply: openai::completion::CompletionResponse =
+                serde_json::from_value(response.raw.clone())
+                    .expect("`raw` is the serialized openai::completion::CompletionResponse");
+            let raw_text = reply
+                .choices
+                .iter()
+                .filter_map(|choice| match &choice.message {
+                    openai::completion::Message::Assistant { content, .. } => Some(content),
+                    _ => None,
+                })
+                .flatten()
+                .filter_map(|content| match content {
+                    openai::completion::AssistantContent::Text { text } => Some(text.as_str()),
+                    openai::completion::AssistantContent::Refusal { .. } => None,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
 
-            let response: rig::completion::CompletionResponse = raw
-                .normalize("openai")
-                .expect("raw completions api response should normalize");
             let normalized_text = assistant_text_response(&response.choice)
                 .expect("normalized completions api response should contain assistant text");
 
@@ -109,7 +119,7 @@ async fn completions_api_raw_stream_emits_required_zero_arg_tool_call() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.completion(openai::GPT_4O);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
@@ -128,7 +138,7 @@ async fn completions_api_raw_stream_accepts_null_tool_calls_delta() {
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_accepts_null_tool_calls_delta",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.completion(openai::GPT_4O);
             let request = model
                 .completion_request("Reply with exactly: cassette null tool calls ok")
                 .build();
@@ -157,7 +167,7 @@ async fn completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.completion(openai::GPT_4O);
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -214,7 +224,7 @@ async fn completions_api_raw_followup_uses_tool_result_without_new_tool_calls() 
     with_openai_completions_cassette(
         "completions_api/completions_api_raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.completion(openai::GPT_4O);
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

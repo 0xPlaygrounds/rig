@@ -38,18 +38,18 @@ Node.js 19 or later do. WASI targets are not supported.
 ## Simple example
 ```rust
 use rig_core::{
-    client::CompletionClient,
     completion::{AssistantContent, CompletionModel},
-    providers::openai,
+    providers::openai::{self, responses_api::wire::ResponsesApi},
 };
+// rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
+use rig_reqwest::prelude::*;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Create an OpenAI client and completion model.
-    // This requires the `OPENAI_API_KEY` environment variable to be set.
-    let openai_client = openai::Client::from_env()?;
+    // Read `OPENAI_API_KEY` into the provider's configuration, bind it to a
+    // transport, and pick a model: a model is a wire plus its socket.
+    let model = ResponsesApi::from_env()?.bound()?.completion(openai::GPT_5_2);
 
-    let model = openai_client.completion_model(openai::GPT_5_2);
     let request = model.completion_request("Who are you?").build();
     let response = model.completion(request).await?;
     for item in response.choice {

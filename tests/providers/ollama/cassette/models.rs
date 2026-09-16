@@ -3,7 +3,7 @@
 //! Replays by default; set `RIG_PROVIDER_TEST_MODE=record` to record against a
 //! local Ollama server.
 
-use rig::client::ModelListingClient;
+use rig::model::ModelLister;
 
 use super::super::support::with_ollama_cassette;
 
@@ -11,7 +11,8 @@ use super::super::support::with_ollama_cassette;
 async fn list_models_smoke() {
     with_ollama_cassette("models/list_models_smoke", |client| async move {
         let models = client
-            .list_models()
+            .model_listing()
+            .list_all()
             .await
             .expect("listing Ollama models should succeed");
 

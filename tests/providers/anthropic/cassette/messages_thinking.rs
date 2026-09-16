@@ -47,7 +47,7 @@ async fn redacted_thinking_roundtrip_nonstreaming() {
     with_anthropic_cassette(
         "messages_thinking/redacted_thinking_roundtrip_nonstreaming",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
 
             let first_request = model
                 .completion_request(redacted_thinking_prompt())
@@ -108,11 +108,10 @@ async fn static_prefix_ttl_coexists_with_extended_thinking() {
         "messages_thinking/static_prefix_ttl_coexists_with_extended_thinking",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_automatic_caching()
-                .with_static_prefix_cache_ttl(
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_automatic_caching().with_static_prefix_cache_ttl(
                     rig::providers::anthropic::completion::CacheTtl::OneHour,
-                );
+                ));
 
             // The preamble must clear the model's minimum cacheable prompt
             // length or the API silently skips caching and the recorded
@@ -150,7 +149,7 @@ async fn redacted_thinking_streaming() {
     with_anthropic_cassette(
         "messages_thinking/redacted_thinking_streaming",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
             let request = model
                 .completion_request(redacted_thinking_prompt())
                 .max_tokens(4096)

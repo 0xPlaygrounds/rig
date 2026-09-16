@@ -10,17 +10,16 @@
 //! had, whose producer stays where it is.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::{GPT_5_MINI, GPT_5_NANO};
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_5_MINI),
-        route: Some(client.completion_model(GPT_5_NANO)),
+        model: client.responses.completion(GPT_5_MINI),
+        route: Some(client.responses.completion(GPT_5_NANO)),
         temperature: None,
         additional_params: None,
     }
@@ -252,12 +251,12 @@ async fn causal_completion_streamed() {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(
-    client: &rig::providers::openai::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(rig::providers::openai::GPT_5_MINI),
+        model: client
+            .responses
+            .completion(rig::providers::openai::GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,

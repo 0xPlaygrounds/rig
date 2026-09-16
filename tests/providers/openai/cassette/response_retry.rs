@@ -46,6 +46,7 @@ async fn rejected_response_is_retried_with_feedback() {
         "response_retry/rejected_response_is_retried_with_feedback",
         |client| async move {
             let response = client
+                .responses
                 .agent(openai::GPT_4O_MINI)
                 .preamble(
                     "Follow this protocol exactly. For the initial request, reply exactly \

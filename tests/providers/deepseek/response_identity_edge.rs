@@ -2,7 +2,6 @@
 //! with the conservative `REQUEST_ID_HEADER = None` default.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::deepseek;
 
 use super::support::with_deepseek_cassette;
@@ -12,7 +11,7 @@ async fn blocking_contract_captures_none() {
     with_deepseek_cassette(
         "response_identity_edge/blocking_contract_captures_none",
         |client| async move {
-            let model = client.completion_model(deepseek::DEEPSEEK_V4_FLASH);
+            let model = client.completion(deepseek::DEEPSEEK_V4_FLASH);
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()

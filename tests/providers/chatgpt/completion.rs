@@ -7,7 +7,7 @@ use rig::message::Message;
 use rig::prelude::*;
 use rig::streaming::{Delta, StreamEvent};
 
-use crate::chatgpt::{LIVE_MODEL, live_builder, live_client};
+use crate::chatgpt::{LIVE_MODEL, live_client};
 use crate::support::{
     assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
 };
@@ -25,10 +25,12 @@ fn aggregated_text(choice: &[AssistantContent]) -> String {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn default_instructions_fill_required_instructions() {
-    let client = live_builder()
-        .default_instructions("Always answer with the single word cedar.")
-        .build()
-        .expect("ChatGPT client should build");
+    // The instructions merged ahead of every preamble live on the provider
+    // config, so they are set by mapping the bound config, not by rebuilding
+    // the transport.
+    let client = live_client().await.map_wire(|provider| {
+        provider.with_instructions("Always answer with the single word cedar.")
+    });
 
     let agent = client.agent(LIVE_MODEL).build();
     let mut stream = agent
@@ -44,7 +46,7 @@ async fn default_instructions_fill_required_instructions() {
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn system_messages_are_lifted_into_instructions() {
-    let model = live_client().completion_model(LIVE_MODEL);
+    let model = live_client().await.completion(LIVE_MODEL);
 
     let request = model
         .completion_request("Reply with the exact word from the system message.")

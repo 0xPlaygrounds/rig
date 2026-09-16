@@ -1,8 +1,7 @@
 use rig::prelude::*;
-use rig::providers::openai::Client;
+use rig::providers::openai::{self, responses_api::wire::ResponsesApi, wire::OpenAI};
 use rig::{
-    Embed, embeddings::EmbeddingsBuilder, providers::openai,
-    vector_store::in_memory_store::InMemoryVectorStore,
+    Embed, embeddings::EmbeddingsBuilder, vector_store::in_memory_store::InMemoryVectorStore,
 };
 use serde::Serialize;
 use std::vec;
@@ -26,9 +25,12 @@ async fn main() -> Result<(), anyhow::Error> {
         .with_target(false)
         .init();
 
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
-    let embedding_model = openai_client.embedding_model(openai::TEXT_EMBEDDING_ADA_002);
+    // Completions go to the Responses API; the embeddings endpoint is the same
+    // OpenAI REST surface either way, so it is served by the chat config.
+    let openai_client = ResponsesApi::from_env()?.bound()?;
+    let embedding_model = OpenAI::from_env()?
+        .bound()?
+        .embedding(openai::TEXT_EMBEDDING_ADA_002, None);
 
     // Generate embeddings for the definitions of all the documents using the specified embedding model.
     let embeddings = EmbeddingsBuilder::new(embedding_model.clone())

@@ -6,9 +6,11 @@
 //! streaming call, before the stream is consumed. Requires `ANTHROPIC_API_KEY`.
 
 use anyhow::{Context, Result};
+use rig::driver::Bind;
 use rig::http_client::{BoxedHttpClient, HeaderMap, HeaderValue, HttpMiddleware, Method, Uri};
 use rig::prelude::*;
 use rig::providers::anthropic;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::wasm_compat::WasmBoxedFuture;
 
 /// Adds a beta header to every outgoing request and prints the wire traffic
@@ -78,12 +80,8 @@ async fn main() -> Result<()> {
     let http_client = BoxedHttpClient::new(rig::http_client::ReqwestClient::default())
         .with_middleware(WireLogger);
 
-    let client = anthropic::Client::builder()
-        .http_client(http_client)
-        .api_key(api_key)
-        .build()?;
-
-    let agent = client
+    let agent = Anthropic::new(api_key)
+        .bind(http_client)
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble("You are a helpful assistant.")
         .build();

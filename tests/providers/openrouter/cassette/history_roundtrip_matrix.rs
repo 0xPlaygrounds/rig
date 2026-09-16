@@ -10,7 +10,7 @@
 //! |---|---|
 //! | transport | blocking, streaming |
 //! | model | `openai/gpt-4o-mini`, `openai/gpt-4.1-mini` |
-//! | surface | provider-native raw, normalized Rig response |
+//! | surface | provider-native reply document (`raw`), normalized Rig response |
 //! | history shape | text, one tool result, two ordered tool results |
 //!
 //! That is 24 recorded cells. Every cell proves the exact serialized history
@@ -21,7 +21,10 @@
 //! pruned or assigned to unit-only coverage. Each explicit test maps to
 //! `tests/cassettes/openrouter/history_roundtrip_matrix/<test-name>.yaml`.
 //! The two inexpensive mini routes are pinned to OpenAI with fallbacks disabled
-//! and provide stable controls from separate model families. Assertions cover
+//! and provide stable controls from separate model families. There is one
+//! decoder now, so the native surface is the gateway's reply document on
+//! [`rig::completion::CompletionResponse::raw`] rather than a second
+//! normalizer over it. Assertions cover
 //! native and normalized blocking/streaming surfaces, routing, Unicode, exact
 //! tool ids and arguments, ordered tool results, the current prompt, and
 //! terminal arrival.
@@ -34,14 +37,15 @@ use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
 use futures::StreamExt as _;
-use rig::completion::{CompletionModel, Message, NormalizeCompletionResponse};
+use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolResultContent, UserContent};
 use rig::prelude::*;
 use rig::providers::openrouter;
 use rig::streaming::{Delta, StreamEvent};
+use serde::Deserialize as _;
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_history_roundtrip_cassette_result;
+use super::super::support::{BoundOpenRouter, with_openrouter_history_roundtrip_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -162,7 +166,10 @@ fn history(shape: Shape) -> Vec<Message> {
     }
 }
 
-fn request(model: &openrouter::CompletionModel, cell: Cell) -> rig::completion::CompletionRequest {
+fn request(
+    model: &(impl CompletionModel + Clone),
+    cell: Cell,
+) -> rig::completion::CompletionRequest {
     let mut builder = model
         .completion_request(prompt(cell.shape))
         .max_tokens(24)
@@ -193,18 +200,28 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(
-    client: openrouter::Client,
+    client: BoundOpenRouter,
     cell: Cell,
     observed: SharedObservation,
 ) -> Result<()> {
-    let model = client.completion_model(model_name(cell.model));
+    let model = client.completion(model_name(cell.model));
     let observation = match (cell.transport, cell.surface) {
         (Transport::Blocking, Surface::Raw) => {
-            let response = model.raw_completion(request(&model, cell)).await?;
-            let normalized = response.normalize("openrouter")?;
+            // The provider-native surface: the gateway's own reply document,
+            // which the driver keeps verbatim on `raw`, read back with
+            // OpenRouter's own response type. `assert_cell` then holds it to
+            // the same recorded bytes as the normalized surface, so the axis
+            // is "provider document vs decoder's choice" rather than two
+            // normalizers that could drift.
+            let response = model.completion(request(&model, cell)).await?;
+            let wire = openrouter::CompletionResponse::deserialize(&response.raw)
+                .expect("raw is OpenRouter's own completion response");
             Observation {
-                text: normalized_text(&normalized.choice),
-                saw_terminal: true,
+                text: content_text(&response.raw["choices"][0]["message"]["content"]),
+                saw_terminal: wire
+                    .choices
+                    .iter()
+                    .all(|choice| choice.finish_reason.is_some()),
             }
         }
         (Transport::Blocking, Surface::Normalized) => {

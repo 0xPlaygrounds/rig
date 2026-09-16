@@ -8,7 +8,7 @@ use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 #[tokio::test]
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn completion_smoke() {
-    let agent = live_client()
+    let agent = live_client().await
         .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build();

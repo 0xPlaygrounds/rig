@@ -29,7 +29,6 @@
 //! | [`the_streaming_path_drops_the_same_cut_call`] | streaming | the same boundary, and the stream still terminates cleanly |
 //! | [`a_complete_call_under_the_same_cap_survives`] | blocking | the control: a cap large enough to finish yields a usable call |
 
-use rig::client::CompletionClient;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::AssistantContent;
 use serde_json::Value;
@@ -82,7 +81,7 @@ async fn a_tool_call_cut_mid_arguments_does_not_destroy_the_turn() {
     with_llamacpp_competent_cassette(
         "truncation_matrix/tool_call_cut_mid_arguments",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(
                     model
@@ -147,7 +146,7 @@ async fn the_streaming_path_drops_the_same_cut_call() {
     with_llamacpp_competent_cassette(
         "truncation_matrix/streaming_tool_call_cut_mid_arguments",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let mut stream = model
                 .stream(
                     model
@@ -221,7 +220,7 @@ async fn a_complete_call_under_the_same_cap_survives() {
     with_llamacpp_competent_cassette(
         "truncation_matrix/complete_call_control",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let response = model
                 .completion(
                     model

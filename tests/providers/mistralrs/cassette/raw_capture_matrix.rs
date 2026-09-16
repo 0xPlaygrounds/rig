@@ -3,30 +3,36 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. mistral.rs is driven through rig's OpenAI
-//! chat-completions client (`openai::CompletionsClient`), so every completion
-//! the seam returns carries `raw`: the value
-//! [`raw_completion`](rig::providers::openai::GenericCompletionModel::raw_completion)
-//! would have returned — [`openai::CompletionResponse`] — serialized with
-//! `serde_json::to_value` before normalization. Nothing about it is sent to the
-//! server. `raw == Value::Null` means only that a `CompletionResponse` was
-//! built by hand without a provider response behind it, which no cell here can
+//! Capture is always on. mistral.rs is a local server rather than a hosted
+//! provider, so it has no dialect of its own: it is driven through the plain
+//! `OPENAI` chat-completions wire pointed at its base URL, and every
+//! completion carries `raw` — the reply *document*, set by the driver from
+//! the response bytes. Nothing about it is sent to the server.
+//! `raw == Value::Null` means only that a `CompletionResponse` was built by
+//! hand without a provider response behind it, which no cell here can
 //! produce.
 //!
 //! mistral.rs stamps `system_fingerprint: "local"` and the `object`/`created`
 //! envelope on every response; none has a home on the normalized
-//! [`rig::completion::CompletionResponse`], and cell 2 reads them back through
-//! `raw`. (Its per-second throughput fields inside `usage` —
-//! `avg_compl_tok_per_sec` and friends — are *not* on `raw`: the shared
-//! [`openai::Usage`] does not model them, and raw is the wire type as parsed.)
+//! [`rig::completion::CompletionResponse`], and cell 2 reads them back
+//! through `raw`. Its per-second throughput fields inside `usage`
+//! (`avg_compl_tok_per_sec` and friends) are not modelled by the shared
+//! [`openai::CompletionResponse`] either — and they still reach a caller,
+//! because `raw` is the document rather than the parse: cell 1 pins that by
+//! requiring `raw` to reproduce the recorded reply key for key while the
+//! typed view is only as wide as the shared shape.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_provider_type` | typed access | `openai::CompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no mistral.rs server in this environment) |
+//! | 1 | `raw_is_the_reply_document` | body fidelity | `raw` reproduces the recorded reply, and reads back as `openai::CompletionResponse` | unrecorded (no mistral.rs server in this environment) |
 //! | 2 | `raw_exposes_envelope_fields` | provider-only fields | `system_fingerprint`/`object`/`created` in `raw` equal the fixture body | unrecorded (no mistral.rs server in this environment) |
-//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized response equals `raw` re-normalized (`normalize`) and the fixture body re-normalized | unrecorded (no mistral.rs server in this environment) |
+//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized fields are the fields the reply document carries, live and in the fixture | unrecorded (no mistral.rs server in this environment) |
+//!
+//! The scenario literals — and therefore the fixture filenames — keep the
+//! names they were recorded under; the cell names describe what the cells now
+//! assert.
 //!
 //! Every cell is unrecorded: no mistral.rs server was listening on
 //! `127.0.0.1:1234` when this matrix was written, and a fixture is never
@@ -36,9 +42,9 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test mistralrs mistralrs::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/mistralrs/raw_capture_matrix/`.
 
-use rig::completion::NormalizeCompletionResponse as _;
-use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
-use rig::prelude::*;
+use rig::completion::{
+    CompletionModel, CompletionRequest, CompletionResponse as RigCompletionResponse,
+};
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
@@ -47,13 +53,14 @@ use super::super::support::{model_name, with_mistralrs_completions_cassette};
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
-/// The OpenAI-compatible client labels its normalized responses `openai`.
+/// The plain OpenAI dialect names itself `openai`, and a normalized response
+/// is attributed to the dialect that produced it.
 const NORMALIZED_PROVIDER: &str = "openai";
 /// `/no_think` keeps Qwen3's reasoning trace out of the recording, exactly as
 /// the neighbouring mistral.rs cassettes do.
 const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
 
-fn request(model: &openai::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
@@ -126,42 +133,63 @@ fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
 }
 
 // ---------------------------------------------------------------------------
-// 1: raw is the raw_completion value, serialized
+// 1: raw is the reply document, and the shared type reads it back
 // ---------------------------------------------------------------------------
 
 #[tokio::test]
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
-async fn raw_round_trips_provider_type() {
+async fn raw_is_the_reply_document() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
+    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let sink = std::sync::Arc::clone(&captured);
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(model_name());
+            let model = client.completion(model_name());
             let response = model
                 .completion(request(&model))
                 .await
                 .expect("completion should succeed");
-            let raw = &response.raw;
-            let typed = openai::CompletionResponse::deserialize(raw)
+            let typed = openai::CompletionResponse::deserialize(&response.raw)
                 .expect("raw must deserialize into openai::CompletionResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("provider type should serialize"),
-                *raw,
-                "openai::CompletionResponse must round-trip through its own serde"
-            );
             // The typed view agrees with the normalized one on what the model
             // said, so raw is a superset, not a divergent copy.
             assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
             assert_eq!(response.provider, NORMALIZED_PROVIDER);
             assert!(!response.choice.is_empty());
+            *sink.lock().expect("capture mutex") = Some(response.raw);
         },
     )
     .await;
 
+    let raw = captured
+        .lock()
+        .expect("capture mutex")
+        .take()
+        .expect("the test body must have captured raw");
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_envelope(&body, scenario);
     openai::CompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response");
+    // The document, key for key: whatever mistral.rs sent — including the
+    // `usage` throughput fields no shared type models — is what a caller
+    // reads off `raw`.
+    for key in body
+        .as_object()
+        .expect("the recorded reply is a JSON object")
+        .keys()
+        .filter(|key| key.as_str() != "id" && key.as_str() != "created")
+    {
+        assert_eq!(
+            raw.get(key),
+            body.get(key),
+            "raw should carry the provider's `{key}` unchanged"
+        );
+    }
+    for field in ["created", "id"] {
+        assert_wire_value_matches(&raw, &body, field);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +205,7 @@ async fn raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_exposes_envelope_fields",
         |client| async move {
-            let model = client.completion_model(model_name());
+            let model = client.completion(model_name());
             let response = model
                 .completion(request(&model))
                 .await
@@ -221,14 +249,13 @@ async fn raw_exposes_envelope_fields() {
 }
 
 // ---------------------------------------------------------------------------
-// 3: raw and the typed route tell one story
+// 3: raw and the normalized view tell one story
 // ---------------------------------------------------------------------------
 
-/// The normalized response, with `raw` stripped, must equal the normalization
-/// of `raw` read back through the provider type — and equal the normalization
-/// of the recorded wire body. Capture is a pure serialization of the value
-/// normalization consumed: it neither alters a normalized field nor diverges
-/// from the bytes the server sent.
+/// The normalized fields are the fields the reply document carries: there is
+/// one decoder and one mapping, so the provider-native view read back out of
+/// `raw` — and the recorded wire body it came from — must agree with the
+/// normalized response on identity, model, finish reason and usage.
 #[tokio::test]
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn normalized_fields_equal_raw_renormalized() {
@@ -238,33 +265,36 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            let model = client.completion_model(model_name());
+            let model = client.completion(model_name());
             let response = model
                 .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
-            let raw = &response.raw;
-            // The transport request id lives in the response headers, not the
-            // body, so the raw-derived normalization is given the same one.
-            let from_raw = openai::CompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into openai::CompletionResponse")
-                .normalize(NORMALIZED_PROVIDER)
-                .expect("raw must normalize")
-                .with_optional_provider_request_id(response.provider_request_id.clone());
-
+            let typed = openai::CompletionResponse::deserialize(&response.raw)
+                .expect("raw must deserialize into openai::CompletionResponse");
             assert_eq!(response.provider, NORMALIZED_PROVIDER);
-            assert_eq!(from_raw.provider, response.provider);
-            assert_eq!(from_raw.model, response.model);
-            assert_eq!(from_raw.finish_reason(), response.finish_reason());
-            assert_eq!(from_raw.identity(), response.identity());
-            assert_eq!(from_raw.usage, response.usage);
-            assert!(!response.choice.is_empty());
-            assert_eq!(
-                normalized_without_raw(from_raw),
-                normalized_without_raw(response.clone()),
-                "re-normalizing raw must reproduce the normalized response field-for-field"
+            assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+            let choice = typed
+                .choices
+                .first()
+                .expect("the reply must carry a choice");
+            assert!(
+                !choice.finish_reason.is_empty() && response.finish_reason().is_some(),
+                "the native finish reason `{}` must reach the normalized response",
+                choice.finish_reason
             );
+            let usage = typed.usage.expect("mistral.rs reports usage");
+            assert_eq!(
+                Some(usage.prompt_tokens as u64),
+                response.usage.input_tokens
+            );
+            assert_eq!(
+                Some(usage.total_tokens as u64),
+                response.usage.total_tokens
+            );
+            assert!(!response.choice.is_empty());
 
             *sink.lock().expect("capture mutex") = Some(response);
         },
@@ -278,24 +308,17 @@ async fn normalized_fields_equal_raw_renormalized() {
         .expect("the test body must have captured the response");
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_envelope(&body, scenario);
-    let from_wire = openai::CompletionResponse::deserialize(&body)
-        .expect("recorded body must be a chat-completions response")
-        .normalize(NORMALIZED_PROVIDER)
-        .expect("recorded body must normalize")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
-    let mut live = normalized_without_raw(response);
-    let mut from_wire = normalized_without_raw(from_wire);
-    // The response id is a generated per-call id the scrubber placeholders
-    // on disk; only a replay compares it exactly. Live, it must still be
-    // present on both sides with the wire's shape.
-    assert_wire_value_matches(&live, &from_wire, "response_id");
-    if matches!(CassetteMode::current(), CassetteMode::Record) {
-        live["response_id"] = Value::Null;
-        from_wire["response_id"] = Value::Null;
-    }
+    // And the same fields against the recorded bytes, so a recording that
+    // stopped carrying them fails loudly instead of covering nothing.
+    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
     assert_eq!(
-        live, from_wire,
-        "the normalized response must equal the normalization of the wire bytes \
-         it was built from"
+        response.usage.input_tokens,
+        body["usage"]["prompt_tokens"].as_u64(),
+        "input tokens"
+    );
+    assert_eq!(
+        response.usage.total_tokens,
+        body["usage"]["total_tokens"].as_u64(),
+        "total tokens"
     );
 }

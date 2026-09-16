@@ -6,7 +6,8 @@ use crate::{
 };
 use bevy_ecs::prelude::*;
 use rig::prelude::*;
-use rig::providers::anthropic::{Client, completion::CLAUDE_SONNET_4_6};
+use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::providers::anthropic::wire::Anthropic;
 use rig_core::{
     effect::{EffectKind, MemoryOp, MemoryOutcome, Outcome},
     memory::ConversationMemory,
@@ -45,13 +46,13 @@ pub(super) fn register_memory(
     .expect("memory key")
 }
 pub(super) fn agent(
-    client: &Client,
+    client: &rig::driver::Bound<Anthropic>,
     memory: impl ConversationMemory + 'static,
     preamble: &str,
     streamed: bool,
 ) -> EcsAgent {
     let mut ecs = EcsAgent::for_golden_with_setup(
-        client.completion_model(CLAUDE_SONNET_4_6),
+        client.completion(CLAUDE_SONNET_4_6),
         preamble,
         streamed,
         |world| {
@@ -197,7 +198,7 @@ pub(super) async fn run_prompts(
     outputs
 }
 pub(super) async fn remembers(
-    client: Client,
+    client: rig::driver::Bound<Anthropic>,
     clears: Clears,
     prompts: &[&str],
     streamed: bool,

@@ -1,9 +1,10 @@
 //! Exhaustive matrix for streamed Chat Completions log probabilities.
 //!
-//! Before this fix, `StreamingChoice` did not model `logprobs`, so serde
+//! Before this fix, the streamed choice did not model `logprobs`, so serde
 //! discarded every per-token object before the shared compatible adapter saw
-//! it. Blocking `raw_completion` retained the same field on `Choice`; raw
-//! streaming therefore carried strictly less provider-native information.
+//! it, while the blocking reply retained the same field on its choice: the
+//! streamed path carried strictly less provider-native information than the
+//! blocking one for the same turn.
 //!
 //! The complete input space exercised here is a 2 × 2 × 2 × 3 cross-product:
 //!
@@ -41,11 +42,10 @@ use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::completion::CompletionModel;
 use rig::prelude::*;
-use rig::providers::openrouter;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::with_openrouter_stream_logprobs_cassette_result;
+use super::super::support::{BoundOpenRouter, with_openrouter_stream_logprobs_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -133,11 +133,11 @@ fn model_name(model: ModelVariant) -> &'static str {
 }
 
 async fn run_cell(
-    client: openrouter::Client,
+    client: BoundOpenRouter,
     cell: Cell,
     observed: SharedObservation,
 ) -> Result<()> {
-    let model = client.completion_model(model_name(cell.model));
+    let model = client.completion(model_name(cell.model));
     let request = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -146,11 +146,13 @@ async fn run_cell(
 
     let observation = match cell.transport {
         Transport::Blocking => {
-            let raw = model.raw_completion(request).await?;
-            let serialized = serde_json::to_value(raw)?;
+            // Log probabilities stay provider-native: the normalized response
+            // models none, so the blocking control reads them off the reply
+            // document the driver keeps on `raw`.
+            let document = model.completion(request).await?.raw;
             Observation {
-                logprobs: serialized["choices"][0]["logprobs"].clone(),
-                finish_reason: serialized["choices"][0]["finish_reason"].clone(),
+                logprobs: document["choices"][0]["logprobs"].clone(),
+                finish_reason: document["choices"][0]["finish_reason"].clone(),
             }
         }
         Transport::Streaming => {

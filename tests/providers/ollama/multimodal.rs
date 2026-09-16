@@ -5,7 +5,7 @@ use rig::completion::message::Image;
 use rig::message::DocumentSourceKind;
 use rig::message::ImageMediaType;
 use rig::prelude::*;
-use rig::providers::ollama;
+use rig::providers::ollama::wire::Ollama;
 
 use crate::support::{
     IMAGE_FIXTURE_PATH, assert_contains_any_case_insensitive, assert_nonempty_response,
@@ -14,8 +14,11 @@ use crate::support::{
 #[tokio::test]
 #[ignore = "requires a local Ollama server with a multimodal model"]
 async fn multimodal_image_prompt() {
-    let client = ollama::Client::from_env().expect("client should build");
-    let agent = client
+    let ollama = Ollama::from_env()
+        .expect("config should build from env")
+        .bound()
+        .expect("transport should build");
+    let agent = ollama
         .agent("llava")
         .preamble("Describe this image and include anything notable about it.")
         .temperature(0.5)

@@ -1,7 +1,7 @@
 //! xAI image generation smoke test covering provider-specific additional parameters.
 
-use rig::client::image_generation::ImageGenerationClient;
 use rig::image_generation::ImageGenerationModel;
+use rig::providers::openai;
 use rig::providers::xai;
 use serde_json::json;
 
@@ -13,8 +13,15 @@ async fn image_generation_smoke() {
     with_xai_cassette(
         "image_generation/image_generation_smoke",
         |client| async move {
-            let model =
-                client.image_generation_model(xai::image_generation::GROK_IMAGINE_IMAGE_PRO);
+            // xAI's images route is OpenAI-shaped, so the chat-side
+            // configuration serves it — rebuilt here from the cassette's
+            // credential and base URL so the fixture still replays.
+            let model = client
+                .map_wire(|responses| {
+                    openai::wire::OpenAI::with_key(&openai::wire::XAI, responses.api_key)
+                        .with_base_url(responses.base_url)
+                })
+                .image_generation(xai::image_generation::GROK_IMAGINE_IMAGE_PRO);
 
             let response = model
                 .image_generation_request()

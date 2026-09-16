@@ -1,5 +1,5 @@
 //! Matrix K of the effect corpus, the live interactions wire: a tool call
-//! streamed as a name delta and argument deltas (`interactions_api()`), dispatched,
+//! streamed as a name delta and argument deltas (`Gemini::interactions`), dispatched,
 //! answered. Producer of the golden `crates/rig-verify/tests/corpus_delta.rs`
 //! replays by both interpreters. A new recording under
 //! `tests/cassettes/gemini/corpus_delta/`.
@@ -21,8 +21,8 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 async fn interactions_baseline_effect_log_is_the_golden_fixture() {
     with_gemini_corpus_delta_cassette("corpus_delta/interactions_baseline", |client| async move {
         let agent = client
-            .interactions_api()
-            .agent(gemini::completion::GEMINI_2_5_FLASH)
+            .map_wire(|config| config.interactions(gemini::completion::GEMINI_2_5_FLASH))
+            .into_agent_builder()
             .name("golden")
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)

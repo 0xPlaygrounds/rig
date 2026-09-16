@@ -56,7 +56,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_deepseek_cassette(
         "streaming_tools/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion_model(DEEPSEEK_V4_FLASH);
+            let model = client.completion(DEEPSEEK_V4_FLASH);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
@@ -76,7 +76,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls_before_text() {
     with_deepseek_cassette(
         "streaming_tools/raw_stream_surfaces_two_distinct_tool_calls_before_text",
         |client| async move {
-            let model = client.completion_model(DEEPSEEK_V4_FLASH);
+            let model = client.completion(DEEPSEEK_V4_FLASH);
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -114,7 +114,7 @@ async fn raw_stream_tool_call_arguments_are_objects() {
     with_deepseek_cassette(
         "streaming_tools/raw_stream_tool_call_arguments_are_objects",
         |client| async move {
-            let model = client.completion_model(DEEPSEEK_V4_FLASH);
+            let model = client.completion(DEEPSEEK_V4_FLASH);
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -206,7 +206,7 @@ async fn raw_followup_uses_tool_result_without_new_tool_calls() {
     with_deepseek_cassette(
         "streaming_tools/raw_followup_uses_tool_result_without_new_tool_calls",
         |client| async move {
-            let model = client.completion_model(DEEPSEEK_V4_FLASH);
+            let model = client.completion(DEEPSEEK_V4_FLASH);
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

@@ -2,22 +2,27 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
-//! `raw_stream` yielded as its terminal record — for DeepSeek the shared
-//! chat-completions terminal [`StreamingCompletionResponse`] parameterized over
-//! DeepSeek's own [`deepseek::Usage`] — serialized. Capture is always on: there
-//! is no flag to request it, nothing about it reaches the wire, and a
-//! `Value::Null` only ever means a terminal built by hand with no provider
-//! record behind it. It is the terminal record only, never the stream's frames.
-//! DeepSeek's terminal usage carries the `prompt_cache_miss_tokens` count that
-//! the normalized `Usage` has no slot for, so it is the natural terminal-only
-//! field to pin here.
+//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! record — for DeepSeek the shared chat-completions
+//! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture
+//! is always on: there is no flag to request it, nothing about it reaches the
+//! wire, and a `Value::Null` only ever means a terminal built by hand with no
+//! provider record behind it. It is the terminal record only, never the
+//! stream's frames.
+//!
+//! [`ChatUsage`] flattens the OpenAI-compatible counters and keeps whatever
+//! else the dialect sent in a sibling map, so DeepSeek's
+//! `prompt_cache_hit_tokens` / `prompt_cache_miss_tokens` split survives into
+//! `raw` instead of being dropped at the type boundary. Only half of it is
+//! normalized — [`ChatUsage::to_normalized`] reads the hit count into
+//! `Usage::cached_input_tokens`, and the miss count has no slot at all —
+//! which makes the miss count the natural terminal-only field to pin here.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<deepseek::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_cache_miss_tokens` | terminal-only field | `raw.usage.prompt_cache_miss_tokens` equals the recorded terminal frame's | recorded |
-//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` round-trips into `StreamingCompletionResponse<deepseek::Usage>` and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
+//! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` round-trips into `StreamingCompletionResponse<ChatUsage>` and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that the recorded SSE stream carries usage on exactly one frame
@@ -35,7 +40,7 @@ use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::ReasoningContent;
 use rig::prelude::*;
 use rig::providers::deepseek;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
+use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -43,7 +48,7 @@ use serde_json::{Value, json};
 use super::support::{assert_matches_recorded_token, with_deepseek_cassette_result};
 use crate::support::collect_text_and_terminal;
 
-type DeepSeekTerminal = StreamingCompletionResponse<deepseek::Usage>;
+type DeepSeekTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -55,7 +60,7 @@ const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the
 /// it answers, so the reasoning cell needs real headroom.
 const REASONING_BUDGET: u64 = 640;
 
-fn request(model: &deepseek::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model
         .completion_request(PROMPT)
         .additional_params(json!({ "thinking": { "type": "disabled" } }))
@@ -64,7 +69,7 @@ fn request(model: &deepseek::CompletionModel) -> CompletionRequest {
 }
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
-fn reasoning_request(model: &deepseek::CompletionModel) -> CompletionRequest {
+fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model
         .completion_request(REASONING_PROMPT)
         .additional_params(json!({ "thinking": { "type": "enabled" } }))
@@ -187,7 +192,7 @@ async fn stream_raw_round_trips_terminal_type() {
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model.stream(request(&model)).await?;
             let (text, terminal) = collect_text_and_terminal(stream).await;
             let terminal = terminal.expect("stream should end with a terminal record");
@@ -233,7 +238,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model.stream(request(&model)).await?;
             let (_, terminal) = collect_text_and_terminal(stream).await;
             *sink.lock().expect("observation lock") =
@@ -287,7 +292,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let stream = model.stream(reasoning_request(&model)).await?;
             let observation = collect_reasoning_text_and_terminal(stream).await;
             let terminal = observation

@@ -55,7 +55,7 @@ async fn pdf_document_citations_decode_as_page_locations() {
     with_anthropic_cassette(
         "pdf_citations/pdf_document_citations_decode_as_page_locations",
         |client| async move {
-            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6);
             let response = model
                 .completion(
                     model

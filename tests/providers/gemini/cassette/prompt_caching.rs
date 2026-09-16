@@ -50,7 +50,6 @@
 //!     prompt_caching:: -- --exact --test-threads=1
 //! ```
 
-use rig::client::CompletionClient as _;
 use rig::prelude::*;
 use rig::providers::gemini;
 
@@ -106,7 +105,7 @@ async fn blocking_probe_hits_and_keeps_hitting_as_the_prefix_grows() {
     const SCENARIO: &str = "prompt_caching/blocking_probe";
 
     with_gemini_prompt_caching_cassette("prompt_caching/blocking_probe", |client| async move {
-        let model = client.completion_model(CACHE_MODEL);
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe(&model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "blocking probe");
     })
@@ -121,7 +120,7 @@ async fn streaming_probe_survives_the_streaming_accumulator() {
     const SCENARIO: &str = "prompt_caching/streaming_probe";
 
     with_gemini_prompt_caching_cassette("prompt_caching/streaming_probe", |client| async move {
-        let model = client.completion_model(CACHE_MODEL);
+        let model = client.completion(CACHE_MODEL);
         let observation = run_cache_probe_streaming(&model, &probe()).await;
         assert_cache_conformance(&observation, &GEMINI_CACHE_SUPPORT, "streaming probe");
     })
@@ -167,7 +166,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
 #[ignore = "requires GEMINI_API_KEY and spends real tokens"]
 async fn live_cache_economics() {
     let client = gemini::Client::from_env().expect("GEMINI_API_KEY");
-    let model = client.completion_model(CACHE_MODEL);
+    let model = client.completion(CACHE_MODEL);
 
     // Two passes, asserting on the second — the same procedure the module docs
     // prescribe for re-recording. Gemini's implicit cache only serves a prefix
@@ -304,7 +303,7 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
-                    .completion_model(CACHE_MODEL)
+                    .completion(CACHE_MODEL)
                     .with_cached_content(cache.name.clone());
 
                 // `bare()`: the cache owns the system instruction and tools, and a
@@ -355,7 +354,7 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
-                    .completion_model(CACHE_MODEL)
+                    .completion(CACHE_MODEL)
                     .with_cached_content(cache.name.clone());
 
                 let mut reads = Vec::new();
@@ -509,7 +508,7 @@ async fn a_prefix_below_the_minimum_does_not_cache() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/below_minimum_does_not_cache",
         |client| async move {
-            let model = client.completion_model(CACHE_MODEL);
+            let model = client.completion(CACHE_MODEL);
             let small = crate::cache_conformance::cache_padding(8);
             let request = || {
                 mutation_request(
@@ -558,7 +557,7 @@ async fn changing_temperature_still_hits() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/temperature_change_still_hits",
         |client| async move {
-            let model = client.completion_model(CACHE_MODEL);
+            let model = client.completion(CACHE_MODEL);
             let preamble = probe().preamble;
             let history = vec![user("Reply with exactly: temp")];
 
@@ -604,7 +603,7 @@ async fn changing_the_system_instruction_misses() {
     with_gemini_prompt_caching_cassette(
         "prompt_caching/changed_system_instruction_miss",
         |client| async move {
-            let model = client.completion_model(CACHE_MODEL);
+            let model = client.completion(CACHE_MODEL);
             let base = probe().preamble;
             let history = vec![user("Reply with exactly: sysinstr")];
 

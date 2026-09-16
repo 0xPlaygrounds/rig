@@ -1,12 +1,11 @@
-use rig::client::DefaultTransportClient as _;
-use rig::{prelude::*, providers::gemini};
+use rig::{prelude::*, providers::gemini::Gemini};
 use rig_agent::test_utils::MockImageGeneratorTool;
 
 /// Verifies that Gemini can process an image returned by a classic tool call.
 #[tokio::test]
 #[ignore = "requires GEMINI_API_KEY environment variable"]
 async fn test_gemini_agent_with_image_tool_result_e2e() -> anyhow::Result<()> {
-    let client = gemini::Client::from_env()?;
+    let client = Gemini::from_env()?.bound()?;
 
     let agent = client
         .agent("gemini-3-flash-preview")

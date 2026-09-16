@@ -10,9 +10,11 @@
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
+use rig::driver::Bound;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
 
 use super::super::support::with_anthropic_corpus_host_cassette;
@@ -81,7 +83,7 @@ fn with_hooks<S>(builder: AgentBuilder<S>, hooks: Hooks) -> AgentBuilder<S> {
 
 /// The program over the host's bus, with `hooks` registered on the agent.
 async fn over_host(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     host: Host,
     hooks: Hooks,
 ) -> rig::effect_log::EffectLog {
@@ -96,7 +98,7 @@ async fn over_host(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                 "default",
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
             )),
         )
         .expect("a fresh key");

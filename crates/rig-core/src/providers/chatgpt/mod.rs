@@ -16,7 +16,7 @@
 //! # }
 //! ```
 
-mod auth;
+pub mod auth;
 
 use crate::client::{self, ApiKey, HasCompletion, ModelTransport, Provider, ProviderClientResult};
 use crate::completion::{self, CompletionError, NormalizeCompletionResponse};

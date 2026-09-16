@@ -5,7 +5,7 @@
 use anyhow::Result;
 use rig::agent::AgentBuilder;
 use rig::prelude::*;
-use rig::providers::cohere::{self, COMMAND_A_03_2025};
+use rig::providers::cohere::{COMMAND_A_03_2025, Cohere};
 
 const CONTEXT_DOCS: [&str; 3] = [
     "Definition of a *flurbo*: A flurbo is a green alien that lives on cold planets.",
@@ -17,8 +17,8 @@ const CONTEXT_PROMPT: &str = "What does \"glarb-glarb\" mean?";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = cohere::Client::from_env()?;
-    let model = client.completion_model(COMMAND_A_03_2025);
+    let cohere = Cohere::from_env()?.bound()?;
+    let model = cohere.completion(COMMAND_A_03_2025);
     let agent = CONTEXT_DOCS
         .iter()
         .copied()

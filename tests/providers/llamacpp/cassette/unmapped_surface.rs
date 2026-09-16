@@ -10,7 +10,7 @@
 //! | `POST /v1/embeddings` | implement | `embeddings.rs`, `error_matrix.rs` |
 //! | `GET /v1/models` | implement | [`the_model_listing_reads_the_openai_half_of_a_hybrid_body`] |
 //! | `POST /v1/rerank` (+ `/rerank`, `/reranking`, `/v1/reranking`) | implement | `rerank_matrix.rs` |
-//! | `GET /props` | implement, as `VERIFY_PATH` | [`props_states_which_model_and_modalities_produced_this_corpus`] |
+//! | `GET /props` | implement, as the dialect's `verify_path` | [`props_states_which_model_and_modalities_produced_this_corpus`] |
 //! | `POST /v1/responses` | **exclude** | [`the_responses_api_is_reachable_but_rig_does_not_route_to_it`] |
 //! | `POST /v1/audio/transcriptions` | **exclude** | [`transcription_is_a_501_unless_the_loaded_model_hears`] |
 //! | `POST /infill` | **exclude** | rig has no FIM capability; see below |
@@ -44,10 +44,10 @@
 //!   router, and `/tools` and `/cors-proxy` are the web UI's own back end. None
 //!   maps to a rig capability. `/props` is the exception and is implemented:
 //!   it is the only API-key-checked GET, which makes it the only honest
-//!   `VERIFY_PATH`, and it reports the build tag and modalities that say what
-//!   produced a fixture.
+//!   `verify_path` for this dialect, and it reports the build tag and
+//!   modalities that say what produced a fixture.
 
-use rig::client::{ModelListingClient, VerifyClient};
+use rig::model::ModelLister;
 use serde_json::Value;
 
 use crate::cassettes::{recorded_request_paths, recorded_statuses_and_bodies};
@@ -69,7 +69,8 @@ use super::super::cassette_support::*;
 async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
     with_llamacpp_cassette("unmapped_surface/models_envelope", |client| async move {
         let models = client
-            .list_models()
+            .model_listing()
+            .list_all()
             .await
             .expect("listing llama.cpp models should succeed");
 
@@ -140,9 +141,9 @@ async fn the_model_listing_reads_the_openai_half_of_a_hybrid_body() {
 /// `video: true` there, which is what makes the video cell in
 /// `multimodal_matrix.rs` a question worth asking rather than an assumption.
 ///
-/// It doubles as the evidence for `VERIFY_PATH`: this is the route
-/// `Client::verify()` issues, so a successful verification is a successful
-/// `/props`.
+/// It doubles as the evidence for the dialect's `verify_path`: this is the
+/// route `Bound::verify()` issues, so a successful verification is a
+/// successful `/props`.
 #[tokio::test]
 async fn props_states_which_model_and_modalities_produced_this_corpus() {
     with_llamacpp_vision_cassette("unmapped_surface/props", |client| async move {
@@ -199,16 +200,22 @@ async fn props_states_which_model_and_modalities_produced_this_corpus() {
 /// to be recorded and maintained.
 ///
 /// The exclusion is recorded rather than assumed: the cell reaches the route
-/// through a bare `openai::Client`'s Responses surface, which is exactly what
-/// a caller who wants it does today, and pins that it works. So "rig cannot"
-/// is not the reason; "one provider, one wire" is.
+/// through the plain `ResponsesApi` configuration, which is exactly what a
+/// caller who wants it does today, and pins that it works. So "rig cannot" is
+/// not the reason; "one provider, one wire" is.
 #[tokio::test]
 async fn the_responses_api_is_reachable_but_rig_does_not_route_to_it() {
     use rig::completion::CompletionModel as _;
     use rig::prelude::*;
+    use rig::providers::openai::responses_api::wire::ResponsesApi;
 
     with_llamacpp_bare_openai_cassette("unmapped_surface/responses_api", |client| async move {
-        let model = client.completion_model(CASSETTE_MODEL);
+        // The wrapper hands out the chat configuration; the Responses surface
+        // is a *different* configuration over the same socket and the same
+        // base URL, which is the whole shape of the exclusion.
+        let responses = client
+            .map_wire(|chat| ResponsesApi::new("llamacpp-local").with_base_url(chat.base_url));
+        let model = responses.completion(CASSETTE_MODEL);
         let response = model
             .completion(
                 model

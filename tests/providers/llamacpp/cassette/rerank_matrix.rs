@@ -35,7 +35,6 @@
 //! corrects the doc comment; [`scores_are_raw_logits_and_may_be_negative`]
 //! is what keeps the corrected wording honest.
 
-use rig::client::RerankingClient;
 use rig::rerank::RerankModel as _;
 use serde_json::Value;
 
@@ -77,7 +76,7 @@ fn recorded_results(scenario: &str) -> Vec<Value> {
 async fn multiple_documents_come_back_ranked() {
     with_llamacpp_rerank_cassette("rerank_matrix/multiple_documents", |client| async move {
         let reranked = client
-            .rerank_model(CASSETTE_RERANK_MODEL)
+            .rerank(CASSETTE_RERANK_MODEL)
             .rerank(QUERY, documents())
             .await
             .expect("a multi-document rerank should succeed");
@@ -144,7 +143,7 @@ async fn multiple_documents_come_back_ranked() {
 async fn scores_are_raw_logits_and_may_be_negative() {
     with_llamacpp_rerank_cassette("rerank_matrix/negative_scores", |client| async move {
         let reranked = client
-            .rerank_model(CASSETTE_RERANK_MODEL)
+            .rerank(CASSETTE_RERANK_MODEL)
             .rerank(QUERY, documents())
             .await
             .expect("rerank should succeed");
@@ -183,7 +182,7 @@ async fn scores_are_raw_logits_and_may_be_negative() {
 async fn a_single_document_is_still_a_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/single_document", |client| async move {
         let reranked = client
-            .rerank_model(CASSETTE_RERANK_MODEL)
+            .rerank(CASSETTE_RERANK_MODEL)
             .rerank(QUERY, vec!["it is a bear".to_string()])
             .await
             .expect("a single-document rerank should succeed");
@@ -206,7 +205,7 @@ async fn a_single_document_is_still_a_ranking() {
 async fn top_n_beyond_the_document_count_is_clamped() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_beyond_count", |client| async move {
         let reranked = client
-            .rerank_model(CASSETTE_RERANK_MODEL)
+            .rerank(CASSETTE_RERANK_MODEL)
             .top_n(99)
             .rerank(QUERY, documents())
             .await
@@ -239,7 +238,7 @@ async fn top_n_beyond_the_document_count_is_clamped() {
 async fn top_n_below_the_document_count_truncates() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_truncates", |client| async move {
         let reranked = client
-            .rerank_model(CASSETTE_RERANK_MODEL)
+            .rerank(CASSETTE_RERANK_MODEL)
             .top_n(1)
             .rerank(QUERY, documents())
             .await
@@ -273,7 +272,7 @@ async fn top_n_below_the_document_count_truncates() {
 async fn top_n_zero_returns_an_empty_ranking() {
     with_llamacpp_rerank_cassette("rerank_matrix/top_n_zero", |client| async move {
         let reranked = client
-            .rerank_model(CASSETTE_RERANK_MODEL)
+            .rerank(CASSETTE_RERANK_MODEL)
             .top_n(0)
             .rerank(QUERY, documents())
             .await

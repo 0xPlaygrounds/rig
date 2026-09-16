@@ -11,7 +11,7 @@ async fn extract_backward_compatibility() -> Result<()> {
         "extractor_usage/extract_backward_compatibility",
         |client| async move {
             let mut extractor =
-                EcsExtractor::<Person>::new(client.completion_model(DEFAULT_MODEL), None, None);
+                EcsExtractor::<Person>::new(client.completion(DEFAULT_MODEL), None, None);
             let person = extractor
                 .extract("John Doe is a 30 year old software engineer.", &[])
                 .await?
@@ -30,7 +30,7 @@ async fn extract_with_usage_returns_data_and_usage() -> Result<()> {
         "extractor_usage/extract_with_usage_returns_data_and_usage",
         |client| async move {
             let mut extractor =
-                EcsExtractor::<Person>::new(client.completion_model(DEFAULT_MODEL), None, None);
+                EcsExtractor::<Person>::new(client.completion(DEFAULT_MODEL), None, None);
             let response: TypedPromptResponse<Person> = extractor
                 .extract("Jane Smith is a 45 year old data scientist.", &[])
                 .await?;
@@ -51,7 +51,7 @@ async fn extract_with_chat_history_with_usage_works() -> Result<()> {
         "extractor_usage/extract_with_chat_history_with_usage_works",
         |client| async move {
             let mut extractor =
-                EcsExtractor::<Address>::new(client.completion_model(DEFAULT_MODEL), None, None);
+                EcsExtractor::<Address>::new(client.completion(DEFAULT_MODEL), None, None);
             let chat_history = vec![Message::user(
                 "I'm looking at a property that might be interesting.",
             )];
@@ -78,7 +78,7 @@ async fn extract_and_extract_with_usage_return_same_data() -> Result<()> {
         "extractor_usage/extract_and_extract_with_usage_return_same_data",
         |client| async move {
             let mut extractor =
-                EcsExtractor::<Person>::new(client.completion_model(DEFAULT_MODEL), None, None);
+                EcsExtractor::<Person>::new(client.completion(DEFAULT_MODEL), None, None);
             let text = "Bob Johnson is a 55 year old retired teacher.";
             let person = extractor.extract(text, &[]).await?.output;
             let response = extractor.extract(text, &[]).await?;
@@ -106,13 +106,13 @@ async fn usage_tracking_works_for_different_schemas() -> Result<()> {
         "extractor_usage/usage_tracking_works_for_different_schemas",
         |client| async move {
             let mut person_extractor =
-                EcsExtractor::<Person>::new(client.completion_model(DEFAULT_MODEL), None, None);
+                EcsExtractor::<Person>::new(client.completion(DEFAULT_MODEL), None, None);
             let person_response = person_extractor
                 .extract("Alice is a 25 year old developer.", &[])
                 .await?;
             anyhow::ensure!(person_response.usage.total_tokens.is_some_and(|n| n > 0));
             let mut address_extractor =
-                EcsExtractor::<Address>::new(client.completion_model(DEFAULT_MODEL), None, None);
+                EcsExtractor::<Address>::new(client.completion(DEFAULT_MODEL), None, None);
             let address_response = address_extractor
                 .extract("456 Oak Avenue, Cambridge, MA 02139", &[])
                 .await?;

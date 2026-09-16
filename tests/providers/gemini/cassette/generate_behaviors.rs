@@ -37,7 +37,7 @@ async fn max_tokens_truncation_preserves_finish_reason_and_partial_text() {
     with_gemini_cassette(
         "generate_behaviors/max_tokens_truncation_preserves_finish_reason_and_partial_text",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             // Thinking is disabled so the token budget is spent on visible
             // text and the truncated candidate still carries partial output.
             let request = model

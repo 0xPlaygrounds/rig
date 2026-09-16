@@ -26,7 +26,11 @@ async fn middleware_phases_observe_a_unary_completion() {
         "lifecycle_matrix/middleware_unary",
         probe.clone(),
         |client| async move {
-            let agent = client.agent(MODEL).preamble(BASIC_PREAMBLE).build();
+            let agent = client
+                .responses
+                .agent(MODEL)
+                .preamble(BASIC_PREAMBLE)
+                .build();
             let response = agent
                 .prompt(BASIC_PROMPT)
                 .await
@@ -49,6 +53,7 @@ async fn middleware_response_phase_precedes_stream_consumption() {
         probe.clone(),
         |client| async move {
             let agent = client
+                .responses
                 .agent(MODEL)
                 .preamble(STREAMING_PREAMBLE)
                 .add_hook(settle_hook)
@@ -80,6 +85,7 @@ async fn run_start_rewrite_reaches_the_provider() {
         WireProbe::default(),
         |client| async move {
             let agent = client
+                .responses
                 .agent(MODEL)
                 .preamble(BASIC_PREAMBLE)
                 .add_hook(agent_hook)
@@ -111,6 +117,7 @@ async fn entry_log_orders_and_turn_stamps_across_a_streamed_tool_run() {
         WireProbe::default(),
         |client| async move {
             let agent = client
+                .responses
                 .agent(MODEL)
                 .preamble("You are a calculator. Use the add tool for arithmetic.")
                 .tool(Adder)
@@ -145,6 +152,7 @@ async fn run_settles_once_across_a_multi_turn_tool_run_with_durable_state() {
         WireProbe::default(),
         |client| async move {
             let agent = client
+                .responses
                 .agent(MODEL)
                 .preamble("You are a calculator. Use the add tool for arithmetic.")
                 .tool(Adder)

@@ -21,7 +21,8 @@ fn decode_image(encoded: &str) -> Vec<u8> {
 #[tokio::test]
 async fn embed_texts_smoke() {
     with_cohere_cassette("embeddings/embed_texts_smoke", |client| async move {
-        let model = client.embedding_model(cohere::EMBED_V4, "search_document");
+        let model = client.embedding(cohere::EMBED_V4, None)
+            .map_wire(|wire| wire.with_input_type("search_document"));
         assert_eq!(model.ndims(), 1536);
 
         let embeddings = model
@@ -37,7 +38,8 @@ async fn embed_texts_smoke() {
 #[tokio::test]
 async fn embed_search_query_smoke() {
     with_cohere_cassette("embeddings/embed_search_query_smoke", |client| async move {
-        let model = client.embedding_model(cohere::EMBED_ENGLISH_LIGHT_V3, "search_query");
+        let model = client.embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
+            .map_wire(|wire| wire.with_input_type("search_query"));
         assert_eq!(model.ndims(), 384);
 
         let embeddings = model
@@ -55,7 +57,8 @@ async fn embed_classification_smoke() {
     with_cohere_cassette(
         "embeddings/embed_classification_smoke",
         |client| async move {
-            let model = client.embedding_model(cohere::EMBED_ENGLISH_LIGHT_V3, "classification");
+            let model = client.embedding(cohere::EMBED_ENGLISH_LIGHT_V3, None)
+            .map_wire(|wire| wire.with_input_type("classification"));
             assert_eq!(model.ndims(), 384);
 
             let embeddings = model
@@ -72,7 +75,7 @@ async fn embed_classification_smoke() {
 #[tokio::test]
 async fn embed_image_smoke() {
     with_cohere_cassette("embeddings/embed_image_smoke", |client| async move {
-        let model = client.image_embedding_model();
+        let model = client.map_wire(|cohere| cohere.image_embeddings());
         assert_eq!(ImageEmbeddingModelTrait::ndims(&model), 1024);
         assert_eq!(ImageEmbeddingModelTrait::max_documents(&model), 1);
 
@@ -92,7 +95,7 @@ async fn embed_images_preserves_batch_order() {
     with_cohere_cassette(
         "embeddings/embed_images_preserves_batch_order",
         |client| async move {
-            let model = client.image_embedding_model();
+            let model = client.map_wire(|cohere| cohere.image_embeddings());
             let embeddings = model
                 .embed_images([decode_image(PNG_2X2), decode_image(GIF_2X2)])
                 .await

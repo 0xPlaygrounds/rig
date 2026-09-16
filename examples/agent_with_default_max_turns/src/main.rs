@@ -4,7 +4,7 @@
 
 use anyhow::Result;
 use rig::prelude::*;
-use rig::providers::anthropic;
+use rig::providers::anthropic::{self, wire::Anthropic};
 use rig::tool::Tool;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -89,7 +89,8 @@ const PROMPT: &str = "Calculate (3 + 5) / 4 and describe the result.";
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let agent = anthropic::Client::from_env()?
+    let agent = Anthropic::from_env()?
+        .bound()?
         .agent(anthropic::completion::CLAUDE_SONNET_4_6)
         .preamble(
             "You are an assistant that must use the available tools for arithmetic. \

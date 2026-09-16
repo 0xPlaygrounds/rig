@@ -33,7 +33,8 @@ struct Sentiment {
 async fn batch_multi_extract_chain() -> Result<()> {
     with_openai_cassette_result(
         CassetteSpec::new("multi_extract/batch_multi_extract_chain").unordered(),
-        |client| async move {
+        |cassette| async move {
+            let client = cassette.responses;
             let names_extractor = client
                 .extractor::<Names>(openai::GPT_4O_MINI)
                 .append_preamble("Extract names from the given text.")

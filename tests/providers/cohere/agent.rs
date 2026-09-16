@@ -1,15 +1,18 @@
 //! Cohere agent completion smoke test.
 
 use rig::prelude::*;
-use rig::providers::cohere;
+use rig::providers::cohere::{self, wire::Cohere};
 
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
 
 #[tokio::test]
 #[ignore = "requires COHERE_API_KEY"]
 async fn completion_smoke() {
-    let client = cohere::Client::from_env().expect("client should build");
-    let agent = client
+    let cohere = Cohere::from_env()
+        .expect("config should build from env")
+        .bound()
+        .expect("transport should build");
+    let agent = cohere
         .agent(cohere::COMMAND_A_03_2025)
         .preamble(BASIC_PREAMBLE)
         .build();

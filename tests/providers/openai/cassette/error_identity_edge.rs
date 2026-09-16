@@ -20,7 +20,7 @@ async fn auth_rejection_carries_identity() {
     with_openai_cassette_bogus_key(
         "error_identity_edge/auth_rejection_carries_identity",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.responses.completion(openai::GPT_4O);
             let error = model
                 .completion_request("Never authenticated")
                 .send()
@@ -47,7 +47,7 @@ async fn nonexistent_previous_response_reference_carries_identity() {
     with_openai_cassette(
         "error_identity_edge/nonexistent_previous_response_reference_carries_identity",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.responses.completion(openai::GPT_4O);
             let error = model
                 .completion_request("Continue the conversation")
                 .additional_params(serde_json::json!({
@@ -78,7 +78,7 @@ async fn chat_completions_validation_error_carries_identity() {
     with_openai_completions_cassette(
         "error_identity_edge/chat_completions_validation_error_carries_identity",
         |client| async move {
-            let model = client.completion_model(openai::GPT_4O);
+            let model = client.completion(openai::GPT_4O);
             let error = model
                 .completion_request("Never validated")
                 .additional_params(serde_json::json!({"temperature": 99.0}))
@@ -105,7 +105,9 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
     with_openai_cassette(
         "error_identity_edge/streaming_connect_4xx_matches_blocking_richness",
         |client| async move {
-            let model = client.completion_model("gpt-nonexistent-model-for-error-edge");
+            let model = client
+                .responses
+                .completion("gpt-nonexistent-model-for-error-edge");
             let result = model.completion_request("Never streamed").stream().await;
             let error = match result {
                 Err(error) => ErrorReport::from(&error),
@@ -134,12 +136,12 @@ async fn streaming_connect_4xx_matches_blocking_richness() {
 /// whether the header was nonetheless on the wire — see the PR findings).
 #[tokio::test]
 async fn embeddings_error_preserves_status_and_body() {
-    use rig::client::EmbeddingsClient;
-
     with_openai_cassette(
         "error_identity_edge/embeddings_error_preserves_status_and_body",
         |client| async move {
-            let model = client.embedding_model("text-embedding-nonexistent-model");
+            let model = client
+                .chat
+                .embedding("text-embedding-nonexistent-model", None);
             let error = model
                 .embed_text("never embedded")
                 .await
@@ -163,14 +165,15 @@ async fn embeddings_error_preserves_status_and_body() {
 /// context, not a `RequestError` fallback.
 #[tokio::test]
 async fn model_listing_auth_failure_keeps_api_error_context() {
-    use rig::client::ModelListingClient;
-    use rig::model::ModelListingError;
+    use rig::model::{ModelLister, ModelListingError};
 
     with_openai_cassette_bogus_key(
         "error_identity_edge/model_listing_auth_failure_keeps_api_error_context",
         |client| async move {
             let error = client
-                .list_models()
+                .chat
+                .model_listing()
+                .list_all()
                 .await
                 .expect_err("a bogus key must fail the listing");
             assert!(
@@ -192,17 +195,16 @@ async fn model_listing_auth_failure_keeps_api_error_context() {
 /// recording settles what actually happens (assertion derived from it).
 #[tokio::test]
 async fn verify_reports_invalid_authentication() {
-    use rig::client::VerifyClient;
-
     with_openai_cassette_bogus_key(
         "error_identity_edge/verify_reports_invalid_authentication",
         |client| async move {
             let error = client
+                .chat
                 .verify()
                 .await
                 .expect_err("a bogus key must fail verification");
             assert!(
-                matches!(error, rig::client::VerifyError::InvalidAuthentication),
+                matches!(error, VerifyError::InvalidAuthentication),
                 "verify's 401 arm is live: {error:?}"
             );
         },
@@ -224,6 +226,7 @@ async fn extractor_failure_surfaces_provider_error_context() {
         "error_identity_edge/extractor_failure_surfaces_provider_error_context",
         |client| async move {
             let extractor = client
+                .responses
                 .extractor::<Probe>("gpt-nonexistent-model-for-error-edge")
                 .build();
             let error = extractor

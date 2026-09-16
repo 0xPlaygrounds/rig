@@ -1,11 +1,10 @@
 //! Migrated from `examples/anthropic_plaintext_document.rs`.
 use rig::completion::CompletionModel;
-use rig::completion::NormalizeCompletionResponse;
 use rig::message::{Document, DocumentMediaType, DocumentSourceKind, Message, UserContent};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::Citation;
 use rig::providers::anthropic::completion::{self as anthropic_completion, CLAUDE_SONNET_4_6};
-use rig::telemetry::ProviderResponseExt;
+use serde::Deserialize;
 
 use serde_json::json;
 
@@ -13,9 +12,21 @@ use crate::support::{
     assert_contains_any_case_insensitive, assert_nonempty_response, collect_stream_final_response,
 };
 
-/// Descriptor name the Anthropic client normalizes responses under; needed
-/// when a test converts a `raw_completion` response itself.
-const ANTHROPIC_PROVIDER: &str = "anthropic";
+/// The text Anthropic's own reply carried, read back out of
+/// [`rig::completion::CompletionResponse::raw`].
+fn provider_text(response: &rig::completion::CompletionResponse) -> Option<String> {
+    let reply = anthropic_completion::CompletionResponse::deserialize(&response.raw)
+        .expect("`raw` is the serialized anthropic::completion::CompletionResponse");
+    let text: String = reply
+        .content
+        .iter()
+        .filter_map(|block| match block {
+            anthropic_completion::Content::Text { text, .. } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect();
+    (!text.is_empty()).then_some(text)
+}
 
 fn rust_document() -> String {
     r#"
@@ -167,7 +178,7 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
     super::super::support::with_anthropic_cassette(
         "plaintext_document/document_citations_followup_preserves_history",
         |client| async move {
-            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6);
             let prompt = citation_prompt();
 
             let first_request = model
@@ -179,16 +190,14 @@ async fn document_citations_followup_preserves_assistant_citation_history() {
                 .max_tokens(256)
                 .temperature(0.0)
                 .build();
-            // Raw-vs-normalized parity on a single recorded interaction: take
-            // Anthropic's own response once, then normalize that same value.
-            let first_turn_raw = model
-                .raw_completion(first_request)
+            // Raw-vs-normalized parity on a single recorded interaction: one
+            // call yields rig's normalized response and, in `raw`,
+            // Anthropic's own reply.
+            let first_turn = model
+                .completion(first_request)
                 .await
                 .expect("first document citation turn should succeed");
-            let first_turn_raw_text = first_turn_raw.text_response();
-            let first_turn: rig::completion::CompletionResponse = first_turn_raw
-                .normalize(ANTHROPIC_PROVIDER)
-                .expect("first document citation turn should normalize");
+            let first_turn_raw_text = provider_text(&first_turn);
 
             let first_turn_text = assistant_text(&first_turn.choice);
             assert_nonempty_response(&first_turn_text);

@@ -12,6 +12,7 @@ use crate::support::{
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn streaming_tools_smoke() {
     let agent = live_client()
+        .await
         .agent(LIVE_MODEL)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
@@ -30,6 +31,7 @@ async fn streaming_tools_smoke() {
 #[ignore = "requires ChatGPT credentials or existing OAuth cache"]
 async fn example_streaming_with_tools() {
     let agent = live_client()
+        .await
         .agent(LIVE_MODEL)
         .preamble(
             "You are a calculator here to help the user perform arithmetic operations. \

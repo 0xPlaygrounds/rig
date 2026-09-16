@@ -22,7 +22,7 @@ async fn retired_model_id_preserves_provider_error() {
     with_bedrock_cassette(
         "model_ids/retired_model_id_preserves_provider_error",
         |client| async move {
-            let model = client.completion_model("anthropic.claude-3-5-sonnet-20240620-v1:0");
+            let model = client.completion("anthropic.claude-3-5-sonnet-20240620-v1:0");
             let request = model.completion_request("Say hi.").max_tokens(8).build();
 
             let error = model
@@ -61,7 +61,7 @@ async fn bare_profile_only_model_id_is_rejected() {
     with_bedrock_cassette(
         "model_ids/bare_profile_only_model_id_is_rejected",
         |client| async move {
-            let model = client.completion_model("deepseek.r1-v1:0");
+            let model = client.completion("deepseek.r1-v1:0");
             let request = model.completion_request("Say hi.").max_tokens(8).build();
 
             let error = model
@@ -96,7 +96,7 @@ async fn cross_region_profile_id_completes() {
     with_bedrock_cassette(
         "model_ids/cross_region_profile_id_completes",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::DEEPSEEK_R1);
+            let model = client.completion(bedrock::completion::DEEPSEEK_R1);
             // DeepSeek R1 reasons before answering: recorded at 64 tokens the
             // whole budget went to `reasoningContent` and the turn stopped at
             // `max_tokens` with no text block at all.

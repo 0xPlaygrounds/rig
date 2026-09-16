@@ -8,6 +8,8 @@ use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message, Text, UserContent as RigUserContent,
 };
 use rig::prelude::*;
+use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::providers::openai::wire::OpenAI;
 use rig::providers::openai::{self, FileData, UserContent as OpenAiUserContent};
 use serde::Deserialize;
 use std::future::Future;
@@ -186,7 +188,10 @@ fn assert_page_label(response: &str, page_number: u8) {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn responses_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
-        let client = openai::Client::from_env().expect("client should build");
+        let client = ResponsesApi::from_env()
+            .expect("config should build from env")
+            .bound()
+            .expect("transport should build");
         let agent = client
             .agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)
@@ -224,9 +229,10 @@ async fn responses_document_file_id_roundtrip_live() {
 #[ignore = "requires OPENAI_API_KEY"]
 async fn chat_completions_document_file_id_roundtrip_live() {
     with_uploaded_pdf(|file_id| async move {
-        let client = openai::Client::from_env()
-            .expect("client should build")
-            .completions_api();
+        let client = OpenAI::from_env()
+            .expect("config should build from env")
+            .bound()
+            .expect("transport should build");
         let agent = client
             .agent(openai::GPT_5_5)
             .preamble(DOCUMENT_PREAMBLE)

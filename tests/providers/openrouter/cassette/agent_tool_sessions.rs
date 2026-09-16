@@ -8,10 +8,10 @@
 use std::sync::{Arc, Mutex};
 
 use anyhow::Result;
-use rig::completion::NormalizeCompletionResponse;
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ToolChoice, UserContent};
 use rig::prelude::*;
+use rig::providers::openrouter;
 use rig::tool::Tool;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -545,7 +545,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -586,7 +586,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_openrouter_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let request = model
                 .completion_request(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
@@ -616,13 +616,14 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool_choice(ToolChoice::None)
                 .build();
 
-            // The per-choice finish reasons live on OpenRouter's own wire
-            // response, so this reads them from `raw_completion` and applies
-            // the same conversion `completion` does — one cassette interaction
-            // either way.
-            let raw = model.raw_completion(request).await?;
-            let response: rig::completion::CompletionResponse =
-                raw.clone().normalize("openrouter")?;
+            // One seam: `completion` folds the reply and the driver keeps the
+            // gateway's own document on `raw`, so the per-choice finish
+            // reasons — which the normalized response collapses into one — are
+            // read off OpenRouter's own response type rather than from a
+            // second call.
+            let response = model.completion(request).await?;
+            let wire = openrouter::CompletionResponse::deserialize(&response.raw)
+                .expect("raw is OpenRouter's own completion response");
             let text = response
                 .choice
                 .iter()
@@ -639,17 +640,17 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 response.usage
             );
             anyhow::ensure!(
-                raw.choices
+                wire.choices
                     .iter()
                     .all(|choice| choice.finish_reason.is_some()),
-                "raw response should preserve finish reasons"
+                "the gateway's document should preserve every choice's finish reason"
             );
             anyhow::ensure!(
                 response.finish_reason().is_some(),
                 "normalized response should preserve the finish reason: {:?}",
                 response.finish_reason()
             );
-            assert_nonempty_response(&raw.model);
+            assert_nonempty_response(&wire.model);
 
             Ok(())
         },

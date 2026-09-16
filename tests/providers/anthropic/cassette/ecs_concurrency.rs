@@ -18,7 +18,9 @@ use crate::{
     },
 };
 use bevy_ecs::prelude::*;
-use rig::{message::UserContent, prelude::*, providers::anthropic};
+use rig::driver::Bound;
+use rig::providers::anthropic::wire::Anthropic;
+use rig::{message::UserContent, providers::anthropic};
 use rig_ecs::{
     agent::{MessageParts, ToolCallSlot, ToolPolicy, Utterance},
     bus::{EffectOutcome, Policy, RigSchedule},
@@ -83,9 +85,9 @@ fn observe_publication(
     }
 }
 
-async fn run(client: anthropic::Client, serial: bool) -> EcsAgent {
+async fn run(client: Bound<Anthropic>, serial: bool) -> EcsAgent {
     let mut ecs = EcsAgent::new(
-        client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6),
+        client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
         TWO_TOOL_STREAM_PREAMBLE,
         1,
     );

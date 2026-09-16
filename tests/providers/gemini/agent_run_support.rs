@@ -8,14 +8,21 @@ use std::collections::BTreeSet;
 use rig::agent::CompletionCall;
 use rig::agent::run::{ModelTurn, PendingToolCall};
 use rig::completion::{CompletionModel, CompletionRequestBuilder, ToolDefinition, Usage};
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
 use rig::message::{AssistantContent, Message, ToolChoice, ToolResultContent, UserContent};
 use rig::providers::gemini;
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::json;
 
+/// The Gemini GenerateContent wire bound to the bundled cassette transport —
+/// what `client.completion(model)` hands back, and the model this harness
+/// drives.
+pub(crate) type BoundGenerateContent = Bound<gemini::completion::GenerateContent, BoxedHttpClient>;
+
 pub(crate) struct GeminiAgent {
-    model: gemini::CompletionModel,
+    model: BoundGenerateContent,
     preamble: String,
     tools: Vec<ToolDefinition>,
     tool_choice: Option<ToolChoice>,
@@ -23,7 +30,7 @@ pub(crate) struct GeminiAgent {
 
 impl GeminiAgent {
     pub(crate) fn new(
-        model: gemini::CompletionModel,
+        model: BoundGenerateContent,
         preamble: impl Into<String>,
         tool_names: &[&str],
         tool_choice: Option<ToolChoice>,
@@ -50,7 +57,7 @@ impl GeminiAgent {
         &self,
         prompt: Message,
         history: Vec<Message>,
-    ) -> CompletionRequestBuilder<gemini::CompletionModel> {
+    ) -> CompletionRequestBuilder<BoundGenerateContent> {
         let mut request = self
             .model
             .completion_request(prompt)

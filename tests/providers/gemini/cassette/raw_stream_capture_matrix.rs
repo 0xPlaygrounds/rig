@@ -3,13 +3,14 @@
 //!
 //! # The feature
 //!
-//! Raw capture is always on: the adapter's `final_record` serializes the value the
-//! inherent `raw_stream` yielded as its `FinalResponse` — Gemini's own
-//! [`StreamingCompletionResponse`] terminal record (`map_stream_final`'s
-//! input) — onto the terminal [`rig::streaming::StreamFinal::raw`]. There is
-//! no opt-in and nothing about it reaches the wire; `raw` is `Value::Null`
-//! only on a terminal constructed without a provider stream behind it, never
-//! because capture "was not requested".
+//! Raw capture is always on: the GenerateContent decoder builds its terminal
+//! record at EOF — Gemini's own
+//! [`StreamingCompletionResponse`], assembled from the stream's last
+//! `finishReason`, usage and metadata — and serializes it onto the terminal
+//! [`rig::streaming::StreamFinal::raw`]. There is no opt-in and nothing
+//! about it reaches the wire; `raw` is `Value::Null` only on a terminal
+//! constructed without a provider stream behind it, never because capture
+//! "was not requested".
 //!
 //! # Matrix
 //!
@@ -21,31 +22,29 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal and agrees with the normalized terminal | recorded |
+//! | 1 | `raw_roundtrips_streaming_completion_response` | typed access | `StreamingCompletionResponse::deserialize(&raw)` re-serializes equal and agrees with the normalized terminal | recorded |
 //! | 2 | `raw_exposes_terminal_only_fields` | un-normalized terminal fields | `finish_reason` spelled `"STOP"`, `usage_metadata.promptTokensDetails` == last frame, absent from the normalized terminal | recorded |
 //! | 3 | `raw_terminal_keeps_stop_on_forced_function_call` | forced tool call (`ToolChoice::Specific`), streamed | terminal `raw` round-trips; raw `finish_reason` spelled `"STOP"` and `finish_message` == wire while the normalized terminal reports `ToolCalls`; the recorded frames carry `functionCall` | recorded |
 //!
 //! Every cell is recorded: `GEMINI_API_KEY` was available and the seam under
 //! test is the plain `streamGenerateContent` route.
 //!
-//! Gemini's terminal record is assembled by rig from the stream's frames
-//! (usage is cumulative per chunk; `finishReason` arrives on the last content
-//! frame), so the "wire" side of each premise is the last frame that carries
-//! `usageMetadata`, read with the same `data:` framing the streaming tests use.
+//! Gemini's terminal record is assembled by the decoder from the stream's
+//! frames (usage is cumulative per chunk; `finishReason` arrives on the last
+//! content frame), so the "wire" side of each premise is the last frame that
+//! carries `usageMetadata`, read with the same `data:` framing the streaming
+//! tests use.
 //!
 //! Cell 3 is the tool-turn twin: Gemini spells a call-only turn's finish
-//! `"STOP"` on the wire and the adapter's terminal mapping reconciles the terminal
-//! to `ToolCalls` from the tool call it saw, so this is the one place the
+//! `"STOP"` on the wire and the decoder reconciles the terminal to
+//! `ToolCalls` from the tool call it saw, so this is the one place the
 //! terminal `raw` and the normalized terminal legitimately disagree — `raw`
 //! must keep the wire spelling and the terminal must report the upgrade.
 
-use rig::message::AssistantContent;
-
 use futures::StreamExt;
-use rig::completion::{CompletionModel as _, FinishReason};
-use rig::message::{ToolCall, ToolChoice};
+use rig::completion::{CompletionModel, FinishReason};
+use rig::message::{AssistantContent, ToolCall, ToolChoice};
 use rig::prelude::*;
-use rig::providers::gemini;
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use rig::tool::Tool;
@@ -66,14 +65,16 @@ const PROMPT: &str = "Reply with exactly this one word and nothing else: streame
 /// A prompt the forced-tool cell can only satisfy by calling `add`.
 const TOOL_PROMPT: &str = "Use the add tool to add 2 and 3.";
 
-fn request(model: &gemini::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).temperature(0.0).build()
 }
 
 /// The forced-tool request: `add` is offered and `ToolChoice::Specific` pins
 /// the turn to it (Gemini `functionCallingConfig.mode: ANY` with
 /// `allowedFunctionNames`), so the recorded stream carries a `functionCall`.
-fn forced_tool_request(model: &gemini::CompletionModel) -> rig::completion::CompletionRequest {
+fn forced_tool_request(
+    model: &(impl CompletionModel + Clone),
+) -> rig::completion::CompletionRequest {
     model
         .completion_request(TOOL_PROMPT)
         .temperature(0.0)
@@ -94,7 +95,7 @@ struct Drained {
 
 /// Drain a model stream, keeping every text delta and tool call it yielded.
 async fn drain_stream(
-    model: &gemini::CompletionModel,
+    model: &(impl CompletionModel + Clone),
     request: rig::completion::CompletionRequest,
 ) -> Drained {
     let mut stream = model.stream(request).await.expect("stream should open");
@@ -129,7 +130,7 @@ async fn drain_stream(
 
 /// Drain a text-only model stream and return its single terminal record.
 async fn stream_to_terminal(
-    model: &gemini::CompletionModel,
+    model: &(impl CompletionModel + Clone),
     request: rig::completion::CompletionRequest,
 ) -> StreamFinal {
     let drained = drain_stream(model, request).await;
@@ -229,14 +230,14 @@ async fn raw_roundtrips_streaming_completion_response() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;
 
-            // `raw` is the value `raw_stream` yielded as its terminal,
-            // serialized: Gemini's own terminal type reads it back and
-            // re-serializes to the same value.
+            // `raw` is the terminal record the decoder built, serialized:
+            // Gemini's own terminal type reads it back and re-serializes to
+            // the same value.
             let typed = StreamingCompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into Gemini's streaming terminal type");
             assert_eq!(
@@ -282,7 +283,7 @@ async fn raw_exposes_terminal_only_fields() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;
@@ -344,7 +345,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let drained = drain_stream(&model, forced_tool_request(&model)).await;
 
             // The stream carried the forced call as a typed ToolCall.

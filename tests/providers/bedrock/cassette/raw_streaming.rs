@@ -19,7 +19,7 @@ async fn raw_stream_emits_required_zero_arg_tool_call() {
     with_bedrock_cassette(
         "raw_streaming/raw_stream_emits_required_zero_arg_tool_call",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request(REQUIRED_ZERO_ARG_TOOL_PROMPT)
                 .tool(zero_arg_tool_definition("ping"))
@@ -38,7 +38,7 @@ async fn raw_stream_text_response_smoke() {
     with_bedrock_cassette(
         "raw_streaming/raw_stream_text_response_smoke",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request(RAW_TEXT_RESPONSE_PROMPT)
                 .preamble("Reply with exactly the requested text.".to_string())
@@ -72,7 +72,7 @@ async fn raw_stream_surfaces_two_distinct_tool_calls() {
     with_bedrock_cassette(
         "raw_streaming/raw_stream_surfaces_two_distinct_tool_calls",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request(TWO_TOOL_STREAM_PROMPT)
                 .preamble(TWO_TOOL_STREAM_PREAMBLE.to_string())
@@ -117,7 +117,7 @@ async fn raw_stream_emits_tool_call_before_text() {
     with_bedrock_cassette(
         "raw_streaming/raw_stream_emits_tool_call_before_text",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request(ORDERED_TOOL_STREAM_PROMPT)
                 .preamble(ORDERED_TOOL_STREAM_PREAMBLE.to_string())

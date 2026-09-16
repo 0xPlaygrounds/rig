@@ -15,8 +15,9 @@ use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use futures::FutureExt;
 use rig::completion::Message;
+use rig::driver::Bound;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::responses_api::wire::ResponsesApi;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::net::TcpListener;
@@ -62,7 +63,7 @@ async fn nonstreaming_reasoning_content_tool_roundtrip() {
 
 async fn with_local_reasoning_content_cassette<F, Fut>(scenario: &'static str, test_body: F)
 where
-    F: FnOnce(openai::Client) -> Fut,
+    F: FnOnce(Bound<ResponsesApi>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let server = LocalReasoningContentServer::start().await;
@@ -73,10 +74,9 @@ where
         &server.base_url(),
     )
     .await;
-    let client = openai::Client::builder()
-        .api_key("dummy-openai-compatible-key")
-        .base_url(cassette.base_url())
-        .build()
+    let client = ResponsesApi::new("dummy-openai-compatible-key")
+        .with_base_url(cassette.base_url())
+        .bound()
         .expect("OpenAI-compatible cassette client should build");
 
     let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;

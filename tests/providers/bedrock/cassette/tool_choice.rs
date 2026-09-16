@@ -52,7 +52,7 @@ async fn required_forces_function_call() {
     with_bedrock_cassette(
         "tool_choice/required_forces_function_call",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request("Use the add tool to calculate 20 + 22.")
                 .temperature(0.0)
@@ -91,7 +91,7 @@ async fn specific_add_raw_nonstreaming_allows_only_add() {
     with_bedrock_cassette(
         "tool_choice/specific_add_raw_nonstreaming",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let response = model
                 .completion_request(
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",
@@ -143,7 +143,7 @@ async fn specific_add_raw_streaming_allows_only_add() {
     with_bedrock_cassette(
         "tool_choice/specific_add_raw_streaming",
         |client| async move {
-            let model = client.completion_model(bedrock::completion::AMAZON_NOVA_LITE);
+            let model = client.completion(bedrock::completion::AMAZON_NOVA_LITE);
             let request = model
                 .completion_request(
                     "Use the add tool to calculate 20 + 22. Do not use subtraction.",

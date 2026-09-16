@@ -109,8 +109,12 @@ impl Chat {
                     );
                 }
             }
+            BodyRewrite::HuggingFaceRouter => {
+                // Some sub-providers (Fireworks) address models through a
+                // qualified identifier in the request body.
+                request.model = self.provider.route().model_identifier(&request.model);
+            }
             BodyRewrite::None
-            | BodyRewrite::HuggingFaceRouter
             | BodyRewrite::DeepSeek
             | BodyRewrite::Perplexity
             | BodyRewrite::Hyperbolic
@@ -433,6 +437,47 @@ fn apply_openrouter_prompt_caching(map: &mut serde_json::Map<String, serde_json:
     }
 }
 
+/// Refuse a document or file part that carries only a provider file id.
+///
+/// The message is the one `openrouter::completion`'s conversion returned, so
+/// a caller who hit this before hits the same wording now. Checked on the
+/// normalized request rather than during conversion because that is where the
+/// dialect is known.
+fn refuse_file_ids(request: &CompletionRequest) -> Result<(), CompletionError> {
+    use crate::message::{DocumentSourceKind, Message, UserContent};
+
+    let refusal = || {
+        CompletionError::RequestError(
+            "Provider file IDs are not supported for OpenRouter document inputs".into(),
+        )
+    };
+    for message in &request.chat_history {
+        let Message::User { content, .. } = message else {
+            continue;
+        };
+        for part in content {
+            match part {
+                UserContent::Document(document) => {
+                    if matches!(document.data, DocumentSourceKind::FileId(_)) {
+                        return Err(refusal());
+                    }
+                }
+                // An OpenAI `file` part converts into a rig document, and
+                // that conversion prefers `file_data` over `file_id` — so a
+                // part reaching here with a bare id genuinely carries only
+                // the id.
+                UserContent::Image(image) => {
+                    if matches!(image.data, DocumentSourceKind::FileId(_)) {
+                        return Err(refusal());
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    Ok(())
+}
+
 impl Wire for Chat {
     type Op = crate::operation::Completion;
     type Decoder = ChatDecoder;
@@ -447,6 +492,9 @@ impl Wire for Chat {
 
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
         let quirks = &self.provider.dialect.quirks;
+        if !quirks.accepts_file_ids {
+            refuse_file_ids(&request)?;
+        }
         let mut typed = unary::CompletionRequest::try_from(unary::OpenAIRequestParams {
             model: self.model.clone(),
             request,

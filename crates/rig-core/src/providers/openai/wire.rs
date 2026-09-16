@@ -20,7 +20,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::client::env::{self, EnvError};
-use crate::driver::{HasEmbedding, HasModelListing, HasTranscription, HasVerify};
+use crate::driver::{HasEmbedding, HasModelListing, HasRerank, HasTranscription, HasVerify};
 use crate::wire::{HasCompletion, Secret};
 
 mod chat;
@@ -37,11 +37,12 @@ pub use dialects::*;
 pub use dto::{ChatChoice, ChatFrame, ChatUsage, FinishReason, StreamingCompletionResponse};
 pub use modality::{
     EmbeddingDatum, Embeddings, EmbeddingsDecoder, EmbeddingsReply, ModelEntry, Models,
-    ModelsDecoder, ModelsReply, Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
+    ModelsDecoder, ModelsReply, Rerank, RerankDecoder, RerankReply, RerankResultEntry,
+    RerankUsage, Transcriptions, TranscriptionsDecoder, Verify, VerifyDecoder,
 };
 
 #[cfg(feature = "image")]
-pub use modality::{Images, ImagesDecoder};
+pub use modality::{ImageDatum, Images, ImagesDecoder, ImagesReply};
 #[cfg(feature = "audio")]
 pub use modality::{Speech, SpeechDecoder};
 
@@ -51,7 +52,7 @@ pub use modality::{Speech, SpeechDecoder};
 /// Azure's own `api-key` header, and llama.cpp's optional key — a local
 /// server started without `--api-key` rejects a request that carries an
 /// `Authorization` header it was not configured for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Auth {
     /// `Authorization: Bearer <key>`.
     Bearer,
@@ -59,6 +60,126 @@ pub enum Auth {
     OptionalBearer,
     /// Azure's `api-key: <key>`.
     ApiKeyHeader,
+}
+
+/// A second credential a dialect accepts, read from its own variable and
+/// sent with its own header.
+///
+/// Azure takes either an account key (`AZURE_API_KEY`, sent as `api-key`) or
+/// an Entra bearer token (`AZURE_TOKEN`, sent as `Authorization: Bearer`).
+/// They are not interchangeable spellings of one credential — the header
+/// differs — so the dialect names both and the *configuration* records which
+/// one it holds.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct AuthAlternative {
+    /// The variable holding this credential.
+    pub api_key_env: &'static str,
+    /// How it is sent.
+    pub auth: Auth,
+}
+
+/// Which sub-provider the Hugging Face router forwards to.
+///
+/// The router is one host in front of many backends, and the choice is
+/// observable three ways: `Fireworks` addresses models by a fully-qualified
+/// id, and transcription and image generation are served only by
+/// `HFInference`. Variant names and route slugs are unchanged from the
+/// `SubProvider` this replaces.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SubRoute {
+    /// Hugging Face's own inference backend: the only one that serves
+    /// transcription and image generation.
+    #[default]
+    HFInference,
+    /// Together AI, through the router.
+    Together,
+    /// SambaNova, through the router.
+    SambaNova,
+    /// Fireworks AI, which addresses models by a qualified id.
+    Fireworks,
+    /// Hyperbolic, through the router.
+    Hyperbolic,
+    /// Nebius, through the router.
+    Nebius,
+    /// Novita, through the router.
+    Novita,
+    /// A route this build does not name.
+    Custom(String),
+}
+
+impl SubRoute {
+    /// The router's slug for this sub-provider.
+    pub fn slug(&self) -> &str {
+        match self {
+            Self::HFInference => "hf-inference/models",
+            Self::Together => "together",
+            Self::SambaNova => "sambanova",
+            Self::Fireworks => "fireworks-ai",
+            Self::Hyperbolic => "hyperbolic",
+            Self::Nebius => "nebius",
+            Self::Novita => "novita",
+            Self::Custom(route) => route,
+        }
+    }
+
+    /// The model identifier this sub-provider addresses `model` by.
+    ///
+    /// Fireworks wants a fully-qualified id. Guarded against re-prefixing an
+    /// an already-qualified one: the rewrite runs on the *resolved* request
+    /// model, so a per-request override that is already qualified would
+    /// otherwise become `accounts/fireworks/models/accounts/fireworks/…`.
+    pub fn model_identifier(&self, model: &str) -> String {
+        const FIREWORKS_PREFIX: &str = "accounts/fireworks/models/";
+        match self {
+            Self::Fireworks if !model.starts_with(FIREWORKS_PREFIX) => {
+                format!("{FIREWORKS_PREFIX}{model}")
+            }
+            _ => model.to_owned(),
+        }
+    }
+
+    /// Whether this sub-provider serves the endpoints that address the model
+    /// through the URL (transcription, image generation).
+    pub fn serves_model_routed_endpoints(&self) -> bool {
+        matches!(self, Self::HFInference)
+    }
+}
+
+impl std::fmt::Display for SubRoute {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.slug())
+    }
+}
+
+impl From<&str> for SubRoute {
+    fn from(route: &str) -> Self {
+        Self::Custom(route.to_owned())
+    }
+}
+
+impl From<String> for SubRoute {
+    fn from(route: String) -> Self {
+        Self::Custom(route)
+    }
+}
+
+/// Which body an image-generation endpoint takes, and which reply it sends.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ImageBody {
+    /// OpenAI: `{model, prompt, size}`, answered with `data[].b64_json`.
+    OpenAi,
+    /// xAI: `{model, prompt, response_format, aspect_ratio}` and no `size`,
+    /// answered with `data[].b64_json` and no `created`.
+    Xai,
+}
+
+/// Which body a speech endpoint takes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpeechBody {
+    /// OpenAI: `{model, input, voice, speed}`.
+    OpenAi,
+    /// xAI: `{text, voice_id, language}`, with `eve` as the default voice.
+    Xai,
 }
 
 /// How a dialect addresses a model.
@@ -141,6 +262,33 @@ pub enum BodyRewrite {
     OpenRouter,
 }
 
+/// What a dialect's rerank endpoint accepts.
+///
+/// An empty [`path`](Self::path) is the explicit "this dialect offers no
+/// reranking" signal — stated rather than defaulted, so a dialect added
+/// later cannot inherit a path its server never served.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct RerankQuirks {
+    /// The rerank path, or empty when the dialect offers none.
+    pub path: &'static str,
+    /// Most documents the provider accepts in one request.
+    pub max_documents: usize,
+    /// Whether the model is a body field.
+    pub sends_model_field: bool,
+}
+
+impl RerankQuirks {
+    /// The signal for a dialect with no reranking endpoint.
+    pub const fn unsupported() -> Self {
+        Self {
+            path: "",
+            max_documents: 0,
+            sends_model_field: true,
+        }
+    }
+}
+
 /// What a dialect's embeddings endpoint accepts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 #[non_exhaustive]
@@ -220,10 +368,37 @@ pub struct Quirks {
     /// Whether the dialect emits `reasoning_details` entries (OpenRouter's
     /// encrypted reasoning blobs and replay signatures).
     pub reasoning_details: bool,
+    /// Whether this dialect accepts a document or file content part that
+    /// carries only a provider file id.
+    ///
+    /// `true` everywhere but OpenRouter, whose message conversion refused
+    /// them outright:
+    ///
+    /// ```text
+    /// // providers/openrouter/completion.rs:1016
+    /// DocumentSourceKind::FileId(_) => Err(message::MessageError::ConversionError(
+    ///     "Provider file IDs are not supported for OpenRouter document inputs".into(),
+    /// )),
+    /// ```
+    ///
+    /// A refusal is behaviour: nobody has measured whether the gateway would
+    /// accept one, and an opaque gateway 400 is a worse answer than the local
+    /// error this shipped with.
+    pub accepts_file_ids: bool,
     /// The rewrite this dialect applies to the serialized chat body.
     pub rewrite: BodyRewrite,
+    /// Whether the model is the modality endpoint's *path* rather than a
+    /// body field. Hugging Face's router addresses transcription and image
+    /// generation as `/{model}`; everyone else uses a fixed path.
+    pub model_is_modality_path: bool,
+    /// Which body the image endpoint takes.
+    pub image_body: ImageBody,
+    /// Which body the speech endpoint takes.
+    pub speech_body: SpeechBody,
     /// What the embeddings endpoint accepts.
     pub embedding: EmbeddingQuirks,
+    /// What the rerank endpoint accepts.
+    pub rerank: RerankQuirks,
 }
 
 impl Quirks {
@@ -248,8 +423,15 @@ impl Quirks {
             output_cap: OutputCap::OpenAiReasoningFamilies,
             native_finish_reason: false,
             reasoning_details: false,
+            accepts_file_ids: true,
             rewrite: BodyRewrite::None,
             embedding: EmbeddingQuirks::openai(),
+            // OpenAI has no reranking endpoint, and neither does any dialect
+            // on this wire but llama.cpp.
+            rerank: RerankQuirks::unsupported(),
+            model_is_modality_path: false,
+            image_body: ImageBody::OpenAi,
+            speech_body: SpeechBody::OpenAi,
         }
     }
 }
@@ -273,6 +455,9 @@ pub struct Dialect {
     pub base_url_env: Option<&'static str>,
     /// The reply header carrying the provider's transport request id.
     pub request_id_header: Option<&'static str>,
+    /// A second credential this dialect accepts, with its own variable and
+    /// header. `None` for every dialect but Azure.
+    pub alternate_auth: Option<AuthAlternative>,
     /// Everything that is not identity.
     pub quirks: Quirks,
 }
@@ -318,6 +503,21 @@ pub struct OpenAI {
     /// requires. `None` for every other dialect.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub api_version: Option<String>,
+    /// Azure versions its speech endpoint separately from the rest, so a
+    /// speech request carries this `api-version` instead of
+    /// [`Self::api_version`]. `None` falls back to `api_version`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio_api_version: Option<String>,
+    /// How this configuration's credential is sent. Taken from the dialect,
+    /// except when the credential came from the dialect's
+    /// [`alternate_auth`](Dialect::alternate_auth) variable, which has its
+    /// own header.
+    pub auth: Auth,
+    /// Which sub-provider the Hugging Face router forwards to. `None` behaves
+    /// as [`SubRoute::HFInference`], the router's own default. `None` for
+    /// every other dialect, which routes nothing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sub_route: Option<SubRoute>,
 }
 
 impl OpenAI {
@@ -333,6 +533,26 @@ impl OpenAI {
             base_url: dialect.base_url.to_owned(),
             dialect: *dialect,
             api_version: None,
+            audio_api_version: None,
+            auth: dialect.quirks.auth,
+            sub_route: None,
+        }
+    }
+
+    /// `dialect` with the credential it accepts through its
+    /// [`alternate_auth`](Dialect::alternate_auth) variable, sent with that
+    /// alternative's header.
+    ///
+    /// Azure's account key and its Entra bearer token are both credentials
+    /// for the same account but go out under different headers, so which one
+    /// is held has to be recorded rather than guessed from the value.
+    pub fn with_alternate_key(dialect: &Dialect, api_key: impl Into<Secret>) -> Self {
+        let auth = dialect
+            .alternate_auth
+            .map_or(dialect.quirks.auth, |alternative| alternative.auth);
+        Self {
+            auth,
+            ..Self::with_key(dialect, api_key)
         }
     }
 
@@ -348,22 +568,53 @@ impl OpenAI {
     /// route carries it and there is no default that would not silently
     /// address the wrong API.
     pub fn from_env_with(dialect: &Dialect) -> Result<Self, EnvError> {
-        let api_key = env::required(dialect.api_key_env)?;
+        // A dialect that accepts two credentials prefers its primary one and
+        // falls back to the alternative *with that alternative's header*;
+        // Azure's account key and Entra token are not interchangeable
+        // spellings of one value. Neither present is reported against both
+        // names, because naming only the first would send a caller who
+        // configured the second to look in the wrong place.
+        let (api_key, auth) = match dialect.alternate_auth {
+            Some(alternative) => match env::optional(dialect.api_key_env)? {
+                Some(api_key) => (api_key, dialect.quirks.auth),
+                None => match env::optional(alternative.api_key_env)? {
+                    Some(api_key) => (api_key, alternative.auth),
+                    None => {
+                        return Err(EnvError::Invalid {
+                            name: dialect.api_key_env,
+                            detail: format!(
+                                "either `{}` or `{}` must be set",
+                                dialect.api_key_env, alternative.api_key_env
+                            ),
+                        });
+                    }
+                },
+            },
+            None => (env::required(dialect.api_key_env)?, dialect.quirks.auth),
+        };
         let base_url = match dialect.base_url_env {
             Some(name) => env::optional(name)?,
             None => None,
         };
-        let api_version = match dialect.quirks.routing {
-            Routing::AzureDeployment => {
-                Some(env::required(dialects::AZURE_API_VERSION_ENV)?)
-            }
-            Routing::Path => None,
+        // Azure carries an `api-version` on every route and versions its
+        // speech endpoint separately, so both are read here rather than
+        // defaulted to a version that would silently address another API.
+        let (api_version, audio_api_version) = match dialect.quirks.routing {
+            Routing::AzureDeployment => (
+                Some(env::required(dialects::AZURE_API_VERSION_ENV)?),
+                env::optional(dialects::AZURE_AUDIO_API_VERSION_ENV)?
+                    .or_else(|| Some(dialects::AZURE_DEFAULT_AUDIO_API_VERSION.to_owned())),
+            ),
+            Routing::Path => (None, None),
         };
         Ok(Self {
             api_key: api_key.into(),
             base_url: base_url.unwrap_or_else(|| dialect.base_url.to_owned()),
             dialect: *dialect,
             api_version,
+            audio_api_version,
+            auth,
+            sub_route: None,
         })
     }
 
@@ -371,7 +622,20 @@ impl OpenAI {
     /// default base URL.
     pub fn with_dialect(mut self, dialect: &Dialect) -> Self {
         self.base_url = dialect.base_url.to_owned();
+        self.auth = dialect.quirks.auth;
         self.dialect = *dialect;
+        self
+    }
+
+    /// Route through a Hugging Face sub-provider.
+    pub fn with_sub_route(mut self, sub_route: SubRoute) -> Self {
+        self.sub_route = Some(sub_route);
+        self
+    }
+
+    /// Send the credential with `auth`'s header.
+    pub fn with_auth(mut self, auth: Auth) -> Self {
+        self.auth = auth;
         self
     }
 
@@ -387,6 +651,12 @@ impl OpenAI {
         self
     }
 
+    /// Set the `api-version` Azure's speech endpoint is versioned by.
+    pub fn with_audio_api_version(mut self, api_version: impl Into<String>) -> Self {
+        self.audio_api_version = Some(api_version.into());
+        self
+    }
+
     /// The chat-completions wire for `model`.
     pub fn chat(&self, model: impl Into<String>) -> Chat {
         Chat::new(self.clone(), model)
@@ -395,6 +665,11 @@ impl OpenAI {
     /// The embeddings wire for `model`.
     pub fn embeddings(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         Embeddings::new(self.clone(), model, ndims)
+    }
+
+    /// The rerank wire for `model`.
+    pub fn reranker(&self, model: impl Into<String>) -> Rerank {
+        Rerank::new(self.clone(), model)
     }
 
     /// The transcription wire for `model`.
@@ -427,21 +702,82 @@ impl OpenAI {
     /// Resolve `path` against the base URL, applying Azure's
     /// deployment-in-URL routing when the dialect uses it.
     pub(crate) fn uri(&self, path: &str, model: Option<&str>) -> String {
+        self.uri_versioned(path, model, self.api_version.as_deref())
+    }
+
+    /// [`Self::uri`] with an explicit `api-version`, for the one endpoint
+    /// Azure versions separately (speech).
+    pub(crate) fn uri_versioned(
+        &self,
+        path: &str,
+        model: Option<&str>,
+        api_version: Option<&str>,
+    ) -> String {
         match (self.dialect.quirks.routing, model) {
             (Routing::AzureDeployment, Some(model)) => format!(
                 "{}/openai/deployments/{}{}?api-version={}",
                 self.base_url.trim_end_matches('/'),
                 model.trim_start_matches('/'),
                 path,
-                self.api_version.as_deref().unwrap_or_default(),
+                api_version.unwrap_or_default(),
             ),
             _ => format!("{}{}", self.base_url.trim_end_matches('/'), path),
         }
     }
 
+    /// The `api-version` a speech request carries.
+    #[cfg(feature = "audio")]
+    pub(crate) fn speech_api_version(&self) -> Option<&str> {
+        self.audio_api_version
+            .as_deref()
+            .or(self.api_version.as_deref())
+    }
+
+    /// The sub-provider the Hugging Face router forwards to. `None` on the
+    /// configuration means the router's own default.
+    pub(crate) fn route(&self) -> std::borrow::Cow<'_, SubRoute> {
+        match &self.sub_route {
+            Some(route) => std::borrow::Cow::Borrowed(route),
+            None => std::borrow::Cow::Owned(SubRoute::default()),
+        }
+    }
+
+    /// The URL a modality endpoint addresses.
+    ///
+    /// Most dialects resolve a fixed path and name the model in the body.
+    /// Hugging Face's router makes the model the path — and serves these
+    /// endpoints only through its default sub-provider, so a request routed
+    /// elsewhere is refused here with the message its client returned rather
+    /// than sent to a URL that answers 404.
+    pub(crate) fn modality_uri(
+        &self,
+        endpoint: &str,
+        fixed: &'static str,
+        model: &str,
+    ) -> Result<String, String> {
+        if !self.dialect.quirks.model_is_modality_path {
+            let deployment = match self.dialect.quirks.routing {
+                Routing::AzureDeployment => Some(model),
+                Routing::Path => None,
+            };
+            return Ok(self.uri(fixed, deployment));
+        }
+        let route = self.route();
+        if !route.serves_model_routed_endpoints() {
+            return Err(format!(
+                "{endpoint} endpoint is not supported yet for {route}"
+            ));
+        }
+        Ok(format!(
+            "{}/{}",
+            self.base_url.trim_end_matches('/'),
+            model.trim_start_matches('/')
+        ))
+    }
+
     /// Apply the dialect's authentication to a request builder.
     pub(crate) fn authenticate(&self, builder: http::request::Builder) -> http::request::Builder {
-        match self.dialect.quirks.auth {
+        match self.auth {
             Auth::Bearer => {
                 builder.header("Authorization", format!("Bearer {}", self.api_key.expose()))
             }
@@ -467,6 +803,14 @@ impl HasEmbedding for OpenAI {
 
     fn embedding(&self, model: impl Into<String>, ndims: Option<usize>) -> Embeddings {
         self.embeddings(model, ndims)
+    }
+}
+
+impl HasRerank for OpenAI {
+    type Wire = Rerank;
+
+    fn rerank(&self, model: impl Into<String>) -> Rerank {
+        self.reranker(model)
     }
 }
 

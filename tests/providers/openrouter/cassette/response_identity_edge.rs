@@ -20,7 +20,7 @@ async fn blocking_contract_and_gateway_both_report_none() {
     with_openrouter_cassette(
         "response_identity_edge/blocking_contract_and_gateway_both_report_none",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -44,7 +44,7 @@ async fn streaming_contract_and_gateway_both_report_none() {
     with_openrouter_cassette(
         "response_identity_edge/streaming_contract_and_gateway_both_report_none",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let mut stream = model
                 .completion_request("Reply with exactly: stream identity probe")
                 .stream()
@@ -72,7 +72,7 @@ async fn routed_failure_error_shape() {
     with_openrouter_cassette(
         "response_identity_edge/routed_failure_error_shape",
         |client| async move {
-            let model = client.completion_model("openai/gpt-nonexistent-routed-model");
+            let model = client.completion("openai/gpt-nonexistent-routed-model");
             let error = model
                 .completion_request("Never routed")
                 .send()

@@ -4,15 +4,15 @@
 //! `tests/common/ecs_matrix/long_loop.rs`'s; this file holds the scenario
 //! literals and the wire's model.
 
-use crate::deepseek::support::with_deepseek_cassette;
+use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, cells, long_loop};
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 
-fn wire(client: &rig::providers::deepseek::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
-        model: client.completion_model("deepseek-flash"),
+        model: client.completion("deepseek-flash"),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),

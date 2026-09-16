@@ -191,6 +191,9 @@ impl Encoded {
 }
 
 /// A request body: bytes, or a multipart form for the upload endpoints.
+///
+/// `Debug` prints the body's shape and size, never its bytes: a request
+/// body carries prompts, documents and uploaded files.
 pub enum Body {
     /// A serialized body (JSON for every wire in this crate, or empty).
     Bytes(Vec<u8>),
@@ -202,6 +205,35 @@ impl Body {
     /// An empty body, for a `GET`.
     pub fn empty() -> Self {
         Self::Bytes(Vec::new())
+    }
+}
+
+impl std::fmt::Debug for Body {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bytes(bytes) => write!(f, "Bytes({} bytes)", bytes.len()),
+            Self::Multipart(_) => f.write_str("Multipart"),
+        }
+    }
+}
+
+impl std::fmt::Debug for Encoded {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // The URIs and the framing, not the bodies: an encoded request is
+        // the one place a credential is already in a header.
+        f.debug_struct("Encoded")
+            .field(
+                "requests",
+                &self
+                    .requests
+                    .iter()
+                    .map(|request| format!("{} {}", request.method(), request.uri()))
+                    .collect::<Vec<_>>(),
+            )
+            .field("framing", &self.framing)
+            .field("request_id_header", &self.request_id_header)
+            .field("relaxed_content_type", &self.relaxed_content_type)
+            .finish()
     }
 }
 

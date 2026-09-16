@@ -194,7 +194,7 @@ async fn long_history_replay_nonstreaming() {
     with_gemini_cassette(
         "generate_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
 
             // A finished prior session replayed statelessly: Gemini pairs
             // functionResponse parts to functionCall parts by name, so a fully
@@ -279,7 +279,7 @@ async fn thinking_session_reports_thought_tokens_in_usage() {
     with_gemini_cassette(
         "generate_sessions/thinking_session_reports_thought_tokens_in_usage",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request(
                     "A farmer has 17 sheep. All but 9 run away. How many sheep are left? \

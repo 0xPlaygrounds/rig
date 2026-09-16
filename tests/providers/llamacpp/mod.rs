@@ -48,8 +48,8 @@
 //! | --- | --- |
 //! | unary | `agent`, `tools`, `extractor`, `structured_output`, and every matrix's blocking cells |
 //! | streaming | `streaming`, `streaming_tools`, `permission_control` |
-//! | `raw_completion` | `raw_capture_matrix` |
-//! | `raw_stream` | `raw_stream_capture_matrix`, `streaming_tools`'s `raw_*` cells |
+//! | `CompletionResponse::raw` | `raw_capture_matrix` |
+//! | `StreamFinal::raw` | `raw_stream_capture_matrix`, `streaming_tools`'s `raw_*` cells |
 //!
 //! ## Everything else
 //!
@@ -71,7 +71,7 @@
 //! | reranking | `rerank_matrix` | 8085 |
 //! | multimodal | `multimodal_matrix`, `image_tool_result` | 8080, 8082, 8093 |
 //! | unmapped surface — decisions | `unmapped_surface` | 8080, 8082 |
-//! | the bare `openai::Client` path | `bare_openai_client` | 8080 |
+//! | the plain `OPENAI`-dialect path | `bare_openai_client` | 8080 |
 //!
 //! ## Migrated smoke coverage
 //!
@@ -138,7 +138,7 @@
 //! | a *wrong* API key, as distinct from a missing one | llama.cpp compares for equality and answers the same 401 either way; a second cell would record identical bytes. |
 //! | Gemma streaming tool calls | its chat template declares `supports_tool_calls: false`, so there is no tool-call stream to observe. |
 //! | the full cross-product of family × every dimension | one tool cell and one streaming-tool cell per family is what tests the template claim; recording the whole matrix per family produces a corpus nobody can re-record. |
-//! | the generation matrix on the bare `openai::Client` path | that duplication is what produced the 19 colliding fixtures this PR merged away. `bare_openai_client` covers only what differs. |
+//! | the generation matrix on the plain `OPENAI`-dialect path | that duplication is what produced the 19 colliding fixtures this PR merged away. `bare_openai_client` covers only what differs. |
 
 mod cassette_support;
 

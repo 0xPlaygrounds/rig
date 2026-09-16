@@ -49,8 +49,6 @@
 //!     cached_content_matrix -- --test-threads=1
 //! ```
 
-use rig::client::CompletionClient as _;
-use rig::client::DefaultTransportBuilder as _;
 use rig::providers::gemini;
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use std::time::Duration;
@@ -346,7 +344,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
 
     let agent = AgentBuilder::new(
         client
-            .completion_model(CACHE_MODEL)
+            .completion(CACHE_MODEL)
             .with_cached_content("cachedContents/agent-guard"),
     )
     .tool(CountingPing::default())
@@ -408,7 +406,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
             always_deleting_cached_contents(&client, &handles, async {
                 let agent = AgentBuilder::new(
                     client
-                        .completion_model(CACHE_MODEL)
+                        .completion(CACHE_MODEL)
                         .with_cached_content(cache.name.clone()),
                 )
                 .build();
@@ -485,7 +483,7 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
             always_deleting_cached_contents(&client, &handles, async {
                 let agent = AgentBuilder::new(
                     client
-                        .completion_model(CACHE_MODEL)
+                        .completion(CACHE_MODEL)
                         .with_cached_content(cache.name.clone()),
                 )
                 .tool(CountingPing::default())
@@ -967,7 +965,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
             let handles = [cache.name.clone()];
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
-                    .completion_model(CACHE_MODEL)
+                    .completion(CACHE_MODEL)
                     .with_cached_content(cache.name.clone());
 
                 let request = rig::completion::CompletionRequest {

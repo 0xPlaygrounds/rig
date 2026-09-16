@@ -58,7 +58,7 @@ async fn default_model_remains_non_strict() {
     with_anthropic_cassette(
         "strict_schema_integrations/default_model_remains_non_strict",
         |client| async move {
-            let model = client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6);
+            let model = client.completion(anthropic::completion::CLAUDE_SONNET_4_6);
             let request = model
                 .completion_request("Call default_mode with value = unchanged.")
                 .max_tokens(1024)
@@ -82,8 +82,8 @@ async fn strict_mode_without_tools_is_a_noop() {
         "strict_schema_integrations/strict_mode_without_tools_is_a_noop",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let response = model
                 .completion(
                     model
@@ -113,8 +113,8 @@ async fn automatic_choice_calls_a_strict_tool() {
         "strict_schema_integrations/automatic_choice_calls_a_strict_tool",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request("You must call strict_auto with value = automatic.")
                 .preamble("Obey the request by using the provided tool.".to_string())
@@ -139,8 +139,8 @@ async fn none_choice_suppresses_a_strict_tool() {
         "strict_schema_integrations/none_choice_suppresses_a_strict_tool",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request("Reply with exactly: strict tool suppressed")
                 .max_tokens(32)
@@ -164,8 +164,8 @@ async fn specific_choice_selects_one_of_multiple_strict_tools() {
         "strict_schema_integrations/specific_choice_selects_one_of_multiple_strict_tools",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request("Call strict_second with value = chosen.")
                 .max_tokens(1024)
@@ -194,8 +194,8 @@ async fn rig_strict_and_provider_non_strict_tools_coexist() {
         "strict_schema_integrations/rig_strict_and_provider_non_strict_tools_coexist",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request("Call raw_provider_tool with value = raw.")
                 .max_tokens(1024)
@@ -232,8 +232,8 @@ async fn twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted() {
         "strict_schema_integrations/twenty_rig_strict_plus_one_provider_non_strict_tool_is_accepted",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request("Call raw_boundary_tool with an empty object.")
                 .max_tokens(1024)
@@ -270,9 +270,8 @@ async fn manual_prompt_caching_coexists_with_strict_tools() {
         "strict_schema_integrations/manual_prompt_caching_coexists_with_strict_tools",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_prompt_caching()
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_prompt_caching().with_strict_tools());
             let request = model
                 .completion_request("Call cached_strict with value = manual.")
                 .preamble("Use the strict tool exactly once.".to_string())
@@ -297,9 +296,8 @@ async fn automatic_prompt_caching_coexists_with_strict_tools() {
         "strict_schema_integrations/automatic_prompt_caching_coexists_with_strict_tools",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_automatic_caching()
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_automatic_caching().with_strict_tools());
             let request = model
                 .completion_request("Call cached_strict with value = automatic.")
                 .max_tokens(1024)
@@ -323,12 +321,10 @@ async fn static_prefix_ttl_caching_coexists_with_strict_tools() {
         "strict_schema_integrations/static_prefix_ttl_caching_coexists_with_strict_tools",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_automatic_caching()
-                .with_static_prefix_cache_ttl(
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_automatic_caching().with_static_prefix_cache_ttl(
                     rig::providers::anthropic::completion::CacheTtl::OneHour,
-                )
-                .with_strict_tools();
+                ).with_strict_tools());
             // The preamble must clear the model's minimum cacheable prompt
             // length or the API silently skips caching and the recorded
             // counters prove nothing.
@@ -364,9 +360,8 @@ async fn one_hour_automatic_caching_coexists_with_strict_tools() {
         "strict_schema_integrations/one_hour_automatic_caching_coexists_with_strict_tools",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_automatic_caching_1h()
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_automatic_caching_1h().with_strict_tools());
             let request = model
                 .completion_request("Call cached_strict with value = one-hour.")
                 .max_tokens(1024)
@@ -390,8 +385,8 @@ async fn structured_output_and_strict_tool_use_coexist() {
         "strict_schema_integrations/structured_output_and_strict_tool_use_coexist",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let output_schema: schemars::Schema = serde_json::from_value(json!({
                 "type": "object",
                 "properties": { "summary": { "type": "string" } },
@@ -426,8 +421,8 @@ async fn parallel_strict_tool_calls_preserve_each_schema() {
         "strict_schema_integrations/parallel_strict_tool_calls_preserve_each_schema",
         |client| async move {
             let model = client
-                .completion_model(anthropic::completion::CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(anthropic::completion::CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let request = model
                 .completion_request(
                     "Call strict_alpha with value = A and strict_beta with value = B in parallel. Call both tools.",

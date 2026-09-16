@@ -13,25 +13,30 @@
 //! | GPT-OSS | reasoning block | reasoning deltas | `stop` / `stop` |
 //! | DeepSeek | reasoning block | reasoning deltas | `stop` / `stop` |
 
-use rig::completion::{CompletionModel, NormalizeCompletionResponse};
+use rig::completion::CompletionModel;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::{doubleword, openai};
+use serde::Deserialize as _;
 
-use super::super::support::{recorded_chat_calls, with_doubleword_cassette};
+use super::super::support::{BoundDoubleword, recorded_chat_calls, with_doubleword_cassette};
 use crate::support::collect_raw_stream_observation;
 
 const PROMPT: &str = "Compute 17 * 23. Give the number only after thinking.";
 const CAP: u64 = 128;
 
-async fn exercise_blocking(client: doubleword::Client, model_name: &'static str) {
-    let model = client.completion_model(model_name);
-    let raw = model
-        .raw_completion(model.completion_request(PROMPT).max_tokens(CAP).build())
+async fn exercise_blocking(client: BoundDoubleword, model_name: &'static str) {
+    let model = client.completion(model_name);
+    let response = model
+        .completion(model.completion_request(PROMPT).max_tokens(CAP).build())
         .await
         .expect("reasoning completion should decode");
 
-    let has_wire_reasoning = raw.choices.iter().any(|choice| {
+    // The wire premise, read off the captured document in the provider's own
+    // vocabulary: the backend put hidden thinking in `reasoning_content`.
+    let reply = openai::CompletionResponse::deserialize(&response.raw)
+        .expect("raw is the shared chat-completions response");
+    let has_wire_reasoning = reply.choices.iter().any(|choice| {
         matches!(
             &choice.message,
             openai::completion::Message::Assistant {
@@ -45,16 +50,15 @@ async fn exercise_blocking(client: doubleword::Client, model_name: &'static str)
         "the live backend should emit hidden reasoning"
     );
 
-    let normalized = raw
-        .normalize("doubleword")
-        .expect("reasoning should normalize");
-    assert!(normalized.choice.iter().any(|part| {
+    // And the decoder's one mapping turned it into a reasoning block rather
+    // than gluing it onto the answer.
+    assert!(response.choice.iter().any(|part| {
         matches!(part, AssistantContent::Reasoning(reasoning) if !reasoning.content.is_empty())
     }));
 }
 
-async fn exercise_streaming(client: doubleword::Client, model_name: &'static str) {
-    let model = client.completion_model(model_name);
+async fn exercise_streaming(client: BoundDoubleword, model_name: &'static str) {
+    let model = client.completion(model_name);
     let stream = model
         .stream(model.completion_request(PROMPT).max_tokens(CAP).build())
         .await

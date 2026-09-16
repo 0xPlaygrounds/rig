@@ -8,27 +8,23 @@
 //!  "refusal": "I'm sorry, I can't assist with that request."}
 //! ```
 //!
-//! OpenRouter re-implements `NormalizeCompletionResponse` by hand instead of
-//! going through the shared OpenAI normalizer, and its destructure absorbed
+//! OpenRouter re-implemented the reply mapping by hand instead of going
+//! through the shared OpenAI one, and its destructure absorbed
 //! `refusal` into `..`. It mapped only the *content-part* spelling
 //! (`AssistantContent::Refusal`), which is the Responses API's shape and which
 //! chat completions never sends — so with `content: null` the turn normalized
 //! to zero content and failed with the opaque
 //! `Response contained no message or tool call (empty)`.
 //!
-//! Two things already disagreed with that on `origin/main`:
+//! The **streaming** path already disagreed with that on `origin/main`: it
+//! uses the shared `delta_text`, which prefers a non-empty `refusal`, so the
+//! same request streamed the refusal fine and only the blocking twin failed.
 //!
-//! * `ProviderResponseExt::text_response` routes through
-//!   `openai::completion::assistant_message_text_response`, which *does* apply
-//!   the fallback — so the raw text view and the normalized response disagreed
-//!   about whether the turn said anything;
-//! * the **streaming** path uses the shared `delta_text`, which prefers a
-//!   non-empty `refusal` — so the same request streamed the refusal fine and
-//!   only the blocking twin failed.
-//!
-//! The fix routes OpenRouter's normalize through the same one rule the OpenAI
-//! chat paths share (`openai::completion::assistant_refusal_fallback`, #2332),
-//! rather than inventing a second one.
+//! The fix applies the one rule the OpenAI chat paths share
+//! (`assistant_refusal_fallback`, #2332) rather than inventing a second one,
+//! and the chat wire's decoder now folds the unary body by synthesizing the
+//! stream's events — so the two transports cannot disagree about a refusal at
+//! all.
 //!
 //! **Recorded upstreams.** OpenRouter routes `openai/gpt-4o` to either OpenAI
 //! or Azure — the very first, unpinned, hunt recording landed on Azure — so
@@ -51,7 +47,7 @@
 //! |---|------|-----------|-------|-----------|--------|
 //! | 1 | `blocking_raw_model_surfaces_refusal` | blocking | raw model | the bug | recorded |
 //! | 2 | `blocking_agent_prompt_surfaces_refusal` | blocking | agent | the bug | recorded |
-//! | 3 | `blocking_raw_and_normalized_agree` | blocking | raw + normalized | internal consistency | recorded |
+//! | 3 | `blocking_raw_and_normalized_agree` | blocking | document + normalized | internal consistency | recorded |
 //! | 4 | `blocking_refusal_finishes_with_stop` | blocking | raw model | finish reason | recorded |
 //! | 5 | `blocking_usage_survives_the_refusal` | blocking | raw model | usage | recorded |
 //! | 6 | `blocking_refusal_with_tools_in_request` | blocking | raw model | tools present | recorded |
@@ -76,17 +72,15 @@
 //! (`content: null`, `content` absent, `content: ""`, a refusal beside
 //! non-empty content, an empty refusal string, a tool-calls-only turn, a
 //! refusal *with* tool calls, a refusal beside reasoning details, the
-//! Responses-shaped refusal *part* arriving on this wire, and raw-vs-normalized
-//! text agreement) — live next to the fix in
-//! `crates/rig-core/src/providers/openrouter/completion.rs`
-//! (`refusal_fallback_*`).
+//! Responses-shaped refusal *part* arriving on this wire, and document-vs-
+//! normalized text agreement) — live next to the fix in
+//! `crates/rig-core/src/providers/openai/wire/chat.rs`
+//! (`assistant_refusal_fallback`).
 
-use rig::client::completion::CompletionClient;
-use rig::completion::{CompletionModel, NormalizeCompletionResponse};
+use rig::completion::CompletionModel;
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::openrouter;
-use rig::telemetry::ProviderResponseExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::sync::{Arc, Mutex};
@@ -149,7 +143,7 @@ async fn blocking_raw_model_surfaces_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_raw_model_surfaces_refusal",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -205,8 +199,15 @@ async fn blocking_agent_prompt_surfaces_refusal() {
     assert_recorded_provider(SCENARIO, "OpenAI");
 }
 
-/// The two views of one recorded turn must agree: before the fix the raw text
-/// view reported the refusal while normalization reported nothing at all.
+/// The one reader must report the refusal the gateway's own document carries.
+///
+/// This cell used to compare two readers of one reply — `text_response`, which
+/// applied the refusal fallback, against the normalized response, which did
+/// not. `text_response` is gone with the client layer and there is one reader
+/// now, so the cell asserts what remains: the decoder's normalized choice
+/// carries exactly the `refusal` string sitting beside `content` in the reply
+/// document, which is what `assistant_refusal_fallback` in
+/// `openai/wire/chat.rs` is for.
 #[tokio::test]
 async fn blocking_raw_and_normalized_agree() {
     const SCENARIO: &str = "refusal_matrix/blocking_raw_and_normalized_agree";
@@ -214,15 +215,17 @@ async fn blocking_raw_and_normalized_agree() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_raw_and_normalized_agree",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
                 .additional_params(refusal_request_params("OpenAI"))
                 .build();
 
-            let raw = model.raw_completion(request).await.expect("raw turn");
-            let raw_refusal = raw
+            let normalized = model.completion(request).await.expect("the turn");
+            let document = openrouter::CompletionResponse::deserialize(&normalized.raw)
+                .expect("raw is OpenRouter's own completion response");
+            let raw_refusal = document
                 .choices
                 .first()
                 .and_then(|choice| match &choice.message {
@@ -230,16 +233,19 @@ async fn blocking_raw_and_normalized_agree() {
                     _ => None,
                 })
                 .expect("the recorded turn must carry a top-level refusal");
-            let raw_text = raw
-                .text_response()
-                .expect("the raw text view already reported the refusal on origin/main");
-
-            let normalized = raw.normalize("openrouter").expect("normalization");
             let normalized_text =
                 assistant_text_response(&normalized.choice).expect("normalized text");
 
-            assert_eq!(raw_text, raw_refusal);
             assert_eq!(normalized_text, raw_refusal);
+            // And `content` really is empty, so the refusal is the only thing
+            // the turn said — the premise the fallback exists for.
+            assert!(
+                normalized.raw["choices"][0]["message"]["content"]
+                    .as_str()
+                    .is_none_or(str::is_empty),
+                "the recorded turn must carry no content beside the refusal: {}",
+                normalized.raw
+            );
         },
     )
     .await;
@@ -257,7 +263,7 @@ async fn blocking_refusal_finishes_with_stop() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_finishes_with_stop",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -285,7 +291,7 @@ async fn blocking_usage_survives_the_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_usage_survives_the_refusal",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -329,7 +335,7 @@ async fn blocking_refusal_with_tools_in_request() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_with_tools_in_request",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -362,7 +368,7 @@ async fn blocking_refusal_with_preamble() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_with_preamble",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .preamble("You are a helpful assistant. Answer in the schema.".to_owned())
@@ -391,7 +397,7 @@ async fn blocking_refusal_survives_into_history() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_survives_into_history",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let first = model
                 .completion(
                     model
@@ -446,7 +452,7 @@ async fn blocking_refusal_under_a_tight_cap() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_refusal_under_a_tight_cap",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(32)
@@ -479,7 +485,7 @@ async fn streaming_raw_model_surfaces_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_raw_model_surfaces_refusal",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -539,7 +545,7 @@ async fn streaming_terminal_carries_usage_and_reason() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_terminal_carries_usage_and_reason",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -575,7 +581,7 @@ async fn streaming_refusal_emits_no_tool_calls() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_refusal_emits_no_tool_calls",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -615,7 +621,7 @@ async fn transports_agree_on_the_refusal_text() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/transports_agree_on_the_refusal_text",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
 
             let blocking = model
                 .completion(
@@ -673,7 +679,7 @@ async fn blocking_gpt_4_1_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_gpt_4_1_refusal",
         |client| async move {
-            let model = client.completion_model(SECOND_REFUSING_MODEL);
+            let model = client.completion(SECOND_REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -703,7 +709,7 @@ async fn blocking_azure_routed_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/blocking_azure_routed_refusal",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -729,7 +735,7 @@ async fn streaming_azure_routed_refusal() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/streaming_azure_routed_refusal",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -758,7 +764,7 @@ async fn control_answerable_prompt_is_unchanged_blocking() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_answerable_prompt_is_unchanged_blocking",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(ANSWERABLE_PROMPT)
                 .max_tokens(CAP)
@@ -786,7 +792,7 @@ async fn control_answerable_prompt_is_unchanged_streaming() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_answerable_prompt_is_unchanged_streaming",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(ANSWERABLE_PROMPT)
                 .max_tokens(CAP)
@@ -817,7 +823,7 @@ async fn control_mini_answers_inside_schema() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_mini_answers_inside_schema",
         |client| async move {
-            let model = client.completion_model(NON_REFUSING_MODEL);
+            let model = client.completion(NON_REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -846,7 +852,7 @@ async fn control_no_schema_refusal_is_plain_content() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_no_schema_refusal_is_plain_content",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request(REFUSED_PROMPT)
                 .max_tokens(CAP)
@@ -874,7 +880,7 @@ async fn control_tool_call_turn_is_unchanged() {
     with_openrouter_refusal_cassette(
         "refusal_matrix/control_tool_call_turn_is_unchanged",
         |client| async move {
-            let model = client.completion_model(REFUSING_MODEL);
+            let model = client.completion(REFUSING_MODEL);
             let request = model
                 .completion_request("Call the ping tool.")
                 .max_tokens(CAP)

@@ -8,7 +8,7 @@ use rig_agent::test_utils::validate_extraction_fields;
 async fn extractor_smoke() {
     with_doubleword_cassette("extractor/extractor_smoke", |client| async move {
         let response =
-            EcsExtractor::<SmokePerson>::new(client.completion_model(DEFAULT_MODEL), None, None)
+            EcsExtractor::<SmokePerson>::new(client.completion(DEFAULT_MODEL), None, None)
                 .extract(EXTRACTOR_TEXT, &[])
                 .await
                 .expect("extractor request should succeed");

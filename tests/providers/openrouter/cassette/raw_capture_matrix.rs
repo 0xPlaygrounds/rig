@@ -1,42 +1,44 @@
 //! Raw provider response capture on OpenRouter's blocking chat-completions
 //! path.
 //!
-//! **The feature.** Every blocking completion attaches the value the model's
-//! inherent `raw_completion` returned — OpenRouter's own
-//! [`openrouter::CompletionResponse`], serialized — onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
-//! no flag to request it, nothing about it reaches the wire, and a
-//! `Value::Null` only ever means a response built by hand with no provider
-//! payload behind it. `raw` is a second view of the same response, never a
-//! substitute for a normalized field. OpenRouter is a router, and the wire says
-//! which upstream served the turn (`provider`) and what it cost (`usage.cost`);
-//! neither has a slot on the normalized response, so they are the fields pinned
-//! here as reachable only through `raw`.
+//! **The feature.** Every blocking completion attaches the gateway's own reply
+//! to the normalized [`rig::completion::CompletionResponse::raw`]. Capture is
+//! always on: there is no flag to request it, nothing about it reaches the
+//! wire, and a `Value::Null` only ever means a response built by hand with no
+//! provider payload behind it.
+//!
+//! **What `raw` is.** The driver sets it from the reply's bytes
+//! (`driver::call`), so it is the provider's response *document*, not a
+//! round-trip through whatever type the decoder parsed. That matters most for
+//! a gateway: OpenRouter says which upstream served the turn (`provider`) and
+//! what it cost (`usage.cost`), and neither has a slot on the normalized
+//! response, so they reach a caller through `raw` precisely because `raw` is
+//! the body. The document still reads back as OpenRouter's own
+//! [`openrouter::CompletionResponse`], which is the typed escape hatch.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_openrouter_type` | typed round trip | `raw` deserializes into `openrouter::CompletionResponse` and re-serializes equal | recorded |
-//! | 2 | `raw_exposes_routed_provider` | provider-only field | `raw.provider` and `raw.usage.cost` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes and equals its own `raw` re-normalized | recorded |
+//! | 1 | `raw_reads_back_as_openrouter_type` | typed read-back | `raw` deserializes into `openrouter::CompletionResponse` and its identity agrees with the normalized response | recorded |
+//! | 2 | `raw_exposes_routed_provider` | provider-only fields | `raw.provider` and `raw.usage.cost` equal the fixture body, and neither has a normalized slot | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes, and the same checks hold against its own `raw` | recorded |
+//!
+//! The scenario literals — and therefore the fixture filenames — keep the
+//! names they were recorded under; the cell names describe what the cells now
+//! assert.
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the routed provider out of the
 //! recorded body rather than trusting the string the typed view reports, and
 //! cell 3 checks the normalized fields against the recorded body before
-//! comparing them with the re-normalized `raw`, so a recording that stopped
-//! carrying a usage block or a finish reason fails loudly instead of covering
-//! nothing. OpenRouter contracts no request-id header
-//! (`OpenRouter::REQUEST_ID_HEADER` is `None`), so `provider_request_id`
-//! is `None` on every turn here — a documented outcome, pinned as such.
+//! checking them against its own `raw`, so a recording that stopped carrying a
+//! usage block or a finish reason fails loudly instead of covering nothing.
+//! OpenRouter contracts no request-id header, so `provider_request_id` is
+//! `None` on every turn here — a documented outcome, pinned as such.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse,
-};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
 use rig::message::AssistantContent;
-use rig::prelude::*;
 use rig::providers::openrouter;
-use serde::Deserialize;
+use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::DEFAULT_MODEL;
@@ -45,7 +47,7 @@ use super::super::support::{assert_matches_recorded_token, with_openrouter_casse
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &openrouter::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
@@ -119,70 +121,90 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
         "choice text"
     );
     // OpenRouter contracts no request-id header, so `None` is the documented
-    // outcome on both the normalized and the typed route.
+    // outcome.
     assert_eq!(response.provider_request_id, None, "request id");
 }
 
+/// Run one recorded turn and hand back the response it produced.
+async fn observe(scenario: &'static str) -> CompletionResponse {
+    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let sink = observed.clone();
+    with_openrouter_cassette_result(scenario, |client| async move {
+        let model = client.completion(DEFAULT_MODEL);
+        let response = model.completion(request(&model)).await?;
+        *sink.lock().expect("observation lock") = Some(response);
+        Ok::<(), anyhow::Error>(())
+    })
+    .await
+    .unwrap_or_else(|error| panic!("{scenario} should replay from its cassette: {error}"));
+
+    observed
+        .lock()
+        .expect("observation lock")
+        .take()
+        .expect("the cell should observe a response")
+}
+
 // ================================================================
-// 1. raw round-trips OpenRouter's own type
+// 1. raw is the reply document, and reads back as OpenRouter's type
 // ================================================================
 
 #[tokio::test]
-async fn raw_round_trips_openrouter_type() {
+async fn raw_reads_back_as_openrouter_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openrouter_type";
-    with_openrouter_cassette_result(
-        "raw_capture_matrix/raw_round_trips_openrouter_type",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            let raw = &response.raw;
-            let typed = openrouter::CompletionResponse::deserialize(raw)
-                .expect("raw is OpenRouter's own CompletionResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed view serialized, nothing more"
-            );
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("raw_round_trips_openrouter_type should replay from its cassette");
+    let response = observe("raw_capture_matrix/raw_round_trips_openrouter_type").await;
 
-    let (_, response_body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json(SCENARIO);
     assert!(
-        response_body["choices"][0]["message"]["content"].is_string(),
+        body["choices"][0]["message"]["content"].is_string(),
         "the recorded turn should be a plain text answer"
+    );
+
+    // The document, not a projection of it: every top-level key the gateway
+    // sent is reachable with the recorded value. The generated id goes through
+    // the token helper because a recording pass mints a live one while replay
+    // serves the scrubbed fixture back.
+    let raw = &response.raw;
+    assert_matches_recorded_token(
+        raw["id"].as_str(),
+        body["id"].as_str(),
+        "raw's own response id",
+    );
+    for key in body
+        .as_object()
+        .expect("the recorded reply is a JSON object")
+        .keys()
+        .filter(|key| key.as_str() != "id")
+    {
+        assert_eq!(
+            raw.get(key),
+            body.get(key),
+            "raw should carry the gateway's `{key}` unchanged"
+        );
+    }
+
+    // And it reads back as OpenRouter's own response type — the typed escape
+    // hatch — whose identity is the identity the decoder reported.
+    let typed = openrouter::CompletionResponse::deserialize(raw)
+        .expect("raw is OpenRouter's own CompletionResponse");
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(
+        typed.choices.len(),
+        1,
+        "the recorded turn carries one candidate"
     );
 }
 
 // ================================================================
-// 2. Fields the normalized response provably lacks
+// 2. Fields with no normalized slot reach the caller through raw
 // ================================================================
 
 #[tokio::test]
 async fn raw_exposes_routed_provider() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_routed_provider";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_openrouter_cassette_result(
-        "raw_capture_matrix/raw_exposes_routed_provider",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("raw_exposes_routed_provider should replay from its cassette");
+    let response = observe("raw_capture_matrix/raw_exposes_routed_provider").await;
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
     let (_, body) = recorded_json(SCENARIO);
     let recorded_provider = body["provider"]
         .as_str()
@@ -202,6 +224,10 @@ async fn raw_exposes_routed_provider() {
         normalized_usage.get("cost").is_none(),
         "the normalized usage has no cost slot: {normalized_usage}"
     );
+    // The routed upstream is also what OpenRouter's own type calls it.
+    let typed = openrouter::CompletionResponse::deserialize(raw)
+        .expect("raw is OpenRouter's own CompletionResponse");
+    assert_eq!(typed.provider.as_deref(), Some(recorded_provider));
 }
 
 // ================================================================
@@ -211,43 +237,14 @@ async fn raw_exposes_routed_provider() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = observed.clone();
-    with_openrouter_cassette_result(
-        "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
-            Ok::<(), anyhow::Error>(())
-        },
-    )
-    .await
-    .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = observe("raw_capture_matrix/normalized_fields_match_raw_renormalized").await;
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
     let (_, body) = recorded_json(SCENARIO);
     assert_reproduces_fixture(&response, &body);
 
-    // The normalized fields are exactly what the response's own raw
-    // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = &response.raw;
-    let renormalized = openrouter::CompletionResponse::deserialize(raw)
-        .expect("raw is OpenRouter's own type")
-        .normalize(PROVIDER)
-        .expect("raw normalizes")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
-    assert_eq!(renormalized.identity(), response.identity());
-    assert_eq!(renormalized.finish_reason(), response.finish_reason());
-    assert_eq!(renormalized.model, response.model);
-    assert_eq!(renormalized.usage, response.usage);
-    assert_eq!(renormalized.choice, response.choice);
-    assert!(
-        renormalized.raw.is_null(),
-        "normalizing a hand-fed typed value attaches no raw of its own"
-    );
+    // One seam, two views: the normalized fields hold against the response's
+    // own `raw` exactly as they hold against the fixture bytes, because `raw`
+    // *is* those bytes. Capture adds a view; it never changes the mapping.
+    let raw = response.raw.clone();
+    assert_reproduces_fixture(&response, &raw);
 }

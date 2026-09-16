@@ -1,8 +1,7 @@
 use rig::prelude::*;
 use std::future::IntoFuture;
 
-use rig::providers::openai;
-use rig::providers::openai::Client;
+use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
 
 use schemars::JsonSchema;
 
@@ -13,8 +12,8 @@ struct DocumentScore {
 }
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    // Bind the OpenAI Responses API to the default transport
+    let openai_client = ResponsesApi::from_env()?.bound()?;
 
     let manipulation_agent = openai_client
         .extractor::<DocumentScore>(openai::GPT_4)

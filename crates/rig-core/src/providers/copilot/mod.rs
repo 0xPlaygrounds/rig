@@ -20,7 +20,12 @@
 //! # }
 //! ```
 
-mod auth;
+/// The credential exchange. Public because the wire configuration holds an
+/// *exchanged* session token ([`wire::Copilot::from_auth`]) and the exchange
+/// — a device-code poll, a refresh, a shared token cache — is a
+/// conversation, so it cannot happen inside a wire's synchronous `encode`.
+pub mod auth;
+pub mod wire;
 
 use crate::client::{
     self, ApiKey, HasCompletion, HasEmbeddings, HasModelListing, ModelLister, ModelTransport,
@@ -30,7 +35,7 @@ use crate::completion::NormalizeCompletionResponse;
 use crate::completion::{self, CompletionError};
 use crate::embeddings::{self, EmbeddingError};
 use crate::http_client::{self, HttpClientExt};
-use crate::model::{Model, ModelList, ModelListingError};
+use crate::model::{ModelList, ModelListingError};
 use crate::providers::internal::completion_send::send_completion;
 use crate::providers::internal::envelope::DirectPayload;
 use crate::providers::openai;
@@ -53,7 +58,11 @@ pub(crate) const EDITOR_VERSION: &str = "vscode/1.107.0";
 const API_VERSION: &str = "2025-04-01";
 
 /// Copilot conversation intent sent in the `openai-intent` request header.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+///
+/// Serialized because it is a field of [`wire::CopilotWire`], which is data
+/// a host may store.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum CopilotIntent {
     /// Generic chat panel conversation semantics.
     #[default]
@@ -582,8 +591,13 @@ enum CompletionRoute {
     Responses,
 }
 
+/// The route `model` is served by.
+///
+/// The predicate itself lives in [`wire::routes_through_responses`], so the
+/// client layer and the wire cannot disagree about which API answers a
+/// model.
 fn route_for_model(model: &str) -> CompletionRoute {
-    if model.to_ascii_lowercase().contains("codex") {
+    if wire::routes_through_responses(model) {
         CompletionRoute::Responses
     } else {
         CompletionRoute::ChatCompletions
@@ -1046,20 +1060,10 @@ pub struct EmbeddingModel<H = crate::http_client::BoxedHttpClient> {
 
 /// Copilot's embeddings wire response: what
 /// [`EmbeddingModel::raw_embed_texts`] returns.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopilotEmbeddingResponse {
-    pub data: Vec<CopilotEmbeddingData>,
-    // Copilot fronts several vendors, so usage is not guaranteed on the wire.
-    #[serde(default)]
-    pub usage: Option<openai::completion::Usage>,
-    #[serde(default)]
-    pub model: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct CopilotEmbeddingData {
-    pub embedding: Vec<serde_json::Number>,
-}
+///
+/// Defined with the wire that decodes it, so there is exactly one
+/// definition of the reply shape while both layers exist.
+pub use wire::{EmbeddingDatum as CopilotEmbeddingData, EmbeddingsReply as CopilotEmbeddingResponse};
 
 impl embeddings::NormalizeEmbeddingResponse for CopilotEmbeddingResponse {
     fn normalize(
@@ -1296,40 +1300,6 @@ where
 const MODEL_LISTING_PATH: &str = "/models";
 const MODEL_LISTING_PROVIDER: &str = "Copilot";
 
-#[derive(Debug, Deserialize)]
-struct ListModelsResponse {
-    data: Vec<ListModelEntry>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListModelEntry {
-    id: String,
-    #[serde(default)]
-    name: Option<String>,
-    #[serde(default)]
-    vendor: Option<String>,
-    #[serde(default)]
-    capabilities: Option<ListModelEntryCapabilities>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ListModelEntryCapabilities {
-    #[serde(default, rename = "type")]
-    r#type: Option<String>,
-}
-
-impl From<ListModelEntry> for Model {
-    fn from(value: ListModelEntry) -> Self {
-        let mut model = Model::from_id(value.id);
-        model.name = value.name;
-        model.owned_by = value.vendor;
-        if let Some(caps) = value.capabilities {
-            model.r#type = caps.r#type;
-        }
-        model
-    }
-}
-
 /// [`ModelLister`] implementation for the GitHub Copilot API (`GET /models`).
 #[derive(Clone)]
 pub struct CopilotModelLister<H = crate::http_client::BoxedHttpClient> {
@@ -1366,14 +1336,14 @@ where
             )
         })?;
 
-        let api_resp: ListModelsResponse =
+        let api_resp: wire::ModelsReply =
             crate::providers::internal::model_listing::decode_json_response(
                 response,
                 MODEL_LISTING_PROVIDER,
                 MODEL_LISTING_PATH,
             )
             .await?;
-        let models = api_resp.data.into_iter().map(Model::from).collect();
+        let models = api_resp.into_models();
 
         Ok(ModelList::new(models))
     }

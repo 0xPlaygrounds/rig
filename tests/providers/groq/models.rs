@@ -10,14 +10,14 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 
 use anyhow::Result;
-use rig::client::ModelListingClient;
+use rig::model::ModelLister;
 
 use super::support::{with_groq_cassette_bogus_key_result, with_groq_cassette_result};
 
 #[tokio::test]
 async fn list_models_smoke() -> Result<()> {
     with_groq_cassette_result("models/list_models_smoke", |client| async move {
-        let models = client.list_models().await?;
+        let models = client.model_listing().list_all().await?;
 
         anyhow::ensure!(
             !models.data.is_empty(),
@@ -66,7 +66,8 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> Result<()>
         "models/list_models_rejected_key_reports_api_error_with_context",
         |client| async move {
             let error = client
-                .list_models()
+                .model_listing()
+                .list_all()
                 .await
                 .expect_err("a bogus key must not list models");
 

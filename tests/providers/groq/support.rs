@@ -1,27 +1,32 @@
-use rig::client::DefaultTransportBuilder as _;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 
 use futures::FutureExt;
-use rig::providers::groq;
+use rig::driver::Bound;
+use rig::http_client::BoxedHttpClient;
+use rig::prelude::*;
+use rig::providers::openai::wire::{GROQ, OpenAI};
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 
-async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, groq::Client) {
+/// The Groq dialect bound to the bundled transport — what a cassette test
+/// builds its models from, now that a model is a bound wire.
+pub(super) type BoundGroq = Bound<OpenAI, BoxedHttpClient>;
+
+async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundGroq) {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "groq",
         spec,
-        "https://api.groq.com/openai/v1",
+        GROQ.base_url,
     )
     .await;
-    let client = groq::Client::builder()
-        .api_key(cassette.api_key("GROQ_API_KEY"))
-        .base_url(cassette.base_url())
-        .build()
-        .expect("Groq client should build");
+    let groq = OpenAI::with_key(&GROQ, cassette.api_key("GROQ_API_KEY"))
+        .with_base_url(cassette.base_url())
+        .bound()
+        .expect("Groq cassette transport should build");
 
-    (cassette, client)
+    (cassette, groq)
 }
 
 pub(super) async fn with_groq_cassette_result<F, Fut, E>(
@@ -29,11 +34,11 @@ pub(super) async fn with_groq_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(groq::Client) -> Fut,
+    F: FnOnce(BoundGroq) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let (cassette, client) = groq_cassette(spec).await;
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let (cassette, groq) = groq_cassette(spec).await;
+    let result = AssertUnwindSafe(test_body(groq)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -43,22 +48,21 @@ pub(super) async fn with_groq_cassette_bogus_key_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(groq::Client) -> Fut,
+    F: FnOnce(BoundGroq) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
         "groq",
         spec,
-        "https://api.groq.com/openai/v1",
+        GROQ.base_url,
     )
     .await;
-    let client = groq::Client::builder()
-        .api_key("gsk-invalid-edge-matrix-key")
-        .base_url(cassette.base_url())
-        .build()
-        .expect("client should build");
-    let result = AssertUnwindSafe(test_body(client)).catch_unwind().await;
+    let groq = OpenAI::with_key(&GROQ, "gsk-invalid-edge-matrix-key")
+        .with_base_url(cassette.base_url())
+        .bound()
+        .expect("transport should build");
+    let result = AssertUnwindSafe(test_body(groq)).catch_unwind().await;
     cassette.finish_after_test_result(result).await
 }
 
@@ -152,7 +156,7 @@ pub(super) async fn with_groq_prompt_caching_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(groq::Client) -> Fut,
+    F: FnOnce(BoundGroq) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = groq_cassette(spec).await;

@@ -11,9 +11,11 @@ use futures::StreamExt;
 use rig::agent::tool::server::ToolServer;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
+use rig::driver::Bound;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
 use rig::tool::RegisteredTool;
 
@@ -40,7 +42,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 }
 
 async fn over_host(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     host: Host,
 ) -> rig::effect_log::EffectLog {
     let config = ServingPolicy {
@@ -54,7 +56,7 @@ async fn over_host(
             model_key.clone(),
             rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                 "default",
-                client.completion_model(CLAUDE_SONNET_4_6),
+                client.completion(CLAUDE_SONNET_4_6),
             )),
         )
         .expect("a fresh key");

@@ -2,21 +2,21 @@
 //! path.
 //!
 //! **The feature.** Every stream's terminal
-//! [`rig::streaming::StreamFinal::raw`] carries the value the model's inherent
-//! `raw_stream` yielded as its terminal record — for Venice the shared
-//! chat-completions terminal [`StreamingCompletionResponse`] over the shared
-//! [`openai::Usage`] — serialized. Capture is always on: there is no flag to
-//! request it, nothing about it reaches the wire, and a `Value::Null` only ever
-//! means a terminal built by hand with no provider record behind it. It is the
-//! terminal record only, never the stream's frames. Venice stamps the request's
-//! `cost` on the terminal frame alone, and the terminal's accumulated
-//! `additional_params` keeps it, alongside the `object` tag the frames repeat;
-//! neither has a slot on the normalized terminal, so both are pinned here as
-//! reachable only through `raw`.
+//! [`rig::streaming::StreamFinal::raw`] carries the decoder's own terminal
+//! record — for Venice the shared chat-completions
+//! [`StreamingCompletionResponse`] over [`ChatUsage`] — serialized. Capture is
+//! always on: there is no flag to request it, nothing about it reaches the
+//! wire, and a `Value::Null` only ever means a terminal built by hand with no
+//! provider record behind it. It is the terminal record only, never the
+//! stream's frames. Venice stamps the request's `cost` on the terminal frame
+//! alone, and the terminal's accumulated `additional_params` keeps it,
+//! alongside the `object` tag the frames repeat; neither has a slot on the
+//! normalized terminal, so both are pinned here as reachable only through
+//! `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<openai::Usage>` and re-serializes equal; the normalized terminal reproduces the recorded terminal frame | recorded |
+//! | 1 | `stream_raw_round_trips_terminal_type` | typed round trip | terminal `raw` deserializes into `StreamingCompletionResponse<ChatUsage>` whose native fields reproduce the normalized terminal; the normalized terminal reproduces the recorded terminal frame | recorded |
 //! | 2 | `stream_raw_exposes_terminal_cost` | terminal-only field | `raw.additional_params.cost.usd` equals the recorded terminal frame's, and no earlier frame carried a cost | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
@@ -28,24 +28,22 @@
 //! outcome.
 
 use rig::completion::{CompletionModel, CompletionRequest};
-use rig::prelude::*;
-use rig::providers::openai::completion::streaming::StreamingCompletionResponse;
-use rig::providers::venice::completion::VeniceParameters;
-use rig::providers::{openai, venice};
+use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
+use rig::providers::venice::VeniceParameters;
 use rig::streaming::StreamFinal;
-use serde::Deserialize;
+use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::DEFAULT_MODEL;
 use super::super::support::{assert_matches_recorded_token, with_venice_cassette_result};
 use crate::support::collect_text_and_terminal;
 
-type VeniceTerminal = StreamingCompletionResponse<openai::Usage>;
+type VeniceTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "venice";
 const PROMPT: &str = "Reply with the single word: pong";
 
-fn request(model: &venice::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model
         .completion_request(PROMPT)
         .max_tokens(16)
@@ -118,29 +116,36 @@ async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
-    with_venice_cassette_result(
-        "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let stream = model.stream(request(&model)).await?;
-            let (text, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("stream should end with a terminal record");
-            assert!(!text.is_empty());
-            let raw = &terminal.raw;
-            let typed = VeniceTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over the shared OpenAI usage");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed terminal serialized, nothing more"
-            );
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(typed.finish_reason, terminal.finish_reason);
-            assert_eq!(typed.provider_request_id, terminal.provider_request_id);
-            *sink.lock().expect("observation lock") = Some(terminal);
-            Ok::<(), anyhow::Error>(())
-        },
-    )
+    with_venice_cassette_result(SCENARIO, |client| async move {
+        let model = client.completion(DEFAULT_MODEL);
+        let stream = model.stream(request(&model)).await?;
+        let (text, terminal) = collect_text_and_terminal(stream).await;
+        let terminal = terminal.expect("stream should end with a terminal record");
+        assert!(!text.is_empty());
+
+        // The captured document is the decoder's terminal record, so it reads
+        // back as that type and its native fields are the normalized ones.
+        let typed = VeniceTerminal::deserialize(&terminal.raw)
+            .expect("raw is the chat-completions terminal over the wire's own usage");
+        assert_eq!(typed.response_id, terminal.response_id);
+        assert_eq!(typed.model, terminal.model);
+        assert_eq!(typed.finish_reason, terminal.finish_reason);
+        assert_eq!(
+            typed
+                .usage
+                .as_ref()
+                .map(|usage| usage.to_normalized().total_tokens),
+            Some(terminal.usage.total_tokens),
+            "the captured accounting normalizes to the terminal's"
+        );
+        assert_eq!(
+            typed.provider_request_id, None,
+            "the transport id is stamped on the normalized terminal, not the native record"
+        );
+
+        *sink.lock().expect("observation lock") = Some(terminal);
+        Ok::<(), anyhow::Error>(())
+    })
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
@@ -164,17 +169,14 @@ async fn stream_raw_exposes_terminal_cost() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost";
     let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
     let sink = observed.clone();
-    with_venice_cassette_result(
-        "raw_stream_capture_matrix/stream_raw_exposes_terminal_cost",
-        |client| async move {
-            let model = client.completion_model(DEFAULT_MODEL);
-            let stream = model.stream(request(&model)).await?;
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            *sink.lock().expect("observation lock") =
-                Some(terminal.expect("stream should end with a terminal record"));
-            Ok::<(), anyhow::Error>(())
-        },
-    )
+    with_venice_cassette_result(SCENARIO, |client| async move {
+        let model = client.completion(DEFAULT_MODEL);
+        let stream = model.stream(request(&model)).await?;
+        let (_, terminal) = collect_text_and_terminal(stream).await;
+        *sink.lock().expect("observation lock") =
+            Some(terminal.expect("stream should end with a terminal record"));
+        Ok::<(), anyhow::Error>(())
+    })
     .await
     .expect("stream_raw_exposes_terminal_cost should replay from its cassette");
 
@@ -199,10 +201,7 @@ async fn stream_raw_exposes_terminal_cost() {
     );
 
     let raw = &terminal.raw;
-    assert_eq!(
-        raw["additional_params"]["cost"]["usd"],
-        json!(recorded_cost)
-    );
+    assert_eq!(raw["additional_params"]["cost"]["usd"], json!(recorded_cost));
     assert_eq!(
         raw["additional_params"]["object"],
         json!("chat.completion.chunk")

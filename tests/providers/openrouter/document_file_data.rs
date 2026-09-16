@@ -1,13 +1,20 @@
 //! OpenRouter wire coverage for PDF `file_data` document messages.
+//!
+//! Asserted on the bytes the `OPENROUTER` dialect encodes, which is where the
+//! per-provider message conversion this replaced used to live. `encode` needs
+//! no socket, so this stays a plain unit test.
 
 use base64::{Engine, prelude::BASE64_STANDARD};
+use rig::completion::CompletionRequestBuilder;
 use rig::message::{
     Document, DocumentMediaType, DocumentSourceKind, Message as RigMessage, Text,
     UserContent as RigUserContent,
 };
-use rig::providers::openrouter::Message as OpenRouterMessage;
+use rig::providers::openai::wire::{OPENROUTER, OpenAI};
+use rig::wire::{Body, Mode, Wire};
 use serde_json::Value;
 
+const MODEL: &str = "google/gemini-2.5-flash";
 const VERIFIER_FIXTURE_PATH: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/tests/data/file-id-verifiers.pdf"
@@ -38,14 +45,23 @@ fn document_question(page_number: u8) -> RigMessage {
     }
 }
 
+/// The `messages` array the `OPENROUTER` dialect sends for one rig message.
 fn openrouter_wire_messages(message: RigMessage) -> Vec<Value> {
-    let messages: Vec<OpenRouterMessage> =
-        rig::providers::openrouter::messages_from_rig_message(message)
-            .expect("generic message should convert to OpenRouter messages");
-    messages
-        .into_iter()
-        .map(|message| serde_json::to_value(message).expect("message should serialize"))
-        .collect()
+    let encoded = OpenAI::with_key(&OPENROUTER, "k")
+        .chat(MODEL)
+        .encode(
+            CompletionRequestBuilder::unbound(message).build(),
+            Mode::Unary,
+        )
+        .expect("a base64 PDF document should encode");
+    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+        panic!("the chat wire sends a serialized body, not a multipart form")
+    };
+    let body: Value = serde_json::from_slice(bytes).expect("the chat body is JSON");
+    body["messages"]
+        .as_array()
+        .unwrap_or_else(|| panic!("expected a messages array, got {body:#}"))
+        .clone()
 }
 
 fn assert_openrouter_wire_file_data(message: RigMessage) {

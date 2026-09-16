@@ -11,7 +11,7 @@ async fn agent_loop_keeps_hitting_across_tool_turns() {
     super::super::support::with_gemini_prompt_caching_cassette(
         "prompt_caching/agent_loop",
         |client| async move {
-            let ecs = EcsAgent::new(client.completion_model(CACHE_MODEL), &probe().preamble, 1);
+            let ecs = EcsAgent::new(client.completion(CACHE_MODEL), &probe().preamble, 1);
 
             assert_cache_growth(ecs, &GEMINI_CACHE_SUPPORT, "agent loop").await;
         },

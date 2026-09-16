@@ -303,7 +303,7 @@ async fn long_history_replay_nonstreaming() {
     with_chatgpt_cassette(
         "codex_sessions/long_history_replay_nonstreaming",
         |client| async move {
-            let model = client.completion_model(chatgpt::GPT_5_4);
+            let model = client.completion(chatgpt::GPT_5_4);
             let preamble = "You are a concise assistant with perfect recall of this conversation.";
 
             // First turn: obtain a real tool call so the follow-up can echo

@@ -33,9 +33,10 @@
 
 use futures::StreamExt;
 use rig::completion::CompletionModel as _;
-use rig::prelude::*;
+use rig::driver::Bound;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
+use rig::providers::openai::responses_api::wire::Responses;
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
@@ -47,7 +48,9 @@ const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-fn request(model: &chatgpt::ResponsesCompletionModel) -> rig::completion::CompletionRequest {
+type ChatGptModel = Bound<Responses>;
+
+fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
@@ -105,7 +108,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -166,7 +169,7 @@ async fn stream_raw_exposes_terminal_status() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let terminal = terminal_of(
                 model
                     .stream(request(&model))

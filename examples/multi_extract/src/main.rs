@@ -4,9 +4,8 @@
 
 use anyhow::Result;
 use futures::stream::{StreamExt, TryStreamExt};
-use rig::client::DefaultTransportClient;
 use rig::prelude::*;
-use rig::providers::openai;
+use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::future::IntoFuture;
@@ -37,7 +36,7 @@ fn sample_inputs() -> Vec<&'static str> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let client = openai::Client::from_env()?;
+    let client = ResponsesApi::from_env()?.bound()?;
     let names_extractor = client
         .extractor::<Names>(openai::GPT_4O_MINI)
         .append_preamble("Extract names from the given text.")

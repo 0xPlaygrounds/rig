@@ -46,7 +46,8 @@ async fn responses_keeps_documents_after_system_before_history() {
         "document_ordering/responses_keeps_documents_after_system_before_history",
         |client| async move {
             let response = client
-                .completion_model(openai::GPT_4O)
+                .responses
+                .completion(openai::GPT_4O)
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))
@@ -76,7 +77,7 @@ async fn chat_completions_keeps_documents_after_system_before_history() {
         "document_ordering/chat_completions_keeps_documents_after_system_before_history",
         |client| async move {
             let response = client
-                .completion_model(openai::GPT_4O)
+                .completion(openai::GPT_4O)
                 .completion_request(PROMPT)
                 .message(Message::system(SYSTEM_INSTRUCTION))
                 .message(Message::assistant("Acknowledged."))

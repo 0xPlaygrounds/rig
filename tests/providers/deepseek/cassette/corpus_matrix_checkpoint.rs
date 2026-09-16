@@ -1,15 +1,15 @@
 //! Focused tool-turn checkpoint matrix on DeepSeek: deepseek-flash.
 //! One producer recording is reused by every native cut with strict matching.
 
-use crate::deepseek::support::with_deepseek_cassette;
+use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, cells, checkpoint};
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 
-fn wire(client: &rig::providers::deepseek::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
-        model: client.completion_model("deepseek-flash"),
+        model: client.completion("deepseek-flash"),
         route: None,
         temperature: Some(0.0),
         additional_params: Some(|| serde_json::json!({"thinking":{"type":"disabled"}})),

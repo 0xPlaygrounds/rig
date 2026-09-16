@@ -49,6 +49,17 @@ pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized
     /// payload the decoder's projection still reads facts off.
     fn provider_response_body(&self) -> Option<&str>;
 
+    /// Attach which provider and path produced the failure.
+    ///
+    /// The driver knows both at the seam, and an operation whose error is a
+    /// *diagnostic* rather than a preserved reply (model listing: a catalog
+    /// fetch that fails names no response the caller can inspect) wants them
+    /// in the message. The default keeps the provider's own body verbatim,
+    /// which is what every other operation preserves.
+    fn with_route(self, _provider: &str, _path: &str) -> Self {
+        self
+    }
+
     /// The wire form of this error, for observation and the bus.
     fn report(&self) -> ErrorReport;
 

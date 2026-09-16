@@ -88,7 +88,7 @@ async fn final_metadata_exposes_finish_reason_and_model_version() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_exposes_finish_reason_and_model_version",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request("Reply with exactly: final metadata ok")
                 .temperature(0.0)
@@ -142,7 +142,7 @@ async fn final_metadata_handles_terminal_finish_reason_chunk() {
     super::super::support::with_gemini_cassette(
         "streaming/final_metadata_handles_terminal_finish_reason_chunk",
         |client| async move {
-            let model = client.completion_model(gemini::completion::GEMINI_2_5_FLASH);
+            let model = client.completion(gemini::completion::GEMINI_2_5_FLASH);
             let request = model
                 .completion_request("Reply with exactly: contentless final metadata ok")
                 .temperature(0.0)

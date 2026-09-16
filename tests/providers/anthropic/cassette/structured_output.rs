@@ -1,8 +1,10 @@
 //! Anthropic structured output smoke test.
 
 use rig::agent::OutputMode;
+use rig::driver::Bind;
 use rig::prelude::*;
-use rig::providers::anthropic::{self, completion::CLAUDE_SONNET_4_6};
+use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::test_utils::RecordingHttpClient;
 use rig_agent::test_utils::decode_structured_output;
 
@@ -83,11 +85,7 @@ async fn structured_output_smoke() {
 #[tokio::test]
 async fn classic_tool_mode_maps_through_anthropic_messages() {
     let http = RecordingHttpClient::new(output_tool_response("final_result"));
-    let client = anthropic::Client::builder()
-        .api_key("test-key")
-        .http_client(http.clone())
-        .build()
-        .expect("Anthropic test client should build");
+    let client = Anthropic::new("test-key").bind(http.clone());
     let agent = client
         .agent(CLAUDE_SONNET_4_6)
         .output_schema::<SmokeStructuredOutput>()
@@ -116,11 +114,7 @@ async fn classic_tool_mode_maps_through_anthropic_messages() {
 async fn classic_prompted_mode_maps_through_anthropic_messages() {
     let output = smoke_structured_output_value();
     let http = RecordingHttpClient::new(text_response(&output.to_string()));
-    let client = anthropic::Client::builder()
-        .api_key("test-key")
-        .http_client(http.clone())
-        .build()
-        .expect("Anthropic test client should build");
+    let client = Anthropic::new("test-key").bind(http.clone());
     let agent = client
         .agent(CLAUDE_SONNET_4_6)
         .output_schema::<SmokeStructuredOutput>()

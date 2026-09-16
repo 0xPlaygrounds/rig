@@ -36,10 +36,11 @@
 //! cells prove the provider accepts what the table says.
 
 use rig::completion::{CompletionModel, Message};
-use rig::prelude::*;
+use rig::driver::Bound;
 use rig::providers::anthropic::completion::{
     CLAUDE_FABLE_5_1, CLAUDE_HAIKU_4_5, CLAUDE_OPUS_5, CLAUDE_SONNET_4_6, CLAUDE_SONNET_5,
 };
+use rig::providers::anthropic::wire::Anthropic;
 use serde_json::Value;
 
 use super::super::support::with_anthropic_cassette;
@@ -127,8 +128,8 @@ fn assert_recorded_system_role_hoisted(scenario: &str) {
     );
 }
 
-async fn assert_uncapped_turn(client: rig::providers::anthropic::Client, model_id: &str) {
-    let model = client.completion_model(model_id);
+async fn assert_uncapped_turn(client: Bound<Anthropic>, model_id: &str) {
+    let model = client.completion(model_id);
     let request = model.completion_request(PROMPT).build();
     let response = model
         .completion(request)
@@ -139,10 +140,10 @@ async fn assert_uncapped_turn(client: rig::providers::anthropic::Client, model_i
 }
 
 async fn assert_mid_conversation_system_turn(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     model_id: &str,
 ) {
-    let model = client.completion_model(model_id);
+    let model = client.completion(model_id);
     let request = model
         .completion_request(SKY_PROMPT)
         .messages([

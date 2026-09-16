@@ -170,6 +170,30 @@ impl Gemini {
     pub fn interactions_models(&self) -> model_listing::InteractionsModels {
         model_listing::InteractionsModels::new(self.clone())
     }
+
+    /// Read one existing interaction: poll a `background: true` interaction
+    /// to a terminal status with `completion(())`, or resume its dropped
+    /// stream with `stream(())`.
+    pub fn interaction(
+        &self,
+        interaction_id: impl Into<String>,
+    ) -> interactions_api::InteractionResume {
+        interactions_api::InteractionResume::new(self.clone(), interaction_id)
+    }
+
+    /// [`Self::interaction`], resuming a streamed read after the last event
+    /// the consumer saw.
+    pub fn interaction_resumed(
+        &self,
+        interaction_id: impl Into<String>,
+        last_event_id: Option<&str>,
+    ) -> interactions_api::InteractionResume {
+        let wire = self.interaction(interaction_id);
+        match last_event_id {
+            Some(last_event_id) => wire.after_event(last_event_id),
+            None => wire,
+        }
+    }
 }
 
 impl HasCompletion for Gemini {

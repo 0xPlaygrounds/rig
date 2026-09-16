@@ -176,7 +176,7 @@ async fn blocking_raw_model_sends_a_base64_image() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_sends_a_base64_image",
         |client| async move {
-            let model = client.completion_model(VISION_MODEL);
+            let model = client.completion(VISION_MODEL);
             let response = model
                 .completion(
                     model
@@ -496,7 +496,7 @@ async fn blocking_raw_model_reads_an_attached_pdf() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_reads_an_attached_pdf",
         |client| async move {
-            let model = client.completion_model(VISION_MODEL);
+            let model = client.completion(VISION_MODEL);
             let response = model
                 .completion(
                     model
@@ -683,7 +683,7 @@ async fn blocking_raw_model_sends_audio() -> Result<()> {
     with_mistral_multimodal_cassette(
         "multimodal_content/blocking_raw_model_sends_audio",
         |client| async move {
-            let model = client.completion_model(AUDIO_MODEL);
+            let model = client.completion(AUDIO_MODEL);
             let response = model
                 .completion(
                     model

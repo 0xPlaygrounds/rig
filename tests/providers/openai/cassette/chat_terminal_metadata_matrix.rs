@@ -39,12 +39,11 @@ use std::sync::{Arc, Mutex};
 use anyhow::{Context, Result};
 use futures::StreamExt as _;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use serde_json::{Value, json};
 
-use super::super::support::with_openai_terminal_metadata_cassette_result;
+use super::super::support::{OpenAiCassette, with_openai_terminal_metadata_cassette_result};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Transport {
@@ -120,10 +119,8 @@ fn model_name(model: ModelVariant) -> &'static str {
     }
 }
 
-async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservation) -> Result<()> {
-    let model = client
-        .completions_api()
-        .completion_model(model_name(cell.model));
+async fn run_cell(client: OpenAiCassette, cell: Cell, observed: SharedObservation) -> Result<()> {
+    let model = client.chat.completion(model_name(cell.model));
     let mut builder = model
         .completion_request(prompt(cell))
         .additional_params(params(cell))
@@ -135,7 +132,13 @@ async fn run_cell(client: openai::Client, cell: Cell, observed: SharedObservatio
 
     let raw = match cell.transport {
         Transport::Blocking => {
-            let response = model.raw_completion(request).await?;
+            // The provider-native chat-completions reply rides serialized on
+            // `CompletionResponse::raw`; decode it to prove the shape, then
+            // read the serialized form the way the old raw surface did.
+            let response = model.completion(request).await?;
+            let response = serde_json::from_value::<openai::completion::CompletionResponse>(
+                response.raw,
+            )?;
             serde_json::to_value(response)?
         }
         Transport::Streaming => {

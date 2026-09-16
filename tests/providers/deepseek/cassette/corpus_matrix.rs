@@ -12,14 +12,14 @@
 use rig::completion::CompletionModel;
 use rig::prelude::*;
 
-use crate::deepseek::support::with_deepseek_cassette;
+use crate::deepseek::support::{BoundDeepSeek, with_deepseek_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, cells};
 
-fn wire(client: &rig::providers::deepseek::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::DeepSeek,
-        model: client.completion_model("deepseek-chat"),
-        route: Some(client.completion_model("deepseek-reasoner")),
+        model: client.completion("deepseek-chat"),
+        route: Some(client.completion("deepseek-reasoner")),
         temperature: Some(0.0),
         additional_params: None,
     }
@@ -225,12 +225,10 @@ crate::matrix::case_matrix! {
 }
 
 // Reasoning matrix: the named thinking model, with the shared knob.
-fn reasoning_wire(
-    client: &rig::providers::deepseek::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn reasoning_wire(client: &BoundDeepSeek) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: cells::ThinkingWire::DeepSeek,
-        model: client.completion_model("deepseek-flash"),
+        model: client.completion("deepseek-flash"),
         route: None,
         temperature: Some(0.0),
         additional_params: None,

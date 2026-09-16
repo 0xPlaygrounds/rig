@@ -3,12 +3,11 @@ use crate::cohere::CASSETTE_MODEL;
 use crate::cohere::support::with_cohere_cassette;
 use crate::ecs_agent::EcsAgent;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
-use rig::prelude::*;
 use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {
     with_cohere_cassette("agent/completion_smoke", |client| async move {
-        let mut ecs = EcsAgent::new(client.completion_model(CASSETTE_MODEL), BASIC_PREAMBLE, 1);
+        let mut ecs = EcsAgent::new(client.completion(CASSETTE_MODEL), BASIC_PREAMBLE, 1);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)

@@ -8,15 +8,13 @@ use super::client::XAi;
 pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
     crate::providers::openai::responses_api::GenericResponsesCompletionModel<XAi, H>;
 
-/// xAI completion models.
-pub const GROK_2_1212: &str = "grok-2-1212";
-pub const GROK_2_VISION_1212: &str = "grok-2-vision-1212";
-pub const GROK_3: &str = "grok-3";
-pub const GROK_3_FAST: &str = "grok-3-fast";
-pub const GROK_3_MINI: &str = "grok-3-mini";
-pub const GROK_3_MINI_FAST: &str = "grok-3-mini-fast";
-pub const GROK_2_IMAGE_1212: &str = "grok-2-image-1212";
-pub const GROK_4: &str = "grok-4-0709";
+// The model identifiers are provider data and live beside the dialect in
+// `super`; they are re-exported here so `xai::completion::GROK_3` keeps
+// resolving while the client layer stands.
+pub use super::{
+    GROK_2_1212, GROK_2_IMAGE_1212, GROK_2_VISION_1212, GROK_3, GROK_3_FAST, GROK_3_MINI,
+    GROK_3_MINI_FAST, GROK_4,
+};
 
 #[cfg(test)]
 mod tests;

@@ -8,6 +8,7 @@ use rig::prelude::*;
 #[ignore = "requires Copilot credentials or existing OAuth cache"]
 async fn chat_models_route_through_chat_completions() {
     let response = live_client()
+        .await
         .agent(LIVE_MODEL)
         .preamble(BASIC_PREAMBLE)
         .build()

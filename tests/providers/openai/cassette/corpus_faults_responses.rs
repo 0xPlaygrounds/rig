@@ -5,16 +5,15 @@
 //! cell's own test.
 
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 use rig::providers::openai::GPT_5_MINI;
 
-use super::super::support::with_openai_cassette;
+use super::super::support::{OpenAiCassette, with_openai_cassette};
 use crate::ecs_matrix::{Wire, agent::run_agent, faults};
 
-fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + Clone + 'static> {
+fn wire(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model(GPT_5_MINI),
+        model: client.responses.completion(GPT_5_MINI),
         route: None,
         temperature: None,
         additional_params: None,
@@ -22,12 +21,12 @@ fn wire(client: &rig::providers::openai::Client) -> Wire<impl CompletionModel + 
 }
 
 /// The wire over the model it refuses: the setup cells' request.
-fn missing(
-    client: &rig::providers::openai::Client,
-) -> Wire<impl CompletionModel + Clone + 'static> {
+fn missing(client: &OpenAiCassette) -> Wire<impl CompletionModel + Clone + 'static> {
     Wire {
         thinking: crate::ecs_matrix::cells::ThinkingWire::OpenAiResponses,
-        model: client.completion_model("gpt-4o-mini-nonexistent-rig-test"),
+        model: client
+            .responses
+            .completion("gpt-4o-mini-nonexistent-rig-test"),
         route: None,
         temperature: None,
         additional_params: None,

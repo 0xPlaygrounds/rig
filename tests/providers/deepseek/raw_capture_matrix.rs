@@ -1,38 +1,41 @@
 //! Raw provider response capture on DeepSeek's blocking chat-completions path.
 //!
-//! **The feature.** Every blocking completion attaches the value the model's
-//! inherent `raw_completion` returned — DeepSeek's own
-//! [`deepseek::CompletionResponse`], serialized — onto the normalized
-//! [`rig::completion::CompletionResponse::raw`]. Capture is always on: there is
-//! no flag to request it, nothing about it reaches the wire, and a
-//! `Value::Null` only ever means a response built by hand with no provider
-//! payload behind it. `raw` is a second view of the same response, never a
-//! substitute for a normalized field. DeepSeek is worth its own matrix because
-//! its usage block carries a `prompt_cache_hit_tokens` /
+//! **The feature.** Every blocking completion attaches the provider's own
+//! reply to the normalized [`rig::completion::CompletionResponse::raw`].
+//! Capture is always on: there is no flag to request it, nothing about it
+//! reaches the wire, and a `Value::Null` only ever means a response built by
+//! hand with no provider payload behind it.
+//!
+//! **What `raw` is.** The driver fills it from the reply's bytes, so it is
+//! DeepSeek's response *document* rather than a re-serialization of whatever
+//! the decoder parsed — which is why [`deepseek::CompletionResponse`]
+//! deserializes straight out of it and is the typed escape hatch for the
+//! fields the normalized view has no slot for. DeepSeek is worth its own
+//! matrix because its usage block carries a `prompt_cache_hit_tokens` /
 //! `prompt_cache_miss_tokens` split rig only half-normalizes: the hit count
-//! reaches `Usage::cached_input_tokens`, the miss count has no slot at all and
-//! is reachable only through `raw`.
+//! reaches `Usage::cached_input_tokens`, the miss count has no slot at all
+//! and is reachable only through `raw`.
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_deepseek_type` | typed round trip | `raw` deserializes into `deepseek::CompletionResponse` and re-serializes equal | recorded |
-//! | 2 | `raw_exposes_prompt_cache_miss_tokens` | provider-only field | `raw.usage.prompt_cache_miss_tokens` and `raw.system_fingerprint` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes and equals its own `raw` re-normalized | recorded |
-//! | 4 | `reasoning_raw_round_trips_and_exposes_reasoning_content` | reasoning turn | a thinking-mode turn's `raw` round-trips into `deepseek::CompletionResponse`; `raw.choices[0].message.reasoning_content` is the fixture's reasoning string, which the normalized view carries only as a `Reasoning` block under a different spelling | recorded |
+//! | 1 | `raw_round_trips_deepseek_type` | typed read-back | `raw` deserializes into `deepseek::CompletionResponse`, whose provider-native fields are the normalized response's | recorded |
+//! | 2 | `raw_exposes_prompt_cache_miss_tokens` | provider-only field | `raw.usage.prompt_cache_miss_tokens` and `raw.system_fingerprint` equal the fixture body, and neither has a normalized slot | recorded |
+//! | 3 | `normalized_fields_match_raw_renormalized` | normalized view | the response reproduces its fixture bytes, and the typed view of its own `raw` agrees with it field for field | recorded |
+//! | 4 | `reasoning_raw_round_trips_and_exposes_reasoning_content` | reasoning turn | a thinking-mode turn's `raw` reads back into `deepseek::CompletionResponse`; its `choices[0].message.reasoning_content` is the fixture's reasoning string, which the normalized view carries only as a `Reasoning` block under a different spelling | recorded |
+//!
+//! The scenario literals — and so the fixture directories — keep the names
+//! they were recorded under.
 //!
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the miss count out of the recorded
 //! body rather than trusting the number the typed view reports, cell 3
 //! checks the normalized fields against the recorded body before comparing
-//! them with the re-normalized `raw`, and cell 4 reads the reasoning string
+//! them with the typed view of `raw`, and cell 4 reads the reasoning string
 //! out of the recorded body (and the `thinking` toggle out of the recorded
 //! request), so a recording that stopped carrying a usage block, a finish
 //! reason, or a reasoning block fails loudly instead of covering nothing.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
-    NormalizeCompletionResponse,
-};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::prelude::*;
 use rig::providers::deepseek;
@@ -51,7 +54,7 @@ const REASONING_PROMPT: &str = "What is 17 multiplied by 23? Reply with only the
 /// it answers, so the reasoning cell needs real headroom.
 const REASONING_BUDGET: u64 = 640;
 
-fn request(model: &deepseek::CompletionModel) -> CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model
         .completion_request(PROMPT)
         .additional_params(json!({ "thinking": { "type": "disabled" } }))
@@ -60,7 +63,7 @@ fn request(model: &deepseek::CompletionModel) -> CompletionRequest {
 }
 
 /// The thinking-mode request shape the `reasoning_*` modules use.
-fn reasoning_request(model: &deepseek::CompletionModel) -> CompletionRequest {
+fn reasoning_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model
         .completion_request(REASONING_PROMPT)
         .additional_params(json!({ "thinking": { "type": "enabled" } }))
@@ -109,12 +112,21 @@ fn recorded_json(scenario: &str) -> (Value, Value) {
     )
 }
 
-fn recorded_finish_reason(body: &Value) -> FinishReason {
-    match body["choices"][0]["finish_reason"].as_str() {
-        Some("stop") => FinishReason::Stop,
-        Some("length") => FinishReason::Length,
+/// The normalized reading of a DeepSeek wire finish reason.
+fn finish_reason_of(wire: &str) -> FinishReason {
+    match wire {
+        "stop" => FinishReason::Stop,
+        "length" => FinishReason::Length,
         other => panic!("recorded turn should finish on stop or length, got {other:?}"),
     }
+}
+
+fn recorded_finish_reason(body: &Value) -> FinishReason {
+    finish_reason_of(
+        body["choices"][0]["finish_reason"]
+            .as_str()
+            .unwrap_or_default(),
+    )
 }
 
 fn text_of(choice: &[AssistantContent]) -> String {
@@ -173,8 +185,46 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.provider_request_id, None, "request id");
 }
 
+/// DeepSeek's own view of a reply, checked against the normalized response it
+/// rode on.
+///
+/// One decoder produces the normalized response, and this is the typed read
+/// of the very document that decoder read, so agreement here pins that
+/// mapping rather than comparing it with a second mapping of the same bytes.
+fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &CompletionResponse) {
+    assert_eq!(
+        typed.id.as_deref(),
+        response.response_id.as_deref(),
+        "response id"
+    );
+    assert_eq!(typed.model, response.model, "model");
+    let choice = typed.choices.first().expect("a reply carries a choice");
+    assert_eq!(
+        Some(finish_reason_of(&choice.finish_reason)),
+        response.finish_reason(),
+        "finish reason"
+    );
+    assert_eq!(
+        Some(u64::from(typed.usage.prompt_tokens)),
+        response.usage.input_tokens,
+        "input tokens"
+    );
+    assert_eq!(
+        Some(u64::from(typed.usage.completion_tokens)),
+        response.usage.output_tokens,
+        "output tokens"
+    );
+    assert_eq!(
+        Some(u64::from(typed.usage.prompt_cache_hit_tokens)),
+        response.usage.cached_input_tokens,
+        "the hit count is the half of the split that gets normalized"
+    );
+    let deepseek::Message::Assistant { content, .. } = &choice.message;
+    assert_eq!(&text_of(&response.choice), content, "choice text");
+}
+
 // ================================================================
-// 1. raw round-trips DeepSeek's own type
+// 1. raw reads back as DeepSeek's own type
 // ================================================================
 
 #[tokio::test]
@@ -183,17 +233,18 @@ async fn raw_round_trips_deepseek_type() {
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_round_trips_deepseek_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
-            let raw = &response.raw;
-            let typed = deepseek::CompletionResponse::deserialize(raw)
-                .expect("raw is DeepSeek's own CompletionResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed view serialized, nothing more"
+            let typed = deepseek::CompletionResponse::deserialize(&response.raw)
+                .expect("raw reads back as DeepSeek's own CompletionResponse");
+            assert_typed_view_matches(&typed, &response);
+            // And `raw` is the reply document rather than a re-serialization
+            // of that parse, so it keeps what neither view models.
+            assert!(
+                response.raw["usage"]["prompt_cache_miss_tokens"].is_u64(),
+                "the document keeps DeepSeek's miss count: {}",
+                response.raw
             );
-            assert_eq!(typed.id.as_deref(), response.response_id.as_deref());
             Ok::<(), anyhow::Error>(())
         },
     )
@@ -219,7 +270,7 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
             *sink.lock().expect("observation lock") = Some(response);
             Ok::<(), anyhow::Error>(())
@@ -274,7 +325,7 @@ async fn normalized_fields_match_raw_renormalized() {
     with_deepseek_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
             *sink.lock().expect("observation lock") = Some(response);
             Ok::<(), anyhow::Error>(())
@@ -291,27 +342,16 @@ async fn normalized_fields_match_raw_renormalized() {
     let (_, body) = recorded_json(SCENARIO);
     assert_reproduces_fixture(&response, &body);
 
-    // The normalized fields are exactly what the response's own raw
-    // re-normalizes to: capture adds a view, it never changes the mapping.
-    let raw = &response.raw;
-    let renormalized = deepseek::CompletionResponse::deserialize(raw)
-        .expect("raw is DeepSeek's own type")
-        .normalize(PROVIDER)
-        .expect("raw normalizes")
-        .with_optional_provider_request_id(response.provider_request_id.clone());
-    assert_eq!(renormalized.identity(), response.identity());
-    assert_eq!(renormalized.finish_reason(), response.finish_reason());
-    assert_eq!(renormalized.model, response.model);
-    assert_eq!(renormalized.usage, response.usage);
-    assert_eq!(renormalized.choice, response.choice);
-    assert!(
-        renormalized.raw.is_null(),
-        "normalizing a hand-fed typed value attaches no raw of its own"
-    );
+    // One seam, two views: the typed read of the response's own `raw` is the
+    // same reply the normalized fields describe. Capture adds a view; there
+    // is only one mapping left, and this is what pins it.
+    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
+        .expect("raw reads back as DeepSeek's own type");
+    assert_typed_view_matches(&typed, &response);
 }
 
 // ================================================================
-// 4. A thinking-mode turn: raw round-trips and exposes reasoning_content
+// 4. A thinking-mode turn: raw reads back and carries reasoning_content
 // ================================================================
 
 #[tokio::test]
@@ -323,17 +363,8 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     with_deepseek_cassette_result(
         "raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model.completion(reasoning_request(&model)).await?;
-            let raw = &response.raw;
-            let typed = deepseek::CompletionResponse::deserialize(raw)
-                .expect("raw is DeepSeek's own CompletionResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed view serialized, nothing more"
-            );
-            assert_eq!(typed.id.as_deref(), response.response_id.as_deref());
             *sink.lock().expect("observation lock") = Some(response);
             Ok::<(), anyhow::Error>(())
         },
@@ -364,12 +395,22 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
         "the recorded turn should still carry an answer"
     );
 
-    // raw exposes the wire's own spelling of the reasoning block.
-    let raw = &response.raw;
+    // The typed view of `raw` carries the wire's own spelling of the
+    // reasoning block, and agrees with the normalized response beside it.
+    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
+        .expect("raw reads back as DeepSeek's own CompletionResponse");
+    assert_typed_view_matches(&typed, &response);
+    let deepseek::Message::Assistant {
+        reasoning_content, ..
+    } = &typed
+        .choices
+        .first()
+        .expect("a reply carries a choice")
+        .message;
     assert_eq!(
-        raw["choices"][0]["message"]["reasoning_content"],
-        json!(recorded_reasoning),
-        "raw carries the fixture's reasoning_content verbatim"
+        reasoning_content.as_deref(),
+        Some(recorded_reasoning),
+        "the typed view carries the fixture's reasoning_content verbatim"
     );
     // The normalized view carries the same text, but only as a `Reasoning`
     // content block: there is no `reasoning_content` key anywhere on it.

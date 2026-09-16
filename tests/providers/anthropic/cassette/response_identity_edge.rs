@@ -10,14 +10,28 @@ use rig::agent::{
     AgentHook, HookContext, InvalidToolCallAction, InvalidToolCallContext, ModelTurnAction,
     ModelTurnFinished,
 };
-use rig::completion::{CompletionModel, Document, Message};
+use rig::completion::{CompletionModel, CompletionResponse, Document, Message};
+use rig::driver::Bound;
 use rig::prelude::*;
-use rig::providers::anthropic::completion::{CLAUDE_SONNET_4_6, CacheTtl};
+use rig::providers::anthropic::completion::{
+    CLAUDE_SONNET_4_6, CacheTtl, CompletionResponse as AnthropicResponse, Usage,
+};
+use rig::providers::anthropic::wire::Messages;
 use rig::streaming::StreamEvent;
 use rig::tool::{Tool, ToolContext, ToolExecutionError};
+use serde::Deserialize;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{Adder, IdentityProbe, TOOLS_PREAMBLE, assert_transport_request_id};
+
+/// Anthropic's own usage for a turn, read off [`CompletionResponse::raw`]:
+/// the per-TTL cache-creation split is provider-native and rig's normalized
+/// usage does not model it.
+fn provider_usage(response: &CompletionResponse) -> Usage {
+    AnthropicResponse::deserialize(&response.raw)
+        .expect("`raw` is the serialized anthropic::completion::CompletionResponse")
+        .usage
+}
 
 fn cache_padding(label: &str) -> String {
     format!(
@@ -38,12 +52,14 @@ async fn caching_and_identity_share_the_wire_blocking() {
         "response_identity_edge/caching_and_identity_share_the_wire_blocking",
         |client| async move {
             let model = client
-                .completion_model(CLAUDE_SONNET_4_6)
-                .with_prompt_caching()
-                .with_static_prefix_cache_ttl(CacheTtl::OneHour);
-            let send = |model: rig::providers::anthropic::CompletionModel| async move {
+                .completion(CLAUDE_SONNET_4_6)
+                .map_wire(|wire| {
+                    wire.with_prompt_caching()
+                        .with_static_prefix_cache_ttl(CacheTtl::OneHour)
+                });
+            let send = |model: Bound<Messages>| async move {
                 model
-                    .raw_completion(
+                    .completion(
                         model
                             .completion_request("Reply with exactly: edge probe")
                             .preamble(cache_padding("caching-blocking"))
@@ -68,19 +84,19 @@ async fn caching_and_identity_share_the_wire_blocking() {
 
             // The cache story holds on the same interactions: the cold turn
             // wrote (or re-read) the 1h prefix, the warm turn read it.
-            let split = first
-                .usage
+            let cold = provider_usage(&first);
+            let warm = provider_usage(&second);
+            let split = cold
                 .cache_creation
                 .as_ref()
                 .expect("per-TTL split reported");
             assert_eq!(
                 split.ephemeral_1h_input_tokens + split.ephemeral_5m_input_tokens,
-                first.usage.cache_creation_input_tokens.unwrap_or_default()
+                cold.cache_creation_input_tokens.unwrap_or_default()
             );
             assert!(
-                second.usage.cache_read_input_tokens.unwrap_or_default() > 0,
-                "warm turn reads the cache, got {:?}",
-                second.usage
+                warm.cache_read_input_tokens.unwrap_or_default() > 0,
+                "warm turn reads the cache, got {warm:?}"
             );
         },
     )
@@ -95,10 +111,12 @@ async fn caching_and_identity_share_the_wire_streaming() {
         "response_identity_edge/caching_and_identity_share_the_wire_streaming",
         |client| async move {
             let model = client
-                .completion_model(CLAUDE_SONNET_4_6)
-                .with_prompt_caching()
-                .with_static_prefix_cache_ttl(CacheTtl::OneHour);
-            let send = |model: rig::providers::anthropic::CompletionModel| async move {
+                .completion(CLAUDE_SONNET_4_6)
+                .map_wire(|wire| {
+                    wire.with_prompt_caching()
+                        .with_static_prefix_cache_ttl(CacheTtl::OneHour)
+                });
+            let send = |model: Bound<Messages>| async move {
                 let mut stream = model
                     .completion_request("Reply with exactly: stream edge probe")
                     .preamble(cache_padding("caching-streaming"))
@@ -138,8 +156,8 @@ async fn strict_tools_and_identity() {
         "response_identity_edge/strict_tools_and_identity",
         |client| async move {
             let model = client
-                .completion_model(CLAUDE_SONNET_4_6)
-                .with_strict_tools();
+                .completion(CLAUDE_SONNET_4_6)
+                .map_wire(|wire| wire.with_strict_tools());
             let response = model
                 .completion_request("Use the add tool: what is 2 + 3?")
                 .preamble(TOOLS_PREAMBLE.to_string())
@@ -166,7 +184,7 @@ async fn extended_thinking_and_identity() {
     with_anthropic_cassette(
         "response_identity_edge/extended_thinking_and_identity",
         |client| async move {
-            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6);
             let response = model
                 .completion_request("Think briefly, then reply with exactly: thought probe")
                 .max_tokens(2048)
@@ -191,7 +209,7 @@ async fn documents_and_identity() {
     with_anthropic_cassette(
         "response_identity_edge/documents_and_identity",
         |client| async move {
-            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6);
             let response = model
                 .completion_request("Per the document, reply with exactly the code word.")
                 .document(Document {
@@ -643,7 +661,7 @@ async fn stream_conversion_carries_live_identity() {
     with_anthropic_cassette(
         "response_identity_edge/stream_conversion_carries_live_identity",
         |client| async move {
-            let model = client.completion_model(CLAUDE_SONNET_4_6);
+            let model = client.completion(CLAUDE_SONNET_4_6);
             let mut stream = model
                 .completion_request("Reply with exactly: conversion probe")
                 .max_tokens(32)
@@ -677,7 +695,7 @@ async fn provider_error_response_surfaces_cleanly() {
     with_anthropic_cassette(
         "response_identity_edge/provider_error_response_surfaces_cleanly",
         |client| async move {
-            let model = client.completion_model("claude-nonexistent-model-for-identity-edge");
+            let model = client.completion("claude-nonexistent-model-for-identity-edge");
             let error = model
                 .completion_request("Reply with exactly: never sent successfully")
                 .max_tokens(16)

@@ -29,10 +29,15 @@ use std::sync::{
 
 use bevy_ecs::prelude::*;
 use rig_core::{
-    client::CompletionClient,
+    driver::Bind,
     effect::{HandlerDescriptor, HandlerKey},
     error::ErrorKind,
     http_client::BoxedHttpClient,
+    providers::{
+        anthropic::wire::Anthropic,
+        gemini::Gemini,
+        openai::{responses_api::wire::ResponsesApi, wire::DEEPSEEK, wire::OpenAI},
+    },
     serve::{ErasedHandler, adapters::CompletionAdapter},
     test_utils::RecordingHttpClient,
 };
@@ -79,7 +84,7 @@ fn materializer(body: &'static str) -> (Materializer, RecordingHttpClient, Arc<A
     let materializer = Materializer::new(
         |credential: &CredentialRef| {
             if credential.as_str() == "cassette" {
-                Ok(Secret::new(SENTINEL))
+                Ok(Secret::from(SENTINEL))
             } else {
                 Err("not a cassette".to_owned())
             }
@@ -157,53 +162,38 @@ fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
             match kind {
                 ProviderKind::Anthropic => ErasedHandler::new(CompletionAdapter::new(
                     "default",
-                    rig_core::providers::anthropic::Client::builder()
-                        .api_key(SENTINEL)
-                        .base_url(BASE)
-                        .http_client(http)
-                        .build()
-                        .unwrap()
-                        .completion_model("model-x"),
+                    Anthropic::new(SENTINEL)
+                        .with_base_url(BASE)
+                        .bind(http)
+                        .completion("model-x"),
                 )),
                 ProviderKind::OpenAiChat => ErasedHandler::new(CompletionAdapter::new(
                     "default",
-                    rig_core::providers::openai::CompletionsClient::builder()
-                        .api_key(SENTINEL)
-                        .base_url(BASE)
-                        .http_client(http)
-                        .build()
-                        .unwrap()
-                        .completion_model("model-x"),
+                    OpenAI::new(SENTINEL)
+                        .with_base_url(BASE)
+                        .bind(http)
+                        .completion("model-x"),
                 )),
                 ProviderKind::OpenAiResponses => ErasedHandler::new(CompletionAdapter::new(
                     "default",
-                    rig_core::providers::openai::Client::builder()
-                        .api_key(SENTINEL)
-                        .base_url(BASE)
-                        .http_client(http)
-                        .build()
-                        .unwrap()
-                        .completion_model("model-x"),
+                    ResponsesApi::new(SENTINEL)
+                        .with_base_url(BASE)
+                        .bind(http)
+                        .completion("model-x"),
                 )),
                 ProviderKind::Gemini => ErasedHandler::new(CompletionAdapter::new(
                     "default",
-                    rig_core::providers::gemini::Client::builder()
-                        .api_key(SENTINEL)
-                        .base_url(BASE)
-                        .http_client(http)
-                        .build()
-                        .unwrap()
-                        .completion_model("model-x"),
+                    Gemini::new(SENTINEL)
+                        .with_base_url(BASE)
+                        .bind(http)
+                        .completion("model-x"),
                 )),
                 ProviderKind::DeepSeek => ErasedHandler::new(CompletionAdapter::new(
                     "default",
-                    rig_core::providers::deepseek::Client::builder()
-                        .api_key(SENTINEL)
-                        .base_url(BASE)
-                        .http_client(http)
-                        .build()
-                        .unwrap()
-                        .completion_model("model-x"),
+                    OpenAI::with_key(&DEEPSEEK, SENTINEL)
+                        .with_base_url(BASE)
+                        .bind(http)
+                        .completion("model-x"),
                 )),
             }
         };
@@ -521,8 +511,9 @@ fn refusals_are_deterministic_and_register_nothing() {
 
 #[test]
 fn secrets_never_leave_the_resolver() {
-    let secret = Secret::new(SENTINEL);
-    assert_eq!(format!("{secret:?}"), "Secret(<redacted>)");
+    let secret = Secret::from(SENTINEL);
+    assert_eq!(format!("{secret:?}"), "[redacted]");
+    assert_eq!(serde_json::to_string(&secret).unwrap(), "\"[redacted]\"");
     assert_eq!(secret.expose(), SENTINEL);
     let binding = binding(ProviderKind::Anthropic);
     let debug = format!("{binding:?}");

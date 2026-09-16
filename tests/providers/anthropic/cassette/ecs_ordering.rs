@@ -20,7 +20,7 @@ async fn streaming_tools_batches_multiple_tool_results_in_one_followup_message()
         "streaming_tools/streaming_tools_batches_multiple_tool_results_in_one_followup_message",
         |client| async move {
             let mut ecs = EcsAgent::new(
-                client.completion_model(anthropic::completion::CLAUDE_SONNET_4_6),
+                client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
                 TWO_TOOL_STREAM_PREAMBLE,
                 1,
             );

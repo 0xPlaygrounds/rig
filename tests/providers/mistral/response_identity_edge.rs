@@ -1,8 +1,8 @@
 //! Response identity (rig#2265) for Mistral.
 //!
 //! Mistral labels its transport request id `mistral-correlation-id` and sends
-//! it on every response. Rig left `REQUEST_ID_HEADER` at its conservative
-//! `None` default, so `provider_request_id` was always `None`.
+//! it on every response. Rig read no request-id header for Mistral at all, so
+//! `provider_request_id` was always `None`; the `MISTRAL` dialect now names it.
 //!
 //! The cell that used to live here asserted exactly that as the *contract*
 //! ("Mistral sends no request-id header"). It could not have caught the gap:
@@ -57,7 +57,7 @@ async fn blocking_response_carries_the_correlation_id() -> Result<()> {
     with_mistral_cassette_result(
         "response_identity_edge/blocking_response_carries_the_correlation_id",
         |client| async move {
-            let model = client.completion_model(mistral::MISTRAL_SMALL);
+            let model = client.completion(mistral::MISTRAL_SMALL);
             let response = model
                 .completion_request("Reply with exactly: identity probe")
                 .send()
@@ -85,14 +85,13 @@ async fn streaming_terminal_carries_the_correlation_id() -> Result<()> {
     .await
 }
 
-/// `verify()` resolves [`Provider::VERIFY_PATH`] against the client base URL,
-/// which for Mistral is the bare host. The path used to be `/models`, which is
-/// a gateway 404 on that host, so verification failed for every key — valid or
-/// not. Recorded against a real key, so the cell fails if the path regresses.
+/// `verify()` sends the `MISTRAL` dialect's `verify_path` — `/v1/models` —
+/// against the configured base URL, which for Mistral is the bare host. The
+/// path used to be a bare `/models`, which is a gateway 404 on that host, so
+/// verification failed for every key, valid or not. Recorded against a real
+/// key, so the cell fails if the path regresses.
 #[tokio::test]
 async fn verify_succeeds_against_the_versioned_models_route() -> Result<()> {
-    use rig::client::VerifyClient;
-
     with_mistral_cassette_result(
         "response_identity_edge/verify_succeeds_against_the_versioned_models_route",
         |client| async move {
@@ -115,7 +114,7 @@ async fn blocking_error_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/blocking_error_carries_the_correlation_id",
         |client| async move {
             let error = client
-                .completion_model("definitely-not-a-model")
+                .completion("definitely-not-a-model")
                 .completion_request("Reply with exactly: identity probe")
                 .send()
                 .await
@@ -140,7 +139,7 @@ async fn streaming_error_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/streaming_error_carries_the_correlation_id",
         |client| async move {
             let error = match client
-                .completion_model("definitely-not-a-model")
+                .completion("definitely-not-a-model")
                 .completion_request("Reply with exactly: identity probe")
                 .stream()
                 .await
@@ -172,7 +171,7 @@ async fn blocking_unauthorized_carries_the_correlation_id() -> Result<()> {
         "response_identity_edge/blocking_unauthorized_carries_the_correlation_id",
         |client| async move {
             let error = client
-                .completion_model(mistral::MISTRAL_SMALL)
+                .completion(mistral::MISTRAL_SMALL)
                 .completion_request("Reply with exactly: identity probe")
                 .send()
                 .await

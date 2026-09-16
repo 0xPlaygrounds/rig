@@ -7,6 +7,7 @@ use crate::message::{self, MimeType, Reasoning};
 use crate::providers::internal::completion_send::send_completion;
 use crate::providers::internal::envelope::DirectPayload;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::wire::Mode;
 use base64::{Engine, prelude::BASE64_STANDARD};
 use serde_json::{Map, Value};
 use tracing_futures::Instrument;
@@ -110,6 +111,110 @@ impl crate::wire::Wire for Interactions {
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
         // Gemini reports no transport request-id response header (verified
         // against the live API); the normalized id is None by design.
+        Ok(crate::wire::Encoded::new(request, framing))
+    }
+
+    fn decoder(&self) -> Self::Decoder {
+        streaming::InteractionsDecoder::default()
+    }
+}
+
+/// One existing interaction's own endpoint: poll it, or resume its stream.
+///
+/// A `background: true` interaction outlives the request that created it, and
+/// a dropped stream can be picked up from the last event it delivered. Both
+/// are the same interaction read again, so both are *requests* on this wire
+/// rather than a session: the id is data on the wire, `Mode::Unary` GETs the
+/// resource (whose reply is the whole [`Interaction`] the unary path already
+/// decodes) and `Mode::Streaming` GETs the event stream from
+/// `last_event_id` onward. [`streaming::InteractionsDecoder`] reads both, so
+/// this wire adds no second way to read the Interactions API.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct InteractionResume {
+    /// The key and the API root.
+    pub provider: crate::providers::gemini::Gemini,
+    /// The interaction to read.
+    pub interaction_id: String,
+    /// The last event the consumer saw, so a resumed stream does not
+    /// redeliver it. `None` resumes from the beginning, as the API defaults.
+    pub last_event_id: Option<String>,
+}
+
+impl InteractionResume {
+    /// The wire for the interaction `interaction_id`.
+    pub fn new(
+        provider: crate::providers::gemini::Gemini,
+        interaction_id: impl Into<String>,
+    ) -> Self {
+        Self {
+            provider,
+            interaction_id: interaction_id.into(),
+            last_event_id: None,
+        }
+    }
+
+    /// Resume a streamed read after the event `last_event_id`.
+    pub fn after_event(mut self, last_event_id: impl Into<String>) -> Self {
+        self.last_event_id = Some(last_event_id.into());
+        self
+    }
+}
+
+impl crate::wire::Wire for InteractionResume {
+    type Op = crate::operation::Completion;
+    type Decoder = streaming::InteractionsDecoder;
+
+    fn name(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    /// The interaction names its own model; this wire addresses none.
+    fn model(&self) -> Option<&str> {
+        None
+    }
+
+    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+        if streaming {
+            CompletionOperation::InteractionsStreaming
+        } else {
+            CompletionOperation::Interactions
+        }
+    }
+
+    /// Reads an existing interaction, so the request carries no body and the
+    /// [`CompletionRequest`] contributes nothing: what to read is the wire's
+    /// own data.
+    fn encode(
+        &self,
+        _request: CompletionRequest,
+        mode: crate::wire::Mode,
+    ) -> Result<crate::wire::Encoded, CompletionError> {
+        let (path, framing) = match mode {
+            Mode::Unary => (
+                format!("/v1beta/interactions/{}", self.interaction_id),
+                crate::http_client::framing::Framing::Whole,
+            ),
+            // Byte-for-byte the resume request the client layer sent:
+            // `?stream=true[&last_event_id=…]` from the shared path builder,
+            // then `alt=sse`.
+            Mode::Streaming => (
+                format!(
+                    "{}&alt=sse",
+                    build_interaction_stream_path(
+                        &self.interaction_id,
+                        self.last_event_id.as_deref(),
+                    )
+                ),
+                crate::http_client::framing::Framing::Sse,
+            ),
+        };
+        let request = http::Request::get(self.provider.interactions_uri(&path))
+            .header(
+                crate::providers::gemini::Gemini::INTERACTIONS_KEY_HEADER,
+                self.provider.api_key.expose(),
+            )
+            .body(crate::wire::Body::empty())
+            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
         Ok(crate::wire::Encoded::new(request, framing))
     }
 

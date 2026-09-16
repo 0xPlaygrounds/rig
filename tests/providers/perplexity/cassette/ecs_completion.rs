@@ -9,7 +9,7 @@ use rig_ecs::agent::DefaultMaxTurns;
 async fn completion_smoke() {
     with_perplexity_cassette("agent/completion_smoke", |client| async move {
         let mut ecs = EcsAgent::new(
-            client.completion_model(perplexity::SONAR),
+            client.completion(perplexity::SONAR),
             BASIC_PREAMBLE,
             1,
         );
@@ -32,7 +32,7 @@ async fn completion_with_perplexity_options() {
         "agent/completion_with_perplexity_options",
         |client| async move {
             let mut ecs = EcsAgent::new(
-                client.completion_model(perplexity::SONAR),
+                client.completion(perplexity::SONAR),
                 "Answer briefly and include the date or time context if relevant.",
                 1,
             );

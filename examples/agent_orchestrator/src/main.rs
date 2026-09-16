@@ -1,6 +1,5 @@
 use rig::prelude::*;
-use rig::providers::openai;
-use rig::providers::openai::Client;
+use rig::providers::openai::{self, responses_api::wire::ResponsesApi};
 use schemars::JsonSchema;
 
 #[derive(serde::Deserialize, JsonSchema, serde::Serialize, Debug)]
@@ -23,8 +22,8 @@ struct TaskResults {
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    // Create OpenAI client
-    let openai_client = Client::from_env()?;
+    // Bind the OpenAI Responses API to the default transport
+    let openai_client = ResponsesApi::from_env()?.bound()?;
 
     // Note that you can also create your own semantic router for this
     // that uses a vector store under the hood

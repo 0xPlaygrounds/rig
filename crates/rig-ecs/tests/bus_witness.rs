@@ -125,8 +125,8 @@ fn empty_and_error_first_streams_keep_error_outcomes() {
 #[test]
 fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
     use rig_core::{
-        client::CompletionClient,
         completion::CompletionModel as _,
+        driver::Bind,
         observe::{AdapterContext, AdapterEvent},
         serve::adapters::CompletionAdapter,
         test_utils::RecordingHttpClient,
@@ -136,12 +136,9 @@ fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
     let http = RecordingHttpClient::new(
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
     );
-    let client = rig_core::providers::gemini::Client::builder()
-        .api_key("test-key")
-        .http_client(http.clone())
-        .build()
-        .unwrap();
-    let model = client.completion_model("test-model");
+    let model = rig_core::providers::gemini::Gemini::new("test-key")
+        .bind(http.clone())
+        .completion("test-model");
     let request = model.completion_request("identical call").build();
     register(
         &mut app,
@@ -201,7 +198,12 @@ fn explicit_operations_keep_retry_identity_and_current_dispatch_subjects() {
                 Some(observation)
             })
             .collect();
-        assert_eq!(facts.len(), 4);
+        assert_eq!(
+            facts.len(),
+            4,
+            "{:#?}",
+            facts.iter().map(|f| &f.event).collect::<Vec<_>>()
+        );
         assert!(matches!(facts[0].event, AdapterEvent::Started { .. }));
         assert!(matches!(facts[3].event, AdapterEvent::Finished { .. }));
     }
@@ -1326,7 +1328,7 @@ fn despawning_a_held_intent_is_a_cancellation_not_a_release() {
 #[test]
 fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
     use rig_core::{
-        client::CompletionClient, completion::CompletionModel as _,
+        completion::CompletionModel as _, driver::Bind,
         serve::adapters::CompletionAdapter, test_utils::RecordingHttpClient,
     };
     let mut app = app();
@@ -1336,12 +1338,9 @@ fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
     let http = RecordingHttpClient::new(
         r#"{"candidates":[{"content":{"parts":[{"text":"pong"}],"role":"model"},"finishReason":"STOP"}]}"#,
     );
-    let client = rig_core::providers::gemini::Client::builder()
-        .api_key("test-key")
-        .http_client(http)
-        .build()
-        .unwrap();
-    let model = client.completion_model("test-model");
+    let model = rig_core::providers::gemini::Gemini::new("test-key")
+        .bind(http)
+        .completion("test-model");
     let request = model.completion_request("same pass").build();
     register(
         &mut app,

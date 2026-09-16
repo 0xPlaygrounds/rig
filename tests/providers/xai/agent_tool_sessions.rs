@@ -12,6 +12,7 @@ use base64::{Engine, prelude::BASE64_STANDARD};
 use rig::completion::{CompletionModel, Message};
 use rig::message::{AssistantContent, ImageMediaType, ToolChoice, UserContent};
 use rig::prelude::*;
+use rig::providers::openai::responses_api;
 use rig::providers::openai::responses_api::Output;
 use rig::providers::xai;
 use rig::tool::Tool;
@@ -400,16 +401,14 @@ pub(super) fn assert_history_records_sequential_tool_roundtrips(
 /// Assert the provider-native metadata xAI reports on its own wire response.
 ///
 /// The response id (`resp_...`), typed status, and full usage envelope are read
-/// from [`xai::CompletionModel::raw_completion`]. `completion` is that same
-/// call followed by the shared Responses normalization, so a cassette still
-/// records exactly one interaction.
-fn assert_raw_response_metadata(raw: &xai::CompletionResponse) {
+/// from the provider reply captured in
+/// [`rig::completion::CompletionResponse::raw`], which is the same reply the
+/// normalized response was built from, so a cassette still records exactly
+/// one interaction.
+fn assert_raw_response_metadata(raw: &responses_api::CompletionResponse) {
     assert_nonempty_response(&raw.id);
     assert_nonempty_response(&raw.model);
-    assert_eq!(
-        raw.status,
-        rig::providers::openai::responses_api::ResponseStatus::Completed
-    );
+    assert_eq!(raw.status, responses_api::ResponseStatus::Completed);
     assert!(
         raw.usage.is_some(),
         "raw xAI response should preserve usage metadata"
@@ -524,7 +523,7 @@ async fn raw_stream_complex_tool_call_deltas_have_object_arguments() -> Result<(
         "agent_tool_sessions/raw_stream_complex_tool_call_deltas_have_object_arguments",
         |client| async move {
             let log = Arc::new(Mutex::new(Vec::new()));
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let tool = InspectManifest { log };
             let request = model
                 .completion_request(
@@ -565,7 +564,7 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/long_history_replay_with_tool_result_continuation",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let request = model
                 .completion_request(
                     "Answer in one short sentence: what is my favorite color, which label came from the tool, \
@@ -596,10 +595,10 @@ async fn long_history_replay_with_tool_result_continuation() -> Result<()> {
                 .tool_choice(ToolChoice::None)
                 .build();
 
-            let raw = model.raw_completion(request).await?;
+            let response = model.completion(request).await?;
+            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+                .expect("`raw` is the serialized Responses CompletionResponse");
             assert_raw_response_metadata(&raw);
-            let response: rig::completion::CompletionResponse =
-                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("response should include assistant text"))?;
 
@@ -622,7 +621,7 @@ async fn tool_choice_required_specific_and_none() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/tool_choice_required_specific_and_none",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
 
             let required = model
                 .completion(
@@ -704,7 +703,7 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
     with_xai_cassette_result(
         "agent_tool_sessions/reasoning_effort_preserves_reasoning_content_and_usage",
         |client| async move {
-            let model = client.completion_model(REASONING_MODEL);
+            let model = client.completion(REASONING_MODEL);
             let request = model
                 .completion_request(
                     "Use concise reasoning to solve: if three probes each verify two cassettes, how many cassette verifications occur? Answer with the number.",
@@ -715,7 +714,9 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 }))
                 .build();
 
-            let raw = model.raw_completion(request).await?;
+            let response = model.completion(request).await?;
+            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+                .expect("`raw` is the serialized Responses CompletionResponse");
 
             anyhow::ensure!(
                 raw.output
@@ -729,9 +730,6 @@ async fn reasoning_effort_preserves_reasoning_content_and_usage() -> Result<()> 
                 .and_then(|usage| usage.output_tokens_details.as_ref())
                 .map(|details| details.reasoning_tokens);
             assert_raw_response_metadata(&raw);
-
-            let response: rig::completion::CompletionResponse =
-                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
 
             anyhow::ensure!(
                 response
@@ -763,7 +761,7 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
     with_xai_cassette_result(
         "agent_tool_sessions/nested_json_schema_response_format_roundtrip",
         |client| async move {
-            let model = client.completion_model(SESSION_MODEL);
+            let model = client.completion(SESSION_MODEL);
             let request = model
                 .completion_request(
                     "Return the xAI cassette release validation plan with lane canary, risk low, and checks compile=true and replay=true.",
@@ -808,10 +806,10 @@ async fn nested_json_schema_response_format_roundtrip() -> Result<()> {
                 }))
                 .build();
 
-            let raw = model.raw_completion(request).await?;
+            let response = model.completion(request).await?;
+            let raw = responses_api::CompletionResponse::deserialize(&response.raw)
+                .expect("`raw` is the serialized Responses CompletionResponse");
             assert_raw_response_metadata(&raw);
-            let response: rig::completion::CompletionResponse =
-                rig::completion::NormalizeCompletionResponse::normalize(raw, "xai")?;
             let text = assistant_text_response(&response.choice)
                 .ok_or_else(|| anyhow::anyhow!("schema response should contain text"))?;
             let plan: serde_json::Value = serde_json::from_str(&text)?;

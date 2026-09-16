@@ -13,7 +13,7 @@ use rig_ecs::agent::DefaultMaxTurns;
 async fn completion_smoke() {
     with_bedrock_cassette("agent/completion_smoke", |client| async move {
         let mut ecs = EcsAgent::new(
-            client.completion_model(bedrock::completion::AMAZON_NOVA_LITE),
+            client.completion(bedrock::completion::AMAZON_NOVA_LITE),
             BASIC_PREAMBLE,
             1,
         );
@@ -30,7 +30,7 @@ async fn completion_smoke() {
 async fn completion_with_context_smoke() {
     with_bedrock_cassette("agent/completion_with_context_smoke", |client| async move {
         let mut ecs = EcsAgent::new(
-            client.completion_model(bedrock::completion::AMAZON_NOVA_LITE),
+            client.completion(bedrock::completion::AMAZON_NOVA_LITE),
             "Answer the user using only the supplied context.",
             1,
         );
@@ -83,7 +83,7 @@ async fn completion_with_context_smoke() {
 async fn tool_roundtrip_smoke() {
     with_bedrock_cassette("agent/tool_roundtrip_smoke", |client| async move {
         let mut ecs = EcsAgent::new(
-            client.completion_model(bedrock::completion::AMAZON_NOVA_LITE),
+            client.completion(bedrock::completion::AMAZON_NOVA_LITE),
             STREAMING_TOOLS_PREAMBLE,
             2,
         );
@@ -104,7 +104,7 @@ async fn prompt_caching_completion_smoke() {
         "agent/prompt_caching_completion_smoke",
         |client| async move {
             let model = client
-                .completion_model(bedrock::completion::AMAZON_NOVA_LITE)
+                .completion(bedrock::completion::AMAZON_NOVA_LITE)
                 .with_prompt_caching();
             let mut ecs = EcsAgent::new(model, BASIC_PREAMBLE, 1);
             ecs.app

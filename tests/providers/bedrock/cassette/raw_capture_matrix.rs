@@ -121,7 +121,7 @@ async fn raw_round_trips_provider_type() {
     with_bedrock_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion(request(&model))
                 .await
@@ -157,7 +157,7 @@ async fn raw_exposes_latency_metrics() {
     with_bedrock_cassette(
         "raw_capture_matrix/raw_exposes_latency_metrics",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion(request(&model))
                 .await
@@ -222,7 +222,7 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_bedrock_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion(request(&model))
                 .await

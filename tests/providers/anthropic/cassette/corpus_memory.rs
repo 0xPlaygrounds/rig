@@ -8,10 +8,12 @@
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
+use rig::driver::Bound;
 use rig::effect::{EffectFamily, EffectKind, HandlerKey, MemoryOp};
 use rig::message::Message;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
 
 use super::super::support::with_anthropic_corpus_memory_cassette;
@@ -101,7 +103,7 @@ async fn run_prompts(agent: &rig::agent::Agent, prompts: &[&str], streamed: bool
 
 /// A memory program on the agent's own bus.
 async fn remembers(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     clears: Clears,
     prompts: &[&str],
     streamed: bool,
@@ -272,7 +274,7 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
                 model_key.clone(),
                 rig::serve::ErasedHandler::new(rig::serve::adapters::CompletionAdapter::new(
                     "default",
-                    client.completion_model(CLAUDE_SONNET_4_6),
+                    client.completion(CLAUDE_SONNET_4_6),
                 )),
             )
             .expect("a fresh key");
@@ -352,7 +354,7 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
 /// An `Append` that fails: the record holds the error and the run ends
 /// in its answer regardless.
 async fn append_fails(
-    client: rig::providers::anthropic::Client,
+    client: Bound<Anthropic>,
     streamed: bool,
 ) -> rig::effect_log::EffectLog {
     let builder = client

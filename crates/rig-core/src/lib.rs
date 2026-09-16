@@ -25,17 +25,17 @@
 //! # Simple example
 //! ```ignore
 //! use rig_core::{
-//!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
-//!     providers::openai,
+//!     providers::openai::{self, responses_api::wire::ResponsesApi},
 //! };
+//! // rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
+//! use rig_reqwest::prelude::*;
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Create an OpenAI client and completion model.
-//!     // This requires the `OPENAI_API_KEY` environment variable to be set.
-//!     let openai_client = openai::Client::from_env()?;
-//!     let model = openai_client.completion_model(openai::GPT_5_2);
+//!     // Read `OPENAI_API_KEY` into the provider's configuration, bind it to a
+//!     // transport, and pick a model: a model is a wire plus its socket.
+//!     let model = ResponsesApi::from_env()?.bound()?.completion(openai::GPT_5_2);
 //!
 //!     let request = model.completion_request("Who are you?").build();
 //!     let response = model.completion(request).await?;
@@ -53,11 +53,16 @@
 //!
 //! # Core concepts
 //! ## Completion and embedding models
-//! Rig provides a consistent API for working with LLMs and embeddings. Specifically,
-//! each provider (e.g. OpenAI, Cohere) has a `Client` struct that can be used to initialize completion
-//! and embedding models. These models implement the [CompletionModel](crate::completion::CompletionModel)
-//! and [EmbeddingModel](crate::embeddings::EmbeddingModel) traits respectively, which provide a common,
-//! low-level interface for creating completion and embedding requests and executing them.
+//! Rig provides a consistent API for working with LLMs and embeddings. Each
+//! provider contributes plain configuration data (`openai::wire::OpenAI`,
+//! `anthropic::wire::Anthropic`, `cohere::Cohere`, …) plus one *wire* per API
+//! endpoint, saying what to send and how to read the reply. Binding a wire to
+//! a transport with [`Bound`](crate::driver::Bound) produces the model:
+//! `Bound` is the single implementor of
+//! [CompletionModel](crate::completion::CompletionModel),
+//! [EmbeddingModel](crate::embeddings::EmbeddingModel) and their siblings,
+//! which provide a common, low-level interface for creating completion and
+//! embedding requests and executing them.
 //!
 //! ## Agent runtimes
 //! This crate owns the provider-agnostic model, message, tool, and storage

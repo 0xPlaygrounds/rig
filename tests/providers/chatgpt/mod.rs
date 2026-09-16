@@ -26,8 +26,11 @@ mod request_hook;
 mod streaming;
 mod streaming_tools;
 
-use rig::client::DefaultTransportBuilder as _;
-use rig::providers::chatgpt::{self, ChatGPTAuth};
+use rig::driver::{Bind as _, Bound};
+use rig::http_client::BoxedHttpClient;
+use rig::providers::chatgpt;
+use rig::providers::openai::responses_api::wire::ResponsesApi;
+use rig::rig_reqwest::client::bundled;
 use serde::Deserialize;
 use std::path::PathBuf;
 
@@ -41,30 +44,50 @@ struct CachedAuthRecord {
     expires_at: Option<i64>,
 }
 
-pub(crate) fn live_builder() -> chatgpt::ClientBuilder {
-    let mut builder = chatgpt::Client::builder();
+/// The live ChatGPT provider configuration, credential already exchanged.
+///
+/// `ResponsesApi` holds a resolved token, so the exchange — which is not a
+/// wire — runs first, on `http`: the same transport the completion then
+/// speaks over. The OAuth cache wins when there is a usable one, exactly as
+/// the deleted builder's default did; otherwise the variables the dialect
+/// names describe the provider outright.
+async fn live_provider(http: &BoxedHttpClient) -> ResponsesApi {
+    if !has_usable_oauth_cache() && std::env::var_os("CHATGPT_ACCESS_TOKEN").is_some() {
+        return ResponsesApi::from_env_with(chatgpt::DIALECT)
+            .expect("the ChatGPT environment should describe a provider");
+    }
 
+    let context = chatgpt::auth::Authenticator::new(
+        chatgpt::auth::AuthSource::OAuth,
+        default_auth_file(),
+        chatgpt::auth::DeviceCodeHandler::default(),
+        true,
+    )
+    .auth_context(http)
+    .await
+    .expect("ChatGPT OAuth should resolve an access token");
+
+    let mut provider = ResponsesApi::with_dialect(context.access_token, chatgpt::DIALECT);
+    if let Some(account_id) = context.account_id {
+        provider = provider.with_account_id(account_id);
+    }
     if let Ok(base_url) =
         std::env::var("CHATGPT_API_BASE").or_else(|_| std::env::var("OPENAI_CHATGPT_API_BASE"))
     {
-        builder = builder.base_url(base_url);
+        provider = provider.with_base_url(base_url);
+    }
+    if let Ok(instructions) = std::env::var("CHATGPT_DEFAULT_INSTRUCTIONS")
+        && !instructions.trim().is_empty()
+    {
+        provider = provider.with_instructions(instructions);
     }
 
-    if has_usable_oauth_cache() {
-        builder.oauth()
-    } else if let Ok(access_token) = std::env::var("CHATGPT_ACCESS_TOKEN") {
-        let account_id = std::env::var("CHATGPT_ACCOUNT_ID").ok();
-        builder.api_key(ChatGPTAuth::AccessToken {
-            access_token,
-            account_id,
-        })
-    } else {
-        builder.oauth()
-    }
+    provider
 }
 
-pub(crate) fn live_client() -> chatgpt::Client {
-    live_builder().build().expect("ChatGPT client should build")
+pub(crate) async fn live_client() -> Bound<ResponsesApi> {
+    let http = bundled().expect("the bundled transport should build");
+    live_provider(&http).await.bind(http)
 }
 
 fn has_usable_oauth_cache() -> bool {

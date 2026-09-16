@@ -7,9 +7,7 @@
 //! outcomes, not skipped. The dimensions cell is absent: Cohere's embed wire
 //! takes no dimension parameter.
 
-use rig::embeddings::{
-    EmbeddingModel as _, ImageEmbeddingModel as _, NormalizeEmbeddingResponse as _,
-};
+use rig::embeddings::{EmbeddingModel as _, ImageEmbeddingModel as _};
 use rig::providers::cohere;
 
 use super::super::support::with_cohere_cassette;
@@ -47,7 +45,8 @@ async fn normalized_response_is_complete() {
     with_cohere_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding_model(cohere::EMBED_V4, INPUT_TYPE);
+            let model = client.embedding(cohere::EMBED_V4, None)
+            .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let response = model
                 .embed_texts_response(inputs())
                 .await
@@ -66,38 +65,57 @@ async fn normalized_response_is_complete() {
 #[tokio::test]
 async fn raw_round_trips() {
     with_cohere_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding_model(cohere::EMBED_V4, INPUT_TYPE);
+        let model = client.embedding(cohere::EMBED_V4, None)
+            .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
         let response = model
             .embed_texts_response(inputs())
             .await
             .expect("embedding request should succeed");
 
+        // One decoder, two views: Cohere's own reply typed out of `raw` says
+        // what the normalized response says. Re-normalizing it by hand would
+        // only compare the decoder's mapping to a copy of itself.
         let raw: cohere::embeddings::EmbeddingResponse =
             serde_json::from_value(response.raw.clone()).expect("raw round-trips");
         assert_eq!(raw.embeddings.len(), response.embeddings.len());
-
-        let renormalized = raw
-            .normalize("cohere", inputs())
-            .expect("re-normalization succeeds");
-        assert_eq!(renormalized.embeddings.len(), response.embeddings.len());
-        assert_eq!(renormalized.response_id, response.response_id);
-        assert_eq!(renormalized.usage, response.usage);
+        assert_eq!(Some(raw.id.as_str()), response.response_id.as_deref());
+        assert_eq!(
+            raw.meta
+                .as_ref()
+                .and_then(|meta| meta.billed_units.input_tokens)
+                .map(u64::from),
+            response.usage.input_tokens,
+            "the billed input tokens reach the normalized usage"
+        );
+        assert_eq!(
+            raw.texts.len(),
+            response.embeddings.len(),
+            "one vector per text Cohere echoed back"
+        );
     })
     .await;
 }
 
+/// There is one embed seam, so the axis this cell pins is that repeating the
+/// request is stable and that `raw` carries what the normalized response has
+/// no slot for: Cohere bills `meta.billed_units`, which `Usage` cannot hold
+/// in full.
 #[tokio::test]
 async fn raw_route_parity() {
     with_cohere_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding_model(cohere::EMBED_V4, INPUT_TYPE);
+        let model = client
+            .embedding(cohere::EMBED_V4, None)
+            .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
         let normalized = model
             .embed_texts_response(inputs())
             .await
             .expect("normalized call should succeed");
-        let raw = model
-            .raw_embed_texts(inputs())
+        let again = model
+            .embed_texts_response(inputs())
             .await
-            .expect("raw call should succeed");
+            .expect("the same request should succeed again");
+        let raw: cohere::embeddings::EmbeddingResponse =
+            serde_json::from_value(again.raw.clone()).expect("raw is Cohere's own embed response");
         assert_eq!(raw.embeddings.len(), normalized.embeddings.len());
         assert!(raw.meta.is_some(), "billed units ride the raw payload");
     })
@@ -109,7 +127,8 @@ async fn single_text_convenience() {
     with_cohere_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding_model(cohere::EMBED_V4, INPUT_TYPE);
+            let model = client.embedding(cohere::EMBED_V4, None)
+            .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let response = model
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
@@ -127,7 +146,8 @@ async fn error_preserves_provider_body() {
     with_cohere_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding_model("no-such-embedding-model", INPUT_TYPE);
+            let model = client.embedding("no-such-embedding-model", None)
+            .map_wire(|wire| wire.with_input_type(INPUT_TYPE));
             let error = model
                 .embed_texts_response(inputs())
                 .await
@@ -154,7 +174,7 @@ async fn image_normalized_and_raw_round_trip() {
     with_cohere_cassette(
         "embedding_matrix/image_normalized_and_raw_round_trip",
         |client| async move {
-            let model = client.image_embedding_model();
+            let model = client.map_wire(|cohere| cohere.image_embeddings());
             let response = model
                 .embed_images_response(vec![decode_image(PNG_2X2)])
                 .await
@@ -186,10 +206,13 @@ async fn image_normalized_and_raw_round_trip() {
                 "the image count rides the raw payload's billed_units"
             );
 
-            let typed = model
-                .raw_embed_images(vec![decode_image(PNG_2X2)])
+            let again = model
+                .embed_images_response(vec![decode_image(PNG_2X2)])
                 .await
-                .expect("raw image route should succeed");
+                .expect("the same image embed should succeed again");
+            let typed: Vec<cohere::embeddings::ImageEmbeddingResponse> =
+                serde_json::from_value(again.raw.clone())
+                    .expect("raw is the per-image array");
             assert_eq!(typed.len(), 1);
         },
     )

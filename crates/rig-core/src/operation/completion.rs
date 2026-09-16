@@ -160,6 +160,20 @@ impl Fold<Completion> for CompletionFold {
     }
 
     fn finish(self, reply: Reply) -> Result<CompletionResponse, CompletionError> {
+        // A reply the driver could not read as one JSON document is an
+        // SSE-framed one — the Responses endpoint streams even a unary call
+        // on some dialects — and then there is no document to be verbatim
+        // about. The terminal record's own `raw` is the reassembled
+        // envelope the decoder built, which is what the deleted
+        // `raw_completion` returned.
+        let raw = if reply.raw.is_null() {
+            self.terminal
+                .as_ref()
+                .map(|terminal| terminal.raw.clone())
+                .unwrap_or(serde_json::Value::Null)
+        } else {
+            reply.raw
+        };
         let response = crate::streaming::fold_finish(
             self.accumulator,
             self.terminal.as_ref(),
@@ -172,6 +186,6 @@ impl Fold<Completion> for CompletionFold {
         } else {
             response
         };
-        Ok(response.with_raw(reply.raw))
+        Ok(response.with_raw(raw))
     }
 }

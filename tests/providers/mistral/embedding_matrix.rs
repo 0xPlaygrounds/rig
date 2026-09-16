@@ -7,8 +7,7 @@
 //! the single-text convenience, and the error path preserving the body.
 
 use super::support::with_mistral_embedding_cassette;
-use rig::client::EmbeddingsClient;
-use rig::embeddings::{EmbeddingModel as _, NormalizeEmbeddingResponse as _};
+use rig::embeddings::EmbeddingModel as _;
 use rig::providers::{mistral, openai};
 
 use crate::support::{
@@ -33,7 +32,7 @@ async fn normalized_response_is_complete() {
     with_mistral_embedding_cassette(
         "embedding_matrix/normalized_response_is_complete",
         |client| async move {
-            let model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
+            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
             let response = model
                 .embed_texts_response(inputs())
                 .await
@@ -44,12 +43,13 @@ async fn normalized_response_is_complete() {
     .await;
 }
 
-/// `raw` is the provider's own payload, serialized: it deserializes back to
-/// the wire type and normalizing that value reproduces the normalized view.
+/// `raw` is the provider's own payload: it deserializes back to the wire type,
+/// and the provider-native fields it exposes are the normalized response's —
+/// plus the envelope tag the normalized view has no slot for.
 #[tokio::test]
 async fn raw_round_trips() {
     with_mistral_embedding_cassette("embedding_matrix/raw_round_trips", |client| async move {
-        let model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
+        let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
         let response = model
             .embed_texts_response(inputs())
             .await
@@ -58,38 +58,38 @@ async fn raw_round_trips() {
         let raw: openai::CompatibleEmbeddingResponse =
             serde_json::from_value(response.raw.clone()).expect("raw round-trips");
         assert_eq!(raw.data.len(), response.embeddings.len());
-
-        let renormalized = raw
-            .normalize(response.provider.as_str(), inputs())
-            .expect("re-normalization succeeds");
-        assert_eq!(renormalized.embeddings.len(), response.embeddings.len());
-        assert_eq!(renormalized.model, response.model);
-        assert_eq!(renormalized.usage, response.usage);
+        assert_eq!(Some(raw.model.as_str()), response.model.as_deref());
+        assert_eq!(
+            raw.object, "list",
+            "the envelope tag reaches the caller through `raw`, which the \
+             normalized response has no slot for"
+        );
     })
     .await;
 }
 
-/// The inherent raw route answers with the payload whose normalization agrees
-/// with the normalized call — two live exchanges in one recording, following
-/// the raw-parity matrices' shape.
+/// Two live exchanges in one recording: the same request, twice. `encode` is
+/// deterministic, so the second turn asks for exactly what the first did, and
+/// the reply it rides on is described the same way by both views — the
+/// normalized response and its own `raw`.
 #[tokio::test]
 async fn raw_route_parity() {
     with_mistral_embedding_cassette("embedding_matrix/raw_route_parity", |client| async move {
-        let model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
+        let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
         let normalized = model
             .embed_texts_response(inputs())
             .await
             .expect("normalized call should succeed");
-        let raw = model
-            .raw_embed_texts(inputs())
+        let again = model
+            .embed_texts_response(inputs())
             .await
-            .expect("raw call should succeed");
+            .expect("the same request should succeed again");
+        assert_eq!(again.embeddings.len(), normalized.embeddings.len());
 
+        let raw: openai::CompatibleEmbeddingResponse = serde_json::from_value(again.raw.clone())
+            .expect("raw is the compatible embeddings payload");
         assert_eq!(raw.data.len(), normalized.embeddings.len());
-        let renormalized = raw
-            .normalize(normalized.provider.as_str(), inputs())
-            .expect("raw payload normalizes");
-        assert_eq!(renormalized.model, normalized.model);
+        assert_eq!(Some(raw.model.as_str()), normalized.model.as_deref());
     })
     .await;
 }
@@ -101,7 +101,7 @@ async fn single_text_convenience() {
     with_mistral_embedding_cassette(
         "embedding_matrix/single_text_convenience",
         |client| async move {
-            let model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
+            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
             let response = model
                 .embed_text_response(EMBEDDING_INPUTS[0])
                 .await
@@ -119,7 +119,7 @@ async fn single_text_convenience() {
     .await;
 }
 
-/// `embedding_model_with_ndims` round-trips the requested width — the
+/// `embedding(model, Some(n))` round-trips the requested width — the
 /// provider either honors it or the driver errors honestly with
 /// `MismatchedDimensions`; a silent mismatch is the bug this cell exists to
 /// catch.
@@ -129,7 +129,7 @@ async fn dimensions_request() {
         // `mistral-embed` is fixed-width; `output_dimension` is a
         // codestral-embed capability, so the cell exercises that model.
         let ndims = 64;
-        let model = client.embedding_model_with_ndims(mistral::embedding::CODESTRAL_EMBED, ndims);
+        let model = client.embedding(mistral::embedding::CODESTRAL_EMBED, Some(ndims));
         let response = model
             .embed_texts_response(inputs())
             .await
@@ -147,7 +147,7 @@ async fn error_preserves_provider_body() {
     with_mistral_embedding_cassette(
         "embedding_matrix/error_preserves_provider_body",
         |client| async move {
-            let model = client.embedding_model("no-such-embedding-model");
+            let model = client.embedding("no-such-embedding-model", None);
             let error = model
                 .embed_texts_response(inputs())
                 .await
@@ -180,7 +180,7 @@ async fn bug_mistral_request_id_dropped() {
     with_mistral_embedding_cassette(
         "embedding_matrix/bug_mistral_request_id_dropped",
         |client| async move {
-            let model = client.embedding_model(mistral::embedding::MISTRAL_EMBED);
+            let model = client.embedding(mistral::embedding::MISTRAL_EMBED, None);
             let response = model
                 .embed_texts_response(inputs())
                 .await

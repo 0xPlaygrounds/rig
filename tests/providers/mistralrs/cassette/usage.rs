@@ -1,7 +1,6 @@
 //! Cassette coverage for mistral.rs usage without OpenAI `output_tokens_details`.
 
 use rig::completion::CompletionModel;
-use rig::completion::NormalizeCompletionResponse;
 use rig::prelude::*;
 use serde_json::Value;
 
@@ -12,25 +11,21 @@ async fn chat_completion_usage_without_output_tokens_details_deserializes() {
     with_mistralrs_completions_cassette(
         "usage/chat_completion_usage_without_output_tokens_details_deserializes",
         |client| async move {
-            let model = client.completion_model(model_name());
+            let model = client.completion(model_name());
             let request = model
                 .completion_request("/no_think Explain usage accounting in one sentence.")
                 .preamble(SYSTEM_PROMPT.to_string())
                 .max_tokens(64)
                 .build();
-            // A single cassette interaction: keep mistral.rs's own wire response
-            // for the usage-shape assertions, and still check that the
-            // normalization the completion path applies accepts it.
-            let wire_response = model
-                .raw_completion(request)
+            // A single cassette interaction: the usage-shape assertions read
+            // mistral.rs's own reply document off the response the completion
+            // path folded, so the shape and the fold are the same reply.
+            let response = model
+                .completion(request)
                 .await
                 .expect("usage check completion should succeed");
-            let raw = serde_json::to_value(&wire_response)
-                .expect("raw chat completion response should serialize");
-            let _normalized: rig::completion::CompletionResponse = wire_response
-                .normalize("openai")
-                .expect("usage check completion should normalize");
-            let usage = raw
+            let usage = response
+                .raw
                 .get("usage")
                 .expect("mistral.rs response should include usage");
 

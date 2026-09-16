@@ -26,11 +26,16 @@ mod structured_output;
 mod typed_prompt_tools;
 
 use assert_fs::TempDir;
-use rig::client::DefaultTransportBuilder as _;
+use rig::driver::{Bind, Bound};
+use rig::http_client::{BoxedHttpClient, ReqwestClient};
+use rig::prelude::*;
 use rig::providers::copilot;
+use rig::providers::copilot::auth::{AuthError, AuthSource, Authenticator, DeviceCodeHandler};
+use rig::providers::copilot::wire::Copilot;
 use std::borrow::Cow;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
+use std::path::Path;
 
 use crate::cassettes::{CassetteSpec, ProviderCassette};
 use futures::FutureExt;
@@ -74,43 +79,72 @@ fn cassette_base_url() -> String {
     env_base_url().unwrap_or_else(|| "https://api.githubcopilot.com".to_string())
 }
 
-fn with_base_url(mut builder: copilot::ClientBuilder) -> copilot::ClientBuilder {
-    if let Some(base_url) = env_base_url() {
-        builder = builder.base_url(base_url);
-    }
-
-    builder
+/// The bundled transport, erased: the socket every cell here speaks over,
+/// and the one the credential exchange runs on.
+fn transport() -> BoxedHttpClient {
+    ReqwestClient::default().boxed()
 }
 
-pub(crate) fn api_key_builder(api_key: impl Into<String>) -> copilot::ClientBuilder {
-    with_base_url(copilot::Client::builder().api_key(api_key.into()))
+/// Resolve a Copilot credential and hold it in a provider configuration.
+///
+/// The exchange is a conversation — a device flow, a refresh, a shared file
+/// cache — so it is not a wire and never will be: `copilot::auth` runs it
+/// over the same transport the wire then uses, and `Copilot::from_auth`
+/// holds the result, honouring the API base the exchange reported. This is
+/// what `ClientBuilder::{api_key, github_access_token, oauth, token_dir,
+/// allow_device_flow}` plus `Client::authorize` did between them.
+///
+/// `token_dir` is `None` when the caller wants no on-disk cache; the cells
+/// that assert caching pass a `TempDir`.
+pub(crate) async fn authorize(
+    source: AuthSource,
+    token_dir: Option<&Path>,
+    allow_device_flow: bool,
+) -> Result<Copilot, AuthError> {
+    let (access_token_file, api_key_file) = match token_dir {
+        Some(dir) => (
+            Some(dir.join("access-token")),
+            Some(dir.join("api-key.json")),
+        ),
+        None => (None, None),
+    };
+    let context = Authenticator::new(
+        source,
+        access_token_file,
+        api_key_file,
+        DeviceCodeHandler::default(),
+        allow_device_flow,
+    )
+    .auth_context(&transport())
+    .await?;
+    let provider = Copilot::from_auth(&context);
+
+    Ok(match env_base_url() {
+        Some(base_url) => provider.with_base_url(base_url),
+        None => provider,
+    })
 }
 
-pub(crate) fn github_access_token_builder(
-    access_token: impl Into<String>,
-) -> copilot::ClientBuilder {
-    with_base_url(copilot::Client::builder().github_access_token(access_token.into()))
-}
-
-pub(crate) fn oauth_builder() -> copilot::ClientBuilder {
-    with_base_url(copilot::Client::builder().oauth())
-}
-
-pub(crate) fn live_builder() -> copilot::ClientBuilder {
+/// The credential the environment offers, in the order the client tried:
+/// an exchanged session token, then a GitHub access token, then OAuth.
+pub(crate) fn live_source() -> AuthSource {
     if let Some(api_key) = copilot_api_key() {
-        api_key_builder(api_key)
+        AuthSource::ApiKey(api_key)
     } else if let Some(access_token) = copilot_github_access_token() {
-        github_access_token_builder(access_token)
+        AuthSource::GitHubAccessToken(access_token)
     } else {
-        oauth_builder()
+        AuthSource::OAuth
     }
 }
 
-pub(crate) fn live_client() -> copilot::Client {
-    live_builder().build().expect("Copilot client should build")
+pub(crate) async fn live_client() -> Bound<Copilot> {
+    authorize(live_source(), None, true)
+        .await
+        .expect("Copilot credential should resolve")
+        .bind(transport())
 }
 
-async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, copilot::Client) {
+async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<Copilot>) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -119,18 +153,16 @@ async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, c
         &cassette_base_url,
     )
     .await;
-    let client = copilot::Client::builder()
-        .api_key(cassette.api_key("GITHUB_COPILOT_API_KEY"))
-        .base_url(cassette.base_url())
-        .build()
-        .expect("Copilot cassette client should build");
+    let bound = Copilot::new(cassette.api_key("GITHUB_COPILOT_API_KEY"))
+        .with_base_url(cassette.base_url())
+        .bind(transport());
 
-    (cassette, client)
+    (cassette, bound)
 }
 
 async fn copilot_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
-) -> (ProviderCassette, copilot::Client, TempDir) {
+) -> (ProviderCassette, Bound<Copilot>, TempDir) {
     let cassette_base_url = cassette_base_url();
     let cassette = ProviderCassette::start(
         &crate::cassettes::cassette_root(),
@@ -150,20 +182,18 @@ async fn copilot_noninteractive_oauth_cassette(
     )
     .expect("api key record should be written");
 
-    let client = copilot::Client::builder()
-        .oauth()
-        .allow_device_flow(false)
-        .token_dir(temp.path())
-        .base_url(cassette.base_url())
-        .build()
-        .expect("non-interactive Copilot OAuth cassette client should build");
+    let bound = authorize(AuthSource::OAuth, Some(temp.path()), false)
+        .await
+        .expect("the cached Copilot API key should resolve without a device flow")
+        .with_base_url(cassette.base_url())
+        .bind(transport());
 
-    (cassette, client, temp)
+    (cassette, bound, temp)
 }
 
 pub(crate) async fn with_copilot_cassette<F, Fut>(spec: impl Into<CassetteSpec>, test_body: F)
 where
-    F: FnOnce(copilot::Client) -> Fut,
+    F: FnOnce(Bound<Copilot>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client) = copilot_cassette(spec).await;
@@ -176,7 +206,7 @@ pub(crate) async fn with_copilot_cassette_result<F, Fut, E>(
     test_body: F,
 ) -> Result<(), E>
 where
-    F: FnOnce(copilot::Client) -> Fut,
+    F: FnOnce(Bound<Copilot>) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
     let (cassette, client) = copilot_cassette(spec).await;
@@ -188,7 +218,7 @@ pub(crate) async fn with_copilot_noninteractive_oauth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
 ) where
-    F: FnOnce(copilot::Client) -> Fut,
+    F: FnOnce(Bound<Copilot>) -> Fut,
     Fut: Future<Output = ()>,
 {
     let (cassette, client, _temp) = copilot_noninteractive_oauth_cassette(spec).await;

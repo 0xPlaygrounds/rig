@@ -8,7 +8,7 @@ use rig_ecs::agent::DefaultMaxTurns;
 #[tokio::test]
 async fn completion_smoke() {
     with_copilot_cassette("agent/completion_smoke", |client| async move {
-        let mut ecs = EcsAgent::new(client.completion_model(LIVE_MODEL), BASIC_PREAMBLE, 1);
+        let mut ecs = EcsAgent::new(client.completion(LIVE_MODEL), BASIC_PREAMBLE, 1);
         ecs.app
             .world_mut()
             .entity_mut(ecs.agent)

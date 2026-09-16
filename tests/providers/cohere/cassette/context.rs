@@ -42,7 +42,7 @@ async fn document_metadata_and_multiple_documents_are_accepted() {
     with_cohere_cassette(
         "context/document_metadata_and_multiple_documents_are_accepted",
         |client| async move {
-            let model = client.completion_model(CASSETTE_MODEL);
+            let model = client.completion(CASSETTE_MODEL);
             let request = model
                 .completion_request("Which dock is assigned beacon code amber-73?")
                 .document(Document {

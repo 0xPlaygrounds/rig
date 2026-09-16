@@ -1,17 +1,13 @@
 //! Matrix for raw response capture on Ollama's blocking `/api/chat` path
 //! ([`CompletionResponse::raw`](rig::completion::CompletionResponse::raw)).
 //!
-//! # The feature
-//!
-//! Capture is always on. Every completion returned by the provider seam
-//! carries `raw`: the value the model's inherent
-//! [`CompletionModel::raw_completion`](rig::providers::ollama::CompletionModel::raw_completion)
-//! would have returned — the response as [`ollama::CompletionResponse`] parsed
-//! it — serialized with `serde_json::to_value` before normalization. It never
-//! replaces a normalized field, and it is not a request-side concern: nothing
-//! about it is sent to the daemon. `raw == Value::Null` means only that a
-//! `CompletionResponse` was built by hand without a provider response behind
-//! it, which no cell here can produce.
+//! Capture is always on. Every completion the provider seam returns carries
+//! `raw`: the reply document the daemon sent, which the decoder also parsed as
+//! [`ollama::CompletionResponse`]. It never replaces a normalized field, and
+//! it is not a request-side concern: nothing about it is sent to the daemon.
+//! `raw == Value::Null` means only that a `CompletionResponse` was built by
+//! hand without a provider response behind it, which no cell here can
+//! produce.
 //!
 //! Ollama is the natural provider for cell 2: its response carries
 //! nanosecond timings (`total_duration`, `load_duration`, `eval_duration`) that
@@ -27,9 +23,9 @@
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `raw_round_trips_provider_type` | typed access | `ollama::CompletionResponse::deserialize(&*raw)` re-serializes equal | recorded |
+//! | 1 | `raw_round_trips_provider_type` | typed access | `ollama::CompletionResponse::deserialize(&*raw)` reads back and agrees with the normalized response | recorded |
 //! | 2 | `raw_exposes_ollama_durations` | provider-only fields | `total_duration`/`load_duration`/`eval_duration` in `raw` equal the fixture body | recorded |
-//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the normalized response equals `raw` re-normalized (`try_into`) and the fixture body re-normalized | recorded |
+//! | 3 | `normalized_fields_equal_raw_renormalized` | normalized view | the provider type read out of `raw`, and out of the fixture body, agrees with the normalized response field by field | recorded |
 //!
 //! Every cell is recorded: Ollama runs locally with no credential, so there is
 //! nothing here the harness cannot reproduce.
@@ -55,7 +51,7 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 
 /// `think: false` keeps qwen3's reasoning trace out of the recording; the
 /// durations this matrix reads are reported either way.
-fn request(model: &ollama::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &(impl rig::completion::CompletionModel + Clone)) -> rig::completion::CompletionRequest {
     model
         .completion_request(PROMPT)
         .max_tokens(64)
@@ -114,7 +110,7 @@ async fn raw_round_trips_provider_type() {
     with_ollama_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion(request(&model))
                 .await
@@ -122,17 +118,13 @@ async fn raw_round_trips_provider_type() {
 
             let raw = &response.raw;
 
-            // Typed access is recoverable: the provider's own wire type reads the
-            // captured value back, and re-serializing it reproduces the capture
-            // exactly — the escape hatch is the raw_completion value, nothing
-            // more and nothing less.
+            // Typed access is recoverable: the provider's own wire type reads
+            // the captured value back. The capture is the reply *document*, so
+            // it is a superset of what the type models rather than that type's
+            // re-serialization — which is why this asserts the type reads back
+            // and agrees, not that it round-trips byte for byte.
             let typed = ollama::CompletionResponse::deserialize(raw)
                 .expect("raw must deserialize into ollama::CompletionResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("provider type should serialize"),
-                *raw,
-                "ollama::CompletionResponse must round-trip through its own serde"
-            );
 
             // The typed view agrees with the normalized one on what the model
             // said, so raw is a superset, not a divergent copy.
@@ -167,7 +159,7 @@ async fn raw_exposes_ollama_durations() {
     with_ollama_cassette(
         "raw_capture_matrix/raw_exposes_ollama_durations",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion(request(&model))
                 .await
@@ -222,11 +214,15 @@ async fn raw_exposes_ollama_durations() {
 // 3: raw and the typed route tell one story
 // ---------------------------------------------------------------------------
 
-/// The normalized response, with `raw` stripped, must equal the normalization
-/// (`try_into`) of `raw` read back through the provider type — and equal the
-/// normalization of the recorded wire body. Capture is a pure serialization of
-/// the value normalization consumed: it neither alters a normalized field nor
-/// diverges from the bytes the daemon sent.
+/// One decoder, two views. The provider's own type, read back out of `raw` and
+/// read out of the recorded wire body, must agree with the normalized
+/// response on every field the normalized response has: capture neither
+/// alters a normalized field nor diverges from the bytes the daemon sent.
+///
+/// This used to compare the normalized response with a second normalization
+/// of `raw`. There is one mapping now, so that comparison would only be the
+/// mapping against a copy of itself; asserting the provider's fields against
+/// the normalized ones pins the mapping instead.
 #[tokio::test]
 async fn normalized_fields_equal_raw_renormalized() {
     let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
@@ -235,30 +231,39 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_ollama_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            let model = client.completion_model(MODEL);
+            let model = client.completion(MODEL);
             let response = model
                 .completion(request(&model))
                 .await
                 .expect("completion should succeed");
 
             let raw = &response.raw;
-            let from_raw: RigCompletionResponse = ollama::CompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into ollama::CompletionResponse")
-                .try_into()
-                .expect("raw must normalize");
+            let typed = ollama::CompletionResponse::deserialize(raw)
+                .expect("raw must deserialize into ollama::CompletionResponse");
 
             assert_eq!(response.provider, OLLAMA_PROVIDER);
-            assert_eq!(from_raw.provider, response.provider);
-            assert_eq!(from_raw.model, response.model);
-            assert_eq!(from_raw.finish_reason(), response.finish_reason());
-            assert_eq!(from_raw.identity(), response.identity());
-            assert_eq!(from_raw.usage, response.usage);
-            assert!(!response.choice.is_empty());
+            assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
             assert_eq!(
-                normalized_without_raw(from_raw),
-                normalized_without_raw(response.clone()),
-                "re-normalizing raw must reproduce the normalized response field-for-field"
+                typed.done_reason.as_deref(),
+                Some("stop"),
+                "the recorded turn stopped naturally in Ollama's own vocabulary"
             );
+            assert_eq!(
+                response.finish_reason(),
+                Some(rig::completion::FinishReason::Stop),
+                "and the decoder maps `stop` onto a natural stop"
+            );
+            assert_eq!(typed.prompt_eval_count, response.usage.input_tokens);
+            assert_eq!(typed.eval_count, response.usage.output_tokens);
+            assert_eq!(
+                typed.prompt_eval_count.zip(typed.eval_count).map(|(i, o)| i + o),
+                response.usage.total_tokens,
+                "Ollama reports no total; the decoder derives it from both counts"
+            );
+            // Ollama's chat reply carries no response id, so the normalized
+            // identity reports none — the documented outcome.
+            assert_eq!(response.identity().response_id, None);
+            assert!(!response.choice.is_empty());
 
             *sink.lock().expect("capture mutex") = Some(response);
         },
@@ -272,14 +277,18 @@ async fn normalized_fields_equal_raw_renormalized() {
         .expect("the test body must have captured the response");
     let (_, body) = recorded_json_interaction(scenario);
     assert_recorded_completed_with_durations(&body, scenario);
-    let from_wire: RigCompletionResponse = ollama::CompletionResponse::deserialize(&body)
-        .expect("recorded body must be an Ollama chat response")
-        .try_into()
-        .expect("recorded body must normalize");
+    let from_wire = ollama::CompletionResponse::deserialize(&body)
+        .expect("recorded body must be an Ollama chat response");
     assert_eq!(
-        normalized_without_raw(response),
-        normalized_without_raw(from_wire),
-        "the normalized response must equal the normalization of the wire bytes \
-         it was built from"
+        Some(from_wire.model.as_str()),
+        response.model.as_deref(),
+        "the normalized response names the model the wire bytes named"
+    );
+    assert_eq!(from_wire.prompt_eval_count, response.usage.input_tokens);
+    assert_eq!(from_wire.eval_count, response.usage.output_tokens);
+    assert_eq!(
+        normalized_without_raw(response).get("finish_reason").cloned(),
+        Some(serde_json::json!("stop")),
+        "the wire's `done_reason` reaches the normalized finish reason"
     );
 }

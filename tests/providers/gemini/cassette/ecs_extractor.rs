@@ -1,7 +1,6 @@
 //! Native extraction preserving the original provider assertions.
 use super::extractor::Person;
 use crate::ecs_extractor::EcsExtractor;
-use rig::prelude::*;
 use rig::providers::gemini;
 use rig::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, GenerationConfig,
@@ -15,7 +14,7 @@ async fn extractor_smoke() {
         AdditionalParameters::default().with_config(GenerationConfig::default());
     super::super::support::with_gemini_cassette("extractor/extractor_smoke", |client| async move {
         let mut extractor = EcsExtractor::<SmokePerson>::new(
-            client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+            client.completion(gemini::completion::GEMINI_2_5_FLASH),
             None,
             Some(
                 serde_json::to_value(additional_params)
@@ -62,7 +61,7 @@ async fn extractor_with_additional_params() {
         "extractor/extractor_with_additional_params",
         |client| async move {
             let mut extractor = EcsExtractor::<Person>::new(
-                client.completion_model(gemini::completion::GEMINI_2_5_FLASH),
+                client.completion(gemini::completion::GEMINI_2_5_FLASH),
                 None,
                 Some(serde_json::to_value(params).expect("params should serialize")),
             );

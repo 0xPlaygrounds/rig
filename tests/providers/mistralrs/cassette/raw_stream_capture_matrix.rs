@@ -4,23 +4,24 @@
 //!
 //! # The feature
 //!
-//! Capture is always on. mistral.rs streams through rig's OpenAI
-//! chat-completions client, whose
-//! [`raw_stream`](rig::providers::openai::GenericCompletionModel::raw_stream)
-//! yields [`openai::StreamingCompletionResponse`] as its terminal record: the
-//! usage from the stream's final `data:` frame plus the envelope fields the
-//! chunks carried (`object`, `created`, `system_fingerprint`) accumulated under
-//! `additional_params`. Every terminal record the seam yields carries `raw` —
-//! that record serialized by the adapter's `final_record` — the terminal record only, and
-//! nothing about it is sent to the server. `raw == Value::Null` means only that
-//! a `StreamFinal` was built by hand without a provider terminal behind it,
-//! which no cell here can produce.
+//! Capture is always on. mistral.rs streams through the plain `OPENAI`
+//! chat-completions wire pointed at its base URL, and the decoder assembles
+//! a terminal record — [`StreamingCompletionResponse`] over [`ChatUsage`] —
+//! from the stream's final `data:` frame plus the envelope fields the chunks
+//! carried (`object`, `created`, `system_fingerprint`) accumulated under
+//! `additional_params`. Every terminal record carries `raw`: that record
+//! serialized. It is the terminal record only — an SSE reply is many frames
+//! and no single one is the answer, so a typed round trip through `raw` is
+//! exact here, unlike the unary path where `raw` is the reply document.
+//! Nothing about it is sent to the server. `raw == Value::Null` means only
+//! that a `StreamFinal` was built by hand without a provider terminal behind
+//! it, which no cell here can produce.
 //!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
-//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `openai::StreamingCompletionResponse::deserialize(&*raw)` re-serializes equal | unrecorded (no mistral.rs server in this environment) |
+//! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `StreamingCompletionResponse::<ChatUsage>::deserialize(&raw)` re-serializes equal | unrecorded (no mistral.rs server in this environment) |
 //! | 2 | `stream_raw_exposes_envelope_fields` | terminal-only fields | `additional_params.system_fingerprint`/`object` in `raw` equal the recorded chunks; usage equals the terminal frame | unrecorded (no mistral.rs server in this environment) |
 //!
 //! Every cell is unrecorded: no mistral.rs server was listening on
@@ -32,9 +33,8 @@
 //! and review `tests/cassettes/mistralrs/raw_stream_capture_matrix/`.
 
 use futures::StreamExt;
-use rig::completion::CompletionModel as _;
-use rig::prelude::*;
-use rig::providers::openai;
+use rig::completion::{CompletionModel, CompletionRequest};
+use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
@@ -43,10 +43,12 @@ use super::super::support::{model_name, with_mistralrs_completions_cassette};
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
+/// The plain OpenAI dialect names itself `openai`, and a terminal record is
+/// attributed to the dialect that produced it.
 const NORMALIZED_PROVIDER: &str = "openai";
 const PROMPT: &str = "/no_think Reply with exactly the single word: pong";
 
-fn request(model: &openai::CompletionModel) -> rig::completion::CompletionRequest {
+fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
@@ -113,7 +115,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion_model(model_name());
+            let model = client.completion(model_name());
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -122,20 +124,23 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             )
             .await;
             let raw = &terminal.raw;
-            let typed = openai::StreamingCompletionResponse::<openai::Usage>::deserialize(raw)
-                .expect("raw must deserialize into openai::StreamingCompletionResponse");
+            let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(raw)
+                .expect("raw must deserialize into the wire's terminal record");
             assert_eq!(
                 serde_json::to_value(&typed).expect("terminal type should serialize"),
                 *raw,
-                "openai::StreamingCompletionResponse must round-trip through its own serde"
+                "the terminal record must round-trip through its own serde"
             );
             let typed_usage = typed.usage.as_ref().expect("terminal carries usage");
             assert_eq!(
-                Some(typed_usage.prompt_tokens as u64),
+                Some(typed_usage.openai.prompt_tokens as u64),
                 terminal.usage.input_tokens
             );
             assert_eq!(
-                typed_usage.completion_tokens.map(|tokens| tokens as u64),
+                typed_usage
+                    .openai
+                    .completion_tokens
+                    .map(|tokens| tokens as u64),
                 terminal.usage.output_tokens
             );
             assert_eq!(typed.response_id, terminal.response_id);
@@ -175,7 +180,7 @@ async fn stream_raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
-            let model = client.completion_model(model_name());
+            let model = client.completion(model_name());
             let terminal = terminal_of(
                 model
                     .stream(request(&model))
@@ -231,8 +236,8 @@ async fn stream_raw_exposes_envelope_fields() {
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    let typed = openai::StreamingCompletionResponse::<openai::Usage>::deserialize(&raw)
-        .expect("raw must deserialize into openai::StreamingCompletionResponse");
+    let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(&raw)
+        .expect("raw must deserialize into the wire's terminal record");
     let typed_params = typed
         .additional_params
         .expect("typed terminal must carry additional_params");

@@ -1,7 +1,6 @@
 //! AWS Bedrock embeddings replay smoke test.
 
 use rig::bedrock;
-use rig::client::EmbeddingsClient;
 use rig::embeddings::EmbeddingModel;
 
 use super::super::support::with_bedrock_cassette;
@@ -12,8 +11,8 @@ const EMBEDDING_INPUT: &str = "Rust cassette replay keeps Bedrock tests determin
 #[tokio::test]
 async fn embeddings_smoke() {
     with_bedrock_cassette("embeddings/embeddings_smoke", |client| async move {
-        let model = client
-            .embedding_model_with_ndims(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, 256);
+        let model =
+            client.embedding(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
 
         let embeddings = model
             .embed_texts([EMBEDDING_INPUT.to_string()])
@@ -34,8 +33,8 @@ async fn embeddings_smoke() {
 #[tokio::test]
 async fn embeddings_batch_smoke() {
     with_bedrock_cassette("embeddings/embeddings_batch_smoke", |client| async move {
-        let model = client
-            .embedding_model_with_ndims(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, 256);
+        let model =
+            client.embedding(bedrock::embedding::AMAZON_TITAN_EMBED_TEXT_V2_0, Some(256));
 
         let embeddings = model
             .embed_texts(EMBEDDING_INPUTS.into_iter().map(str::to_string))
