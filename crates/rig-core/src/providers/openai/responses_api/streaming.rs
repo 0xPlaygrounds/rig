@@ -320,9 +320,21 @@ pub struct RawChoiceAccumulator {
     /// The message items whose visible text a delta already delivered, and
     /// whether any fragment arrived that could not be attributed to one.
     /// The terminal restates the whole turn's output, so its message text
-    /// is published only where no delta delivered it: this pair is the fact
+    /// is published only where no delta delivered it: this trio is the fact
     /// `merge_terminal_body_text` reads to decide that.
     delta_text_items: std::collections::HashSet<String>,
+    /// The output slots whose visible text a delta already delivered.
+    ///
+    /// Item ids cannot decide this alone: Copilot's Responses route stamps
+    /// a FRESH `item_id` on every delta and a different one again on the
+    /// terminal's message item, so id equality reports "never delivered"
+    /// for text the deltas streamed in full and the turn's answer lands
+    /// twice (`tests/cassettes/copilot/reasoning_roundtrip/streaming.yaml`
+    /// record 2 replays it once). `output_index` is the wire's positional
+    /// correlator for output items — it is what the terminal's `output[]`
+    /// array is indexed by, and what `tool_slots`/`reasoning_slots`
+    /// already key their assemblies on for the same reason.
+    delta_text_slots: std::collections::HashSet<u64>,
     unattributed_text_delta: bool,
 }
 
@@ -360,6 +372,7 @@ impl RawChoiceAccumulator {
             pending_call_ids: std::collections::HashMap::new(),
             current_text_item: None,
             delta_text_items: std::collections::HashSet::new(),
+            delta_text_slots: std::collections::HashSet::new(),
             unattributed_text_delta: false,
         }
     }
@@ -377,10 +390,12 @@ impl RawChoiceAccumulator {
 
     /// Record that a delta delivered the visible text of a message item.
     ///
-    /// A fragment the wire did not attribute extends whichever text block
-    /// is open, so it is credited to that item; with no block open there is
-    /// nothing to attribute it to and the fact is recorded turn-wide.
-    fn note_text_delta(&mut self, item_id: Option<&str>) {
+    /// The output slot is always recorded; the item id is recorded on top
+    /// of it, because a delta the wire did not attribute extends whichever
+    /// text block is open and is credited to that item, and with no block
+    /// open there is nothing to attribute it to at all.
+    fn note_text_delta(&mut self, output_index: u64, item_id: Option<&str>) {
+        self.delta_text_slots.insert(output_index);
         match item_id
             .filter(|id| !id.is_empty())
             .map(str::to_owned)
@@ -393,27 +408,35 @@ impl RawChoiceAccumulator {
         }
     }
 
-    /// Whether a delta already delivered the visible text of `item_id`.
+    /// Whether a delta already delivered the visible text of the message
+    /// item at `output_index` carrying `item_id`.
     ///
     /// An unattributable fragment counts for every item: its text is
     /// already in the choice and nothing on the wire says which item the
     /// terminal restates, so the merge withholds rather than risk stating
     /// one turn's text twice.
-    fn delta_delivered_text(&self, item_id: &str) -> bool {
-        self.unattributed_text_delta || self.delta_text_items.contains(item_id)
+    fn delta_delivered_text(&self, output_index: u64, item_id: &str) -> bool {
+        self.unattributed_text_delta
+            || self.delta_text_slots.contains(&output_index)
+            || self.delta_text_items.contains(item_id)
     }
 
     /// Publish one message item's visible text as the deltas that built it,
     /// recording what it delivered so a terminal restating the same item
     /// merges nothing.
-    fn publish_message_text(&mut self, message: &super::OutputMessage, out: &mut AdapterOutput) {
+    fn publish_message_text(
+        &mut self,
+        output_index: u64,
+        message: &super::OutputMessage,
+        out: &mut AdapterOutput,
+    ) {
         // The stream opens the item's text block on its first delta and
         // sends one delta per content part; a part's own-wire extras ride
         // the block's metadata, where the accumulator merges them into the
         // one block the item published.
         self.start_text_item(Some(&message.id), out);
         if !message.content.is_empty() {
-            self.note_text_delta(Some(&message.id));
+            self.note_text_delta(output_index, Some(&message.id));
         }
         for content in message.content.iter().cloned() {
             let mut text = super::text_block(content);
@@ -441,14 +464,18 @@ impl RawChoiceAccumulator {
     /// Responses dialect can send, and every dialect's conformance suite
     /// runs it.
     fn merge_terminal_body_text(&mut self, response: &CompletionResponse, out: &mut AdapterOutput) {
-        for item in &response.output {
+        // The item's position in `output[]` IS the `output_index` its
+        // stream events carried, which is how a restatement is matched to
+        // the deltas that already delivered it.
+        for (output_index, item) in response.output.iter().enumerate() {
+            let output_index = output_index as u64;
             let Output::Message(message) = item else {
                 continue;
             };
-            if message.content.is_empty() || self.delta_delivered_text(&message.id) {
+            if message.content.is_empty() || self.delta_delivered_text(output_index, &message.id) {
                 continue;
             }
-            self.publish_message_text(message, out);
+            self.publish_message_text(output_index, message, out);
         }
     }
 
@@ -547,7 +574,7 @@ impl RawChoiceAccumulator {
             ItemChunkKind::OutputTextDelta(DeltaTextChunk { delta, .. })
             | ItemChunkKind::RefusalDelta(DeltaTextChunk { delta, .. }) => {
                 self.start_text_item(outer_item_id.as_deref(), out);
-                self.note_text_delta(outer_item_id.as_deref());
+                self.note_text_delta(output_index, outer_item_id.as_deref());
                 out.text(delta);
             }
             // Summary and raw-reasoning deltas differ only in which wire
@@ -871,7 +898,7 @@ impl RawChoiceAccumulator {
         for (output_index, item) in response.output.iter().cloned().enumerate() {
             let output_index = output_index as u64;
             if let Output::Message(message) = &item {
-                self.publish_message_text(message, out);
+                self.publish_message_text(output_index, message, out);
             }
             // Published where the item appears rather than buffered to the
             // terminal: the body states every item in order, and the

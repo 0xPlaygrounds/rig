@@ -503,6 +503,19 @@ pub struct Quirks {
     pub supports_tools: bool,
     /// Whether `output_schema` maps to `response_format`.
     pub supports_response_format: bool,
+    /// Whether `response_format` rides on a turn that advertises tools and
+    /// has no tool result yet.
+    ///
+    /// Clear for OpenAI's own contract and every dialect derived from it:
+    /// backends in that family (llama.cpp measurably, and the recorded
+    /// OpenAI, Venice and Doubleword turns) skip the tool call when the
+    /// schema arrives beside the tools, so the schema waits for the first
+    /// tool result. OpenRouter's own client never deferred it and the
+    /// gateway honours both at once —
+    /// `tests/cassettes/openrouter/typed_prompt_tools/
+    /// prompt_typed_with_tool_call_roundtrip.yaml` record 1 carries
+    /// `tools` and `response_format` together, then calls the tool.
+    pub response_format_with_tools: bool,
     /// Whether this server honours an image inside a `role:"tool"` message.
     pub supports_image_tool_results: bool,
     /// Whether a streaming request asks for the usage chunk through
@@ -586,6 +599,7 @@ impl Quirks {
             audio_generation_path: "/audio/speech",
             supports_tools: true,
             supports_response_format: true,
+            response_format_with_tools: false,
             supports_image_tool_results: false,
             stream_include_usage: true,
             emits_complete_single_chunk_tool_calls: false,

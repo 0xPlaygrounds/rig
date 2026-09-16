@@ -273,6 +273,7 @@ fn tool_result_array_content_preserves_multiple_text_blocks() {
         strict_tools: false,
         tool_result_array_content: true,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -310,6 +311,7 @@ fn tool_result_string_content_flattens_multiple_text_blocks() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -381,6 +383,7 @@ fn test_openai_request_uses_request_model_override() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -416,6 +419,7 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            response_format_with_tools: false,
             supports_image_tool_results: false,
             supports_tools: true,
         })
@@ -460,6 +464,7 @@ fn test_openai_request_uses_default_model_when_override_unset() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -487,6 +492,7 @@ fn openai_chat_request_keeps_documents_after_system_messages() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -547,6 +553,7 @@ fn openai_chat_direct_request_keeps_documents_after_system_messages() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -908,6 +915,7 @@ fn test_max_tokens_is_forwarded_to_request() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -937,6 +945,7 @@ fn capped_request(max_tokens: Option<u64>, additional_params: Option<Value>) -> 
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1088,6 +1097,7 @@ fn test_max_tokens_omitted_when_none() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1142,6 +1152,7 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1184,6 +1195,7 @@ fn request_conversion_errors_when_all_messages_are_filtered() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     });
@@ -1236,6 +1248,7 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1307,6 +1320,7 @@ fn request_conversion_restores_response_format_after_tool_result() {
         strict_tools: false,
         tool_result_array_content: false,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1906,6 +1920,7 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
         strict_tools: false,
         tool_result_array_content: true,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })
@@ -1941,6 +1956,7 @@ fn additional_params_override_typed_fields_on_the_wire() {
         strict_tools: false,
         tool_result_array_content: true,
         supports_response_format: true,
+        response_format_with_tools: false,
         supports_image_tool_results: false,
         supports_tools: true,
     })

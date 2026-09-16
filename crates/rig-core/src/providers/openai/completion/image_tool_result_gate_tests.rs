@@ -47,6 +47,7 @@ fn params(
         supports_image_tool_results,
         supports_tools: true,
         supports_response_format: true,
+        response_format_with_tools: false,
     }
 }
 

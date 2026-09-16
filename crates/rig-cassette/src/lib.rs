@@ -1472,18 +1472,6 @@ fn body_preview_for_diagnostics(policy: CassettePolicy, body: &str) -> String {
 }
 
 fn body_preview_bytes_for_diagnostics(policy: CassettePolicy, body: &[u8]) -> String {
-    if let Ok(text) = std::str::from_utf8(body) {
-        if let Ok(path) = std::env::var("RIG_DUMP_SENT_BODY") {
-            use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(path)
-            {
-                let _ = writeln!(f, "{text}");
-            }
-        }
-    }
     match std::str::from_utf8(body) {
         Ok(body) => body_preview_for_diagnostics(policy, body),
         Err(_) => format!("<{} bytes of non-UTF-8 body>", body.len()),

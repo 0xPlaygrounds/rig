@@ -1870,6 +1870,10 @@ pub struct OpenAIRequestParams {
     /// Maps `output_schema` to `response_format` when true; drops it with a
     /// warning when false (providers whose APIs reject `json_schema`).
     pub supports_response_format: bool,
+    /// Whether `response_format` rides beside advertised tools before the
+    /// first tool result; see
+    /// [`Quirks::response_format_with_tools`](crate::providers::openai::wire::Quirks::response_format_with_tools).
+    pub response_format_with_tools: bool,
     /// Serializes `tools`/`tool_choice` when true; drops them with a warning
     /// when false (providers without tool-calling support).
     pub supports_tools: bool,
@@ -1895,6 +1899,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             tool_result_array_content,
             supports_image_tool_results,
             supports_response_format,
+            response_format_with_tools,
             supports_tools,
             reasoning_details,
         } = params;
@@ -2062,10 +2067,13 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
 
         // Some OpenAI-compatible backends such as llama.cpp will skip tool execution
         // if `response_format` is sent on the first turn alongside tools. Delay the
-        // schema until after the conversation contains a tool result.
+        // schema until after the conversation contains a tool result — unless the
+        // dialect was measured to honour both at once
+        // (`Quirks::response_format_with_tools`), where deferring it would send a
+        // turn the gateway never saw.
         let should_apply_response_format = output_schema.is_some()
             && supports_response_format
-            && (tools.is_empty() || history_has_tool_result);
+            && (response_format_with_tools || tools.is_empty() || history_has_tool_result);
 
         // Map output_schema to OpenAI's response_format and merge into additional_params
         let additional_params = if let Some(schema) = output_schema
@@ -2119,6 +2127,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
             strict_tools: false,
             tool_result_array_content: false,
             supports_response_format: true,
+            response_format_with_tools: false,
             supports_image_tool_results: false,
             supports_tools: true,
             reasoning_details: false,

@@ -832,6 +832,7 @@ impl Wire for Chat {
             strict_tools: self.strict_tools,
             tool_result_array_content: self.tool_result_array_content,
             supports_response_format: quirks.supports_response_format,
+            response_format_with_tools: quirks.response_format_with_tools,
             supports_tools: quirks.supports_tools,
             supports_image_tool_results: quirks.supports_image_tool_results,
             reasoning_details: quirks.reasoning_details,
@@ -908,8 +909,10 @@ impl Wire for Chat {
         // Chat Completions *defers* `response_format` while tools are present
         // and no tool result exists yet, then applies it once a tool result
         // is in the history — so the native constraint does not suppress tool
-        // calls; they compose. A dialect that drops `output_schema` cannot
-        // compose them, and the agent falls back to tool-mode enforcement.
+        // calls; they compose. A dialect measured to honour both at once
+        // (`Quirks::response_format_with_tools`) composes them from the first
+        // turn. A dialect that drops `output_schema` cannot compose them at
+        // all, and the agent falls back to tool-mode enforcement.
         ProviderCapabilities::default().with_native_output_tool_composition(
             self.provider.dialect.quirks.supports_response_format,
         )
@@ -1377,12 +1380,28 @@ impl ChatDecoder {
         } else {
             Vec::new()
         };
-        let reasoning_signature = details.iter().copied().find_map(reasoning_signature);
         let blocks: Vec<_> = details
             .iter()
             .copied()
-            .filter_map(detail_reasoning)
+            .enumerate()
+            .filter_map(|(position, detail)| whole_detail_reasoning(position as u64, detail))
             .collect();
+        // `message.reasoning` is the DISPLAY of the same chain of thought
+        // those entries state structurally (an OpenRouter OpenAI route
+        // answers with the summary in both), so publishing it beside them
+        // would carry one chain twice and replay it twice — the precedence
+        // `replay_whole_response` already gives a Responses body's
+        // structured reasoning items over its top-level `reasoning` string.
+        // Entries that state nothing replayable leave the plaintext as the
+        // turn's only statement, and a signature-only entry rides onto it.
+        let (reasoning, reasoning_signature) = if blocks.is_empty() {
+            (
+                reasoning,
+                details.iter().copied().find_map(reasoning_signature),
+            )
+        } else {
+            (None, None)
+        };
         // An empty turn is legal exactly where the reply named a terminal
         // that CUT IT SHORT — `FinishReason::truncated_output`, the one
         // statement of that set (`completion::request`). A cap consumed
@@ -1670,6 +1689,62 @@ fn detail_reasoning(
         provider_id,
         crate::message::ReasoningContent::Encrypted(data.clone()),
     ))
+}
+
+/// A unary body's reasoning detail as a whole reasoning block.
+///
+/// The streamed path sees this array as fragments — one `summary`/`text`
+/// token per chunk — so it can lift only a self-contained entry out of one
+/// ([`detail_reasoning`]). A unary body states every entry COMPLETE, and the
+/// gateway requires the array back entry for entry on the next turn:
+/// `tests/cassettes/openrouter/reasoning_roundtrip/nonstreaming.yaml`
+/// record 2 replays the summary AND the encrypted blob, in the order the
+/// reply sent them and nothing besides.
+///
+/// One block per entry, because each carries its own id — the summary none,
+/// the blob its `rs_*` — and a block replays under a single id.
+fn whole_detail_reasoning(
+    position: u64,
+    detail: &unary::ReasoningDetails,
+) -> Option<(BlockId, Option<String>, crate::message::ReasoningContent)> {
+    let (id, content) = match detail {
+        unary::ReasoningDetails::Summary { id, summary, .. } if !summary.is_empty() => (
+            id,
+            crate::message::ReasoningContent::Summary(summary.clone()),
+        ),
+        unary::ReasoningDetails::Encrypted { id, data, .. } if !data.is_empty() => (
+            id,
+            crate::message::ReasoningContent::Encrypted(data.clone()),
+        ),
+        unary::ReasoningDetails::Text {
+            id,
+            text: Some(text),
+            signature,
+            ..
+        } if !text.is_empty() => (
+            id,
+            crate::message::ReasoningContent::Text {
+                text: text.clone(),
+                signature: signature.clone().filter(|signature| !signature.is_empty()),
+            },
+        ),
+        // Everything else states nothing replayable: an empty entry, or the
+        // signature-only `reasoning.text` an Anthropic route sends to sign
+        // the plaintext it states separately — which is what
+        // [`reasoning_signature`] reads it for.
+        _ => return None,
+    };
+    let provider_id = id.clone().and_then(crate::streaming::non_empty_id);
+    // Keyed by the wire id when the entry has one, else by the entry's
+    // POSITION under the structured-detail mint kind: two id-less entries
+    // are then two blocks rather than one restating — replacing — the
+    // other, and neither can restate the plaintext reasoning accumulating
+    // under `Minted { Reasoning, 0 }`.
+    let key = provider_id.as_ref().map_or_else(
+        || BlockId::minted(MintKind::EncryptedReasoning, position),
+        |id| BlockId::wire(id.as_str()),
+    );
+    Some((key, provider_id, content))
 }
 
 /// A gateway's signature-only reasoning detail.

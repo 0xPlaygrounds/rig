@@ -401,6 +401,10 @@ pub const OPENROUTER: Dialect = Dialect {
         // reasoning blobs.
         native_finish_reason: true,
         reasoning_details: true,
+        // Its own client mapped `output_schema` straight onto
+        // `response_format`, tools or no tools, and the gateway calls the
+        // tool anyway.
+        response_format_with_tools: true,
         // Its message conversion refused a provider file id outright.
         accepts_file_ids: false,
         rewrite: BodyRewrite::OpenRouter,
