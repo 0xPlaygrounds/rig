@@ -419,10 +419,23 @@ where
 }
 
 #[derive(Clone, Copy, Default)]
-struct OpenAICompatibleProfile<Ext = crate::providers::openai::OpenAICompletions, U = Usage> {
-    provider: Ext,
-    emits_complete_single_chunk_tool_calls: bool,
-    usage: std::marker::PhantomData<U>,
+pub(crate) struct OpenAICompatibleProfile<
+    Ext = crate::providers::openai::OpenAICompletions,
+    U = Usage,
+> {
+    pub(crate) provider: Ext,
+    pub(crate) emits_complete_single_chunk_tool_calls: bool,
+    pub(crate) usage: std::marker::PhantomData<U>,
+}
+
+impl<Ext: OpenAICompatibleProvider, U> OpenAICompatibleProfile<Ext, U> {
+    pub(crate) fn new(provider: Ext) -> Self {
+        Self {
+            emits_complete_single_chunk_tool_calls: Ext::EMITS_COMPLETE_SINGLE_CHUNK_TOOL_CALLS,
+            provider,
+            usage: std::marker::PhantomData,
+        }
+    }
 }
 
 impl<Ext, U> CompatibleStreamProfile for OpenAICompatibleProfile<Ext, U>

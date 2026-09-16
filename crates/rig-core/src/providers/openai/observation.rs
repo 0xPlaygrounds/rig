@@ -54,7 +54,7 @@ struct Envelope {
     message: Option<String>,
 }
 
-fn envelope(attempt: &mut AdapterAttempt, error: Envelope) {
+fn envelope(attempt: &mut dyn crate::wire::ObservationSink, error: Envelope) {
     let code = error.code.map(|code| match code {
         serde_json::Value::String(code) => attempt.text(&code),
         serde_json::Value::Number(code) => code.to_string(),
@@ -101,10 +101,18 @@ struct ChatPayload {
     error: Option<Envelope>,
 }
 
-fn chat_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+pub(crate) fn project_chat(bytes: &[u8], attempt: &mut dyn crate::wire::ObservationSink) {
     let Ok(payload) = serde_json::from_slice::<ChatPayload>(bytes) else {
         return;
     };
+    chat_payload_inner(payload, attempt);
+}
+
+fn chat_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+    project_chat(bytes, attempt);
+}
+
+fn chat_payload_inner(payload: ChatPayload, attempt: &mut dyn crate::wire::ObservationSink) {
     if let Some(usage) = payload.usage {
         attempt.emit(AdapterEvent::Usage {
             usage: AdapterUsage {
@@ -187,10 +195,21 @@ struct ResponsesPayload {
     message: Option<String>,
 }
 
-fn responses_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+pub(crate) fn project_responses(bytes: &[u8], attempt: &mut dyn crate::wire::ObservationSink) {
     let Ok(payload) = serde_json::from_slice::<ResponsesPayload>(bytes) else {
         return;
     };
+    responses_payload_inner(payload, attempt);
+}
+
+fn responses_payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+    project_responses(bytes, attempt);
+}
+
+fn responses_payload_inner(
+    payload: ResponsesPayload,
+    attempt: &mut dyn crate::wire::ObservationSink,
+) {
     if payload.kind.as_deref() == Some("error") {
         // The event carries its envelope either nested under `error` or as
         // its own top-level fields; the nested form names the error type.

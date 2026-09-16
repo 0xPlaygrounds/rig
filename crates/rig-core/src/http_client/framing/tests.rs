@@ -105,7 +105,11 @@ fn named_events_are_reported_by_name() {
 #[test]
 fn a_truncated_event_is_never_dispatched() {
     let mut framer = SseFramer::new();
-    assert!(framer.push(b"data: complete\n\ndata: cut").eq(vec![event("complete")]));
+    assert!(
+        framer
+            .push(b"data: complete\n\ndata: cut")
+            .eq(vec![event("complete")])
+    );
     assert_eq!(framer.pending(), "data: cut".len());
 }
 
@@ -126,12 +130,18 @@ fn lines(body: &str) -> Vec<String> {
 
 #[test]
 fn ndjson_yields_one_frame_per_line() {
-    assert_eq!(lines("{\"a\":1}\n{\"b\":2}\n"), vec!["{\"a\":1}", "{\"b\":2}"]);
+    assert_eq!(
+        lines("{\"a\":1}\n{\"b\":2}\n"),
+        vec!["{\"a\":1}", "{\"b\":2}"]
+    );
 }
 
 #[test]
 fn ndjson_trims_a_trailing_carriage_return_and_skips_blank_lines() {
-    assert_eq!(lines("{\"a\":1}\r\n\n{\"b\":2}\n"), vec!["{\"a\":1}", "{\"b\":2}"]);
+    assert_eq!(
+        lines("{\"a\":1}\r\n\n{\"b\":2}\n"),
+        vec!["{\"a\":1}", "{\"b\":2}"]
+    );
 }
 
 #[test]

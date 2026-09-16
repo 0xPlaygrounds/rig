@@ -32,7 +32,10 @@ impl Fold<StreamEvent> for CompletionFold {
 
     fn fold(&mut self, event: StreamEvent) {
         match &event {
-            StreamEvent::BlockStart { id, .. } => {
+            StreamEvent::BlockStart {
+                id,
+                kind: crate::streaming::BlockKind::Message,
+            } => {
                 if let Some(msg_id) = id.wire_str() {
                     self.message_id = Some(msg_id.to_owned());
                 }
@@ -48,7 +51,7 @@ impl Fold<StreamEvent> for CompletionFold {
     fn finish(mut self) -> Result<CompletionResponse, CompletionError> {
         let choice = self.accumulator.finish();
         let terminal = self.terminal.as_ref();
-        let resp = CompletionResponse::new(
+        let mut resp = CompletionResponse::new(
             choice,
             terminal.map(|r| r.usage).unwrap_or_default(),
             String::new(),
@@ -61,6 +64,10 @@ impl Fold<StreamEvent> for CompletionFold {
         .with_optional_provider_request_id(terminal.and_then(|r| r.provider_request_id.clone()))
         .with_optional_finish_reason(terminal.and_then(|r| r.finish_reason.clone()))
         .with_optional_model(terminal.and_then(|r| r.model.clone()));
+
+        if let Some(terminal) = terminal {
+            resp.raw = terminal.raw.clone();
+        }
 
         Ok(resp)
     }

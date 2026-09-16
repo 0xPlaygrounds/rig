@@ -1,8 +1,151 @@
+use super::client::Anthropic;
+use crate::operation::ModelListing;
+use crate::wire::{Body, Decoder, Encoded, Framing, Output, Wire, WireEvent, WireFrame};
+use serde::Serialize;
+use std::sync::{Arc, Mutex};
+
+/// The Models wire for Anthropic model listing (GET /v1/models).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Models {
+    pub provider: Anthropic,
+}
+
+impl Models {
+    pub fn new(provider: Anthropic) -> Self {
+        Self { provider }
+    }
+}
+
+impl Wire for Models {
+    type Op = ModelListing;
+    type Decoder = AnthropicModelsDecoder;
+
+    fn name(&self) -> &str {
+        self.provider.dialect.name
+    }
+
+    fn encode(&self, _request: ()) -> Result<Encoded, ModelListingError> {
+        let url = format!("{}/v1/models", self.provider.base_url.trim_end_matches('/'));
+        let mut req = http::Request::builder()
+            .method(http::Method::GET)
+            .uri(&url)
+            .body(Body::Bytes(Vec::new()))
+            .map_err(|e| ModelListingError::request_error(e.to_string()))?;
+        req.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
+        req.headers_mut()
+            .insert(http::header::ACCEPT, http::HeaderValue::from_static("*/*"));
+        self.provider.apply_headers(req.headers_mut());
+
+        let mut encoded = Encoded::new(req, Framing::Whole, "/v1/models");
+        if let Some(header) = self.provider.dialect.request_id_header {
+            encoded = encoded.with_request_id_header(header);
+        }
+        Ok(encoded)
+    }
+
+    fn decoder(&self) -> Self::Decoder {
+        AnthropicModelsDecoder {
+            provider: self.provider.clone(),
+            state: Arc::new(Mutex::new(ListingState {
+                page_count: 1,
+                ..Default::default()
+            })),
+        }
+    }
+
+    fn capabilities(&self) {}
+}
+
+#[derive(Default)]
+struct ListingState {
+    next_cursor: Option<String>,
+    prev_cursor: Option<String>,
+    page_count: usize,
+}
+
+pub struct AnthropicModelsDecoder {
+    provider: Anthropic,
+    state: Arc<Mutex<ListingState>>,
+}
+
+impl Decoder<ModelListing> for AnthropicModelsDecoder {
+    type Event = Vec<Model>;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        let body = frame.as_str();
+        crate::providers::internal::wire::classify_unary_frame::<ListModelsResponse>(&body).map(
+            |page| {
+                let next_cursor = page.last_id.filter(|cursor| !cursor.is_empty());
+                let next = page.has_more.then_some(next_cursor).flatten();
+                if let Ok(mut guard) = self.state.lock() {
+                    guard.next_cursor = next;
+                }
+                page.data.into_iter().map(Model::from).collect()
+            },
+        )
+    }
+
+    fn interpret(&mut self, event: Self::Event, out: &mut Output<ModelListing>) {
+        out.emit(event);
+    }
+
+    fn finish(&mut self, _out: &mut Output<ModelListing>) {}
+
+    fn flush_before_terminal_error(&mut self, _out: &mut Output<ModelListing>) {}
+
+    fn project(&self, _payload: &[u8], _sink: &mut dyn crate::wire::ObservationSink) {}
+
+    fn continuation(&self) -> Option<http::Request<Body>> {
+        let mut guard = self.state.lock().ok()?;
+        if guard.page_count >= crate::providers::internal::model_listing::MAX_LISTING_PAGES {
+            tracing::warn!(
+                provider = "Anthropic",
+                pages = crate::providers::internal::model_listing::MAX_LISTING_PAGES,
+                "model listing hit its page ceiling with a cursor still advancing; returning the pages fetched so far"
+            );
+            return None;
+        }
+        let cursor = guard.next_cursor.take()?;
+        if guard.prev_cursor.as_ref() == Some(&cursor) {
+            tracing::warn!(
+                provider = "Anthropic",
+                "model listing repeated its pagination cursor; returning the pages fetched so far"
+            );
+            return None;
+        }
+        guard.prev_cursor = Some(cursor.clone());
+        guard.page_count += 1;
+
+        let encoded_cursor: String =
+            url::form_urlencoded::byte_serialize(cursor.as_bytes()).collect();
+        let url = format!(
+            "{}/v1/models?after_id={}",
+            self.provider.base_url.trim_end_matches('/'),
+            encoded_cursor
+        );
+        let mut req = http::Request::builder()
+            .method(http::Method::GET)
+            .uri(&url)
+            .body(Body::Bytes(Vec::new()))
+            .ok()?;
+        req.headers_mut().insert(
+            http::header::CONTENT_TYPE,
+            http::HeaderValue::from_static("application/json"),
+        );
+        req.headers_mut()
+            .insert(http::header::ACCEPT, http::HeaderValue::from_static("*/*"));
+        self.provider.apply_headers(req.headers_mut());
+        Some(req)
+    }
+}
 use crate::{
     client::ModelLister,
     http_client::HttpClientExt,
     model::{Model, ModelList, ModelListingError},
-    providers::{anthropic::Client, internal},
+    providers::anthropic::Client,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::Deserialize;
@@ -36,21 +179,10 @@ pub struct AnthropicModelLister<H = crate::http_client::BoxedHttpClient> {
 
 impl<H> ModelLister<H> for AnthropicModelLister<H>
 where
-    H: HttpClientExt + WasmCompatSend + WasmCompatSync + 'static,
+    H: HttpClientExt + Clone + WasmCompatSend + WasmCompatSync + 'static,
 {
     async fn list_all(&self) -> Result<ModelList, ModelListingError> {
-        internal::model_listing::paginate_models(
-            &self.client,
-            "Anthropic",
-            |cursor| match cursor {
-                Some(cursor) => {
-                    internal::model_listing::with_query_pairs("/v1/models", &[("after_id", cursor)])
-                }
-                None => "/v1/models".to_string(),
-            },
-            parse_page,
-        )
-        .await
+        self.client.models().list_all().await
     }
 }
 
@@ -62,40 +194,6 @@ where
     pub fn new(client: Client<H>) -> Self {
         Self { client }
     }
-}
-
-/// Anthropic pages with a `has_more` flag beside the `last_id` cursor, so the
-/// "more pages, no cursor" shape is expressible on this wire and worth
-/// reporting. The shared loop only needs to know whether there is a cursor.
-fn parse_page(
-    body: &[u8],
-    path: &str,
-) -> Result<internal::model_listing::ListingPage, ModelListingError> {
-    let page: ListModelsResponse = serde_json::from_slice(body).map_err(|error| {
-        ModelListingError::parse_error_with_context("Anthropic", path, &error, body)
-    })?;
-
-    // An empty cursor counts as absent, matching how every other
-    // provider-reported identifier in rig is read.
-    let next_cursor = page.last_id.filter(|cursor| !cursor.is_empty());
-    if page.has_more && next_cursor.is_none() {
-        // Anthropic pairs the two, so this is unreachable against the real
-        // API; it is reachable because a caller can point this client at an
-        // Anthropic-compatible gateway base URL. There is no next page to ask
-        // for without a cursor either way.
-        tracing::warn!(
-            "Anthropic model listing reported more pages but no usable `last_id` cursor; \
-             returning the pages fetched so far"
-        );
-    }
-
-    Ok(internal::model_listing::ListingPage {
-        models: page.data.into_iter().map(Model::from).collect(),
-        // `has_more: false` ends the listing even if a cursor is present:
-        // the flag is authoritative for *stopping*, the cursor only for
-        // *continuing*.
-        next_cursor: page.has_more.then_some(next_cursor).flatten(),
-    })
 }
 
 /// Edge matrix for the pagination loop's termination.

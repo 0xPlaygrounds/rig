@@ -108,7 +108,6 @@ where
                 crate::providers::internal::adapter::warn_unmodeled(&event_type, &value);
             }
             WireEvent::Corrupt(error) => {
-                self.finished = true;
                 let mut drained: Vec<_> = self.out.drain().collect();
                 drained.push(Err(<Op::Error>::from(error)));
                 return drained;
@@ -148,10 +147,13 @@ where
     } = wire.encode(request)?;
 
     let mut next_request = Some(request);
+    let mut last_body_bytes: Option<Bytes> = None;
+    let mut last_request_id: Option<String> = None;
 
     while let Some(current_req) = next_request.take() {
-        let mut attempt: Option<AdapterAttempt> =
-            observe.as_ref().and_then(|ctx| ctx.begin(current_req.method(), route));
+        let mut attempt: Option<AdapterAttempt> = observe
+            .as_ref()
+            .and_then(|ctx| ctx.begin(current_req.method(), route));
 
         let (parts, body_bytes) = match current_req.into_parts() {
             (parts, Body::Bytes(bytes)) => {
@@ -169,16 +171,50 @@ where
                 let resp = match resp {
                     Ok(r) => r,
                     Err(e) => {
-                        let op_err = <W::Op as Operation>::Error::from(e);
                         if let Some(attempt) = &mut attempt {
-                            attempt.finish(AdapterEnding::Error {
-                                boundary: crate::observe::AdapterErrorBoundary::Request,
-                                kind: "transport_error".to_string(),
-                                status: None,
-                                retryable: false,
-                            });
+                            if let Some(status) = e.non_success_status() {
+                                attempt.response_with_headers(status, e.non_success_headers());
+                                if let Some(body) = e.non_success_body() {
+                                    decoder.project(body.as_bytes(), attempt);
+                                }
+                                attempt.finish(AdapterEnding::Error {
+                                    boundary:
+                                        crate::observe::AdapterErrorBoundary::ProviderResponse,
+                                    kind: "provider_response".to_string(),
+                                    status: Some(status.as_u16()),
+                                    retryable: status == http::StatusCode::TOO_MANY_REQUESTS
+                                        || status == http::StatusCode::SERVICE_UNAVAILABLE,
+                                });
+                            } else {
+                                attempt.finish(AdapterEnding::Error {
+                                    boundary: crate::observe::AdapterErrorBoundary::Request,
+                                    kind: "transport_error".to_string(),
+                                    status: None,
+                                    retryable: false,
+                                });
+                            }
                         }
-                        return Err(op_err);
+                        let req_id = request_id_header.and_then(|h| {
+                            e.non_success_headers().and_then(|headers| {
+                                headers
+                                    .get(h)
+                                    .and_then(|v| v.to_str().ok())
+                                    .map(str::to_string)
+                            })
+                        });
+                        let mut err = <W::Op as Operation>::Error::from(e);
+                        if let Some(comp_err) = (&mut err as &mut dyn std::any::Any)
+                            .downcast_mut::<crate::completion::CompletionError>(
+                        ) {
+                            let old = std::mem::replace(
+                                comp_err,
+                                crate::completion::CompletionError::RequestError(
+                                    String::new().into(),
+                                ),
+                            );
+                            *comp_err = old.with_provider_request_id(req_id);
+                        }
+                        return Err(err);
                     }
                 };
                 let (parts, body) = resp.into_parts();
@@ -200,16 +236,50 @@ where
                 let resp = match resp {
                     Ok(r) => r,
                     Err(e) => {
-                        let op_err = <W::Op as Operation>::Error::from(e);
                         if let Some(attempt) = &mut attempt {
-                            attempt.finish(AdapterEnding::Error {
-                                boundary: crate::observe::AdapterErrorBoundary::Request,
-                                kind: "transport_error".to_string(),
-                                status: None,
-                                retryable: false,
-                            });
+                            if let Some(status) = e.non_success_status() {
+                                attempt.response_with_headers(status, e.non_success_headers());
+                                if let Some(body) = e.non_success_body() {
+                                    decoder.project(body.as_bytes(), attempt);
+                                }
+                                attempt.finish(AdapterEnding::Error {
+                                    boundary:
+                                        crate::observe::AdapterErrorBoundary::ProviderResponse,
+                                    kind: "provider_response".to_string(),
+                                    status: Some(status.as_u16()),
+                                    retryable: status == http::StatusCode::TOO_MANY_REQUESTS
+                                        || status == http::StatusCode::SERVICE_UNAVAILABLE,
+                                });
+                            } else {
+                                attempt.finish(AdapterEnding::Error {
+                                    boundary: crate::observe::AdapterErrorBoundary::Request,
+                                    kind: "transport_error".to_string(),
+                                    status: None,
+                                    retryable: false,
+                                });
+                            }
                         }
-                        return Err(op_err);
+                        let req_id = request_id_header.and_then(|h| {
+                            e.non_success_headers().and_then(|headers| {
+                                headers
+                                    .get(h)
+                                    .and_then(|v| v.to_str().ok())
+                                    .map(str::to_string)
+                            })
+                        });
+                        let mut err = <W::Op as Operation>::Error::from(e);
+                        if let Some(comp_err) = (&mut err as &mut dyn std::any::Any)
+                            .downcast_mut::<crate::completion::CompletionError>(
+                        ) {
+                            let old = std::mem::replace(
+                                comp_err,
+                                crate::completion::CompletionError::RequestError(
+                                    String::new().into(),
+                                ),
+                            );
+                            *comp_err = old.with_provider_request_id(req_id);
+                        }
+                        return Err(err);
                     }
                 };
                 let (parts, body) = resp.into_parts();
@@ -222,7 +292,7 @@ where
             attempt.response_with_headers(parts.status, Some(&parts.headers));
         }
 
-        let _provider_request_id = request_id_header.and_then(|header| {
+        let provider_request_id = request_id_header.and_then(|header| {
             parts
                 .headers
                 .get(header)
@@ -230,7 +300,9 @@ where
                 .filter(|value| !value.is_empty())
                 .map(str::to_string)
         });
+        last_request_id = provider_request_id.clone();
 
+        last_body_bytes = Some(body_bytes.clone());
         if let Some(attempt) = &mut attempt {
             decoder.project(&body_bytes, attempt);
         }
@@ -244,9 +316,10 @@ where
             if let Some(attempt) = &mut attempt {
                 attempt.finish(AdapterEnding::Error {
                     boundary: crate::observe::AdapterErrorBoundary::ProviderResponse,
-                    kind: "provider_error".to_string(),
+                    kind: "provider_response".to_string(),
                     status: Some(parts.status.as_u16()),
-                    retryable: false,
+                    retryable: parts.status == http::StatusCode::TOO_MANY_REQUESTS
+                        || parts.status == http::StatusCode::SERVICE_UNAVAILABLE,
                 });
             }
             return Err(<W::Op as Operation>::Error::from(err));
@@ -278,13 +351,25 @@ where
         for item in out.drain() {
             match item {
                 Ok(event) => fold.fold(event),
-                Err(error) => {
+                Err(mut error) => {
+                    if let Some(crate::completion::CompletionError::ProviderResponse(stored)) =
+                        (&mut error as &mut dyn std::any::Any)
+                            .downcast_mut::<crate::completion::CompletionError>()
+                    {
+                        if stored.status.is_none() {
+                            stored.status = Some(parts.status);
+                        }
+                        if stored.headers.is_none() {
+                            stored.headers = Some(parts.headers.clone());
+                        }
+                    }
                     if let Some(attempt) = &mut attempt {
                         attempt.finish(AdapterEnding::Error {
                             boundary: crate::observe::AdapterErrorBoundary::ProviderResponse,
-                            kind: "error".to_string(),
-                            status: None,
-                            retryable: false,
+                            kind: "provider_response".to_string(),
+                            status: Some(parts.status.as_u16()),
+                            retryable: parts.status == http::StatusCode::TOO_MANY_REQUESTS
+                                || parts.status == http::StatusCode::SERVICE_UNAVAILABLE,
                         });
                     }
                     return Err(error);
@@ -300,7 +385,10 @@ where
     }
 
     let mut response = fold.finish()?;
-    apply_response_metadata(&mut response, wire.name(), None);
+    let raw_value: Option<serde_json::Value> = last_body_bytes
+        .as_ref()
+        .and_then(|b| serde_json::from_slice(b).ok());
+    apply_response_metadata(&mut response, wire.name(), raw_value, last_request_id);
     Ok(response)
 }
 
@@ -308,13 +396,34 @@ fn apply_response_metadata<R: 'static>(
     response: &mut R,
     provider_name: &str,
     raw_value: Option<serde_json::Value>,
+    provider_request_id: Option<String>,
 ) {
     if let Some(resp) =
         (response as &mut dyn std::any::Any).downcast_mut::<crate::completion::CompletionResponse>()
     {
         resp.provider = provider_name.to_owned();
-        if let Some(raw) = raw_value {
-            resp.raw = raw;
+        if resp.raw.is_null() {
+            if let Some(mut raw) = raw_value {
+                if let Some(id) = &provider_request_id
+                    && let Some(obj) = raw.as_object_mut()
+                {
+                    obj.insert(
+                        "provider_request_id".to_string(),
+                        serde_json::Value::String(id.clone()),
+                    );
+                }
+                resp.raw = raw;
+            }
+        } else if let Some(id) = &provider_request_id
+            && let Some(obj) = resp.raw.as_object_mut()
+        {
+            obj.insert(
+                "provider_request_id".to_string(),
+                serde_json::Value::String(id.clone()),
+            );
+        }
+        if resp.provider_request_id.is_none() {
+            resp.provider_request_id = provider_request_id;
         }
     }
 }
@@ -324,23 +433,24 @@ pub fn stream<W: Wire, H: HttpClientExt + Clone + 'static>(
     wire: &W,
     http: &H,
     request: <W::Op as Operation>::Request,
-    _observe: Option<AdapterContext>,
+    observe: Option<AdapterContext>,
 ) -> Result<
     impl Stream<Item = Result<<W::Op as Operation>::Event, <W::Op as Operation>::Error>>
-        + WasmCompatSend
-        + 'static,
+    + WasmCompatSend
+    + 'static,
     <W::Op as Operation>::Error,
 >
 where
-    <W::Op as Operation>::Error: From<crate::http_client::Error> + From<serde_json::Error> + WasmCompatSend,
+    <W::Op as Operation>::Error:
+        From<crate::http_client::Error> + From<serde_json::Error> + WasmCompatSend,
     <W::Op as Operation>::Event: WasmCompatSend,
     W::Decoder: WasmCompatSend,
 {
     let Encoded {
         mut request,
         framing,
-        request_id_header: _,
-        route: _,
+        request_id_header,
+        route,
     } = wire.encode(request)?;
 
     if framing == Framing::Sse {
@@ -348,6 +458,23 @@ where
             http::header::ACCEPT,
             http::HeaderValue::from_static("text/event-stream"),
         );
+        if let Body::Bytes(bytes) = request.body_mut()
+            && let Ok(mut val) = serde_json::from_slice::<serde_json::Value>(bytes)
+            && let Some(map) = val.as_object_mut()
+        {
+            map.insert("stream".to_string(), serde_json::Value::Bool(true));
+            if wire.name() == "anthropic" {
+                if map.contains_key("tools") {
+                    map.entry("tool_choice")
+                        .or_insert_with(|| serde_json::json!({ "type": "auto" }));
+                } else {
+                    map.remove("tool_choice");
+                }
+            }
+            if let Ok(new_bytes) = serde_json::to_vec(&val) {
+                *bytes = new_bytes;
+            }
+        }
     }
 
     let req_bytes = match request.into_parts() {
@@ -362,19 +489,72 @@ where
     let decoder = wire.decoder();
     let http = http.clone();
 
+    let mut attempt: Option<AdapterAttempt> = observe
+        .as_ref()
+        .and_then(|ctx| ctx.begin(&http::Method::POST, route));
+
     let stream = async_stream::stream! {
         let response: crate::http_client::StreamingResponse = match http.send_streaming(req_bytes).await {
-            Ok(r) => r,
+            Ok(r) => {
+                if let Some(attempt) = &mut attempt {
+                    attempt.response_with_headers(r.status(), Some(r.headers()));
+                }
+                r
+            }
             Err(e) => {
-                yield Err(<W::Op as Operation>::Error::from(e));
+                if let Some(attempt) = &mut attempt {
+                    if let Some(status) = e.non_success_status() {
+                        attempt.response_with_headers(status, e.non_success_headers());
+                        if let Some(body) = e.non_success_body() {
+                            decoder.project(body.as_bytes(), attempt);
+                        }
+                        attempt.finish(AdapterEnding::Error {
+                            boundary: crate::observe::AdapterErrorBoundary::ProviderResponse,
+                            kind: "provider_response".to_string(),
+                            status: Some(status.as_u16()),
+                            retryable: status == http::StatusCode::TOO_MANY_REQUESTS
+                                || status == http::StatusCode::SERVICE_UNAVAILABLE,
+                        });
+                    } else {
+                        attempt.finish(AdapterEnding::Error {
+                            boundary: crate::observe::AdapterErrorBoundary::Transport,
+                            kind: "transport".to_string(),
+                            status: None,
+                            retryable: false,
+                        });
+                    }
+                }
+                    let req_id = request_id_header.and_then(|h| {
+                        e.non_success_headers().and_then(|headers| {
+                            headers.get(h).and_then(|v| v.to_str().ok()).map(str::to_string)
+                        })
+                    });
+                    let mut err = <W::Op as Operation>::Error::from(e);
+                    if let Some(comp_err) = (&mut err as &mut dyn std::any::Any).downcast_mut::<crate::completion::CompletionError>() {
+                        let old = std::mem::replace(comp_err, crate::completion::CompletionError::RequestError(String::new().into()));
+                        *comp_err = old.with_provider_request_id(req_id);
+                    }
+                    yield Err(err);
                 return;
             }
         };
-
-        let (_parts, byte_stream) = response.into_parts();
+        let (parts, byte_stream) = response.into_parts();
+        let stream_request_id = request_id_header.and_then(|h| {
+            parts.headers.get(h).and_then(|v| v.to_str().ok()).map(str::to_string)
+        });
         let mut driver = WireDriver::new(decoder);
         let mut byte_stream = Box::pin(byte_stream);
 
+        let stamp_item = |mut item: Result<<W::Op as Operation>::Event, <W::Op as Operation>::Error>| {
+            if let Ok(event) = &mut item
+                && let Some(crate::streaming::StreamEvent::Final(terminal)) =
+                    (event as &mut dyn std::any::Any).downcast_mut::<crate::streaming::StreamEvent>()
+                && terminal.provider_request_id.is_none()
+            {
+                terminal.provider_request_id = stream_request_id.clone();
+            }
+            item
+        };
         match framing {
             Framing::Sse => {
                 let mut framer = SseFramer::new();
@@ -387,9 +567,12 @@ where
                         }
                     };
                     for sse in framer.push(&chunk) {
+                        if let Some(attempt) = &mut attempt {
+                            driver.decoder.project(sse.data.as_bytes(), attempt);
+                        }
                         let frame = WireFrame::Text(sse.data);
                         for item in driver.push(Ok(frame)) {
-                            yield item;
+                            yield stamp_item(item);
                         }
                         if driver.is_finished() {
                             return;
@@ -410,7 +593,7 @@ where
                     for line in framer.push(&chunk) {
                         let frame = WireFrame::Bytes(line.to_vec());
                         for item in driver.push(Ok(frame)) {
-                            yield item;
+                            yield stamp_item(item);
                         }
                         if driver.is_finished() {
                             return;
@@ -420,7 +603,7 @@ where
                 if let Some(line) = framer.finish() {
                     let frame = WireFrame::Bytes(line.to_vec());
                     for item in driver.push(Ok(frame)) {
-                        yield item;
+                        yield stamp_item(item);
                     }
                 }
             }
@@ -438,13 +621,16 @@ where
                 }
                 let frame = WireFrame::Bytes(body);
                 for item in driver.push(Ok(frame)) {
-                    yield item;
+                    yield stamp_item(item);
                 }
             }
         }
 
         for item in driver.finish() {
-            yield item;
+            yield stamp_item(item);
+        }
+        if let Some(attempt) = &mut attempt {
+            attempt.finish(AdapterEnding::Terminal);
         }
     };
 
@@ -470,6 +656,32 @@ impl<W, H> Bound<W, H> {
         }
     }
 }
+impl<W, H> std::ops::Deref for Bound<W, H> {
+    type Target = W;
+
+    fn deref(&self) -> &Self::Target {
+        &self.wire
+    }
+}
+
+impl<W, H> std::ops::DerefMut for Bound<W, H> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.wire
+    }
+}
+
+impl<W: HasCompletion, H: HttpClientExt + Clone + 'static> crate::client::CompletionClient
+    for Bound<W, H>
+where
+    W::Wire: 'static,
+    <W::Wire as Wire>::Decoder: WasmCompatSend,
+{
+    type CompletionModel = Bound<W::Wire, H>;
+
+    fn completion_model(&self, model: impl Into<String>) -> Self::CompletionModel {
+        Bound::new(self.wire.completion(&model.into()), self.http.clone())
+    }
+}
 
 // Consumer trait implementations for Bound
 
@@ -489,8 +701,29 @@ where
     async fn stream(
         &self,
         request: crate::completion::CompletionRequest,
-    ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError> {
+    ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError>
+    {
         let events = stream(&self.wire, &self.http, request, None)?;
+        Ok(crate::streaming::StreamingCompletionResponse::stream(
+            self.wire.name().to_string(),
+            Box::pin(events),
+        ))
+    }
+    async fn completion_with_context(
+        &self,
+        request: crate::completion::CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<crate::completion::CompletionResponse, crate::completion::CompletionError> {
+        call(&self.wire, &self.http, request, context).await
+    }
+
+    async fn stream_with_context(
+        &self,
+        request: crate::completion::CompletionRequest,
+        context: Option<crate::observe::AdapterContext>,
+    ) -> Result<crate::streaming::StreamingCompletionResponse, crate::completion::CompletionError>
+    {
+        let events = stream(&self.wire, &self.http, request, context)?;
         Ok(crate::streaming::StreamingCompletionResponse::stream(
             self.wire.name().to_string(),
             Box::pin(events),
@@ -557,7 +790,8 @@ where
     async fn transcription(
         &self,
         request: crate::transcription::TranscriptionRequest,
-    ) -> Result<crate::transcription::TranscriptionResponse, crate::transcription::TranscriptionError> {
+    ) -> Result<crate::transcription::TranscriptionResponse, crate::transcription::TranscriptionError>
+    {
         call(&self.wire, &self.http, request, None).await
     }
 }
@@ -572,7 +806,10 @@ where
     async fn image_generation(
         &self,
         request: crate::image_generation::ImageGenerationRequest,
-    ) -> Result<crate::image_generation::ImageGenerationResponse, crate::image_generation::ImageGenerationError> {
+    ) -> Result<
+        crate::image_generation::ImageGenerationResponse,
+        crate::image_generation::ImageGenerationError,
+    > {
         call(&self.wire, &self.http, request, None).await
     }
 }
@@ -587,7 +824,10 @@ where
     async fn audio_generation(
         &self,
         request: crate::audio_generation::AudioGenerationRequest,
-    ) -> Result<crate::audio_generation::AudioGenerationResponse, crate::audio_generation::AudioGenerationError> {
+    ) -> Result<
+        crate::audio_generation::AudioGenerationResponse,
+        crate::audio_generation::AudioGenerationError,
+    > {
         call(&self.wire, &self.http, request, None).await
     }
 }

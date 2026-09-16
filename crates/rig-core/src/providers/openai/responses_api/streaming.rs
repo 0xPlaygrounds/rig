@@ -1104,6 +1104,7 @@ where
 /// One classified Responses frame, carrying its raw payload alongside the
 /// decoded chunk: `response.failed` preserves the raw event body as the
 /// provider error body, exactly as the pre-migration loop did.
+#[derive(Debug)]
 pub(crate) struct ResponsesFrameEvent {
     raw: String,
     chunk: StreamingCompletionChunk,
@@ -1129,7 +1130,7 @@ pub(crate) struct ResponsesAdapter {
 }
 
 impl ResponsesAdapter {
-    fn live(provider: &str, options: ResponsesStreamOptions) -> Self {
+    pub(crate) fn live(provider: &str, options: ResponsesStreamOptions) -> Self {
         Self {
             accumulator: RawChoiceAccumulator::new(provider, None),
             options,
@@ -1253,6 +1254,39 @@ impl WireAdapter for ResponsesAdapter {
 
     fn is_finished(&self) -> bool {
         self.finished
+    }
+}
+impl crate::wire::Decoder<crate::operation::Completion> for ResponsesAdapter {
+    type Event = ResponsesFrameEvent;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        WireAdapter::classify(self, frame)
+    }
+
+    fn interpret(
+        &mut self,
+        event: Self::Event,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::interpret(self, event, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn finish(&mut self, out: &mut crate::wire::Output<crate::operation::Completion>) {
+        WireAdapter::finish(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn flush_before_terminal_error(
+        &mut self,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::flush_before_terminal_error(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
+        crate::providers::openai::observation::project_responses(payload, sink);
     }
 }
 

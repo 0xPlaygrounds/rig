@@ -142,7 +142,7 @@ const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
 /// metadata); frame-triage policy lives in
 /// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
 /// not here.
-struct GeminiRestAdapter {
+pub(crate) struct GeminiRestAdapter {
     /// Owns the constant-key thought lifecycle — the ends this wire never
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
@@ -360,6 +360,39 @@ impl WireAdapter for GeminiRestAdapter {
         // `failed`, so the driver must stop reading rather than drain the
         // rest of the transport (and pass through post-error unknown frames).
         self.failed
+    }
+}
+impl crate::wire::Decoder<crate::operation::Completion> for GeminiRestAdapter {
+    type Event = StreamGenerateContentResponse;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        WireAdapter::classify(self, frame)
+    }
+
+    fn interpret(
+        &mut self,
+        event: Self::Event,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::interpret(self, event, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn finish(&mut self, out: &mut crate::wire::Output<crate::operation::Completion>) {
+        WireAdapter::finish(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn flush_before_terminal_error(
+        &mut self,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::flush_before_terminal_error(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
+        crate::providers::gemini::observation::project(payload, sink);
     }
 }
 

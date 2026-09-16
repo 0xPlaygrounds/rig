@@ -368,10 +368,12 @@ fn rig_tools_are_non_strict_by_default() {
 #[test]
 fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     let mut additional_params = serde_json::Value::Null;
-    let tools = build_tool_definitions::<crate::providers::minimax::MiniMaxAnthropic>(
+    let dialect = super::super::client::compatible("minimax", "", "", None);
+    let tools = build_tool_definitions(
         vec![generic_tool("lookup")],
         &mut additional_params,
         true,
+        &dialect,
     )
     .unwrap();
 
@@ -436,9 +438,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             }]
         })),
     );
-    let request = AnthropicCompletionRequest::try_from_params::<
-        crate::providers::anthropic::client::Anthropic,
-    >(
+    let request = AnthropicCompletionRequest::try_from_params(
         AnthropicRequestParams {
             model: CLAUDE_SONNET_4_6,
             request,
@@ -448,6 +448,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             static_prefix_cache_ttl: None,
         },
         true,
+        &super::super::client::ANTHROPIC,
     )
     .unwrap();
 
@@ -3686,7 +3687,7 @@ mod raw_capture {
         assert_eq!(raw["stop_sequence"], "alpha");
 
         let renormalized = typed
-            .normalize(<crate::providers::anthropic::client::Anthropic as AnthropicCompatibleProvider>::PROVIDER_NAME)
+            .normalize(<crate::providers::anthropic::client::AnthropicProvider as AnthropicCompatibleProvider>::PROVIDER_NAME)
             .expect("re-normalize the capture");
         assert_eq!(response.identity(), renormalized.identity());
         assert_eq!(response.finish_reason(), renormalized.finish_reason());
@@ -3708,13 +3709,15 @@ mod raw_capture {
     async fn raw_completion_then_normalize_reproduces_completion() {
         let model = model();
 
-        let raw = model
-            .raw_completion(model.completion_request("hello").build())
+        let resp = model
+            .completion(model.completion_request("hello").build())
             .await
             .expect("typed route");
+        let raw: super::CompletionResponse =
+            serde_json::from_value(resp.raw.clone()).expect("deserialize raw");
         assert_eq!(raw.provider_request_id.as_deref(), Some(REQUEST_ID));
         let reassembled = raw
-            .normalize(<crate::providers::anthropic::client::Anthropic as AnthropicCompatibleProvider>::PROVIDER_NAME)
+            .normalize(<crate::providers::anthropic::client::AnthropicProvider as AnthropicCompatibleProvider>::PROVIDER_NAME)
             .expect("normalize");
 
         let normalized = model

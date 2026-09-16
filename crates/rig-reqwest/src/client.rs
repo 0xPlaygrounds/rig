@@ -107,6 +107,30 @@ where
         P::from_val(input, bundled()?)
     }
 }
+impl DefaultTransportClient
+    for rig_core::driver::Bound<rig_core::providers::anthropic::Anthropic, BoxedHttpClient>
+{
+    type ApiKey = String;
+    type Input = rig_core::providers::anthropic::Anthropic;
+
+    fn new(api_key: impl Into<Self::ApiKey>) -> Result<Self, ProviderClientError> {
+        Ok(rig_core::driver::Bound::new(
+            rig_core::providers::anthropic::Anthropic::new(api_key.into()),
+            bundled()?,
+        ))
+    }
+
+    fn from_env() -> Result<Self, ProviderClientError> {
+        Ok(rig_core::driver::Bound::new(
+            rig_core::providers::anthropic::Anthropic::from_env()?,
+            bundled()?,
+        ))
+    }
+
+    fn from_val(input: Self::Input) -> Result<Self, ProviderClientError> {
+        Ok(rig_core::driver::Bound::new(input, bundled()?))
+    }
+}
 
 /// `build()` for a [`ClientBuilder`] whose transport slot is still
 /// [`Missing`]: substitutes the erased default backed by the bundled
@@ -128,6 +152,14 @@ where
     P: Provider,
 {
     type Client = Client<P, BoxedHttpClient>;
+
+    fn build(self) -> Result<Self::Client, ProviderClientError> {
+        self.http_client(bundled()?).build()
+    }
+}
+impl DefaultTransportBuilder for rig_core::providers::anthropic::ClientBuilder<Missing> {
+    type Client =
+        rig_core::driver::Bound<rig_core::providers::anthropic::Anthropic, BoxedHttpClient>;
 
     fn build(self) -> Result<Self::Client, ProviderClientError> {
         self.http_client(bundled()?).build()

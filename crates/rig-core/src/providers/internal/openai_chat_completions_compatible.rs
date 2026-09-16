@@ -518,6 +518,7 @@ pub(crate) fn should_evict_distinct_named_tool_call(
 
 /// One classified event of the chat-completions stream: a decoded chunk, or
 /// the wire's `[DONE]` terminal sentinel.
+#[derive(Debug)]
 pub(crate) enum CompatEvent<U, D> {
     Chunk(CompatibleChunk<U, D>),
     Done,
@@ -528,7 +529,7 @@ pub(crate) enum CompatEvent<U, D> {
 /// Holds the per-stream bridge state (index→identity tool-call slots, terminal
 /// metadata); frame-triage policy lives in [`run_wire_stream`], not here.
 /// Fragment assembly itself lives in the shared accumulator.
-struct CompatAdapter<P: CompatibleStreamProfile> {
+pub(crate) struct CompatAdapter<P: CompatibleStreamProfile> {
     profile: P,
     /// Descriptor name the stream is attributed to.
     provider: String,
@@ -558,7 +559,7 @@ struct CompatAdapter<P: CompatibleStreamProfile> {
 }
 
 impl<P: CompatibleStreamProfile> CompatAdapter<P> {
-    fn new(profile: P, provider: String) -> Self {
+    pub(crate) fn new(profile: P, provider: String) -> Self {
         Self {
             profile,
             provider,
@@ -815,6 +816,42 @@ where
         for slot in self.open_tool_calls.drain_ordered() {
             out.push(Ok(slot.end_event(UnparseableToolInput::Drop)));
         }
+    }
+}
+impl<P> crate::wire::Decoder<crate::operation::Completion> for CompatAdapter<P>
+where
+    P: CompatibleStreamProfile + 'static,
+{
+    type Event = CompatEvent<P::Usage, P::Detail>;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        WireAdapter::classify(self, frame)
+    }
+
+    fn interpret(
+        &mut self,
+        event: Self::Event,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::interpret(self, event, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn finish(&mut self, out: &mut crate::wire::Output<crate::operation::Completion>) {
+        WireAdapter::finish(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn flush_before_terminal_error(
+        &mut self,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::flush_before_terminal_error(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
+        crate::providers::openai::observation::project_chat(payload, sink);
     }
 }
 

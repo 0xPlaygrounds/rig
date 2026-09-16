@@ -83,9 +83,7 @@ fn built_streaming_body(
     request: CompletionRequest,
     strict_tools: bool,
 ) -> Result<Value, CompletionError> {
-    let typed = AnthropicCompletionRequest::try_from_params::<
-        crate::providers::anthropic::client::Anthropic,
-    >(
+    let typed = AnthropicCompletionRequest::try_from_params(
         AnthropicRequestParams {
             model,
             request,
@@ -95,6 +93,7 @@ fn built_streaming_body(
             static_prefix_cache_ttl: None,
         },
         strict_tools,
+        &super::super::client::ANTHROPIC,
     )?;
 
     streaming_body(&typed)
@@ -110,7 +109,7 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
         }]
     });
 
-    let mut tools = build_tool_definitions::<crate::providers::anthropic::client::Anthropic>(
+    let mut tools = build_tool_definitions(
         vec![crate::completion::ToolDefinition {
             name: "rig_tool".to_string(),
             description: "Rig tool".to_string(),
@@ -118,6 +117,7 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
         }],
         &mut additional_params,
         false,
+        &super::super::client::ANTHROPIC,
     )
     .unwrap();
     let mut system: Vec<SystemContent> = Vec::new();
@@ -349,7 +349,7 @@ fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
     });
     let top_level_cache_control =
         resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
-    let mut tools = build_tool_definitions::<crate::providers::anthropic::client::Anthropic>(
+    let mut tools = build_tool_definitions(
         vec![crate::completion::ToolDefinition {
             name: "rig_tool".to_string(),
             description: "Rig tool".to_string(),
@@ -357,6 +357,7 @@ fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
         }],
         &mut additional_params,
         false,
+        &super::super::client::ANTHROPIC,
     )
     .unwrap();
     let mut system = vec![SystemContent::Text {

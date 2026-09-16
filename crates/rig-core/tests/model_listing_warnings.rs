@@ -20,7 +20,6 @@
 #[path = "common/tracing_capture.rs"]
 mod tracing_capture;
 
-use rig_core::client::ModelListingClient;
 use rig_core::providers::anthropic;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 

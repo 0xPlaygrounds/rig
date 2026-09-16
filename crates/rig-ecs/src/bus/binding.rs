@@ -441,7 +441,10 @@ fn build_adapter(
     Ok(match binding.kind {
         ProviderKind::Anthropic => {
             let params = extra_object(binding, allowed_extra_params(binding.kind))?;
-            let mut builder = builder::<anthropic::client::Anthropic>(binding, secret, transport);
+            let mut provider = anthropic::Anthropic::new(secret.expose());
+            if let Some(base_url) = &binding.base_url {
+                provider = provider.with_base_url(base_url);
+            }
             if let Some(params) = params {
                 if let Some(version) = params.get("anthropic_version") {
                     let version =
@@ -452,7 +455,7 @@ fn build_adapter(
                                 kind: binding.kind,
                                 detail: "`anthropic_version` is not a string".to_owned(),
                             })?;
-                    builder = builder.anthropic_version(version);
+                    provider = provider.with_version(version);
                 }
                 if let Some(betas) = params.get("anthropic_betas") {
                     let betas: Vec<&str> = betas
@@ -463,10 +466,10 @@ fn build_adapter(
                             kind: binding.kind,
                             detail: "`anthropic_betas` is not an array of strings".to_owned(),
                         })?;
-                    builder = builder.anthropic_betas(&betas);
+                    provider = provider.with_betas(&betas);
                 }
             }
-            let client = builder.build().map_err(|e| client_error(binding, e))?;
+            let client = provider.bind(transport);
             ErasedHandler::new(CompletionAdapter::new(
                 label,
                 client.completion_model(model),

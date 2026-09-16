@@ -1,6 +1,6 @@
+use crate::client::CompletionClient;
 use std::sync::Arc;
 
-use crate::client::CompletionClient;
 use crate::completion::CompletionModel as _;
 use crate::observe::{
     Action, AdapterContext, AdapterEnding, AdapterErrorBoundary, AdapterErrorEnvelope,

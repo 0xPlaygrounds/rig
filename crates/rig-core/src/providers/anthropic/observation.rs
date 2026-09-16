@@ -7,6 +7,7 @@ use crate::observe::{
     AdapterAttempt, AdapterContext, AdapterErrorEnvelope, AdapterEvent, AdapterUsage,
     AdapterVerdict, PayloadObserver,
 };
+use crate::wire::ObservationSink;
 use serde::Deserialize;
 
 /// Attach `context` to a Messages request, with the Messages projector.
@@ -60,6 +61,10 @@ struct Payload {
 }
 
 fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+    project(bytes, attempt);
+}
+
+pub(crate) fn project(bytes: &[u8], attempt: &mut dyn ObservationSink) {
     let Ok(payload) = serde_json::from_slice::<Payload>(bytes) else {
         return;
     };

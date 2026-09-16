@@ -6,7 +6,7 @@
 
 use std::collections::VecDeque;
 
-use crate::http_client::framing::Framing;
+pub use crate::http_client::framing::Framing;
 use crate::operation::Operation;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
@@ -111,12 +111,14 @@ pub trait Decoder<Op: Operation>: 'static {
 #[derive(Debug)]
 pub struct Output<Op: Operation> {
     pub(crate) items: VecDeque<Result<Op::Event, Op::Error>>,
+    pub(crate) adapter: Option<Box<crate::providers::internal::adapter::AdapterOutput>>,
 }
 
 impl<Op: Operation> Default for Output<Op> {
     fn default() -> Self {
         Self {
             items: VecDeque::new(),
+            adapter: None,
         }
     }
 }
@@ -148,6 +150,106 @@ impl<Op: Operation> Output<Op> {
 
     pub fn len(&self) -> usize {
         self.items.len()
+    }
+}
+
+impl Output<crate::operation::Completion> {
+    pub(crate) fn ensure_adapter(
+        &mut self,
+    ) -> &mut crate::providers::internal::adapter::AdapterOutput {
+        self.adapter.get_or_insert_with(|| {
+            Box::new(crate::providers::internal::adapter::AdapterOutput::new())
+        })
+    }
+
+    pub(crate) fn flush_adapter(&mut self) {
+        if let Some(adapter) = &mut self.adapter {
+            for item in adapter.drain() {
+                self.items.push_back(item);
+            }
+        }
+    }
+
+    pub fn text(&mut self, text: impl Into<String>) {
+        self.ensure_adapter().text(text);
+        self.flush_adapter();
+    }
+
+    pub fn text_start(
+        &mut self,
+        id: crate::streaming::BlockId,
+        params: Option<crate::message::AdditionalParams>,
+    ) {
+        self.ensure_adapter().text_start(id, params);
+        self.flush_adapter();
+    }
+
+    pub fn text_meta(&mut self, params: crate::message::AdditionalParams) {
+        self.ensure_adapter().text_meta(params);
+        self.flush_adapter();
+    }
+
+    pub fn tool_name(&mut self, id: &crate::streaming::BlockId, name: impl Into<String>) {
+        self.ensure_adapter().tool_name(id, name);
+        self.flush_adapter();
+    }
+
+    pub fn tool_arguments(&mut self, id: &crate::streaming::BlockId, arguments: impl Into<String>) {
+        self.ensure_adapter().tool_arguments(id, arguments);
+        self.flush_adapter();
+    }
+
+    pub fn tool_end(&mut self, id: crate::streaming::BlockId, end: crate::streaming::ToolCallEnd) {
+        self.ensure_adapter().tool_end(id, end);
+        self.flush_adapter();
+    }
+
+    pub fn tool_call(&mut self, id: crate::streaming::BlockId, end: crate::streaming::ToolCallEnd) {
+        self.ensure_adapter().tool_call(id, end);
+        self.flush_adapter();
+    }
+
+    pub fn reasoning_start(&mut self, id: &crate::streaming::BlockId, provider_id: Option<String>) {
+        self.ensure_adapter().reasoning_start(id, provider_id);
+        self.flush_adapter();
+    }
+
+    pub fn reasoning_delta(
+        &mut self,
+        id: &crate::streaming::BlockId,
+        provider_id: Option<String>,
+        text: impl Into<String>,
+    ) {
+        self.ensure_adapter().reasoning_delta(id, provider_id, text);
+        self.flush_adapter();
+    }
+
+    pub fn reasoning_end(
+        &mut self,
+        id: crate::streaming::BlockId,
+        reasoning: Option<crate::message::Reasoning>,
+        signature: Option<String>,
+        wire_sent: bool,
+    ) {
+        self.ensure_adapter()
+            .reasoning_end(id, reasoning, signature, wire_sent);
+        self.flush_adapter();
+    }
+
+    pub fn reasoning_block(
+        &mut self,
+        id: crate::streaming::BlockId,
+        provider_id: Option<String>,
+        content: crate::message::ReasoningContent,
+    ) {
+        self.ensure_adapter()
+            .reasoning_block(id, provider_id, content);
+        self.flush_adapter();
+    }
+
+    pub fn unknown(&mut self, payload: crate::streaming::UnknownPayload) {
+        self.ensure_adapter().unknown(payload);
+        self.flush_adapter();
     }
 }
 

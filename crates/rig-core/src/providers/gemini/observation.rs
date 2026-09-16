@@ -76,6 +76,10 @@ pub(super) fn attach<B>(
 }
 
 fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+    project(bytes, attempt);
+}
+
+pub(crate) fn project(bytes: &[u8], attempt: &mut dyn crate::wire::ObservationSink) {
     // The observation projection must not inherit native response defaults:
     // omitted prompt/total counts in UsageMetadata otherwise become zero.
     // Parsing failure has no effect on the provider's authoritative decoder.

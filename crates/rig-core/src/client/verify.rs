@@ -34,7 +34,6 @@ impl From<serde_json::Error> for VerifyError {
     }
 }
 
-
 /// A provider client that can verify the configuration.
 /// Clone is required for conversions between client types.
 pub trait VerifyClient {

@@ -15,7 +15,7 @@ pub mod client;
 pub mod completion;
 pub mod embedding;
 pub mod model_listing;
-mod observation;
+pub(crate) mod observation;
 pub mod responses_api;
 
 #[cfg(feature = "audio")]

@@ -65,6 +65,7 @@ fn streaming_body(request: &AnthropicCompletionRequest) -> Result<Value, Complet
 /// *nested* delta type inside `content_block_delta`, which decodes to
 /// [`ContentDelta::Unknown`] (a warned no-op) via its hand-written dispatch.
 const KNOWN_EVENT_TYPES: &[&str] = &[
+    "message",
     "message_start",
     "content_block_start",
     "content_block_delta",
@@ -78,6 +79,7 @@ const KNOWN_EVENT_TYPES: &[&str] = &[
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum StreamingEvent {
+    Message(super::completion::CompletionResponse),
     MessageStart {
         /// Anthropic-compatible relays (Bedrock's Messages passthrough) can
         /// emit `message_start` with a null `message`; `None` is a no-op
@@ -109,7 +111,12 @@ pub enum StreamingEvent {
     /// envelope. The payload stays a raw `Value` so every provider field
     /// (type, message, extras) survives into the error body.
     Error {
+        #[serde(default)]
         error: serde_json::Value,
+        #[serde(default)]
+        message: Option<String>,
+        #[serde(skip)]
+        raw: Option<String>,
     },
 }
 
@@ -320,7 +327,7 @@ impl ThinkingState {
 /// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
 /// not here. Every interpretation — content blocks and the message-level
 /// frames alike — goes through [`WireAdapter::interpret`]: one path.
-struct AnthropicAdapter {
+pub struct AnthropicAdapter {
     /// Stable descriptor name stamped on the terminal record. An *input*
     /// rather than a constant: the Anthropic Messages stream format is
     /// shared by every Anthropic-compatible provider, so baking in
@@ -338,6 +345,7 @@ struct AnthropicAdapter {
     cache_creation: Option<super::completion::CacheCreation>,
     message_id: Option<String>,
     response_model: Option<String>,
+    pub(crate) request_id: Option<String>,
     /// A provider `error` event ended the turn; later frames are dead — the
     /// provider aborted, and interpreting more output (or a terminal) would
     /// dress the failure up as a completed turn.
@@ -346,7 +354,7 @@ struct AnthropicAdapter {
 
 impl AnthropicAdapter {
     /// A fresh adapter whose terminal record names `provider`.
-    fn new(provider: &'static str) -> Self {
+    pub(crate) fn new(provider: &'static str) -> Self {
         Self {
             provider,
             current_tool_call: None,
@@ -357,8 +365,96 @@ impl AnthropicAdapter {
             cache_creation: None,
             message_id: None,
             response_model: None,
+            request_id: None,
             failed: false,
         }
+    }
+
+    pub(crate) fn interpret_unary(
+        &mut self,
+        response: super::completion::CompletionResponse,
+        out: &mut AdapterOutput,
+    ) {
+        let captured = serde_json::to_value(&response).unwrap_or(serde_json::Value::Null);
+        let message_id = BlockId::wire(&response.id);
+        out.push(Ok(streaming::StreamEvent::BlockStart {
+            id: message_id,
+            kind: crate::streaming::BlockKind::Message,
+        }));
+
+        for (index, content) in response.content.into_iter().enumerate() {
+            let block_id = MintKind::Block.for_wire_index(index as u64);
+            match content {
+                Content::Text {
+                    text, citations, ..
+                } => {
+                    let additional_params = crate::message::AdditionalParams::from_entries(
+                        (!citations.is_empty()).then(|| ("citations", json!(citations))),
+                    );
+                    out.text_start(block_id.clone(), additional_params);
+                    out.text(text);
+                    out.push(Ok(streaming::StreamEvent::BlockEnd {
+                        id: block_id,
+                        end: crate::streaming::BlockClose::Text,
+                        block: None,
+                    }));
+                }
+                Content::ToolUse {
+                    id, name, input, ..
+                } => {
+                    let key = streaming::non_empty_id(&id)
+                        .map_or_else(|| self.tool_ids.mint(), BlockId::wire);
+                    out.tool_name(&key, name);
+                    out.tool_arguments(&key, input.to_string());
+                    out.tool_end(key, ToolCallEnd::new(UnparseableToolInput::Error));
+                }
+                Content::Thinking {
+                    thinking,
+                    signature,
+                } => {
+                    out.reasoning_start(&block_id, None);
+                    if !thinking.is_empty() {
+                        out.reasoning_delta(&block_id, None, thinking);
+                    }
+                    out.reasoning_end(block_id, None, signature, true);
+                }
+                Content::RedactedThinking { data } => {
+                    out.reasoning_block(block_id, None, ReasoningContent::Redacted { data });
+                }
+                Content::ServerToolUse { id, name, input } => {
+                    out.text_start(
+                        block_id,
+                        crate::message::AdditionalParams::from_entries([(
+                            super::completion::ANTHROPIC_RAW_CONTENT_KEY,
+                            json!(Content::ServerToolUse { id, name, input }),
+                        )]),
+                    );
+                }
+                raw @ (Content::WebSearchToolResult { .. }
+                | Content::CodeExecutionToolResult { .. }) => {
+                    out.text_start(
+                        block_id,
+                        crate::message::AdditionalParams::from_entries([(
+                            super::completion::ANTHROPIC_RAW_CONTENT_KEY,
+                            json!(raw),
+                        )]),
+                    );
+                }
+                Content::Image { .. } | Content::ToolResult { .. } | Content::Document { .. } => {}
+            }
+        }
+
+        let finish_reason = response.stop_reason.as_deref().map(map_finish_reason);
+        let usage = crate::completion::Usage::from(&response.usage);
+        let mut terminal = StreamFinal::new(self.provider, usage)
+            .with_optional_finish_reason(finish_reason)
+            .with_optional_model(Some(response.model))
+            .with_optional_message_id(Some(response.id))
+            .with_raw(captured);
+        if let Some(req_id) = self.request_id.clone() {
+            terminal = terminal.with_provider_request_id(req_id);
+        }
+        out.push(Ok(streaming::StreamEvent::Final(terminal)));
     }
 
     /// The content-block frames: `content_block_start` / `_delta` / `_stop`.
@@ -574,7 +670,8 @@ impl AnthropicAdapter {
             // Interpreted by `interpret` itself (`message_start` /
             // `message_delta` / the `error` envelope) or Known no-ops
             // (`message_stop`, `ping`).
-            StreamingEvent::MessageStart { .. }
+            StreamingEvent::Message(_)
+            | StreamingEvent::MessageStart { .. }
             | StreamingEvent::MessageDelta { .. }
             | StreamingEvent::MessageStop
             | StreamingEvent::Ping
@@ -586,19 +683,25 @@ impl AnthropicAdapter {
 impl WireAdapter for AnthropicAdapter {
     type Frame = WireFrame;
     type Event = StreamingEvent;
-
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamingEvent> {
-        wire::classify_tagged_frame(&frame.as_str(), "type", |event_type| {
+        let frame_str = frame.as_str().to_string();
+        let mut event = wire::classify_tagged_frame(&frame_str, "type", |event_type| {
             KNOWN_EVENT_TYPES.contains(&event_type)
-        })
+        });
+        if let WireEvent::Known(StreamingEvent::Error { ref mut raw, .. }) = event {
+            *raw = Some(frame_str);
+        }
+        event
     }
 
     fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
         if self.failed {
             return;
         }
-
         match event {
+            StreamingEvent::Message(response) => {
+                self.interpret_unary(response, out);
+            }
             StreamingEvent::MessageStart { message } => {
                 // Bedrock-compat quirk: a `message_start` without a message
                 // body is a no-op, not an error.
@@ -614,8 +717,6 @@ impl WireAdapter for AnthropicAdapter {
                 span.record("gen_ai.response.model", &message.model);
             }
             StreamingEvent::MessageDelta { delta, usage } => {
-                // Only a `message_delta` carrying a stop reason is the
-                // provider's genuine terminal; without one it is a no-op.
                 let Some(reason) = delta.stop_reason else {
                     return;
                 };
@@ -697,14 +798,22 @@ impl WireAdapter for AnthropicAdapter {
                     Err(err) => out.error(err),
                 }
             }
-            StreamingEvent::Error { error } => {
-                // The provider aborted the turn in-band. Preserve the full
-                // error envelope (code + message + extras) as the error body,
-                // matching the interactions wire's handling; the stream
-                // carries it as an in-band `Err` item, and EOF without
-                // `message_delta` then withholds the terminal record.
+            StreamingEvent::Error {
+                error,
+                message,
+                raw,
+            } => {
                 self.failed = true;
-                let body = serde_json::json!({ "type": "error", "error": error }).to_string();
+                let body = if let Some(raw) = raw {
+                    raw
+                } else if error.is_null() && message.is_some() {
+                    format!(
+                        r#"{{"type":"error","message":"{}"}}"#,
+                        message.as_deref().unwrap_or_default()
+                    )
+                } else {
+                    serde_json::json!({ "type": "error", "error": error }).to_string()
+                };
                 out.error(crate::provider_response::completion_error_from_body(body));
             }
             event @ (StreamingEvent::ContentBlockStart { .. }
@@ -728,12 +837,41 @@ impl WireAdapter for AnthropicAdapter {
         self.failed
     }
 }
+impl crate::wire::Decoder<crate::operation::Completion> for AnthropicAdapter {
+    type Event = StreamingEvent;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        WireAdapter::classify(self, frame)
+    }
+
+    fn interpret(
+        &mut self,
+        event: Self::Event,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::interpret(self, event, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn finish(&mut self, out: &mut crate::wire::Output<crate::operation::Completion>) {
+        WireAdapter::finish(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn flush_before_terminal_error(
+        &mut self,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::flush_before_terminal_error(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
+        super::observation::project(payload, sink);
+    }
+}
 
 /// Anthropic's own terminal stream record.
-///
-/// The adapter maps it once into the normalized [`StreamFinal`] (see
-/// `terminal_record`) and serializes it onto [`StreamFinal::raw`]; callers
-/// who want the provider-native shape deserialize it from there.
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub struct StreamingCompletionResponse {
     /// Token usage carried by the terminal `message_delta` event.

@@ -6,7 +6,7 @@
 //! URIs and customises requests, and how it is built from the environment.
 //! Each capability the provider offers is one more trait implementation —
 //! [`HasCompletion`], [`HasEmbeddings`], [`HasRerank`], [`HasTranscription`],
-//! [`HasModelListing`], [`HasImageGeneration`], [`HasAudioGeneration`] — naming
+//! [`HasModelListing`], \[`HasImageGeneration`\], \[`HasAudioGeneration`\] — naming
 //! the concrete model type and constructing it from a client. The blanket
 //! impls in this module turn those into the user-facing
 //! [`CompletionClient`], [`EmbeddingsClient`], … traits on `Client<P, H>`, so

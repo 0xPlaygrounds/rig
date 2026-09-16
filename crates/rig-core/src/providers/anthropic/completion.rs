@@ -66,19 +66,6 @@ pub trait AnthropicCompatibleProvider: Provider {
     fn enable_strict_tool_use(_tool: &mut ToolDefinition) {}
 }
 
-impl AnthropicCompatibleProvider for super::client::Anthropic {
-    const PROVIDER_NAME: &'static str = "anthropic";
-
-    fn default_max_tokens(model: &str) -> Option<u64> {
-        default_max_tokens_for_model(model)
-    }
-
-    fn enable_strict_tool_use(tool: &mut ToolDefinition) {
-        sanitize_strict_tool_schema(&mut tool.input_schema);
-        tool.strict = true;
-    }
-}
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct CompletionResponse {
     pub content: Vec<Content>,
@@ -151,7 +138,9 @@ impl ProviderResponseExt for CompletionResponse {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Usage {
     pub input_tokens: u64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_read_input_tokens: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cache_creation_input_tokens: Option<u64>,
     /// Per-TTL breakdown of `cache_creation_input_tokens`. Absent when the
     /// provider does not report it; the aggregate above is always authoritative.
@@ -277,7 +266,7 @@ pub struct ToolDefinition {
 /// The Anthropic API supports two TTL values:
 /// - `"5m"` — 5 minutes (default when `ttl` is omitted)
 /// - `"1h"` — 1 hour
-#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Default)]
+#[derive(Debug, Deserialize, Serialize, Clone, PartialEq, Eq, Default)]
 pub enum CacheTtl {
     /// 5-minute TTL (default).
     #[default]
@@ -1382,37 +1371,149 @@ impl From<ToolResultContent> for message::ToolResultContent {
     }
 }
 
+use super::client::Anthropic;
+use crate::driver::Bound;
+use crate::wire::{Body, Encoded, Framing, Wire};
+
+/// The Anthropic Messages wire (Completion operation).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Messages {
+    pub provider: Anthropic,
+    pub model: String,
+    pub default_max_tokens: Option<u64>,
+    pub prompt_caching: bool,
+    pub automatic_caching: bool,
+    pub automatic_caching_ttl: Option<CacheTtl>,
+    pub static_prefix_cache_ttl: Option<CacheTtl>,
+    pub strict_tools: bool,
+}
+
+impl Messages {
+    pub fn new(provider: Anthropic, model: impl Into<String>) -> Self {
+        let model = model.into();
+        let default_max_tokens = provider
+            .dialect
+            .default_max_tokens
+            .or_else(|| default_max_tokens_for_model(&model));
+        Self {
+            provider,
+            model,
+            default_max_tokens,
+            prompt_caching: false,
+            automatic_caching: false,
+            automatic_caching_ttl: None,
+            static_prefix_cache_ttl: None,
+            strict_tools: false,
+        }
+    }
+
+    pub fn with_prompt_caching(mut self) -> Self {
+        self.prompt_caching = true;
+        self
+    }
+
+    pub fn with_automatic_caching(mut self) -> Self {
+        self.automatic_caching = true;
+        self
+    }
+
+    pub fn with_automatic_caching_1h(mut self) -> Self {
+        self.automatic_caching = true;
+        self.automatic_caching_ttl = Some(CacheTtl::OneHour);
+        self
+    }
+
+    pub fn with_static_prefix_cache_ttl(mut self, ttl: CacheTtl) -> Self {
+        self.static_prefix_cache_ttl = Some(ttl);
+        self
+    }
+
+    pub fn with_strict_tools(mut self) -> Self {
+        self.strict_tools = true;
+        self
+    }
+}
+
+impl Wire for Messages {
+    type Op = crate::operation::Completion;
+    type Decoder = super::streaming::AnthropicAdapter;
+
+    fn name(&self) -> &str {
+        self.provider.dialect.name
+    }
+
+    fn encode(&self, request: CompletionRequest) -> Result<Encoded, CompletionError> {
+        let default_max_tokens = self
+            .default_max_tokens
+            .or(self.provider.dialect.default_max_tokens)
+            .or_else(|| default_max_tokens_for_model(&self.model));
+
+        let mut request = request;
+        if request.max_tokens.is_none() {
+            request.max_tokens = default_max_tokens;
+        }
+
+        let params = AnthropicRequestParams {
+            model: &self.model,
+            request,
+            prompt_caching: self.prompt_caching,
+            automatic_caching: self.automatic_caching,
+            automatic_caching_ttl: self.automatic_caching_ttl.clone(),
+            static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
+        };
+
+        let typed = AnthropicCompletionRequest::try_from_params(
+            params,
+            self.strict_tools,
+            &self.provider.dialect,
+        )?;
+        let bytes = serde_json::to_vec(&typed)?;
+
+        let mut http_req = http::Request::builder()
+            .method(http::Method::POST)
+            .uri(format!(
+                "{}/v1/messages",
+                self.provider.base_url.trim_end_matches('/')
+            ))
+            .header(http::header::CONTENT_TYPE, "application/json")
+            .body(Body::Bytes(bytes))
+            .map_err(|e| CompletionError::HttpError(crate::http_client::Error::Protocol(e)))?;
+
+        self.provider.apply_headers(http_req.headers_mut());
+
+        let mut encoded = Encoded::new(http_req, Framing::Sse, "/v1/messages");
+        if let Some(header) = self.provider.dialect.request_id_header {
+            encoded = encoded.with_request_id_header(header);
+        }
+        Ok(encoded)
+    }
+
+    fn decoder(&self) -> Self::Decoder {
+        super::streaming::AnthropicAdapter::new(self.provider.dialect.name)
+    }
+
+    fn capabilities(&self) -> crate::completion::ProviderCapabilities {
+        crate::completion::ProviderCapabilities {
+            composes_native_output_with_tools: true,
+        }
+    }
+}
+
+/// Anthropic completion model.
+pub type CompletionModel<H = crate::http_client::BoxedHttpClient> = Bound<Messages, H>;
+
 #[doc(hidden)]
 #[derive(Clone)]
 pub struct GenericCompletionModel<Ext, H = crate::http_client::BoxedHttpClient> {
     pub(crate) client: crate::client::Client<Ext, H>,
     pub model: String,
     pub default_max_tokens: Option<u64>,
-    /// Enable manual prompt caching (adds cache_control breakpoints to system prompt,
-    /// tools, and messages)
     pub prompt_caching: bool,
-    /// Enable Anthropic's automatic prompt caching (adds a top-level `cache_control` field to the
-    /// request). The API automatically places the breakpoint on the last cacheable block and moves
-    /// it forward as the conversation grows. No beta header is required.
     pub automatic_caching: bool,
-    /// TTL for automatic caching. `None` uses the API default (5 minutes).
-    /// Set to `Some(CacheTtl::OneHour)` for a 1-hour TTL.
     pub automatic_caching_ttl: Option<CacheTtl>,
-    /// TTL for the static prefix (tool definitions + system prompt),
-    /// independent of the conversation-tail breakpoint. `None` inherits the
-    /// top-level/automatic TTL.
     pub static_prefix_cache_ttl: Option<CacheTtl>,
-    /// Whether Rig-generated tools request provider-supported strict validation.
     pub strict_tools: bool,
 }
-
-/// Anthropic completion model.
-///
-/// This preserves the historical public generic shape where the first generic
-/// parameter is the HTTP client type.
-pub type CompletionModel<H = crate::http_client::BoxedHttpClient> =
-    GenericCompletionModel<super::client::Anthropic, H>;
-
 impl<Ext, H> GenericCompletionModel<Ext, H> {
     /// The provider client this model sends through.
     pub fn client(&self) -> &crate::client::Client<Ext, H> {
@@ -1462,8 +1563,18 @@ where
             };
             completion_request.max_tokens = Some(tokens);
         }
-
-        let request = AnthropicCompletionRequest::try_from_params::<Ext>(
+        let strict_tools =
+            std::any::TypeId::of::<Ext>() == std::any::TypeId::of::<super::client::Anthropic>();
+        let dialect = super::client::Dialect {
+            name: Ext::PROVIDER_NAME,
+            base_url: "",
+            api_key_env: "",
+            base_url_env: None,
+            request_id_header: Ext::REQUEST_ID_HEADER,
+            default_max_tokens: None,
+            strict_tools,
+        };
+        let request = AnthropicCompletionRequest::try_from_params(
             AnthropicRequestParams {
                 model: &request_model,
                 request: completion_request,
@@ -1473,8 +1584,8 @@ where
                 static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
             },
             self.strict_tools,
+            &dialect,
         )?;
-
         Ok((span, request))
     }
 
@@ -1653,11 +1764,10 @@ where
         self
     }
 }
-
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
-fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+pub(crate) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-fable-5")
         || model.starts_with("claude-opus-5")
         || model.starts_with("claude-sonnet-5")
@@ -1755,7 +1865,7 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 /// Strict tools support optional parameters, so declared `required` lists are
 /// preserved. Unsupported validation keywords are moved into descriptions as
 /// model guidance instead of reaching the constrained-decoding compiler.
-fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
+pub(crate) fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
     flatten_root_all_of(&mut original);
@@ -2666,13 +2776,11 @@ pub struct AnthropicRequestParams<'a> {
 }
 
 impl AnthropicCompletionRequest {
-    pub(super) fn try_from_params<Ext>(
+    pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
         strict_tools: bool,
-    ) -> Result<Self, CompletionError>
-    where
-        Ext: AnthropicCompatibleProvider,
-    {
+        dialect: &super::client::Dialect,
+    ) -> Result<Self, CompletionError> {
         let AnthropicRequestParams {
             model,
             request: mut req,
@@ -2740,9 +2848,12 @@ impl AnthropicCompletionRequest {
             automatic_caching_ttl.as_ref(),
             &mut additional_params_payload,
         )?;
-        let mut tools =
-            build_tool_definitions::<Ext>(req.tools, &mut additional_params_payload, strict_tools)?;
-
+        let mut tools = build_tool_definitions(
+            req.tools,
+            &mut additional_params_payload,
+            strict_tools,
+            dialect,
+        )?;
         // System prompt in array format for cache_control support
         let mut system = history_system;
 
@@ -2791,7 +2902,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
-        Self::try_from_params::<super::client::Anthropic>(params, false)
+        Self::try_from_params(params, false, &super::client::ANTHROPIC)
     }
 }
 
@@ -2811,14 +2922,12 @@ pub(super) fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
-pub(super) fn build_tool_definitions<Ext>(
+pub(super) fn build_tool_definitions(
     tools: Vec<completion::ToolDefinition>,
     additional_params_payload: &mut serde_json::Value,
     strict_tools: bool,
-) -> Result<Vec<serde_json::Value>, CompletionError>
-where
-    Ext: AnthropicCompatibleProvider,
-{
+    dialect: &super::client::Dialect,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
     let mut additional_tools = extract_tools_from_additional_params(additional_params_payload)?;
 
     let mut tools = tools
@@ -2832,8 +2941,9 @@ where
                 strict: false,
                 cache_control: None,
             };
-            if strict_tools {
-                Ext::enable_strict_tool_use(&mut tool);
+            if strict_tools && dialect.strict_tools {
+                sanitize_strict_tool_schema(&mut tool.input_schema);
+                tool.strict = true;
             }
 
             tool

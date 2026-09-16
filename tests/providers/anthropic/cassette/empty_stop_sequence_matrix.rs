@@ -165,6 +165,7 @@ fn empty_response(stop_reason: Option<&str>, content: Vec<Content>) -> Completio
         stop_sequence: stop_reason
             .filter(|reason| *reason == "stop_sequence")
             .map(|_| "alpha".to_string()),
+        provider_request_id: None,
         usage: Usage {
             input_tokens: 18,
             cache_read_input_tokens: None,
@@ -173,7 +174,6 @@ fn empty_response(stop_reason: Option<&str>, content: Vec<Content>) -> Completio
             output_tokens: 1,
             output_tokens_details: None,
         },
-        provider_request_id: None,
     }
 }
 

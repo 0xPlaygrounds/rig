@@ -1,22 +1,21 @@
-use std::future::Future;
 use std::collections::VecDeque;
+use std::future::Future;
 use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use futures::stream;
 use http::{HeaderMap, HeaderValue, Method, Request, Response, StatusCode};
 
 use crate::http_client::framing::Framing;
-use crate::http_client::{BoxedHttpClient, HttpClientExt, LazyBody, StreamingResponse};
+use crate::http_client::{HttpClientExt, LazyBody, StreamingResponse};
 use crate::model::Model;
 use crate::model::listing::ModelListingError;
+use crate::operation::{Completion, ModelListing};
+use crate::streaming::{StreamEvent, StreamFinal};
+use crate::wasm_compat::WasmCompatSend;
 use crate::wire::ObservationSink;
-use crate::operation::{Completion, ModelListing, Operation};
-use crate::streaming::{BlockAccumulator, StreamEvent, StreamFinal};
-use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use crate::wire::{Body, Decoder, Encoded, Output, Wire, WireEvent, WireFrame};
 
-use super::{Bound, WireDriver, call, stream};
+use super::{call, stream};
 
 // Mock HTTP client for driver tests
 #[derive(Clone, Default)]
@@ -34,10 +33,7 @@ impl MockHttpClient {
             .push_back(res);
     }
 
-    fn push_streaming(
-        &self,
-        res: Result<StreamingResponse, crate::http_client::Error>,
-    ) {
+    fn push_streaming(&self, res: Result<StreamingResponse, crate::http_client::Error>) {
         self.streaming_responses
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -50,8 +46,8 @@ impl HttpClientExt for MockHttpClient {
         &self,
         req: Request<T>,
     ) -> impl Future<Output = Result<Response<LazyBody<U>>, crate::http_client::Error>>
-           + WasmCompatSend
-           + 'static
+    + WasmCompatSend
+    + 'static
     where
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
@@ -87,19 +83,18 @@ impl HttpClientExt for MockHttpClient {
         &self,
         _req: Request<crate::http_client::MultipartForm>,
     ) -> impl Future<Output = Result<Response<LazyBody<U>>, crate::http_client::Error>>
-           + WasmCompatSend
-           + 'static
+    + WasmCompatSend
+    + 'static
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        async move { Err(crate::http_client::Error::NoHeaders) }
+        std::future::ready(Err(crate::http_client::Error::NoHeaders))
     }
 
     fn send_streaming<T>(
         &self,
         req: Request<T>,
-    ) -> impl Future<Output = Result<StreamingResponse, crate::http_client::Error>>
-           + WasmCompatSend
+    ) -> impl Future<Output = Result<StreamingResponse, crate::http_client::Error>> + WasmCompatSend
     where
         T: Into<Bytes> + WasmCompatSend,
     {
@@ -131,9 +126,7 @@ impl Decoder<Completion> for TestCompletionDecoder {
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
         match frame {
             WireFrame::Text(s) => WireEvent::Known(s),
-            WireFrame::Bytes(b) => {
-                WireEvent::Known(String::from_utf8_lossy(&b).into_owned())
-            }
+            WireFrame::Bytes(b) => WireEvent::Known(String::from_utf8_lossy(&b).into_owned()),
         }
     }
 
@@ -293,7 +286,9 @@ async fn unary_call_folds_response() {
         .unwrap_or_else(|_| Response::new(Vec::new()))));
 
     let req = test_completion_request();
-    let resp = call(&wire, &client, req, None).await.unwrap_or_else(|e| panic!("{e:?}"));
+    let resp = call(&wire, &client, req, None)
+        .await
+        .unwrap_or_else(|e| panic!("{e:?}"));
     assert_eq!(resp.provider, "test_provider");
 }
 
@@ -309,7 +304,9 @@ async fn unary_call_preserves_non_success_headers() {
     for (k, v) in headers.iter() {
         builder = builder.header(k, v);
     }
-    client.push_response(Ok(builder.body(b"rate limit".to_vec()).unwrap_or_else(|_| Response::new(Vec::new()))));
+    client.push_response(Ok(builder
+        .body(b"rate limit".to_vec())
+        .unwrap_or_else(|_| Response::new(Vec::new()))));
 
     let req = test_completion_request();
     let err = call(&wire, &client, req, None).await.unwrap_err();
@@ -322,11 +319,13 @@ async fn streaming_connect_error_is_only_item() {
 
     let wire = TestCompletionWire;
     let client = MockHttpClient::default();
-    client.push_streaming(Err(crate::http_client::Error::InvalidStatusCodeWithDetails {
-        status: StatusCode::UNAUTHORIZED,
-        body: "bad key".to_string(),
-        headers: HeaderMap::new(),
-    }));
+    client.push_streaming(Err(
+        crate::http_client::Error::InvalidStatusCodeWithDetails {
+            status: StatusCode::UNAUTHORIZED,
+            body: "bad key".to_string(),
+            headers: HeaderMap::new(),
+        },
+    ));
 
     let req = test_completion_request();
     let stream = stream(&wire, &client, req, None).unwrap_or_else(|e| panic!("{e:?}"));
@@ -345,7 +344,9 @@ async fn paged_operation_loops_until_continuation_none() {
     client.push_response(Ok(Response::new(b"model-1".to_vec())));
     client.push_response(Ok(Response::new(b"model-2".to_vec())));
 
-    let models = call(&wire, &client, (), None).await.unwrap_or_else(|e| panic!("{e:?}"));
+    let models = call(&wire, &client, (), None)
+        .await
+        .unwrap_or_else(|e| panic!("{e:?}"));
     assert_eq!(models.len(), 2);
     assert_eq!(models[0].id, "model-1");
     assert_eq!(models[1].id, "model-2");

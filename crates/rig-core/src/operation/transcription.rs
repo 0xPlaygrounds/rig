@@ -1,6 +1,4 @@
-use crate::transcription::{
-    TranscriptionError, TranscriptionRequest, TranscriptionResponse,
-};
+use crate::transcription::{TranscriptionError, TranscriptionRequest, TranscriptionResponse};
 
 use super::{Operation, TakeOne};
 

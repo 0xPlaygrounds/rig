@@ -183,10 +183,10 @@ pub mod transcript;
 pub mod transcription;
 pub mod vector_store;
 pub mod wasm_compat;
+pub mod wire;
 #[cfg(feature = "websocket")]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod ws_client;
-pub mod wire;
 
 // Re-export commonly used types and traits
 pub use completion::message;

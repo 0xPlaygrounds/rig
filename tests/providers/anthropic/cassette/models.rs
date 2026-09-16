@@ -1,7 +1,5 @@
 //! Anthropic model listing smoke test.
 
-use rig::client::ModelListingClient;
-
 use super::super::support::{with_anthropic_cassette, with_anthropic_cassette_bogus_key};
 
 #[tokio::test]
@@ -52,7 +50,7 @@ async fn list_models_rejected_key_reports_api_error_with_context() {
                 );
             };
 
-            assert_eq!(*status_code, 401, "unexpected status: {error:#?}");
+            assert_eq!(*status_code, 401u16, "unexpected status: {error:#?}");
             for expected in ["provider=Anthropic", "path=/v1/models", "status=401"] {
                 assert!(
                     message.contains(expected),

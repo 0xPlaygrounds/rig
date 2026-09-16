@@ -46,6 +46,16 @@ impl<T> WireEvent<T> {
         }
     }
 }
+/// Classify one unary JSON payload (whole body).
+pub fn classify_unary_frame<T>(data: &str) -> WireEvent<T>
+where
+    T: serde::de::DeserializeOwned,
+{
+    match serde_json::from_str::<T>(data) {
+        Ok(value) => WireEvent::Known(value),
+        Err(error) => WireEvent::Corrupt(error),
+    }
+}
 
 /// Classify one frame of a tag-discriminated JSON wire (OpenAI Responses SSE,
 /// Cohere SSE, and Anthropic use `type`; Gemini Interactions uses
@@ -66,6 +76,12 @@ pub fn classify_tagged_frame<T>(
 where
     T: serde::de::DeserializeOwned,
 {
+    if data.trim() == "[DONE]" {
+        return WireEvent::Unknown {
+            event_type: "[DONE]".to_string(),
+            value: serde_json::Value::Null.into(),
+        };
+    }
     let scanned = match scan_discriminators(data, &[tag], true) {
         Ok(scanned) => scanned,
         Err(error) => return WireEvent::Corrupt(error),

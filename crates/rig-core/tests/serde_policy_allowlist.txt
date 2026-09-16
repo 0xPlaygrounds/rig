@@ -35,6 +35,8 @@ providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`tr
 providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.
 providers/openai/completion/streaming.rs | #[serde(untagged)] | `FinishReason::Other(String)` preserves an unrecognized finish-reason token verbatim (surfacing gateway-invented reasons instead of misreading them as a stop); a scalar vocabulary field, not frame policy.
 providers/copilot/mod.rs | #[serde(untagged)] | `ChatApiResponse<T>` distinguishes a success body from Copilot's error envelope on a UNARY response (no stream frame involved).
+providers/openai/client.rs | #[serde(untagged)] | ApiResponse<T> distinguishes a success body from OpenAI's error envelope on a UNARY response (no stream frame involved).
+providers/anthropic/client.rs | serde_json::from_value(resp.raw) | raw_completion converts the already-normalized response raw JSON back to the native type; not a stream frame.
 
 # --- openai responses websocket: envelope dispatch, not frame triage -------
 # The websocket carries the SAME Responses events the SSE path carries, and

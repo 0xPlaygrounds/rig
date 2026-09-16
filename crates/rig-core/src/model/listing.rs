@@ -426,7 +426,17 @@ impl ModelListingError {
 
 impl From<crate::http_client::Error> for ModelListingError {
     fn from(e: crate::http_client::Error) -> Self {
-        Self::request_error(e.to_string())
+        match e {
+            crate::http_client::Error::InvalidStatusCodeWithDetails { status, body, .. } => {
+                Self::api_error_with_context(
+                    "Anthropic",
+                    "/v1/models",
+                    status.as_u16(),
+                    body.as_bytes(),
+                )
+            }
+            other => Self::request_error(other.to_string()),
+        }
     }
 }
 

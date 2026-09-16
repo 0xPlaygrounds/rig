@@ -491,7 +491,6 @@ impl crate::wire::ObservationSink for AdapterAttempt {
     }
 }
 
-
 impl Drop for AdapterAttempt {
     fn drop(&mut self) {
         self.finish(AdapterEnding::Dropped);

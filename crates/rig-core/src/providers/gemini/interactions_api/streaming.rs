@@ -153,7 +153,7 @@ where
 /// Frame-triage policy (warn on `Unknown`, in-band `Err` on `Corrupt`) lives
 /// in [`run_wire_stream`], not here — this ends the wire's former
 /// debug-log-and-skip handling of every decode failure.
-struct InteractionsAdapter {
+pub(crate) struct InteractionsAdapter {
     /// Owns the constant-key thought lifecycle — the ends this wire never
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
@@ -428,6 +428,37 @@ impl WireAdapter for InteractionsAdapter {
         // transport (and pass through post-error unknown frames).
         self.failed
     }
+}
+impl crate::wire::Decoder<crate::operation::Completion> for InteractionsAdapter {
+    type Event = InteractionSseEvent;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        WireAdapter::classify(self, frame)
+    }
+
+    fn interpret(
+        &mut self,
+        event: Self::Event,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::interpret(self, event, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn finish(&mut self, out: &mut crate::wire::Output<crate::operation::Completion>) {
+        WireAdapter::finish(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn flush_before_terminal_error(
+        &mut self,
+        out: &mut crate::wire::Output<crate::operation::Completion>,
+    ) {
+        WireAdapter::flush_before_terminal_error(self, out.ensure_adapter());
+        out.flush_adapter();
+    }
+
+    fn project(&self, _payload: &[u8], _sink: &mut dyn crate::wire::ObservationSink) {}
 }
 
 pub(crate) fn stream_interaction_events<T>(

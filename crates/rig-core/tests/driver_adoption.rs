@@ -26,6 +26,8 @@ use std::path::PathBuf;
 const ALLOWED_POLICY_HOMES: &[&str] = &[
     "rig-core/src/providers/internal/adapter.rs",
     "rig-core/src/providers/internal/wire.rs",
+    "rig-core/src/driver.rs",
+    "rig-core/src/wire.rs",
 ];
 
 /// Whether `path` is one of the two files allowed to state triage policy.

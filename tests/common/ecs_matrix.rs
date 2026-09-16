@@ -155,7 +155,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
                 ProviderKind::Anthropic,
                 &model.model,
                 client.base_url(),
-                header(client.headers(), "x-api-key", None),
+                header(&client.headers(), "x-api-key", None),
                 client.http_client(),
             );
         }
