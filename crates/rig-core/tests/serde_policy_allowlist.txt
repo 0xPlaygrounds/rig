@@ -22,13 +22,40 @@ providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<
 providers/ollama.rs | #[serde(untagged)] | The `Think` request-option value (`true`/`false` or a named level) is an untagged union on the REQUEST body; nothing about inbound frame policy is decided here.
 providers/openai/responses_api/streaming.rs | #[serde(untagged)] | Two sites, neither a triage fallback: `StreamingCompletionChunk` is the envelope union (response chunk vs item delta) decoded AFTER `classify_responses_frame` recognized the frame; `ContentPartChunkPart::Unknown` is untagged on the SERIALIZE side only — its Deserialize is the hand-written tag dispatch documented beside it, so a known tag with a defective payload still errors.
 
-# --- openai chat wire: reasoning-detail sub-payloads, not frame triage ------
+# --- openai chat wire (providers/openai/wire/chat.rs) ----------------------
+# `chat.rs` IS OpenAI's classify layer, so guard 1 lets it name the triage
+# variants — but naming them is not licence to raw-parse, so the serde wall
+# scans it like any other file and every parse below is argued here. Four of
+# the five are `classify`'s own work; the fifth reads a sub-payload of a
+# frame the classifier already returned as `Known`. The sixth is the wire's
+# observation projection, argued with its two siblings in the section below.
+providers/openai/wire/chat.rs | serde_json::from_str::<serde_json::Value>(&data) | `classify` peeks for the bare JSON string reply the dialects with `accepts_bare_string_reply` are measured to send: a non-object frame is not the shared classifier's shape, so this pre-empts it exactly as `[DONE]` and the in-band error envelope above it do, and the verdict it reaches is `Known` rather than a skip.
+providers/openai/wire/chat.rs | let mut body = serde_json::from_str::<serde_json::Value>(data).ok()?; | body_without_calls_cut_by_the_budget: the rig#2359 budget-cut repair, and the chat twin of `repair_envelope_less_frame` above. `classify` reaches it only after the strict decode already returned `Corrupt` (or a Known budget-cut turn), and `None` leaves that verdict standing, so no frame's fate is decided here.
+providers/openai/wire/chat.rs | serde_json::from_value::<super::dto::ChatChoice>(probe).is_err() | The same repair's guard: re-decodes a COPY of the choice with its cut arguments stubbed to `{}` to prove the truncated argument is the only defect, so a choice broken elsewhere keeps its original error instead of having the evidence deleted underneath it.
+providers/openai/wire/chat.rs | let frame = serde_json::from_value::<ChatFrame>(body).ok()?; | The same repair's final typed decode of the repaired body into the wire's own frame type; failure returns `None`, which restores the strict classification rather than inventing a verdict.
 # A chat chunk's `delta.reasoning_details` is deliberately typed
 # `Vec<serde_json::Value>`: the entries are a gateway extension, so an entry
 # shape this build does not model must not fail the chunk that carries it.
-# Both decodes below therefore run on a sub-payload of a frame the classifier
-# already returned as `Known`, and a failure skips that one entry rather than
-# deciding anything about the frame.
+providers/openai/wire/chat.rs | serde_json::from_value(detail.clone()).ok() | `typed_detail` reads one `reasoning_details` entry of a frame the classifier already returned as `Known`; an unmodeled entry yields `None` and is skipped on its own, leaving the chunk that carried it untouched.
+
+# --- the observation projections, folded into their decoders ---------------
+# `Decoder::project` is a read-only side channel onto the observation trace.
+# It runs on a payload the driver has ALREADY framed and already classified,
+# it returns nothing, and its whole failure mode is emitting no fact: the
+# frame's fate was decided by `classify` and is identical whether the
+# projection parsed the payload or not. That is why each of these parses is
+# a bare `let Ok(..) else { return }` rather than a `Corrupt` verdict — a
+# projection that could reject a frame would be a second classifier. These
+# three parses (four sites) moved here when the `observation.rs` modules
+# were folded into the decoders that were their only callers.
+providers/anthropic/streaming.rs | serde_json::from_slice::<ObservedPayload>(payload) | `MessagesDecoder::project` reads the stop reason, model, message id, usage and error envelope off a payload the driver already framed and classified; a failed decode emits no observation and leaves the frame's verdict exactly as `classify` set it.
+providers/gemini/streaming.rs | serde_json::from_slice::<ObservedUsageOnly>(payload) | `GenerateContentDecoder::project` reads `usageMetadata` alone, deliberately as its own pass so a malformed candidate cannot erase a valid usage report; the payload is already framed and classified and failure emits nothing.
+providers/gemini/streaming.rs | serde_json::from_slice::<ObservedMetadata>(payload) | The same projection's verdict/response-id/error-envelope pass over that same already-classified payload; it returns without emitting on failure, so the frame keeps the fate `classify` gave it.
+providers/openai/wire/chat.rs | serde_json::from_slice::<ObservedPayload>(payload) | `ChatDecoder::project` reads the verdict, model, response id, usage and error envelope off an already-framed, already-classified payload — `[DONE]` is not JSON and simply projects nothing — so a failed decode emits no observation and triages no frame.
+
+# --- openai modality wire: whole replies that have no frames ----------------
+providers/openai/wire/modality.rs | #[serde(untagged)] | `ImagesReplyImage` is the reply-side union of the two forms two dialects put under the `images` key (Hyperbolic `{"image": "<base64>"}`, Venice the bare base64); the image route answers with one whole reply and has no frames, so no inbound frame policy is decided here.
+providers/openai/wire/modality.rs | let reply = match serde_json::from_slice::<SpeechReply>(&event) | `SpeechDecoder::interpret` unwraps the JSON envelope Hyperbolic alone wraps its audio in; `classify` already returned the bytes as `Known` because the speech reply is audio rather than JSON, and a decode failure is pushed as an AudioGenerationError rather than skipped.
 
 # --- openai responses websocket: envelope dispatch, not frame triage -------
 # The websocket carries the SAME Responses events the SSE path carries, and

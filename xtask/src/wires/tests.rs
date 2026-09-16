@@ -63,47 +63,56 @@ fn an_await_in_a_comment_or_a_string_is_not_one() {
     assert!(offenders("anthropic/wire.rs", source).is_empty());
 }
 
+/// The rule is the **bound**, not the letter: what makes a parameter a
+/// transport is that a request can be sent through it, which is
+/// `HttpClientExt` — or the `BoxedHttpClient` default a provider reaches for
+/// to hide one. A parameter with no such bound cannot carry a request, so it
+/// is payload-generic and needs no allowlist; that is why there is no list
+/// of blessed letters to keep in step with the types.
 #[test]
-fn a_transport_type_parameter_is_rejected() {
-    let found = offenders("openai/wire.rs", "pub struct Chat<H> { http: H }");
-    assert_eq!(found.len(), 1);
-    assert!(
-        found
-            .first()
-            .is_some_and(|report| report.contains("a wire holds no transport"))
-    );
-    // `T` is the letter a transport reaches for once `H` is forbidden, so it
-    // is rejected unless the type is allowlisted parametric data.
-    let found = offenders("openai/wire.rs", "pub struct Foo<T> { inner: T }");
-    assert_eq!(found.len(), 1, "{found:?}");
-    assert!(found[0].contains("`struct Foo<T>`"), "{found:?}");
-    let found = offenders("openai/wire.rs", "pub enum Either<T> { One(T) }");
-    assert_eq!(found.len(), 1, "{found:?}");
-    for allowed in DATA_GENERICS {
-        let source = format!("pub enum {allowed}<T> {{ Known(T) }}");
+fn a_transport_parameter_is_rejected_by_its_bound_not_its_letter() {
+    for rejected in [
+        "pub struct Foo<Transport: HttpClientExt> { http: Transport }",
+        "pub struct Foo<H = BoxedHttpClient> { http: H }",
+        "pub struct Foo<T> where T: HttpClientExt { http: T }",
+        "pub enum Reply<C: crate::http_client::HttpClientExt> { Sent(C) }",
+    ] {
+        let found = offenders("openai/wire.rs", rejected);
+        assert_eq!(found.len(), 1, "{rejected}: {found:?}");
         assert!(
-            offenders("internal/wire.rs", &source).is_empty(),
-            "{allowed}<T> is parametric data, not a held socket"
+            found[0].contains("a wire holds no transport"),
+            "{rejected}: {found:?}"
         );
     }
-    // Any other letter is an ordinary generic.
-    let found = offenders("openai/wire.rs", "pub struct Reply<U> { usage: U }");
-    assert!(found.is_empty(), "{found:?}");
+
+    for accepted in [
+        // Parametric data: the classifier's verdict over a wire's own event
+        // type, and a frame generic over its payload.
+        "pub enum WireEvent<E> { Known(E) }",
+        "pub struct Frame<T> { payload: T }",
+        // `H` is only a letter; unbounded, nothing can be sent through it.
+        "pub struct Chat<H> { http: H }",
+        // A bound that is not the transport is an ordinary bound.
+        "pub struct Page<T: serde::de::DeserializeOwned> { entries: Vec<T> }",
+    ] {
+        let found = offenders("openai/wire.rs", accepted);
+        assert!(found.is_empty(), "{accepted}: {found:?}");
+    }
 
     // A session holds the socket it is a session over, which is what makes
     // it not a wire; the named exceptions are exempt from this rule too.
     let found = offenders(
         "openai/responses_api/websocket.rs",
-        "pub struct Session<H> { http: H }",
+        "pub struct Session<H: HttpClientExt> { http: H }",
     );
-    assert!(found.is_empty());
+    assert!(found.is_empty(), "{found:?}");
 }
 
 #[test]
 fn a_wires_own_data_may_not_be_shared_erased_or_deferred() {
     for forbidden in [
-        "fn decoder(&self) -> Arc<Decoder> { unreachable() }",
-        "fn decoder(&self) -> Box<dyn Decoder> { unreachable() }",
+        "fn decoder(&self, mode: Mode) -> Arc<Decoder> { unreachable() }",
+        "fn decoder(&self, mode: Mode) -> Box<dyn Decoder> { unreachable() }",
         "fn encode(&self) -> impl Future<Output = ()> { unreachable() }",
     ] {
         let source = format!("impl Wire for Chat {{ {forbidden} }}");
@@ -132,7 +141,7 @@ fn a_plain_wire_passes() {
         pub struct Messages { pub model: String }
         impl Wire for Messages {
             fn name(&self) -> &str { "anthropic" }
-            fn decoder(&self) -> MessagesDecoder { MessagesDecoder::new("anthropic") }
+            fn decoder(&self, _mode: Mode) -> MessagesDecoder { MessagesDecoder::new("anthropic") }
         }
     "#;
     assert!(offenders("anthropic/wire.rs", source).is_empty());
@@ -140,19 +149,37 @@ fn a_plain_wire_passes() {
 
 #[test]
 fn a_credential_exchange_may_hold_a_conversation() {
-    for file in [
-        "copilot/auth/native.rs",
-        "chatgpt/auth/mod.rs",
-        "somewhere/auth.rs",
-    ] {
+    for file in CREDENTIAL_EXCHANGES {
         assert!(
             offenders(file, "async fn exchange() { poll().await; }").is_empty(),
             "{file}: a device flow polls and a refresh round-trips; neither fits a pure encode"
         );
     }
-    // …but it is exempt from the `async` rules only: it produces the
-    // `Secret` a wire holds, and holds no socket of its own.
-    let found = offenders("copilot/auth/native.rs", "pub struct Flow<H> { http: H }");
+    assert_eq!(
+        CREDENTIAL_EXCHANGES.len(),
+        7,
+        "a new credential exchange must be argued for, not added quietly"
+    );
+
+    // The hole the named list closed: a `/auth/` path pattern let any
+    // provider put transport inside its wire by calling the file `auth.rs`,
+    // and the checker stayed green with no review signal. Exemption is by
+    // exact path, so an unnamed one is a wire like any other.
+    for invented in ["x/auth.rs", "x/auth/mod.rs", "providers/x/auth.rs"] {
+        let found = offenders(invented, "async fn exchange() { poll().await; }");
+        assert_eq!(
+            found.len(),
+            2,
+            "{invented}: an unnamed auth.rs is still a wire: {found:?}"
+        );
+    }
+
+    // …and a named exchange is exempt from the `async` rules only: it
+    // produces the `Secret` a wire holds, and holds no socket of its own.
+    let found = offenders(
+        "copilot/auth/native.rs",
+        "pub struct Flow<H: HttpClientExt> { http: H }",
+    );
     assert_eq!(found.len(), 1, "{found:?}");
 }
 
