@@ -96,42 +96,36 @@
           "provider": "gcp.gemini",
           "model": "gemini-3-flash-preview",
           "raw": {
-            "responseId": "id_REDACTED_1",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_1",
-                      "text": "Rust be a sturdy language that stops memory leaks from sinkin' yer ship!"
+                      "text": "Rust be a sturdy language that stops memory leaks from sinkin' yer ship!",
+                      "thoughtSignature": "signature_REDACTED_1"
                     }
                   ],
                   "role": "model"
                 },
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": null
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-3-flash-preview",
+            "responseId": "id_REDACTED_1",
             "usageMetadata": {
-              "promptTokenCount": 31,
               "candidatesTokenCount": 16,
-              "totalTokenCount": 370,
-              "thoughtsTokenCount": 323,
+              "promptTokenCount": 31,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 31
                 }
-              ]
-            },
-            "modelVersion": "gemini-3-flash-preview"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 323,
+              "totalTokenCount": 370
+            }
           }
         }
       }

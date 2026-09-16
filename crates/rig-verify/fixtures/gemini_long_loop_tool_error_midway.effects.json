@@ -229,45 +229,40 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_1",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_1",
                       "functionCall": {
-                        "name": "list_files",
-                        "args": {}
-                      }
+                        "args": {},
+                        "name": "list_files"
+                      },
+                      "thoughtSignature": "signature_REDACTED_1"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_1",
             "usageMetadata": {
-              "promptTokenCount": 485,
               "candidatesTokenCount": 10,
-              "totalTokenCount": 610,
-              "thoughtsTokenCount": 115,
+              "promptTokenCount": 485,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 485
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 115,
+              "totalTokenCount": 610
+            }
           }
         }
       }
@@ -457,47 +452,42 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_2",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_2",
                       "functionCall": {
-                        "name": "read_file",
                         "args": {
                           "path": "README.md"
-                        }
-                      }
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "signature_REDACTED_2"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_2",
             "usageMetadata": {
-              "promptTokenCount": 538,
               "candidatesTokenCount": 17,
-              "totalTokenCount": 575,
-              "thoughtsTokenCount": 20,
+              "promptTokenCount": 538,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 538
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 20,
+              "totalTokenCount": 575
+            }
           }
         }
       }
@@ -728,54 +718,49 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_3",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_3",
                       "functionCall": {
-                        "name": "read_file",
                         "args": {
                           "path": "tests/basic.rs"
-                        }
-                      }
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "signature_REDACTED_3"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_3",
             "usageMetadata": {
-              "promptTokenCount": 644,
+              "cacheTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 537
+                }
+              ],
               "cachedContentTokenCount": 537,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 701,
-              "thoughtsTokenCount": 38,
+              "promptTokenCount": 644,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 644
                 }
               ],
-              "cacheTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 537
-                }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 38,
+              "totalTokenCount": 701
+            }
           }
         }
       }
@@ -1045,47 +1030,42 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_4",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_4",
                       "functionCall": {
-                        "name": "read_file",
                         "args": {
                           "path": "src/lib.rs"
-                        }
-                      }
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "signature_REDACTED_4"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_4",
             "usageMetadata": {
-              "promptTokenCount": 781,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 819,
-              "thoughtsTokenCount": 19,
+              "promptTokenCount": 781,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 781
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 19,
+              "totalTokenCount": 819
+            }
           }
         }
       }
@@ -1393,45 +1373,40 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_5",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_5",
                       "functionCall": {
-                        "name": "run_tests",
-                        "args": {}
-                      }
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "signature_REDACTED_5"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_5",
             "usageMetadata": {
-              "promptTokenCount": 859,
               "candidatesTokenCount": 10,
-              "totalTokenCount": 886,
-              "thoughtsTokenCount": 17,
+              "promptTokenCount": 859,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 859
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 17,
+              "totalTokenCount": 886
+            }
           }
         }
       }
@@ -1785,45 +1760,40 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_6",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_6",
                       "functionCall": {
-                        "name": "run_tests",
-                        "args": {}
-                      }
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "signature_REDACTED_6"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_6",
             "usageMetadata": {
-              "promptTokenCount": 902,
               "candidatesTokenCount": 10,
-              "totalTokenCount": 949,
-              "thoughtsTokenCount": 37,
+              "promptTokenCount": 902,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 902
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 37,
+              "totalTokenCount": 949
+            }
           }
         }
       }
@@ -2210,48 +2180,43 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_7",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_7",
                       "functionCall": {
-                        "name": "write_file",
                         "args": {
                           "content": "pub mod calendar;\n\n/// The number of days in a common (non-leap) year.\npub fn days_in_year() -> u32 {\n    365\n}\n",
                           "path": "src/lib.rs"
-                        }
-                      }
+                        },
+                        "name": "write_file"
+                      },
+                      "thoughtSignature": "signature_REDACTED_7"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_7",
             "usageMetadata": {
-              "promptTokenCount": 1105,
               "candidatesTokenCount": 68,
-              "totalTokenCount": 1342,
-              "thoughtsTokenCount": 169,
+              "promptTokenCount": 1105,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 1105
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 169,
+              "totalTokenCount": 1342
+            }
           }
         }
       }
@@ -2676,45 +2641,40 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_8",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_8",
                       "functionCall": {
-                        "name": "run_tests",
-                        "args": {}
-                      }
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "signature_REDACTED_8"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_8",
             "usageMetadata": {
-              "promptTokenCount": 1199,
               "candidatesTokenCount": 10,
-              "totalTokenCount": 1222,
-              "thoughtsTokenCount": 13,
+              "promptTokenCount": 1199,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 1199
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              ],
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 13,
+              "totalTokenCount": 1222
+            }
           }
         }
       }
@@ -3180,54 +3140,49 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_9",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_9",
                       "functionCall": {
-                        "name": "read_file",
                         "args": {
                           "path": "src/calendar.rs"
-                        }
-                      }
+                        },
+                        "name": "read_file"
+                      },
+                      "thoughtSignature": "signature_REDACTED_9"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_9",
             "usageMetadata": {
-              "promptTokenCount": 1405,
+              "cacheTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 1220
+                }
+              ],
               "cachedContentTokenCount": 1220,
               "candidatesTokenCount": 19,
-              "totalTokenCount": 1632,
-              "thoughtsTokenCount": 208,
+              "promptTokenCount": 1405,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 1405
                 }
               ],
-              "cacheTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1220
-                }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 208,
+              "totalTokenCount": 1632
+            }
           }
         }
       }
@@ -3734,55 +3689,50 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_10",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_10",
                       "functionCall": {
-                        "name": "write_file",
                         "args": {
                           "content": "/// The number of days in a week.\npub fn days_in_week() -> u32 {\n    7\n}\n",
                           "path": "src/calendar.rs"
-                        }
-                      }
+                        },
+                        "name": "write_file"
+                      },
+                      "thoughtSignature": "signature_REDACTED_10"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_10",
             "usageMetadata": {
-              "promptTokenCount": 1468,
+              "cacheTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 1137
+                }
+              ],
               "cachedContentTokenCount": 1137,
               "candidatesTokenCount": 53,
-              "totalTokenCount": 1581,
-              "thoughtsTokenCount": 60,
+              "promptTokenCount": 1468,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 1468
                 }
               ],
-              "cacheTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1137
-                }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 60,
+              "totalTokenCount": 1581
+            }
           }
         }
       }
@@ -4327,52 +4277,47 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_11",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_11",
                       "functionCall": {
-                        "name": "run_tests",
-                        "args": {}
-                      }
+                        "args": {},
+                        "name": "run_tests"
+                      },
+                      "thoughtSignature": "signature_REDACTED_11"
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_11",
             "usageMetadata": {
-              "promptTokenCount": 1546,
+              "cacheTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 1131
+                }
+              ],
               "cachedContentTokenCount": 1131,
               "candidatesTokenCount": 10,
-              "totalTokenCount": 1569,
-              "thoughtsTokenCount": 13,
+              "promptTokenCount": 1546,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 1546
                 }
               ],
-              "cacheTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1131
-                }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 13,
+              "totalTokenCount": 1569
+            }
           }
         }
       }
@@ -4959,49 +4904,43 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash",
           "raw": {
-            "responseId": "id_REDACTED_12",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
-                      "thoughtSignature": "signature_REDACTED_12",
-                      "text": "done"
+                      "text": "done",
+                      "thoughtSignature": "signature_REDACTED_12"
                     }
                   ],
                   "role": "model"
                 },
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": null
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash",
+            "responseId": "id_REDACTED_12",
             "usageMetadata": {
-              "promptTokenCount": 1635,
+              "cacheTokensDetails": [
+                {
+                  "modality": "TEXT",
+                  "tokenCount": 1148
+                }
+              ],
               "cachedContentTokenCount": 1148,
               "candidatesTokenCount": 1,
-              "totalTokenCount": 1660,
-              "thoughtsTokenCount": 24,
+              "promptTokenCount": 1635,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 1635
                 }
               ],
-              "cacheTokensDetails": [
-                {
-                  "modality": "TEXT",
-                  "tokenCount": 1148
-                }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash"
+              "serviceTier": "standard",
+              "thoughtsTokenCount": 24,
+              "totalTokenCount": 1660
+            }
           }
         }
       }

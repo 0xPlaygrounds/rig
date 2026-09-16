@@ -114,43 +114,38 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
-            "responseId": "id_REDACTED_1",
             "candidates": [
               {
                 "content": {
                   "parts": [
                     {
                       "functionCall": {
-                        "name": "checkpoint_large",
-                        "args": {}
+                        "args": {},
+                        "name": "checkpoint_large"
                       }
                     }
                   ],
                   "role": "model"
                 },
+                "finishMessage": "Model generated function call(s).",
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": "Model generated function call(s)."
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash-lite",
+            "responseId": "id_REDACTED_1",
             "usageMetadata": {
-              "promptTokenCount": 106,
               "candidatesTokenCount": 10,
-              "totalTokenCount": 116,
+              "promptTokenCount": 106,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 106
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash-lite"
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 116
+            }
           }
         }
       }
@@ -280,7 +275,6 @@
           "provider": "gcp.gemini",
           "model": "gemini-2.5-flash-lite",
           "raw": {
-            "responseId": "id_REDACTED_2",
             "candidates": [
               {
                 "content": {
@@ -292,28 +286,23 @@
                   "role": "model"
                 },
                 "finishReason": "STOP",
-                "safetyRatings": null,
-                "citationMetadata": null,
-                "tokenCount": null,
-                "avgLogprobs": null,
-                "logprobsResult": null,
-                "index": 0,
-                "finishMessage": null
+                "index": 0
               }
             ],
-            "promptFeedback": null,
+            "modelVersion": "gemini-2.5-flash-lite",
+            "responseId": "id_REDACTED_2",
             "usageMetadata": {
-              "promptTokenCount": 33922,
               "candidatesTokenCount": 3,
-              "totalTokenCount": 33925,
+              "promptTokenCount": 33922,
               "promptTokensDetails": [
                 {
                   "modality": "TEXT",
                   "tokenCount": 33922
                 }
-              ]
-            },
-            "modelVersion": "gemini-2.5-flash-lite"
+              ],
+              "serviceTier": "standard",
+              "totalTokenCount": 33925
+            }
           }
         }
       }
