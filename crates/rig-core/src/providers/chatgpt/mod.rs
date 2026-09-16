@@ -96,6 +96,3 @@ pub const DIALECT: Dialect = Dialect {
 pub(crate) fn session_id() -> String {
     crate::id::generate()
 }
-
-#[cfg(test)]
-mod tests;

@@ -126,15 +126,6 @@ impl From<http_client::Error> for CompletionError {
     }
 }
 
-impl CompletionError {
-    /// Maps an SSE transport error like every other transport error: the
-    /// provider's reply becomes [`Self::ProviderResponse`], a response-less
-    /// failure stays [`Self::HttpError`] with its own retryability.
-    pub(crate) fn from_stream_transport(error: http_client::Error) -> Self {
-        Self::from_transport_error(error)
-    }
-}
-
 /// A client that could not be built cannot complete: transport-configuration
 /// failures keep their HTTP identity, everything else (a missing key, an
 /// unreadable environment variable) is reported as a provider error.

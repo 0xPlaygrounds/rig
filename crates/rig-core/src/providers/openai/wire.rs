@@ -243,6 +243,75 @@ pub enum DimensionsField {
     Ignored,
 }
 
+impl DimensionsField {
+    /// The body field a requested width goes in, or `None` when the dialect
+    /// reads no width field at all.
+    ///
+    /// The encoder puts a width in this field and a refusal names it, so
+    /// both spell it from here rather than from two matching literals.
+    pub const fn name(self) -> Option<&'static str> {
+        match self {
+            Self::Dimensions => Some("dimensions"),
+            Self::OutputDimension => Some("output_dimension"),
+            Self::Ignored => None,
+        }
+    }
+}
+
+/// Which widths a request may name for one embedding model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AcceptedWidths {
+    /// The model emits one width and reads no width field, so any value but
+    /// its own native width is a request for a parameter the provider does
+    /// not accept there ([`EmbeddingError::UnsupportedParameter`]).
+    ///
+    /// [`EmbeddingError::UnsupportedParameter`]: crate::embeddings::EmbeddingError::UnsupportedParameter
+    Fixed,
+    /// The model truncates to any width in `min..=max`, and anything else is
+    /// refused with [`requirement`](Self::Range::requirement).
+    Range {
+        /// Narrowest width the provider honours.
+        min: usize,
+        /// Widest width the provider honours.
+        max: usize,
+        /// The `requirement` clause of the refusal, which reads
+        /// "{provider} embeddings require `{parameter}` {requirement}".
+        ///
+        /// A `&'static str` restating the bounds rather than a value
+        /// formatted from them, because
+        /// [`EmbeddingError::InvalidParameterValue`] carries `&'static str`
+        /// and cannot format a range. It sits in the same literal as the
+        /// numbers it describes so the two cannot drift apart unseen.
+        ///
+        /// [`EmbeddingError::InvalidParameterValue`]: crate::embeddings::EmbeddingError::InvalidParameterValue
+        requirement: &'static str,
+    },
+}
+
+/// One embedding model's width contract: the width it returns unasked, and
+/// the widths it will honour when asked.
+///
+/// Stated per model rather than per dialect because a dialect serves models
+/// of different widths, and a model's default is not always its maximum.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct ModelWidth {
+    /// The model identifier, as the `model` field spells it.
+    pub model: &'static str,
+    /// The width the model returns when the request names none, or `None`
+    /// for a configurable model with no native width to report.
+    ///
+    /// This is what [`EmbeddingModel::ndims`] answers for a handle built
+    /// without a width — the number a vector store sizes its index from, so
+    /// a model missing from every table reports 0 and builds an index that
+    /// cannot hold its own vectors.
+    ///
+    /// [`EmbeddingModel::ndims`]: crate::embeddings::EmbeddingModel::ndims
+    pub default: Option<usize>,
+    /// The widths a request may name.
+    pub accepted: AcceptedWidths,
+}
+
 /// The rewrite a dialect applies to the serialized chat body.
 ///
 /// This is the escape hatch the contract allows: a quirk no flag can express
@@ -331,6 +400,26 @@ pub struct EmbeddingQuirks {
     pub sends_model_field: bool,
     /// Which field a requested width goes in.
     pub dimensions: DimensionsField,
+    /// The width contract of each embedding model this dialect documents.
+    ///
+    /// Empty for a dialect that documents none, which is not the same as a
+    /// dialect with no widths: every dialect on this wire also inherits
+    /// OpenAI's own `text-embedding-*` table, because they proxy OpenAI's
+    /// models. This one is consulted first, as the dialect's own models are
+    /// the more specific fact.
+    ///
+    /// A slice rather than a function because a dialect is data: the table
+    /// is the single source for the width [`Embeddings::capabilities`]
+    /// reports and the values its encoder will put on the wire, so the two
+    /// cannot drift into a model reporting a width it would refuse to
+    /// request.
+    ///
+    /// [`Embeddings::capabilities`]: crate::wire::Wire::capabilities
+    pub widths: &'static [ModelWidth],
+    /// The `requirement` clause refusing a declared width of zero, or
+    /// `None` for a dialect that lets zero through as rig's own "unknown"
+    /// sentinel rather than a claim.
+    pub refuse_zero_width: Option<&'static str>,
 }
 
 impl EmbeddingQuirks {
@@ -343,6 +432,16 @@ impl EmbeddingQuirks {
             supports_user: true,
             sends_model_field: true,
             dimensions: DimensionsField::Dimensions,
+            // OpenAI's `text-embedding-*` widths are not listed here: they
+            // reach every dialect through the shared identifier table, since
+            // an OpenAI-compatible host serving `text-embedding-3-small`
+            // serves it at OpenAI's width. What a dialect states here are
+            // the models that are its own.
+            widths: &[],
+            // OpenAI answers a `dimensions: 0` request itself, and rig reads
+            // a declared 0 as "unknown" rather than a claim, so the shared
+            // contract refuses nothing.
+            refuse_zero_width: None,
         }
     }
 }

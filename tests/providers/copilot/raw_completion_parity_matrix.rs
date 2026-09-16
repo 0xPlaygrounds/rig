@@ -158,12 +158,44 @@ fn recorded_json_bodies(scenario: &str) -> Vec<Value> {
 /// Parity between the two views of one reply: what the normalized response
 /// reports, and what `raw` reports once it is read back into the route's own
 /// type and converted forward.
+/// The chat route's own body agrees with the folded response on every field
+/// the body models. The old cell re-normalized `raw` and compared the two
+/// results, which only ever proved that two copies of one mapping agreed;
+/// with one mapping left, the honest assertion is that the document the
+/// provider sent says what the fold reported.
+fn assert_chat_parity(typed: &openai::CompletionResponse, folded: &RigCompletionResponse) {
+    assert_eq!(Some(typed.model.as_str()), folded.model.as_deref());
+    assert_eq!(Some(typed.id.as_str()), folded.identity().response_id.as_deref());
+    assert_eq!(folded.provider, COPILOT_PROVIDER);
+    assert_eq!(folded.finish_reason(), Some(FinishReason::Stop));
+    let usage = typed.usage.as_ref().expect("the reply reports usage");
+    assert_eq!(
+        usage.prompt_tokens as u64,
+        folded.usage.input_tokens.expect("input tokens")
+    );
+    assert_eq!(
+        usage.total_tokens as u64,
+        folded.usage.total_tokens.expect("total tokens")
+    );
+}
+
+/// The Responses route's own body, same property.
+fn assert_responses_parity(
+    typed: &responses_api::CompletionResponse,
+    folded: &RigCompletionResponse,
+) {
+    assert_eq!(Some(typed.model.as_str()), folded.model.as_deref());
+    assert_eq!(Some(typed.id.as_str()), folded.identity().response_id.as_deref());
+    assert_eq!(folded.provider, COPILOT_PROVIDER);
+    assert_eq!(folded.finish_reason(), Some(FinishReason::Stop));
+}
+
+#[allow(dead_code)]
 fn assert_route_parity(via_raw: &RigCompletionResponse, via_completion: &RigCompletionResponse) {
     assert_eq!(via_raw.finish_reason(), via_completion.finish_reason());
     assert_eq!(via_raw.finish_reason(), Some(FinishReason::Stop));
     assert_eq!(via_raw.model, via_completion.model);
     assert_eq!(via_raw.provider, via_completion.provider);
-    assert_eq!(via_raw.provider, COPILOT_PROVIDER);
     assert_eq!(via_raw.usage, via_completion.usage);
     let (raw_identity, completion_identity) = (via_raw.identity(), via_completion.identity());
     assert_eq!(
@@ -201,15 +233,13 @@ async fn chat_raw_with_request_id_reproduces_completion() {
                 "the driver stamps x-request-id on the chat route too"
             );
 
-            // The other view of the same reply: the route's own body.
-            let via_raw = openai::CompletionResponse::deserialize(&via_completion.raw)
-                .expect("`raw` is the chat route's own reply body")
-                .normalize(COPILOT_PROVIDER)
-                .expect("raw must convert forward")
-                .with_optional_provider_request_id(
-                    via_completion.identity().provider_request_id.clone(),
-                );
-            assert_route_parity(&via_raw, &via_completion);
+            // The other view of the same reply: the route's own body. There
+            // is one mapping now, so the typed parse is compared field by
+            // field against the folded response rather than re-derived
+            // through a second implementation of it.
+            let typed = openai::CompletionResponse::deserialize(&via_completion.raw)
+                .expect("`raw` is the chat route's own reply body");
+            assert_chat_parity(&typed, &via_completion);
 
             *sink.lock().expect("capture mutex") = Some(via_completion);
         },
@@ -259,14 +289,9 @@ async fn responses_raw_completion_carries_request_id() {
                 .expect("completion should succeed");
             assert!(via_completion.identity().provider_request_id.is_some());
 
-            let via_raw = responses_api::CompletionResponse::deserialize(&via_completion.raw)
-                .expect("`raw` is the Responses route's own reply body")
-                .normalize(COPILOT_PROVIDER)
-                .expect("raw must convert forward")
-                .with_optional_provider_request_id(
-                    via_completion.identity().provider_request_id.clone(),
-                );
-            assert_route_parity(&via_raw, &via_completion);
+            let typed = responses_api::CompletionResponse::deserialize(&via_completion.raw)
+                .expect("`raw` is the Responses route's own reply body");
+            assert_responses_parity(&typed, &via_completion);
 
             *sink.lock().expect("capture mutex") = Some(via_completion);
         },

@@ -50,7 +50,7 @@
 //! ```
 
 use rig::prelude::*;
-use rig::providers::gemini::Gemini;
+use rig::providers::gemini::{self, Gemini};
 use rig::providers::gemini::cached_content::{CacheExpiry, CachedContent, NewCachedContent};
 use std::time::Duration;
 
@@ -346,7 +346,7 @@ async fn an_agent_with_tools_cannot_read_from_a_cache() {
     let agent = AgentBuilder::new(
         client
             .completion(CACHE_MODEL)
-            .with_cached_content("cachedContents/agent-guard"),
+            .map_wire(|wire| wire.with_cached_content("cachedContents/agent-guard")),
     )
     .tool(CountingPing::default())
     .build();
@@ -408,7 +408,7 @@ async fn a_cache_carrying_a_provider_hosted_tool_is_usable_from_an_agent() {
                 let agent = AgentBuilder::new(
                     client
                         .completion(CACHE_MODEL)
-                        .with_cached_content(cache.name.clone()),
+                        .map_wire(|wire| wire.with_cached_content(cache.name.clone())),
                 )
                 .build();
 
@@ -485,7 +485,7 @@ async fn an_agent_that_suppresses_its_tools_may_read_from_a_cache() {
                 let agent = AgentBuilder::new(
                     client
                         .completion(CACHE_MODEL)
-                        .with_cached_content(cache.name.clone()),
+                        .map_wire(|wire| wire.with_cached_content(cache.name.clone())),
                 )
                 .tool(CountingPing::default())
                 .build();
@@ -967,7 +967,7 @@ async fn streaming_against_a_cache_reports_the_cache_read() {
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
                     .completion(CACHE_MODEL)
-                    .with_cached_content(cache.name.clone());
+                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
 
                 let request = rig::completion::CompletionRequest {
                     chat_history: vec![rig::message::Message::User {

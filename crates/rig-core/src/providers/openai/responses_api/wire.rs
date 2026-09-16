@@ -14,17 +14,16 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{self, CompletionError, ProviderCapabilities};
 use crate::operation::Completion;
-use crate::providers::internal::adapter::AdapterOutput;
 use crate::wire::{
-    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Decoder, Encoded, Fold,
-    Framing, HasCompletion, Mode, ObservationSink, Operation, Reply, Secret, Sink, Wire,
+    AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict, Body, Encoded, Framing,
+    HasCompletion, Mode, ObservationSink, Secret, Wire,
 };
 use serde::{Deserialize, Deserializer, Serialize};
 
-use super::streaming::{ResponsesDecoder, ResponsesEvent, ResponsesStreamOptions};
+use super::streaming::{ResponsesDecoder, ResponsesStreamOptions};
 use super::{
-    CompletionRequest, CompletionResponse, Include, ResponsesRequestParams,
-    ResponsesToolDefinition, SystemInstructionsPlacement,
+    CompletionRequest, Include, ResponsesRequestParams, ResponsesToolDefinition,
+    SystemInstructionsPlacement,
 };
 
 /// How a Responses-format provider differs from OpenAI: data only.
@@ -574,11 +573,17 @@ impl Wire for Responses {
 /// The ONE interpreter: the decoder's unary variant synthesizes the events
 /// the stream sends, and the operation's own fold turns those into the
 /// response — the same two steps [`crate::driver::call`] runs, without a
-/// socket.
+/// socket. Only the websocket session needs that: every other transport
+/// reaches the same fold through the driver.
+#[cfg(any(test, feature = "websocket"))]
 pub(crate) fn fold_body(
     provider: &str,
-    response: CompletionResponse,
+    response: super::CompletionResponse,
 ) -> Result<completion::CompletionResponse, CompletionError> {
+    use super::streaming::ResponsesEvent;
+    use crate::providers::internal::adapter::AdapterOutput;
+    use crate::wire::{Decoder, Fold, Operation, Reply, Sink};
+
     let reply = Reply {
         provider: provider.to_owned(),
         raw: serde_json::to_value(&response)?,

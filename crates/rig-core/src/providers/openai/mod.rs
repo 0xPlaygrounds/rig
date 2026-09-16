@@ -19,7 +19,6 @@
 
 pub mod completion;
 pub mod embedding;
-mod observation;
 pub mod responses_api;
 
 /// The OpenAI wires: one chat-completions wire and one `Dialect` constant

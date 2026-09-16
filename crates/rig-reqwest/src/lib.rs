@@ -156,7 +156,7 @@ mod runtime;
 
 /// Bring the construction traits into scope.
 pub mod prelude {
-    pub use crate::client::{DefaultTransport, DefaultTransportBuilder, DefaultTransportClient};
+    pub use crate::client::DefaultTransport;
 }
 
 use bytes::Bytes;

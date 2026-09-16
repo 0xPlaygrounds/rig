@@ -1,8 +1,9 @@
 use super::super::completion::{
-    AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent,
+    AnthropicCompletionRequest, AnthropicRequestParams, CLAUDE_OPUS_4_8, CacheControl, CacheTtl, Message, SystemContent,
     apply_prompt_cache_control, build_tool_definitions, resolve_top_level_cache_control,
 };
 use super::*;
+use crate::completion::CompletionRequest;
 use crate::completion::Message as RigMessage;
 use crate::completion::request::Document as RigDocument;
 use crate::streaming::{BlockClose, BlockKind, Delta, StreamEvent};

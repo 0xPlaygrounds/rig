@@ -1782,7 +1782,6 @@ fn assert_reasoning_tool_reasoning(
 /// Per-provider wire fixtures for the shared scenario set.
 pub mod fixtures {
     use super::*;
-    use crate::client::CompletionClient;
     use crate::completion::CompletionModel;
     use crate::test_utils::SequencedStreamingHttpClient;
     use serde_json::json;
@@ -2256,18 +2255,18 @@ pub mod fixtures {
         /// is re-parsed after the fact and merged with the terminal response
         /// body, per content kind.
         ///
-        /// Drives the *real* entry — `CompletionModel::completion` on a
-        /// ChatGPT client whose HTTP double answers the `/responses` POST
-        /// with the scripted SSE body — so the scenario exercises
-        /// `normalized_completion` itself rather than a mirrored copy of its
-        /// fallback logic (#2258 review, F8 drift risk).
+        /// Drives the *real* entry — `CompletionModel::completion` on the
+        /// ChatGPT wire whose HTTP double answers the `/responses` POST with
+        /// the scripted SSE body — so the scenario exercises the buffered
+        /// fold itself rather than a mirrored copy of it (#2258 review, F8
+        /// drift risk).
         pub fn buffered_driver() -> BufferedBodyDriver {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
                     let model = crate::driver::Bind::bind(
                         crate::providers::openai::responses_api::wire::ResponsesApi::with_dialect(
                             "test-token",
-                            crate::providers::chatgpt::DIALECT,
+                            &crate::providers::chatgpt::DIALECT,
                         )
                         .with_account_id("account-id"),
                         crate::test_utils::RecordingHttpClient::new(body),

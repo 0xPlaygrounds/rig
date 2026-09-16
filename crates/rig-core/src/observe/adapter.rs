@@ -152,12 +152,6 @@ pub struct AdapterUsage {
     /// Provider tool-use input tokens, when reported separately.
     pub tool_input_tokens: Option<u64>,
 }
-/// Provider-local projection, invoked only when observations are installed.
-///
-/// Superseded by [`crate::wire::Decoder::project`]; still here for the
-/// providers not yet ported to a wire.
-#[derive(Clone, Copy)]
-pub(crate) struct PayloadObserver(pub fn(&[u8], &mut AdapterAttempt));
 
 /// Boundary identified by the adapter's original typed error, not its message.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -177,16 +171,6 @@ pub enum AdapterErrorBoundary {
 }
 
 impl AdapterErrorBoundary {
-    pub(crate) fn from_completion(error: &crate::completion::CompletionError) -> Self {
-        use crate::completion::CompletionError as C;
-        match error {
-            C::HttpError(error) => Self::from_http(error),
-            C::JsonError(_) | C::ResponseError(_) => Self::Decode,
-            C::UrlError(_) | C::RequestError(_) => Self::Request,
-            C::ProviderError(_) | C::ProviderResponse(_) => Self::ProviderResponse,
-        }
-    }
-
     pub(crate) fn from_http(error: &crate::http_client::Error) -> Self {
         use crate::http_client::Error as H;
         match error {
@@ -318,26 +302,6 @@ impl AdapterContext {
         Some(attempt)
     }
 
-    /// Attach observation context to a transport request without touching
-    /// its payload. Superseded by the driver, which holds the context
-    /// itself; still here for the providers not yet ported to a wire.
-    pub(crate) fn attach<B>(&self, request: &mut http::Request<B>, route: &'static str) {
-        request.extensions_mut().insert((self.clone(), route));
-    }
-
-    pub(crate) fn slot_for_request<B>(request: &http::Request<B>) -> Option<AdapterSlot> {
-        request.extensions().get::<(Self, &'static str)>()?;
-        Some(AdapterSlot::default())
-    }
-
-    pub(crate) fn from_request<B>(request: &http::Request<B>) -> Option<AdapterAttempt> {
-        let (context, route) = request.extensions().get::<(Self, &'static str)>()?;
-        let mut attempt = context.begin(request.method(), route)?;
-        attempt.payload_observer = request.extensions().get::<PayloadObserver>().copied();
-        attempt.secrets = scrub::request_secrets(request);
-        Some(attempt)
-    }
-
     fn emit(&self, attempt: Option<u64>, event: AdapterEvent) {
         self.emit_with_analysis(attempt, event, None);
     }
@@ -395,7 +359,6 @@ impl AdapterContext {
             response_seen: false,
             sse_tail: crate::http_client::tail::SseTail::default(),
             secrets: Vec::new(),
-            payload_observer: None,
             pending_response_id: None,
             error_boundary: None,
         })
@@ -410,7 +373,6 @@ pub(crate) struct AdapterAttempt {
     response_seen: bool,
     sse_tail: crate::http_client::tail::SseTail,
     secrets: Vec<String>,
-    payload_observer: Option<PayloadObserver>,
     pending_response_id: Option<String>,
     error_boundary: Option<AdapterErrorBoundary>,
 }
@@ -435,12 +397,6 @@ impl AdapterAttempt {
         project(self);
     }
 
-    pub(crate) fn payload(&mut self, bytes: &[u8]) {
-        if let Some(observer) = self.payload_observer {
-            (observer.0)(bytes, self);
-        }
-    }
-
     pub(crate) fn provider(&mut self, verdict: AdapterVerdict, response_id: Option<String>) {
         if response_id.is_some() {
             self.pending_response_id = response_id;
@@ -457,10 +413,6 @@ impl AdapterAttempt {
                 },
             );
         }
-    }
-
-    pub(crate) fn response(&mut self, status: http::StatusCode) {
-        self.response_with_headers(status, None);
     }
 
     pub(crate) fn response_with_headers(
@@ -548,25 +500,6 @@ impl AdapterSlot {
         {
             attempt.project(project);
         }
-    }
-
-    pub(crate) fn payload(&self, bytes: &[u8]) {
-        if let Some(attempt) = self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .as_mut()
-        {
-            attempt.payload(bytes);
-        }
-    }
-
-    pub(crate) fn start<B>(&self, request: &http::Request<B>) {
-        *self
-            .0
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner) =
-            AdapterContext::from_request(request);
     }
 
     /// Install the attempt this send's facts belong to.

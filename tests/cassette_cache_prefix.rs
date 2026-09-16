@@ -861,7 +861,7 @@ determinism_test!(
 determinism_test!(xai_request_serialization_is_deterministic, "xai", |http| {
     rig::providers::openai::responses_api::wire::ResponsesApi::with_dialect(
         "test-key",
-        rig::providers::xai::DIALECT,
+        &rig::providers::xai::DIALECT,
     )
     .bind(http.clone())
     .completion(rig::providers::xai::GROK_3_MINI)

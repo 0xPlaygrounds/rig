@@ -51,7 +51,7 @@
 //! ```
 
 use rig::prelude::*;
-use rig::providers::gemini::Gemini;
+use rig::providers::gemini::{self, Gemini};
 
 use crate::cache_conformance::{
     AGENT_CACHE_PROMPT, CacheAccounting, CacheProbe, CacheProbeLookupTool, CacheSupport,
@@ -309,7 +309,7 @@ async fn explicit_cache_serves_the_whole_prefix_from_the_first_turn() {
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
                     .completion(CACHE_MODEL)
-                    .with_cached_content(cache.name.clone());
+                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
 
                 // `bare()`: the cache owns the system instruction and tools, and a
                 // request that also sends its own is rejected — by rig, before it
@@ -360,7 +360,7 @@ async fn explicit_cache_hits_across_unrelated_conversations() {
             always_deleting_cached_contents(&client, &handles, async {
                 let model = client
                     .completion(CACHE_MODEL)
-                    .with_cached_content(cache.name.clone());
+                    .map_wire(|wire| wire.with_cached_content(cache.name.clone()));
 
                 let mut reads = Vec::new();
                 for prompt in [

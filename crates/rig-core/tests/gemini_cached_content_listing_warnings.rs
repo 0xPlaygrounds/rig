@@ -29,6 +29,7 @@
 #[path = "common/tracing_capture.rs"]
 mod tracing_capture;
 
+use rig_core::prelude::*;
 use rig_core::providers::gemini;
 use rig_core::test_utils::{MockHttpResponse, SequencedHttpClient};
 
@@ -75,12 +76,8 @@ fn repeated_cursor_pages() -> Vec<MockHttpResponse> {
 /// Page size 1 because that is what makes the cursor loop reachable at all:
 /// Gemini answers up to 1,000 caches per page, so a live listing is one page.
 async fn list(pages: Vec<MockHttpResponse>) {
-    let client = gemini::Client::builder()
-        .api_key("test-key")
-        .http_client(SequencedHttpClient::new(pages))
-        .build()
-        .expect("client should build");
-    client
+    gemini::Gemini::new("test-key")
+        .bind(SequencedHttpClient::new(pages))
         .cached_contents()
         .list_with_page_size(1)
         .await

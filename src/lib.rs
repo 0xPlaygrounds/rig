@@ -182,18 +182,14 @@ pub mod prelude {
     // impl Tool for X {…}` keeps working.
     #[cfg(feature = "agent")]
     pub use crate::tool::{Tool, ToolContext};
-    // The construction extensions. `AgentProviderExt` adds `agent()` /
-    // `extractor()` to everything that builds a completion model
-    // (`rig_core::driver::CompletionProvider`, which every `Bound<P, H>` and
-    // every typed-transport client satisfies). `AgentClientExt` is the same
-    // sugar on the old provider clients, and goes with them; it shares no
-    // method name with the canonical `CompletionClient` brought in by the
-    // `rig_core::prelude::*` glob below, so both resolve unambiguously until
-    // then.
+    // `AgentProviderExt` adds `agent()` / `extractor()` to everything that
+    // builds a completion model — `rig_core::driver::CompletionProvider`,
+    // which every `Bound<P, H>` and every typed-transport client satisfies.
+    // One extension trait, because there is now one way to reach a model.
     #[cfg(feature = "agent")]
     pub use rig_agent::prelude::{
-        Agent, AgentClientExt, AgentModelExt, AgentProviderExt, MultiTurnStreamItem, PromptError,
-        RunEvents, StreamingResult, StructuredOutputError, ToolSet,
+        Agent, AgentModelExt, AgentProviderExt, MultiTurnStreamItem, PromptError, RunEvents,
+        StreamingResult, StructuredOutputError, ToolSet,
     };
     pub use rig_core::prelude::*;
     // Default-transport construction: `provider.bound()` over the bundled

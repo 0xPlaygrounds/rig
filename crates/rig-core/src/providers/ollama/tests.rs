@@ -1,4 +1,5 @@
 use super::*;
+use crate::embeddings::EmbeddingError;
 use serde_json::json;
 
 // The NDJSON wire has no discriminator, so its classify has exactly two

@@ -12,8 +12,8 @@
 //! wire.
 
 use super::{
-    Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks, ImageBody,
-    OutputCap, Quirks, RerankQuirks, Routing, SpeechBody,
+    AcceptedWidths, Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks,
+    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, Routing, SpeechBody,
 };
 
 /// Azure reads its API version from the environment because every Azure
@@ -244,6 +244,9 @@ pub const HUGGINGFACE: Dialect = Dialect {
         // Transcription and image generation address `/{model}` at the
         // router root, not a fixed path under `/v1`.
         model_is_modality_path: true,
+        // The router's image endpoint takes none of OpenAI's fields and
+        // answers with the image bytes rather than a JSON envelope.
+        image_body: ImageBody::HuggingFace,
         rewrite: BodyRewrite::HuggingFaceRouter,
         ..Quirks::openai()
     },
@@ -304,6 +307,51 @@ pub const LLAMACPP: Dialect = Dialect {
     },
 };
 
+/// The width contract of Mistral's embedding models.
+///
+/// `mistral-embed` is fixed at 1024 and reads no width field: Mistral
+/// answers any other value with an error rather than truncating, so a
+/// request naming one is refused before it is built. Codestral Embed is
+/// configurable up to 3072 and takes its width as `output_dimension`.
+///
+/// The dated aliases are listed beside their rolling names because a caller
+/// pinning `mistral-embed-2312` gets the same model, and a model absent from
+/// this table reports `ndims() == 0`.
+const MISTRAL_EMBEDDING_WIDTHS: &[ModelWidth] = &[
+    ModelWidth {
+        model: crate::providers::mistral::embedding::MISTRAL_EMBED,
+        default: Some(1_024),
+        accepted: AcceptedWidths::Fixed,
+    },
+    ModelWidth {
+        model: "mistral-embed-2312",
+        default: Some(1_024),
+        accepted: AcceptedWidths::Fixed,
+    },
+    ModelWidth {
+        model: crate::providers::mistral::embedding::CODESTRAL_EMBED,
+        // Configurable with no documented native width, so a handle that
+        // names none reports 0 rather than inventing one.
+        default: None,
+        accepted: AcceptedWidths::Range {
+            // Mistral documents only a ceiling. The floor is rig's own
+            // "unknown" sentinel, which never reaches the wire.
+            min: 0,
+            max: 3_072,
+            requirement: "to be at most 3072 for Codestral Embed",
+        },
+    },
+    ModelWidth {
+        model: "codestral-embed-2505",
+        default: None,
+        accepted: AcceptedWidths::Range {
+            min: 0,
+            max: 3_072,
+            requirement: "to be at most 3072 for Codestral Embed",
+        },
+    },
+];
+
 /// Mistral.
 pub const MISTRAL: Dialect = Dialect {
     name: "mistral",
@@ -330,6 +378,7 @@ pub const MISTRAL: Dialect = Dialect {
             supports_user: false,
             // Codestral Embed takes its width as `output_dimension`.
             dimensions: DimensionsField::OutputDimension,
+            widths: MISTRAL_EMBEDDING_WIDTHS,
             ..EmbeddingQuirks::openai()
         },
         ..Quirks::openai()
@@ -378,6 +427,35 @@ pub const VENICE: Dialect = Dialect {
     },
 };
 
+/// The width contract of Doubleword's embedding models.
+///
+/// The bounds are the ones Doubleword's model page documents ("Output
+/// Dimensions: 32-4096 Configurable"), and 4096 is also the width the model
+/// returns when a request names none — one table so the width
+/// `ndims()` reports and the widths the encoder will send cannot drift
+/// apart. Without the default, Doubleword's only embedding model reported
+/// `ndims() == 0` while returning 4096-wide vectors, and a vector store
+/// sized from it built a zero-width index.
+///
+/// Both bounds are worth refusing here rather than on the wire, in opposite
+/// directions. Above the ceiling Doubleword silently clamps to the native
+/// width and answers 200, which would leave `ndims()` describing vectors the
+/// API never returned — the very mismatch a width contract exists to
+/// prevent, and one no reply-side check can catch. Below the floor it is not
+/// dependable: the identical request answers `422 Unprocessable request` or
+/// `200` with a sub-floor vector at random (six of fifteen live probes at 1,
+/// 2, 8, 16 and 31 were rejected; every probe at 32 and above succeeded), so
+/// a width rig cannot promise is better refused than half-honoured.
+const DOUBLEWORD_EMBEDDING_WIDTHS: &[ModelWidth] = &[ModelWidth {
+    model: crate::providers::doubleword::QWEN3_EMBEDDING_8B,
+    default: Some(4_096),
+    accepted: AcceptedWidths::Range {
+        min: 32,
+        max: 4_096,
+        requirement: "to be between 32 and 4096",
+    },
+}];
+
 /// Doubleword.
 pub const DOUBLEWORD: Dialect = Dialect {
     name: "doubleword",
@@ -392,6 +470,10 @@ pub const DOUBLEWORD: Dialect = Dialect {
             requires_usage: false,
             supports_encoding_format: false,
             supports_user: false,
+            widths: DOUBLEWORD_EMBEDDING_WIDTHS,
+            // Doubleword refuses a zero width itself, and stating it here
+            // keeps the refusal ahead of a request that cannot succeed.
+            refuse_zero_width: Some("to be greater than zero"),
             ..EmbeddingQuirks::openai()
         },
         ..Quirks::openai()

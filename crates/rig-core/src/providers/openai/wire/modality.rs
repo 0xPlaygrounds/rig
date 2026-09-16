@@ -25,7 +25,7 @@ use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
 
-use super::{DimensionsField, OpenAI, Routing};
+use super::{AcceptedWidths, ModelWidth, OpenAI, Routing};
 // Each is read by exactly one feature-gated wire.
 #[cfg(feature = "image")]
 use super::ImageBody;
@@ -111,13 +111,82 @@ impl Embeddings {
         self
     }
 
+    /// This model's width contract on this dialect, or `None` for a model
+    /// the dialect does not document.
+    fn model_width(&self) -> Option<&'static ModelWidth> {
+        self.provider
+            .dialect
+            .quirks
+            .embedding
+            .widths
+            .iter()
+            .find(|width| width.model == self.model)
+    }
+
     /// The width this wire reports, which is the caller's when they named
     /// one and the model's documented width otherwise. Zero means unknown —
     /// the model is absent from every table this build knows.
+    ///
+    /// The dialect's own table wins over OpenAI's `text-embedding-*` one:
+    /// the dialect documents the models it serves, and the shared table is
+    /// the fallback for the OpenAI models a compatible host may proxy.
     fn resolved_ndims(&self) -> usize {
         self.ndims
+            .or_else(|| self.model_width().and_then(|width| width.default))
             .or_else(|| model_dimensions_from_identifier(&self.model))
             .unwrap_or_default()
+    }
+
+    /// Refuse a declared width this dialect cannot honour.
+    ///
+    /// Request-side because the providers that need it answer an
+    /// unhonourable width with `200` and a vector of some other width: an
+    /// over-wide request to Doubleword is silently clamped to the native
+    /// width, so letting it through would leave `ndims()` describing vectors
+    /// the API never returned. That is the reply-side check's blind spot —
+    /// it compares against what the caller declared, which is exactly the
+    /// number that would be wrong.
+    fn refuse_unhonourable_width(&self) -> Result<(), EmbeddingError> {
+        let quirks = &self.provider.dialect.quirks.embedding;
+        let invalid = |requirement, parameter| EmbeddingError::InvalidParameterValue {
+            provider: self.provider.dialect.name,
+            parameter,
+            requirement,
+        };
+        // A dialect that reads no width field has nothing to refuse: the
+        // caller's number never reaches the wire, and the shared driver
+        // catches the disagreement against the reply instead.
+        let Some(parameter) = quirks.dimensions.name() else {
+            return Ok(());
+        };
+        let Some(declared) = self.ndims else {
+            return Ok(());
+        };
+        if declared == 0 {
+            return match quirks.refuse_zero_width {
+                Some(requirement) => Err(invalid(requirement, parameter)),
+                None => Ok(()),
+            };
+        }
+        // A model the dialect does not document: the caller's width is the
+        // only width there is, so it goes out unvalidated and the API rules.
+        let Some(width) = self.model_width() else {
+            return Ok(());
+        };
+        // A model naming its own native width is not a request for
+        // truncation — it is the caller echoing back what `resolved_ndims`
+        // reports. Accepted, and suppressed by `requested_width`.
+        if width.default == Some(declared) {
+            return Ok(());
+        }
+        match width.accepted {
+            AcceptedWidths::Fixed => Err(EmbeddingError::UnsupportedParameter {
+                provider: self.provider.dialect.name,
+                parameter,
+            }),
+            AcceptedWidths::Range { min, max, .. } if (min..=max).contains(&declared) => Ok(()),
+            AcceptedWidths::Range { requirement, .. } => Err(invalid(requirement, parameter)),
+        }
     }
 
     /// The width to send, in the field this dialect spells it with.
@@ -125,6 +194,10 @@ impl Embeddings {
     /// OpenAI's legacy Ada model does not accept a width at all, and
     /// `llama-server` reads no width field, so neither is sent one.
     fn requested_width(&self) -> Option<(&'static str, usize)> {
+        let field = self.provider.dialect.quirks.embedding.dimensions.name()?;
+        if self.model == crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002 {
+            return None;
+        }
         // The width the caller named, or the one this model is documented at
         // — the deleted client sent `ndims.or_else(|| default_ndims(model))`,
         // and every recorded embedding cassette carries the resolved value.
@@ -134,12 +207,13 @@ impl Embeddings {
             0 => return None,
             ndims => ndims,
         };
-        match self.provider.dialect.quirks.embedding.dimensions {
-            DimensionsField::Ignored => None,
-            _ if self.model == crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002 => None,
-            DimensionsField::Dimensions => Some(("dimensions", ndims)),
-            DimensionsField::OutputDimension => Some(("output_dimension", ndims)),
+        // At a documented model's native width, send nothing: that width is
+        // what the model emits unasked, so the field would only restate the
+        // default and the vector is identical either way.
+        if self.model_width().is_some_and(|width| width.default == Some(ndims)) {
+            return None;
         }
+        Some((field, ndims))
     }
 }
 
@@ -270,6 +344,7 @@ impl Wire for Embeddings {
                 parameter: "user",
             });
         }
+        self.refuse_unhonourable_width()?;
 
         let mut body = serde_json::json!({ "input": request });
         let Some(object) = body.as_object_mut() else {
@@ -465,10 +540,16 @@ impl Images {
 }
 
 /// The image-generation decoder.
+///
+/// Carries the dialect's [`ImageBody`] because the request shape names the
+/// reply shape: most of this family answers with a JSON envelope, and
+/// Hugging Face's router answers with the image bytes themselves.
 #[cfg(feature = "image")]
 #[derive(Default)]
 pub struct ImagesDecoder {
     provider: &'static str,
+    /// Which reply shape this dialect answers with.
+    body: ImageBody,
 }
 
 /// One generated image, as every dialect on this wire returns it.
@@ -521,12 +602,38 @@ impl ImagesReply {
     }
 }
 
+/// One image-generation reply, in whichever form the dialect sent it.
+///
+/// The JSON dialects are classified and decoded; Hugging Face's router
+/// sends the image and nothing else, so for it the frame *is* the payload
+/// and no envelope is parsed.
+#[cfg(feature = "image")]
+#[derive(Debug, Clone)]
+pub enum ImagesEvent {
+    /// A JSON envelope, as OpenAI, xAI and Hyperbolic answer.
+    Json(ImagesReply),
+    /// The image bytes themselves, with no envelope at all.
+    Raw(Vec<u8>),
+}
+
 #[cfg(feature = "image")]
 impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
-    type Event = ImagesReply;
+    type Event = ImagesEvent;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
-        classify_untyped_line(frame.as_str().as_bytes())
+        match self.body {
+            // Not JSON at all: there is nothing to decode, so there is
+            // nothing to classify — the bytes are the answer. A body that
+            // happened to be valid UTF-8 still arrives as text, so both
+            // frame forms are the same payload here.
+            ImageBody::HuggingFace => WireEvent::Known(ImagesEvent::Raw(match frame {
+                WireFrame::Text(text) => text.into_bytes(),
+                WireFrame::Bytes(bytes) => bytes,
+            })),
+            ImageBody::OpenAi | ImageBody::Xai | ImageBody::Hyperbolic => {
+                classify_untyped_line(frame.as_str().as_bytes()).map(ImagesEvent::Json)
+            }
+        }
     }
 
     fn interpret(
@@ -537,7 +644,16 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
         use base64::Engine;
         use crate::image_generation::{ImageGenerationError, ImageGenerationResponse};
 
-        let Some(encoded) = event.first_base64() else {
+        let reply = match event {
+            // The image is already the payload, and the reply is not a
+            // document, so `raw` stays null rather than restating the bytes.
+            ImagesEvent::Raw(image) => {
+                out.push(Ok(ImageGenerationResponse::new(image, self.provider)));
+                return;
+            }
+            ImagesEvent::Json(reply) => reply,
+        };
+        let Some(encoded) = reply.first_base64() else {
             out.push(Err(ImageGenerationError::ResponseError(
                 "missing image data".to_owned(),
             )));
@@ -550,7 +666,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
                 return;
             }
         };
-        let raw = serde_json::to_value(&event).unwrap_or(serde_json::Value::Null);
+        let raw = serde_json::to_value(&reply).unwrap_or(serde_json::Value::Null);
         out.push(Ok(
             ImageGenerationResponse::new(image, self.provider).with_raw(raw)
         ));
@@ -601,6 +717,16 @@ impl Wire for Images {
                 "height": request.height,
                 "width": request.width,
             }),
+            // Hugging Face's router takes the prompt as `inputs` and the
+            // size nested under `parameters`; the model is the path, not a
+            // body field, so the body names none.
+            ImageBody::HuggingFace => serde_json::json!({
+                "inputs": request.prompt,
+                "parameters": {
+                    "width": request.width,
+                    "height": request.height,
+                },
+            }),
         };
         // Merged last, so a caller can reach the endpoint's other parameters
         // and override what is derived above.
@@ -628,6 +754,7 @@ impl Wire for Images {
     fn decoder(&self) -> ImagesDecoder {
         ImagesDecoder {
             provider: self.provider.dialect.name,
+            body: self.provider.dialect.quirks.image_body,
         }
     }
 }

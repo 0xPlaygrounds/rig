@@ -386,8 +386,9 @@ async fn a_chatgpt_reply_captures_the_terminal_response_object_as_raw() {
     ] {
         let response = folded_unary(chatgpt(), body).await;
 
-        let typed: CompletionResponse = serde_json::from_value(response.raw.clone())
-            .expect("raw must deserialize back into the wire type");
+        let typed: crate::providers::openai::responses_api::CompletionResponse =
+            serde_json::from_value(response.raw.clone())
+                .expect("raw must deserialize back into the wire type");
         assert_eq!(
             serde_json::to_value(&typed).expect("re-serialize"),
             response.raw,
@@ -438,8 +439,7 @@ fn the_xai_dialect_posts_its_own_request_shape() {
 /// that way.
 #[tokio::test]
 async fn an_error_envelope_on_a_success_fails_the_xai_call() {
-    let wire =
-        ResponsesApi::with_dialect("test-key", XAI).responses("grok-4");
+    let wire = ResponsesApi::with_dialect("test-key", &XAI).responses("grok-4");
     let error = Bound::new(
         wire,
         RecordingHttpClient::new(Bytes::from_static(

@@ -49,8 +49,11 @@ pub const QWEN3_VL_235B: &str = "Qwen/Qwen3-VL-235B-A22B-Instruct-FP8";
 // ================================================================
 // Doubleword Embedding Models
 // ================================================================
-/// Doubleword's only embedding model. Its model page
-/// (<https://docs.doubleword.ai/inference-api/models/qwen-qwen3-embedding-8b>)
-/// documents "Output Dimensions: 32-4096 Configurable", and 4096 is also the
-/// width it returns when a request names none.
+/// Doubleword's only embedding model, documented on its model page
+/// (<https://docs.doubleword.ai/inference-api/models/qwen-qwen3-embedding-8b>).
+///
+/// Its default and accepted output widths are carried as data by the
+/// [`DOUBLEWORD`](crate::providers::openai::wire::DOUBLEWORD) dialect's
+/// embedding quirks, which is what the encoder reads and what `ndims()`
+/// reports; the numbers are not restated here so the two cannot drift.
 pub const QWEN3_EMBEDDING_8B: &str = "Qwen/Qwen3-Embedding-8B";

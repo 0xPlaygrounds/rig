@@ -96,6 +96,7 @@ fn list_models_path(page_token: Option<&str>) -> String {
 
 /// One decoded page of `GET /v1beta/models`: the models it carried, and the
 /// cursor it named when it named a usable one.
+#[derive(Debug)]
 struct ListingPage {
     models: Vec<Model>,
     next_cursor: Option<String>,

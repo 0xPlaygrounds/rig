@@ -743,21 +743,24 @@ async fn interactions_requires_action_roundtrip() {
                 .await
                 .expect("tool-required interaction should succeed");
 
-            // The wire status transition under test.
+            // The wire status transition under test, read off the reply
+            // document `raw` carries verbatim — the interaction resource is
+            // the reply, and the fold is the other view of it.
+            let interaction: interactions_api::Interaction =
+                serde_json::from_value(raw.raw.clone())
+                    .expect("`raw` is the interaction resource");
             assert!(
                 matches!(
-                    raw.status,
+                    interaction.status,
                     Some(interactions_api::InteractionStatus::RequiresAction)
                 ),
                 "declared client tool should leave the interaction in requires_action, got {:?}",
-                raw.status
+                interaction.status
             );
-            let interaction_id = raw.id.clone();
+            let interaction_id = interaction.id.clone();
             assert!(!interaction_id.is_empty(), "expected an interaction id");
 
-            let normalized: rig::completion::CompletionResponse = raw
-                .try_into()
-                .expect("requires_action interaction should normalize");
+            let normalized = raw;
             assert_eq!(
                 normalized.finish_reason(),
                 Some(FinishReason::ToolCalls),

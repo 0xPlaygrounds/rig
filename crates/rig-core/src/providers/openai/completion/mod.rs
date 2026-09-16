@@ -1361,6 +1361,14 @@ pub(crate) fn assistant_refusal_fallback<'a>(
     refusal.filter(|refusal| !has_text && !refusal.is_empty())
 }
 
+/// The whole-message text view: every non-empty part in arrival order, with
+/// the sibling `refusal` appended only when [`assistant_refusal_fallback`]
+/// says it is the turn's text.
+///
+/// No wire path reads text this way — the driver records off the folded
+/// response — so this survives for the OpenAI-compatible providers' unary
+/// decode tests, which read a decoded message's text through it.
+#[cfg(test)]
 pub(crate) fn assistant_message_text_response(message: &Message) -> Option<String> {
     let Message::Assistant {
         content, refusal, ..

@@ -77,8 +77,9 @@ impl HasCompletion for Anthropic { type Wire = Messages; fn completion(&self, m:
    wire's `encode`/`classify`, in one file.
 4. **Observation is `Decoder::project`.** The provider's `observation.rs`
    `payload` fn becomes the `project` body, writing through
-   `ObservationSink` (`emit`, `provider`, `scrub`). Delete
-   `observation::attach` and the `PayloadObserver` registration.
+   `ObservationSink` (`emit`, `provider`, `scrub`). Nothing attaches a
+   per-request observer any more: the driver projects the unary reply and
+   every stream frame through the decoder itself.
 5. **Telemetry, request-id capture, the non-success funnel, `Accept`, the
    status split and the span are the driver's.** Delete the provider's
    `ProviderResponseExt` impl, its span builders, its `record_token_usage`

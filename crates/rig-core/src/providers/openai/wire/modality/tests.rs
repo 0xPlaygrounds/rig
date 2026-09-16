@@ -5,9 +5,12 @@ use super::*;
 use crate::driver::Bound;
 use crate::embeddings::EmbeddingModel as _;
 use crate::model::ModelLister as _;
+use crate::embeddings::EmbeddingError;
+use crate::providers::doubleword::QWEN3_EMBEDDING_8B;
+use crate::providers::mistral::embedding::{CODESTRAL_EMBED, MISTRAL_EMBED};
 use crate::providers::openai::embedding::TEXT_EMBEDDING_ADA_002;
 use crate::providers::openai::wire::{
-    AZURE, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OpenAI, TOGETHER,
+    AZURE, DOUBLEWORD, Dialect, GROQ, LLAMACPP, MISTRAL, OPENAI, OpenAI, TOGETHER,
 };
 use crate::test_utils::RecordingHttpClient;
 
@@ -605,6 +608,76 @@ async fn the_hyperbolic_image_body_and_reply_differ_from_openais() {
     assert_eq!(response.provider, "hyperbolic");
 }
 
+/// Hugging Face's router takes the prompt as `inputs` and the size nested
+/// under `parameters`, and the model is the path rather than a body field —
+/// the OpenAI body would have been rejected outright.
+#[cfg(feature = "image")]
+#[test]
+fn the_huggingface_image_body_is_the_routers_own_shape() {
+    use crate::providers::openai::wire::HUGGINGFACE;
+
+    let encoded = OpenAI::with_key(&HUGGINGFACE, "hf")
+        .images("stabilityai/stable-diffusion-3-medium-diffusers")
+        .encode(
+            crate::image_generation::ImageGenerationRequest {
+                prompt: "a cat".to_owned(),
+                width: 1024,
+                height: 768,
+                additional_params: None,
+            },
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    let [http_request] = encoded.requests.as_slice() else {
+        panic!("one request")
+    };
+    // The model is the path, at the router root rather than under `/v1`.
+    assert_eq!(
+        http_request.uri().to_string(),
+        "https://router.huggingface.co/stabilityai/stable-diffusion-3-medium-diffusers"
+    );
+    let body = json_body(&encoded);
+    assert_eq!(body["inputs"], "a cat");
+    assert_eq!(body["parameters"]["width"], 1024);
+    assert_eq!(body["parameters"]["height"], 768);
+    assert!(body.get("prompt").is_none(), "the prompt is `inputs`: {body}");
+    assert!(body.get("model").is_none(), "the model is the path: {body}");
+    assert!(body.get("size").is_none(), "the size is nested: {body}");
+    assert!(
+        body.get("width").is_none(),
+        "the size is under `parameters`: {body}"
+    );
+}
+
+/// The router answers with the image bytes and no JSON envelope at all, so
+/// the reply neither classifies nor decodes as JSON: the frame is the image.
+#[cfg(feature = "image")]
+#[tokio::test]
+async fn the_huggingface_image_reply_is_the_image_bytes() {
+    use crate::image_generation::ImageGenerationModel as _;
+    use crate::providers::openai::wire::HUGGINGFACE;
+
+    // A real PNG header: not valid UTF-8, and not valid JSON.
+    let png = b"\x89PNG\r\n\x1a\n\xff\xd8not-json";
+    let response = Bound::new(
+        OpenAI::with_key(&HUGGINGFACE, "hf").images("black-forest-labs/FLUX.1-dev"),
+        RecordingHttpClient::new(&png[..]),
+    )
+    .image_generation(crate::image_generation::ImageGenerationRequest {
+        prompt: "a cat".to_owned(),
+        width: 1024,
+        height: 768,
+        additional_params: None,
+    })
+    .await
+    .expect("raw image bytes decode");
+    assert_eq!(response.image, png);
+    assert_eq!(response.provider, "huggingface");
+    // There is no reply document, so `raw` is null rather than a re-encoding
+    // of the image.
+    assert!(response.raw.is_null(), "{}", response.raw);
+}
+
 /// Hyperbolic addresses speech by language and answers with base64 in a JSON
 /// envelope rather than the audio bytes OpenAI's endpoint returns.
 #[cfg(feature = "audio")]
@@ -676,4 +749,135 @@ fn azure_always_carries_an_api_version() {
     );
     // No other dialect invents one.
     assert_eq!(OpenAI::new("k").api_version, None);
+}
+
+/// The width a dialect's own table documents, and the field suppression that
+/// comes with it.
+///
+/// `ndims()` is what a vector store sizes its index from — `rig-neo4j`
+/// validates and creates its index from it, `rig-sqlite` sizes its table
+/// from it — so a model absent from every table reports 0 and builds an
+/// index that cannot hold its own vectors. Doubleword's only embedding model
+/// is absent from OpenAI's `text-embedding-*` table, which is why the
+/// dialect has to carry its own.
+#[test]
+fn a_dialects_width_table_supplies_the_default_and_suppresses_the_field() {
+    let unasked = OpenAI::with_key(&DOUBLEWORD, "k").embeddings(QWEN3_EMBEDDING_8B, None);
+    assert_eq!(
+        unasked.capabilities().ndims, 4_096,
+        "the dialect's table is the only place this model's width is written down"
+    );
+
+    // At the native width the field is redundant: the model emits 4096
+    // unasked, so the vector is identical either way.
+    for wire in [
+        &unasked,
+        &OpenAI::with_key(&DOUBLEWORD, "k").embeddings(QWEN3_EMBEDDING_8B, Some(4_096)),
+    ] {
+        let encoded = wire
+            .encode(documents(), Mode::Unary)
+            .expect("the native width encodes");
+        assert!(
+            json_body(&encoded).get("dimensions").is_none(),
+            "{}",
+            json_body(&encoded)
+        );
+    }
+
+    // A truncating width is a real request and goes out.
+    let encoded = OpenAI::with_key(&DOUBLEWORD, "k")
+        .embeddings(QWEN3_EMBEDDING_8B, Some(512))
+        .encode(documents(), Mode::Unary)
+        .expect("a width inside the documented range encodes");
+    assert_eq!(json_body(&encoded)["dimensions"], serde_json::json!(512));
+
+    // Mistral's fixed-width model is the same mechanism with a different
+    // table: 1024 reported, and no `output_dimension` on the wire.
+    let mistral = OpenAI::with_key(&MISTRAL, "k").embeddings(MISTRAL_EMBED, None);
+    assert_eq!(mistral.capabilities().ndims, 1_024);
+    let encoded = mistral
+        .encode(documents(), Mode::Unary)
+        .expect("the native width encodes");
+    assert!(
+        json_body(&encoded).get("output_dimension").is_none(),
+        "{}",
+        json_body(&encoded)
+    );
+}
+
+/// A width the dialect cannot honour is refused before the request is built.
+///
+/// Request-side, because the reply-side check cannot see it: Doubleword
+/// answers an over-wide request `200` with a silently clamped 4096-wide
+/// vector, so the disagreement never appears in the reply at all.
+#[test]
+fn an_unhonourable_width_is_refused_before_the_request_is_built() {
+    fn refusal(dialect: &Dialect, model: &str, ndims: usize) -> EmbeddingError {
+        OpenAI::with_key(dialect, "k")
+            .embeddings(model, Some(ndims))
+            .encode(documents(), Mode::Unary)
+            .err()
+            .expect("a width the dialect cannot honour must not reach the wire")
+    }
+
+    // The two Doubleword refusals read differently, and both texts are the
+    // provider's documented contract rather than prose.
+    assert_eq!(
+        refusal(&DOUBLEWORD, QWEN3_EMBEDDING_8B, 0).to_string(),
+        "doubleword embeddings require `dimensions` to be greater than zero"
+    );
+    for over_or_under in [8_192, 31] {
+        assert_eq!(
+            refusal(&DOUBLEWORD, QWEN3_EMBEDDING_8B, over_or_under).to_string(),
+            "doubleword embeddings require `dimensions` to be between 32 and 4096"
+        );
+    }
+
+    // Mistral's ceiling, and its fixed-width model refusing the parameter
+    // itself rather than a value.
+    assert_eq!(
+        refusal(&MISTRAL, CODESTRAL_EMBED, 3_073).to_string(),
+        "mistral embeddings require `output_dimension` to be at most 3072 for Codestral Embed"
+    );
+    assert!(
+        matches!(
+            refusal(&MISTRAL, MISTRAL_EMBED, 512),
+            EmbeddingError::UnsupportedParameter {
+                provider: "mistral",
+                parameter: "output_dimension",
+            }
+        ),
+        "a fixed-width model has no width to request"
+    );
+
+    // rig polices only the range it has a table for. For a model the dialect
+    // does not document, the caller's width is the only width there is: it
+    // goes out unvalidated and the provider decides.
+    let unknown = OpenAI::with_key(&DOUBLEWORD, "k").embeddings("Qwen/Qwen4-Unreleased", Some(8_192));
+    assert_eq!(unknown.capabilities().ndims, 8_192);
+    let encoded = unknown
+        .encode(documents(), Mode::Unary)
+        .expect("an undocumented model's width is not rig's to refuse");
+    assert_eq!(json_body(&encoded)["dimensions"], serde_json::json!(8_192));
+}
+
+/// A table-supplied default must not look like a caller's declaration.
+///
+/// The reply-side guard raises `MismatchedDimensions` only when the caller
+/// *declared* a width, so a width that came from the dialect's table has to
+/// leave `declared` alone — otherwise every reply would be measured against
+/// a number the caller never asked for.
+#[test]
+fn a_table_supplied_width_is_not_a_declaration() {
+    let unasked = OpenAI::with_key(&DOUBLEWORD, "k").embeddings(QWEN3_EMBEDDING_8B, None);
+    let capabilities = unasked.capabilities();
+    assert_eq!(capabilities.ndims, 4_096, "the table resolves the width");
+    assert_eq!(
+        capabilities.declared, None,
+        "the caller named no width, so there is nothing for a reply to contradict"
+    );
+
+    // Declaring the same number is a different fact, and is recorded as one.
+    let asked = OpenAI::with_key(&DOUBLEWORD, "k").embeddings(QWEN3_EMBEDDING_8B, Some(4_096));
+    assert_eq!(asked.capabilities().declared, Some(4_096));
 }

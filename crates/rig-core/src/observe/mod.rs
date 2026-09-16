@@ -49,7 +49,6 @@ pub use adapter::{
     AdapterEvent, AdapterObservation, AdapterUsage, AdapterVerdict, diagnostic_url_secrets,
     scrub_diagnostic,
 };
-pub(crate) use adapter::{AdapterAttempt, PayloadObserver};
 
 #[cfg(test)]
 mod tests;

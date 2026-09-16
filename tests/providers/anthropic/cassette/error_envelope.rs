@@ -9,7 +9,6 @@
 //! `RIG_PROVIDER_TEST_MODE=record` to record against the real provider.
 use futures::StreamExt;
 use rig::completion::CompletionModel;
-use rig::prelude::*;
 
 use super::super::support::with_anthropic_cassette;
 
