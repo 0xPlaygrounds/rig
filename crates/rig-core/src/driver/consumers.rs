@@ -22,6 +22,10 @@ use crate::operation::{
     Completion, Embedding, ImageEmbedding, ModelListing, Rerank, RerankRequest, Transcription,
     Verify,
 };
+use crate::providers::gemini::cached_content::{
+    CacheExpiry, CachedContent, CachedContentError, CachedContentRequest, CachedContents,
+    NewCachedContent,
+};
 use crate::rerank::{RerankError, RerankModel, RerankResponse};
 use crate::streaming::StreamingCompletionResponse;
 use crate::transcription::{
@@ -345,9 +349,14 @@ pub trait HasVerify: WasmCompatSend + WasmCompatSync {
 }
 
 /// Build an operation's wire from a bound provider config, keeping the
-/// socket. One impl per operation, never one per provider.
+/// socket. One impl per operation, never one per provider. The `Bound`
+/// method is named after the wire (`models`), the trait method after the
+/// operation (`model_listing`); they coincide for every other operation.
 macro_rules! bound_constructor {
     ($has:ident, $method:ident $(, $arg:ident : $ty:ty)*) => {
+        bound_constructor!($has, $method => $method $(, $arg: $ty)*);
+    };
+    ($has:ident, $trait_method:ident => $method:ident $(, $arg:ident : $ty:ty)*) => {
         impl<P, H> Bound<P, H>
         where
             P: $has,
@@ -356,7 +365,7 @@ macro_rules! bound_constructor {
             #[doc = concat!("The provider's `", stringify!($method), "` wire, on this socket.")]
             pub fn $method(&self $(, $arg: $ty)*) -> Bound<P::Wire, H> {
                 Bound {
-                    wire: P::$method(&self.wire $(, $arg)*),
+                    wire: P::$trait_method(&self.wire $(, $arg)*),
                     http: self.http.clone(),
                 }
             }
@@ -374,7 +383,7 @@ bound_constructor!(
 );
 bound_constructor!(HasTranscription, transcription, model: impl Into<String>);
 bound_constructor!(HasRerank, rerank, model: impl Into<String>);
-bound_constructor!(HasModelListing, model_listing);
+bound_constructor!(HasModelListing, model_listing => models);
 #[cfg(feature = "image")]
 bound_constructor!(HasImageGeneration, image_generation, model: impl Into<String>);
 #[cfg(feature = "audio")]
@@ -405,5 +414,91 @@ where
         ndims: usize,
     ) -> crate::embeddings::EmbeddingsBuilder<Bound<P::Wire, H>, D> {
         crate::embeddings::EmbeddingsBuilder::new(self.embedding(model, Some(ndims)))
+    }
+}
+
+/// The calls on Gemini's explicit context cache: one verb each through
+/// [`call`]. The ones that address an existing handle read a 403 or 404 as
+/// [`CachedContentError::Expired`] — see
+/// `CachedContentError::on_handle` for why `create` does not.
+impl<H> Bound<CachedContents, H>
+where
+    H: Socket,
+{
+    /// Upload content and get a handle back.
+    ///
+    /// The returned [`CachedContent::usage_metadata`] reports how many tokens
+    /// are now being stored — and therefore billed — so log it if cost
+    /// matters.
+    pub async fn create(
+        &self,
+        request: NewCachedContent,
+    ) -> Result<CachedContent, CachedContentError> {
+        let request = CachedContentRequest::Create(request);
+        call(&self.wire, &self.http, request, None)
+            .await?
+            .resource()
+    }
+
+    /// Fetch one cached content by handle.
+    pub async fn get(&self, name: &str) -> Result<CachedContent, CachedContentError> {
+        let request = CachedContentRequest::Get(name.to_owned());
+        call(&self.wire, &self.http, request, None)
+            .await
+            .map_err(|error| error.on_handle(name))?
+            .resource()
+    }
+
+    /// Every cached content this API key can see, following pagination at
+    /// the wire's page size.
+    pub async fn list(&self) -> Result<Vec<CachedContent>, CachedContentError> {
+        let reply = call(&self.wire, &self.http, CachedContentRequest::List, None).await?;
+        Ok(reply.cached_contents)
+    }
+
+    /// [`Self::list`] at an explicit page size — see
+    /// [`CachedContents::page_size`] for when one is wanted.
+    pub async fn list_with_page_size(
+        &self,
+        page_size: usize,
+    ) -> Result<Vec<CachedContent>, CachedContentError> {
+        let wire = self.wire.clone().with_page_size(page_size);
+        let reply = call(&wire, &self.http, CachedContentRequest::List, None).await?;
+        Ok(reply.cached_contents)
+    }
+
+    /// Extend (or shorten) a cache's life.
+    ///
+    /// Expiry is the only mutable part of the resource — the content itself
+    /// is immutable, so refreshing a corpus means creating a new cache and
+    /// deleting the old one.
+    pub async fn update_expiry(
+        &self,
+        name: &str,
+        expiry: CacheExpiry,
+    ) -> Result<CachedContent, CachedContentError> {
+        let request = CachedContentRequest::UpdateExpiry {
+            name: name.to_owned(),
+            expiry,
+        };
+        call(&self.wire, &self.http, request, None)
+            .await
+            .map_err(|error| error.on_handle(name))?
+            .resource()
+    }
+
+    /// Delete a cached content.
+    ///
+    /// Storage bills until this is called, so a cache created for the
+    /// duration of a task should be deleted on the failure path too. A
+    /// handle that is not a plain `cachedContents/<id>` (or a bare `<id>`)
+    /// is refused with [`CachedContentError::Invalid`] before anything is
+    /// sent.
+    pub async fn delete(&self, name: &str) -> Result<(), CachedContentError> {
+        let request = CachedContentRequest::Delete(name.to_owned());
+        call(&self.wire, &self.http, request, None)
+            .await
+            .map_err(|error| error.on_handle(name))?;
+        Ok(())
     }
 }

@@ -21,8 +21,8 @@ use crate::observe::{
 use crate::operation::{Completion, ModelListing};
 use crate::streaming::{StreamEvent, StreamFinal};
 use crate::test_utils::{
-    HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, RecordingHttpClient,
-    SequencedHttpClient, SequencedStreamingHttpClient,
+    HttpErrorStreamingClient, MockHttpResponse, MockStreamingClient, NonSuccessStreamingClient,
+    RecordingHttpClient, SequencedHttpClient, SequencedStreamingHttpClient,
 };
 use crate::wire::{
     Body, Decoder, Encoded, Mode, ObservationSink, Operation, Output, Sink, Wire, WireEvent,
@@ -326,6 +326,47 @@ async fn a_connect_failure_is_the_streams_only_item() {
     );
 }
 
+/// A streaming transport that hands the non-success *response* back as `Ok`:
+/// the driver rejects it on status, and the reply's status, headers, request
+/// id and body are the error — the only item.
+#[tokio::test]
+async fn a_non_success_streaming_response_is_rejected_as_the_streams_only_item() {
+    let mut headers = http::HeaderMap::new();
+    headers.insert("retry-after", http::HeaderValue::from_static("13"));
+    headers.insert("request-id", http::HeaderValue::from_static("req_3"));
+    let http = NonSuccessStreamingClient {
+        status: http::StatusCode::SERVICE_UNAVAILABLE,
+        headers,
+        body: Bytes::from_static(b"{\"error\":\"down\"}"),
+    };
+    let frames = stream(&Echo::streaming(), &http, prompt(), None).expect("the stream opens");
+    let items: Vec<_> = frames.collect().await;
+    assert_eq!(items.len(), 1, "nothing follows the rejection: {items:?}");
+    let error = items
+        .into_iter()
+        .next()
+        .expect("one item")
+        .expect_err("the item is the rejected reply");
+    assert_eq!(
+        error.provider_response_status(),
+        Some(http::StatusCode::SERVICE_UNAVAILABLE)
+    );
+    assert_eq!(error.provider_request_id(), Some("req_3"));
+    assert_eq!(
+        error
+            .provider_response_headers()
+            .and_then(|headers| headers.get("retry-after"))
+            .and_then(|value| value.to_str().ok()),
+        Some("13")
+    );
+    assert!(
+        error
+            .provider_response_body()
+            .is_some_and(|body| body.contains("down")),
+        "the reply body is the error: {error:?}"
+    );
+}
+
 #[tokio::test]
 async fn a_transport_failure_mid_stream_ends_it_without_a_terminal() {
     let http = SequencedStreamingHttpClient::new(vec![
@@ -573,6 +614,43 @@ async fn a_paged_listing_follows_every_continuation() {
     );
 }
 
+#[tokio::test]
+async fn a_listing_that_repeats_its_cursor_stops_after_the_repeated_page() {
+    // The second page names the cursor that fetched it, so the next request
+    // would be identical to the one just answered (rig#2334).
+    let http = SequencedHttpClient::new([
+        MockHttpResponse::success(r#"{"data":["a"],"next":"b"}"#),
+        MockHttpResponse::success(r#"{"data":["b"],"next":"b"}"#),
+        MockHttpResponse::success(r#"{"data":["never"]}"#),
+    ]);
+    let bound = Bound::new(Catalogue, http.clone());
+    let models = bound.list_all().await.expect("the fetched pages decode");
+    assert_eq!(
+        models
+            .iter()
+            .map(|model| model.id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["a", "b"]
+    );
+    assert_eq!(
+        http.requests().len(),
+        2,
+        "the repeated cursor is not re-sent"
+    );
+}
+
+#[tokio::test]
+async fn a_listing_whose_cursor_keeps_changing_stops_at_the_page_ceiling() {
+    let pages = (0..super::MAX_CONTINUATION_PAGES + 5).map(|page| {
+        MockHttpResponse::success(format!(r#"{{"data":["m{page}"],"next":"c{}"}}"#, page + 1))
+    });
+    let http = SequencedHttpClient::new(pages);
+    let bound = Bound::new(Catalogue, http.clone());
+    let models = bound.list_all().await.expect("the fetched pages decode");
+    assert_eq!(models.len(), super::MAX_CONTINUATION_PAGES);
+    assert_eq!(http.requests().len(), super::MAX_CONTINUATION_PAGES);
+}
+
 // ── telemetry ──────────────────────────────────────────────────────────
 
 #[test]
@@ -618,6 +696,34 @@ async fn the_driver_records_the_folded_responses_metadata() {
     );
 }
 
+#[tokio::test]
+async fn the_span_names_the_requests_model_override_not_the_wires() {
+    use tracing::subscriber::with_default;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    let recorded = Arc::new(std::sync::Mutex::new(Vec::<(String, String)>::new()));
+    let layer = RecordFields {
+        recorded: recorded.clone(),
+    };
+    let subscriber = tracing_subscriber::registry().with(layer);
+    let bound = Bound::new(Echo::unary(), RecordingHttpClient::new(UNARY_BODY));
+    let request = CompletionRequest {
+        model: Some("echo-override".to_owned()),
+        ..prompt()
+    };
+    with_default(subscriber, || {
+        futures::executor::block_on(bound.completion(request))
+    })
+    .expect("the reply decodes");
+    let recorded = recorded.lock().expect("no panic held the lock").clone();
+    assert!(
+        recorded
+            .iter()
+            .any(|(field, value)| field == "gen_ai.request.model" && value == "echo-override"),
+        "expected the override on the span: {recorded:?}"
+    );
+}
+
 /// Captures every field recorded on a span, so the driver's telemetry is
 /// asserted through `tracing` rather than through its own call sites.
 struct RecordFields {
@@ -625,30 +731,44 @@ struct RecordFields {
 }
 
 impl<S: tracing::Subscriber> tracing_subscriber::Layer<S> for RecordFields {
+    fn on_new_span(
+        &self,
+        attrs: &tracing::span::Attributes<'_>,
+        _id: &tracing::Id,
+        _ctx: tracing_subscriber::layer::Context<'_, S>,
+    ) {
+        let mut recorded = self
+            .recorded
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        attrs.record(&mut Visit(&mut recorded));
+    }
+
     fn on_record(
         &self,
         _id: &tracing::Id,
         values: &tracing::span::Record<'_>,
         _ctx: tracing_subscriber::layer::Context<'_, S>,
     ) {
-        struct Visit<'a>(&'a mut Vec<(String, String)>);
-        impl tracing::field::Visit for Visit<'_> {
-            fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
-                self.0.push((field.name().to_owned(), format!("{value:?}")));
-            }
-
-            fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
-                self.0.push((field.name().to_owned(), value.to_owned()));
-            }
-
-            fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
-                self.0.push((field.name().to_owned(), value.to_string()));
-            }
-        }
         let mut recorded = self
             .recorded
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         values.record(&mut Visit(&mut recorded));
+    }
+}
+
+struct Visit<'a>(&'a mut Vec<(String, String)>);
+impl tracing::field::Visit for Visit<'_> {
+    fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+        self.0.push((field.name().to_owned(), format!("{value:?}")));
+    }
+
+    fn record_str(&mut self, field: &tracing::field::Field, value: &str) {
+        self.0.push((field.name().to_owned(), value.to_owned()));
+    }
+
+    fn record_u64(&mut self, field: &tracing::field::Field, value: u64) {
+        self.0.push((field.name().to_owned(), value.to_string()));
     }
 }

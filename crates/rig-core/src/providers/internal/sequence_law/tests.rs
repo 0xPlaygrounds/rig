@@ -1,5 +1,6 @@
-use super::super::adapter::{AdapterOutput, run_wire_buffered};
+use super::super::adapter::AdapterOutput;
 use super::super::wire::WireEvent;
+use crate::driver::WireDriver;
 use crate::operation::Completion;
 use crate::streaming::{BlockClose, BlockId, BlockKind, Delta, MintKind, StreamEvent, ToolCallEnd};
 use crate::wire::Decoder;
@@ -28,8 +29,15 @@ impl Decoder<Completion, usize> for Scripted {
 }
 
 fn drive(batches: Vec<Vec<StreamEvent>>) {
-    let frames = 0..batches.len();
-    run_wire_buffered(frames, Scripted { batches }).expect("no data errors");
+    let frames = batches.len();
+    let mut driver = WireDriver::<Completion, _, usize>::new(Scripted { batches });
+    for frame in 0..frames {
+        driver.push(frame);
+    }
+    driver.finish();
+    for item in driver.drain() {
+        item.expect("no data errors");
+    }
 }
 
 fn text(text: &str) -> StreamEvent {

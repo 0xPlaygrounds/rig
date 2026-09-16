@@ -47,15 +47,14 @@ url = { workspace = true }
 http = { workspace = true }
 tracing-futures = { workspace = true, features = ["futures-03"] }
 fastrand = { workspace = true }
-eventsource-stream = { workspace = true }
 pin-project-lite = { workspace = true }
 futures-timer = { workspace = true }
 mime = { workspace = true }
 # futures-timer's default backend uses a background timer thread, which cannot
 # drive timers on wasm. Pull in its wasm-bindgen (setTimeout) backend whenever
 # the target is browser wasm — regardless of feature flags — so
-# `wasm_compat::timeout` and the SSE retry backoff actually fire instead of
-# hanging. Scoped to `target_os = "unknown"` (browser) rather than the whole
+# `wasm_compat::timeout` actually fires instead of hanging. Scoped to
+# `target_os = "unknown"` (browser) rather than the whole
 # `wasm` family because the gloo-timers/setTimeout backend needs a JS host and
 # would be wrong-by-construction on WASI.
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]

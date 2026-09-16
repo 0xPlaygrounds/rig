@@ -1903,7 +1903,7 @@ pub mod fixtures {
                         ),
                         SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                     )
-                    .completion("gpt-4o");
+                    .chat("gpt-4o");
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })
@@ -2007,12 +2007,10 @@ pub mod fixtures {
             WireDriver::new("openai", |chunks| {
                 Box::pin(async move {
                     let model = crate::driver::Bind::bind(
-                        crate::providers::openai::responses_api::wire::ResponsesApi::new(
-                            "test-key",
-                        ),
+                        crate::providers::openai::OpenAI::new("test-key"),
                         SequencedStreamingHttpClient::new(byte_chunks(chunks)?),
                     )
-                    .completion("gpt-5.4");
+                    .responses("gpt-5.4");
                     let request = model.completion_request("hello").build();
                     drain_observed(&model, request).await
                 })
@@ -2264,14 +2262,14 @@ pub mod fixtures {
             BufferedBodyDriver::new("chatgpt", |body| {
                 Box::pin(async move {
                     let model = crate::driver::Bind::bind(
-                        crate::providers::openai::responses_api::wire::ResponsesApi::with_dialect(
-                            "test-token",
+                        crate::providers::openai::OpenAI::with_key(
                             &crate::providers::chatgpt::DIALECT,
+                            "test-token",
                         )
                         .with_account_id("account-id"),
                         crate::test_utils::RecordingHttpClient::new(body),
                     )
-                    .completion("gpt-5.4");
+                    .responses("gpt-5.4");
                     let request = model.completion_request("hello").build();
                     let response = model.completion(request).await?;
                     Ok(response.choice)

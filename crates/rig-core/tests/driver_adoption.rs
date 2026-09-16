@@ -1,12 +1,11 @@
 //! Structural guard: every streaming triage site runs on the single-policy
 //! driver.
 //!
-//! The `run_wire_stream`/`run_wire_buffered` driver (and its factored
-//! `triage_frame` helper) in `providers/internal/adapter.rs` is the ONLY place
-//! allowed to decide what happens to `WireEvent::Unknown` / `WireEvent::Corrupt`
-//! frames. The websocket divergence fixed on this branch is the standing proof
-//! that hand-copied triage tables drift; this test makes reintroducing one a CI
-//! failure.
+//! `WireDriver` (and its factored `triage_frame` helper for the one-frame
+//! surfaces) in `driver.rs` is the ONLY place allowed to decide what happens
+//! to `WireEvent::Unknown` / `WireEvent::Corrupt` frames. The websocket
+//! divergence fixed on this branch is the standing proof that hand-copied
+//! triage tables drift; this test makes reintroducing one a CI failure.
 //!
 //! Mechanism: non-test provider source may *classify* (produce a `WireEvent`)
 //! but never *triage* it — and triage requires matching the `Unknown`/`Corrupt`
@@ -459,9 +458,9 @@ fn every_triage_site_runs_on_the_single_policy_driver() {
     );
     assert!(
         violations.is_empty(),
-        "Unknown/Corrupt triage restated outside the driver (adapter.rs) and \
-         classify layer (wire.rs) — route it through run_wire_stream / \
-         run_wire_buffered / triage_frame instead:\n{}",
+        "Unknown/Corrupt triage restated outside the driver (driver.rs) and \
+         classify layer (wire.rs) — route it through WireDriver / \
+         run_wire_stream / triage_frame instead:\n{}",
         violations.join("\n")
     );
 }
@@ -530,10 +529,9 @@ const SINGLE_FILE_STREAMING_MODULES: &[&str] = &[
 /// Identifiers a file cannot mention without participating in wire handling.
 const WIRE_MACHINERY_MARKERS: &[&str] = &[
     "WireEvent",
-    "WireAdapter",
+    "WireDriver",
     "WireFrame",
     "run_wire_stream",
-    "run_wire_buffered",
     "triage_frame",
 ];
 

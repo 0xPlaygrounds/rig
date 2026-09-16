@@ -1,12 +1,13 @@
-//! Shared provider infrastructure: the wire-adapter contract, its
-//! single-policy-site driver, and the decode-then-validate classify layer.
+//! Shared provider infrastructure: the completion decoders' vocabulary and
+//! the decode-then-validate classify layer.
 //!
 //! [`adapter`], [`wire`], [`tool_call_bridge`], and [`chunk_lifecycle`] are
-//! public so out-of-tree providers implement [`adapter::WireAdapter`] and
-//! inherit the shared driver, frame-triage policy, index→identity tool-call
-//! bridging, and the boundary-less reasoning lifecycle derivation instead of
-//! hand-rolling per-provider assemblers; the remaining helpers are
-//! crate-private.
+//! public so out-of-tree providers implement
+//! [`Decoder`](crate::wire::Decoder) and inherit the shared fold
+//! ([`WireDriver`](crate::driver::WireDriver)), frame-triage policy,
+//! index→identity tool-call bridging, and the boundary-less reasoning
+//! lifecycle derivation instead of hand-rolling per-provider assemblers; the
+//! remaining helpers are crate-private.
 
 pub mod adapter;
 pub(crate) mod auth;

@@ -493,3 +493,26 @@ fn a_refusal_is_never_retryable_whatever_its_status_or_transport_verdict() {
         ProviderResponseError::without_status("blocked".to_owned()).with_refusal(true);
     assert!(!plain_block.is_retryable());
 }
+
+/// An error envelope delivered under a 200 (Gemini's blocked prompt, a 2xx
+/// error body): the driver stamps the transport's real status so callers
+/// see it, but a success status is no retry verdict — the decoder's
+/// `transient` decides, exactly as it does with no status at all. A
+/// non-success status still classifies by the status table alone.
+#[test]
+fn a_success_status_defers_to_the_transport_verdict() {
+    use super::ProviderResponseError;
+    let transient_under_200 = ProviderResponseError::without_status("blocked".to_owned())
+        .with_transient(Some(true))
+        .with_status(Some(http::StatusCode::OK));
+    assert!(transient_under_200.is_retryable());
+
+    let silent_under_200 = ProviderResponseError::without_status("blocked".to_owned())
+        .with_status(Some(http::StatusCode::OK));
+    assert!(!silent_under_200.is_retryable());
+
+    let transient_under_400 = ProviderResponseError::without_status("bad".to_owned())
+        .with_transient(Some(true))
+        .with_status(Some(http::StatusCode::BAD_REQUEST));
+    assert!(!transient_under_400.is_retryable());
+}

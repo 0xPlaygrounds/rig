@@ -7,8 +7,9 @@ use futures::StreamExt;
 use serde_json::{Map, Value};
 
 use rig_core::completion::{CompletionError, CompletionRequest};
+use rig_core::driver::{run_wire_stream, warn_unmodeled};
 use rig_core::operation::Completion;
-use rig_core::providers::internal::adapter::{AdapterOutput, run_wire_stream, warn_unmodeled};
+use rig_core::providers::internal::adapter::AdapterOutput;
 use rig_core::providers::internal::chunk_lifecycle::{ChunkParts, MintedReasoningLifecycle};
 use rig_core::providers::internal::wire::{self, TypedEvent, WireEvent};
 use rig_core::streaming;

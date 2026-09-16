@@ -105,17 +105,23 @@ impl ProviderResponseError {
     }
 
     /// Whether the same call may reasonably be retried: by the status when
-    /// the reply has one ([`crate::error::retryable_status`]), else by the
-    /// transport's own verdict, else not — a reply that says nothing about
-    /// itself is not retried on a guess. A refusal is never retried: the
-    /// provider judged the content, and the same call gets the same verdict.
+    /// the reply has a non-success one ([`crate::error::retryable_status`]),
+    /// else by the transport's own verdict, else not — a reply that says
+    /// nothing about itself is not retried on a guess. A success status says
+    /// nothing either: an error envelope delivered under a 200 (a blocked
+    /// prompt, a 2xx error body) classifies by the verdict the decoder
+    /// attached, exactly as it would with no status at all. A refusal is
+    /// never retried: the provider judged the content, and the same call
+    /// gets the same verdict.
     pub fn is_retryable(&self) -> bool {
         if self.refusal {
             return false;
         }
         match self.status {
-            Some(status) => crate::error::retryable_status(Some(status.as_u16())),
-            None => self.transient.unwrap_or(false),
+            Some(status) if !status.is_success() => {
+                crate::error::retryable_status(Some(status.as_u16()))
+            }
+            _ => self.transient.unwrap_or(false),
         }
     }
 

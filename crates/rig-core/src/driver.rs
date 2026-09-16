@@ -122,7 +122,7 @@ where
             // operation has a raw passthrough channel; aggregation never
             // folds it into the answer.
             WireEvent::Unknown { event_type, value } => {
-                crate::providers::internal::adapter::warn_unmodeled(&event_type, &value);
+                warn_unmodeled(&event_type, &value);
                 if let Some(event) = Op::unknown(value) {
                     self.out.push(Ok(event));
                 }
@@ -218,6 +218,119 @@ where
             self.done = true;
         }
     }
+}
+
+/// Drive an already-framed transport stream through a decoder.
+///
+/// The async wrapper over [`WireDriver`], and nothing else: it exists so a
+/// typed transport — an AWS event stream, a gRPC stream, an in-process
+/// generator — can reuse the fold without an HTTP request behind it. Every
+/// byte wire in this crate goes through [`stream`] instead, which frames the
+/// bytes, captures the request id and records the span on top of the same
+/// fold.
+pub fn run_wire_stream<D, F, S>(transport: S, decoder: D) -> crate::streaming::StreamingResult
+where
+    D: Decoder<crate::operation::Completion, F> + WasmCompatSend + 'static,
+    F: WasmCompatSend + 'static,
+    S: Stream<Item = Result<F, crate::completion::CompletionError>> + WasmCompatSend + 'static,
+{
+    let mut driver = WireDriver::<crate::operation::Completion, _, F>::new(decoder);
+    Box::pin(async_stream::stream! {
+        let mut transport = Box::pin(transport);
+        while let Some(frame) = transport.next().await {
+            match frame {
+                Ok(frame) => driver.push(frame),
+                Err(error) => driver.fail(error),
+            }
+            for item in driver.drain() {
+                yield item;
+            }
+            if driver.done() {
+                return;
+            }
+        }
+        driver.finish();
+        for item in driver.drain() {
+            yield item;
+        }
+    })
+}
+
+/// One frame after [`triage_frame`]: a modeled event for `interpret`, or an
+/// unknown frame's raw payload for the passthrough channel.
+#[derive(Debug)]
+pub enum TriagedFrame<T> {
+    /// A modeled event, ready for [`Decoder::interpret`].
+    Event(T),
+    /// An unknown frame's raw payload. Already warned; the caller forwards it
+    /// as `StreamEvent::Unknown` where the surface has a raw channel
+    /// (openai-agents' raw-event precedent), and never interprets it — the
+    /// semantic path skips it.
+    Unknown(crate::streaming::UnknownPayload),
+}
+
+/// Triage one classified frame under the policy table on [`WireDriver`]:
+/// `Known` passes through, `Unknown` is warned (structural metadata only)
+/// and handed back raw for the passthrough channel, `Corrupt` is the
+/// operation's JSON error.
+///
+/// [`WireDriver::push`]'s per-frame policy factored out for the non-stream
+/// surfaces that classify frames one at a time (the websocket pre-dispatch),
+/// so they share the table instead of restating it.
+pub fn triage_frame<T>(
+    event: WireEvent<T>,
+) -> Result<TriagedFrame<T>, crate::completion::CompletionError> {
+    match event {
+        WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
+        WireEvent::Unknown { event_type, value } => {
+            // Structural metadata only — see `warn_unmodeled`. The full
+            // payload survives on the `Unknown` raw passthrough channel;
+            // that channel IS the opt-in for consumers who want the content.
+            warn_unmodeled(&event_type, &value);
+            Ok(TriagedFrame::Unknown(value))
+        }
+        WireEvent::Corrupt(error) => Err(crate::completion::CompletionError::JsonError(error)),
+    }
+}
+
+/// Warn about an unmodeled wire payload with **structural metadata only** —
+/// its kind and serialized byte size, never the payload itself. Unmodeled
+/// frames and parts can carry model output or other sensitive provider
+/// data, which must not leak into production WARN logs; the one redaction
+/// policy lives here, used by the driver's Unknown arm and by adapters that
+/// skip an unmodeled part kind. `driver_adoption.rs` scans streaming
+/// modules for direct `warn!(?...)` payload captures, so bypassing this
+/// helper fails CI.
+pub fn warn_unmodeled(kind: &str, payload: &impl serde::Serialize) {
+    tracing::warn!(
+        kind,
+        payload_bytes = unknown_payload_bytes(payload),
+        "skipping unmodeled wire payload"
+    );
+}
+
+/// Serialized byte size of an unknown frame's payload, for the structural
+/// warn log (the log never carries the payload itself).
+fn unknown_payload_bytes(value: &impl serde::Serialize) -> u64 {
+    /// Counter sink: measures how many bytes serialization would write
+    /// without buffering them.
+    struct CountingWriter(u64);
+
+    impl std::io::Write for CountingWriter {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.0 += buf.len() as u64;
+            Ok(buf.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let mut counter = CountingWriter(0);
+    // A `Value` cannot fail to serialize; degrade to 0 rather than panic.
+    let _ = serde_json::to_writer(&mut counter, value);
+    counter.0
 }
 
 /// Ceiling on the pages one [`call`] will follow.

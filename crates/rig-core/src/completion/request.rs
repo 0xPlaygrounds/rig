@@ -327,7 +327,8 @@ impl FinishReason {
 /// typed read is one `serde_json::from_value` away, and it needs no concrete
 /// model — an agent erases the model at construction and still has the value.
 /// A provider over a non-HTTP transport (the Bedrock SDK, a local Candle
-/// model) may additionally expose an inherent `raw_completion`.
+/// model) may additionally expose an inherent method returning its SDK's
+/// typed reply.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "CompletionResponseRepr")]
 pub struct CompletionResponse {

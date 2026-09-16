@@ -13,28 +13,47 @@
 //!
 //! # Writing a provider
 //!
-//! A provider is a config struct plus one wire per operation. This is a
-//! complete one, end to end:
+//! A provider is a config struct plus one wire per operation, and a dialect
+//! constant per gateway that speaks the same format. This is a complete one,
+//! end to end:
 //!
 //! ```
 //! use rig_core::completion::{CompletionError, CompletionRequest};
 //! use rig_core::driver::Bound;
 //! use rig_core::operation::{Completion, CompletionEvent};
-//! use rig_core::streaming::{BlockId, StreamEvent, StreamFinal};
+//! use rig_core::streaming::{StreamEvent, StreamFinal};
 //! use rig_core::wire::{
 //!     Body, Decoder, Encoded, Framing, Mode, Output, Secret, Wire, WireEvent, WireFrame,
+//! };
+//!
+//! /// What differs between gateways speaking this format: data, `const`.
+//! #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+//! pub struct Dialect {
+//!     pub name: &'static str,
+//!     pub base_url: &'static str,
+//!     pub api_key_env: &'static str,
+//! }
+//!
+//! pub const EXAMPLE: Dialect = Dialect {
+//!     name: "example",
+//!     base_url: "https://example.invalid/v1",
+//!     api_key_env: "EXAMPLE_API_KEY",
 //! };
 //!
 //! /// The provider's shared configuration: plain data, key redacted.
 //! #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 //! pub struct Example {
+//!     pub dialect: Dialect,
 //!     pub api_key: Secret,
 //!     pub base_url: String,
 //! }
 //!
 //! impl Example {
 //!     pub fn new(api_key: impl Into<Secret>) -> Self {
-//!         Self { api_key: api_key.into(), base_url: "https://example.invalid".into() }
+//!         Self::with_dialect(EXAMPLE, api_key)
+//!     }
+//!     pub fn with_dialect(dialect: Dialect, api_key: impl Into<Secret>) -> Self {
+//!         Self { base_url: dialect.base_url.to_owned(), dialect, api_key: api_key.into() }
 //!     }
 //!     /// The completion wire.
 //!     pub fn messages(&self, model: impl Into<String>) -> Messages {
@@ -49,34 +68,47 @@
 //!     pub model: String,
 //! }
 //!
-//! /// The reply shape, for both the unary body and the stream frames.
+//! /// One frame. The unary body is a whole `message`; a stream sends
+//! /// `delta`s and a `stop`. Both are named here, and nowhere else.
 //! #[derive(serde::Deserialize)]
-//! pub struct Reply {
-//!     text: String,
+//! #[serde(tag = "type", rename_all = "snake_case")]
+//! pub enum Frame {
+//!     Message { text: String },
+//!     Delta { text: String },
+//!     Stop,
 //! }
 //!
 //! #[derive(Default)]
 //! pub struct ExampleDecoder;
 //!
 //! impl Decoder<Completion> for ExampleDecoder {
-//!     type Event = Reply;
+//!     type Event = Frame;
 //!
 //!     fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
 //!         match serde_json::from_str(&frame.as_str()) {
-//!             Ok(reply) => WireEvent::Known(reply),
+//!             Ok(frame) => WireEvent::Known(frame),
 //!             Err(error) => WireEvent::Corrupt(error),
 //!         }
 //!     }
 //!
 //!     fn interpret(&mut self, event: Self::Event, out: &mut Output<Completion>) {
-//!         out.text(event.text);
-//!         out.push(Ok(StreamEvent::Final(StreamFinal::new(
-//!             "example",
-//!             rig_core::completion::Usage::default(),
-//!         ))));
+//!         match event {
+//!             // The unary shape synthesizes the stream's events; it does
+//!             // not carry a second content mapping.
+//!             Frame::Message { text } => {
+//!                 self.interpret(Frame::Delta { text }, out);
+//!                 self.interpret(Frame::Stop, out);
+//!             }
+//!             Frame::Delta { text } => out.text(text),
+//!             Frame::Stop => {
+//!                 out.close_active_blocks();
+//!                 out.final_record(StreamFinal::new(
+//!                     EXAMPLE.name,
+//!                     rig_core::completion::Usage::default(),
+//!                 ));
+//!             }
+//!         }
 //!     }
-//!
-//!     fn finish(&mut self, _out: &mut Output<Completion>) {}
 //! }
 //!
 //! impl Wire for Messages {
@@ -84,25 +116,28 @@
 //!     type Decoder = ExampleDecoder;
 //!
 //!     fn name(&self) -> &str {
-//!         "example"
+//!         self.provider.dialect.name
 //!     }
 //!
 //!     fn model(&self) -> Option<&str> {
 //!         Some(&self.model)
 //!     }
 //!
-//!     fn encode(
-//!         &self,
-//!         request: CompletionRequest,
-//!         _mode: Mode,
-//!     ) -> Result<Encoded, CompletionError> {
-//!         let body =
-//!             serde_json::json!({ "model": self.model, "messages": request.chat_history });
+//!     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
+//!         // The body says whether to stream; the framing says how the
+//!         // reply splits. Both follow from the mode and nothing else.
+//!         let streaming = matches!(mode, Mode::Streaming);
+//!         let body = serde_json::json!({
+//!             "model": self.model,
+//!             "messages": request.chat_history,
+//!             "stream": streaming,
+//!         });
 //!         let request = http::Request::post(format!("{}/messages", self.provider.base_url))
 //!             .header("authorization", self.provider.api_key.expose())
 //!             .body(Body::Bytes(serde_json::to_vec(&body)?))
 //!             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
-//!         Ok(Encoded::new(request, Framing::Whole))
+//!         let framing = if streaming { Framing::Sse } else { Framing::Whole };
+//!         Ok(Encoded::new(request, framing))
 //!     }
 //!
 //!     fn decoder(&self) -> Self::Decoder {
@@ -115,15 +150,28 @@
 //! let _ = |http: rig_core::http_client::BoxedHttpClient| {
 //!     Bound::new(Example::new("k").messages("m"), http)
 //! };
-//! // Decoding is testable from bytes alone, with no socket at all.
-//! let mut decoder = ExampleDecoder;
-//! let mut out = Output::<Completion>::new();
-//! let WireEvent::Known(event) = decoder.classify(WireFrame::Text(r#"{"text":"hi"}"#.into()))
-//! else {
-//!     unreachable!("the fixture is a modeled frame")
-//! };
-//! decoder.interpret(event, &mut out);
-//! assert!(out.iter().any(|item| matches!(item, Ok(CompletionEvent::Final(_)))));
+//! // The wire is data: it serializes, and the key does not.
+//! let json = serde_json::to_string(&Example::new("k").messages("m")).unwrap();
+//! assert!(!json.contains("\"k\""));
+//!
+//! // Decoding is testable from bytes alone, with no socket at all — and the
+//! // unary body folds to the same events as the stream that says the same.
+//! fn events(frames: &[&str]) -> Vec<CompletionEvent> {
+//!     let mut decoder = ExampleDecoder;
+//!     let mut out = Output::<Completion>::new();
+//!     for frame in frames {
+//!         let WireEvent::Known(event) = decoder.classify(WireFrame::Text((*frame).into()))
+//!         else {
+//!             unreachable!("the fixture is a modeled frame")
+//!         };
+//!         decoder.interpret(event, &mut out);
+//!     }
+//!     out.drain().map(|item| item.unwrap()).collect()
+//! }
+//! let unary = events(&[r#"{"type":"message","text":"hi"}"#]);
+//! let streamed = events(&[r#"{"type":"delta","text":"hi"}"#, r#"{"type":"stop"}"#]);
+//! assert_eq!(unary, streamed);
+//! assert!(matches!(unary.last(), Some(StreamEvent::Final(_))));
 //! # }
 //! ```
 
@@ -416,7 +464,7 @@ pub type Output<Op> = <Op as Operation>::Output;
 /// `Frame` is [`WireFrame`] for every HTTP wire — bytes the framers split.
 /// A typed transport (an AWS event stream, a gRPC stream, an in-process
 /// generator) names its SDK's event type instead and inherits the same fold
-/// through [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream).
+/// through [`run_wire_stream`](crate::driver::run_wire_stream).
 pub trait Decoder<Op: Operation, Frame = WireFrame> {
     /// The wire's typed event, produced by this decoder's classifier.
     type Event;

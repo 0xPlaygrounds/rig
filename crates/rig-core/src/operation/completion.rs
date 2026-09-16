@@ -65,7 +65,10 @@ impl Operation for Completion {
         telemetry: Self::Telemetry,
         request: &Self::Request,
     ) -> tracing::Span {
-        CompletionSpanBuilder::new(provider, model.unwrap_or_default(), telemetry)
+        // The request's override is the model actually sent (every wire
+        // honours it on encode), so it is the one the span names.
+        let model = request.model.as_deref().or(model).unwrap_or_default();
+        CompletionSpanBuilder::new(provider, model, telemetry)
             .system_instructions(
                 request.system_instructions(),
                 request.record_telemetry_content,

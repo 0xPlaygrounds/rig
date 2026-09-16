@@ -499,6 +499,69 @@ impl HttpClientExt for HttpErrorStreamingClient {
     }
 }
 
+/// An [`HttpClientExt`] whose `send_streaming` hands a non-success reply back
+/// as an `Ok` response — the fourth non-success cell: a custom transport that
+/// does not reject on status, so the driver must.
+#[derive(Debug, Clone)]
+pub struct NonSuccessStreamingClient {
+    pub status: http::StatusCode,
+    pub headers: http::HeaderMap,
+    pub body: Bytes,
+}
+
+impl HttpClientExt for NonSuccessStreamingClient {
+    fn send<T, U>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        T: Into<Bytes> + WasmCompatSend,
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::non_success_with_details(
+            http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
+        )))
+    }
+
+    fn send_multipart<U>(
+        &self,
+        _req: Request<MultipartForm>,
+    ) -> impl Future<Output = http_client::Result<Response<LazyBody<U>>>> + WasmCompatSend + 'static
+    where
+        U: From<Bytes> + WasmCompatSend + 'static,
+    {
+        future::ready(Err(http_client::Error::non_success_with_details(
+            http::StatusCode::NOT_IMPLEMENTED,
+            http::HeaderMap::new(),
+            String::new(),
+        )))
+    }
+
+    fn send_streaming<T>(
+        &self,
+        _req: Request<T>,
+    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+    where
+        T: Into<Bytes> + WasmCompatSend,
+    {
+        let status = self.status;
+        let headers = self.headers.clone();
+        let body = self.body.clone();
+        async move {
+            let byte_stream = futures::stream::iter(vec![Ok::<Bytes, http_client::Error>(body)]);
+            let boxed_stream: http_client::BoxedStream = Box::pin(byte_stream);
+            let mut response = Response::builder()
+                .status(status)
+                .body(boxed_stream)
+                .map_err(http_client::Error::Protocol)?;
+            *response.headers_mut() = headers;
+            Ok(response)
+        }
+    }
+}
+
 /// An [`HttpClientExt`] implementation that returns one scripted stream of byte
 /// chunks from `send_streaming`.
 #[derive(Debug, Clone, Default)]

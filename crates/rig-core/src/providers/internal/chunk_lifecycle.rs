@@ -23,7 +23,7 @@
 //!
 //! `pub` (not `pub(crate)`) for the same reason as [`adapter`](super::adapter)
 //! and [`tool_call_bridge`](super::tool_call_bridge): companion provider
-//! crates implementing [`WireAdapter`](super::adapter::WireAdapter) over a
+//! crates implementing [`Decoder`](crate::wire::Decoder) over a
 //! boundary-less wire (rig-gemini-grpc) must inherit this derivation rather
 //! than hand-roll it; it is not part of rig-core's stable public API.
 //!

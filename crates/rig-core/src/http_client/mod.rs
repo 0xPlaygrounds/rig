@@ -7,7 +7,6 @@ mod erased;
 pub mod framing;
 pub mod middleware;
 pub mod multipart;
-pub mod retry;
 pub(crate) mod tail;
 use crate::wasm_compat::*;
 pub use erased::BoxedHttpClient;
@@ -91,11 +90,11 @@ impl Error {
     /// Rig's bundled HTTP clients capture the full [`HeaderMap`] whenever a
     /// non-success status error is built from a live response, so rate-limit
     /// metadata such as `Retry-After` or `x-ratelimit-*` stays readable
-    /// (rig#2210). This is the accessor a [`retry::RetryPolicy`] uses to honor
+    /// (rig#2210). This is the accessor a caller's retry policy uses to honor
     /// a server-supplied backoff, since it is handed this error directly:
     ///
     /// ```
-    /// # use rig_core::http_client::{Error, retry::RetryPolicy};
+    /// # use rig_core::http_client::Error;
     /// # use std::time::Duration;
     /// fn retry_after(error: &Error) -> Option<Duration> {
     ///     let seconds = error
