@@ -319,6 +319,8 @@ async fn agent_with_dynamic_context_test() {
     // Initialize OpenAI client
     let openai_client = openai::wire::OpenAI::new("TEST")
         .with_base_url(server.base_url())
+        // The mock answers Chat Completions, not the Responses default.
+        .with_route(openai::Route::Chat)
         .bound()
         .unwrap();
 
@@ -387,8 +389,7 @@ async fn agent_with_dynamic_context_test() {
 
     // Build RAG agent with dynamic context.
     let agent = openai_client
-        .completion(openai::GPT_4O)
-        .into_agent_builder()
+        .agent(openai::GPT_4O)
         .dynamic_context(top_k, vector_store_index)
         .build();
 
