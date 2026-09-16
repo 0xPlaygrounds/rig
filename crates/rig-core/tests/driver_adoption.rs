@@ -34,9 +34,20 @@ const ALLOWED_POLICY_HOMES: &[&str] = &[
     "rig-core/src/providers/internal/wire.rs",
 ];
 
-/// Whether `path` is one of the two files allowed to state triage policy.
+/// Whether `path` is allowed to state triage policy.
+///
+/// A provider's own `wire.rs` — and the modules under `wire/`, which are
+/// that one file split by endpoint — IS its classify layer: `Decoder::classify`
+/// is where a provider decides what a frame is, which is the one place the
+/// triage variants are its to name. Anywhere else, naming them means a
+/// second policy table, which is what this guard exists to forbid.
 fn is_policy_home(path: &std::path::Path) -> bool {
     let unix_path = path.to_string_lossy().replace('\\', "/");
+    if let Some(providers) = unix_path.split_once("rig-core/src/providers/").map(|(_, rest)| rest)
+        && (providers.ends_with("/wire.rs") || providers.contains("/wire/"))
+    {
+        return true;
+    }
     ALLOWED_POLICY_HOMES
         .iter()
         .any(|suffix| unix_path.ends_with(suffix))
