@@ -139,6 +139,14 @@ pub(crate) fn fold_finish(
     )
     .with_optional_finish_reason(terminal.and_then(|response| response.finish_reason.clone()))
     .with_optional_model(terminal.and_then(|response| response.model.clone()))
+    // The provider's own document for the turn, which on a stream is the
+    // terminal record the adapter serialized. Dropping it here would make
+    // the escape hatch depend on whether the caller streamed.
+    .with_raw(
+        terminal
+            .map(|response| response.raw.clone())
+            .unwrap_or(serde_json::Value::Null),
+    )
 }
 
 /// Shared pause flag plus the parked consumer's waker.

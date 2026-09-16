@@ -178,6 +178,11 @@ where
         self.decoder.continuation()
     }
 
+    /// The reply as one document, when the decoder reassembled it.
+    pub fn document(&self) -> Option<serde_json::Value> {
+        self.decoder.document()
+    }
+
     /// Project a payload's observation facts through the decoder.
     fn project(&self, payload: &[u8]) {
         if let Some(observation) = &self.observation {
@@ -306,7 +311,12 @@ where
             observation.finish(AdapterEnding::Decoded);
         }
 
-        reply.raw = serde_json::from_slice(&page_reply.body).unwrap_or(serde_json::Value::Null);
+        // The reply's own bytes when they are one document; otherwise the
+        // envelope the decoder reassembled from the event stream.
+        reply.raw = serde_json::from_slice(&page_reply.body)
+            .ok()
+            .or_else(|| page.document())
+            .unwrap_or(serde_json::Value::Null);
         reply.provider_request_id = page_reply.provider_request_id;
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,

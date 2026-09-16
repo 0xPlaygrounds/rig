@@ -887,6 +887,7 @@ impl RawChoiceAccumulator {
         }
     }
 
+
     /// Flush the buffered fully-delivered tool calls without finishing the
     /// stream. The errored-terminal path flushes these before the error and
     /// must not produce a terminal record.
@@ -1262,6 +1263,13 @@ struct ErrorEnvelope {
 /// Holds the per-reply assembly state ([`RawChoiceAccumulator`]); frame
 /// triage policy lives in the driver, not here.
 pub struct ResponsesDecoder {
+    /// The reply's own envelope, captured from the terminal event.
+    ///
+    /// A unary call on a dialect that always streams answers with an event
+    /// stream, so there is no reply document for the driver to parse; the
+    /// terminal `response.completed` carries it, and this is what makes
+    /// `CompletionResponse::raw` the reply rather than a summary of it.
+    document: Option<serde_json::Value>,
     accumulator: RawChoiceAccumulator,
     options: ResponsesStreamOptions,
     /// Envelope salvage for replayed bodies that omit the bookkeeping
@@ -1285,6 +1293,7 @@ impl ResponsesDecoder {
     /// A decoder for one reply of `provider`'s Responses endpoint.
     pub fn new(provider: &str, options: ResponsesStreamOptions) -> Self {
         Self {
+            document: None,
             accumulator: RawChoiceAccumulator::new(provider, None),
             options,
             repair_envelopes: false,
@@ -1359,6 +1368,12 @@ impl ResponsesDecoder {
             }
             StreamingCompletionChunk::Response(chunk) => {
                 let ResponseChunk { kind, response, .. } = chunk;
+                // The terminal event carries the reply's whole envelope,
+                // and on a unary call over this wire there is no other
+                // document: the bytes were an event stream.
+                if self.document.is_none() {
+                    self.document = serde_json::to_value(&response).ok();
+                }
                 if matches!(kind, ResponseChunkKind::ResponseCompleted) {
                     // Inert under the driver, which records the same fields
                     // off the terminal record; the client layer's stream
@@ -1442,6 +1457,9 @@ impl Decoder<Completion> for ResponsesDecoder {
             // the events the stream sends, then close it with the terminal
             // the body itself is.
             ResponsesEvent::Whole(response) => {
+                if self.document.is_none() {
+                    self.document = serde_json::to_value(&*response).ok();
+                }
                 self.accumulator.replay_whole_response(*response, out);
                 self.flush(out);
             }
@@ -1461,6 +1479,10 @@ impl Decoder<Completion> for ResponsesDecoder {
         // Tool calls the provider fully delivered are content: they flush
         // before the terminal error reaches the consumer.
         self.accumulator.flush_tool_calls(out);
+    }
+
+    fn document(&self) -> Option<serde_json::Value> {
+        self.document.clone()
     }
 
     fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {

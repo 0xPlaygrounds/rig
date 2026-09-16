@@ -440,6 +440,19 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
     /// default projects nothing.
     fn project(&self, _payload: &[u8], _sink: &mut dyn ObservationSink) {}
 
+    /// The reply as one document, for a wire whose unary reply is not one.
+    ///
+    /// The driver captures a unary reply's bytes as `raw` by parsing them,
+    /// which is the verbatim document for every wire that answers with one.
+    /// A wire that answers a *unary* call with an event stream — the
+    /// Responses endpoint does, on the dialects that always stream — has no
+    /// such document, and its terminal event carries the envelope instead.
+    /// Returning it here is what keeps `raw` the reply rather than a
+    /// summary of it.
+    fn document(&self) -> Option<serde_json::Value> {
+        None
+    }
+
     /// A paged operation's next request, if the reply named one.
     fn continuation(&self) -> Option<http::Request<Body>> {
         None

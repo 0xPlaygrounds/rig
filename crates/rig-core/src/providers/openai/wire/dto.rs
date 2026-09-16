@@ -155,7 +155,12 @@ pub(crate) fn delta_text(delta: &StreamingDelta) -> Option<String> {
 /// `prompt_cache_hit_tokens`, llama.cpp's `timings`. The extras ride along so
 /// [`StreamFinal::raw`] loses nothing, which is what the typed escape hatch
 /// used to provide through a per-provider `StreamingUsage` type.
-#[derive(Clone, Debug, Serialize, Deserialize)]
+// `Default` is load-bearing, not decoration: `StreamingCompletionResponse`
+// declares `#[serde(default)] usage: Option<U>`, and serde's derive
+// propagates that as a `U: Default` bound on the generated `Deserialize`.
+// Without it a caller cannot name `ChatUsage` through the very record this
+// type's docs advertise as the typed escape hatch.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct ChatUsage {
     /// The OpenAI-compatible accounting.
     #[serde(flatten)]
