@@ -1,4 +1,6 @@
 use super::*;
+use crate::driver::WireDriver;
+use crate::providers::gemini::Gemini;
 
 #[test]
 fn parse_models_page_accepts_omitted_empty_models_list() {
@@ -193,4 +195,89 @@ fn parse_models_page_returns_parse_error_when_entry_has_no_usable_id() {
         }
         _ => panic!("expected parse error"),
     }
+}
+
+/// The path and query are what the recorded cassette
+/// `tests/cassettes/gemini/models/list_models_smoke.yaml` matches on —
+/// `pageSize=1000` then `key` — so their exact shape is load-bearing, the
+/// same reason `list_models_path` is pinned above.
+#[test]
+fn models_sends_the_credential_as_the_last_query_pair() {
+    let encoded = Models::new(Gemini::new("test-key"))
+        .encode((), Mode::Unary)
+        .expect("the request encodes");
+    let request = encoded.requests.first().expect("one request");
+
+    assert_eq!(encoded.framing, Framing::Whole);
+    assert_eq!(encoded.request_id_header, None);
+    assert_eq!(request.method(), http::Method::GET);
+    assert_eq!(request.uri().path(), "/v1beta/models");
+    assert_eq!(request.uri().query(), Some("pageSize=1000&key=test-key"));
+    assert!(request.headers().get("x-goog-api-key").is_none());
+}
+
+/// The Interactions API reaches the same endpoint with the credential in a
+/// header instead, and must not also leak it into the query.
+#[test]
+fn interactions_models_sends_the_credential_as_a_header_only() {
+    let encoded = InteractionsModels::new(Gemini::new("test-key"))
+        .encode((), Mode::Unary)
+        .expect("the request encodes");
+    let request = encoded.requests.first().expect("one request");
+
+    assert_eq!(encoded.framing, Framing::Whole);
+    assert_eq!(request.uri().path(), "/v1beta/models");
+    assert_eq!(request.uri().query(), Some("pageSize=1000"));
+    assert_eq!(
+        request
+            .headers()
+            .get("x-goog-api-key")
+            .and_then(|value| value.to_str().ok()),
+        Some("test-key"),
+    );
+}
+
+/// Two pages fold in arrival order and the cursor page one named is what
+/// the next request asks for. The entries are verbatim from
+/// `tests/cassettes/gemini/models/list_models_smoke.yaml`; the recorded
+/// catalog fits in one page, so the `nextPageToken` is what this adds.
+#[test]
+fn a_paged_listing_folds_in_order_and_follows_the_cursor() {
+    const PAGE_ONE: &str = r#"{"models":[{"description":"Stable version of Gemini 2.5 Flash, our mid-size multimodal model that supports up to 1 million tokens, released in June of 2025.","displayName":"Gemini 2.5 Flash","inputTokenLimit":1048576,"maxTemperature":2,"name":"models/gemini-2.5-flash","outputTokenLimit":65536,"supportedGenerationMethods":["generateContent","countTokens","createCachedContent","batchGenerateContent"],"temperature":1,"thinking":true,"topK":64,"topP":0.95,"version":"001"},{"description":"Stable release (June 17th, 2025) of Gemini 2.5 Pro","displayName":"Gemini 2.5 Pro","inputTokenLimit":1048576,"maxTemperature":2,"name":"models/gemini-2.5-pro","outputTokenLimit":65536,"supportedGenerationMethods":["generateContent","countTokens","createCachedContent","batchGenerateContent"],"temperature":1,"thinking":true,"topK":64,"topP":0.95,"version":"2.5"}],"nextPageToken":"page-two"}"#;
+    const PAGE_TWO: &str = r#"{"models":[{"displayName":"Gemini 2.5 Flash-Lite","inputTokenLimit":1048576,"name":"models/gemini-2.5-flash-lite","outputTokenLimit":65536}]}"#;
+
+    let wire = Models::new(Gemini::new("test-key"));
+    let ids = |driver: &mut WireDriver<ModelListing, ModelsDecoder>, page: &str| {
+        driver.push(WireFrame::Text(page.to_owned()));
+        driver
+            .drain()
+            .flat_map(|item| {
+                item.expect("the recorded page decodes")
+                    .iter()
+                    .map(|model| model.id.clone())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
+    };
+
+    let mut first = WireDriver::<ModelListing, _>::new(wire.decoder());
+    let mut listed = ids(&mut first, PAGE_ONE);
+    let continuation = first.continuation().expect("page one named a cursor");
+    assert_eq!(continuation.uri().path(), "/v1beta/models");
+    assert_eq!(
+        continuation.uri().query(),
+        Some("pageSize=1000&pageToken=page-two&key=test-key"),
+    );
+
+    let mut second = WireDriver::<ModelListing, _>::new(wire.decoder());
+    listed.extend(ids(&mut second, PAGE_TWO));
+
+    assert_eq!(
+        listed,
+        vec!["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"],
+    );
+    assert!(
+        second.continuation().is_none(),
+        "a page naming no cursor ends the listing",
+    );
 }

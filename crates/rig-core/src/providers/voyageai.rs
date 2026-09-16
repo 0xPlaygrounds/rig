@@ -10,6 +10,10 @@ use bytes::Bytes;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+pub mod wire;
+
+pub use wire::{Embeddings, Rerank, VoyageAi as VoyageAiProvider};
+
 // ================================================================
 // Main Voyage AI Client
 // ================================================================

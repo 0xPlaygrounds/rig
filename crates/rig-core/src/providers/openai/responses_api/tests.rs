@@ -5,6 +5,34 @@ use crate::test_utils::MockCompletionModel;
 use serde_json::json;
 use std::collections::HashMap;
 
+/// The choice a body's `output[]` folds to, through the ONE interpreter: the
+/// decoder's unary variant synthesizes the stream's events and the shared
+/// fold turns them into the response — the two steps a unary reply takes.
+pub(super) fn folded_choice(output: Vec<Output>) -> Vec<completion::AssistantContent> {
+    let response = CompletionResponse {
+        id: "resp_1".to_string(),
+        object: ResponseObject::Response,
+        provider_request_id: None,
+        created_at: 0,
+        status: ResponseStatus::Completed,
+        error: None,
+        incomplete_details: None,
+        instructions: None,
+        max_output_tokens: None,
+        model: "gpt-5-mini".to_string(),
+        provider_reasoning: None,
+        reasoning_metadata: None,
+        reasoning_context: None,
+        usage: None,
+        output,
+        tools: Vec::new(),
+        additional_parameters: AdditionalParameters::default(),
+    };
+    wire::fold_body("openai", response)
+        .expect("the body folds")
+        .choice
+}
+
 #[test]
 fn output_text_extras_survive_generic_conversion_and_replay() {
     // Ingest capture is unconditional: the wire's sibling keys ride the
@@ -2526,7 +2554,7 @@ fn output_reasoning_conversion_omits_empty_encrypted_content() {
         status: Some(ToolStatus::Completed),
     };
 
-    let converted = Vec::<completion::AssistantContent>::from(output);
+    let converted = folded_choice(vec![output]);
 
     assert_eq!(converted.len(), 1);
     let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {
@@ -2551,7 +2579,7 @@ fn output_reasoning_conversion_preserves_non_empty_encrypted_content() {
         status: Some(ToolStatus::Completed),
     };
 
-    let converted = Vec::<completion::AssistantContent>::from(output);
+    let converted = folded_choice(vec![output]);
 
     assert_eq!(converted.len(), 1);
     let completion::AssistantContent::Reasoning(reasoning) = &converted[0] else {

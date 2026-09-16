@@ -4,13 +4,9 @@ use crate::{
     http_client::HttpClientExt,
     wasm_compat::*,
 };
-use base64::{
-    Engine as _,
-    engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD},
-};
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sha2::{Digest, Sha256};
 
 const MAX_IMAGE_BYTES: usize = 5_000_000;
 
@@ -97,7 +93,7 @@ impl BilledUnits {
     /// Maps the billed token counters straight through; `total_tokens` is
     /// the sum of whichever counters Cohere sent (an embed bills input only,
     /// so it reports `input_tokens` and `total_tokens`, no `output_tokens`).
-    fn to_usage(&self) -> crate::completion::Usage {
+    pub(super) fn to_usage(&self) -> crate::completion::Usage {
         let input_tokens = self.input_tokens.map(u64::from);
         let output_tokens = self.output_tokens.map(u64::from);
         let total_tokens = match (input_tokens, output_tokens) {
@@ -150,28 +146,17 @@ impl embeddings::NormalizeEmbeddingResponse for EmbeddingResponse {
 }
 
 #[derive(Debug, thiserror::Error)]
-enum ImageInputError {
+pub(super) enum ImageInputError {
     #[error("Cohere image embeddings support PNG, JPEG, WebP, or GIF file bytes")]
     UnsupportedFormat,
     #[error("Cohere image embeddings accept at most 5 MB per image; received {actual_bytes} bytes")]
     TooLarge { actual_bytes: usize },
 }
 
-fn image_media_type(bytes: &[u8]) -> Option<&'static str> {
-    if bytes.starts_with(b"\x89PNG\r\n\x1a\n") {
-        Some("image/png")
-    } else if bytes.starts_with(b"\xff\xd8\xff") {
-        Some("image/jpeg")
-    } else if bytes.starts_with(b"GIF87a") || bytes.starts_with(b"GIF89a") {
-        Some("image/gif")
-    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP".as_slice()) {
-        Some("image/webp")
-    } else {
-        None
-    }
-}
-
-fn validate_image(bytes: &[u8]) -> Result<&'static str, EmbeddingError> {
+/// The media type Cohere will accept these bytes as, or the reason it will
+/// not. Sniffing is [`crate::embeddings::image_media_type`]'s; the
+/// acceptance policy (the formats and the 5 MB ceiling) is Cohere's.
+pub(super) fn validate_image(bytes: &[u8]) -> Result<&'static str, EmbeddingError> {
     if bytes.len() > MAX_IMAGE_BYTES {
         return Err(EmbeddingError::DocumentError(Box::new(
             ImageInputError::TooLarge {
@@ -180,17 +165,12 @@ fn validate_image(bytes: &[u8]) -> Result<&'static str, EmbeddingError> {
         )));
     }
 
-    image_media_type(bytes)
+    crate::embeddings::image_media_type(bytes)
         .ok_or_else(|| EmbeddingError::DocumentError(Box::new(ImageInputError::UnsupportedFormat)))
 }
 
-fn image_data_url(bytes: &[u8], media_type: &str) -> String {
+pub(super) fn image_data_url(bytes: &[u8], media_type: &str) -> String {
     format!("data:{media_type};base64,{}", STANDARD.encode(bytes))
-}
-
-fn image_document(bytes: &[u8], media_type: &str) -> String {
-    let digest = Sha256::digest(bytes);
-    format!("{media_type};sha256={}", URL_SAFE_NO_PAD.encode(digest))
 }
 
 #[derive(Clone)]
@@ -444,7 +424,7 @@ where
             .into_iter()
             .map(|bytes| {
                 let media_type = validate_image(&bytes)?;
-                let document = image_document(&bytes, media_type);
+                let document = crate::embeddings::image_document(&bytes);
                 Ok((bytes, media_type, document))
             })
             .collect::<Result<Vec<_>, EmbeddingError>>()?;

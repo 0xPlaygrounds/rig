@@ -16,10 +16,12 @@ pub mod client;
 pub mod completion;
 pub mod embeddings;
 pub mod streaming;
+pub mod wire;
 
 pub use client::{ApiErrorResponse, ApiResponse, Client};
 pub use completion::CompletionModel;
 pub use embeddings::{EmbeddingModel, ImageEmbeddingModel};
+pub use wire::{Chat, Cohere, Embeddings, ImageEmbeddings};
 
 // ================================================================
 // Cohere Completion Models

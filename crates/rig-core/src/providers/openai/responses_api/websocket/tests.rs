@@ -6,6 +6,13 @@ use crate::providers::openai::responses_api::{
 use crate::ws_client::CloseFrame;
 use serde_json::json;
 
+/// The wire a session is opened over.
+fn test_wire(base_url: &str) -> Responses {
+    crate::providers::openai::responses_api::wire::ResponsesApi::new("test-key")
+        .with_base_url(base_url)
+        .responses("gpt-5.4")
+}
+
 /// The shape a rejected upgrade reaches this module in: the backend has
 /// already read the status, headers and body off the refusing HTTP
 /// response.
@@ -245,18 +252,12 @@ fn warmup_options_serialize_generate_false() {
     assert_eq!(json, json!({ "generate": false }));
 }
 
-/// The handshake request carries the endpoint path and the client's auth
+/// The handshake request carries the endpoint path and the wire's own auth
 /// headers, on the websocket scheme.
 #[test]
-fn websocket_request_targets_the_responses_endpoint_with_the_clients_headers() {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        http::header::AUTHORIZATION,
-        "Bearer test-key".parse().expect("header should parse"),
-    );
-
-    let request =
-        websocket_request("https://api.openai.com/v1", &headers).expect("request should build");
+fn websocket_request_targets_the_responses_endpoint_with_the_wires_headers() {
+    let request = websocket_request(&test_wire("https://api.openai.com/v1"))
+        .expect("request should build");
 
     assert_eq!(request.uri(), "wss://api.openai.com/v1/responses");
     assert_eq!(
@@ -270,7 +271,7 @@ fn websocket_request_targets_the_responses_endpoint_with_the_clients_headers() {
 
 #[test]
 fn websocket_request_rejects_an_unsupported_base_url_scheme() {
-    let error = websocket_request("ftp://api.openai.com/v1", &HeaderMap::new())
+    let error = websocket_request(&test_wire("ftp://api.openai.com/v1"))
         .expect_err("ftp is not a websocket base");
     assert!(
         error.to_string().contains("ftp"),

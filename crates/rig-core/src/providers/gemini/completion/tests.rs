@@ -1855,3 +1855,237 @@ fn block_reasons_split_into_final_refusals_and_transient_blocks() {
         }
     }
 }
+
+// ── the GenerateContent wire ────────────────────────────────────────────
+//
+// Bodies below are pasted verbatim from committed cassettes, named at each
+// constant. The point of the pairs is the property the wire model exists
+// for: the unary reply and the streamed reply of the SAME turn, decoded by
+// the SAME decoder, fold to the same answer.
+
+use crate::driver::Bound;
+use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
+use crate::wire::{Mode, Wire};
+use futures::StreamExt;
+
+/// `tests/cassettes/gemini/turn_termination_matrix/blocking_completed_turn_reports_stop_and_cap.yaml`
+const CEDAR_UNARY: &str = r#"{"candidates":[{"content":{"parts":[{"text":"cedar"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":22,"promptTokensDetails":[{"modality":"TEXT","tokenCount":22}],"serviceTier":"standard","totalTokenCount":24}}"#;
+
+/// `tests/cassettes/gemini/turn_termination_matrix/streaming_completed_turn_reports_stop_and_cap.yaml`
+/// — the same turn, streamed. Gemini delivered it as one event.
+const CEDAR_STREAM: &str = concat!(
+    r#"data: {"candidates":[{"content":{"parts":[{"text":"cedar"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":22,"promptTokensDetails":[{"modality":"TEXT","tokenCount":22}],"serviceTier":"standard","totalTokenCount":24}}"#,
+    "\r\n\r\n",
+);
+
+/// `tests/cassettes/gemini/thought_text_matrix/blocking_keeps_a_trailing_thought_signature.yaml`
+const SIGNED_UNARY: &str = r#"{"candidates":[{"content":{"parts":[{"text":"289","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":2,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":59}}"#;
+
+/// `tests/cassettes/gemini/thought_text_matrix/streaming_twin_agrees_on_a_trailing_thought_signature.yaml`
+/// — the same turn, streamed across two events, the signature riding a
+/// trailing part that carries no `thought` flag.
+const SIGNED_STREAM: &str = concat!(
+    r#"data: {"candidates":[{"content":{"parts":[{"text":"289"}],"role":"model"},"index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":60}}"#,
+    "\r\n\r\n",
+    r#"data: {"candidates":[{"content":{"parts":[{"text":"","thoughtSignature":"signature_REDACTED_1"}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-3-flash-preview","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":3,"promptTokenCount":14,"promptTokensDetails":[{"modality":"TEXT","tokenCount":14}],"serviceTier":"standard","thoughtsTokenCount":43,"totalTokenCount":60}}"#,
+    "\r\n\r\n",
+);
+
+fn wire_request(prompt: &str) -> CompletionRequest {
+    CompletionRequest {
+        model: None,
+        chat_history: vec![prompt.into()],
+        documents: vec![],
+        tools: vec![],
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}
+
+fn wire(model: &str) -> GenerateContent {
+    crate::providers::gemini::Gemini::new("test-key").generate_content(model)
+}
+
+/// What a folded response says, for comparing two transports.
+fn folded(
+    response: &crate::completion::CompletionResponse,
+) -> (
+    Vec<message::AssistantContent>,
+    crate::completion::Usage,
+    Option<crate::completion::FinishReason>,
+    Option<String>,
+) {
+    (
+        response.choice.to_vec(),
+        response.usage,
+        response.finish_reason(),
+        response.model.clone(),
+    )
+}
+
+async fn unary(model: &str, body: &'static str) -> crate::completion::CompletionResponse {
+    use crate::completion::CompletionModel as _;
+    Bound::new(wire(model), RecordingHttpClient::new(body))
+        .completion(wire_request("probe"))
+        .await
+        .expect("the recorded unary reply decodes")
+}
+
+async fn streamed(model: &str, body: &'static str) -> crate::completion::CompletionResponse {
+    use crate::completion::CompletionModel as _;
+    let mut stream = Bound::new(
+        wire(model),
+        MockStreamingClient {
+            sse_bytes: bytes::Bytes::from_static(body.as_bytes()),
+        },
+    )
+    .stream(wire_request("probe"))
+    .await
+    .expect("the stream opens");
+    while let Some(item) = stream.next().await {
+        item.expect("the recorded stream carries no in-band error");
+    }
+    stream.finish()
+}
+
+#[tokio::test]
+async fn a_unary_reply_and_a_streamed_reply_fold_to_the_same_answer() {
+    let buffered = unary("gemini-2.5-flash", CEDAR_UNARY).await;
+    let streamed = streamed("gemini-2.5-flash", CEDAR_STREAM).await;
+    assert_eq!(folded(&buffered), folded(&streamed));
+    assert_eq!(
+        buffered.choice.first(),
+        Some(&message::AssistantContent::text("cedar"))
+    );
+    assert_eq!(
+        buffered.finish_reason(),
+        Some(crate::completion::FinishReason::Stop)
+    );
+    assert_eq!(buffered.usage.output_tokens, Some(2));
+    assert_eq!(buffered.usage.total_tokens, Some(24));
+}
+
+/// The turn whose signature is the thing that has to agree: Gemini hangs
+/// `thoughtSignature` on a trailing part, and it is replay-required state
+/// the provider validates. Both transports must place it identically or a
+/// turn replayed from one of them is rejected.
+#[tokio::test]
+async fn both_transports_place_a_trailing_thought_signature_the_same_way() {
+    let buffered = unary("gemini-3-flash-preview", SIGNED_UNARY).await;
+    let streamed = streamed("gemini-3-flash-preview", SIGNED_STREAM).await;
+    assert_eq!(buffered.choice.to_vec(), streamed.choice.to_vec());
+    assert_eq!(buffered.finish_reason(), streamed.finish_reason());
+    let signature = |response: &crate::completion::CompletionResponse| {
+        response.choice.iter().find_map(|item| match item {
+            message::AssistantContent::Reasoning(reasoning) => match reasoning.content.first() {
+                Some(message::ReasoningContent::Text { signature, .. }) => signature.clone(),
+                _ => None,
+            },
+            _ => None,
+        })
+    };
+    assert_eq!(
+        signature(&buffered).as_deref(),
+        Some("signature_REDACTED_1"),
+        "the unary reply kept the signature: {:?}",
+        buffered.choice
+    );
+    assert_eq!(signature(&buffered), signature(&streamed));
+}
+
+/// The one request an `Encoded` carries: every Gemini wire sends one per
+/// call — only the batch endpoints of other providers send more.
+fn sole(encoded: &crate::wire::Encoded) -> &http::Request<crate::wire::Body> {
+    match encoded.requests.as_slice() {
+        [request] => request,
+        requests => panic!("expected one request, got {}", requests.len()),
+    }
+}
+
+#[test]
+fn the_mode_chooses_the_endpoint_and_the_framing() {
+    let wire = wire("gemini-2.5-flash");
+
+    let unary = wire
+        .encode(wire_request("probe"), Mode::Unary)
+        .expect("the unary request encodes");
+    assert_eq!(
+        sole(&unary).uri().path(),
+        "/v1beta/models/gemini-2.5-flash:generateContent"
+    );
+    // The key is a query parameter on this family, appended last.
+    assert_eq!(sole(&unary).uri().query(), Some("key=test-key"));
+    assert_eq!(unary.framing, crate::http_client::framing::Framing::Whole);
+
+    let streaming = wire
+        .encode(wire_request("probe"), Mode::Streaming)
+        .expect("the streaming request encodes");
+    assert_eq!(
+        sole(&streaming).uri().path(),
+        "/v1beta/models/gemini-2.5-flash:streamGenerateContent"
+    );
+    assert_eq!(sole(&streaming).uri().query(), Some("alt=sse&key=test-key"));
+    assert_eq!(streaming.framing, crate::http_client::framing::Framing::Sse);
+    // Gemini reports no transport request-id header.
+    assert_eq!(streaming.request_id_header, None);
+}
+
+/// The span names this wire has always recorded, per mode. Telemetry
+/// equivalence is part of the port's contract.
+#[test]
+fn the_wire_keeps_its_span_names() {
+    let wire = wire("gemini-2.5-flash");
+    assert_eq!(
+        Wire::telemetry(&wire, false),
+        CompletionOperation::GenerateContent
+    );
+    assert_eq!(
+        Wire::telemetry(&wire, true),
+        CompletionOperation::ChatStreaming
+    );
+}
+
+/// An `inlineData` part is model output the *stream* vocabulary cannot
+/// express (`BlockKind` has no image), and both modes now decode through
+/// that vocabulary. It must not vanish: the part rides a text block's
+/// metadata under `GEMINI_RAW_CONTENT_KEY`, so a consumer can still read
+/// the bytes Gemini sent.
+///
+/// Shape taken from
+/// `tests/cassettes/gemini/image_generation/nano_banana_image_generation_smoke.yaml`,
+/// whose recorded `data` is a 1 MB PNG; the payload here is shortened
+/// because only its survival is under test.
+#[tokio::test]
+async fn an_inline_data_part_survives_as_a_raw_content_block() {
+    const IMAGE_REPLY: &str = r#"{"candidates":[{"content":{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUg==","mimeType":"image/png"}}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-image","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1290,"promptTokenCount":15,"totalTokenCount":1305}}"#;
+
+    let response = unary("gemini-2.5-flash-image", IMAGE_REPLY).await;
+    let raw = response
+        .choice
+        .iter()
+        .find_map(|item| match item {
+            message::AssistantContent::Text(text) => text
+                .additional_params
+                .as_ref()
+                .and_then(|params| {
+                    params.get(crate::providers::gemini::GEMINI_RAW_CONTENT_KEY)
+                })
+                .cloned(),
+            _ => None,
+        })
+        .expect("the inline image part survived as raw content");
+    assert_eq!(
+        raw.pointer("/inlineData/mimeType")
+            .and_then(serde_json::Value::as_str),
+        Some("image/png")
+    );
+    assert_eq!(
+        raw.pointer("/inlineData/data")
+            .and_then(serde_json::Value::as_str),
+        Some("iVBORw0KGgoAAAANSUhEUg==")
+    );
+}

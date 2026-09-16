@@ -1,14 +1,14 @@
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use http::Request;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::json;
 
 use crate::completion::{CompletionError, CompletionRequest};
 use crate::http_client::HttpClientExt;
-use crate::json_utils::{self, merge};
+use crate::json_utils::merge;
 use crate::providers::internal::openai_chat_completions_compatible::{
     self, CompatibleChoiceData, CompatibleChunk, CompatibleFinishReason, CompatibleStreamProfile,
-    CompatibleTerminal, CompatibleToolCallChunk,
+    CompatibleTerminal,
 };
 use crate::providers::internal::wire;
 use crate::providers::openai::completion::{
@@ -19,108 +19,14 @@ use crate::streaming::{self, StreamFinal};
 // ================================================================
 // OpenAI Completion Streaming API
 // ================================================================
-#[derive(Default, Deserialize, Debug)]
-pub(crate) struct StreamingFunction {
-    pub(crate) name: Option<String>,
-    #[serde(
-        default,
-        deserialize_with = "crate::json_utils::deserialize_json_string_or_value"
-    )]
-    pub(crate) arguments: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-pub(crate) struct StreamingToolCall {
-    // Optional in several compatible dialects (e.g. Mistral); missing means
-    // a single in-flight tool call.
-    #[serde(default)]
-    pub(crate) index: usize,
-    pub(crate) id: Option<String>,
-    #[serde(default, deserialize_with = "json_utils::null_or_default")]
-    pub(crate) function: StreamingFunction,
-}
-
-impl From<&StreamingToolCall> for CompatibleToolCallChunk {
-    fn from(value: &StreamingToolCall) -> Self {
-        Self {
-            index: value.index,
-            id: value.id.clone(),
-            name: value.function.name.clone(),
-            arguments: value.function.arguments.clone(),
-        }
-    }
-}
-
-fn deserialize_delta_content<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    // Some compatible providers (e.g. Mistral's reasoning models) stream
-    // delta content as an array of content parts rather than a string.
-    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
-    Ok(value.and_then(|value| match value {
-        serde_json::Value::String(text) => Some(text),
-        serde_json::Value::Array(parts) => {
-            let text = crate::providers::openai::completion::joined_text_parts(&parts);
-            (!text.is_empty()).then_some(text)
-        }
-        _ => None,
-    }))
-}
-
-#[derive(Deserialize, Debug, Default)]
-struct StreamingDelta {
-    #[serde(default, deserialize_with = "deserialize_delta_content")]
-    content: Option<String>,
-    /// A structured-output refusal streams here, on its own key, with
-    /// `content` held at `null` for the whole turn — the same sibling-of-
-    /// `content` spelling the unary path sees. Its deltas are the turn's
-    /// visible text, so they join the text stream (see [`delta_text`]).
-    #[serde(default)]
-    refusal: Option<String>,
-    #[serde(default)]
-    reasoning_content: Option<String>,
-    // Not part of the official OpenAI API; some compatible providers (e.g.
-    // Groq) send the same payload under `reasoning`. A separate field rather
-    // than a serde alias so a delta carrying BOTH keys is not a
-    // duplicate-field error that drops the whole chunk.
-    #[serde(default)]
-    reasoning: Option<String>,
-    #[serde(default, deserialize_with = "json_utils::null_or_default")]
-    tool_calls: Vec<StreamingToolCall>,
-    #[serde(default, deserialize_with = "json_utils::null_or_default")]
-    reasoning_details: Vec<serde_json::Value>,
-}
-
-#[derive(Deserialize, Debug, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum FinishReason {
-    ToolCalls,
-    Stop,
-    ContentFilter,
-    Length,
-    #[serde(untagged)]
-    Other(String), // This will handle the deprecated function_call
-}
-
-impl FinishReason {
-    /// This reason in the provider's own wire spelling.
-    ///
-    /// Round-tripping through the wire form keeps `map_openai_finish_reason`
-    /// the single place the OpenAI-compatible vocabulary is interpreted, so the
-    /// streaming and unary paths cannot drift — including on the deprecated
-    /// `function_call` spelling, which this enum captures in
-    /// [`FinishReason::Other`].
-    fn as_wire(&self) -> &str {
-        match self {
-            Self::ToolCalls => "tool_calls",
-            Self::Stop => "stop",
-            Self::ContentFilter => "content_filter",
-            Self::Length => "length",
-            Self::Other(other) => other,
-        }
-    }
-}
+// The wire's reply DTOs, its `finish_reason` vocabulary and its terminal
+// record live with the wire that decodes them
+// (`providers::openai::wire::dto`). They are re-exported here so the
+// public paths `openai::FinishReason` and
+// `openai::StreamingCompletionResponse` are unchanged while there is one
+// definition of each.
+pub use crate::providers::openai::wire::dto::{FinishReason, StreamingCompletionResponse};
+use crate::providers::openai::wire::dto::{StreamingDelta, delta_text};
 
 /// Normalize a streamed OpenAI-compatible `finish_reason` field.
 ///
@@ -131,25 +37,6 @@ impl FinishReason {
 #[cfg(test)]
 pub(crate) fn map_finish_reason(reason: Option<&FinishReason>) -> CompatibleFinishReason {
     CompatibleFinishReason::from_wire(reason.map(FinishReason::as_wire))
-}
-
-/// The visible text a delta carries: its `content`, or — when `content` has
-/// none — its `refusal`.
-///
-/// A refusal turn streams `"content": null` beside the refusal deltas (and
-/// opens with an empty `"refusal": ""`), so preferring non-empty content keeps
-/// ordinary turns byte-identical while letting a refusal reach the caller
-/// instead of vanishing. An empty `content` string with no refusal to fall
-/// back on stays exactly as it was.
-fn delta_text(delta: &StreamingDelta) -> Option<String> {
-    match delta.content.as_deref() {
-        Some(content) if !content.is_empty() => delta.content.clone(),
-        content => delta
-            .refusal
-            .clone()
-            .filter(|refusal| !refusal.is_empty())
-            .or_else(|| content.map(str::to_owned)),
-    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -193,112 +80,6 @@ struct StreamingCompletionChunk<U = Usage> {
     /// because the shared wire shape does not know their names yet.
     #[serde(flatten)]
     additional_params: serde_json::Map<String, serde_json::Value>,
-}
-
-/// Final streaming response. `U` is the provider's streaming usage payload
-/// ([`Usage`] for OpenAI itself; providers with richer usage accounting, e.g.
-/// Mistral and DeepSeek, substitute their own via
-/// [`OpenAICompatibleProvider::StreamingUsage`]).
-///
-/// This is the provider-native terminal record the adapter maps into a
-/// [`StreamFinal`] exactly once (and serializes onto [`StreamFinal::raw`]).
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct StreamingCompletionResponse<U = Usage> {
-    /// Usage reported on the stream's terminal event; `None` when the stream
-    /// never carried one (a compatible service that ignores
-    /// `stream_options.include_usage`, or a `usage: null` terminal chunk).
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub usage: Option<U>,
-    /// Why the model stopped generating, when the stream reported it.
-    ///
-    /// Normalized out of the OpenAI-compatible `finish_reason` vocabulary, with
-    /// unrecognized values preserved verbatim. The `Stop` -> `ToolCalls`
-    /// upgrade is deliberately *not* applied here: it belongs to
-    /// [`StreamingCompletionResponse`](crate::streaming::StreamingCompletionResponse),
-    /// the only place that sees which tool calls the stream actually emitted.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub finish_reason: Option<crate::completion::FinishReason>,
-    /// Provider-assigned response identifier, when the stream emitted one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub response_id: Option<String>,
-    /// Provider-reported model identifier, when the stream emitted one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
-    /// The transport request id from the SSE connection's `x-request-id`
-    /// response header — not part of any stream frame; stamped by the
-    /// transport. `None` when the provider did not report one.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub provider_request_id: Option<String>,
-    /// Token log probabilities accumulated from all primary-choice chunks.
-    ///
-    /// This stays provider-native (on [`StreamFinal::raw`]): normalized
-    /// completions do not currently model log probabilities, just
-    /// as the blocking normalized path omits `Choice::logprobs` while its raw
-    /// response retains them.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub logprobs: Option<serde_json::Value>,
-    /// Provider-specific top-level fields accumulated from the stream's
-    /// chunks, such as OpenAI's `service_tier` and `system_fingerprint` or
-    /// OpenRouter's routed `provider`.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        deserialize_with = "crate::message::optional_additional_params"
-    )]
-    pub additional_params: Option<crate::message::AdditionalParams>,
-}
-
-impl<U> StreamingCompletionResponse<U> {
-    /// Create a terminal record carrying `usage`; the optional metadata starts
-    /// unset.
-    pub fn new(usage: Option<U>) -> Self {
-        Self {
-            usage,
-            finish_reason: None,
-            response_id: None,
-            model: None,
-            provider_request_id: None,
-            logprobs: None,
-            additional_params: None,
-        }
-    }
-
-    /// Build the terminal record from the shared streaming layer's terminal
-    /// state.
-    pub(crate) fn from_terminal(terminal: CompatibleTerminal<U>) -> Self {
-        Self {
-            usage: terminal.usage,
-            finish_reason: terminal.finish_reason,
-            response_id: terminal.response_id,
-            model: terminal.model,
-            // Stamped by the transport layer; the shared chunk accumulator
-            // never sees connection headers.
-            provider_request_id: None,
-            logprobs: terminal.logprobs.map(Into::into),
-            additional_params: terminal.additional_params,
-        }
-    }
-}
-
-impl<U> StreamingCompletionResponse<U>
-where
-    U: Into<crate::completion::Usage>,
-{
-    /// Normalize this OpenAI-compatible streaming terminal record — the
-    /// adapter's own terminal mapping, like every other provider's, rather
-    /// than a conversion on the record type.
-    ///
-    /// As on the unary path, the provider descriptor name is an *input*
-    /// rather than a constant: this terminal record is shared by every
-    /// OpenAI-compatible provider, so baking in `"openai"` here would
-    /// mislabel Groq, Together, DeepSeek and the rest.
-    pub fn into_stream_final(self, provider: &str) -> StreamFinal {
-        StreamFinal::new(provider, self.usage.map(Into::into).unwrap_or_default())
-            .with_optional_finish_reason(self.finish_reason)
-            .with_optional_response_id(self.response_id)
-            .with_optional_provider_request_id(self.provider_request_id)
-            .with_optional_model(self.model)
-    }
 }
 
 impl<Ext, H> GenericCompletionModel<Ext, H>

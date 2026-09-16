@@ -18,6 +18,10 @@ pub mod model_listing;
 mod observation;
 pub mod responses_api;
 
+/// The OpenAI wires: one chat-completions wire and one `Dialect` constant
+/// per OpenAI-shaped provider.
+pub mod wire;
+
 #[cfg(feature = "audio")]
 #[cfg_attr(docsrs, doc(cfg(feature = "audio")))]
 pub mod audio_generation;

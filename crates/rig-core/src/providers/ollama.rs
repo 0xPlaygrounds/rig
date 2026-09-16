@@ -46,6 +46,7 @@ use crate::completion::Usage;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::DocumentSourceKind;
 use crate::model::{Model, ModelList, ModelListingError};
+use crate::operation::Completion;
 use crate::providers::internal;
 use crate::streaming::{StreamFinal, ToolCallEnd};
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
@@ -61,6 +62,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::convert::TryFrom;
 use tracing_futures::Instrument;
+
+pub mod wire;
+
+pub use wire::{Chat, Embeddings, Models, Ollama as OllamaProvider};
+
 // ---------- Main Client ----------
 
 const OLLAMA_API_BASE_URL: &str = "http://localhost:11434";
@@ -786,35 +792,144 @@ fn stream_final(response: StreamingCompletionResponse) -> StreamFinal {
         .with_model(response.model)
 }
 
-/// Reassembles newline-delimited JSON lines from a chunked HTTP byte stream.
+/// The Ollama NDJSON wire's decoder, serving both replies.
 ///
-/// `bytes_stream` makes no promises about chunk boundaries, so a single NDJSON
-/// line can be split across multiple chunks. `NdjsonBuffer` holds the trailing
-/// fragment between calls and yields only fully terminated lines.
-#[derive(Default)]
-struct NdjsonBuffer {
-    buf: Vec<u8>,
+/// Ollama answers `/api/chat` with the same record shape either way — a
+/// stream is a sequence of them and a whole reply is one with `done: true`
+/// — so the unary body needs no second variant here, and the two paths
+/// cannot drift. Frame-triage policy (in-band `Err` on `Corrupt`, so a
+/// later genuine `done: true` record can still complete the stream) lives
+/// in the driver, not here.
+pub struct OllamaDecoder {
+    /// Owns the constant-key reasoning lifecycle: `thinking` deltas
+    /// accumulate under the per-reply minted key, and the boundary end
+    /// this wire never announces is derived, not hand-rolled here.
+    reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
+    /// Per-reply minter for id-less tool-call keys. Counted across the
+    /// whole reply, not per record — a per-record enumeration would hand
+    /// two id-less calls in separate records the same `Minted(Tool, 0)`
+    /// key, and one would silently swallow the other downstream.
+    tool_ids: crate::streaming::SyntheticIds,
 }
 
-impl NdjsonBuffer {
-    fn new() -> Self {
-        Self::default()
+impl Default for OllamaDecoder {
+    fn default() -> Self {
+        Self {
+            reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
+                crate::streaming::MintKind::Reasoning,
+            ),
+            tool_ids: crate::streaming::SyntheticIds::tool(),
+        }
     }
+}
 
-    /// Appends `chunk` to the buffer and returns any newly completed lines.
-    /// Empty lines are skipped; trailing partial data is retained for the next call.
-    fn decode(&mut self, chunk: &[u8]) -> Vec<Vec<u8>> {
-        self.buf.extend_from_slice(chunk);
+impl OllamaDecoder {
+    /// Interpret one `/api/chat` record: its content, its tool calls, and —
+    /// when it says `done` — the terminal it carries.
+    fn interpret_record(
+        &mut self,
+        response: CompletionResponse,
+        out: &mut internal::adapter::AdapterOutput,
+    ) {
+        let done = response.done;
+        let model = response.model;
+        if let Message::Assistant {
+            content,
+            thinking,
+            tool_calls,
+            ..
+        } = response.message
+        {
+            // A daemon-issued call id keys the reply and travels as the
+            // durable id; an id-less call (older daemons) keys by a
+            // distinct minted identity and its durable id stays absent —
+            // never the tool name, which would collide two same-tool calls
+            // in one turn.
+            let mut tool_events = internal::adapter::AdapterOutput::new();
+            for tool_call in tool_calls {
+                let key = match tool_call
+                    .id
+                    .as_deref()
+                    .and_then(crate::streaming::non_empty_id)
+                {
+                    Some(wire_id) => crate::streaming::BlockId::wire(wire_id.as_str()),
+                    None => self.tool_ids.mint(),
+                };
+                let mut end =
+                    ToolCallEnd::whole(tool_call.function.name, tool_call.function.arguments);
+                if let Some(wire_id) = key.wire_str() {
+                    end = end.with_tool_id(wire_id);
+                }
+                tool_events.tool_call(key, end);
+            }
 
-        let mut lines = Vec::new();
-        while let Some(pos) = self.buf.iter().position(|&b| b == b'\n') {
-            let mut line: Vec<u8> = self.buf.drain(..=pos).collect();
-            line.pop();
-            if !line.is_empty() {
-                lines.push(line);
+            // Older reasoning models put their reasoning in `content`
+            // instead of `thinking`. Splitting it out needs the WHOLE
+            // content, so only a record that completes the turn is a
+            // candidate: a streamed delta carries a fragment, where a
+            // leading `<think>` has no terminator yet and the content is
+            // left alone (issue #1926 keeps the reasoning either way).
+            let (reasoning, text) = match thinking.as_deref() {
+                None | Some("") if done => {
+                    let permits_omitted_think_start = model.to_ascii_lowercase().contains("qwen3");
+                    let (legacy, visible) =
+                        split_legacy_thinking(&content, permits_omitted_think_start);
+                    (legacy.map(str::to_owned), visible.to_owned())
+                }
+                _ => (thinking, content),
+            };
+
+            // Declare what the record carried; the shared lifecycle derives
+            // the canonical sequence (boundary end included).
+            self.reasoning.emit_chunk(
+                internal::chunk_lifecycle::ChunkParts {
+                    reasoning,
+                    reasoning_signature: None,
+                    text: Some(text),
+                    tool_events: tool_events
+                        .into_items()
+                        .into_iter()
+                        .filter_map(Result::ok)
+                        .collect(),
+                },
+                out,
+            );
+        }
+
+        // Only a `done: true` record counts as the provider completing the
+        // turn; the driver stops consuming after the terminal record, and
+        // the span is the driver's to record.
+        if done {
+            let native = StreamingCompletionResponse {
+                model,
+                total_duration: response.total_duration,
+                load_duration: response.load_duration,
+                prompt_eval_count: response.prompt_eval_count,
+                prompt_eval_duration: response.prompt_eval_duration,
+                eval_count: response.eval_count,
+                eval_duration: response.eval_duration,
+                done_reason: response.done_reason,
+            };
+            match serde_json::to_value(&native) {
+                Ok(raw) => out.final_record(stream_final(native).with_raw(raw)),
+                Err(err) => out.error(err.into()),
             }
         }
-        lines
+    }
+
+    /// Classify one NDJSON line. The wire has no discriminator at all: a
+    /// line either decodes as the record shape or is corrupt.
+    fn classify_line(
+        frame: internal::adapter::WireFrame,
+    ) -> internal::wire::WireEvent<CompletionResponse> {
+        match frame {
+            internal::adapter::WireFrame::Bytes(line) => {
+                internal::wire::classify_untyped_line(&line)
+            }
+            internal::adapter::WireFrame::Text(line) => {
+                internal::wire::classify_untyped_line(line.as_bytes())
+            }
+        }
     }
 }
 
@@ -892,50 +1007,16 @@ where
     }
 }
 
-/// The Ollama NDJSON wire as a
-/// [`WireAdapter`](internal::adapter::WireAdapter).
-///
-/// Stateless: every line is a whole response record. Frame-triage policy
-/// (warn-skip `Unknown` — unpopulated on this undiscriminated wire — and
-/// in-band `Err` on `Corrupt`, so a later genuine `done: true` record can
-/// still complete the stream) lives in
-/// [`run_wire_stream`](internal::adapter::run_wire_stream), not here.
-struct OllamaAdapter {
-    /// Owns the constant-key reasoning lifecycle: `thinking` deltas
-    /// accumulate under the per-stream minted key, and the boundary end
-    /// this wire never announces is derived, not hand-rolled here.
-    reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle,
-    /// Per-stream minter for id-less tool-call keys. Counted across the
-    /// whole stream, not per record — a per-record enumeration would hand
-    /// two id-less calls in separate records the same `Minted(Tool, 0)`
-    /// key, and one would silently swallow the other downstream.
-    tool_ids: crate::streaming::SyntheticIds,
-}
-
-impl Default for OllamaAdapter {
-    fn default() -> Self {
-        Self {
-            reasoning: internal::chunk_lifecycle::MintedReasoningLifecycle::new(
-                crate::streaming::MintKind::Reasoning,
-            ),
-            tool_ids: crate::streaming::SyntheticIds::tool(),
-        }
-    }
-}
-
-impl internal::adapter::WireAdapter for OllamaAdapter {
+/// The streamed half's historical contract, over the same decoder: the
+/// deleted per-provider stream path feeds it lines, the driver feeds
+/// [`crate::wire::Decoder`] the same lines, and both land in
+/// [`OllamaDecoder::interpret_record`].
+impl internal::adapter::WireAdapter for OllamaDecoder {
     type Frame = internal::adapter::WireFrame;
     type Event = CompletionResponse;
 
     fn classify(&self, frame: Self::Frame) -> internal::wire::WireEvent<CompletionResponse> {
-        match frame {
-            internal::adapter::WireFrame::Bytes(line) => {
-                internal::wire::classify_untyped_line(&line)
-            }
-            internal::adapter::WireFrame::Text(line) => {
-                internal::wire::classify_untyped_line(line.as_bytes())
-            }
-        }
+        Self::classify_line(frame)
     }
 
     fn interpret(
@@ -943,84 +1024,36 @@ impl internal::adapter::WireAdapter for OllamaAdapter {
         response: CompletionResponse,
         out: &mut internal::adapter::AdapterOutput,
     ) {
-        let span = tracing::Span::current();
-        if response.done {
-            span.record("gen_ai.response.model", &response.model);
-        }
-
-        if let Message::Assistant {
-            content,
-            thinking,
-            tool_calls,
-            ..
-        } = response.message
-        {
-            // A daemon-issued call id keys the stream and travels as the
-            // durable id; an id-less call (older daemons) keys by a
-            // distinct minted identity and its durable id stays absent —
-            // never the tool name, which would collide two same-tool calls
-            // in one turn.
-            let mut tool_events = internal::adapter::AdapterOutput::new();
-            for tool_call in tool_calls {
-                let key = match tool_call
-                    .id
-                    .as_deref()
-                    .and_then(crate::streaming::non_empty_id)
-                {
-                    Some(wire_id) => crate::streaming::BlockId::wire(wire_id.as_str()),
-                    None => self.tool_ids.mint(),
-                };
-                let mut end =
-                    ToolCallEnd::whole(tool_call.function.name, tool_call.function.arguments);
-                if let Some(wire_id) = key.wire_str() {
-                    end = end.with_tool_id(wire_id);
-                }
-                tool_events.tool_call(key, end);
-            }
-
-            // Declare what the record carried; the shared lifecycle derives
-            // the canonical sequence (boundary end included).
-            self.reasoning.emit_chunk(
-                internal::chunk_lifecycle::ChunkParts {
-                    reasoning: thinking,
-                    reasoning_signature: None,
-                    text: Some(content),
-                    tool_events: tool_events
-                        .into_items()
-                        .into_iter()
-                        .filter_map(Result::ok)
-                        .collect(),
-                },
-                out,
-            );
-        }
-
-        // Only a `done: true` record counts as the provider completing the
-        // turn; the driver stops consuming after the terminal record.
-        if response.done {
-            span.record("gen_ai.usage.input_tokens", response.prompt_eval_count);
-            span.record("gen_ai.usage.output_tokens", response.eval_count);
-            let native = StreamingCompletionResponse {
-                model: response.model,
-                total_duration: response.total_duration,
-                load_duration: response.load_duration,
-                prompt_eval_count: response.prompt_eval_count,
-                prompt_eval_duration: response.prompt_eval_duration,
-                eval_count: response.eval_count,
-                eval_duration: response.eval_duration,
-                done_reason: response.done_reason,
-            };
-            match serde_json::to_value(&native) {
-                Ok(raw) => out.final_record(stream_final(native).with_raw(raw)),
-                Err(err) => out.error(err.into()),
-            }
-        }
+        self.interpret_record(response, out);
     }
 
     fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput) {
         // EOF without a `done: true` record is truncation: no terminal record
         // may be synthesized.
     }
+}
+
+impl crate::wire::Decoder<Completion> for OllamaDecoder {
+    type Event = CompletionResponse;
+
+    fn classify(
+        &self,
+        frame: internal::adapter::WireFrame,
+    ) -> internal::wire::WireEvent<CompletionResponse> {
+        Self::classify_line(frame)
+    }
+
+    fn interpret(
+        &mut self,
+        response: CompletionResponse,
+        out: &mut internal::adapter::AdapterOutput,
+    ) {
+        self.interpret_record(response, out);
+    }
+
+    /// EOF without a `done: true` record is truncation: no terminal record
+    /// may be synthesized.
+    fn finish(&mut self, _out: &mut internal::adapter::AdapterOutput) {}
 }
 
 impl<T> completion::CompletionModel for CompletionModel<T>
@@ -1140,12 +1173,13 @@ where
             return Err(error);
         }
 
-        // Transport layer: HTTP byte chunks → NDJSON-line `WireFrame`s. Byte
-        // splitting and framing only — classification and policy live
-        // downstream.
+        // Transport layer: HTTP byte chunks → NDJSON-line `WireFrame`s.
+        // Byte splitting is the shared framer's (`http_client::framing`),
+        // which is what the driver feeds the same decoder with;
+        // classification and policy live downstream.
         let frame_observation = observation.clone();
         let transport = stream! {
-            let mut line_buf = NdjsonBuffer::new();
+            let mut framer = crate::http_client::framing::NdjsonFramer::new();
             while let Some(chunk) = byte_stream.next().await {
                 let bytes = match chunk {
                     Ok(bytes) => bytes,
@@ -1155,7 +1189,7 @@ where
                     }
                 };
 
-                for line in line_buf.decode(&bytes) {
+                for line in framer.push(&bytes) {
                     tracing::debug!(target: "rig", "Received NDJSON line from Ollama: {}", String::from_utf8_lossy(&line));
                     if let Some(observation) = &frame_observation {
                         observation.payload(&line);
@@ -1163,12 +1197,20 @@ where
                     yield Ok(internal::adapter::WireFrame::Bytes(line));
                 }
             }
+            if let Some(line) = framer.finish() {
+                // A JSON document terminated by EOF rather than a newline is
+                // a complete document.
+                if let Some(observation) = &frame_observation {
+                    observation.payload(&line);
+                }
+                yield Ok(internal::adapter::WireFrame::Bytes(line));
+            }
         };
 
         let stream: streaming::StreamingResult = Box::pin(
             internal::adapter::run_wire_stream_observed(
                 transport,
-                OllamaAdapter::default(),
+                OllamaDecoder::default(),
                 observation,
             )
             .instrument(span),
@@ -1183,15 +1225,20 @@ where
 
 // ---------- Model Listing  ----------
 
+/// The reply of `GET /api/tags`: every model the daemon has pulled.
 #[derive(Debug, Deserialize)]
-struct ListModelsResponse {
-    models: Vec<ListModelEntry>,
+pub struct ListModelsResponse {
+    /// The installed models, in the daemon's own order.
+    pub models: Vec<ListModelEntry>,
 }
 
+/// One installed model.
 #[derive(Debug, Deserialize)]
-struct ListModelEntry {
-    name: String,
-    model: String,
+pub struct ListModelEntry {
+    /// The tag as the daemon displays it (`qwen3:4b`).
+    pub name: String,
+    /// The identifier a request addresses.
+    pub model: String,
 }
 
 impl From<ListModelEntry> for Model {

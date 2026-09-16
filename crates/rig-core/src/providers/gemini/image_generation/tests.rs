@@ -239,3 +239,42 @@ async fn image_generation_2xx_error_envelope_preserves_status_and_body() {
         other => panic!("expected ProviderResponse, got {other:?}"),
     }
 }
+
+/// The 200 reply recorded in
+/// `tests/cassettes/gemini/image_generation/nano_banana_image_generation_smoke.yaml`,
+/// verbatim except for `inlineData.data`: the recorded PNG is 1 MB of base64,
+/// so only its first four base64 groups — the PNG signature and the start of
+/// the `IHDR` chunk — are kept here.
+const RECORDED_IMAGE_REPLY: &str = r#"{"candidates":[{"content":{"parts":[{"inlineData":{"data":"iVBORw0KGgoAAAANSUhEUgAA","mimeType":"image/png"}}],"role":"model"},"finishReason":"STOP","index":0}],"modelVersion":"gemini-2.5-flash-image","responseId":"id_REDACTED_1","usageMetadata":{"candidatesTokenCount":1290,"candidatesTokensDetails":[{"modality":"IMAGE","tokenCount":1290}],"promptTokenCount":15,"promptTokensDetails":[{"modality":"TEXT","tokenCount":15}],"serviceTier":"standard","totalTokenCount":1305}}"#;
+
+#[test]
+fn the_wire_decodes_a_recorded_image_reply() {
+    let wire = Images::new(
+        crate::providers::gemini::Gemini::new("test-key"),
+        GEMINI_2_5_FLASH_IMAGE,
+    );
+
+    let mut driver =
+        crate::driver::WireDriver::<ImageGeneration, _>::new(wire.decoder());
+    driver.push(WireFrame::Text(RECORDED_IMAGE_REPLY.to_string()));
+    let decoded: Vec<_> = driver.drain().collect();
+
+    let [Ok(response)] = decoded.as_slice() else {
+        panic!("one whole reply decodes to one response, got {decoded:?}")
+    };
+    // The base64 the cassette carries, decoded: `\x89PNG\r\n\x1a\n` then the
+    // 13-byte-length `IHDR` chunk header.
+    assert_eq!(
+        response.image,
+        [
+            0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, b'I', b'H',
+            b'D', b'R', 0x00, 0x00
+        ]
+    );
+    assert_eq!(response.provider, super::super::completion::PROVIDER_NAME);
+    assert_eq!(response.model.as_deref(), Some("gemini-2.5-flash-image"));
+    assert_eq!(response.response_id.as_deref(), Some("id_REDACTED_1"));
+    assert_eq!(response.usage.input_tokens, Some(15));
+    assert_eq!(response.usage.output_tokens, Some(1290));
+    assert_eq!(response.usage.total_tokens, Some(1305));
+}

@@ -23,6 +23,14 @@ use crate::streaming::{
 };
 use crate::wasm_compat::WasmCompatSend;
 
+/// The wire's in-band provider error envelope, when this frame is one.
+///
+/// Delivered with a 200 status, so it is not an HTTP failure: the frame is
+/// this wire's own terminal failure and the decoder models it as an event.
+pub(crate) fn provider_error_envelope(data: &str) -> Option<CompletionError> {
+    provider_response_from_compatible_sse_data(data)
+}
+
 fn provider_response_from_compatible_sse_data(data: &str) -> Option<CompletionError> {
     let value = serde_json::from_str::<serde_json::Value>(data).ok()?;
     // Treat the chunk as an error only when `error` is present AND carries a
@@ -340,7 +348,9 @@ impl CompatibleToolCallChunk {
                 .is_none_or(std::string::String::is_empty)
     }
 
-    fn is_complete_single_chunk(&self) -> bool {
+    /// Whether this one fragment carries a whole call — the shape
+    /// llama.cpp-based servers emit.
+    pub(crate) fn is_complete_single_chunk(&self) -> bool {
         self.has_nonempty_name() && self.has_nonempty_arguments()
     }
 }

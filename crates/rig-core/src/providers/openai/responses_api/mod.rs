@@ -36,6 +36,7 @@ use std::ops::Add;
 use std::str::FromStr;
 
 pub mod streaming;
+pub mod wire;
 #[cfg(feature = "websocket")]
 #[cfg_attr(docsrs, doc(cfg(feature = "websocket")))]
 pub mod websocket;
@@ -1199,7 +1200,11 @@ pub(crate) fn map_finish_reason(
 }
 
 /// Controls where Rig system instructions are placed in an OpenAI Responses request.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+///
+/// Serialized because it is a field of the [`wire::Responses`] wire, which is
+/// data a host may store.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SystemInstructionsPlacement {
     /// Send the leading run of system instructions (the preamble and any system
     /// messages that open the conversation) through the official top-level
@@ -2353,60 +2358,6 @@ impl<'de> Deserialize<'de> for Output {
     }
 }
 
-impl From<Output> for Vec<completion::AssistantContent> {
-    fn from(value: Output) -> Self {
-        let res: Vec<completion::AssistantContent> = match value {
-            Output::Message(OutputMessage { content, phase, .. }) => content
-                .into_iter()
-                .map(completion::AssistantContent::from)
-                .map(|content| stamp_phase(content, phase.as_deref()))
-                .collect(),
-            Output::FunctionCall(OutputFunctionCall {
-                id,
-                arguments,
-                call_id,
-                name,
-                ..
-            }) => match arguments.parse() {
-                Ok(arguments) => vec![completion::AssistantContent::tool_call_with_call_id(
-                    id, call_id, name, arguments,
-                )],
-                // Truncation policy: arguments the wire never finished (a
-                // turn cut by `max_output_tokens` mid-tool-call) do not
-                // fabricate a call the model never fully made.
-                Err(_) => {
-                    // warn, not debug: main errored the whole response here,
-                    // so the quieter drop still deserves an operator-visible
-                    // signal.
-                    tracing::warn!(
-                        tool = %name,
-                        "dropping tool call whose arguments never fully arrived"
-                    );
-                    Vec::new()
-                }
-            },
-            Output::Reasoning {
-                id,
-                summary,
-                content,
-                encrypted_content,
-                ..
-            } => vec![completion::AssistantContent::Reasoning(
-                message::Reasoning {
-                    id: Some(id),
-                    content: reasoning_content_blocks(summary, content, encrypted_content),
-                },
-            )],
-            // A compaction item has no rig-level content seat; it is exposed
-            // on the raw response and the streamed terminal (`output`) for
-            // clients that manage Responses state themselves.
-            Output::Compaction(_) | Output::Unknown(_) => Vec::new(),
-        };
-
-        res
-    }
-}
-
 /// An OpenAI Responses API tool call. A call ID will be returned that must be used when creating a tool result to send back to OpenAI as a message input, otherwise an error will be received.
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 pub struct OutputFunctionCall {
@@ -2741,72 +2692,16 @@ where
 /// and Copilot return this exact wire shape, so hardcoding `"openai"` here would
 /// mislabel them. Taking it as part of the conversion makes the correct name
 /// impossible to forget.
+///
+/// There is no second conversion here: the body goes through the ONE
+/// interpreter — [`wire::ResponsesDecoder`]'s unary variant, which synthesizes
+/// the events the stream sends — and the shared fold turns those into the
+/// response. Only the client layer (and `providers::copilot`) still reaches
+/// the wire shape through this trait; the wire path reaches the same decoder
+/// through [`crate::driver`].
 impl crate::completion::NormalizeCompletionResponse for CompletionResponse {
     fn normalize(self, provider: &str) -> Result<completion::CompletionResponse, CompletionError> {
-        let response = self;
-        // The assistant message ID (`msg_...`) from the first message output
-        // item. This is NOT `response.id` (`resp_...`), which identifies the
-        // whole response; only the message ID pairs reasoning items with their
-        // output items across turns.
-        let message_id = response.output.iter().find_map(|item| match item {
-            Output::Message(msg) => Some(msg.id.clone()),
-            _ => None,
-        });
-
-        let output_content: Vec<completion::AssistantContent> = response
-            .output
-            .iter()
-            .cloned()
-            .flat_map(<Vec<completion::AssistantContent>>::from)
-            .collect();
-        let has_structured_reasoning = response
-            .output
-            .iter()
-            .any(|item| matches!(item, Output::Reasoning { .. }));
-        let mut content = response
-            .provider_reasoning
-            .as_ref()
-            .filter(|reasoning| !has_structured_reasoning && !reasoning.is_empty())
-            .map(|reasoning| {
-                let mut content = Vec::with_capacity(output_content.len() + 1);
-                content.push(completion::AssistantContent::Reasoning(
-                    message::Reasoning::new(reasoning),
-                ));
-                content.extend(output_content.clone());
-                content
-            })
-            .unwrap_or(output_content);
-
-        crate::message::normalize_missing_tool_call_ids(&mut content);
-
-        let finish_reason =
-            map_finish_reason(&response.status, response.incomplete_details.as_ref());
-
-        // A contentless *completed* turn is a provider defect and is rejected.
-        // A contentless *incomplete* turn can be rig-induced — a truncated
-        // `function_call` whose arguments never parsed drops its item by the
-        // documented truncation policy — and the finish reason (e.g. `Length`)
-        // is the diagnostic the caller needs, so the empty choice survives to
-        // carry it. The streaming path already behaves this way; this keeps
-        // the two from disagreeing.
-        let choice = if matches!(response.status, ResponseStatus::Incomplete) {
-            content
-        } else {
-            crate::message::require_non_empty_response(content)?
-        };
-
-        let usage = response
-            .usage
-            .as_ref()
-            .map(crate::completion::Usage::from)
-            .unwrap_or_default();
-
-        Ok(completion::CompletionResponse::new(choice, usage, provider)
-            .with_optional_message_id(message_id)
-            .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
-            .with_optional_provider_request_id(response.provider_request_id.clone())
-            .with_optional_model(Some(response.model.as_str()).filter(|model| !model.is_empty()))
-            .with_optional_finish_reason(finish_reason))
+        wire::normalize_body(provider, self)
     }
 }
 
@@ -3030,15 +2925,9 @@ pub(crate) const OPENAI_RESPONSES_PHASE_KEY: &str = "phase";
 
 /// Record an output message's `phase` on a text block's own-wire extras so
 /// the follow-up request can re-send it.
-fn stamp_phase(
-    content: completion::AssistantContent,
-    phase: Option<&str>,
-) -> completion::AssistantContent {
+pub(crate) fn stamp_phase(text: &mut Text, phase: Option<&str>) {
     let Some(phase) = phase else {
-        return content;
-    };
-    let completion::AssistantContent::Text(mut text) = content else {
-        return content;
+        return;
     };
     let mut extras = text
         .additional_params
@@ -3054,39 +2943,45 @@ fn stamp_phase(
         OPENAI_RESPONSES_EXTRAS_KEY,
         Value::Object(extras),
     )));
-    completion::AssistantContent::Text(text)
+}
+
+/// The rig text block one `output_text`/`refusal` wire block ingests as.
+///
+/// The one ingest site for this wire's blocks: the decoder's unary replay
+/// emits it as the text the stream delivers in deltas, and the `From` impl
+/// below is the public spelling of the same conversion.
+pub(crate) fn text_block(value: AssistantContent) -> Text {
+    match value {
+        AssistantContent::Refusal { refusal } => Text::new(refusal),
+        // Keep this destructuring exhaustive so new wire fields force an
+        // explicit capture-or-drop decision.
+        AssistantContent::OutputText(OutputText { text, extras }) => {
+            // Capture only extras that carry data: the wire stamps
+            // `"annotations": []` / `"logprobs": []` on every block, and
+            // empty carriers as params would change the replayed request
+            // bytes for content that carries nothing.
+            let extras: Map<String, Value> = extras
+                .into_iter()
+                .filter(|(_, value)| {
+                    !(value.is_null()
+                        || value.as_array().is_some_and(Vec::is_empty)
+                        || value.as_object().is_some_and(Map::is_empty))
+                })
+                .collect();
+            Text {
+                text,
+                additional_params: crate::message::AdditionalParams::from_entries(
+                    (!extras.is_empty())
+                        .then_some((OPENAI_RESPONSES_EXTRAS_KEY, Value::Object(extras))),
+                ),
+            }
+        }
+    }
 }
 
 impl From<AssistantContent> for completion::AssistantContent {
     fn from(value: AssistantContent) -> Self {
-        match value {
-            AssistantContent::Refusal { refusal } => {
-                completion::AssistantContent::Text(Text::new(refusal))
-            }
-            // Keep this destructuring exhaustive so new wire fields force an
-            // explicit capture-or-drop decision.
-            AssistantContent::OutputText(OutputText { text, extras }) => {
-                // Capture only extras that carry data: the wire stamps
-                // `"annotations": []` / `"logprobs": []` on every block, and
-                // empty carriers as params would change the replayed request
-                // bytes for content that carries nothing.
-                let extras: Map<String, Value> = extras
-                    .into_iter()
-                    .filter(|(_, value)| {
-                        !(value.is_null()
-                            || value.as_array().is_some_and(Vec::is_empty)
-                            || value.as_object().is_some_and(Map::is_empty))
-                    })
-                    .collect();
-                completion::AssistantContent::Text(Text {
-                    text,
-                    additional_params: crate::message::AdditionalParams::from_entries(
-                        (!extras.is_empty())
-                            .then_some((OPENAI_RESPONSES_EXTRAS_KEY, Value::Object(extras))),
-                    ),
-                })
-            }
-        }
+        completion::AssistantContent::Text(text_block(value))
     }
 }
 

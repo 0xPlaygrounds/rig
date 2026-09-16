@@ -3,6 +3,7 @@ use crate::completion::FinishReason as NormalizedFinishReason;
 use crate::providers::internal::openai_chat_completions_compatible::test_support::{
     assert_zero_arg_tool_call_is_emitted, sse_bytes_from_data_lines,
 };
+use crate::providers::openai::wire::dto::{StreamingFunction, StreamingToolCall};
 
 fn streaming_request() -> http::Request<Vec<u8>> {
     http::Request::builder()

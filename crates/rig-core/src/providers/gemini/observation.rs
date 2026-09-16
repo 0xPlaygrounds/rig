@@ -75,12 +75,17 @@ pub(super) fn attach<B>(
     request.extensions_mut().insert(PayloadObserver(payload));
 }
 
-fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+/// Project one GenerateContent payload's boundary facts.
+///
+/// The body of [`Decoder::project`](crate::wire::Decoder::project) for the
+/// GenerateContent wire, and — through [`payload`] below — of the streaming
+/// transport the client layer still uses, so the projection is stated once.
+pub(super) fn project(bytes: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
     // The observation projection must not inherit native response defaults:
     // omitted prompt/total counts in UsageMetadata otherwise become zero.
     // Parsing failure has no effect on the provider's authoritative decoder.
     if let Ok(Projection { usage: Some(usage) }) = serde_json::from_slice::<Projection>(bytes) {
-        attempt.emit(AdapterEvent::Usage {
+        sink.emit(AdapterEvent::Usage {
             usage: AdapterUsage {
                 input_tokens: usage.prompt_token_count,
                 output_tokens: usage.candidates_token_count,
@@ -97,7 +102,7 @@ fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
         return;
     };
     let candidate = metadata.candidates.into_iter().next().unwrap_or_default();
-    let scrub = |value: String| attempt.text(&value);
+    let scrub = |value: String| sink.scrub(&value);
     let verdict = AdapterVerdict {
         finish_reason: candidate.finish_reason.map(scrub),
         block_reason: metadata
@@ -108,19 +113,26 @@ fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
         model: metadata.model_version.map(scrub),
     };
     let response_id = metadata.response_id.map(scrub);
-    attempt.provider(verdict, response_id);
+    sink.provider(verdict, response_id);
     if let Some(error) = metadata.error {
         let code = error.code.map(|code| match code {
-            serde_json::Value::String(code) => attempt.text(&code),
+            serde_json::Value::String(code) => sink.scrub(&code),
             serde_json::Value::Number(code) => code.to_string(),
             _ => "[invalid]".to_owned(),
         });
-        attempt.emit(AdapterEvent::ErrorEnvelope {
+        sink.emit(AdapterEvent::ErrorEnvelope {
             error: AdapterErrorEnvelope {
                 code,
-                status: error.status.map(|value| attempt.text(&value)),
-                message: error.message.map(|value| attempt.text(&value)),
+                status: error.status.map(|value| sink.scrub(&value)),
+                message: error.message.map(|value| sink.scrub(&value)),
             },
         });
     }
+}
+
+/// The [`PayloadObserver`] the client layer's transports register. Forwards
+/// to [`project`]: `AdapterAttempt` is itself an
+/// [`ObservationSink`](crate::wire::ObservationSink).
+fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+    project(bytes, attempt);
 }

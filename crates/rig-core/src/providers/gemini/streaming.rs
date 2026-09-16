@@ -9,6 +9,7 @@ use super::completion::{
     function_call_finish_reason_error, resolve_request_model, streaming_endpoint,
 };
 use crate::completion::{CompletionError, CompletionRequest};
+use crate::operation::Completion;
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
 use crate::providers::internal::adapter::{AdapterOutput, WireAdapter, WireFrame};
@@ -18,6 +19,7 @@ use crate::providers::internal::sse_transport::{
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::wire::{Decoder, ObservationSink, Output};
 
 /// Part-kind interpretation shared by the Gemini wires whose payloads
 /// coincide: REST `streamGenerateContent` and the Interactions API both
@@ -136,13 +138,22 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
 const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
     &["candidates", "usageMetadata", "promptFeedback", "error"];
 
-/// The Gemini REST (`streamGenerateContent`) SSE wire as a [`WireAdapter`].
+/// The Gemini GenerateContent wire's decoder, serving both of its modes.
 ///
-/// Holds the per-stream state (thought-restatement buffer, terminal
-/// metadata); frame-triage policy lives in
-/// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
-/// not here.
-struct GeminiRestAdapter {
+/// One decoder decodes `generateContent` and `streamGenerateContent` because
+/// they are the *same document*: the streaming shape is a strict superset of
+/// the unary one (it adds `error` and relaxes `responseId`), every field of
+/// both is optional or defaulted, and a unary reply is simply that document
+/// delivered whole with complete `candidates` instead of in pieces with
+/// partial ones. The superset is the wire's, not rig's — so there is no
+/// unary event variant to select, and nothing to select it with: `classify`
+/// sees a `WireFrame` and is never told the mode. The terminal stays where
+/// the streaming wire needs it, deferred to EOF (see [`Self::finish`]),
+/// which for a one-frame unary reply fires immediately after that frame.
+///
+/// Holds the per-reply state (thought lifecycle, tool-id minter, terminal
+/// metadata); frame-triage policy is the driver's.
+pub struct GenerateContentDecoder {
     /// Owns the constant-key thought lifecycle — the ends this wire never
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
@@ -150,6 +161,9 @@ struct GeminiRestAdapter {
     /// Per-stream minter for id-less tool-call keys — a fresh key per call,
     /// so two id-less calls in one turn never collide on one identity.
     tool_ids: crate::streaming::SyntheticIds,
+    /// Per-reply minter for the raw-content blocks a part the stream
+    /// vocabulary cannot express rides on (see `GEMINI_RAW_CONTENT_KEY`).
+    raw_ids: crate::streaming::SyntheticIds,
     final_usage: Option<PartialUsage>,
     final_finish_reason: Option<FinishReason>,
     final_finish_message: Option<String>,
@@ -163,7 +177,7 @@ struct GeminiRestAdapter {
     /// finishReason:STOP] [codeExecutionResult] [text] [text +
     /// finishReason:STOP]` — so a `finishReason` chunk is not, on this wire, the
     /// provider completing the turn. The terminal record is therefore deferred
-    /// to EOF (see [`WireAdapter::finish`], which names exactly this case);
+    /// to EOF (see [`Decoder::finish`], which names exactly this case);
     /// pushing it on the first such chunk made the driver stop reading there
     /// and silently drop the model's whole answer while still reporting a
     /// successful `STOP`.
@@ -174,13 +188,14 @@ struct GeminiRestAdapter {
     failed: bool,
 }
 
-impl Default for GeminiRestAdapter {
+impl Default for GenerateContentDecoder {
     fn default() -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
                 crate::streaming::MintKind::Reasoning,
             ),
             tool_ids: crate::streaming::SyntheticIds::tool(),
+            raw_ids: crate::streaming::SyntheticIds::new(crate::streaming::MintKind::Block),
             final_usage: None,
             final_finish_reason: None,
             final_finish_message: None,
@@ -192,15 +207,14 @@ impl Default for GeminiRestAdapter {
     }
 }
 
-impl WireAdapter for GeminiRestAdapter {
-    type Frame = WireFrame;
+impl Decoder<Completion> for GenerateContentDecoder {
     type Event = StreamGenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
         // ID-only frames update terminal metadata without manufacturing an
         // Unknown content item (and therefore a semantic truncation tail).
         // This applies equally with observation enabled or disabled.
-        if self.is_analysis_only(&frame) {
+        if <Self as Decoder<Completion>>::is_analysis_only(self, &frame) {
             return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
         }
         wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
@@ -219,7 +233,7 @@ impl WireAdapter for GeminiRestAdapter {
         )
     }
 
-    fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut AdapterOutput) {
+    fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut Output<Completion>) {
         if self.failed {
             return;
         }
@@ -310,7 +324,7 @@ impl WireAdapter for GeminiRestAdapter {
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput) {
+    fn finish(&mut self, out: &mut Output<Completion>) {
         // EOF without a `finishReason` chunk is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
@@ -361,9 +375,44 @@ impl WireAdapter for GeminiRestAdapter {
         // rest of the transport (and pass through post-error unknown frames).
         self.failed
     }
+
+    /// GenerateContent metadata projected before normalization discards it:
+    /// the verdict, the usage report, the response id and the error
+    /// envelope — the facts the normalized response does not keep.
+    fn project(&self, payload: &[u8], sink: &mut dyn ObservationSink) {
+        super::observation::project(payload, sink);
+    }
 }
 
-impl GeminiRestAdapter {
+/// The streaming transport's view of the same decoder, so the client layer
+/// this port replaces keeps compiling until it is deleted. Every method
+/// forwards: the decode is stated once, above.
+impl WireAdapter for GenerateContentDecoder {
+    type Frame = WireFrame;
+    type Event = StreamGenerateContentResponse;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
+        <Self as Decoder<Completion>>::classify(self, frame)
+    }
+
+    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
+        <Self as Decoder<Completion>>::is_analysis_only(self, frame)
+    }
+
+    fn interpret(&mut self, event: StreamGenerateContentResponse, out: &mut AdapterOutput) {
+        <Self as Decoder<Completion>>::interpret(self, event, out);
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput) {
+        <Self as Decoder<Completion>>::finish(self, out);
+    }
+
+    fn is_finished(&self) -> bool {
+        <Self as Decoder<Completion>>::is_finished(self)
+    }
+}
+
+impl GenerateContentDecoder {
     fn interpret_part(&mut self, part: Part, out: &mut AdapterOutput) {
         match part {
             Part {
@@ -397,24 +446,44 @@ impl GeminiRestAdapter {
                 // signature must be recognized here as well as in the
                 // `thought: true` arm above, which real streams never reach
                 // for the signature. Dropping it costs the replay-required
-                // provider state Gemini validates (`MISSING_THOUGHT_SIGNATURE`).
-                // A trailing `thoughtSignature` rides a part with no
-                // `thought` flag (recorded traffic:
-                // `{"text":"","thoughtSignature":"..."}`); the shared
-                // lifecycle emits its close before the text, and one end
-                // covers every case — open block (sign the deltas),
-                // already-closed block (sign the block that holds the
-                // chain-of-thought, #2258 B4), nothing streamed
-                // (signature-only part). No per-case branch to forget.
+                // provider state Gemini validates
+                // (`MISSING_THOUGHT_SIGNATURE`). One lifecycle end covers
+                // every case — open block (sign the deltas), already-closed
+                // block (sign the block that holds the chain-of-thought,
+                // #2258 B4), nothing streamed (signature-only part).
+                //
+                // Declared as two chunks, text first, because the signature
+                // signs what came *before* it and a chunk emits its
+                // reasoning end before its text. A streamed turn states the
+                // two in separate frames (`"289"`, then
+                // `{"text":"","thoughtSignature":…}`); a unary reply states
+                // them in ONE part, and folding that as one chunk put the
+                // signature's block ahead of the text — the same turn with
+                // its blocks in a different order depending on the
+                // transport
+                // (`completion/tests.rs::both_transports_place_a_trailing_thought_signature_the_same_way`).
+                // An empty text (the streamed shape) declares nothing, so
+                // that path is unchanged.
                 self.reasoning.emit_chunk(
                     crate::providers::internal::chunk_lifecycle::ChunkParts {
                         reasoning: None,
-                        reasoning_signature: thought_signature,
+                        reasoning_signature: None,
                         text: Some(text),
                         tool_events: Vec::new(),
                     },
                     out,
                 );
+                if let Some(signature) = thought_signature {
+                    self.reasoning.emit_chunk(
+                        crate::providers::internal::chunk_lifecycle::ChunkParts {
+                            reasoning: None,
+                            reasoning_signature: Some(signature),
+                            text: None,
+                            tool_events: Vec::new(),
+                        },
+                        out,
+                    );
+                }
             }
             Part {
                 part: PartKind::FunctionCall(function_call),
@@ -435,6 +504,63 @@ impl GeminiRestAdapter {
                             thought_signature,
                             &mut self.tool_ids,
                         ),
+                    },
+                    out,
+                );
+            }
+            Part {
+                part: part @ PartKind::InlineData(_),
+                thought_signature,
+                ..
+            } => {
+                // `inlineData` is model output rig's *message* vocabulary
+                // models (`AssistantContent::Image`) and its *stream*
+                // vocabulary does not: `BlockKind`, `BlockClose` and
+                // `BlockAccumulator` carry text, reasoning and tool calls
+                // only. Since both modes now decode through here, dropping
+                // it would turn the streaming path's existing loss into a
+                // unary regression for the models that answer a completion
+                // with an image (`gemini-2.5-flash-image`), so the part
+                // rides a text block's metadata verbatim instead and stays
+                // recoverable. A first-class image block in the streaming
+                // vocabulary is the real fix and is a separate change.
+                let raw = Part {
+                    thought: None,
+                    thought_signature,
+                    part,
+                    additional_params: None,
+                };
+                let events = match crate::message::AdditionalParams::from_entries([(
+                    super::GEMINI_RAW_CONTENT_KEY,
+                    serde_json::json!(raw),
+                )]) {
+                    Some(params) => {
+                        let id = self.raw_ids.mint();
+                        vec![
+                            streaming::StreamEvent::BlockStart {
+                                id: id.clone(),
+                                kind: streaming::BlockKind::Text {
+                                    additional_params: Some(params),
+                                },
+                            },
+                            streaming::StreamEvent::BlockEnd {
+                                id,
+                                end: streaming::BlockClose::Text,
+                                block: None,
+                            },
+                        ]
+                    }
+                    None => Vec::new(),
+                };
+                // Declared through the lifecycle, not pushed directly, so a
+                // raw part interleaving an open thought block closes it the
+                // way every other content kind does.
+                self.reasoning.emit_chunk(
+                    crate::providers::internal::chunk_lifecycle::ChunkParts {
+                        reasoning: None,
+                        reasoning_signature: None,
+                        text: None,
+                        tool_events: events,
                     },
                     out,
                 );
@@ -505,7 +631,7 @@ where
                     log_transport_errors: true,
                 },
                 skip_blank_frames,
-                GeminiRestAdapter::default(),
+                GenerateContentDecoder::default(),
                 span,
             ),
         ))

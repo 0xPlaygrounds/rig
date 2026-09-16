@@ -44,6 +44,8 @@ use gemini_api_types::{
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
 use tracing_futures::Instrument;
+use crate::operation::Completion;
+use crate::wire::{Body, Encoded, Framing, Mode, Wire};
 
 use super::Client;
 
@@ -55,7 +57,111 @@ use super::Client;
 ///
 /// Recorded on every normalized response and stream this module produces, and
 /// on the telemetry spans, so the two never drift apart.
-pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
+pub const PROVIDER_NAME: &str = "gcp.gemini";
+
+/// The Gemini GenerateContent wire: `generateContent` when a caller wants
+/// one reply, `streamGenerateContent?alt=sse` when it wants the reply as it
+/// is produced.
+///
+/// The two are one wire because they are one endpoint family answering with
+/// one document shape — only the delivery differs, which is what [`Mode`]
+/// names. The decoder is [`GenerateContentDecoder`], the same in both modes.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GenerateContent {
+    /// The key and the API root.
+    pub provider: super::Gemini,
+    /// The model to address, e.g. [`GEMINI_2_5_FLASH`].
+    pub model: String,
+    /// Handle of a `cachedContents` resource every request reads its prefix
+    /// from. See [`Self::with_cached_content`].
+    pub cached_content: Option<String>,
+}
+
+impl GenerateContent {
+    /// The wire for `model`.
+    pub fn new(provider: super::Gemini, model: impl Into<String>) -> Self {
+        Self {
+            provider,
+            model: model.into(),
+            cached_content: None,
+        }
+    }
+
+    /// Read every request's prefix from an explicit `cachedContents` handle.
+    ///
+    /// Gemini's *explicit* context cache, which is a different feature from
+    /// the implicit prefix caching that happens with no API surface at all:
+    /// it hits on the first request and across unrelated conversations, at
+    /// the cost of billing storage per token-hour. The cache owns the system
+    /// instruction, the tool set *and* the tool choice, so a request built
+    /// from this wire must carry none of the three — `encode` rejects that
+    /// before the request goes out rather than letting Gemini answer 400.
+    /// See [`crate::providers::gemini::cached_content`] for which agent
+    /// shapes can use a handle at all.
+    pub fn with_cached_content(mut self, name: impl Into<String>) -> Self {
+        self.cached_content = Some(name.into());
+        self
+    }
+}
+
+impl Wire for GenerateContent {
+    type Op = Completion;
+    type Decoder = super::streaming::GenerateContentDecoder;
+
+    fn name(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    /// The endpoint has its own canonical name for a whole reply
+    /// (`generate_content`), and the streamed span keeps the name the
+    /// streaming path has always recorded.
+    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+        if streaming {
+            CompletionOperation::ChatStreaming
+        } else {
+            CompletionOperation::GenerateContent
+        }
+    }
+
+    fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
+        // The request may name a model of its own; the wire's is the default.
+        let model = resolve_request_model(&self.model, &request);
+        let mut body = create_request_body(request)?;
+        if let Some(name) = self.cached_content.as_deref() {
+            body.with_cached_content(name)?;
+        }
+        let (path, framing, target) = match mode {
+            Mode::Unary => (
+                completion_endpoint(&model),
+                Framing::Whole,
+                crate::providers::internal::LogTarget::Completions,
+            ),
+            // `alt=sse` is what makes the streamed reply an event stream
+            // rather than a JSON array of the same chunks.
+            Mode::Streaming => (
+                format!("{}?alt=sse", streaming_endpoint(&model)),
+                Framing::Sse,
+                crate::providers::internal::LogTarget::Streaming,
+            ),
+        };
+        crate::providers::internal::trace_json(target, "Gemini completion request", &body);
+        let request = http::Request::post(self.provider.uri(&path))
+            .header("Content-Type", "application/json")
+            .body(Body::Bytes(serde_json::to_vec(&body)?))
+            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+        // Gemini reports no transport request-id response header (verified
+        // against the live API); the normalized id is None by design.
+        Ok(Encoded::new(request, framing))
+    }
+
+    fn decoder(&self) -> Self::Decoder {
+        super::streaming::GenerateContentDecoder::default()
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct CompletionModel<T = crate::http_client::BoxedHttpClient> {

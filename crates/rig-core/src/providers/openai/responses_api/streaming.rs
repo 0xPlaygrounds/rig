@@ -3,6 +3,7 @@
 use crate::completion::{self, CompletionError};
 use crate::http_client::HttpClientExt;
 use crate::http_client::sse::GenericEventSource;
+use crate::operation::Completion;
 use crate::providers::internal::adapter::{
     AdapterOutput, WireAdapter, WireFrame, run_wire_buffered,
 };
@@ -18,6 +19,7 @@ use crate::streaming::{
 };
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder};
 use crate::wasm_compat::WasmCompatSend;
+use crate::wire::Decoder;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 
@@ -518,9 +520,16 @@ impl RawChoiceAccumulator {
                 // replay bodies can omit the id on any subset of a slot's
                 // events, and event-scoped resolution would split the
                 // assembly key.
+                // The `fc_*` item id keys the slot only when the item names
+                // a `call_id`: on this dual-id wire the correlator is the
+                // `call_id`, and a wire-keyed assembly would publish the item
+                // id AS the correlator (the shared accumulator reads the key
+                // as the wire's id), which replay would then send where the
+                // API wants the real one.
+                let wire_id = (!func.call_id.is_empty()).then_some(func.id.as_str());
                 let key = self
                     .tool_slots
-                    .open(output_index, Some(&func.id), Some(&func.name))
+                    .open(output_index, wire_id, Some(&func.name))
                     .key()
                     .to_owned();
                 if !func.call_id.is_empty() {
@@ -682,15 +691,29 @@ impl RawChoiceAccumulator {
                     // could collide with a mid-assembly key the bridge minted
                     // the same value for, consuming that assembly under the
                     // wrong call.
-                    None if func.id.is_empty() => self.tool_slots.minted_ids().mint(),
+                    // Uncorrelated (or id-less) calls key on a minted
+                    // identity for the same reason `output_item.added` does.
+                    None if func.id.is_empty() || func.call_id.is_empty() => {
+                        self.tool_slots.minted_ids().mint()
+                    }
                     None => BlockId::wire(func.id.clone()),
                 };
                 let mut end = ToolCallEnd::new(UnparseableToolInput::Drop);
                 end.name = Some(func.name);
+                // An empty `call_id` is this wire's "absent" spelling: with
+                // no correlator the call carries no provider identity at all,
+                // and the `fc_*` item id must NOT stand in for one — replay
+                // would send it where the API wants the real `call_id`, which
+                // it rejects.
+                end.call_id = crate::streaming::non_empty_id(func.call_id.clone());
                 // The finalized call reports the authoritative wire id even
                 // when assembly keyed on a minted slot identity (the
-                // accumulator honors the override).
-                end.tool_id = crate::streaming::non_empty_id(func.id.clone());
+                // accumulator honors the override), but only as the item half
+                // of a correlated pair.
+                end.tool_id = end
+                    .call_id
+                    .as_ref()
+                    .and_then(|_| crate::streaming::non_empty_id(func.id.clone()));
                 // The restated arguments are authoritative when they parse. A
                 // turn cut by `max_output_tokens` mid-tool-call restates them
                 // truncated mid-JSON (item status `incomplete`); routing the
@@ -716,7 +739,6 @@ impl RawChoiceAccumulator {
                         }
                     }
                 }
-                end.call_id = Some(func.call_id);
 
                 if emit_completed_tool_calls_immediately {
                     out.tool_end(item_id, end);
@@ -781,6 +803,87 @@ impl RawChoiceAccumulator {
                 );
                 out.unknown(serde_json::Value::Object(map).into());
             }
+        }
+    }
+
+    /// Replay one whole Responses body as the events its stream delivers.
+    ///
+    /// The unary reply is the same turn stated at once, so this is not a
+    /// second interpreter: each `output[]` item is the
+    /// `response.output_item.done` the stream sends for it — a message item
+    /// preceded by the `output_text.delta`s that built its text — and the
+    /// body itself is the terminal `response.completed`/`response.incomplete`
+    /// event. Everything downstream is the code the stream already runs.
+    pub(crate) fn replay_whole_response(
+        &mut self,
+        response: CompletionResponse,
+        out: &mut AdapterOutput,
+    ) {
+        // A compatible backend that reports its reasoning as one top-level
+        // string has no stream event for it, so the body is the only place it
+        // is stated. Structured `reasoning` items supersede it: publishing
+        // both would carry one chain of thought twice.
+        let structured_reasoning = response
+            .output
+            .iter()
+            .any(|item| matches!(item, Output::Reasoning { .. }));
+        if !structured_reasoning
+            && let Some(reasoning) = response
+                .provider_reasoning
+                .as_deref()
+                .filter(|reasoning| !reasoning.is_empty())
+        {
+            // Minted from the bridge's ONE counter, as a delta would be:
+            // this block has no wire id to key it on.
+            let key = self.tool_slots.minted_ids().mint();
+            out.reasoning_block(
+                key,
+                None,
+                crate::message::ReasoningContent::Text {
+                    text: reasoning.to_owned(),
+                    signature: None,
+                },
+            );
+        }
+
+        for (output_index, item) in response.output.iter().cloned().enumerate() {
+            let output_index = output_index as u64;
+            if let Output::Message(message) = &item {
+                // The stream opens the item's text block on its first delta
+                // and sends one delta per content part; a part's own-wire
+                // extras ride the block's metadata, where the accumulator
+                // merges them into the one block the item published.
+                self.start_text_item(Some(&message.id), out);
+                for content in message.content.iter().cloned() {
+                    let mut text = super::text_block(content);
+                    super::stamp_phase(&mut text, message.phase.as_deref());
+                    out.text(text.text);
+                    if let Some(additional_params) = text.additional_params {
+                        out.text_meta(additional_params);
+                    }
+                }
+            }
+            // Published where the item appears rather than buffered to the
+            // terminal: the body states every item in order, and the
+            // accumulator registers a part at its START — which is where a
+            // streamed call registers too (its `output_item.added`) — so
+            // both paths order the choice identically.
+            self.push_output_item_done(item, output_index, out, true);
+        }
+
+        // `response.completed` and `response.incomplete` are the wire's two
+        // genuine terminals; any other status (`failed`, `cancelled`) rides
+        // through `map_finish_reason` verbatim on the completed path, exactly
+        // as the unary conversion always did.
+        let kind = if matches!(response.status, ResponseStatus::Incomplete) {
+            ResponseChunkKind::ResponseIncomplete
+        } else {
+            ResponseChunkKind::ResponseCompleted
+        };
+        // The raw body is read only for a `response.failed` error payload,
+        // which neither of those kinds is.
+        if let Err(error) = self.record_response_chunk(kind, response, "") {
+            out.error(error);
         }
     }
 
@@ -912,9 +1015,14 @@ pub(crate) fn stream_events_from_sse_body(
     // no-stream policy: there is no stream to carry `Err` items, so `Corrupt`
     // frames — and adapter-detected data errors like `response.failed` — fail
     // the whole operation instead of returning a silently partial completion.
-    // Buffered classification adds the envelope-repair salvage; see
-    // [`ResponsesAdapter::buffered`].
-    run_wire_buffered(frames, ResponsesAdapter::buffered(provider, initial_usage))
+    // A replayed body's frames may omit their envelope bookkeeping, so the
+    // salvage is on here; see [`repair_envelope_less_frame`].
+    run_wire_buffered(
+        frames,
+        ResponsesDecoder::new(provider, ResponsesStreamOptions::strict())
+            .with_envelope_repair()
+            .with_initial_usage(initial_usage),
+    )
 }
 
 pub(crate) async fn completion_response_from_sse_body(
@@ -972,13 +1080,14 @@ pub async fn completion_response_from_stream_events(
         )
     });
     if !replay_has_message_text {
+        // Through the ONE interpreter, so this legacy merge cannot drift
+        // from the decoder's unary path: fold the body itself and keep the
+        // text parts, which are exactly what its message items produce.
         choice.extend(
-            raw_response
-                .output
-                .iter()
-                .filter(|item| matches!(item, Output::Message(_)))
-                .cloned()
-                .flat_map(<Vec<completion::AssistantContent>>::from),
+            super::wire::fold_body(provider, raw_response.clone())?
+                .choice
+                .into_iter()
+                .filter(|content| matches!(content, completion::AssistantContent::Text(_))),
         );
     }
 
@@ -1096,121 +1205,168 @@ where
             }
             FrameDisposition::Frame(data)
         },
-        ResponsesAdapter::live(provider, options),
+        ResponsesDecoder::new(provider, options),
         span,
     )
 }
 
-/// One classified Responses frame, carrying its raw payload alongside the
-/// decoded chunk: `response.failed` preserves the raw event body as the
-/// provider error body, exactly as the pre-migration loop did.
-pub(crate) struct ResponsesFrameEvent {
-    raw: String,
-    chunk: StreamingCompletionChunk,
+/// One classified Responses frame.
+///
+/// The stream's SSE frames and the unary body are two shapes of the same
+/// reply, so they are variants of ONE event type: the unary variant's
+/// `interpret` synthesizes the very frames the stream sends (see
+/// [`RawChoiceAccumulator::replay_whole_response`]), and everything after
+/// classification is shared.
+pub enum ResponsesEvent {
+    /// One stream frame, with its raw payload: `response.failed` preserves
+    /// the raw event body as the provider error body, exactly as the
+    /// pre-migration loop did.
+    Frame {
+        /// The frame's payload, verbatim.
+        raw: String,
+        /// The frame, decoded.
+        chunk: StreamingCompletionChunk,
+    },
+    /// The unary reply: the response object itself, which carries no `type`
+    /// discriminator because it is not an event.
+    Whole(Box<CompletionResponse>),
+    /// A success whose body is the provider's error envelope instead of a
+    /// response, with the raw body the error preserves. Only the gateways
+    /// that answer 200 with an envelope reach this.
+    Failure(String),
 }
 
-/// The OpenAI Responses SSE wire as a [`WireAdapter`], shared by the live
-/// loop ([`run_wire_stream`]) and the buffered unary path
-/// ([`run_wire_buffered`]).
+/// The top-level keys that recognize a Responses body: `object`
+/// (`"response"`), plus the two fields every reply carries whatever the
+/// gateway omits. A stream event carries none of them at top level — its
+/// response object is nested under `response` — so the two shapes cannot be
+/// confused.
+const WHOLE_BODY_MARKERS: &[&str] = &["object", "output", "status"];
+
+/// The error envelope a success body can carry instead of a response. The
+/// error itself is built from the raw body; this only proves the shape.
+#[derive(Deserialize)]
+struct ErrorEnvelope {
+    error: serde_json::Value,
+}
+
+/// The OpenAI Responses wire's decoder: one state machine for the SSE
+/// stream, the unary body and the websocket session.
 ///
-/// Holds the per-stream assembly state ([`RawChoiceAccumulator`]); frame
-/// triage policy lives in the drivers, not here. The two modes differ only in
-/// classification: the buffered mode adds the envelope-repair salvage for
-/// ChatGPT's replayed bodies (see [`repair_envelope_less_frame`] for why the
-/// live wire deliberately does NOT repair).
-pub(crate) struct ResponsesAdapter {
+/// Holds the per-reply assembly state ([`RawChoiceAccumulator`]); frame
+/// triage policy lives in the driver, not here.
+pub struct ResponsesDecoder {
     accumulator: RawChoiceAccumulator,
     options: ResponsesStreamOptions,
-    /// Buffered-only envelope salvage; `false` on the live wire.
+    /// Envelope salvage for replayed bodies that omit the bookkeeping
+    /// fields. A dialect flag, not a mode flag: only the ChatGPT gateway
+    /// verifiably sends them, and it sends the same bytes for a unary and a
+    /// streamed turn, so there is no mode to key it on. Off for OpenAI and
+    /// xAI, whose live frames carry full envelopes — see
+    /// [`repair_envelope_less_frame`] for why repairing those would hide a
+    /// defect.
     repair_envelopes: bool,
-    /// A `response.failed` event ended the turn: the flush-then-`Err`
-    /// sequence has been pushed and the driver stops consuming.
+    /// Whether a success body may be the provider's error envelope instead
+    /// of a response.
+    error_envelope_in_success: bool,
+    /// A `response.failed` event (or a success-status error envelope) ended
+    /// the turn: the flush-then-`Err` sequence has been pushed and the
+    /// driver stops consuming.
     finished: bool,
 }
 
-impl ResponsesAdapter {
-    fn live(provider: &str, options: ResponsesStreamOptions) -> Self {
+impl ResponsesDecoder {
+    /// A decoder for one reply of `provider`'s Responses endpoint.
+    pub fn new(provider: &str, options: ResponsesStreamOptions) -> Self {
         Self {
             accumulator: RawChoiceAccumulator::new(provider, None),
             options,
             repair_envelopes: false,
+            error_envelope_in_success: false,
             finished: false,
         }
     }
 
-    fn buffered(provider: &str, initial_usage: Option<ResponsesUsage>) -> Self {
-        Self {
-            accumulator: RawChoiceAccumulator::new(provider, initial_usage),
-            options: ResponsesStreamOptions::strict(),
-            repair_envelopes: true,
-            finished: false,
-        }
+    /// Salvage replayed frames that omit their envelope bookkeeping.
+    pub fn with_envelope_repair(mut self) -> Self {
+        self.repair_envelopes = true;
+        self
     }
-}
 
-impl WireAdapter for ResponsesAdapter {
-    type Frame = WireFrame;
-    type Event = ResponsesFrameEvent;
+    /// Accept the provider's error envelope on a success status.
+    pub fn with_success_error_envelope(mut self) -> Self {
+        self.error_envelope_in_success = true;
+        self
+    }
 
-    fn classify(&self, frame: WireFrame) -> WireEvent<ResponsesFrameEvent> {
-        let data = frame.as_str().into_owned();
-        let event = if self.repair_envelopes {
-            // Buffered bodies (ChatGPT's replayed unary SSE) omit envelope
-            // bookkeeping fields; salvage through the SAME interpreter, with
-            // the operation-error wording the buffered driver surfaces
-            // verbatim.
-            wire::classify_with_repair(
-                &data,
-                classify_responses_frame,
-                repair_envelope_less_frame,
-                |corrupt| {
-                    <serde_json::Error as serde::de::Error>::custom(format!(
-                        "invalid JSON frame in buffered Responses SSE body: {corrupt}"
-                    ))
-                },
-                || {
-                    let kind = serde_json::from_str::<serde_json::Value>(&data)
-                        .ok()
-                        .and_then(|value| {
-                            value
-                                .get("type")
-                                .and_then(serde_json::Value::as_str)
-                                .map(ToOwned::to_owned)
-                        })
-                        .unwrap_or_default();
-                    <serde_json::Error as serde::de::Error>::custom(format!(
-                        "malformed `{kind}` event in buffered Responses SSE body"
-                    ))
-                },
-            )
-        } else {
-            classify_responses_frame(&data)
+    /// Seed the terminal's usage for a replayed body whose frames may not
+    /// carry one (the unary Responses body's own `usage`).
+    pub fn with_initial_usage(mut self, usage: Option<ResponsesUsage>) -> Self {
+        self.accumulator.final_usage = usage;
+        self
+    }
+
+    /// The three shapes one Responses reply can take, in the order that
+    /// distinguishes them: a tagged stream event; the unary body, which is
+    /// the response object itself and so carries no `type` (the tagged
+    /// classifier reports that as `Corrupt`); and, on a gateway that answers
+    /// a success with one, a bare error envelope. Composed through the
+    /// classify layer's own combinator, so no triage policy is restated here.
+    fn classify_payload(&self, data: &str) -> WireEvent<ResponsesEvent> {
+        let body = |data: &str| {
+            wire::classify_marker_keyed_frame::<CompletionResponse>(data, WHOLE_BODY_MARKERS)
+                .map(|response| ResponsesEvent::Whole(Box::new(response)))
         };
-        event.map(|chunk| ResponsesFrameEvent { raw: data, chunk })
+        let envelope = |data: &str| {
+            if !self.error_envelope_in_success {
+                // Not this dialect's shape: report it unrecognized so the
+                // tagged classifier's own error stays the diagnostic.
+                return WireEvent::Unknown {
+                    event_type: String::new(),
+                    value: serde_json::Value::Null.into(),
+                };
+            }
+            wire::classify_marker_keyed_frame::<ErrorEnvelope>(data, &["error"])
+                .map(|_| ResponsesEvent::Failure(data.to_owned()))
+        };
+        wire::classify_or(
+            data,
+            |data| {
+                classify_responses_frame(data).map(|chunk| ResponsesEvent::Frame {
+                    raw: data.to_owned(),
+                    chunk,
+                })
+            },
+            |data| wire::classify_or(data, body, envelope),
+        )
     }
 
-    fn interpret(&mut self, event: ResponsesFrameEvent, out: &mut AdapterOutput) {
-        if self.finished {
-            return;
-        }
-
-        match event.chunk {
+    fn interpret_frame(
+        &mut self,
+        raw: String,
+        chunk: StreamingCompletionChunk,
+        out: &mut AdapterOutput,
+    ) {
+        match chunk {
             StreamingCompletionChunk::Delta(chunk) => {
                 self.accumulator.decode_item_chunk(chunk, self.options, out);
             }
             StreamingCompletionChunk::Response(chunk) => {
                 let ResponseChunk { kind, response, .. } = chunk;
                 if matches!(kind, ResponseChunkKind::ResponseCompleted) {
+                    // Inert under the driver, which records the same fields
+                    // off the terminal record; the client layer's stream
+                    // loop has no other recording site.
                     let span = tracing::Span::current();
                     span.record("gen_ai.response.id", response.id.as_str());
                     span.record("gen_ai.response.model", response.model.as_str());
                 }
                 if let Err(error) = self
                     .accumulator
-                    .record_response_chunk(kind, response, &event.raw)
+                    .record_response_chunk(kind, response, &raw)
                 {
                     // `response.failed`: fully-delivered tool calls flush
-                    // before the terminal error, which ends the stream with
+                    // before the terminal error, which ends the reply with
                     // no terminal record, preserving the failure signal.
                     self.accumulator.flush_tool_calls(out);
                     out.error(error);
@@ -1220,19 +1376,118 @@ impl WireAdapter for ResponsesAdapter {
         }
     }
 
-    fn finish(&mut self, out: &mut AdapterOutput) {
+    /// Flush what the accumulator still holds: the buffered tool calls, then
+    /// the terminal record when a genuine terminal arrived.
+    fn flush(&mut self, out: &mut AdapterOutput) {
         let provider = self.accumulator.provider.clone();
         let accumulator = std::mem::replace(
             &mut self.accumulator,
             RawChoiceAccumulator::new(provider, None),
         );
-        let final_usage = accumulator.final_usage;
-
-        // Flush buffered tool calls, then the terminal record when a genuine
-        // terminal event arrived; EOF without one is truncation and the
-        // accumulator withholds the record (deferral, never synthesis).
         accumulator.finish(out);
+    }
+}
 
+impl Decoder<Completion> for ResponsesDecoder {
+    type Event = ResponsesEvent;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<ResponsesEvent> {
+        let data = frame.as_str().into_owned();
+        if !self.repair_envelopes {
+            return self.classify_payload(&data);
+        }
+        // Replayed bodies omit envelope bookkeeping fields; salvage through
+        // the SAME interpreter, with the operation-error wording the
+        // buffered driver surfaces verbatim.
+        wire::classify_with_repair(
+            &data,
+            |data| self.classify_payload(data),
+            repair_envelope_less_frame,
+            |corrupt| {
+                <serde_json::Error as serde::de::Error>::custom(format!(
+                    "invalid JSON frame in buffered Responses SSE body: {corrupt}"
+                ))
+            },
+            || {
+                let kind = serde_json::from_str::<serde_json::Value>(&data)
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .get("type")
+                            .and_then(serde_json::Value::as_str)
+                            .map(ToOwned::to_owned)
+                    })
+                    .unwrap_or_default();
+                <serde_json::Error as serde::de::Error>::custom(format!(
+                    "malformed `{kind}` event in buffered Responses SSE body"
+                ))
+            },
+        )
+    }
+
+    fn interpret(&mut self, event: ResponsesEvent, out: &mut AdapterOutput) {
+        if self.finished {
+            return;
+        }
+
+        match event {
+            ResponsesEvent::Frame { raw, chunk } => self.interpret_frame(raw, chunk, out),
+            // The unary reply is the same turn stated at once: replay it as
+            // the events the stream sends, then close it with the terminal
+            // the body itself is.
+            ResponsesEvent::Whole(response) => {
+                self.accumulator.replay_whole_response(*response, out);
+                self.flush(out);
+            }
+            ResponsesEvent::Failure(raw) => {
+                self.accumulator.flush_tool_calls(out);
+                out.error(crate::provider_response::completion_error_from_body(&raw));
+                self.finished = true;
+            }
+        }
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput) {
+        self.flush(out);
+    }
+
+    fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
+        // Tool calls the provider fully delivered are content: they flush
+        // before the terminal error reaches the consumer.
+        self.accumulator.flush_tool_calls(out);
+    }
+
+    fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
+        super::wire::project_payload(payload, sink);
+    }
+
+    fn is_finished(&self) -> bool {
+        self.finished
+    }
+}
+
+/// The client layer's spelling of the same decoder.
+///
+/// `run_wire_stream`/`run_wire_buffered` take a [`WireAdapter`] where the
+/// driver takes a [`Decoder`]; both are this one state machine, so the two
+/// surfaces cannot decode differently. Goes away with the client layer.
+impl WireAdapter for ResponsesDecoder {
+    type Frame = WireFrame;
+    type Event = ResponsesEvent;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<ResponsesEvent> {
+        <Self as Decoder<Completion>>::classify(self, frame)
+    }
+
+    fn interpret(&mut self, event: ResponsesEvent, out: &mut AdapterOutput) {
+        <Self as Decoder<Completion>>::interpret(self, event, out);
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput) {
+        let final_usage = self.accumulator.final_usage;
+        <Self as Decoder<Completion>>::finish(self, out);
+        // The client layer records the turn's usage off the adapter; the
+        // driver records it from the terminal record instead.
         if let Some(final_usage) = final_usage {
             let span = tracing::Span::current();
             span.record("gen_ai.usage.input_tokens", final_usage.input_tokens);
@@ -1246,9 +1501,7 @@ impl WireAdapter for ResponsesAdapter {
     }
 
     fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
-        // Tool calls the provider fully delivered are content: they flush
-        // before the terminal error reaches the consumer.
-        self.accumulator.flush_tool_calls(out);
+        <Self as Decoder<Completion>>::flush_before_terminal_error(self, out);
     }
 
     fn is_finished(&self) -> bool {

@@ -29,6 +29,95 @@ pub use interactions_api_types::*;
 /// spans, which have always shared it.
 pub(crate) const PROVIDER_NAME: &str = "gcp.gemini";
 
+/// The Gemini Interactions wire: `POST /v1beta/interactions`, with
+/// `?alt=sse` and `stream: true` when the caller wants the reply as it is
+/// produced.
+///
+/// Unlike GenerateContent, this family's two replies really are two
+/// documents — a whole [`Interaction`] resource, or the SSE events that
+/// build one — so [`streaming::InteractionsDecoder`] names the whole
+/// resource as one more event of its wire and synthesizes the step events
+/// the stream would have sent. There is exactly one mapping from steps to
+/// assistant content, and it is the streamed one.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Interactions {
+    /// The key and the API root.
+    pub provider: crate::providers::gemini::Gemini,
+    /// The model to address.
+    pub model: String,
+}
+
+impl Interactions {
+    /// The wire for `model`.
+    pub fn new(provider: crate::providers::gemini::Gemini, model: impl Into<String>) -> Self {
+        Self {
+            provider,
+            model: model.into(),
+        }
+    }
+}
+
+impl crate::wire::Wire for Interactions {
+    type Op = crate::operation::Completion;
+    type Decoder = streaming::InteractionsDecoder;
+
+    fn name(&self) -> &str {
+        PROVIDER_NAME
+    }
+
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    fn telemetry(&self, streaming: bool) -> CompletionOperation {
+        if streaming {
+            CompletionOperation::InteractionsStreaming
+        } else {
+            CompletionOperation::Interactions
+        }
+    }
+
+    fn encode(
+        &self,
+        request: CompletionRequest,
+        mode: crate::wire::Mode,
+    ) -> Result<crate::wire::Encoded, CompletionError> {
+        // `stream` is part of the request body on this wire, so the mode is
+        // in the bytes as well as in the path.
+        let streaming = matches!(mode, crate::wire::Mode::Streaming);
+        let body = create_request_body(self.model.clone(), request, Some(streaming))?;
+        crate::providers::internal::trace_json(
+            if streaming {
+                crate::providers::internal::LogTarget::Streaming
+            } else {
+                crate::providers::internal::LogTarget::Completions
+            },
+            "Gemini interactions completion request",
+            &body,
+        );
+        let (path, framing) = if streaming {
+            ("/v1beta/interactions?alt=sse", crate::http_client::framing::Framing::Sse)
+        } else {
+            ("/v1beta/interactions", crate::http_client::framing::Framing::Whole)
+        };
+        let request = http::Request::post(self.provider.interactions_uri(path))
+            .header("Content-Type", "application/json")
+            .header(
+                crate::providers::gemini::Gemini::INTERACTIONS_KEY_HEADER,
+                self.provider.api_key.expose(),
+            )
+            .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))
+            .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
+        // Gemini reports no transport request-id response header (verified
+        // against the live API); the normalized id is None by design.
+        Ok(crate::wire::Encoded::new(request, framing))
+    }
+
+    fn decoder(&self) -> Self::Decoder {
+        streaming::InteractionsDecoder::default()
+    }
+}
+
 /// Completion model wrapper for the Gemini Interactions API.
 #[derive(Clone, Debug)]
 pub struct InteractionsCompletionModel<T = crate::http_client::BoxedHttpClient> {

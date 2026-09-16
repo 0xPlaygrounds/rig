@@ -5,8 +5,8 @@ use std::pin::Pin;
 
 use super::interactions_api_types::{
     Content, ContentDelta, FunctionCallContent, Interaction, InteractionSseEvent, InteractionUsage,
-    Step, TextDelta, ThoughtSignatureDelta, ThoughtSummaryContent, ThoughtSummaryDelta,
-    map_interaction_status,
+    Step, TextDelta, ThoughtContent, ThoughtSignatureDelta, ThoughtSummaryContent,
+    ThoughtSummaryDelta, map_interaction_status,
 };
 use super::{InteractionsCompletionModel, PROVIDER_NAME, create_request_body};
 use crate::completion::{CompletionError, CompletionRequest};
@@ -26,6 +26,8 @@ use crate::providers::internal::adapter::{
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming;
 use crate::telemetry::{CompletionOperation, CompletionSpanBuilder, SpanCombinator};
+use crate::operation::Completion;
+use crate::wire::{Decoder, Output};
 use serde_json::{Map, Value};
 
 /// The `event_type` values this client models on the Interactions SSE wire.
@@ -52,6 +54,49 @@ fn classify_interaction_frame(data: &str) -> WireEvent<InteractionSseEvent> {
     wire::classify_tagged_frame(data, "event_type", |event_type| {
         KNOWN_EVENT_TYPES.contains(&event_type)
     })
+}
+
+/// The top-level keys only a whole [`Interaction`] resource carries.
+///
+/// Every field of `Interaction` is optional or defaulted, so a marker key is
+/// what separates the unary document from a stream frame that happens to be
+/// a JSON object: without one, a defective `step.delta` frame would decode
+/// as a default `Interaction` and a data defect would read as a completed
+/// turn.
+const INTERACTION_MARKER_KEYS: &[&str] = &["steps", "status", "usage", "object", "id"];
+
+/// One decoded frame of the Interactions wire, in either mode.
+///
+/// Unlike GenerateContent, this family's unary reply is a genuinely
+/// different document from its stream events — a whole `Interaction`
+/// resource rather than an `event_type`-tagged event — so it is named here
+/// as one more event of the wire, and `interpret` synthesizes the step
+/// events a stream would have sent for it.
+pub enum InteractionsEvent {
+    /// One `event_type`-tagged streaming event.
+    Sse(InteractionSseEvent),
+    /// The whole interaction resource, as the unary reply delivers it.
+    Whole(Interaction),
+}
+
+/// Classify one frame of either mode.
+///
+/// The tagged classifier runs first: it is the hot path, and it is the one
+/// that knows which `event_type` values are modeled (an unlisted one is a
+/// skippable `Unknown`, not a defect). An untagged document makes it report
+/// `Corrupt` — no modeled event omits `event_type` — which is exactly when
+/// the unary resource is worth trying. The composition and its
+/// which-error-wins rule are [`wire::classify_or`]'s, so no verdict is read
+/// here.
+fn classify_interactions_frame(data: &str) -> WireEvent<InteractionsEvent> {
+    wire::classify_or(
+        data,
+        |data| classify_interaction_frame(data).map(InteractionsEvent::Sse),
+        |data| {
+            wire::classify_marker_keyed_frame::<Interaction>(data, INTERACTION_MARKER_KEYS)
+                .map(InteractionsEvent::Whole)
+        },
+    )
 }
 
 /// Final metadata yielded by an Interactions streaming response.
@@ -141,19 +186,18 @@ where
                     log_transport_errors: true,
                 },
                 skip_blank_frames,
-                InteractionsAdapter::default(),
+                InteractionsDecoder::default(),
                 span,
             ),
         ))
     }
 }
 
-/// The Gemini Interactions SSE wire as a [`WireAdapter`].
+/// The Gemini Interactions wire's decoder, for both of its modes.
 ///
-/// Frame-triage policy (warn on `Unknown`, in-band `Err` on `Corrupt`) lives
-/// in [`run_wire_stream`], not here — this ends the wire's former
-/// debug-log-and-skip handling of every decode failure.
-struct InteractionsAdapter {
+/// Holds the per-reply state (thought lifecycle, open function-call step
+/// assemblies); frame-triage policy is the driver's, not this decoder's.
+pub struct InteractionsDecoder {
     /// Owns the constant-key thought lifecycle — the ends this wire never
     /// announces are derived by the shared lifecycle, not hand-rolled here.
     /// All accumulation lives in the shared accumulator.
@@ -182,7 +226,7 @@ struct InteractionsAdapter {
     open_function_steps: ToolCallBridge<u32>,
 }
 
-impl Default for InteractionsAdapter {
+impl Default for InteractionsDecoder {
     fn default() -> Self {
         Self {
             reasoning: crate::providers::internal::chunk_lifecycle::MintedReasoningLifecycle::new(
@@ -194,18 +238,38 @@ impl Default for InteractionsAdapter {
     }
 }
 
-impl WireAdapter for InteractionsAdapter {
-    type Frame = WireFrame;
-    type Event = InteractionSseEvent;
+impl Decoder<Completion> for InteractionsDecoder {
+    type Event = InteractionsEvent;
 
-    fn classify(&self, frame: WireFrame) -> WireEvent<InteractionSseEvent> {
-        classify_interaction_frame(&frame.as_str())
+    fn classify(&self, frame: WireFrame) -> WireEvent<InteractionsEvent> {
+        classify_interactions_frame(&frame.as_str())
     }
 
-    fn interpret(&mut self, event: InteractionSseEvent, out: &mut AdapterOutput) {
+    fn interpret(&mut self, event: InteractionsEvent, out: &mut Output<Completion>) {
         if self.failed {
             return;
         }
+
+        let event = match event {
+            InteractionsEvent::Sse(event) => event,
+            // The unary reply: replay the interaction's own output as the
+            // step events a stream would have sent, then let its completion
+            // event push the terminal. One mapping from content to blocks,
+            // and it is the streamed one.
+            InteractionsEvent::Whole(interaction) => {
+                for content in interaction.output_contents() {
+                    if let Some(parts) =
+                        content_to_parts(content, self.open_function_steps.minted_ids())
+                    {
+                        self.reasoning.emit_chunk(parts, out);
+                    }
+                }
+                InteractionSseEvent::InteractionCompleted {
+                    interaction,
+                    event_id: None,
+                }
+            }
+        };
 
         match event {
             InteractionSseEvent::StepDelta { index, delta, .. } => match delta {
@@ -415,7 +479,7 @@ impl WireAdapter for InteractionsAdapter {
         }
     }
 
-    fn finish(&mut self, _out: &mut AdapterOutput) {
+    fn finish(&mut self, _out: &mut Output<Completion>) {
         // EOF without `interaction.completed` is truncation: no terminal
         // record may be synthesized — it would report a successful completion
         // for a turn the provider aborted.
@@ -427,6 +491,31 @@ impl WireAdapter for InteractionsAdapter {
         // so the driver must stop reading rather than drain the rest of the
         // transport (and pass through post-error unknown frames).
         self.failed
+    }
+}
+
+/// The streaming transport's view of the same decoder, so the client layer
+/// this port replaces keeps compiling until it is deleted. Forwards: the
+/// decode is stated once, above. Its `Event` is the SSE event alone —
+/// the transport only ever carries streamed frames.
+impl WireAdapter for InteractionsDecoder {
+    type Frame = WireFrame;
+    type Event = InteractionSseEvent;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<InteractionSseEvent> {
+        classify_interaction_frame(&frame.as_str())
+    }
+
+    fn interpret(&mut self, event: InteractionSseEvent, out: &mut AdapterOutput) {
+        <Self as Decoder<Completion>>::interpret(self, InteractionsEvent::Sse(event), out);
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput) {
+        <Self as Decoder<Completion>>::finish(self, out);
+    }
+
+    fn is_finished(&self) -> bool {
+        <Self as Decoder<Completion>>::is_finished(self)
     }
 }
 
@@ -555,6 +644,11 @@ fn step_start_to_parts(step: Step, tool_ids: &mut streaming::SyntheticIds) -> Ve
     }
 }
 
+/// One output content as one declared chunk.
+///
+/// The wire's single content → block mapping, used by the streamed
+/// `step.start` path and by the unary reply's replay of its own steps, so
+/// the two cannot disagree about what a content item becomes.
 fn content_to_parts(
     content: Content,
     tool_ids: &mut streaming::SyntheticIds,
@@ -566,8 +660,72 @@ fn content_to_parts(
                 .into_iter()
                 .next()
         }
+        // A thought the reply states whole: the summary's text is the
+        // block's content and the signature closes it, which is the same
+        // pair the streamed `thought_summary`/`thought_signature` deltas
+        // deliver piecewise.
+        Content::Thought(ThoughtContent {
+            summary, signature, ..
+        }) => {
+            let reasoning: String = summary
+                .unwrap_or_default()
+                .into_iter()
+                .filter_map(|content| match content {
+                    ThoughtSummaryContent::Text(text) => Some(text.text),
+                    _ => None,
+                })
+                .collect();
+            if reasoning.is_empty() && signature.is_none() {
+                return None;
+            }
+            Some(ChunkParts {
+                reasoning: (!reasoning.is_empty()).then_some(reasoning),
+                reasoning_signature: signature,
+                text: None,
+                tool_events: Vec::new(),
+            })
+        }
+        // An image the stream vocabulary cannot express rides a text
+        // block's metadata verbatim rather than being dropped — the same
+        // treatment, and the same reason, as GenerateContent's `inlineData`
+        // (`GEMINI_RAW_CONTENT_KEY`).
+        image @ Content::Image(_) => raw_content_parts(image, tool_ids),
         _ => None,
     }
+}
+
+/// A content item the stream vocabulary has no block kind for, preserved as
+/// a text block carrying the part verbatim under
+/// [`GEMINI_RAW_CONTENT_KEY`](crate::providers::gemini::GEMINI_RAW_CONTENT_KEY).
+fn raw_content_parts(
+    content: Content,
+    tool_ids: &mut streaming::SyntheticIds,
+) -> Option<ChunkParts> {
+    let params = crate::message::AdditionalParams::from_entries([(
+        crate::providers::gemini::GEMINI_RAW_CONTENT_KEY,
+        serde_json::json!(content),
+    )])?;
+    // Keyed from the same counter every id-less block on this wire draws
+    // from, so a raw block can never collide with a minted tool-call key.
+    let id = tool_ids.mint();
+    Some(ChunkParts {
+        reasoning: None,
+        reasoning_signature: None,
+        text: None,
+        tool_events: vec![
+            streaming::StreamEvent::BlockStart {
+                id: id.clone(),
+                kind: streaming::BlockKind::Text {
+                    additional_params: Some(params),
+                },
+            },
+            streaming::StreamEvent::BlockEnd {
+                id,
+                end: streaming::BlockClose::Text,
+                block: None,
+            },
+        ],
+    })
 }
 
 fn content_delta_to_parts(

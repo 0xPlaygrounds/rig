@@ -85,14 +85,19 @@ fn image_data_urls_detect_every_cohere_image_format() {
     }
 }
 
+/// The identifier an image vector carries is the shared one now
+/// ([`crate::embeddings::image_document`], which the `ImageEmbedding`
+/// operation seeds its fold with), and Cohere is its only caller in this
+/// crate: a digest that tells two images apart and cannot be reversed into
+/// the bytes the trait forbids returning.
 #[test]
 fn image_documents_are_stable_without_retaining_image_bytes() {
-    let first = image_document(b"\x89PNG\r\n\x1a\nfirst", "image/png");
-    let second = image_document(b"\x89PNG\r\n\x1a\nother", "image/png");
+    let first = crate::embeddings::image_document(b"\x89PNG\r\n\x1a\nfirst");
+    let second = crate::embeddings::image_document(b"\x89PNG\r\n\x1a\nother");
 
     assert_eq!(
         first,
-        image_document(b"\x89PNG\r\n\x1a\nfirst", "image/png")
+        crate::embeddings::image_document(b"\x89PNG\r\n\x1a\nfirst")
     );
     assert_ne!(first, second);
     assert!(first.starts_with("image/png;sha256="));

@@ -11,7 +11,10 @@ use crate::image_generation;
 use crate::image_generation::{
     ImageGenerationError, ImageGenerationRequest, NormalizeImageGenerationResponse,
 };
+use crate::operation::ImageGeneration;
+use crate::providers::internal::wire::classify_marker_keyed_frame;
 use crate::wasm_compat::WasmCompatSend;
+use crate::wire::{Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame};
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use serde_json::Value;
@@ -222,6 +225,93 @@ fn first_image_bytes(response: &GenerateContentResponse) -> Result<Vec<u8>, Imag
     Err(ImageGenerationError::ResponseError(
         "Gemini image generation response did not include image data".into(),
     ))
+}
+
+/// The image generation wire: `POST /v1beta/models/{model}:generateContent`.
+///
+/// Gemini generates images through the same `generateContent` endpoint as
+/// text, asking for them with `responseModalities: ["IMAGE"]`, and answers
+/// with one whole document either way — so both [`Mode`]s send the same
+/// request.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Images {
+    /// The provider this wire speaks to.
+    pub provider: super::Gemini,
+    /// Name of the model, for example [`GEMINI_2_5_FLASH_IMAGE`].
+    pub model: String,
+}
+
+impl Images {
+    /// The image generation wire for `model`.
+    pub fn new(provider: super::Gemini, model: impl Into<String>) -> Self {
+        Self {
+            provider,
+            model: model.into(),
+        }
+    }
+}
+
+impl Wire for Images {
+    type Op = ImageGeneration;
+    type Decoder = ImagesDecoder;
+
+    fn name(&self) -> &str {
+        super::PROVIDER_NAME
+    }
+
+    fn model(&self) -> Option<&str> {
+        Some(&self.model)
+    }
+
+    fn encode(
+        &self,
+        request: ImageGenerationRequest,
+        _mode: Mode,
+    ) -> Result<Encoded, ImageGenerationError> {
+        let body = serde_json::to_vec(&create_request_body(request)?)?;
+        // The GenerateContent family authenticates through the `key` query
+        // parameter, appended last.
+        let request = http::Request::post(format!(
+            "{}{}?key={}",
+            self.provider.base_url,
+            generate_content_path(&self.model),
+            self.provider.api_key.expose()
+        ))
+        .header(http::header::CONTENT_TYPE, "application/json")
+        .body(Body::Bytes(body))
+        .map_err(|error| ImageGenerationError::HttpError(error.into()))?;
+        // Gemini reports no transport request-id header.
+        Ok(Encoded::new(request, Framing::Whole))
+    }
+
+    fn decoder(&self) -> Self::Decoder {
+        ImagesDecoder
+    }
+}
+
+/// Decodes one `generateContent` reply into the image it carries.
+///
+/// `project` stays at its default: this reply carries nothing beyond what the
+/// GenerateContent decoder's own projection already observes.
+#[derive(Default)]
+pub struct ImagesDecoder;
+
+impl Decoder<ImageGeneration> for ImagesDecoder {
+    type Event = GenerateContentResponse;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<Self::Event> {
+        classify_marker_keyed_frame(
+            &frame.as_str(),
+            &["candidates", "promptFeedback", "usageMetadata"],
+        )
+    }
+
+    /// Picking the image out of the candidates' parts and reporting a
+    /// payload that is not base64 is [`NormalizeImageGenerationResponse`]'s,
+    /// so this wire holds no second reading of the same reply.
+    fn interpret(&mut self, event: Self::Event, out: &mut Output<ImageGeneration>) {
+        out.push(event.normalize(super::PROVIDER_NAME));
+    }
 }
 
 #[cfg(test)]
