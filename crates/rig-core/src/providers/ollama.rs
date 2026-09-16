@@ -38,6 +38,39 @@
 //! # Ok(())
 //! # }
 //! ```
+//!
+//! # API flavors
+//!
+//! Ollama exposes three HTTP APIs, and this module provides a client for
+//! each:
+//!
+//! - [`Client`] speaks the [native Ollama API](https://docs.ollama.com/api)
+//!   (`/api/chat`, `/api/embed`). Prefer this unless you specifically need
+//!   one of the compatibility layers; it is the only one covering
+//!   embeddings and model listing.
+//! - [`OpenAiClient`] speaks the
+//!   [OpenAI-compatible API](https://docs.ollama.com/api/openai-compatibility)
+//!   (`/v1/chat/completions`).
+//! - [`AnthropicClient`] speaks the
+//!   [Anthropic-compatible API](https://docs.ollama.com/api/anthropic-compatibility)
+//!   (`/v1/messages`). The Messages API rejects requests without a positive
+//!   `max_tokens`, so requests that don't set one are sent with a default of
+//!   4096 — unlike the other two clients, which leave the output length up to
+//!   the model.
+//!
+//! All three read the same `OLLAMA_API_BASE_URL` / `OLLAMA_API_KEY` variables
+//! in `from_env`; the compatibility clients additionally honour
+//! `OLLAMA_OPENAI_API_BASE_URL` / `OLLAMA_ANTHROPIC_API_BASE_URL` overrides.
+//!
+//! ```ignore
+//! use rig_core::client::{CompletionClient, Nothing, ProviderClient};
+//! use rig_core::providers::ollama;
+//!
+//! let native = ollama::Client::from_env()?;
+//! let openai_compatible = ollama::OpenAiClient::from_env()?;
+//! let anthropic_compatible = ollama::AnthropicClient::new(Nothing)?;
+//! let model = anthropic_compatible.completion_model("qwen2.5:14b");
+//! ```
 use crate::client::{
     self, ApiKey, HasCompletion, HasEmbeddings, HasModelListing, ModelLister, ModelTransport,
     Nothing, Provider, ProviderClientResult,
@@ -190,6 +223,225 @@ impl HasModelListing for Ollama {
 
     fn model_lister<H: ModelTransport>(client: &Client<H>) -> Self::Lister<H> {
         OllamaModelLister::new(client.clone())
+    }
+}
+
+// ---------- OpenAI-compatible client ----------
+
+/// Base URL for Ollama's [OpenAI-compatible API](https://docs.ollama.com/api/openai-compatibility).
+const OLLAMA_OPENAI_API_BASE_URL: &str = "http://localhost:11434/v1";
+
+/// The OpenAI-compatible dialect of Ollama (`/v1/chat/completions`).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct OllamaOpenAi;
+
+/// A client for Ollama's [OpenAI-compatible API](https://docs.ollama.com/api/openai-compatibility),
+/// for use cases that need OpenAI request or response semantics. The plain
+/// [`Client`] speaks the native Ollama API and should be preferred otherwise.
+pub type OpenAiClient<H = crate::http_client::BoxedHttpClient> = client::Client<OllamaOpenAi, H>;
+pub type OpenAiClientBuilder<H = crate::markers::Missing> = client::ClientBuilder<OllamaOpenAi, H>;
+
+/// Derives the OpenAI-compatible base URL from a native Ollama base URL,
+/// tolerating values that already carry the `/v1` suffix (the form
+/// OpenAI-style tooling conventionally uses).
+fn openai_compat_base_url(native_base_url: &str) -> String {
+    let base = native_base_url.trim_end_matches('/');
+    let base = base.strip_suffix("/v1").unwrap_or(base);
+    format!("{base}/v1")
+}
+
+impl Provider for OllamaOpenAi {
+    const NAME: &'static str = PROVIDER_NAME;
+    const BASE_URL: &'static str = OLLAMA_OPENAI_API_BASE_URL;
+    const VERIFY_PATH: &'static str = "/models";
+    type ApiKey = OllamaApiKey;
+    type Config = ();
+    type EnvInput = OllamaApiKey;
+
+    fn build(_: (), _: &OllamaApiKey) -> http_client::Result<Self> {
+        Ok(OllamaOpenAi)
+    }
+
+    /// Read `OLLAMA_OPENAI_API_BASE_URL`, else derive from `OLLAMA_API_BASE_URL`
+    /// (both optional), and `OLLAMA_API_KEY` (optional).
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<OpenAiClient<H>> {
+        let api_base = match crate::client::optional_env_var("OLLAMA_OPENAI_API_BASE_URL")? {
+            Some(api_base) => api_base,
+            None => match crate::client::optional_env_var("OLLAMA_API_BASE_URL")? {
+                Some(api_base) => openai_compat_base_url(&api_base),
+                None => OLLAMA_OPENAI_API_BASE_URL.to_string(),
+            },
+        };
+
+        let api_key = crate::client::optional_env_var("OLLAMA_API_KEY")?
+            .map(OllamaApiKey::from)
+            .unwrap_or_default();
+
+        OpenAiClient::builder()
+            .api_key(api_key)
+            .base_url(&api_base)
+            .http_client(http)
+            .build()
+    }
+
+    fn from_val<H: HttpClientExt>(
+        api_key: OllamaApiKey,
+        http: H,
+    ) -> ProviderClientResult<OpenAiClient<H>> {
+        OpenAiClient::new_with(api_key, http)
+    }
+}
+
+impl HasCompletion for OllamaOpenAi {
+    type Model<H>
+        = super::openai::completion::GenericCompletionModel<OllamaOpenAi, H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(
+        client: &OpenAiClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::openai::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl super::openai::completion::OpenAICompatibleProvider for OllamaOpenAi {
+    const PROVIDER_NAME: &'static str = PROVIDER_NAME;
+
+    type StreamingUsage = super::openai::Usage;
+
+    type Response = super::openai::CompletionResponse;
+}
+
+// ---------- Anthropic-compatible client ----------
+
+/// Optional API key for Ollama's Anthropic-compatible API, sent as the
+/// `x-api-key` header Anthropic tooling uses. A local Ollama checks no
+/// credential, so the default is genuinely absent: no header at all rather
+/// than a placeholder.
+#[derive(Debug, Default, Clone)]
+pub struct OllamaAnthropicKey(Option<String>);
+
+impl ApiKey for OllamaAnthropicKey {
+    fn into_header(
+        self,
+    ) -> Option<http_client::Result<(http::header::HeaderName, http::header::HeaderValue)>> {
+        self.0.map(|key| {
+            http::header::HeaderValue::from_str(&key)
+                .map(|value| (http::header::HeaderName::from_static("x-api-key"), value))
+                .map_err(Into::into)
+        })
+    }
+
+    fn absent() -> Option<Self> {
+        Some(Self(None))
+    }
+}
+
+impl From<Nothing> for OllamaAnthropicKey {
+    fn from(_: Nothing) -> Self {
+        Self(None)
+    }
+}
+
+impl From<String> for OllamaAnthropicKey {
+    fn from(key: String) -> Self {
+        if key.is_empty() {
+            Self(None)
+        } else {
+            Self(Some(key))
+        }
+    }
+}
+
+impl From<&str> for OllamaAnthropicKey {
+    fn from(key: &str) -> Self {
+        Self::from(key.to_owned())
+    }
+}
+
+/// The Anthropic-compatible dialect of Ollama (`/v1/messages`).
+#[derive(Debug, Default, Clone, Copy)]
+pub struct OllamaAnthropic;
+
+/// A client for Ollama's [Anthropic-compatible API](https://docs.ollama.com/api/anthropic-compatibility),
+/// for use cases that need Anthropic Messages semantics. The plain [`Client`]
+/// speaks the native Ollama API and should be preferred otherwise.
+pub type AnthropicClient<H = crate::http_client::BoxedHttpClient> =
+    client::Client<OllamaAnthropic, H>;
+pub type AnthropicClientBuilder<H = crate::markers::Missing> =
+    client::ClientBuilder<OllamaAnthropic, H>;
+
+impl Provider for OllamaAnthropic {
+    const NAME: &'static str = PROVIDER_NAME;
+    const BASE_URL: &'static str = OLLAMA_API_BASE_URL;
+    const VERIFY_PATH: &'static str = "/v1/models";
+    type ApiKey = OllamaAnthropicKey;
+    type Config = super::anthropic::client::AnthropicConfig;
+    type EnvInput = OllamaAnthropicKey;
+
+    fn build(_: Self::Config, _: &Self::ApiKey) -> http_client::Result<Self> {
+        Ok(OllamaAnthropic)
+    }
+
+    fn finish<H>(
+        &self,
+        builder: client::ClientBuilder<Self, H>,
+    ) -> http_client::Result<client::ClientBuilder<Self, H>> {
+        super::anthropic::client::finish_anthropic_builder(builder)
+    }
+
+    /// Read `OLLAMA_ANTHROPIC_API_BASE_URL`, else `OLLAMA_API_BASE_URL` (both
+    /// optional), and `OLLAMA_API_KEY` (optional).
+    fn from_env<H: HttpClientExt>(http: H) -> ProviderClientResult<AnthropicClient<H>> {
+        let api_base = match crate::client::optional_env_var("OLLAMA_ANTHROPIC_API_BASE_URL")? {
+            Some(api_base) => api_base,
+            None => crate::client::optional_env_var("OLLAMA_API_BASE_URL")?
+                .unwrap_or_else(|| OLLAMA_API_BASE_URL.to_string()),
+        };
+
+        let api_key = crate::client::optional_env_var("OLLAMA_API_KEY")?
+            .map(OllamaAnthropicKey::from)
+            .unwrap_or_default();
+
+        AnthropicClient::builder()
+            .api_key(api_key)
+            .base_url(&api_base)
+            .http_client(http)
+            .build()
+    }
+
+    fn from_val<H: HttpClientExt>(
+        api_key: OllamaAnthropicKey,
+        http: H,
+    ) -> ProviderClientResult<AnthropicClient<H>> {
+        AnthropicClient::new_with(api_key, http)
+    }
+}
+
+impl HasCompletion for OllamaAnthropic {
+    type Model<H>
+        = super::anthropic::completion::GenericCompletionModel<OllamaAnthropic, H>
+    where
+        H: ModelTransport;
+
+    fn completion_model<H: ModelTransport>(
+        client: &AnthropicClient<H>,
+        model: String,
+    ) -> Self::Model<H> {
+        super::anthropic::completion::GenericCompletionModel::new(client.clone(), model)
+    }
+}
+
+impl super::anthropic::completion::AnthropicCompatibleProvider for OllamaAnthropic {
+    const PROVIDER_NAME: &'static str = PROVIDER_NAME;
+
+    // Ollama's Messages API answers 400 ("max_tokens is required and must be
+    // positive") when the field is missing, so requests that don't set one
+    // get a fallback.
+    fn default_max_tokens(_model: &str) -> Option<u64> {
+        Some(4096)
     }
 }
 
