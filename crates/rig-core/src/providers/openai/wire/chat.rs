@@ -794,6 +794,10 @@ impl Wire for Chat {
         Some(&self.model)
     }
 
+    fn route(&self) -> Option<&str> {
+        Some(self.provider.dialect.quirks.completion_path)
+    }
+
     fn encode(&self, request: CompletionRequest, mode: Mode) -> Result<Encoded, CompletionError> {
         let quirks = &self.provider.dialect.quirks;
         if !quirks.accepts_file_ids {
@@ -807,6 +811,7 @@ impl Wire for Chat {
             supports_response_format: quirks.supports_response_format,
             supports_tools: quirks.supports_tools,
             supports_image_tool_results: quirks.supports_image_tool_results,
+            reasoning_details: quirks.reasoning_details,
         })?;
         self.prepare(&mut typed)?;
 
@@ -1028,7 +1033,12 @@ impl ChatDecoder {
                 .iter()
                 .map(CompatibleToolCallChunk::from)
                 .collect(),
-            details: choice.delta.reasoning_details.clone(),
+            details: choice
+                .delta
+                .reasoning_details
+                .iter()
+                .filter_map(typed_detail)
+                .collect(),
             logprobs: choice.logprobs.clone(),
         });
         self.absorb_metadata(&mut frame);
@@ -1264,6 +1274,7 @@ impl ChatDecoder {
             reasoning,
             refusal,
             tool_calls,
+            reasoning_details,
             ..
         }) = choice.message.clone()
         else {
@@ -1332,6 +1343,23 @@ impl ChatDecoder {
         }
 
         let reasoning = reasoning.filter(|reasoning| !reasoning.is_empty());
+        // The unary body carries the same `reasoning_details` array the
+        // streamed path reads off its deltas — an OpenRouter tool-call turn
+        // answers with the plaintext in `message.reasoning` and its
+        // replay-required signature in `message.reasoning_details`. Reading
+        // only `reasoning` dropped the signature, and a reasoning block
+        // replayed unsigned is one the upstream rejects on the next turn.
+        let details: Vec<&unary::ReasoningDetails> = if self.quirks.reasoning_details {
+            reasoning_details.iter().collect()
+        } else {
+            Vec::new()
+        };
+        let reasoning_signature = details.iter().copied().find_map(reasoning_signature);
+        let blocks: Vec<_> = details
+            .iter()
+            .copied()
+            .filter_map(detail_reasoning)
+            .collect();
         // An empty turn is legal exactly where the reply named a terminal
         // that CUT IT SHORT — `FinishReason::truncated_output`, the one
         // statement of that set (`completion::request`). A cap consumed
@@ -1348,7 +1376,12 @@ impl ChatDecoder {
             .final_finish_reason
             .as_ref()
             .is_some_and(FinishReason::truncated_output);
-        if text.is_empty() && tool_events.is_empty() && reasoning.is_none() && !cut_short {
+        if text.is_empty()
+            && tool_events.is_empty()
+            && reasoning.is_none()
+            && blocks.is_empty()
+            && !cut_short
+        {
             out.error(CompletionError::ResponseError(
                 crate::message::EMPTY_RESPONSE_ERROR.to_owned(),
             ));
@@ -1356,13 +1389,17 @@ impl ChatDecoder {
             return;
         }
 
+        // Reasoning details are the turn's own output, so they are emitted
+        // before the chunk's text and tool calls, exactly as the streamed
+        // path orders them.
+        for (id, provider_id, content) in blocks {
+            out.reasoning_block(id, provider_id, content);
+        }
+
         self.reasoning.emit_chunk(
             ChunkParts {
                 reasoning,
-                // The unary body carries no signature-only detail; a
-                // reasoning block it opened is closed by the boundary the
-                // lifecycle derives, or by `close_active_blocks` below.
-                reasoning_signature: None,
+                reasoning_signature,
                 text: (!text.is_empty()).then_some(text),
                 tool_events,
             },
@@ -1399,7 +1436,7 @@ struct ChunkChoice {
     text: Option<String>,
     reasoning: Option<String>,
     tool_calls: Vec<CompatibleToolCallChunk>,
-    details: Vec<serde_json::Value>,
+    details: Vec<unary::ReasoningDetails>,
     logprobs: Option<crate::message::AdditionalParams>,
 }
 
@@ -1588,11 +1625,9 @@ fn map_native_finish_reason(reason: &str) -> FinishReason {
 /// arrives before any tool call opens. Emitting it as a reasoning block is
 /// what lets the blob reach the aggregated choice and be replayed next turn.
 fn detail_reasoning(
-    detail: &serde_json::Value,
+    detail: &unary::ReasoningDetails,
 ) -> Option<(BlockId, Option<String>, crate::message::ReasoningContent)> {
-    let Ok(unary::ReasoningDetails::Encrypted { id, data, .. }) =
-        serde_json::from_value::<unary::ReasoningDetails>(detail.clone())
-    else {
+    let unary::ReasoningDetails::Encrypted { id, data, .. } = detail else {
         return None;
     };
     // The durable handle exists only when the wire issued one; an id-less
@@ -1601,7 +1636,7 @@ fn detail_reasoning(
     // `EncryptedReasoning`, NOT `Reasoning`: plaintext `reasoning` text
     // accumulates under `Minted { Reasoning, 0 }`, and a whole block under
     // that same key would restate — i.e. replace — the open text part.
-    let provider_id = id.and_then(crate::streaming::non_empty_id);
+    let provider_id = id.clone().and_then(crate::streaming::non_empty_id);
     let key = provider_id
         .as_ref()
         .map_or(BlockId::minted(MintKind::EncryptedReasoning, 0), |id| {
@@ -1610,7 +1645,7 @@ fn detail_reasoning(
     Some((
         key,
         provider_id,
-        crate::message::ReasoningContent::Encrypted(data),
+        crate::message::ReasoningContent::Encrypted(data.clone()),
     ))
 }
 
@@ -1618,18 +1653,27 @@ fn detail_reasoning(
 ///
 /// Anthropic routes stream the plaintext in `delta.reasoning`, then send its
 /// replay-required signature as a final signature-only `reasoning.text`
-/// detail immediately before the tool call. Feeding that authoritative close
-/// into the shared lifecycle signs the normalized reasoning block just as the
-/// unary body does.
-fn reasoning_signature(detail: &serde_json::Value) -> Option<String> {
-    let Ok(unary::ReasoningDetails::Text {
+/// detail immediately before the tool call. The unary body carries the same
+/// detail on its assistant message. Feeding that authoritative close into the
+/// shared lifecycle signs the normalized reasoning block on either path.
+fn reasoning_signature(detail: &unary::ReasoningDetails) -> Option<String> {
+    let unary::ReasoningDetails::Text {
         signature: Some(signature),
         ..
-    }) = serde_json::from_value::<unary::ReasoningDetails>(detail.clone())
+    } = detail
     else {
         return None;
     };
-    (!signature.is_empty()).then_some(signature)
+    (!signature.is_empty()).then(|| signature.clone())
+}
+
+/// One reasoning detail, typed.
+///
+/// A detail type this wire does not model is not an error: the gateways
+/// extend the vocabulary independently, and an unknown entry simply carries
+/// nothing this decoder acts on.
+fn typed_detail(detail: &serde_json::Value) -> Option<unary::ReasoningDetails> {
+    serde_json::from_value(detail.clone()).ok()
 }
 
 #[cfg(test)]

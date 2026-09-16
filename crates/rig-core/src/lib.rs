@@ -72,9 +72,9 @@
 //! [CompletionModel](crate::completion::CompletionModel),
 //! [EmbeddingModel](crate::embeddings::EmbeddingModel) and their siblings,
 //! which provide a common, low-level interface for creating completion and
-//! embedding requests and executing them; one driver
-//! ([`driver`](crate::driver)) runs all of them, so a provider never restates
-//! request plumbing, retry classification, or telemetry.
+//! embedding requests and executing them; one driver ([`driver`]) runs all of
+//! them, so a provider never restates request plumbing, retry classification,
+//! or telemetry.
 //!
 //! ## Agent runtimes
 //! This crate owns the provider-agnostic model, message, tool, and storage

@@ -516,6 +516,20 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
         None
     }
 
+    /// The route template this wire posts to, as the provider declares it:
+    /// the endpoint's own path, with no base-URL prefix and no interpolated
+    /// values. Observation groups attempts by it, so it must not change when
+    /// a caller points the same endpoint at a different base URL — which the
+    /// concrete request path does, since a dialect's base URL may carry a
+    /// version segment (`https://api.openai.com/v1` + `/responses`).
+    ///
+    /// `None` is "this wire declares no template apart from the path it
+    /// builds", and the driver then reports that path. Override it wherever
+    /// the declaration and the request path can differ.
+    fn route(&self) -> Option<&str> {
+        None
+    }
+
     /// The canonical telemetry operation this wire performs. Override when
     /// the endpoint has its own name (Gemini `generate_content`).
     fn telemetry(&self, streaming: bool) -> Telemetry<Self> {

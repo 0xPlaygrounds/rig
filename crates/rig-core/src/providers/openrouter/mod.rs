@@ -8,9 +8,9 @@
 //! credential check, and the gateway's own rewrites.
 //!
 //! What lives here is data: the model identifiers ([`completion`],
-//! [`transcription`], [`audio_generation`]), the [`ProviderPreferences`]
-//! request block, and [`CompletionResponse`] — the typed read of OpenRouter's
-//! own reply document.
+//! [`transcription`], and `audio_generation` under feature `audio`), the
+//! [`ProviderPreferences`] request block, and [`CompletionResponse`] — the
+//! typed read of OpenRouter's own reply document.
 //!
 //! # Example
 //! ```ignore

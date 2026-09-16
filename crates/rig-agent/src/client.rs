@@ -1,4 +1,4 @@
-//! Classic runtime construction extensions for portable completion clients and models.
+//! Classic runtime construction extensions for portable completion providers and models.
 
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -17,14 +17,12 @@ use rig_core::wasm_compat::{WasmCompatSend, WasmCompatSync};
 /// implements `CompletionProvider` directly. No provider contributes an
 /// `agent` forwarder either way.
 ///
-/// This is a trait of its own rather than a second impl of
-/// [`AgentClientExt`] because the two blanket impls overlap as far as the
-/// compiler can tell: one over
-/// [`CompletionClient`](rig_core::client::completion::CompletionClient) and
-/// one over `CompletionProvider` on a single trait would need
-/// `P: !CompletionClient` to be provable, and negative bounds are not. The
-/// two share no method name, so a type that somehow implemented both would
-/// still resolve. `AgentClientExt` goes when the client layer does.
+/// This is a trait of its own rather than a second blanket impl behind
+/// [`AgentModelExt`]: a bound provider is both a provider and a model, so a
+/// single trait blanket-implemented over [`CompletionProvider`] and over
+/// [`CompletionModel`](rig_core::completion::CompletionModel) would need
+/// those two impls to be provably disjoint, and they are not. The two share
+/// no method name, so a type that implements both still resolves.
 ///
 /// ```ignore
 /// use rig_agent::prelude::*;

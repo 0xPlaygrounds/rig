@@ -380,8 +380,9 @@ bound_constructor!(HasImageGeneration, image_generation, model: impl Into<String
 #[cfg(feature = "audio")]
 bound_constructor!(HasAudioGeneration, audio_generation, model: impl Into<String>);
 
-/// An embedding builder over a bound embedding wire, for the ergonomics the
-/// deleted `EmbeddingsClient` offered.
+/// An embedding builder over a bound embedding wire: it batches many documents
+/// into one provider request, which is what a caller wants instead of an
+/// `embed_text` call apiece.
 impl<P, H> Bound<P, H>
 where
     P: HasEmbedding,

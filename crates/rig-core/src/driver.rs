@@ -257,11 +257,17 @@ where
     let mut pending: std::collections::VecDeque<http::Request<Body>> = requests.into();
     while let Some(mut http_request) = pending.pop_front() {
         accept_header(&mut http_request, framing);
+        // Two different facts, deliberately not one variable. `route` is the
+        // URL that was actually sent, which is what a human debugging a 404
+        // needs from `with_route`'s decoration. The observation records the
+        // *template* the wire declares, so a consumer grouping attempts by
+        // route gets one bucket per endpoint rather than one per base URL.
         let route = http_request.uri().path().to_owned();
+        let declared = wire.route().unwrap_or(&route);
         let observation = context.as_ref().map(|_| AdapterSlot::default());
         let attempt = context
             .as_ref()
-            .and_then(|context| context.attempt_for(&http_request, &route));
+            .and_then(|context| context.attempt_for(&http_request, declared));
         if let Some(observation) = &observation {
             observation.install(attempt);
         }
@@ -395,6 +401,9 @@ where
     let observation = context.as_ref().map(|_| AdapterSlot::default());
     let mut driver = WireDriver::<W::Op, _>::observed(wire.decoder(), observation.clone());
     let recording = span.clone();
+    // Read here rather than inside the stream: `wire` is borrowed, and the
+    // generated stream outlives this call.
+    let declared_route = wire.route().map(str::to_owned);
 
     let frames = async_stream::stream! {
         // The attempt is announced on the first poll, not here: a stream
@@ -404,10 +413,13 @@ where
         // encoding above is eager, because `stream` returns a `Result` and
         // an encode failure is not the stream's problem to deliver.
         if let Some(observation) = &observation {
+            // The declared template, not the concrete path — see `call`.
+            let path = http_request.uri().path().to_owned();
+            let declared = declared_route.as_deref().unwrap_or(&path);
             observation.install(
                 context
                     .as_ref()
-                    .and_then(|context| context.attempt_for(&http_request, http_request.uri().path())),
+                    .and_then(|context| context.attempt_for(&http_request, declared)),
             );
         }
         let response = match http.send_streaming(http_request).await {

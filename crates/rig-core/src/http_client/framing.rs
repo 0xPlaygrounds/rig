@@ -10,8 +10,9 @@
 //! blank line, so an unterminated trailing event is not a frame. Recorded
 //! provider bodies exist whose last event has no trailing blank line
 //! (YAML block-chomping on record), and a lenient flush would hand the
-//! decoder one frame more than the wire delivered. [`Self::pending`] reports
-//! those bytes for truncation diagnostics instead.
+//! decoder one frame more than the wire delivered.
+//! [`SseFramer::pending`] reports those bytes for truncation diagnostics
+//! instead.
 //!
 //! [`NdjsonFramer`] does have [`NdjsonFramer::finish`]: a JSON document
 //! terminated by EOF rather than a newline is a complete document.

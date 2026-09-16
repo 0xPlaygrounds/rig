@@ -10,7 +10,7 @@
 //!
 //! Three things outlive that move, and this module is exactly those three:
 //!
-//! - [`env`]: reading a provider's configuration out of the process
+//! - [`mod@env`]: reading a provider's configuration out of the process
 //!   environment, with [`EnvError`] naming a variable that is absent or
 //!   unusable.
 //! - [`ProviderClientError`], with [`required_env_var`] and

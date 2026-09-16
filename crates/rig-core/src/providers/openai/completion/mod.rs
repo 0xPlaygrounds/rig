@@ -950,8 +950,19 @@ pub fn user_content_to_messages(
 ///
 /// Free function for the same orphan-rule reason as
 /// [`user_content_to_messages`], and `pub` for the same API-surface reason.
+///
+/// `reasoning_details` is the dialect's answer to whether it accepts
+/// structured reasoning replay
+/// ([`Quirks::reasoning_details`](crate::providers::openai::wire::Quirks::reasoning_details)).
+/// With it clear, a reasoning block replays as the plain `reasoning_content`
+/// string, which is all the other dialects on this wire understand. With it
+/// set, a block carrying parts replays as `reasoning_details` entries instead:
+/// OpenRouter's Anthropic and OpenAI routes require the block's *signature* or
+/// encrypted blob to be echoed back on the tool-call turn, and the display
+/// string cannot carry either — an unsigned replay is rejected upstream.
 pub fn assistant_content_to_messages(
     value: Vec<message::AssistantContent>,
+    reasoning_details: bool,
 ) -> Result<Vec<Message>, message::MessageError> {
     let mut text_content = Vec::new();
     let mut tool_calls = Vec::new();
@@ -959,11 +970,58 @@ pub fn assistant_content_to_messages(
     // `display_text()`'s own inter-block separator) rather than glued
     // together, so replayed multi-block reasoning keeps its boundaries.
     let mut reasoning_parts: Vec<String> = Vec::new();
+    let mut details: Vec<ReasoningDetails> = Vec::new();
 
     for content in value {
         match content {
             message::AssistantContent::Text(text) => text_content.push(text),
             message::AssistantContent::ToolCall(tool_call) => tool_calls.push(tool_call),
+            // A block with no parts has nothing structured to replay — only
+            // the text a provider streamed under `reasoning`/
+            // `reasoning_content` — so it takes the plain path on either
+            // dialect.
+            message::AssistantContent::Reasoning(reasoning)
+                if reasoning_details && !reasoning.content.is_empty() =>
+            {
+                // A block the stream aggregated without a wire id carries the
+                // accumulator's shared "" identity; it replays as a null id,
+                // the shape the provider's own unary body uses.
+                let id = reasoning.id.filter(|id| !id.is_empty());
+                // `index` numbers the entries across the whole message, the
+                // way the provider numbers the array it sent.
+                let base = details.len();
+                let entries = reasoning.content.iter().enumerate().map(|(offset, part)| {
+                    let id = id.clone();
+                    let index = Some(base + offset);
+                    match part {
+                        message::ReasoningContent::Text { text, signature } => {
+                            ReasoningDetails::Text {
+                                id,
+                                format: None,
+                                index,
+                                text: Some(text.clone()),
+                                signature: signature.clone(),
+                            }
+                        }
+                        message::ReasoningContent::Summary(summary) => ReasoningDetails::Summary {
+                            id,
+                            format: None,
+                            index,
+                            summary: summary.clone(),
+                        },
+                        message::ReasoningContent::Encrypted(data)
+                        | message::ReasoningContent::Redacted { data } => {
+                            ReasoningDetails::Encrypted {
+                                id,
+                                format: None,
+                                index,
+                                data: data.clone(),
+                            }
+                        }
+                    }
+                });
+                details.extend(entries);
+            }
             message::AssistantContent::Reasoning(reasoning) => {
                 let display = reasoning.display_text();
                 if !display.is_empty() {
@@ -979,7 +1037,10 @@ pub fn assistant_content_to_messages(
         }
     }
 
-    if text_content.is_empty() && tool_calls.is_empty() {
+    // A details-only assistant message is not an empty turn: it is exactly
+    // the signed-reasoning echo the dialect requires before the tool call it
+    // precedes, and dropping it loses the signature.
+    if text_content.is_empty() && tool_calls.is_empty() && details.is_empty() {
         return Ok(vec![]);
     }
 
@@ -1000,7 +1061,7 @@ pub fn assistant_content_to_messages(
             .into_iter()
             .map(std::convert::Into::into)
             .collect::<Vec<_>>(),
-        reasoning_details: Vec::new(),
+        reasoning_details: details,
         images: Vec::new(),
     }])
 }
@@ -1008,11 +1069,17 @@ pub fn assistant_content_to_messages(
 impl TryFrom<message::Message> for Vec<Message> {
     type Error = message::MessageError;
 
+    /// The dialect-agnostic conversion. Structured reasoning replay is a
+    /// per-dialect capability this impl cannot see, so reasoning takes the
+    /// plain `reasoning_content` path; the wire's own conversion
+    /// ([`OpenAIRequestParams`]) passes the dialect's answer.
     fn try_from(message: message::Message) -> Result<Self, Self::Error> {
         match message {
             message::Message::System { content } => Ok(vec![Message::system(&content)]),
             message::Message::User { content } => user_content_to_messages(content),
-            message::Message::Assistant { content, .. } => assistant_content_to_messages(content),
+            message::Message::Assistant { content, .. } => {
+                assistant_content_to_messages(content, false)
+            }
         }
     }
 }
@@ -1021,6 +1088,7 @@ fn message_with_tool_ids(
     source: message::Message,
     position: usize,
     ids: &crate::providers::internal::tool_call_ids::ToolCallIds,
+    reasoning_details: bool,
 ) -> Result<Vec<Message>, message::MessageError> {
     let content_positions: Vec<_> = match &source {
         message::Message::Assistant { content, .. } => content
@@ -1039,7 +1107,12 @@ fn message_with_tool_ids(
             .collect(),
         message::Message::System { .. } => Vec::new(),
     };
-    let mut converted: Vec<Message> = source.try_into()?;
+    let mut converted: Vec<Message> = match source {
+        message::Message::Assistant { content, .. } => {
+            assistant_content_to_messages(content, reasoning_details)?
+        }
+        source => source.try_into()?,
+    };
     // Conversion can split text into separate messages, but retains every tool
     // call/result in source order. Assign only wire fields, never core provenance.
     let slots: Vec<&mut String> = converted
@@ -1414,6 +1487,25 @@ pub struct PromptTokensDetails {
     /// Cached tokens from prompt caching
     #[serde(default)]
     pub cached_tokens: usize,
+    /// Tokens charged for audio in the prompt.
+    ///
+    /// The dialects disagree on whether this is a *breakdown* of
+    /// `prompt_tokens` (OpenAI: `text_tokens + audio_tokens == prompt_tokens`)
+    /// or a count reported *beside* it (Mistral's Voxtral models:
+    /// `prompt_tokens + audio_tokens + completion_tokens == total_tokens`).
+    /// [`Usage::to_normalized`] decides which from the provider's own total
+    /// rather than from a per-dialect flag.
+    ///
+    /// Not serialized when zero: the streamed terminal record is rebuilt from
+    /// this type, and emitting `"audio_tokens": 0` would put a figure into a
+    /// text-only dialect's record that the provider never sent.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub audio_tokens: usize,
+}
+
+/// Whether a counter is absent-as-zero, for `skip_serializing_if`.
+fn is_zero(value: &usize) -> bool {
+    *value == 0
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, Default)]
@@ -1492,15 +1584,44 @@ impl From<Usage> for crate::completion::Usage {
 }
 
 impl Usage {
+    /// Every token charged against the prompt.
+    ///
+    /// `prompt_tokens` alone, except on a dialect that reports its audio
+    /// charge *beside* that count instead of inside it: Mistral's Voxtral
+    /// models answer a 375-audio-token clip with `prompt_tokens: 11`,
+    /// `prompt_tokens_details.audio_tokens: 375`, `completion_tokens: 15` and
+    /// `total_tokens: 401`, so reading `prompt_tokens` as the whole input
+    /// leaves `input + output` short of the provider's own total by the entire
+    /// audio payload.
+    ///
+    /// Which convention a reply uses is read off that total rather than a
+    /// per-dialect flag, because the arithmetic is exact: the two sums agree
+    /// only when the audio charge is zero, and then the branch is a no-op.
+    /// OpenAI itself breaks `prompt_tokens` *down* into `text_tokens` and
+    /// `audio_tokens`, and adding them there would double-count.
+    fn input_tokens(&self) -> usize {
+        let audio = self
+            .prompt_tokens_details
+            .map_or(0, |details| details.audio_tokens);
+        let beside = self.prompt_tokens.saturating_add(audio);
+        let accounted = beside.saturating_add(self.completion_tokens.unwrap_or(0));
+        if audio != 0 && accounted == self.total_tokens {
+            beside
+        } else {
+            self.prompt_tokens
+        }
+    }
+
     /// Normalize this provider usage payload into rig's [`crate::completion::Usage`].
     pub fn to_normalized(&self) -> crate::completion::Usage {
+        let input_tokens = self.input_tokens();
         crate::completion::Usage {
-            input_tokens: Some(self.prompt_tokens as u64),
+            input_tokens: Some(input_tokens as u64),
             // Gateways that omit `completion_tokens` still send the total, so
             // the completion count is the remainder.
             output_tokens: Some(
                 self.completion_tokens
-                    .unwrap_or_else(|| self.total_tokens.saturating_sub(self.prompt_tokens))
+                    .unwrap_or_else(|| self.total_tokens.saturating_sub(input_tokens))
                     as u64,
             ),
             total_tokens: Some(self.total_tokens as u64),
@@ -1743,6 +1864,15 @@ pub struct OpenAIRequestParams {
     /// Serializes `tools`/`tool_choice` when true; drops them with a warning
     /// when false (providers without tool-calling support).
     pub supports_tools: bool,
+    /// Whether the dialect accepts structured reasoning replay on assistant
+    /// messages; see
+    /// [`Quirks::reasoning_details`](crate::providers::openai::wire::Quirks::reasoning_details).
+    ///
+    /// When set, a reasoning block replays as a `reasoning_details` entry
+    /// carrying its signature, encrypted blob or summary; when clear it
+    /// replays as the plain `reasoning_content` string, because a dialect
+    /// that never sent the array does not accept it either.
+    pub reasoning_details: bool,
 }
 
 impl TryFrom<OpenAIRequestParams> for CompletionRequest {
@@ -1757,6 +1887,7 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             supports_image_tool_results,
             supports_response_format,
             supports_tools,
+            reasoning_details,
         } = params;
         let chat_history = req.chat_history_with_documents();
 
@@ -1784,7 +1915,9 @@ impl TryFrom<OpenAIRequestParams> for CompletionRequest {
             partial_history
                 .into_iter()
                 .enumerate()
-                .map(|(position, message)| message_with_tool_ids(message, position, &tool_ids))
+                .map(|(position, message)| {
+                    message_with_tool_ids(message, position, &tool_ids, reasoning_details)
+                })
                 .collect::<Result<Vec<Vec<Message>>, _>>()?
                 .into_iter()
                 .flatten(),
@@ -1979,6 +2112,7 @@ impl TryFrom<(String, CoreCompletionRequest)> for CompletionRequest {
             supports_response_format: true,
             supports_image_tool_results: false,
             supports_tools: true,
+            reasoning_details: false,
         })
     }
 }

@@ -25,30 +25,33 @@
 //! - Xiaomi MiMo
 //! - Z.ai
 //!
-//! Each provider module defines a `Client` type and model types for the
-//! capabilities it supports. Capability traits such as
-//! [`CompletionClient`](crate::client::CompletionClient) and
-//! [`EmbeddingsClient`](crate::client::EmbeddingsClient) are implemented only
-//! when the provider declares that capability.
+//! Each provider module defines a configuration type plus one
+//! [`Wire`](crate::wire::Wire) per endpoint it speaks. Binding that
+//! configuration to a transport yields a [`Bound`](crate::driver::Bound), and
+//! a capability is a method on it — `completion(model)`, `embedding(model,
+//! ndims)`, `model_listing()` — present exactly when the provider declares the
+//! matching wire through [`HasCompletion`](crate::wire::HasCompletion),
+//! [`HasEmbedding`](crate::driver::HasEmbedding) and their siblings.
 //!
 //! # Provider implementation checklist
 //!
 //! When adding or changing a provider, verify that the integration includes:
 //!
-//! - for OpenAI-chat-compatible APIs: completions driven by
-//!   [`GenericCompletionModel`](crate::providers::openai::completion::GenericCompletionModel)
-//!   via an
-//!   [`OpenAICompatibleProvider`](crate::providers::openai::completion::OpenAICompatibleProvider)
-//!   impl on the provider type (never a hand-rolled completion model,
-//!   request struct, or message conversion — dialect differences go in the
-//!   trait's hooks);
-//! - public `Client<H = BoxedHttpClient>` and `ClientBuilder<H = Missing>`
-//!   aliases over [`client::Client`](crate::client::Client) /
-//!   [`client::ClientBuilder`](crate::client::ClientBuilder), plus root
-//!   re-exports of the provider type and every model type;
-//! - one provider value type implementing [`Provider`](crate::client::Provider)
-//!   and one `Has*` impl per supported capability
-//!   ([`HasCompletion`](crate::client::HasCompletion) and friends);
+//! - for OpenAI-chat-compatible APIs: completions driven by the shared
+//!   [`Chat`](crate::providers::openai::wire::Chat) wire and its
+//!   [`ChatDecoder`](crate::providers::openai::wire::ChatDecoder), with the
+//!   provider contributing one
+//!   [`Dialect`](crate::providers::openai::wire::Dialect) **const** beside
+//!   [`OPENAI`](crate::providers::openai::wire::OPENAI) (never a hand-rolled
+//!   wire, request struct, or message conversion — dialect differences are
+//!   fields on that const, and a quirk no field can express is one arm of its
+//!   [`BodyRewrite`](crate::providers::openai::wire::BodyRewrite));
+//! - a configuration type built by `new(key)` / `from_env()?` and joined to a
+//!   transport by [`Bind::bind`](crate::driver::Bind::bind) or `bound()?`,
+//!   plus root re-exports of the configuration type and every wire type;
+//! - one [`Wire`](crate::wire::Wire) impl per endpoint and one `Has*` impl per
+//!   supported capability, so a capability the provider does not have is a
+//!   method that does not exist rather than one that fails at runtime;
 //! - explicit API-key marker/auth types with redacted debug behavior for
 //!   credential-bearing values;
 //! - model constants where they are useful and current;
@@ -68,13 +71,17 @@
 //! - a shared conversion (one used by several OpenAI-compatible providers)
 //!   that takes the provider descriptor name as an input instead of hardcoding
 //!   one, so a reused wire type cannot mislabel its provider;
-//! - `raw_completion` and `raw_stream` inherent methods returning the
-//!   provider's own wire types, with the normalized
-//!   [`CompletionModel`](crate::completion::CompletionModel) methods delegating
-//!   to them so there is exactly one request path either way;
+//! - the provider's own reply document carried verbatim on
+//!   [`CompletionResponse::raw`](crate::completion::CompletionResponse::raw),
+//!   so a caller who wants it typed deserializes the provider's own reply type
+//!   out of it — one request path, and no second normalization;
 //! - streaming support when the provider supports streaming;
-//! - provider-response error preservation plus `ProviderResponseExt` and
-//!   telemetry fields consistent with nearby providers where applicable;
+//! - the provider's error body preserved verbatim, through
+//!   [`WireError::http_response`](crate::wire::WireError::http_response) for a
+//!   non-success reply and
+//!   [`WireError::provider_body`](crate::wire::WireError::provider_body) for
+//!   an error envelope on a 200, plus telemetry fields consistent with nearby
+//!   providers;
 //! - unit, cassette, or live-test coverage appropriate to the changed behavior;
 //! - root facade feature/docs updates for companion provider crates; and
 //! - examples and documentation that match the actual API, feature flags, and
@@ -83,17 +90,17 @@
 //! # Example
 //! ```ignore
 //! use rig_core::{
-//!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
-//!     providers::openai,
+//!     providers::openai::{self, wire::OpenAI},
 //! };
+//! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! // Initialize the OpenAI client
-//! let openai = openai::Client::from_env()?;
+//! // Read `OPENAI_API_KEY` into the configuration and bind it to a transport.
+//! let openai = OpenAI::from_env()?.bound()?;
 //!
-//! // Create a model and send a low-level completion request.
-//! let model = openai.completion_model(openai::GPT_5_2);
+//! // A model is a wire plus its socket; send a low-level completion request.
+//! let model = openai.completion(openai::GPT_5_2);
 //! let request = model
 //!     .completion_request("Discuss the fate of Middle Earth.")
 //!     .preamble("\

@@ -2122,10 +2122,7 @@ data: {completed}
 }
 
 /// One `message` output item, as a terminal response body states it.
-fn message_output_item(
-    id: &str,
-    text: &str,
-) -> crate::providers::openai::responses_api::Output {
+fn message_output_item(id: &str, text: &str) -> crate::providers::openai::responses_api::Output {
     serde_json::from_value(json!({
         "type": "message",
         "id": id,

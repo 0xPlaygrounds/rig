@@ -44,12 +44,17 @@ use super::handlers::{Bound, Handler, Handlers};
 pub use rig_core::wire::Secret;
 
 /// Which provider a binding builds.
+///
+/// The Chat Completions wire is one wire on many dialects, and a dialect is
+/// what names the provider a record is attributed to, so each dialect the
+/// bindings can build is its own kind spelled like the dialect
+/// ([`Dialect::name`](rig_core::providers::openai::wire::Dialect::name)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect)]
 #[serde(rename_all = "snake_case")]
 pub enum ProviderKind {
     /// `anthropic::wire::Anthropic` (the Messages API).
     Anthropic,
-    /// `openai::wire::OpenAI` over Chat Completions.
+    /// `openai::wire::OpenAI` on its own dialect, over Chat Completions.
     OpenAiChat,
     /// `openai::responses_api::wire::ResponsesApi`.
     OpenAiResponses,
@@ -57,6 +62,10 @@ pub enum ProviderKind {
     Gemini,
     /// `openai::wire::OpenAI` on its DeepSeek dialect.
     DeepSeek,
+    /// `openai::wire::OpenAI` on its Venice dialect.
+    Venice,
+    /// `openai::wire::OpenAI` on its Doubleword dialect.
+    Doubleword,
 }
 
 impl ProviderKind {
@@ -68,6 +77,8 @@ impl ProviderKind {
             Self::OpenAiResponses => "openai_responses",
             Self::Gemini => "gemini",
             Self::DeepSeek => "deepseek",
+            Self::Venice => "venice",
+            Self::Doubleword => "doubleword",
         }
     }
 }
@@ -146,7 +157,7 @@ pub struct ProviderBinding {
     /// |---|---|
     /// | `anthropic` | `anthropic_version: string`, `anthropic_betas: [string]` |
     /// | `openai_responses` | `system_instructions_as_messages: bool` |
-    /// | `openai_chat`, `gemini`, `deepseek` | none |
+    /// | `gemini`, and every Chat Completions dialect (`openai_chat`, `deepseek`, `venice`, `doubleword`) | none |
     #[reflect(remote = crate::bus::reflect::ExtraParamsReflect)]
     pub extra_params: Option<serde_json::Value>,
 }
@@ -379,7 +390,11 @@ fn allowed_extra_params(kind: ProviderKind) -> &'static [&'static str] {
     match kind {
         ProviderKind::Anthropic => &["anthropic_version", "anthropic_betas"],
         ProviderKind::OpenAiResponses => &["system_instructions_as_messages"],
-        ProviderKind::OpenAiChat | ProviderKind::Gemini | ProviderKind::DeepSeek => &[],
+        ProviderKind::OpenAiChat
+        | ProviderKind::Gemini
+        | ProviderKind::DeepSeek
+        | ProviderKind::Venice
+        | ProviderKind::Doubleword => &[],
     }
 }
 
@@ -471,8 +486,7 @@ fn build_adapter(
             {
                 match flag.as_bool() {
                     Some(true) => {
-                        bound =
-                            bound.map_wire(|wire| wire.with_system_instructions_as_messages());
+                        bound = bound.map_wire(|wire| wire.with_system_instructions_as_messages());
                     }
                     Some(false) => {}
                     None => {
@@ -502,6 +516,24 @@ fn build_adapter(
             ErasedHandler::new(CompletionAdapter::new(
                 label,
                 openai_config(binding, secret, &openai::wire::DEEPSEEK)
+                    .bind(transport)
+                    .completion(model),
+            ))
+        }
+        ProviderKind::Venice => {
+            extra_object(binding, allowed_extra_params(binding.kind))?;
+            ErasedHandler::new(CompletionAdapter::new(
+                label,
+                openai_config(binding, secret, &openai::wire::VENICE)
+                    .bind(transport)
+                    .completion(model),
+            ))
+        }
+        ProviderKind::Doubleword => {
+            extra_object(binding, allowed_extra_params(binding.kind))?;
+            ErasedHandler::new(CompletionAdapter::new(
+                label,
+                openai_config(binding, secret, &openai::wire::DOUBLEWORD)
                     .bind(transport)
                     .completion(model),
             ))

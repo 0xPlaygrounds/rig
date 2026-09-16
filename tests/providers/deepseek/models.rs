@@ -63,7 +63,14 @@ async fn list_models_rejected_key_reports_api_error_with_context() -> anyhow::Re
             };
 
             anyhow::ensure!(*status_code == 401, "unexpected status: {error:#?}");
-            for expected in ["provider=DeepSeek", "path=/models", "status=401"] {
+            // `provider=` is the wire's descriptor name — the same `deepseek`
+            // every normalized response reports, not a display label. The
+            // deleted client layer decorated this message with its own
+            // capitalised `DeepSeek` instead, so one provider's identity had
+            // two spellings; there is now one. `path=` is unchanged: DeepSeek's
+            // base URL carries no version segment, so the listing really does
+            // send `/models`.
+            for expected in ["provider=deepseek", "path=/models", "status=401"] {
                 anyhow::ensure!(
                     message.contains(expected),
                     "the error must carry {expected}; got {message}"

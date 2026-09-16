@@ -1006,8 +1006,8 @@ fn repair_envelope_less_frame(data: &str) -> Option<String> {
 ///
 /// The stream's SSE frames and the unary body are two shapes of the same
 /// reply, so they are variants of ONE event type: the unary variant's
-/// `interpret` synthesizes the very frames the stream sends (see
-/// [`RawChoiceAccumulator::replay_whole_response`]), and everything after
+/// `interpret` synthesizes the very frames the stream sends — that is what the
+/// accumulator's crate-internal `replay_whole_response` does — and everything after
 /// classification is shared.
 pub enum ResponsesEvent {
     /// One stream frame, with its raw payload: `response.failed` preserves
@@ -1200,9 +1200,9 @@ impl ResponsesDecoder {
                     span.record("gen_ai.response.id", response.id.as_str());
                     span.record("gen_ai.response.model", response.model.as_str());
                 }
-                if let Err(error) =
-                    self.accumulator
-                        .record_response_chunk(kind, response, &raw, out)
+                if let Err(error) = self
+                    .accumulator
+                    .record_response_chunk(kind, response, &raw, out)
                 {
                     // `response.failed`: fully-delivered tool calls flush
                     // before the terminal error, which ends the reply with

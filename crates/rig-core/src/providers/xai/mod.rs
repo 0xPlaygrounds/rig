@@ -2,9 +2,9 @@
 //!
 //! xAI speaks the Responses API, so it has no client and no completion model
 //! of its own: [`DIALECT`] carries the base URL, the `XAI_API_KEY` variable,
-//! the `x-request-id` header and the quirks below, and
-//! [`api`] carries the one thing xAI does not share — its request input
-//! shape.
+//! the `x-request-id` header and the quirks below. The one thing xAI does not
+//! share is its request input shape, selected by [`RequestShape::Xai`] and
+//! built by this crate's internal `api` module.
 //!
 //! # Example
 //! ```ignore
@@ -53,7 +53,7 @@ use crate::providers::openai::responses_api::wire::{Dialect, Quirks, RequestShap
 /// xAI, as a Responses dialect.
 ///
 /// Every field is what this gateway does differently: its endpoint lives
-/// under `/v1`, it takes its own input shape (see [`api`]), it rejects
+/// under `/v1`, it takes its own input shape ([`RequestShape::Xai`]), it rejects
 /// top-level `instructions` so system messages stay in `input`, it answers
 /// a 200 with its error envelope, it publishes a finished function call at
 /// its `output_item.done` rather than at the terminal, and its native

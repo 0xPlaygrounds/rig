@@ -267,6 +267,7 @@ fn sanitize_plain_text_history_merges_consecutive_assistant_messages() {
 #[test]
 fn tool_result_array_content_preserves_multiple_text_blocks() {
     let request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: request_with_multi_block_tool_result(),
         strict_tools: false,
@@ -303,6 +304,7 @@ fn tool_result_array_content_preserves_multiple_text_blocks() {
 #[test]
 fn tool_result_string_content_flattens_multiple_text_blocks() {
     let request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: request_with_multi_block_tool_result(),
         strict_tools: false,
@@ -373,6 +375,7 @@ fn test_openai_request_uses_request_model_override() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -407,6 +410,7 @@ fn tool_choice_is_dropped_when_no_tool_is_advertised() {
         };
     let convert = |request| {
         CompletionRequest::try_from(OpenAIRequestParams {
+            reasoning_details: false,
             model: "gpt-4o-mini".to_string(),
             request,
             strict_tools: false,
@@ -450,6 +454,7 @@ fn test_openai_request_uses_default_model_when_override_unset() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -476,6 +481,7 @@ fn openai_chat_request_keeps_documents_after_system_messages() {
         .build();
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -535,6 +541,7 @@ fn openai_chat_direct_request_keeps_documents_after_system_messages() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -574,7 +581,7 @@ fn assistant_reasoning_alone_is_dropped() {
     let assistant_content = vec![message::AssistantContent::reasoning("hidden")];
 
     let converted: Vec<Message> =
-        assistant_content_to_messages(assistant_content).expect("conversion should work");
+        assistant_content_to_messages(assistant_content, false).expect("conversion should work");
 
     assert!(converted.is_empty());
 }
@@ -596,7 +603,7 @@ fn assistant_reasoning_is_attached_to_tool_call_message() {
     ];
 
     let converted: Vec<Message> =
-        assistant_content_to_messages(assistant_content).expect("conversion should work");
+        assistant_content_to_messages(assistant_content, false).expect("conversion should work");
     assert_eq!(converted.len(), 1);
 
     match &converted[0] {
@@ -895,6 +902,7 @@ fn test_max_tokens_is_forwarded_to_request() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -912,6 +920,7 @@ fn test_max_tokens_is_forwarded_to_request() {
 /// A chat-completions request whose only interesting property is the cap.
 fn capped_request(max_tokens: Option<u64>, additional_params: Option<Value>) -> CompletionRequest {
     CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: crate::completion::CompletionRequest {
             model: None,
@@ -1073,6 +1082,7 @@ fn test_max_tokens_omitted_when_none() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1126,6 +1136,7 @@ fn additional_params_function_tools_merge_and_native_tools_stay() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1167,6 +1178,7 @@ fn request_conversion_errors_when_all_messages_are_filtered() {
     };
 
     let result = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1218,6 +1230,7 @@ fn request_conversion_omits_response_format_on_initial_tool_turn() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1288,6 +1301,7 @@ fn request_conversion_restores_response_format_after_tool_result() {
     };
 
     let openai_request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request,
         strict_tools: false,
@@ -1886,6 +1900,7 @@ fn request_plans_tool_ids_across_namespaces_turns_and_split_user_content() {
         record_telemetry_content: false,
     };
     let wire = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "test".into(),
         request,
         strict_tools: false,
@@ -1920,6 +1935,7 @@ fn additional_params_override_typed_fields_on_the_wire() {
         .additional_params(serde_json::json!({"temperature": 0.9, "top_p": 0.5}))
         .build();
     let request = CompletionRequest::try_from(OpenAIRequestParams {
+        reasoning_details: false,
         model: "gpt-4o-mini".to_string(),
         request: rig_request,
         strict_tools: false,

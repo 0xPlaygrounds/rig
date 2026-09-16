@@ -17,8 +17,8 @@
 //! [`wire::Copilot::from_auth`] is the bridge. And the editor identity every
 //! request carries (`copilot-integration-id`, `editor-version`,
 //! `openai-intent`, `X-Initiator`, …) is stamped onto the request whichever
-//! wire built it, so [`default_headers`] has one definition here rather than
-//! one per route.
+//! wire built it, so the header set has one definition — a crate-internal
+//! `default_headers` beside the model identifiers — rather than one per route.
 //!
 //! # Example
 //! ```ignore

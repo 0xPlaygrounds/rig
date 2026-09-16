@@ -5,7 +5,9 @@
 //! Responses document type: xAI answers the same envelope, and a completion
 //! carries it verbatim on
 //! [`CompletionResponse::raw`](crate::completion::CompletionResponse::raw).
-//! Its *request* shape is xAI's own, and lives in [`api`](super::api).
+//! Its *request* shape is xAI's own — selected by
+//! [`RequestShape::Xai`](crate::providers::openai::responses_api::wire::RequestShape::Xai)
+//! and built by the crate-internal `api` module.
 
 pub use crate::providers::openai::responses_api::CompletionResponse;
 

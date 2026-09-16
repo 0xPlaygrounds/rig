@@ -12,8 +12,9 @@
 //! What is Copilot's own is the *envelope*: the editor identity every
 //! request carries (`copilot-integration-id`, `editor-version`,
 //! `openai-intent`, `X-Initiator`, …). Those are stamped onto the request
-//! the delegated wire built, so there is one definition of the header set —
-//! [`super::default_headers`] — shared with the client layer.
+//! the delegated wire built, so there is one definition of the header set: a
+//! crate-internal `default_headers` in the parent module, which every route
+//! here stamps on.
 //!
 //! Copilot's session token is exchanged over the network before the API can
 //! be called at all, and a pure synchronous [`Wire::encode`] has no seat for

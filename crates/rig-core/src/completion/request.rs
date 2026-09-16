@@ -7,14 +7,14 @@
 //!
 //! ```ignore
 //! use rig_core::{
-//!     client::CompletionClient,
 //!     completion::{AssistantContent, CompletionModel},
-//!     providers::openai,
+//!     providers::openai::{self, wire::OpenAI},
 //! };
+//! // rig-core ships no transport; `.bound()` builds the bundled `reqwest` one.
+//! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = openai::Client::from_env()?;
-//! let model = client.completion_model(openai::GPT_5_2);
+//! let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
 //!
 //! let request = model
 //!     .completion_request("Who are you?")
@@ -320,13 +320,14 @@ impl FinishReason {
 /// response metadata. The completion choice contains one or more assistant
 /// content items.
 ///
-/// This type is concrete — it carries no provider-typed payload. Callers who
-/// hold a concrete model and need a provider's own wire response *typed* call
-/// that model's inherent `raw_completion` method, which performs the same
-/// request and returns the provider's native type. Callers who do not hold the
-/// concrete model — an agent erases it at construction — read the same value,
-/// serialized, from [`CompletionResponse::raw`], which every provider seam
-/// populates.
+/// This type is concrete — it carries no provider-typed payload. A caller who
+/// needs the provider's own reply *typed* deserializes it out of
+/// [`CompletionResponse::raw`], which every provider seam populates with the
+/// document its decoder folded; provider reply types are `Deserialize`, so the
+/// typed read is one `serde_json::from_value` away, and it needs no concrete
+/// model — an agent erases the model at construction and still has the value.
+/// A provider over a non-HTTP transport (the Bedrock SDK, a local Candle
+/// model) may additionally expose an inherent `raw_completion`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(from = "CompletionResponseRepr")]
 pub struct CompletionResponse {
@@ -384,11 +385,10 @@ pub struct CompletionResponse {
     /// requested; it is `None` when the provider reports no identifier.
     #[serde(default)]
     pub model: Option<String>,
-    /// The provider's own response for this call: the value the model's
-    /// inherent `raw_completion` would have returned, serialized. It is the
-    /// response as rig's wire type parsed it — fields that type does not model
-    /// are not here. Every provider seam populates it, unconditionally — the
-    /// same parity the pre-normalization `raw_response: T` had.
+    /// The provider's own response for this call: its reply document as the
+    /// provider's decoder parsed it — fields that wire type does not model are
+    /// not here. Every provider seam populates it, unconditionally — the same
+    /// parity the pre-normalization `raw_response: T` had.
     ///
     /// An escape hatch for provider-specific data rig does not normalize — it
     /// never replaces a normalized field, and every normalized field means the
@@ -656,10 +656,12 @@ impl ProviderCapabilities {
 /// either from a third party provider (e.g.: OpenAI) or a local model.
 ///
 /// Implementations return Rig's normalized [`CompletionResponse`] and
-/// [`StreamingCompletionResponse`]; a provider's own wire types stay on the
-/// provider's side of this boundary, reachable through its inherent
-/// `raw_completion`/`raw_stream` methods. Model construction belongs to
-/// [`crate::client::completion::CompletionClient`], not to this trait.
+/// [`StreamingCompletionResponse`]; the provider's own reply document travels
+/// serialized on [`CompletionResponse::raw`]. Construction is not this trait's
+/// business: a provider names its completion wire through
+/// [`HasCompletion`](crate::wire::HasCompletion), and a caller reaches the
+/// model as `completion(model)` on the [`Bound`](crate::driver::Bound) that
+/// joins that config to a transport.
 ///
 /// The trait demands only async service behavior — no `Clone` supertrait, in
 /// the spirit of `tower::Service`: cloning or sharing a model is the caller's
@@ -1041,14 +1043,13 @@ fn merge_provider_tools_into_additional_params(
 /// Example usage:
 /// ```ignore
 /// use rig_core::{
-///     client::CompletionClient,
-///     providers::openai::{Client, self},
 ///     completion::{CompletionModel, CompletionRequestBuilder},
+///     providers::openai::{self, wire::OpenAI},
 /// };
+/// use rig_reqwest::prelude::*;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = Client::new("your-openai-api-key")?;
-/// let model = openai.completion_model(openai::GPT_5_2);
+/// let model = OpenAI::new("your-openai-api-key").bound()?.completion(openai::GPT_5_2);
 ///
 /// // Create the completion request and execute it separately
 /// let request = CompletionRequestBuilder::new(model.clone(), "Who are you?".to_string())
@@ -1064,14 +1065,13 @@ fn merge_provider_tools_into_additional_params(
 /// Alternatively, you can execute the completion request directly from the builder:
 /// ```ignore
 /// use rig_core::{
-///     client::CompletionClient,
-///     providers::openai::{Client, self},
 ///     completion::CompletionRequestBuilder,
+///     providers::openai::{self, wire::OpenAI},
 /// };
+/// use rig_reqwest::prelude::*;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let openai = Client::new("your-openai-api-key")?;
-/// let model = openai.completion_model(openai::GPT_5_2);
+/// let model = OpenAI::new("your-openai-api-key").bound()?.completion(openai::GPT_5_2);
 ///
 /// // Create the completion request and execute it directly
 /// let response = CompletionRequestBuilder::new(model, "Who are you?".to_string())

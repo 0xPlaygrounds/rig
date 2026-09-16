@@ -25,7 +25,7 @@ use crate::wire::{
     Body, Decoder, Encoded, Framing, Mode, Output, Sink, Wire, WireEvent, WireFrame,
 };
 
-use super::{AcceptedWidths, ModelWidth, OpenAI, Routing};
+use super::{AcceptedWidths, ModelWidth, OpenAI, Routing, TranscriptionBody};
 // Each is read by exactly one feature-gated wire.
 #[cfg(feature = "image")]
 use super::ImageBody;
@@ -409,6 +409,128 @@ impl Transcriptions {
             model: model.into(),
         }
     }
+
+    /// OpenAI's multipart upload: the audio as a file part beside the
+    /// per-request options.
+    fn multipart_body(&self, request: TranscriptionRequest) -> Result<Body, TranscriptionError> {
+        use crate::http_client::MultipartForm;
+        use crate::http_client::multipart::Part;
+
+        let mut form = MultipartForm::new();
+        // Azure addresses a deployment in the URL and sends no model field;
+        // every other dialect names the model in the form. Field order
+        // matches the order these endpoints were built by hand, so recorded
+        // requests stay byte-comparable.
+        if !matches!(
+            self.provider.dialect.quirks.routing,
+            Routing::AzureDeployment
+        ) {
+            form = form.text("model", self.model.clone());
+        }
+        form = form.part(Part::bytes("file", request.data).filename(request.filename));
+        if let Some(language) = request.language {
+            form = form.text("language", language);
+        }
+        if let Some(prompt) = request.prompt {
+            form = form.text("prompt", prompt);
+        }
+        if let Some(temperature) = request.temperature {
+            form = form.text("temperature", temperature.to_string());
+        }
+        if let Some(additional_params) = request.additional_params {
+            for (name, value) in additional_params_object(&additional_params)? {
+                // String values go on the form verbatim — `Value::to_string`
+                // would send them JSON-quoted (`"verbose_json"`), which
+                // providers reject or ignore. Non-string values stay JSON.
+                let value = match value {
+                    serde_json::Value::String(value) => value.clone(),
+                    other => other.to_string(),
+                };
+                form = form.text(name.clone(), value);
+            }
+        }
+        Ok(Body::Multipart(form))
+    }
+
+    /// OpenRouter's JSON body: the audio base64 under `input_audio`, with the
+    /// container format read off the filename because the gateway requires
+    /// one and the normalized request has no field for it.
+    ///
+    /// There is no top-level `prompt` on this route. A caller who set one is
+    /// told so rather than having it dropped: the gateway takes a
+    /// provider-side prompt through `additional_params`, and silently
+    /// discarding the field would answer a different question than the one
+    /// asked.
+    fn input_audio_body(&self, request: TranscriptionRequest) -> Result<Body, TranscriptionError> {
+        use base64::Engine;
+
+        if request.prompt.is_some() {
+            return Err(TranscriptionError::RequestError(Box::new(
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "OpenRouter STT does not support a top-level prompt field. \
+                     Provider-specific prompt options can be passed via `additional_params`. \
+                     Example: {\"provider\": {\"options\": {\"<provider>\": {\"prompt\": \"<text>\"}}}}",
+                ),
+            )));
+        }
+
+        let mut body = serde_json::Map::new();
+        body.insert("model".to_owned(), serde_json::json!(self.model));
+        body.insert(
+            "input_audio".to_owned(),
+            serde_json::json!({
+                "data": base64::engine::general_purpose::STANDARD.encode(&request.data),
+                "format": audio_format_of(&request.filename),
+            }),
+        );
+        if let Some(language) = request.language {
+            body.insert("language".to_owned(), serde_json::json!(language));
+        }
+        if let Some(temperature) = request.temperature {
+            body.insert("temperature".to_owned(), serde_json::json!(temperature));
+        }
+        if let Some(additional_params) = request.additional_params {
+            for (name, value) in additional_params_object(&additional_params)? {
+                body.insert(name.clone(), value.clone());
+            }
+        }
+        Ok(Body::Bytes(serde_json::to_vec(
+            &serde_json::Value::Object(body),
+        )?))
+    }
+}
+
+/// A transcription request's `additional_params`, as an object.
+fn additional_params_object(
+    params: &serde_json::Value,
+) -> Result<&serde_json::Map<String, serde_json::Value>, TranscriptionError> {
+    params.as_object().ok_or_else(|| {
+        TranscriptionError::RequestError(Box::new(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "additional transcription parameters must be a JSON object",
+        )))
+    })
+}
+
+/// The audio container the gateway is told to expect, from the filename's
+/// extension. `wav` when the extension names nothing this wire knows —
+/// which is what the route defaults to, and the only answer available: the
+/// normalized request carries a filename and bytes, not a media type.
+fn audio_format_of(filename: &str) -> &'static str {
+    let extension = std::path::Path::new(filename)
+        .extension()
+        .and_then(std::ffi::OsStr::to_str)
+        .map(str::to_ascii_lowercase);
+    match extension.as_deref() {
+        Some("mp3") => "mp3",
+        Some("flac") => "flac",
+        Some("m4a") => "m4a",
+        Some("ogg") => "ogg",
+        Some("webm") => "webm",
+        Some("aac") => "aac",
+        _ => "wav",
+    }
 }
 
 /// The transcription decoder.
@@ -454,49 +576,6 @@ impl Wire for Transcriptions {
         request: TranscriptionRequest,
         _mode: Mode,
     ) -> Result<Encoded, TranscriptionError> {
-        use crate::http_client::MultipartForm;
-        use crate::http_client::multipart::Part;
-
-        let mut form = MultipartForm::new();
-        // Azure addresses a deployment in the URL and sends no model field;
-        // every other dialect names the model in the form. Field order
-        // matches the order these endpoints were built by hand, so recorded
-        // requests stay byte-comparable.
-        if !matches!(
-            self.provider.dialect.quirks.routing,
-            Routing::AzureDeployment
-        ) {
-            form = form.text("model", self.model.clone());
-        }
-        form = form.part(Part::bytes("file", request.data).filename(request.filename));
-        if let Some(language) = request.language {
-            form = form.text("language", language);
-        }
-        if let Some(prompt) = request.prompt {
-            form = form.text("prompt", prompt);
-        }
-        if let Some(temperature) = request.temperature {
-            form = form.text("temperature", temperature.to_string());
-        }
-        if let Some(additional_params) = request.additional_params {
-            let params = additional_params.as_object().ok_or_else(|| {
-                TranscriptionError::RequestError(Box::new(std::io::Error::new(
-                    std::io::ErrorKind::InvalidInput,
-                    "additional transcription parameters must be a JSON object",
-                )))
-            })?;
-            for (name, value) in params {
-                // String values go on the form verbatim — `Value::to_string`
-                // would send them JSON-quoted (`"verbose_json"`), which
-                // providers reject or ignore. Non-string values stay JSON.
-                let value = match value {
-                    serde_json::Value::String(value) => value.clone(),
-                    other => other.to_string(),
-                };
-                form = form.text(name.clone(), value);
-            }
-        }
-
         let uri = self
             .provider
             .modality_uri(
@@ -506,10 +585,17 @@ impl Wire for Transcriptions {
             )
             .map_err(TranscriptionError::ProviderError)?;
         let builder = http::Request::post(uri);
+        let (builder, body) = match self.provider.dialect.quirks.transcription_body {
+            TranscriptionBody::Multipart => (builder, self.multipart_body(request)?),
+            TranscriptionBody::InputAudioJson => (
+                builder.header(http::header::CONTENT_TYPE, "application/json"),
+                self.input_audio_body(request)?,
+            ),
+        };
         let request = self
             .provider
             .authenticate(builder)
-            .body(Body::Multipart(form))
+            .body(body)
             .map_err(|error| TranscriptionError::ResponseError(error.to_string()))?;
         Ok(Encoded::new(request, Framing::Whole)
             .with_request_id_header(self.provider.dialect.request_id_header))
@@ -566,27 +652,50 @@ pub struct ImageDatum {
     pub b64_json: String,
 }
 
-/// One generated image on the dialects that key it `image` under `images`.
+/// One generated image under the `images` key.
+///
+/// Two forms, because two dialects use that key for different things:
+/// Hyperbolic sends an object keyed `image`, Venice sends the base64
+/// payload itself. Untagged rather than two fields, so `images` stays one
+/// list whichever form its elements take and a reply cannot claim both.
 #[cfg(feature = "image")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ImagesReplyImage {
-    /// The image, base64-encoded.
-    pub image: String,
+#[serde(untagged)]
+pub enum ImagesReplyImage {
+    /// Hyperbolic: `{"image": "<base64>"}`.
+    Keyed {
+        /// The image, base64-encoded.
+        image: String,
+    },
+    /// Venice: the base64 payload itself.
+    Bare(String),
+}
+
+#[cfg(feature = "image")]
+impl ImagesReplyImage {
+    /// The image's base64 payload, whichever form the dialect sent.
+    pub fn base64(&self) -> &str {
+        match self {
+            Self::Keyed { image } => image,
+            Self::Bare(image) => image,
+        }
+    }
 }
 
 /// The image-generation reply.
 ///
-/// Three shapes, and the keys are disjoint, so one type reads all of them
+/// Four shapes, and the keys are disjoint, so one type reads all of them
 /// without asking which dialect answered: OpenAI sends `{created, data}`,
 /// xAI sends `{data}` with no `created` (a required one would fail every xAI
-/// reply), and Hyperbolic sends `{images:[{image}]}`.
+/// reply), Hyperbolic sends `{images:[{image}]}`, and Venice sends
+/// `{id, images:["<base64>"], request, timing}`.
 #[cfg(feature = "image")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImagesReply {
     /// The generated images, as OpenAI and xAI key them.
     #[serde(default)]
     pub data: Vec<ImageDatum>,
-    /// The generated images, as Hyperbolic keys them.
+    /// The generated images, as Hyperbolic and Venice key them.
     #[serde(default)]
     pub images: Vec<ImagesReplyImage>,
     /// Whatever else the dialect sent (`created`, Venice's `id`/`timing`, and
@@ -603,7 +712,7 @@ impl ImagesReply {
         self.data
             .first()
             .map(|image| image.b64_json.as_str())
-            .or_else(|| self.images.first().map(|image| image.image.as_str()))
+            .or_else(|| self.images.first().map(ImagesReplyImage::base64))
             .filter(|encoded| !encoded.is_empty())
     }
 }
@@ -636,7 +745,7 @@ impl Decoder<crate::operation::ImageGeneration> for ImagesDecoder {
                 WireFrame::Text(text) => text.into_bytes(),
                 WireFrame::Bytes(bytes) => bytes,
             })),
-            ImageBody::OpenAi | ImageBody::Xai | ImageBody::Hyperbolic => {
+            ImageBody::OpenAi | ImageBody::Xai | ImageBody::Hyperbolic | ImageBody::Venice => {
                 classify_untyped_line(frame.as_str().as_bytes()).map(ImagesEvent::Json)
             }
         }
@@ -722,6 +831,16 @@ impl Wire for Images {
                 "prompt": request.prompt,
                 "height": request.height,
                 "width": request.width,
+            }),
+            // Venice's own `/image/generate` keeps OpenAI's `model` key and
+            // takes the size as two fields; `size` is not a field it reads,
+            // so sending one would leave the request at the endpoint's
+            // default dimensions.
+            ImageBody::Venice => serde_json::json!({
+                "model": self.model,
+                "prompt": request.prompt,
+                "width": request.width,
+                "height": request.height,
             }),
             // Hugging Face's router takes the prompt as `inputs` and the
             // size nested under `parameters`; the model is the path, not a
@@ -945,14 +1064,24 @@ impl Models {
 /// One entry of an OpenAI-style `{ "data": [...] }` listing.
 ///
 /// `id` is the one field every dialect on this wire sends; the rest are
-/// optional so a dialect that omits them still decodes. Groq additionally
-/// reports the context window and output cap, which map onto [`Model`]'s own
-/// fields rather than being dropped.
+/// optional so a dialect that omits them still decodes. The dialects do not
+/// agree on how to spell the context window — Groq says `context_window`,
+/// OpenRouter `context_length`, Mistral `max_context_length` — and each sends
+/// only its own, so all three are modelled here and the first one present
+/// becomes [`Model::context_length`]. Same for the output ceiling: Groq
+/// reports `max_completion_tokens` at the top level, OpenRouter one level down
+/// under `top_provider`. Modelling only one dialect's spelling drops the
+/// others on the floor (rig#2079, rig#2322).
 #[derive(Debug, Deserialize)]
 pub struct ModelEntry {
     pub id: String,
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    /// Mistral labels the model kind `type` (`base`, `fine-tuned`).
+    #[serde(default, rename = "type")]
+    pub kind: Option<String>,
     #[serde(default)]
     pub created: Option<u64>,
     #[serde(default)]
@@ -960,7 +1089,42 @@ pub struct ModelEntry {
     #[serde(default)]
     pub context_window: Option<u32>,
     #[serde(default)]
+    pub context_length: Option<u32>,
+    #[serde(default)]
+    pub max_context_length: Option<u32>,
+    #[serde(default)]
     pub max_completion_tokens: Option<u32>,
+    #[serde(default)]
+    pub top_provider: Option<TopProvider>,
+}
+
+/// OpenRouter's per-entry routing block. Only the output ceiling is read;
+/// the rest of the block is routing detail [`Model`] has no slot for.
+#[derive(Debug, Deserialize)]
+pub struct TopProvider {
+    #[serde(default)]
+    pub max_completion_tokens: Option<u32>,
+}
+
+impl From<ModelEntry> for Model {
+    fn from(entry: ModelEntry) -> Self {
+        let mut model = Model::from_id(entry.id);
+        model.name = entry.name;
+        model.description = entry.description;
+        model.r#type = entry.kind;
+        model.created_at = entry.created;
+        model.owned_by = entry.owned_by;
+        model.context_length = entry
+            .context_window
+            .or(entry.context_length)
+            .or(entry.max_context_length);
+        model.max_output_tokens = entry.max_completion_tokens.or_else(|| {
+            entry
+                .top_provider
+                .and_then(|provider| provider.max_completion_tokens)
+        });
+        model
+    }
 }
 
 /// The `{ "data": [...] }` envelope.
@@ -985,19 +1149,7 @@ impl Decoder<ModelListing> for ModelsDecoder {
     }
 
     fn interpret(&mut self, event: Self::Event, out: &mut Output<ModelListing>) {
-        let models = event
-            .data
-            .into_iter()
-            .map(|entry| {
-                let mut model = Model::from_id(entry.id);
-                model.name = entry.name;
-                model.created_at = entry.created;
-                model.owned_by = entry.owned_by;
-                model.context_length = entry.context_window;
-                model.max_output_tokens = entry.max_completion_tokens;
-                model
-            })
-            .collect();
+        let models = event.data.into_iter().map(Model::from).collect();
         out.push(Ok(ModelList::new(models)));
     }
 }

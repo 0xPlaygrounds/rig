@@ -7,9 +7,10 @@
 //! The session is transport-agnostic: it drives a
 //! [`crate::ws_client::WebSocketConnection`] supplied by a
 //! backend such as `rig-tungstenite`, exactly as the rest of this provider
-//! drives an [`HttpClientExt`]. The protocol — the event envelopes, the
-//! `previous_response_id` chaining, the terminal-record rules — lives here with
-//! the provider rather than in whichever crate owns the socket library.
+//! drives an [`HttpClientExt`](crate::http_client::HttpClientExt). The
+//! protocol — the event envelopes, the `previous_response_id` chaining, the
+//! terminal-record rules — lives here with the provider rather than in
+//! whichever crate owns the socket library.
 
 use crate::completion::{self, CompletionError};
 use crate::driver::{Bound, WireDriver};

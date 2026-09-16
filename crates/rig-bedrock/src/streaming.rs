@@ -346,10 +346,7 @@ fn process_event(
 impl rig_core::wire::Decoder<Completion, aws_bedrock::ConverseStreamOutput> for StreamState {
     type Event = aws_bedrock::ConverseStreamOutput;
 
-    fn classify(
-        &self,
-        frame: aws_bedrock::ConverseStreamOutput,
-    ) -> WireEvent<Self::Event> {
+    fn classify(&self, frame: aws_bedrock::ConverseStreamOutput) -> WireEvent<Self::Event> {
         // The AWS SDK already deserialized the event-stream frame, so the
         // byte-level decode step collapses: an event-stream decode failure
         // surfaces as a receive error on the transport, and the only triage

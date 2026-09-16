@@ -12,7 +12,7 @@
 //!
 //! - the model identifiers for chat ([`completion`]), embeddings
 //!   ([`embedding`]), images ([`image_generation`], feature `image`), speech
-//!   ([`audio_generation`], feature `audio`) and transcription
+//!   (`audio_generation`, feature `audio`) and transcription
 //!   ([`transcription`]);
 //! - [`VeniceParameters`] — Venice's own request block (web search, thinking
 //!   control, characters), which rides on

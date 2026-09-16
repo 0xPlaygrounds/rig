@@ -23,16 +23,16 @@ use crate::{
 /// # Example
 /// ```ignore
 /// use rig_core::{
-///     client::EmbeddingsClient,
 ///     embeddings::EmbeddingsBuilder,
-///     providers::openai,
+///     providers::openai::{self, wire::OpenAI},
 /// };
+/// use rig_reqwest::prelude::*;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// // Create OpenAI client
-/// let openai_client = openai::Client::from_env()?;
-///
-/// let model = openai_client.embedding_model(openai::TEXT_EMBEDDING_3_SMALL);
+/// // Bind OpenAI's configuration to the bundled transport, then name a model.
+/// let model = OpenAI::from_env()?
+///     .bound()?
+///     .embedding(openai::TEXT_EMBEDDING_3_SMALL, None);
 ///
 /// let embeddings = EmbeddingsBuilder::new(model.clone())
 ///     .documents(vec![

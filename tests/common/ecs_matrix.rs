@@ -169,9 +169,18 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
             );
         }
         if let Some(bound) = model.downcast_ref::<Bound<openai::Chat, BoxedHttpClient>>() {
+            // One wire on many dialects, and the dialect is what the record's
+            // `provider` is: the kind must name the *same* dialect or the
+            // materialized model answers under another provider's name. A
+            // dialect `ProviderKind` cannot name is undescribable — the
+            // harness leaves that wire hand-registered rather than
+            // materializing it as some other provider.
             let kind = match bound.wire.provider.dialect.name {
+                "openai" => ProviderKind::OpenAiChat,
                 "deepseek" => ProviderKind::DeepSeek,
-                _ => ProviderKind::OpenAiChat,
+                "venice" => ProviderKind::Venice,
+                "doubleword" => ProviderKind::Doubleword,
+                _ => return None,
             };
             return describe(
                 kind,

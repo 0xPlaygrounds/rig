@@ -1339,8 +1339,8 @@ fn despawning_a_held_intent_is_a_cancellation_not_a_release() {
 #[test]
 fn same_pass_parent_is_kept_in_fallback_adapter_and_layer_facts() {
     use rig_core::{
-        completion::CompletionModel as _, driver::Bind,
-        serve::adapters::CompletionAdapter, test_utils::RecordingHttpClient,
+        completion::CompletionModel as _, driver::Bind, serve::adapters::CompletionAdapter,
+        test_utils::RecordingHttpClient,
     };
     let mut app = app();
     let log = witnessed(&mut app);

@@ -13,7 +13,7 @@
 
 use super::{
     AcceptedWidths, Auth, AuthAlternative, BodyRewrite, Dialect, DimensionsField, EmbeddingQuirks,
-    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, Routing, SpeechBody,
+    ImageBody, ModelWidth, OutputCap, Quirks, RerankQuirks, Routing, SpeechBody, TranscriptionBody,
 };
 
 /// Azure reads its API version from the environment because every Azure
@@ -404,6 +404,9 @@ pub const OPENROUTER: Dialect = Dialect {
         // Its message conversion refused a provider file id outright.
         accepts_file_ids: false,
         rewrite: BodyRewrite::OpenRouter,
+        // Its speech-to-text route takes the audio base64 in a JSON body,
+        // not a multipart upload.
+        transcription_body: TranscriptionBody::InputAudioJson,
         embedding: EmbeddingQuirks {
             requires_usage: false,
             ..EmbeddingQuirks::openai()
@@ -423,6 +426,10 @@ pub const VENICE: Dialect = Dialect {
     quirks: Quirks {
         output_cap: OutputCap::Legacy,
         image_generation_path: "/image/generate",
+        // Its own endpoint, so its own body and its own reply: `width`/
+        // `height` rather than OpenAI's `size`, and `images` holding the
+        // base64 payloads themselves.
+        image_body: ImageBody::Venice,
         ..Quirks::openai()
     },
 };

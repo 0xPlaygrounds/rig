@@ -21,6 +21,7 @@ fn params(
     content: Vec<message::ToolResultContent>,
 ) -> OpenAIRequestParams {
     OpenAIRequestParams {
+        reasoning_details: false,
         model: "test-model".to_string(),
         request: crate::completion::CompletionRequest {
             model: None,

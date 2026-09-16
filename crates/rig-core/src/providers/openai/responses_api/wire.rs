@@ -478,6 +478,10 @@ impl Wire for Responses {
         Some(&self.model)
     }
 
+    fn route(&self) -> Option<&str> {
+        Some(self.provider.dialect.quirks.path)
+    }
+
     fn encode(
         &self,
         request: completion::CompletionRequest,

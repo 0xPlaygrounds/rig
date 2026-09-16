@@ -3,9 +3,14 @@
 //! Every OpenAI-shaped provider in this crate speaks the same three
 //! endpoints with the same bytes; what differs is a base URL, an env var, a
 //! path, a handful of flags, and — for a few of them — one rewrite of the
-//! serialized body. So there is one [`Chat`] wire and one [`ChatDecoder`],
-//! and a provider is a [`Dialect`] **const value** ([`OPENAI`], [`GROQ`],
-//! [`DEEPSEEK`], …) rather than a type implementing a trait.
+//! serialized body. So there is one
+//! [`Chat`](crate::providers::openai::wire::Chat) wire and one
+//! [`ChatDecoder`](crate::providers::openai::wire::ChatDecoder), and a
+//! provider is a [`Dialect`](crate::providers::openai::wire::Dialect)
+//! **const value** ([`OPENAI`](crate::providers::openai::wire::OPENAI),
+//! [`GROQ`](crate::providers::openai::wire::GROQ),
+//! [`DEEPSEEK`](crate::providers::openai::wire::DEEPSEEK), …) rather than a
+//! type implementing a trait.
 //!
 //! ```
 //! use rig_core::providers::openai;
@@ -185,6 +190,12 @@ pub enum ImageBody {
     /// `model_name` and the size is two fields, not `"{w}x{h}"` — answered
     /// with `images[].image`.
     Hyperbolic,
+    /// Venice: `{model, prompt, width, height}` on its own
+    /// `/image/generate` path — the size is two fields, as Hyperbolic's is,
+    /// but the model keeps OpenAI's `model` key — answered with
+    /// `{id, images: ["<base64>"], request, timing}`, where `images` holds
+    /// the base64 payloads themselves rather than objects keyed `image`.
+    Venice,
     /// Hugging Face's router: `{inputs, parameters: {width, height}}`, and
     /// the model is the *path* ([`Quirks::model_is_modality_path`]) so the
     /// body names none — answered with the image bytes themselves and no
@@ -205,6 +216,20 @@ pub enum SpeechBody {
     /// It addresses this endpoint by *language*, so the identifier a caller
     /// passes as the model is the language tag (`"EN"`).
     Hyperbolic,
+}
+
+/// Which body a transcription endpoint takes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TranscriptionBody {
+    /// OpenAI: a `multipart/form-data` upload with the audio as a file part
+    /// beside `model`, `language`, `prompt` and `temperature`.
+    Multipart,
+    /// OpenRouter: a JSON body whose audio rides base64-encoded under
+    /// `input_audio`, with its container format beside it
+    /// (`{"input_audio": {"data": "…", "format": "mp3"}, "model": …}`).
+    /// The gateway's speech-to-text route serves only this shape, and has no
+    /// top-level `prompt` field at all.
+    InputAudioJson,
 }
 
 /// How a dialect addresses a model.
@@ -315,8 +340,9 @@ pub struct ModelWidth {
 /// The rewrite a dialect applies to the serialized chat body.
 ///
 /// This is the escape hatch the contract allows: a quirk no flag can express
-/// is one arm of a `match dialect.quirks.rewrite` inside [`Chat::encode`],
-/// in one file, instead of a `finalize_request_body` override per provider.
+/// is one arm of a `match dialect.quirks.rewrite` inside [`Chat`]'s
+/// [`encode`](crate::wire::Wire::encode), in one file, instead of a
+/// `finalize_request_body` override per provider.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BodyRewrite {
     /// Send the OpenAI-compatible body unchanged.
@@ -534,6 +560,8 @@ pub struct Quirks {
     pub model_is_modality_path: bool,
     /// Which body the image endpoint takes.
     pub image_body: ImageBody,
+    /// Which body the transcription endpoint takes.
+    pub transcription_body: TranscriptionBody,
     /// Which body the speech endpoint takes.
     pub speech_body: SpeechBody,
     /// What the embeddings endpoint accepts.
@@ -575,6 +603,7 @@ impl Quirks {
             model_is_modality_path: false,
             image_body: ImageBody::OpenAi,
             speech_body: SpeechBody::OpenAi,
+            transcription_body: TranscriptionBody::Multipart,
         }
     }
 }

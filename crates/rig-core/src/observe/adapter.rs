@@ -291,7 +291,10 @@ impl AdapterContext {
     /// Begin one send of this operation: the attempt guard that carries its
     /// facts, with the request's credential values captured for scrubbing.
     ///
-    /// `route` is the request path, excluding query data.
+    /// `route` is the provider-declared route template
+    /// ([`Wire::route`](crate::wire::Wire::route)), never a resolved URI: no
+    /// base-URL prefix and no query data, which is where a provider may carry
+    /// its credential (Gemini puts its API key there).
     pub(crate) fn attempt_for<B>(
         &self,
         request: &http::Request<B>,
@@ -328,8 +331,11 @@ impl AdapterContext {
         ));
     }
 
-    /// Begin an actual send with the request's path, excluding query data
-    /// (which is where a provider may carry its credential).
+    /// Begin an actual send, under the provider-declared route template
+    /// rather than the resolved URL. The template excludes the base URL's own
+    /// path — so grouping attempts by route does not fragment when a caller
+    /// repoints the endpoint — and excludes query data, which is where a
+    /// provider may carry its credential (Gemini puts its API key there).
     /// Exhaustion is observed and disables further sends' correlation without
     /// changing the provider operation or reusing an attempt identity.
     pub(crate) fn begin(&self, method: &http::Method, route: &str) -> Option<AdapterAttempt> {

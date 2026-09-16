@@ -8,9 +8,9 @@ use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 /// operation's failures funnel the same way: a transport failure, a
 /// non-success reply, a 2xx error envelope, an undecodable body.
 ///
-/// Implemented by every operation error enum in the crate through
-/// [`impl_wire_error!`]; the enums are structurally identical by
-/// construction ([`provider_error_enum!`](crate::provider_response::provider_error_enum)).
+/// Implemented by every operation error enum in the crate through the
+/// crate-internal `impl_wire_error!` macro; the enums are structurally
+/// identical by construction, because `provider_error_enum!` declares them.
 pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized + 'static {
     /// Route a transport error: a non-success reply the transport reported
     /// as an error is the provider's reply; a response-less failure is not.

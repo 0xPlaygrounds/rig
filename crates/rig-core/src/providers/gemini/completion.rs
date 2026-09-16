@@ -59,7 +59,9 @@ pub const PROVIDER_NAME: &str = "gcp.gemini";
 ///
 /// The two are one wire because they are one endpoint family answering with
 /// one document shape — only the delivery differs, which is what [`Mode`]
-/// names. The decoder is [`GenerateContentDecoder`], the same in both modes.
+/// names. The decoder is
+/// [`GenerateContentDecoder`](super::streaming::GenerateContentDecoder), the
+/// same in both modes.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct GenerateContent {
     /// The key and the API root.

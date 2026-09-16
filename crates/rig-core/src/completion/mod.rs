@@ -12,14 +12,13 @@
 //!
 //! ```ignore
 //! use rig_core::{
-//!     client::CompletionClient,
 //!     completion::CompletionModel,
-//!     providers::openai,
+//!     providers::openai::{self, wire::OpenAI},
 //! };
+//! use rig_reqwest::prelude::*;
 //!
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-//! let client = openai::Client::from_env()?;
-//! let model = client.completion_model(openai::GPT_5_2);
+//! let model = OpenAI::from_env()?.bound()?.completion(openai::GPT_5_2);
 //! let request = model.completion_request("What is Rig?").build();
 //! let response = model.completion(request).await?;
 //! println!("{:?}", response.choice);

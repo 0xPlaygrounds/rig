@@ -79,13 +79,15 @@ pub enum WebSearchMode {
 /// there is no separate request abstraction to keep in sync:
 ///
 /// ```ignore
-/// use rig_core::client::CompletionClient;
 /// use rig_core::completion::CompletionModel;
+/// use rig_core::providers::openai::wire::{OpenAI, VENICE};
 /// use rig_core::providers::venice::{self, VeniceParameters, WebSearchMode};
+/// use rig_reqwest::prelude::*;
 ///
 /// # async fn run() -> Result<(), Box<dyn std::error::Error>> {
-/// let client = venice::Client::from_env()?;
-/// let model = client.completion_model(venice::QWEN3_5_9B);
+/// let model = OpenAI::from_env_with(&VENICE)?
+///     .bound()?
+///     .completion(venice::QWEN3_5_9B);
 /// let request = model
 ///     .completion_request("Summarize today's Rust news.")
 ///     .additional_params(

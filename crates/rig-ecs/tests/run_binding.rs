@@ -36,7 +36,10 @@ use rig_core::{
     providers::{
         anthropic::wire::Anthropic,
         gemini::Gemini,
-        openai::{responses_api::wire::ResponsesApi, wire::DEEPSEEK, wire::OpenAI},
+        openai::{
+            responses_api::wire::ResponsesApi,
+            wire::{DEEPSEEK, DOUBLEWORD, OpenAI, VENICE},
+        },
     },
     serve::{ErasedHandler, adapters::CompletionAdapter},
     test_utils::RecordingHttpClient,
@@ -133,6 +136,8 @@ fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
         ProviderKind::OpenAiResponses,
         ProviderKind::Gemini,
         ProviderKind::DeepSeek,
+        ProviderKind::Venice,
+        ProviderKind::Doubleword,
     ] {
         let mut app = bus_support::app();
         let (materializer, transport, _) = materializer(ANTHROPIC_BODY);
@@ -191,6 +196,20 @@ fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
                 ProviderKind::DeepSeek => ErasedHandler::new(CompletionAdapter::new(
                     "default",
                     OpenAI::with_key(&DEEPSEEK, SENTINEL)
+                        .with_base_url(BASE)
+                        .bind(http)
+                        .completion("model-x"),
+                )),
+                ProviderKind::Venice => ErasedHandler::new(CompletionAdapter::new(
+                    "default",
+                    OpenAI::with_key(&VENICE, SENTINEL)
+                        .with_base_url(BASE)
+                        .bind(http)
+                        .completion("model-x"),
+                )),
+                ProviderKind::Doubleword => ErasedHandler::new(CompletionAdapter::new(
+                    "default",
+                    OpenAI::with_key(&DOUBLEWORD, SENTINEL)
                         .with_base_url(BASE)
                         .bind(http)
                         .completion("model-x"),
