@@ -6,6 +6,7 @@ use super::completion::{
     Usage, anthropic_usage_totals, map_finish_reason,
 };
 use crate::completion::{CompletionError, CompletionRequest};
+use crate::operation::Completion;
 use crate::http_client::sse::GenericEventSource;
 use crate::http_client::{self, HttpClientExt};
 use crate::message::ReasoningContent;
@@ -16,7 +17,7 @@ use crate::providers::internal::sse_transport::{
 };
 use crate::providers::internal::wire::{self, WireEvent};
 use crate::streaming::{self, BlockId, MintKind, StreamFinal, ToolCallEnd, UnparseableToolInput};
-use crate::telemetry::{CompletionOperation, SpanCombinator};
+use crate::telemetry::CompletionOperation;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use std::collections::HashMap;
 
@@ -65,6 +66,11 @@ fn streaming_body(request: &AnthropicCompletionRequest) -> Result<Value, Complet
 /// *nested* delta type inside `content_block_delta`, which decodes to
 /// [`ContentDelta::Unknown`] (a warned no-op) via its hand-written dispatch.
 const KNOWN_EVENT_TYPES: &[&str] = &[
+    // The unary reply's own shape: a whole `message` object, which is what
+    // `POST /v1/messages` answers without `stream`. Naming it here is the
+    // ONE place the unary shape appears — it is a frame like any other, so
+    // the unary and streamed paths cannot drift.
+    "message",
     "message_start",
     "content_block_start",
     "content_block_delta",
@@ -84,6 +90,13 @@ pub enum StreamingEvent {
         /// rather than a corrupt frame.
         #[serde(default)]
         message: Option<MessageStart>,
+    },
+    /// The whole message: what the endpoint answers when not streaming.
+    /// Its fields are exactly `message_start`'s, plus the stop reason and
+    /// usage a stream delivers on `message_delta`.
+    Message {
+        #[serde(flatten)]
+        message: MessageStart,
     },
     ContentBlockStart {
         index: usize,
@@ -320,7 +333,7 @@ impl ThinkingState {
 /// [`run_wire_stream`](crate::providers::internal::adapter::run_wire_stream),
 /// not here. Every interpretation — content blocks and the message-level
 /// frames alike — goes through [`WireAdapter::interpret`]: one path.
-struct AnthropicAdapter {
+pub struct MessagesDecoder {
     /// Stable descriptor name stamped on the terminal record. An *input*
     /// rather than a constant: the Anthropic Messages stream format is
     /// shared by every Anthropic-compatible provider, so baking in
@@ -344,9 +357,9 @@ struct AnthropicAdapter {
     failed: bool,
 }
 
-impl AnthropicAdapter {
-    /// A fresh adapter whose terminal record names `provider`.
-    fn new(provider: &'static str) -> Self {
+impl MessagesDecoder {
+    /// A fresh decoder whose terminal record names `provider`.
+    pub fn new(provider: &'static str) -> Self {
         Self {
             provider,
             current_tool_call: None,
@@ -574,16 +587,84 @@ impl AnthropicAdapter {
             // Interpreted by `interpret` itself (`message_start` /
             // `message_delta` / the `error` envelope) or Known no-ops
             // (`message_stop`, `ping`).
-            StreamingEvent::MessageStart { .. }
+            StreamingEvent::Message { .. }
+            | StreamingEvent::MessageStart { .. }
             | StreamingEvent::MessageDelta { .. }
             | StreamingEvent::MessageStop
             | StreamingEvent::Ping
             | StreamingEvent::Error { .. } => {}
         }
     }
+
+    /// Interpret the unary reply by *synthesizing the stream* it would have
+    /// been: the same `content_block_start` / `_delta` / `_stop` frames the
+    /// streaming wire sends for each content part, then the terminal the
+    /// `message_delta` carries.
+    ///
+    /// This is why there is no second `Content -> AssistantContent` mapping
+    /// and no `normalize`: the block code that assembles a streamed turn is
+    /// the only code that assembles a buffered one, so the two cannot
+    /// disagree about text, citations, tool arguments, thinking signatures
+    /// or server tool use.
+    fn interpret_whole_message(&mut self, message: MessageStart, out: &mut AdapterOutput) {
+        self.input_tokens = message.usage.input_tokens;
+        self.cache_creation.clone_from(&message.usage.cache_creation);
+        self.message_id = Some(message.id);
+        self.response_model = Some(message.model);
+
+        for (index, content) in message.content.into_iter().enumerate() {
+            // The payload a stream delivers by delta, for the part kinds
+            // that have one. Everything else is carried by the block's
+            // start frame alone.
+            let delta = match &content {
+                Content::Text { text, .. } if !text.is_empty() => Some(ContentDelta::TextDelta {
+                    text: text.clone(),
+                }),
+                Content::ToolUse { input, .. } => Some(ContentDelta::InputJsonDelta {
+                    partial_json: input.to_string(),
+                }),
+                _ => None,
+            };
+            self.interpret_content(
+                StreamingEvent::ContentBlockStart {
+                    index,
+                    content_block: content,
+                },
+                out,
+            );
+            if let Some(delta) = delta {
+                self.interpret_content(StreamingEvent::ContentBlockDelta { index, delta }, out);
+            }
+            self.interpret_content(StreamingEvent::ContentBlockStop { index }, out);
+        }
+
+        // A buffered reply is the whole turn, so its terminal is
+        // unconditional — unlike a `message_delta`, which is only terminal
+        // when it carries a stop reason.
+        let usage = PartialUsage {
+            output_tokens: message.usage.output_tokens as usize,
+            input_tokens: usize::try_from(message.usage.input_tokens).ok(),
+            cache_creation_input_tokens: message.usage.cache_creation_input_tokens,
+            cache_creation: message.usage.cache_creation,
+            cache_read_input_tokens: message.usage.cache_read_input_tokens,
+            output_tokens_details: message.usage.output_tokens_details,
+        };
+        let native = StreamingCompletionResponse {
+            usage,
+            stop_reason: message.stop_reason,
+            stop_sequence: message.stop_sequence,
+            message_id: self.message_id.clone(),
+            model: self.response_model.clone(),
+            provider_request_id: None,
+        };
+        match terminal_record(self.provider, &native) {
+            Ok(record) => out.final_record(record),
+            Err(error) => out.error(error),
+        }
+    }
 }
 
-impl WireAdapter for AnthropicAdapter {
+impl WireAdapter for MessagesDecoder {
     type Frame = WireFrame;
     type Event = StreamingEvent;
 
@@ -599,6 +680,7 @@ impl WireAdapter for AnthropicAdapter {
         }
 
         match event {
+            StreamingEvent::Message { message } => self.interpret_whole_message(message, out),
             StreamingEvent::MessageStart { message } => {
                 // Bedrock-compat quirk: a `message_start` without a message
                 // body is a no-op, not an error.
@@ -608,10 +690,6 @@ impl WireAdapter for AnthropicAdapter {
                     .clone_from(&message.usage.cache_creation);
                 self.message_id = Some(message.id.clone());
                 self.response_model = Some(message.model.clone());
-
-                let span = tracing::Span::current();
-                span.record("gen_ai.response.id", &message.id);
-                span.record("gen_ai.response.model", &message.model);
             }
             StreamingEvent::MessageDelta { delta, usage } => {
                 // Only a `message_delta` carrying a stop reason is the
@@ -677,8 +755,6 @@ impl WireAdapter for AnthropicAdapter {
                     output_tokens_details: usage.output_tokens_details,
                 };
 
-                let span = tracing::Span::current();
-                span.record_token_usage(&crate::completion::Usage::from(&usage));
                 let native = StreamingCompletionResponse {
                     usage,
                     stop_reason: Some(reason),
@@ -726,6 +802,33 @@ impl WireAdapter for AnthropicAdapter {
         // stop reading — a later modeled frame (e.g. a stray `message_delta`)
         // would otherwise dress the aborted turn up as a completed one.
         self.failed
+    }
+}
+
+/// The Messages wire decodes its unary and streamed replies with the same
+/// state machine: [`WireAdapter`] is the streamed half's historical name and
+/// this is the operation-generic contract the driver folds through.
+impl crate::wire::Decoder<Completion> for MessagesDecoder {
+    type Event = StreamingEvent;
+
+    fn classify(&self, frame: WireFrame) -> WireEvent<StreamingEvent> {
+        WireAdapter::classify(self, frame)
+    }
+
+    fn interpret(&mut self, event: StreamingEvent, out: &mut AdapterOutput) {
+        WireAdapter::interpret(self, event, out);
+    }
+
+    fn finish(&mut self, out: &mut AdapterOutput) {
+        WireAdapter::finish(self, out);
+    }
+
+    fn project(&self, payload: &[u8], sink: &mut dyn crate::wire::ObservationSink) {
+        super::observation::project(payload, sink);
+    }
+
+    fn is_finished(&self) -> bool {
+        WireAdapter::is_finished(self)
     }
 }
 
@@ -846,7 +949,7 @@ where
                 log_transport_errors: false,
             },
             skip_blank_frames,
-            AnthropicAdapter::new(Ext::PROVIDER_NAME),
+            MessagesDecoder::new(Ext::PROVIDER_NAME),
             span,
         );
         let stream = stamp_terminal_request_id(stream, request_id_slot, Ext::REQUEST_ID_HEADER);

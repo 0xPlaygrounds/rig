@@ -32,6 +32,14 @@ mod bound;
 mod consumers;
 
 pub use bound::Bound;
+pub use consumers::{
+    HasCompletion, HasEmbedding, HasImageEmbedding, HasModelListing, HasRerank, HasTranscription,
+    HasVerify, Socket,
+};
+#[cfg(feature = "audio")]
+pub use consumers::HasAudioGeneration;
+#[cfg(feature = "image")]
+pub use consumers::HasImageGeneration;
 
 /// The frame-triage policy table, in one place for every operation:
 ///
@@ -216,22 +224,23 @@ where
 {
     let span =
         <W::Op as Operation>::span(wire.name(), wire.model(), wire.telemetry(false), &request);
+    let mut fold = <W::Op as Operation>::fold(&request);
     let Encoded {
-        request: mut http_request,
+        requests,
         framing,
         request_id_header,
         relaxed_content_type: _,
     } = wire.encode(request, Mode::Unary)?;
-    accept_header(&mut http_request, framing);
 
-    let mut fold = <W::Op as Operation>::Fold::default();
     let mut reply = Reply {
         provider: wire.name().to_owned(),
         raw: serde_json::Value::Null,
         provider_request_id: None,
     };
 
-    loop {
+    let mut pending: std::collections::VecDeque<http::Request<Body>> = requests.into();
+    while let Some(mut http_request) = pending.pop_front() {
+        accept_header(&mut http_request, framing);
         let observation = context.as_ref().map(|_| AdapterSlot::default());
         let attempt = context
             .as_ref()
@@ -302,12 +311,8 @@ where
             &reply.raw,
         );
 
-        match page.continuation() {
-            Some(next) => {
-                http_request = next;
-                accept_header(&mut http_request, framing);
-            }
-            None => break,
+        if let Some(next) = page.continuation() {
+            pending.push_front(next);
         }
     }
 
@@ -333,11 +338,20 @@ where
     let span =
         <W::Op as Operation>::span(wire.name(), wire.model(), wire.telemetry(true), &request);
     let Encoded {
-        request: mut http_request,
+        requests,
         framing,
         request_id_header,
         relaxed_content_type,
     } = wire.encode(request, Mode::Streaming)?;
+    // No streamed operation sends a batch: a batch exists for providers
+    // that take one item per request, and those are all unary.
+    let [http_request] = <[_; 1]>::try_from(requests).map_err(|requests| {
+        <Error<W> as WireError>::decode(format!(
+            "a streamed reply takes exactly one request, not {}",
+            requests.len()
+        ))
+    })?;
+    let mut http_request = http_request;
     accept_header(&mut http_request, framing);
     let http_request = byte_request(http_request)?;
 
@@ -350,6 +364,7 @@ where
         observation.install(attempt);
     }
     let mut driver = WireDriver::<W::Op, _>::observed(wire.decoder(), observation.clone());
+    let recording = span.clone();
 
     let frames = async_stream::stream! {
         let response = match http.send_streaming(http_request).await {
@@ -404,7 +419,7 @@ where
                     }
                     driver.fail(<Error<W> as WireError>::transport(error));
                     for item in driver.drain() {
-                        yield stamped::<W>(item, &request_id);
+                        yield stamped::<W>(item, &request_id, &recording);
                     }
                     return;
                 }
@@ -418,7 +433,7 @@ where
                     driver.push(frame);
                 }
                 for item in driver.drain() {
-                    yield stamped::<W>(item, &request_id);
+                    yield stamped::<W>(item, &request_id, &recording);
                 }
                 if driver.done() {
                     return;
@@ -431,7 +446,7 @@ where
                 driver.push(frame);
             }
             for item in driver.drain() {
-                yield stamped::<W>(item, &request_id);
+                yield stamped::<W>(item, &request_id, &recording);
             }
             if driver.done() {
                 return;
@@ -439,7 +454,7 @@ where
         }
         driver.finish();
         for item in driver.drain() {
-            yield stamped::<W>(item, &request_id);
+            yield stamped::<W>(item, &request_id, &recording);
         }
     };
     Ok(tracing_futures::Instrument::instrument(frames, span))
@@ -451,10 +466,12 @@ where
 fn stamped<W: Wire>(
     item: Result<Event<W>, Error<W>>,
     request_id: &Option<String>,
+    span: &tracing::Span,
 ) -> Result<Event<W>, Error<W>> {
     match item {
         Ok(mut event) => {
             <W::Op as Operation>::stamp_request_id(&mut event, request_id);
+            <W::Op as Operation>::record_event(span, &event);
             Ok(event)
         }
         Err(error) => Err(error.with_provider_request_id(request_id.clone())),

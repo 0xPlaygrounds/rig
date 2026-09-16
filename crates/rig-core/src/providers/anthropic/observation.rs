@@ -7,6 +7,7 @@ use crate::observe::{
     AdapterAttempt, AdapterContext, AdapterErrorEnvelope, AdapterEvent, AdapterUsage,
     AdapterVerdict, PayloadObserver,
 };
+use crate::wire::ObservationSink;
 use serde::Deserialize;
 
 /// Attach `context` to a Messages request, with the Messages projector.
@@ -60,6 +61,11 @@ struct Payload {
 }
 
 fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
+    project(bytes, attempt);
+}
+
+/// Messages metadata, projected off one raw payload.
+pub(super) fn project(bytes: &[u8], attempt: &mut dyn ObservationSink) {
     let Ok(payload) = serde_json::from_slice::<Payload>(bytes) else {
         return;
     };
@@ -90,19 +96,19 @@ fn payload(bytes: &[u8], attempt: &mut AdapterAttempt) {
     }
     let stop_reason = stop_reason.or(payload.delta.and_then(|delta| delta.stop_reason));
     let verdict = AdapterVerdict {
-        finish_reason: stop_reason.map(|v| attempt.text(&v)),
+        finish_reason: stop_reason.map(|v| attempt.scrub(&v)),
         block_reason: None,
         detail: None,
-        model: model.map(|v| attempt.text(&v)),
+        model: model.map(|v| attempt.scrub(&v)),
     };
-    let response_id = id.map(|v| attempt.text(&v));
+    let response_id = id.map(|v| attempt.scrub(&v));
     attempt.provider(verdict, response_id);
     if let Some(error) = payload.error {
         attempt.emit(AdapterEvent::ErrorEnvelope {
             error: AdapterErrorEnvelope {
                 code: None,
-                status: error.kind.map(|v| attempt.text(&v)),
-                message: error.message.map(|v| attempt.text(&v)),
+                status: error.kind.map(|v| attempt.scrub(&v)),
+                message: error.message.map(|v| attempt.scrub(&v)),
             },
         });
     }

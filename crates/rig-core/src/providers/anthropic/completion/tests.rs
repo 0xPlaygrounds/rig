@@ -365,19 +365,37 @@ fn rig_tools_are_non_strict_by_default() {
     );
 }
 
+/// Anthropic-compatible gateways do not necessarily implement Anthropic's
+/// constrained tool schemas, so asking for strict tools on one leaves the
+/// tool unchanged. The policy is the dialect's data, not a trait hook, so
+/// this is asserted through the wire a gateway builds.
 #[test]
 fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
-    let mut additional_params = serde_json::Value::Null;
-    let tools = build_tool_definitions::<crate::providers::minimax::MiniMaxAnthropic>(
-        vec![generic_tool("lookup")],
-        &mut additional_params,
-        true,
-    )
-    .unwrap();
+    use crate::wire::{Mode, Wire};
 
-    assert!(tools[0].get("strict").is_none());
+    let request = completion_request_with_tools(vec![generic_tool("lookup")], None);
+    let encoded = crate::providers::anthropic::wire::Anthropic::with_dialect(
+        "k",
+        crate::providers::anthropic::wire::ZAI,
+    )
+    .messages("some-model")
+    .with_strict_tools()
+    .encode(request, Mode::Unary)
+    .expect("the request encodes");
+    let crate::wire::Body::Bytes(body) = encoded
+        .requests
+        .first()
+        .expect("one request")
+        .body()
+    else {
+        panic!("the Messages endpoint takes JSON")
+    };
+    let value: serde_json::Value =
+        serde_json::from_slice(body).expect("the body is the JSON the wire built");
+
+    assert!(value["tools"][0].get("strict").is_none());
     assert!(
-        tools[0]["input_schema"]
+        value["tools"][0]["input_schema"]
             .get("additionalProperties")
             .is_none()
     );
@@ -436,9 +454,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             }]
         })),
     );
-    let request = AnthropicCompletionRequest::try_from_params::<
-        crate::providers::anthropic::client::Anthropic,
-    >(
+    let request = AnthropicCompletionRequest::try_from_params(
         AnthropicRequestParams {
             model: CLAUDE_SONNET_4_6,
             request,
@@ -447,7 +463,7 @@ fn strict_tools_opt_in_marks_and_sanitizes_rig_tools_only() {
             automatic_caching_ttl: None,
             static_prefix_cache_ttl: None,
         },
-        true,
+        Some(crate::providers::anthropic::wire::strict_tool_transform as fn(&mut crate::providers::anthropic::completion::ToolDefinition)),
     )
     .unwrap();
 

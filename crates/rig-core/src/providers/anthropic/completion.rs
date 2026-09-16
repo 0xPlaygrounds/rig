@@ -1463,7 +1463,7 @@ where
             completion_request.max_tokens = Some(tokens);
         }
 
-        let request = AnthropicCompletionRequest::try_from_params::<Ext>(
+        let request = AnthropicCompletionRequest::try_from_params(
             AnthropicRequestParams {
                 model: &request_model,
                 request: completion_request,
@@ -1472,7 +1472,8 @@ where
                 automatic_caching_ttl: self.automatic_caching_ttl.clone(),
                 static_prefix_cache_ttl: self.static_prefix_cache_ttl.clone(),
             },
-            self.strict_tools,
+            self.strict_tools
+                .then_some(Ext::enable_strict_tool_use as fn(&mut ToolDefinition)),
         )?;
 
         Ok((span, request))
@@ -1657,7 +1658,7 @@ where
 /// Anthropic requires a `max_tokens` parameter to be set, which is dependent on the model. If not
 /// set or if set too high, the request will fail. The following values are based on Anthropic's
 /// published synchronous Messages API output limits for current models.
-fn default_max_tokens_for_model(model: &str) -> Option<u64> {
+pub(super) fn default_max_tokens_for_model(model: &str) -> Option<u64> {
     if model.starts_with("claude-fable-5")
         || model.starts_with("claude-opus-5")
         || model.starts_with("claude-sonnet-5")
@@ -1755,7 +1756,7 @@ fn sanitize_schema(schema: &mut serde_json::Value) {
 /// Strict tools support optional parameters, so declared `required` lists are
 /// preserved. Unsupported validation keywords are moved into descriptions as
 /// model guidance instead of reaching the constrained-decoding compiler.
-fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
+pub(super) fn sanitize_strict_tool_schema(schema: &mut serde_json::Value) {
     let mut original = std::mem::take(schema);
     inline_local_root_reference(&mut original);
     flatten_root_all_of(&mut original);
@@ -2666,13 +2667,15 @@ pub struct AnthropicRequestParams<'a> {
 }
 
 impl AnthropicCompletionRequest {
-    pub(super) fn try_from_params<Ext>(
+    /// The typed request, with `strict` naming the provider's strict-tool
+    /// transform when it implements one. A function pointer rather than a
+    /// type parameter: whether a provider constrains tool schemas is data
+    /// (`Dialect::strict_tool_schemas`), and the transform itself is one
+    /// function either way.
+    pub(super) fn try_from_params(
         params: AnthropicRequestParams<'_>,
-        strict_tools: bool,
-    ) -> Result<Self, CompletionError>
-    where
-        Ext: AnthropicCompatibleProvider,
-    {
+        strict: Option<fn(&mut ToolDefinition)>,
+    ) -> Result<Self, CompletionError> {
         let AnthropicRequestParams {
             model,
             request: mut req,
@@ -2741,7 +2744,7 @@ impl AnthropicCompletionRequest {
             &mut additional_params_payload,
         )?;
         let mut tools =
-            build_tool_definitions::<Ext>(req.tools, &mut additional_params_payload, strict_tools)?;
+            build_tool_definitions(req.tools, &mut additional_params_payload, strict)?;
 
         // System prompt in array format for cache_control support
         let mut system = history_system;
@@ -2791,7 +2794,7 @@ impl TryFrom<AnthropicRequestParams<'_>> for AnthropicCompletionRequest {
     type Error = CompletionError;
 
     fn try_from(params: AnthropicRequestParams<'_>) -> Result<Self, Self::Error> {
-        Self::try_from_params::<super::client::Anthropic>(params, false)
+        Self::try_from_params(params, None)
     }
 }
 
@@ -2811,14 +2814,11 @@ pub(super) fn extract_tools_from_additional_params(
     Ok(Vec::new())
 }
 
-pub(super) fn build_tool_definitions<Ext>(
+pub(super) fn build_tool_definitions(
     tools: Vec<completion::ToolDefinition>,
     additional_params_payload: &mut serde_json::Value,
-    strict_tools: bool,
-) -> Result<Vec<serde_json::Value>, CompletionError>
-where
-    Ext: AnthropicCompatibleProvider,
-{
+    strict: Option<fn(&mut ToolDefinition)>,
+) -> Result<Vec<serde_json::Value>, CompletionError> {
     let mut additional_tools = extract_tools_from_additional_params(additional_params_payload)?;
 
     let mut tools = tools
@@ -2832,8 +2832,8 @@ where
                 strict: false,
                 cache_control: None,
             };
-            if strict_tools {
-                Ext::enable_strict_tool_use(&mut tool);
+            if let Some(strict) = strict {
+                strict(&mut tool);
             }
 
             tool

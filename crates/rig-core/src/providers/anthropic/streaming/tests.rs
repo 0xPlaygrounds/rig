@@ -10,13 +10,13 @@ use futures::StreamExt;
 
 /// A fresh adapter labelled the way [`GenericCompletionModel::stream`]
 /// labels Anthropic proper.
-fn adapter() -> AnthropicAdapter {
-    AnthropicAdapter::new("anthropic")
+fn adapter() -> MessagesDecoder {
+    MessagesDecoder::new("anthropic")
 }
 
 /// Interpret one event, returning exactly what the adapter emitted (an
 /// `Err` item fails the test — use [`interpret_items`] to inspect one).
-fn interpret(adapter: &mut AnthropicAdapter, event: StreamingEvent) -> Vec<StreamEvent> {
+fn interpret(adapter: &mut MessagesDecoder, event: StreamingEvent) -> Vec<StreamEvent> {
     interpret_items(adapter, event)
         .into_iter()
         .map(|item| item.expect("not an error"))
@@ -25,7 +25,7 @@ fn interpret(adapter: &mut AnthropicAdapter, event: StreamingEvent) -> Vec<Strea
 
 /// Interpret one event, returning the adapter's raw output items.
 fn interpret_items(
-    adapter: &mut AnthropicAdapter,
+    adapter: &mut MessagesDecoder,
     event: StreamingEvent,
 ) -> Vec<Result<StreamEvent, CompletionError>> {
     let mut out = AdapterOutput::new();
@@ -37,7 +37,7 @@ fn interpret_items(
 /// buffer, so the text-block bookkeeping spans the whole sequence exactly
 /// as it does on the live driver.
 fn interpret_all(
-    adapter: &mut AnthropicAdapter,
+    adapter: &mut MessagesDecoder,
     events: impl IntoIterator<Item = StreamingEvent>,
 ) -> Vec<Result<StreamEvent, CompletionError>> {
     let mut out = AdapterOutput::new();
@@ -83,9 +83,7 @@ fn built_streaming_body(
     request: CompletionRequest,
     strict_tools: bool,
 ) -> Result<Value, CompletionError> {
-    let typed = AnthropicCompletionRequest::try_from_params::<
-        crate::providers::anthropic::client::Anthropic,
-    >(
+    let typed = AnthropicCompletionRequest::try_from_params(
         AnthropicRequestParams {
             model,
             request,
@@ -94,7 +92,7 @@ fn built_streaming_body(
             automatic_caching_ttl: None,
             static_prefix_cache_ttl: None,
         },
-        strict_tools,
+        strict_tools.then_some(crate::providers::anthropic::wire::strict_tool_transform as fn(&mut crate::providers::anthropic::completion::ToolDefinition)),
     )?;
 
     streaming_body(&typed)
@@ -110,14 +108,14 @@ fn test_streaming_tool_build_marks_final_combined_tool() {
         }]
     });
 
-    let mut tools = build_tool_definitions::<crate::providers::anthropic::client::Anthropic>(
+    let mut tools = build_tool_definitions(
         vec![crate::completion::ToolDefinition {
             name: "rig_tool".to_string(),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
         }],
         &mut additional_params,
-        false,
+        None,
     )
     .unwrap();
     let mut system: Vec<SystemContent> = Vec::new();
@@ -349,14 +347,14 @@ fn test_streaming_prompt_cache_control_uses_raw_top_level_ttl() {
     });
     let top_level_cache_control =
         resolve_top_level_cache_control(false, None, &mut additional_params).unwrap();
-    let mut tools = build_tool_definitions::<crate::providers::anthropic::client::Anthropic>(
+    let mut tools = build_tool_definitions(
         vec![crate::completion::ToolDefinition {
             name: "rig_tool".to_string(),
             description: "Rig tool".to_string(),
             parameters: json!({"type": "object", "properties": {}}),
         }],
         &mut additional_params,
-        false,
+        None,
     )
     .unwrap();
     let mut system = vec![SystemContent::Text {

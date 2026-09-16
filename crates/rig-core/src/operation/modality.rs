@@ -8,8 +8,9 @@
 //! canonical telemetry name.
 
 use super::{One, Take};
+use crate::embeddings::{Embedding as Vector, EmbeddingError};
 use crate::telemetry::{ModalityOperation, ModalityResponseTelemetry, SpanCombinator};
-use crate::wire::{Operation, Reply};
+use crate::wire::{Fold, Operation, Reply};
 
 /// What a runtime accounts for on an embedding wire: the batch limit the
 /// provider accepts and the dimensionality it returns.
@@ -59,6 +60,8 @@ macro_rules! modality_operation {
             capabilities: $capabilities:ty,
             telemetry: $telemetry:ident,
             name: $name:literal,
+            fold: $fold:ty,
+            seed: $seed:expr,
         }
     ) => {
         $(#[$doc])*
@@ -72,13 +75,18 @@ macro_rules! modality_operation {
             type Error = $error;
             type Capabilities = $capabilities;
             type Output = One<Self>;
-            type Fold = Take<Self>;
+            type Fold = $fold;
             type Telemetry = ModalityOperation;
 
             const NAME: &'static str = $name;
 
             fn is_terminal(_event: &Self::Event) -> bool {
                 true
+            }
+
+            fn fold(request: &Self::Request) -> Self::Fold {
+                #[allow(clippy::redundant_closure_call)]
+                ($seed)(request)
             }
 
             fn telemetry(_streaming: bool) -> Self::Telemetry {
@@ -133,6 +141,8 @@ modality_operation!(
         capabilities: EmbeddingCapabilities,
         telemetry: Embeddings,
         name: "embedding",
+        fold: Embedded,
+        seed: |texts: &Vec<String>| Embedded::over(texts.clone()),
     }
 );
 
@@ -145,6 +155,10 @@ modality_operation!(
         capabilities: EmbeddingCapabilities,
         telemetry: Embeddings,
         name: "image_embedding",
+        fold: Embedded,
+        seed: |images: &Vec<Vec<u8>>| Embedded::over(
+            images.iter().map(|bytes| crate::embeddings::image_document(bytes)).collect(),
+        ),
     }
 );
 
@@ -157,6 +171,8 @@ modality_operation!(
         capabilities: usize,
         telemetry: Rerank,
         name: "rerank",
+        fold: Take<Self>,
+        seed: |_: &_| Take::default(),
     }
 );
 
@@ -169,6 +185,8 @@ modality_operation!(
         capabilities: (),
         telemetry: Transcription,
         name: "transcription",
+        fold: Take<Self>,
+        seed: |_: &_| Take::default(),
     }
 );
 
@@ -182,6 +200,8 @@ modality_operation!(
         capabilities: (),
         telemetry: ImageGeneration,
         name: "image_generation",
+        fold: Take<Self>,
+        seed: |_: &_| Take::default(),
     }
 );
 
@@ -195,5 +215,158 @@ modality_operation!(
         capabilities: (),
         telemetry: AudioGeneration,
         name: "audio_generation",
+        fold: Take<Self>,
+        seed: |_: &_| Take::default(),
     }
 );
+
+/// The fold of an embedding reply: the provider's vectors joined back onto
+/// the request's own input.
+///
+/// [`Embedding::document`](crate::embeddings::Embedding) is the input the
+/// vector belongs to, and it is *not* on the wire — Cohere echoes the texts,
+/// Ollama and Voyage AI do not — so the fold carries the request's inputs
+/// and zips them positionally, which is also the only place the
+/// batch-length invariant every provider used to restate is now checked.
+///
+/// Replies accumulate: a provider that takes one item per request (Cohere
+/// embeds one image per call) answers a batch with one reply each, in
+/// request order.
+#[derive(Default)]
+pub struct Embedded {
+    documents: Vec<String>,
+    vectors: Vec<Vec<f64>>,
+    /// The first reply's metadata; usage sums across replies.
+    metadata: Option<Metadata>,
+    usage: crate::completion::Usage,
+}
+
+/// What an embedding reply reports besides its vectors.
+struct Metadata {
+    provider: String,
+    model: Option<String>,
+    response_id: Option<String>,
+    provider_request_id: Option<String>,
+    raw: serde_json::Value,
+}
+
+impl Embedded {
+    /// A fold that will zip its vectors onto `documents`.
+    pub fn over(documents: Vec<String>) -> Self {
+        Self {
+            documents,
+            ..Self::default()
+        }
+    }
+
+    fn absorb_parts(
+        &mut self,
+        vectors: impl IntoIterator<Item = Vector>,
+        usage: crate::completion::Usage,
+        metadata: Metadata,
+    ) {
+        self.vectors
+            .extend(vectors.into_iter().map(|vector| vector.vec));
+        self.usage += usage;
+        self.metadata.get_or_insert(metadata);
+    }
+
+    /// The vectors, paired with the inputs they belong to.
+    fn zipped(self) -> Result<(Vec<Vector>, Metadata, crate::completion::Usage), EmbeddingError> {
+        if self.vectors.len() != self.documents.len() {
+            return Err(EmbeddingError::ResponseError(format!(
+                "provider returned {} embeddings for {} documents",
+                self.vectors.len(),
+                self.documents.len()
+            )));
+        }
+        let Some(metadata) = self.metadata else {
+            return Err(EmbeddingError::ResponseError(
+                "embedding reply carried no payload".to_owned(),
+            ));
+        };
+        let embeddings = self
+            .documents
+            .into_iter()
+            .zip(self.vectors)
+            .map(|(document, vec)| Vector { document, vec })
+            .collect();
+        Ok((embeddings, metadata, self.usage))
+    }
+}
+
+impl Fold<Embedding> for Embedded {
+    fn absorb(
+        &mut self,
+        reply: crate::embeddings::EmbeddingResponse,
+    ) -> Result<(), EmbeddingError> {
+        self.absorb_parts(
+            reply.embeddings,
+            reply.usage,
+            Metadata {
+                provider: reply.provider,
+                model: reply.model,
+                response_id: reply.response_id,
+                provider_request_id: reply.provider_request_id,
+                raw: reply.raw,
+            },
+        );
+        Ok(())
+    }
+
+    fn finish(
+        self,
+        reply: Reply,
+    ) -> Result<crate::embeddings::EmbeddingResponse, EmbeddingError> {
+        let (embeddings, metadata, usage) = self.zipped()?;
+        let mut response = crate::embeddings::EmbeddingResponse {
+            embeddings,
+            usage,
+            provider: metadata.provider,
+            model: metadata.model,
+            response_id: metadata.response_id,
+            provider_request_id: metadata.provider_request_id,
+            raw: metadata.raw,
+        };
+        Embedding::stamp_reply(&mut response, reply);
+        Ok(response)
+    }
+}
+
+impl Fold<ImageEmbedding> for Embedded {
+    fn absorb(
+        &mut self,
+        reply: crate::embeddings::ImageEmbeddingResponse,
+    ) -> Result<(), EmbeddingError> {
+        self.absorb_parts(
+            reply.embeddings,
+            reply.usage,
+            Metadata {
+                provider: reply.provider,
+                model: reply.model,
+                response_id: reply.response_id,
+                provider_request_id: reply.provider_request_id,
+                raw: reply.raw,
+            },
+        );
+        Ok(())
+    }
+
+    fn finish(
+        self,
+        reply: Reply,
+    ) -> Result<crate::embeddings::ImageEmbeddingResponse, EmbeddingError> {
+        let (embeddings, metadata, usage) = self.zipped()?;
+        let mut response = crate::embeddings::ImageEmbeddingResponse {
+            embeddings,
+            usage,
+            provider: metadata.provider,
+            model: metadata.model,
+            response_id: metadata.response_id,
+            provider_request_id: metadata.provider_request_id,
+            raw: metadata.raw,
+        };
+        ImageEmbedding::stamp_reply(&mut response, reply);
+        Ok(response)
+    }
+}

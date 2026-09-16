@@ -83,6 +83,26 @@ impl Operation for Completion {
         }
         span.record_token_usage(&response.usage);
     }
+
+    fn record_event(span: &tracing::Span, event: &Self::Event) {
+        let StreamEvent::Final(terminal) = event else {
+            return;
+        };
+        if span.is_disabled() {
+            return;
+        }
+        if let Some(id) = terminal
+            .response_id
+            .as_deref()
+            .or(terminal.message_id.as_deref())
+        {
+            span.record("gen_ai.response.id", id);
+        }
+        if let Some(model) = terminal.model.as_deref() {
+            span.record("gen_ai.response.model", model);
+        }
+        span.record_token_usage(&terminal.usage);
+    }
 }
 
 impl Sink<Completion> for AdapterOutput {

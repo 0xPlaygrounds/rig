@@ -143,8 +143,12 @@ pub use secret::Secret;
 /// Data only: built by [`Wire::encode`] from the wire and the request, and
 /// read by the driver. A wire never touches a socket or a request extension.
 pub struct Encoded {
-    /// The HTTP request, body already serialized.
-    pub request: http::Request<Body>,
+    /// The HTTP requests to send, in order — one for all but the batch
+    /// endpoints. A wire whose provider takes one item per request (Cohere
+    /// embeds one image per call) returns one request per item through
+    /// [`Encoded::batch`], and the driver folds every reply into the one
+    /// response.
+    pub requests: Vec<http::Request<Body>>,
     /// How the reply's bytes split into frames.
     pub framing: Framing,
     /// The reply header carrying the provider's transport request id
@@ -158,10 +162,15 @@ pub struct Encoded {
 }
 
 impl Encoded {
-    /// A request whose provider reports no transport request id.
+    /// One request whose provider reports no transport request id.
     pub fn new(request: http::Request<Body>, framing: Framing) -> Self {
+        Self::batch(vec![request], framing)
+    }
+
+    /// Several requests whose replies fold into one response, in order.
+    pub fn batch(requests: Vec<http::Request<Body>>, framing: Framing) -> Self {
         Self {
-            request,
+            requests,
             framing,
             request_id_header: None,
             relaxed_content_type: false,
@@ -245,6 +254,17 @@ pub trait Operation: Sized + 'static {
     /// driver stops consuming.
     fn is_terminal(event: &Self::Event) -> bool;
 
+    /// The fold for one reply, seeded from the request.
+    ///
+    /// An embedding response joins the provider's vectors back onto the
+    /// request's input texts, and nothing downstream of
+    /// [`Wire::encode`] can see the request — so the operations whose
+    /// response needs its own input take it here, once, instead of every
+    /// wire carrying a copy.
+    fn fold(_request: &Self::Request) -> Self::Fold {
+        Self::Fold::default()
+    }
+
     /// Stamp the transport request id read off the reply's headers onto a
     /// terminal event. Operations whose events carry no transport id do
     /// nothing.
@@ -278,6 +298,14 @@ pub trait Operation: Sized + 'static {
 
     /// Record the folded response onto the operation's span.
     fn record(_span: &tracing::Span, _response: &Self::Response) {}
+
+    /// Record what one streamed event says onto the operation's span.
+    ///
+    /// A streamed reply is never folded by the driver — the consumer owns
+    /// the fold — so the terminal event is where a stream's response
+    /// metadata and usage come from. Off the same span `record` writes to,
+    /// so a unary and a streamed call report the same fields.
+    fn record_event(_span: &tracing::Span, _event: &Self::Event) {}
 }
 
 /// What the driver learned about a unary reply beyond its events: the

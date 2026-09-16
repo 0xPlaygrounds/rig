@@ -17,7 +17,9 @@ pub mod completion;
 pub mod model_listing;
 mod observation;
 pub mod streaming;
+pub mod wire;
 
 pub use client::{Client, ClientBuilder};
 pub use completion::CompletionModel;
 pub use model_listing::AnthropicModelLister;
+pub use wire::{ANTHROPIC, Anthropic as AnthropicProvider, Dialect, MaxTokens, Messages, Models, Verify, compatible};
