@@ -158,7 +158,7 @@
 //!         Ok(Encoded::new(request, framing))
 //!     }
 //!
-//!     fn decoder(&self) -> Self::Decoder {
+//!     fn decoder(&self, _mode: Mode) -> Self::Decoder {
 //!         ExampleDecoder
 //!     }
 //! }
@@ -193,20 +193,43 @@
 //! # }
 //! ```
 
+use std::borrow::Cow;
+
 use crate::http_client::MultipartForm;
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 
 pub use crate::http_client::framing::Framing;
 pub use crate::observe::{AdapterErrorEnvelope, AdapterEvent, AdapterUsage, AdapterVerdict};
-pub use crate::providers::internal::adapter::WireFrame;
 pub use crate::providers::internal::wire::WireEvent;
 
 mod error;
-mod secret;
+pub(crate) mod secret;
 
 pub use error::WireError;
 pub(crate) use error::impl_wire_error;
 pub use secret::Secret;
+
+/// One transport frame, after framing but before decoding.
+///
+/// The transport layer (SSE framer, NDJSON splitter, websocket reader) owns
+/// byte splitting and yields these; a decoder never splits bytes.
+#[derive(Debug, Clone)]
+pub enum WireFrame {
+    /// A decoded text payload — an SSE `data:` field or a ws message body.
+    Text(String),
+    /// A raw byte payload — an NDJSON line or a binary SDK frame.
+    Bytes(Vec<u8>),
+}
+
+impl WireFrame {
+    /// The frame payload as text (lossy for byte frames).
+    pub fn as_str(&self) -> Cow<'_, str> {
+        match self {
+            Self::Text(text) => Cow::Borrowed(text),
+            Self::Bytes(bytes) => String::from_utf8_lossy(bytes),
+        }
+    }
+}
 
 /// The request a wire sends, and how its reply is framed.
 ///
@@ -501,17 +524,6 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
     /// truncation.
     fn finish(&mut self, _out: &mut Output<Op>) {}
 
-    /// This reply arrives whole rather than as a stream.
-    ///
-    /// [`crate::driver::call`] states it before the first frame; a streamed
-    /// reply never does. A decoder whose terminal is deferred to EOF needs
-    /// the difference, and it is the reply's shape rather than a mode:
-    /// a stream that reaches EOF without the provider's terminal stopped
-    /// early, and [`Self::finish`] must stay silent about it because the
-    /// missing terminal record is the report; a whole reply is the entire
-    /// answer, so the same EOF says the provider answered with nothing.
-    fn whole_reply(&mut self) {}
-
     /// Flush content the provider fully delivered before a terminal error
     /// reaches the consumer. Must not push a terminal.
     fn flush_before_terminal_error(&mut self, _out: &mut Output<Op>) {}
@@ -572,8 +584,16 @@ pub trait Wire: WasmCompatSend + WasmCompatSync + 'static {
     /// and nothing else.
     fn encode(&self, request: Request<Self>, mode: Mode) -> Result<Encoded, Error<Self>>;
 
-    /// A fresh decoder for one reply.
-    fn decoder(&self) -> Self::Decoder;
+    /// A fresh decoder for one reply, in the mode [`Self::encode`] was
+    /// given.
+    ///
+    /// The mode is what this reply's EOF will mean: a whole reply that
+    /// named no terminal is the provider answering with nothing, while a
+    /// stream that ends the same way stopped early and reports truncation
+    /// by carrying no terminal record. A decoder whose terminal is
+    /// deferred to EOF needs that difference, and it is known before the
+    /// first frame rather than stated afterwards.
+    fn decoder(&self, mode: Mode) -> Self::Decoder;
 
     /// What a runtime accounts for.
     fn capabilities(&self) -> Capabilities<Self> {
