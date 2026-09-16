@@ -439,9 +439,17 @@ where
             let chunk = match chunk {
                 Ok(chunk) => chunk,
                 Err(error) => {
-                    let error = http_client::Error::Instance(error.into());
+                    // The body stream's items are already
+                    // `http_client::Result<Bytes>`, so the error IS the
+                    // transport's own: boxing it into
+                    // `http_client::Error::Instance` discarded the
+                    // non-success status, headers and body a mid-stream
+                    // failure carries, and doubled its `Display` prefix.
                     if let Some(observation) = &observation {
-                        observation.error_boundary(AdapterErrorBoundary::Transport);
+                        observation.error_boundary(AdapterErrorBoundary::from_http(&error));
+                        if let Some(status) = error.non_success_status() {
+                            observation.response_with_headers(status, error.non_success_headers());
+                        }
                     }
                     driver.fail(<Error<W> as WireError>::transport(error));
                     for item in driver.drain() {

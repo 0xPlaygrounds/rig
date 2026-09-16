@@ -236,34 +236,41 @@
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
-                "type": "text",
-                "text": "I'll follow the protocol you've specified. Let me start by listing the files."
+                "text": "I'll follow the protocol you've specified. Let me start by listing the files.",
+                "type": "text"
               },
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_1",
+                "input": {},
                 "name": "list_files",
-                "input": {}
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 1071,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 54
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "not_available",
+              "input_tokens": 1071,
+              "output_tokens": 54,
+              "service_tier": "standard"
+            }
           }
         }
       }
@@ -472,36 +479,43 @@
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
-                "type": "text",
-                "text": "Now let me read the README.md file."
+                "text": "Now let me read the README.md file.",
+                "type": "text"
               },
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_2",
-                "name": "read_file",
                 "input": {
                   "path": "README.md"
-                }
+                },
+                "name": "read_file",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_2",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 1164,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 66
-            },
-            "provider_request_id": "req_REDACTED_2"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "not_available",
+              "input_tokens": 1164,
+              "output_tokens": 66,
+              "service_tier": "standard"
+            }
           }
         }
       }
@@ -760,36 +774,43 @@
           "provider": "anthropic",
           "model": "claude-haiku-4-5-20251001",
           "raw": {
+            "container": null,
             "content": [
               {
-                "type": "text",
-                "text": "Now let me read the tests/basic.rs file."
+                "text": "Now let me read the tests/basic.rs file.",
+                "type": "text"
               },
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_3",
-                "name": "read_file",
                 "input": {
                   "path": "tests/basic.rs"
-                }
+                },
+                "name": "read_file",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_3",
             "model": "claude-haiku-4-5-20251001",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 1314,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 70
-            },
-            "provider_request_id": "req_REDACTED_3"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "not_available",
+              "input_tokens": 1314,
+              "output_tokens": 70,
+              "service_tier": "standard"
+            }
           }
         }
       }

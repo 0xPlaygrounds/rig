@@ -125,32 +125,38 @@
           "raw": {
             "content": [
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_1",
-                "name": "final_result",
                 "input": {
                   "category": "Technology / Programming",
                   "summary": "A local meetup for Rust programming language enthusiasts in Seattle. Attendees gather to share knowledge, discuss best practices, showcase projects, and network with fellow Rustaceans of all skill levels.",
                   "title": "Seattle Rust Meetup"
-                }
+                },
+                "name": "final_result",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 771,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 119
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 771,
+              "output_tokens": 119,
+              "service_tier": "standard"
+            }
           }
         }
       }

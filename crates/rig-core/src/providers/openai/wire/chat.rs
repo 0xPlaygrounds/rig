@@ -1296,21 +1296,26 @@ impl ChatDecoder {
             text
         };
 
-        let tool_events = tool_calls
-            .iter()
-            .map(|call| {
-                let key = crate::streaming::non_empty_id(call.id.clone())
-                    .map_or_else(|| BlockId::minted(MintKind::Tool, 0), BlockId::wire);
-                StreamEvent::BlockEnd {
-                    id: key,
-                    end: crate::streaming::BlockClose::ToolCall(
-                        ToolCallEnd::whole(&call.function.name, call.function.arguments.clone())
-                            .with_tool_id(call.id.clone()),
-                    ),
-                    block: None,
-                }
-            })
-            .collect();
+        let mut tool_events = Vec::with_capacity(tool_calls.len());
+        for call in &tool_calls {
+            // Every id-less call needs its OWN key. A shared constant made
+            // each one restate the block the previous one closed, so a turn
+            // calling the same tool three times without ids folded to one
+            // call — the streamed path mints per call through the same
+            // namespace, so the unary body does too.
+            let key = crate::streaming::non_empty_id(call.id.clone()).map_or_else(
+                || self.open_tool_calls.minted_ids().mint(),
+                BlockId::wire,
+            );
+            tool_events.push(StreamEvent::BlockEnd {
+                id: key,
+                end: crate::streaming::BlockClose::ToolCall(
+                    ToolCallEnd::whole(&call.function.name, call.function.arguments.clone())
+                        .with_tool_id(call.id.clone()),
+                ),
+                block: None,
+            });
+        }
 
         self.reasoning.emit_chunk(
             ChunkParts {

@@ -363,13 +363,17 @@ fn the_chatgpt_dialect_lifts_every_system_message_into_instructions() {
 
 /// A turn whose terminal event restates the assembled output.
 const CHATGPT_ASSEMBLED_OUTPUT: &str = r#"data: {"type":"response.output_text.delta","delta":"hi"}
+
 data: {"type":"response.completed","response":{"id":"resp_chatgpt_raw","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.4","service_tier":"default","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[{"type":"message","id":"msg_chatgpt_raw","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"hi"}]}],"tools":[]}}
+
 data: [DONE]"#;
 
 /// The same turn with an empty terminal `output`: the deltas are the only
 /// place the content exists. A recorded shape, not a synthetic one.
 const CHATGPT_EMPTY_OUTPUT: &str = r#"data: {"type":"response.output_text.delta","delta":"hi"}
+
 data: {"type":"response.completed","response":{"id":"resp_chatgpt_raw","object":"response","created_at":1,"status":"completed","error":null,"incomplete_details":null,"instructions":null,"max_output_tokens":null,"model":"gpt-5.4","service_tier":"default","usage":{"input_tokens":1,"input_tokens_details":{"cached_tokens":0},"output_tokens":1,"output_tokens_details":{"reasoning_tokens":0},"total_tokens":2},"output":[],"tools":[]}}
+
 data: [DONE]"#;
 
 /// A gateway that answers every request with an event stream sends no reply

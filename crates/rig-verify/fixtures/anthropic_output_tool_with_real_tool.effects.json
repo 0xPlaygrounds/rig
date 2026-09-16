@@ -176,35 +176,41 @@
           "raw": {
             "content": [
               {
-                "type": "text",
-                "text": "I'll start by adding 17 and 25 using the add tool!"
+                "text": "I'll start by adding 17 and 25 using the add tool!",
+                "type": "text"
               },
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_1",
-                "name": "add",
                 "input": {
                   "x": 17,
                   "y": 25
-                }
+                },
+                "name": "add",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 795,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 86
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 795,
+              "output_tokens": 86,
+              "service_tier": "standard"
+            }
           }
         }
       }
@@ -407,36 +413,42 @@
           "raw": {
             "content": [
               {
-                "type": "text",
-                "text": "The sum is **42**! Now I'll build the event object with that result in the summary."
+                "text": "The sum is **42**! Now I'll build the event object with that result in the summary.",
+                "type": "text"
               },
               {
-                "type": "tool_use",
+                "caller": {
+                  "type": "direct"
+                },
                 "id": "toolu_REDACTED_2",
-                "name": "final_result",
                 "input": {
                   "category": "Technology / Programming",
                   "summary": "Join fellow Rustaceans at the Seattle Rust Meetup! Tonight we celebrate that 17 + 25 = 42 — the answer to life, the universe, and everything — while diving into talks, demos, and discussions about the Rust programming language.",
                   "title": "Rust Meetup – Seattle"
-                }
+                },
+                "name": "final_result",
+                "type": "tool_use"
               }
             ],
             "id": "msg_REDACTED_2",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "tool_use",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 894,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 173
-            },
-            "provider_request_id": "req_REDACTED_2"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 894,
+              "output_tokens": 173,
+              "service_tier": "standard"
+            }
           }
         }
       }

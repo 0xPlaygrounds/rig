@@ -120,42 +120,49 @@
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
-            "id": "chatcmpl-REDACTED_1",
-            "object": "chat.completion",
-            "created": 0,
-            "model": "gpt-4.1-mini-2025-04-14",
-            "system_fingerprint": "fp_REDACTED_1",
-            "service_tier": "default",
             "choices": [
               {
+                "finish_reason": "tool_calls",
                 "index": 0,
+                "logprobs": null,
                 "message": {
+                  "annotations": [],
+                  "content": null,
+                  "refusal": null,
                   "role": "assistant",
                   "tool_calls": [
                     {
-                      "id": "call_REDACTED_1",
-                      "type": "function",
                       "function": {
-                        "name": "checkpoint_large",
-                        "arguments": "{}"
-                      }
+                        "arguments": "{}",
+                        "name": "checkpoint_large"
+                      },
+                      "id": "call_REDACTED_1",
+                      "type": "function"
                     }
                   ]
-                },
-                "logprobs": null,
-                "finish_reason": "tool_calls"
+                }
               }
             ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_1",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_REDACTED_1",
             "usage": {
-              "prompt_tokens": 109,
               "completion_tokens": 11,
-              "total_tokens": 120,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 109,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 120
             }
           }
         }
@@ -295,38 +302,39 @@
           "provider": "openai",
           "model": "gpt-4.1-mini-2025-04-14",
           "raw": {
-            "id": "chatcmpl-REDACTED_2",
-            "object": "chat.completion",
-            "created": 0,
-            "model": "gpt-4.1-mini-2025-04-14",
-            "system_fingerprint": "fp_REDACTED_1",
-            "service_tier": "default",
             "choices": [
               {
+                "finish_reason": "stop",
                 "index": 0,
-                "message": {
-                  "role": "assistant",
-                  "content": [
-                    {
-                      "type": "text",
-                      "text": "checkpoint-complete"
-                    }
-                  ]
-                },
                 "logprobs": null,
-                "finish_reason": "stop"
+                "message": {
+                  "annotations": [],
+                  "content": "checkpoint-complete",
+                  "refusal": null,
+                  "role": "assistant"
+                }
               }
             ],
+            "created": 0,
+            "id": "chatcmpl-REDACTED_2",
+            "model": "gpt-4.1-mini-2025-04-14",
+            "object": "chat.completion",
+            "service_tier": "default",
+            "system_fingerprint": "fp_REDACTED_1",
             "usage": {
-              "prompt_tokens": 15488,
               "completion_tokens": 4,
-              "total_tokens": 15492,
+              "completion_tokens_details": {
+                "accepted_prediction_tokens": 0,
+                "audio_tokens": 0,
+                "reasoning_tokens": 0,
+                "rejected_prediction_tokens": 0
+              },
+              "prompt_tokens": 15488,
               "prompt_tokens_details": {
+                "audio_tokens": 0,
                 "cached_tokens": 0
               },
-              "completion_tokens_details": {
-                "reasoning_tokens": 0
-              }
+              "total_tokens": 15492
             }
           }
         }

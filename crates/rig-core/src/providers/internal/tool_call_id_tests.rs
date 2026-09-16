@@ -102,7 +102,7 @@ fn openrouter_missing_ids_and_later_explicit_collision() {
 
 #[test]
 fn anthropic_missing_ids_and_later_explicit_collision() {
-    let wire = json!({"id":"response","model":"test","role":"assistant","stop_reason":"tool_use",
+    let wire = json!({"type":"message","id":"response","model":"test","role":"assistant","stop_reason":"tool_use",
         "usage":{"input_tokens":1,"output_tokens":1},
         "content":(0..3).map(|i|json!({"type":"tool_use","id":if i==1 {"tool-0"} else {""},"name":"same","input":{"n":i}})).collect::<Vec<_>>()});
     let messages = crate::providers::anthropic::wire::Anthropic::new("test-key").messages("test");

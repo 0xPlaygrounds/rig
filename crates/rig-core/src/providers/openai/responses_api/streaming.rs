@@ -942,9 +942,16 @@ pub enum ResponsesEvent {
     /// discriminator because it is not an event.
     Whole(Box<CompletionResponse>),
     /// A success whose body is the provider's error envelope instead of a
-    /// response, with the raw body the error preserves. Only the gateways
-    /// that answer 200 with an envelope reach this.
+    /// response, with the raw body the error preserves. Both the stream's
+    /// own `error` event and a 200 whose whole body is an envelope reach
+    /// this.
     Failure(String),
+    /// The wire's `[DONE]` terminal sentinel: not JSON, and it says
+    /// nothing `response.completed` has not already said, so it is a
+    /// modeled no-op rather than a frame to parse. Known by construction —
+    /// classifying it as unknown would warn on every stream, and routing
+    /// it into the typed decode would fail every stream.
+    Sentinel,
 }
 
 /// The top-level keys that recognize a Responses reply body: `object`
@@ -955,6 +962,17 @@ pub enum ResponsesEvent {
 /// event carries none of them at top level (its response object is nested
 /// under `response`), so the shapes cannot be confused.
 const WHOLE_BODY_MARKERS: &[&str] = &["object", "output", "status", "error"];
+
+/// Whether a frame is the Responses stream's own `error` event.
+///
+/// `error` is outside the modeled event set on purpose — it is not one of
+/// the turn's `response.*`/item events — but it is the protocol's in-band
+/// failure on every dialect, so it must never be skipped as unmodeled.
+fn is_error_event(data: &str) -> bool {
+    serde_json::from_str::<serde_json::Value>(data).is_ok_and(|value| {
+        value.get("type").and_then(serde_json::Value::as_str) == Some("error")
+    })
+}
 
 /// The error envelope a success body can carry instead of a response. The
 /// error itself is built from the raw body; this only proves the shape.
@@ -1021,13 +1039,31 @@ impl ResponsesDecoder {
         self
     }
 
-    /// The three shapes one Responses reply can take, in the order that
-    /// distinguishes them: a tagged stream event; the unary body, which is
-    /// the response object itself and so carries no `type` (the tagged
-    /// classifier reports that as `Corrupt`); and, on a gateway that answers
-    /// a success with one, a bare error envelope. Composed through the
-    /// classify layer's own combinator, so no triage policy is restated here.
+    /// The shapes one Responses reply can take, in the order that
+    /// distinguishes them: the `[DONE]` sentinel and the stream's own
+    /// `error` event, both of which pre-empt classification because their
+    /// payloads are outside the modeled event set; then a tagged stream
+    /// event; then the unary body, which is the response object itself and
+    /// so carries no `type` (the tagged classifier reports that as
+    /// `Corrupt`); and finally a bare error envelope, on a gateway that
+    /// answers a success with one. Everything past the pre-emptions is
+    /// composed through the classify layer's own combinator, so no triage
+    /// policy is restated here.
+    ///
+    /// The two pre-emptions are not stylistic. [`wire::classify_or`] falls
+    /// through to its second classifier only on `Corrupt`, and the tagged
+    /// classifier reports an unmodeled `type` as `Unknown` — so a frame
+    /// whose `type` is `"error"` would be *skipped* rather than handed to
+    /// the envelope branch below, and EOF would become the diagnostic
+    /// instead of the provider's own message. `[DONE]` is not an object at
+    /// all. The chat wire's decoder pre-empts both for the same reason.
     fn classify_payload(&self, data: &str) -> WireEvent<ResponsesEvent> {
+        if data.trim() == "[DONE]" {
+            return WireEvent::Known(ResponsesEvent::Sentinel);
+        }
+        if is_error_event(data) {
+            return WireEvent::Known(ResponsesEvent::Failure(data.to_owned()));
+        }
         let body = |data: &str| {
             wire::classify_marker_keyed_frame::<CompletionResponse>(data, WHOLE_BODY_MARKERS)
                 .map(|response| ResponsesEvent::Whole(Box::new(response)))
@@ -1168,6 +1204,9 @@ impl Decoder<Completion> for ResponsesDecoder {
                 out.error(crate::provider_response::completion_error_from_body(&raw));
                 self.finished = true;
             }
+            // Nothing to interpret: the terminal record comes from
+            // `response.completed`, or from the driver's EOF flush.
+            ResponsesEvent::Sentinel => {}
         }
     }
 

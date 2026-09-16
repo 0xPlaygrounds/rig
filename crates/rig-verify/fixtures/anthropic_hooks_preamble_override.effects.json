@@ -87,26 +87,29 @@
           "raw": {
             "content": [
               {
-                "type": "text",
-                "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like an unguarded treasure chest — ripe for plunderin' by crashes and villainous exploits!"
+                "text": "Arrr, Rust be a systems programming language that guarantees memory safety without a garbage collector, and memory safety matters because unsecured memory be like an unguarded treasure chest — ripe for plunderin' by crashes and villainous exploits!",
+                "type": "text"
               }
             ],
             "id": "msg_REDACTED_1",
             "model": "claude-sonnet-4-6",
             "role": "assistant",
+            "stop_details": null,
             "stop_reason": "end_turn",
             "stop_sequence": null,
+            "type": "message",
             "usage": {
-              "input_tokens": 39,
-              "cache_read_input_tokens": 0,
-              "cache_creation_input_tokens": 0,
               "cache_creation": {
-                "ephemeral_5m_input_tokens": 0,
-                "ephemeral_1h_input_tokens": 0
+                "ephemeral_1h_input_tokens": 0,
+                "ephemeral_5m_input_tokens": 0
               },
-              "output_tokens": 58
-            },
-            "provider_request_id": "req_REDACTED_1"
+              "cache_creation_input_tokens": 0,
+              "cache_read_input_tokens": 0,
+              "inference_geo": "global",
+              "input_tokens": 39,
+              "output_tokens": 58,
+              "service_tier": "standard"
+            }
           }
         }
       }
