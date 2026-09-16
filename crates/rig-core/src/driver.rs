@@ -33,7 +33,7 @@ mod consumers;
 
 pub use bound::{Bind, Bound};
 pub use consumers::{
-    HasCompletion, HasEmbedding, HasImageEmbedding, HasModelListing, HasRerank, HasTranscription,
+    CompletionProvider, HasCompletion, HasEmbedding, HasImageEmbedding, HasModelListing, HasRerank, HasTranscription,
     HasVerify, Socket,
 };
 #[cfg(feature = "audio")]

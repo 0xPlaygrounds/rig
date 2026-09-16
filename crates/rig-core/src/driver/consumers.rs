@@ -219,6 +219,36 @@ where
 /// A provider config that has a completion wire.
 pub use crate::wire::HasCompletion;
 
+/// Anything that builds a completion model for a named model.
+///
+/// This is what the six deleted `*Client` traits were really for, reduced to
+/// the one thing a caller wanted from them, and it is the seam the agent
+/// sugar (`provider.agent(model)`) hangs on. `Bound<P, H>` satisfies it for
+/// every wire-backed provider; the typed-transport providers — Bedrock's
+/// Converse event stream, Vertex AI, gemini-grpc, in-process inference —
+/// implement it directly, because their frames are an SDK's types rather
+/// than bytes and they are not wires. Same spelling either way, which is the
+/// point: a caller does not need to know which kind it has.
+pub trait CompletionProvider {
+    /// The model this provider builds.
+    type Model: CompletionModel;
+
+    /// The completion model for `model`.
+    fn completion(&self, model: impl Into<String>) -> Self::Model;
+}
+
+impl<P, H> CompletionProvider for Bound<P, H>
+where
+    P: HasCompletion,
+    H: Clone + Socket,
+{
+    type Model = Bound<P::Wire, H>;
+
+    fn completion(&self, model: impl Into<String>) -> Self::Model {
+        Bound::completion(self, model)
+    }
+}
+
 /// A provider config that has an embedding wire.
 pub trait HasEmbedding: WasmCompatSend + WasmCompatSync {
     /// The provider's embedding wire.

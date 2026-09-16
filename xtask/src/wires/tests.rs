@@ -7,7 +7,7 @@ fn offenders(file: &str, source: &str) -> Vec<String> {
     let parsed: File = syn::parse_file(source).expect("the fixture parses");
     let mut visitor = Wires {
         file: file.to_owned(),
-        session: file == SESSION_EXCEPTION,
+        session: is_session(file) || is_credential_exchange(file),
         offenders: Vec::new(),
     };
     visitor.visit_file(&parsed);
@@ -27,10 +27,17 @@ fn a_wire_that_awaits_is_rejected() {
 }
 
 #[test]
-fn the_websocket_session_may_own_its_connection() {
-    assert!(
-        offenders(SESSION_EXCEPTION, "async fn turn() { socket().await; }").is_empty(),
-        "a session is one connection and many turns, not a request/response exchange"
+fn the_named_non_wire_surfaces_may_own_what_encode_cannot_be() {
+    for file in SESSION_EXCEPTIONS {
+        assert!(
+            offenders(file, "async fn turn() { socket().await; }").is_empty(),
+            "{file}: a connection and a resource lifecycle are not request/response exchanges"
+        );
+    }
+    assert_eq!(
+        SESSION_EXCEPTIONS.len(),
+        2,
+        "a new non-wire surface must be argued for, not added quietly"
     );
 }
 
@@ -84,4 +91,26 @@ fn a_plain_wire_passes() {
         }
     "#;
     assert!(offenders("anthropic/wire.rs", source).is_empty());
+}
+
+#[test]
+fn a_credential_exchange_may_hold_a_conversation() {
+    for file in [
+        "copilot/auth/native.rs",
+        "chatgpt/auth/mod.rs",
+        "somewhere/auth.rs",
+    ] {
+        assert!(
+            offenders(file, "async fn exchange() { poll().await; }").is_empty(),
+            "{file}: a device flow polls and a refresh round-trips; neither fits a pure encode"
+        );
+    }
+}
+
+#[test]
+fn a_wire_next_to_a_credential_exchange_is_still_a_wire() {
+    assert_eq!(
+        offenders("copilot/wire.rs", "async fn send() { go().await; }").len(),
+        2
+    );
 }

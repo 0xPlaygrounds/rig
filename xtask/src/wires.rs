@@ -30,8 +30,35 @@ use std::path::{Path, PathBuf};
 use syn::visit::{self, Visit};
 use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct, Type};
 
-/// The one file allowed to own a connection.
-const SESSION_EXCEPTION: &str = "openai/responses_api/websocket.rs";
+/// The files allowed to own something a pure `encode` structurally cannot
+/// be, each with the reason it is not a wire:
+///
+/// - the Responses websocket is a **connection**: one socket, many turns,
+///   warmup — a session rather than a request/response exchange;
+/// - Gemini's cached content is a **resource lifecycle**: its replies are
+///   cache documents, not assistant turns, and it manages the inputs a wire
+///   later references.
+///
+/// Credential exchange is the third, matched by path in
+/// [`is_credential_exchange`] because every provider has one.
+const SESSION_EXCEPTIONS: &[&str] = &[
+    "openai/responses_api/websocket.rs",
+    "gemini/cached_content.rs",
+];
+
+/// Whether `relative` is one of the named non-wire surfaces.
+fn is_session(relative: &str) -> bool {
+    SESSION_EXCEPTIONS.contains(&relative)
+}
+
+/// Credential exchange is a conversation, not a request/response exchange:
+/// a device flow polls, an OAuth refresh round-trips, and a token cache is
+/// shared. None of that can live in a pure `encode`, and none of it is a
+/// wire — it *produces* the `Secret` a wire holds. These modules are
+/// therefore exempt from the no-`async` rules, and only from those.
+fn is_credential_exchange(relative: &str) -> bool {
+    relative.contains("/auth/") || relative.ends_with("/auth.rs")
+}
 
 /// The traits a consumer calls a model through. Exactly one implementation of
 /// each ships, and it is `driver::Bound` — a provider contributes a wire.
@@ -74,7 +101,7 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
             syn::parse_file(&source).map_err(|error| format!("{}: {error}", path.display()))?;
         let mut visitor = Wires {
             file: relative.clone(),
-            session: relative == SESSION_EXCEPTION,
+            session: is_session(&relative) || is_credential_exchange(&relative),
             offenders: Vec::new(),
         };
         visitor.visit_file(&parsed);
@@ -109,7 +136,8 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 struct Wires {
     file: String,
-    /// Whether this is the websocket session, which owns a connection.
+    /// Whether this file may own a connection or a conversation: the
+    /// websocket session, or a credential exchange.
     session: bool,
     offenders: Vec<String>,
 }

@@ -23,6 +23,10 @@ pub use crate::client::image_generation::ImageGenerationClient;
 pub use crate::client::audio_generation::AudioGenerationClient;
 
 pub use crate::completion::{CompletionError, CompletionModel, Message};
+// Construction: a wire bound to a socket is the model, and anything that
+// builds a completion model answers `completion(model)` — including the
+// typed-transport providers, which are not wires.
+pub use crate::driver::{Bind, Bound, CompletionProvider};
 
 // Embeddings. `Embed` is re-exported from the crate root so that, with the
 // `derive` feature enabled, the `#[derive(Embed)]` macro comes along with the
