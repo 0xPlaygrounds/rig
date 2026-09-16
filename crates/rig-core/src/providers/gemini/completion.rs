@@ -29,7 +29,7 @@ pub const GEMINI_2_0_FLASH: &str = "gemini-2.0-flash";
 
 use self::gemini_api_types::tool_parameters_to_schema;
 use crate::completion::{self, CompletionError, CompletionRequest};
-use crate::message::{self, MimeType, Reasoning};
+use crate::message::{self, Reasoning};
 use crate::operation::Completion;
 use crate::providers::gemini::completion::gemini_api_types::{
     AdditionalParameters, FunctionCallingMode, ToolConfig,
@@ -37,8 +37,8 @@ use crate::providers::gemini::completion::gemini_api_types::{
 use crate::telemetry::CompletionOperation;
 use crate::wire::{Body, Encoded, Framing, Mode, Wire};
 use gemini_api_types::{
-    Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerateContentResponse,
-    GenerationConfig, Part, PartKind, Role, Tool, map_finish_reason,
+    Content, FinishReason, FunctionDeclaration, GenerateContentRequest, GenerationConfig, Part,
+    PartKind, Role, Tool,
 };
 use serde_json::{Map, Value};
 use std::convert::TryFrom;
@@ -598,97 +598,6 @@ pub(crate) fn function_call_finish_reason_error(
     }
 }
 
-/// Map one response `Part` onto the assistant content it carries.
-///
-/// An empty result means the part is real Gemini output that carries no
-/// rig-modeled assistant content, so it contributes nothing to the choice and
-/// the rest of the turn still converts. Only a part rig cannot account for at
-/// all is an `Err`. One part can yield *two* items: a trailing
-/// `thoughtSignature` rides a text part that carries no `thought` flag, and
-/// the signature belongs to a reasoning block rather than to the text.
-fn map_response_part(
-    part: &Part,
-    tool_index: &mut u64,
-) -> Result<Vec<completion::AssistantContent>, CompletionError> {
-    let Part {
-        thought,
-        thought_signature,
-        part,
-        ..
-    } = part;
-
-    Ok(vec![match part {
-        PartKind::Text(text) => {
-            if let Some(thought) = thought
-                && *thought
-            {
-                completion::AssistantContent::Reasoning(Reasoning::new_with_signature(
-                    text,
-                    thought_signature.clone(),
-                ))
-            } else if thought_signature.is_some() {
-                // A trailing signature on a part with no `thought` flag: the
-                // caller places it, because where it belongs depends on what
-                // came before. See `attach_trailing_signature`.
-                return Ok(vec![completion::AssistantContent::text(text)]);
-            } else {
-                completion::AssistantContent::text(text)
-            }
-        }
-        PartKind::InlineData(inline_data) => {
-            let mime_type = message::MediaType::from_mime_type(&inline_data.mime_type);
-
-            match mime_type {
-                Some(message::MediaType::Image(media_type)) => {
-                    message::AssistantContent::image_base64(
-                        &inline_data.data,
-                        Some(media_type),
-                        Some(message::ImageDetail::default()),
-                    )
-                }
-                _ => {
-                    return Err(CompletionError::ResponseError(format!(
-                        "Unsupported media type {mime_type:?}"
-                    )));
-                }
-            }
-        }
-        PartKind::FunctionCall(function_call) => {
-            // Gemini function calls carry no id on most models: the
-            // `index`-th call of the response is `tool-<index>`.
-            let index = *tool_index;
-            *tool_index += 1;
-            let tool_call = message::ToolCall::from_wire_indexed(
-                function_call.id.clone().unwrap_or_default(),
-                index,
-                message::ToolFunction::new(function_call.name.clone(), function_call.args.clone()),
-            )
-            .with_signature(thought_signature.clone());
-            completion::AssistantContent::ToolCall(tool_call)
-        }
-        // The `codeExecution` tool's own output. Rig lets callers enable that
-        // tool (`additional_params.tools = [{"codeExecution": {}}]`, lifted
-        // onto the request by `extract_tools_from_additional_params`), and
-        // Gemini then answers with `executableCode`/`codeExecutionResult`
-        // parts alongside the text. Neither has a slot in
-        // `AssistantContent` — the same position OpenAI Responses' hosted-tool
-        // items are in, which decode to `Output::Unknown` and contribute no
-        // content rather than failing the response. Erroring here discarded
-        // the entire turn, final text answer included, while the streaming
-        // adapter skipped the parts and kept it. Their own `thoughtSignature`
-        // goes with them, which is the streaming path's behaviour too — those
-        // part kinds have nowhere to round-trip from, so keeping the
-        // transports in step is the most that can be preserved here.
-        PartKind::ExecutableCode(_) | PartKind::CodeExecutionResult(_) => return Ok(Vec::new()),
-        other => {
-            return Err(CompletionError::ResponseError(format!(
-                "Gemini response part kind {} carries no assistant content rig can account for",
-                part_kind_name(other)
-            )));
-        }
-    }])
-}
-
 /// Place a trailing `thoughtSignature` — one that rode a part carrying no
 /// `thought` flag — onto the assistant content mapped so far.
 ///
@@ -743,86 +652,6 @@ pub(crate) fn part_kind_name(part: &PartKind) -> &'static str {
         PartKind::FileData(_) => "fileData",
         PartKind::ExecutableCode(_) => "executableCode",
         PartKind::CodeExecutionResult(_) => "codeExecutionResult",
-    }
-}
-
-/// Normalize a Gemini `generateContent` response.
-impl TryFrom<GenerateContentResponse> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from(response: GenerateContentResponse) -> Result<Self, Self::Error> {
-        if let Some(blocked) = response
-            .prompt_feedback
-            .as_ref()
-            .and_then(blocked_prompt_error)
-        {
-            return Err(blocked);
-        }
-        let candidate = response.candidates.first().ok_or_else(|| {
-            CompletionError::ResponseError("No response candidates in response".into())
-        })?;
-
-        if let Some(reason) = candidate.finish_reason.as_ref()
-            && let Some(err) =
-                function_call_finish_reason_error(reason, candidate.finish_message.as_deref())
-        {
-            return Err(err);
-        }
-
-        let finish_reason = candidate.finish_reason.as_ref().and_then(map_finish_reason);
-
-        let parts = &candidate
-            .content
-            .as_ref()
-            .ok_or_else(|| {
-                let reason = candidate.finish_reason.as_ref().map_or_else(
-                    || "finish_reason=<unknown>".to_string(),
-                    |r| format!("finish_reason={r:?}"),
-                );
-                let message = candidate
-                    .finish_message
-                    .as_deref()
-                    .unwrap_or("no finish message provided");
-                CompletionError::ResponseError(format!(
-                    "Gemini candidate missing content ({reason}, finish_message={message})"
-                ))
-            })?
-            .parts;
-
-        // Mapped in wire order, one part at a time — a part may contribute no
-        // content at all (skipped, not failed; see `map_response_part`), and
-        // `?` still surfaces the first error in wire order. A trailing
-        // signature is placed against the content mapped *before* it, so the
-        // fold cannot become a `map`.
-        let mut content: Vec<completion::AssistantContent> = Vec::with_capacity(parts.len());
-        let mut tool_index = 0;
-        for part in parts {
-            content.extend(map_response_part(part, &mut tool_index)?);
-            if !part.thought.unwrap_or(false)
-                && matches!(part.part, PartKind::Text(_))
-                && let Some(signature) = part.thought_signature.clone()
-            {
-                attach_trailing_signature(&mut content, signature);
-            }
-        }
-
-        crate::message::normalize_missing_tool_call_ids(&mut content);
-        let choice = crate::message::require_non_empty_response(content)?;
-
-        let usage = response
-            .usage_metadata
-            .as_ref()
-            .map(crate::completion::Usage::from)
-            .unwrap_or_default();
-
-        Ok(
-            completion::CompletionResponse::new(choice, usage, PROVIDER_NAME)
-                .with_optional_response_id(
-                    Some(response.response_id.as_str()).filter(|id| !id.is_empty()),
-                )
-                .with_optional_model(response.model_version.as_deref())
-                .with_optional_finish_reason(finish_reason),
-        )
     }
 }
 

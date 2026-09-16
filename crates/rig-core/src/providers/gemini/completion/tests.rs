@@ -1,9 +1,9 @@
 use crate::{
     message,
     providers::gemini::completion::gemini_api_types::{
-        BlockReason, CitationMetadata, ContentCandidate, FinishReason, FunctionCall,
-        GenerateContentResponse, LogprobsResult, ModalityTokenCount, PromptFeedback, Schema,
-        TopCandidate, UsageMetadata, flatten_schema, tool_parameters_to_schema,
+        BlockReason, CitationMetadata, ContentCandidate, FinishReason, GenerateContentResponse,
+        LogprobsResult, ModalityTokenCount, PromptFeedback, Schema, TopCandidate, UsageMetadata,
+        flatten_schema, map_finish_reason, tool_parameters_to_schema,
     },
 };
 
@@ -20,16 +20,17 @@ fn test_usage_metadata_deserializes_without_total_token_count() {
     assert_eq!(usage.prompt_token_count, 12);
 }
 
-#[test]
-fn test_generate_content_response_deserializes_without_candidates_or_response_id() {
+#[tokio::test]
+async fn test_generate_content_response_deserializes_without_candidates_or_response_id() {
     // Blocked prompt responses can omit default-valued proto fields, including
     // empty repeated `candidates` and empty string `responseId`.
-    let response: GenerateContentResponse = serde_json::from_value(json!({
+    let body = json!({
         "promptFeedback": {
             "blockReason": "SAFETY"
         }
-    }))
-    .expect("blocked prompt response should deserialize");
+    });
+    let response: GenerateContentResponse =
+        serde_json::from_value(body.clone()).expect("blocked prompt response should deserialize");
 
     assert!(response.response_id.is_empty());
     assert!(response.candidates.is_empty());
@@ -37,7 +38,8 @@ fn test_generate_content_response_deserializes_without_candidates_or_response_id
     // A set `blockReason` is the provider's verdict on the prompt: the
     // error names it instead of reporting a generic missing-candidate parse
     // failure.
-    let error = completion::CompletionResponse::try_from(response)
+    let error = fold_unary("gemini-2.5-flash", body.to_string())
+        .await
         .expect_err("a blocked prompt is an error");
     assert!(
         matches!(&error, CompletionError::ProviderResponse(response) if response.body.contains("blocked the prompt") && response.body.contains("SAFETY") && response.refusal && response.code.as_deref() == Some("SAFETY")),
@@ -52,19 +54,23 @@ fn test_generate_content_response_deserializes_without_candidates_or_response_id
     assert_eq!(report.code.as_deref(), Some("SAFETY"));
 }
 
-#[test]
-fn test_blocked_prompt_error_carries_the_safety_ratings() {
-    let response: GenerateContentResponse = serde_json::from_value(json!({
-        "promptFeedback": {
-            "blockReason": "PROHIBITED_CONTENT",
-            "safetyRatings": [
-                {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "HIGH"}
-            ]
-        },
-        "usageMetadata": {"promptTokenCount": 12, "totalTokenCount": 12}
-    }))
-    .expect("blocked prompt response should deserialize");
-    let error = completion::CompletionResponse::try_from(response).expect_err("blocked");
+#[tokio::test]
+async fn test_blocked_prompt_error_carries_the_safety_ratings() {
+    let error = fold_unary(
+        "gemini-2.5-flash",
+        json!({
+            "promptFeedback": {
+                "blockReason": "PROHIBITED_CONTENT",
+                "safetyRatings": [
+                    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "probability": "HIGH"}
+                ]
+            },
+            "usageMetadata": {"promptTokenCount": 12, "totalTokenCount": 12}
+        })
+        .to_string(),
+    )
+    .await
+    .expect_err("blocked");
     let message = error.to_string();
     assert!(message.contains("PROHIBITED_CONTENT"), "{message}");
     assert!(
@@ -74,13 +80,14 @@ fn test_blocked_prompt_error_carries_the_safety_ratings() {
     assert!(message.contains("HIGH"), "{message}");
 }
 
-#[test]
-fn test_unknown_block_reason_reaches_the_error_verbatim() {
-    let response: GenerateContentResponse = serde_json::from_value(json!({
-        "promptFeedback": {"blockReason": "SOMETHING_NEW"}
-    }))
-    .unwrap();
-    let error = completion::CompletionResponse::try_from(response).expect_err("blocked");
+#[tokio::test]
+async fn test_unknown_block_reason_reaches_the_error_verbatim() {
+    let error = fold_unary(
+        "gemini-2.5-flash",
+        json!({"promptFeedback": {"blockReason": "SOMETHING_NEW"}}).to_string(),
+    )
+    .await
+    .expect_err("blocked");
     assert!(
         error.to_string().contains("block_reason=SOMETHING_NEW"),
         "{error}"
@@ -89,26 +96,32 @@ fn test_unknown_block_reason_reaches_the_error_verbatim() {
     assert!(error.is_retryable(), "{error:?}");
 }
 
-#[test]
-fn test_unspecified_block_reason_is_not_a_block() {
-    let response: GenerateContentResponse = serde_json::from_value(json!({
-        "promptFeedback": {"blockReason": "BLOCK_REASON_UNSPECIFIED"}
-    }))
-    .unwrap();
-    let error = completion::CompletionResponse::try_from(response).expect_err("no candidates");
+// A whole reply that names no block and carries no candidate is the
+// provider answering with nothing: the shared empty-response rejection,
+// not a block.
+#[tokio::test]
+async fn test_unspecified_block_reason_is_not_a_block() {
+    let error = fold_unary(
+        "gemini-2.5-flash",
+        json!({"promptFeedback": {"blockReason": "BLOCK_REASON_UNSPECIFIED"}}).to_string(),
+    )
+    .await
+    .expect_err("no candidates");
     assert!(
-        error.to_string().contains("No response candidates"),
+        matches!(&error, CompletionError::ResponseError(message) if message == crate::message::EMPTY_RESPONSE_ERROR),
         "{error}"
     );
 }
 
-#[test]
-fn test_no_candidates_without_prompt_feedback_is_still_a_response_error() {
-    let response: GenerateContentResponse =
-        serde_json::from_value(json!({})).expect("empty response should deserialize");
-    let error = completion::CompletionResponse::try_from(response)
+#[tokio::test]
+async fn test_no_candidates_without_prompt_feedback_is_still_a_response_error() {
+    let error = fold_unary("gemini-2.5-flash", "{}")
+        .await
         .expect_err("empty candidates should become a response error");
-    assert!(error.to_string().contains("No response candidates"));
+    assert!(
+        matches!(&error, CompletionError::ResponseError(message) if message == crate::message::EMPTY_RESPONSE_ERROR),
+        "{error}"
+    );
 }
 
 #[test]
@@ -408,52 +421,32 @@ fn test_message_conversion_model() {
     }
 }
 
-#[test]
-fn test_thought_signature_is_preserved_from_response_reasoning_part() {
-    let response = GenerateContentResponse {
-        response_id: "resp_1".to_string(),
-        candidates: vec![ContentCandidate {
-            content: Some(Content {
-                parts: vec![Part {
-                    thought: Some(true),
-                    thought_signature: Some("thought_sig_123".to_string()),
-                    part: PartKind::Text("thinking text".to_string()),
-                    additional_params: None,
-                }],
-                role: Some(Role::Model),
-            }),
-            finish_reason: Some(FinishReason::Stop),
-            safety_ratings: None,
-            citation_metadata: None,
-            token_count: None,
-            avg_logprobs: None,
-            logprobs_result: None,
-            index: Some(0),
-            finish_message: None,
-        }],
-        prompt_feedback: None,
-        usage_metadata: None,
-        model_version: None,
-    };
-
-    let converted: crate::completion::CompletionResponse =
-        response.try_into().expect("convert response");
+#[tokio::test]
+async fn test_thought_signature_is_preserved_from_response_reasoning_part() {
+    let converted = unary(
+        "gemini-2.5-flash",
+        r#"{"responseId":"resp_1","candidates":[{"content":{"parts":[{"text":"thinking text","thought":true,"thoughtSignature":"thought_sig_123"}],"role":"model"},"finishReason":"STOP","index":0}]}"#,
+    )
+    .await;
     let first = converted.choice.first();
-    assert!(matches!(
-        first,
-        Some(message::AssistantContent::Reasoning(message::Reasoning { content, .. }))
-            if matches!(
-                content.first(),
-                Some(message::ReasoningContent::Text {
-                    text,
-                    signature: Some(signature)
-                }) if text == "thinking text" && signature == "thought_sig_123"
-            )
-    ));
+    assert!(
+        matches!(
+            first,
+            Some(message::AssistantContent::Reasoning(message::Reasoning { content, .. }))
+                if matches!(
+                    content.first(),
+                    Some(message::ReasoningContent::Text {
+                        text,
+                        signature: Some(signature)
+                    }) if text == "thinking text" && signature == "thought_sig_123"
+                )
+        ),
+        "{first:?}"
+    );
 }
 
-#[test]
-fn test_tool_protocol_finish_reason_returns_response_error() {
+#[tokio::test]
+async fn test_tool_protocol_finish_reason_returns_response_error() {
     for (reason, finish_message) in [
         (
             FinishReason::MalformedFunctionCall,
@@ -477,90 +470,42 @@ fn test_tool_protocol_finish_reason_returns_response_error() {
         ),
     ] {
         let reason_name = format!("{reason:?}");
-        let response = GenerateContentResponse {
-            response_id: "resp_tool_protocol_error".to_string(),
-            candidates: vec![ContentCandidate {
-                content: Some(Content {
-                    parts: vec![Part {
-                        thought: None,
-                        thought_signature: None,
-                        part: PartKind::FunctionCall(FunctionCall {
-                            name: "default_api".to_string(),
-                            args: json!({"x": 1}),
-                            id: None,
-                        }),
-                        additional_params: None,
-                    }],
-                    role: Some(Role::Model),
-                }),
-                finish_reason: Some(reason),
-                safety_ratings: None,
-                citation_metadata: None,
-                token_count: None,
-                avg_logprobs: None,
-                logprobs_result: None,
-                index: Some(0),
-                finish_message: Some(finish_message.to_string()),
-            }],
-            prompt_feedback: None,
-            usage_metadata: None,
-            model_version: None,
-        };
+        let body = json!({
+            "responseId": "resp_tool_protocol_error",
+            "candidates": [{
+                "content": {
+                    "parts": [{"functionCall": {"name": "default_api", "args": {"x": 1}}}],
+                    "role": "model"
+                },
+                "finishReason": reason,
+                "finishMessage": finish_message,
+                "index": 0
+            }]
+        });
 
-        let err = crate::completion::CompletionResponse::try_from(response)
+        let err = fold_unary("gemini-2.5-flash", body.to_string())
+            .await
             .expect_err("tool protocol finish reason should fail");
 
-        assert!(matches!(
-            err,
-            CompletionError::ResponseError(message)
-                if message.contains(&reason_name)
-                    && message.contains(finish_message)
-        ));
+        assert!(
+            matches!(
+                &err,
+                CompletionError::ResponseError(message)
+                    if message.contains(&reason_name)
+                        && message.contains(finish_message)
+            ),
+            "{reason_name}: {err}"
+        );
     }
 }
 
-#[test]
-fn test_completion_response_usage_preserves_cached_and_reasoning_tokens() {
-    let response = GenerateContentResponse {
-        response_id: "resp_1".to_string(),
-        candidates: vec![ContentCandidate {
-            content: Some(Content {
-                parts: vec![Part {
-                    thought: None,
-                    thought_signature: None,
-                    part: PartKind::Text("answer".to_string()),
-                    additional_params: None,
-                }],
-                role: Some(Role::Model),
-            }),
-            finish_reason: Some(FinishReason::Stop),
-            safety_ratings: None,
-            citation_metadata: None,
-            token_count: None,
-            avg_logprobs: None,
-            logprobs_result: None,
-            index: Some(0),
-            finish_message: None,
-        }],
-        prompt_feedback: None,
-        usage_metadata: Some(UsageMetadata {
-            prompt_token_count: 40,
-            cached_content_token_count: Some(20),
-            candidates_token_count: Some(30),
-            total_token_count: 100,
-            thoughts_token_count: Some(10),
-            prompt_tokens_details: None,
-            cache_tokens_details: None,
-            candidates_tokens_details: None,
-            tool_use_prompt_token_count: Some(12),
-            tool_use_prompt_tokens_details: None,
-            traffic_type: None,
-        }),
-        model_version: Some("gemini-2.0-flash-001".to_string()),
-    };
-
-    let converted: crate::completion::CompletionResponse =
-        response.try_into().expect("convert response");
+#[tokio::test]
+async fn test_completion_response_usage_preserves_cached_and_reasoning_tokens() {
+    let converted = unary(
+        "gemini-2.5-flash",
+        r#"{"responseId":"resp_1","candidates":[{"content":{"parts":[{"text":"answer"}],"role":"model"},"finishReason":"STOP","index":0}],"usageMetadata":{"promptTokenCount":40,"cachedContentTokenCount":20,"candidatesTokenCount":30,"totalTokenCount":100,"thoughtsTokenCount":10,"toolUsePromptTokenCount":12},"modelVersion":"gemini-2.0-flash-001"}"#,
+    )
+    .await;
 
     assert_eq!(converted.usage.input_tokens, Some(40));
     assert_eq!(converted.usage.cached_input_tokens, Some(20));
@@ -689,30 +634,16 @@ fn test_unknown_block_reason_deserializes_verbatim() {
     ));
 }
 
-#[test]
-fn test_unary_response_with_unknown_finish_reason_stays_parseable() {
+#[tokio::test]
+async fn test_unary_response_with_unknown_finish_reason_stays_parseable() {
     // A finish reason Google ships tomorrow must not fail the whole
     // payload: content and usage stay intact, and the reason maps to
     // `Other` verbatim — matching the gRPC crate's handling of unknowns.
-    let response: GenerateContentResponse = serde_json::from_value(json!({
-        "responseId": "resp-future",
-        "candidates": [{
-            "content": {
-                "parts": [{"text": "hi"}],
-                "role": "model"
-            },
-            "finishReason": "FINISH_REASON_FUTURE"
-        }],
-        "usageMetadata": {
-            "promptTokenCount": 3,
-            "candidatesTokenCount": 2,
-            "totalTokenCount": 5
-        }
-    }))
-    .expect("unknown finish reason should not fail the payload");
-
-    let converted: crate::completion::CompletionResponse =
-        response.try_into().expect("convert response");
+    let converted = unary(
+        "gemini-2.5-flash",
+        r#"{"responseId":"resp-future","candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"},"finishReason":"FINISH_REASON_FUTURE"}],"usageMetadata":{"promptTokenCount":3,"candidatesTokenCount":2,"totalTokenCount":5}}"#,
+    )
+    .await;
 
     assert!(matches!(
         converted.choice.first(),
@@ -750,23 +681,13 @@ fn test_streaming_candidate_with_unknown_finish_reason_stays_parseable() {
     );
 }
 
-#[test]
-fn test_completion_response_carries_normalized_metadata() {
-    let response: GenerateContentResponse = serde_json::from_value(json!({
-        "responseId": "resp-meta",
-        "modelVersion": "gemini-2.0-flash-001",
-        "candidates": [{
-            "content": {
-                "parts": [{"text": "hi"}],
-                "role": "model"
-            },
-            "finishReason": "MAX_TOKENS"
-        }]
-    }))
-    .expect("response should deserialize");
-
-    let converted: crate::completion::CompletionResponse =
-        response.try_into().expect("convert response");
+#[tokio::test]
+async fn test_completion_response_carries_normalized_metadata() {
+    let converted = unary(
+        "gemini-2.5-flash",
+        r#"{"responseId":"resp-meta","modelVersion":"gemini-2.0-flash-001","candidates":[{"content":{"parts":[{"text":"hi"}],"role":"model"},"finishReason":"MAX_TOKENS"}]}"#,
+    )
+    .await;
 
     assert_eq!(converted.provider, PROVIDER_NAME);
     assert_eq!(converted.model.as_deref(), Some("gemini-2.0-flash-001"));
@@ -778,29 +699,15 @@ fn test_completion_response_carries_normalized_metadata() {
     );
 }
 
-#[test]
-fn test_completion_response_upgrades_stop_to_tool_calls() {
+#[tokio::test]
+async fn test_completion_response_upgrades_stop_to_tool_calls() {
     // Gemini reports STOP on turns that only emitted a function call; the
     // normalized response must still say `ToolCalls`.
-    let response: GenerateContentResponse = serde_json::from_value(json!({
-        "responseId": "resp-tool",
-        "candidates": [{
-            "content": {
-                "parts": [{
-                    "functionCall": {
-                        "name": "get_weather",
-                        "args": {"city": "Paris"}
-                    }
-                }],
-                "role": "model"
-            },
-            "finishReason": "STOP"
-        }]
-    }))
-    .expect("response should deserialize");
-
-    let converted: crate::completion::CompletionResponse =
-        response.try_into().expect("convert response");
+    let converted = unary(
+        "gemini-2.5-flash",
+        r#"{"responseId":"resp-tool","candidates":[{"content":{"parts":[{"functionCall":{"name":"get_weather","args":{"city":"Paris"}}}],"role":"model"},"finishReason":"STOP"}]}"#,
+    )
+    .await;
 
     assert_eq!(
         converted.finish_reason(),
@@ -865,28 +772,13 @@ fn test_message_conversion_tool_call() {
     }
 }
 
-#[test]
-fn test_response_function_call_preserves_correlation_id() {
-    let response: GenerateContentResponse = serde_json::from_value(json!({
-        "responseId": "response-123",
-        "candidates": [{
-            "content": {
-                "parts": [{
-                    "functionCall": {
-                        "name": "test_function",
-                        "args": {"arg1": "value1"},
-                        "id": "call-123"
-                    }
-                }],
-                "role": "model"
-            },
-            "finishReason": "STOP"
-        }]
-    }))
-    .expect("response should deserialize");
-
-    let converted: crate::completion::CompletionResponse =
-        response.try_into().expect("response should convert");
+#[tokio::test]
+async fn test_response_function_call_preserves_correlation_id() {
+    let converted = unary(
+        "gemini-2.5-flash",
+        r#"{"responseId":"response-123","candidates":[{"content":{"parts":[{"functionCall":{"name":"test_function","args":{"arg1":"value1"},"id":"call-123"}}],"role":"model"},"finishReason":"STOP"}]}"#,
+    )
+    .await;
     let Some(message::AssistantContent::ToolCall(tool_call)) = converted.choice.first() else {
         panic!("expected a tool call");
     };
@@ -1805,13 +1697,16 @@ async fn completion_non_success_preserves_status_and_body() {
     assert_eq!(error.provider_response_body(), Some(body));
 }
 
-#[test]
-fn block_reasons_split_into_final_refusals_and_transient_blocks() {
+#[tokio::test]
+async fn block_reasons_split_into_final_refusals_and_transient_blocks() {
     // `SAFETY`, `BLOCKLIST` and `PROHIBITED_CONTENT` judge the content and
     // are final. `OTHER` is Google's "blocked due to unknown reasons"; the
     // same prompt is answered on the next call, so it is retryable and it
     // is not a refusal. The classification is typed: the report's
-    // `retryable` and `kind` say it, no caller reads the message.
+    // `retryable` and `kind` say it, no caller reads the message. The block
+    // arrives under a 200, which the driver keeps on the error for the
+    // caller to see; a success status is no retry verdict, so the
+    // decoder's own stands.
     for (reason, retryable) in [
         ("SAFETY", false),
         ("BLOCKLIST", false),
@@ -1819,11 +1714,12 @@ fn block_reasons_split_into_final_refusals_and_transient_blocks() {
         ("OTHER", true),
         ("SOMETHING_NEW", true),
     ] {
-        let response: GenerateContentResponse = serde_json::from_value(json!({
-            "promptFeedback": {"blockReason": reason}
-        }))
-        .unwrap();
-        let error = completion::CompletionResponse::try_from(response).expect_err(reason);
+        let error = fold_unary(
+            "gemini-2.5-flash",
+            json!({"promptFeedback": {"blockReason": reason}}).to_string(),
+        )
+        .await
+        .expect_err(reason);
         assert_eq!(error.is_retryable(), retryable, "{reason}: {error:?}");
         let report = crate::error::ErrorReport::from(&error);
         assert_eq!(report.retryable, retryable, "{reason}: {report:?}");
@@ -1832,20 +1728,12 @@ fn block_reasons_split_into_final_refusals_and_transient_blocks() {
             "{reason}: {}",
             report.message
         );
-        if retryable {
-            assert!(
-                matches!(&error, CompletionError::ProviderResponse(response) if response.status.is_none() && response.code.as_deref() == Some(reason)),
-                "{reason}: {error:?}"
-            );
-            assert_eq!(report.kind, crate::error::ErrorKind::ProviderResponse);
-        } else {
-            assert!(
-                matches!(&error, CompletionError::ProviderResponse(response) if response.status.is_none() && response.refusal && response.code.as_deref() == Some(reason)),
-                "{reason}: {error:?}"
-            );
-            assert_eq!(report.kind, crate::error::ErrorKind::ProviderResponse);
-            assert!(report.refusal, "{reason}: {report:?}");
-        }
+        assert!(
+            matches!(&error, CompletionError::ProviderResponse(response) if response.status == Some(http::StatusCode::OK) && response.refusal != retryable && response.code.as_deref() == Some(reason)),
+            "{reason}: {error:?}"
+        );
+        assert_eq!(report.kind, crate::error::ErrorKind::ProviderResponse);
+        assert_eq!(report.refusal, !retryable, "{reason}: {report:?}");
     }
 }
 
@@ -1920,10 +1808,20 @@ fn folded(
     )
 }
 
-async fn unary(model: &str, body: &'static str) -> crate::completion::CompletionResponse {
+/// Fold one `generateContent` reply body through the bound wire, the way a
+/// caller's `completion()` does — errors included.
+async fn fold_unary(
+    model: &str,
+    body: impl Into<bytes::Bytes>,
+) -> Result<crate::completion::CompletionResponse, CompletionError> {
     use crate::completion::CompletionModel as _;
     Bound::new(wire(model), RecordingHttpClient::new(body))
         .completion(wire_request("probe"))
+        .await
+}
+
+async fn unary(model: &str, body: &'static str) -> crate::completion::CompletionResponse {
+    fold_unary(model, body)
         .await
         .expect("the recorded unary reply decodes")
 }

@@ -611,10 +611,7 @@ impl GenerateContentDecoder {
                 // transports since #2258. Structural metadata only in the
                 // log — an unmodeled part can carry model output, which must
                 // not leak into WARN logs.
-                crate::providers::internal::adapter::warn_unmodeled(
-                    "gemini_part",
-                    &part_kind_name(&part),
-                );
+                crate::driver::warn_unmodeled("gemini_part", &part_kind_name(&part));
             }
             Part { part, .. } => {
                 // A part kind rig cannot account for at all. `functionResponse`

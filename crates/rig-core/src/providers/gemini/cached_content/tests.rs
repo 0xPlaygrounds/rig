@@ -160,21 +160,18 @@ fn create_body_omits_unset_fields() {
     );
 }
 
-// The pagination loop, and every way its cursor can fail to advance:
-// absent, empty, repeated, and alternating — the last of which only the
-// page ceiling catches. The model-listing wire carries the same three
-// rules, but this resource cannot share them: its replies are
-// `CachedContent` documents and its failures need the 403/404 triage
-// `CachedContentError::Expired` exists for, so the rules live in
-// `list_pages` and are pinned here.
+// The pagination loop's request shape, and the two ways a cursor can fail
+// to advance that the decoder decides: absent and empty. A repeated or
+// alternating cursor is the driver's to stop (`driver/tests.rs`), since
+// `Decoder::continuation` hands it the next request and the loop is its
+// own.
 //
 // Only the malformed-cursor cells are unrecordable: no live response
-// carries an empty, repeated or alternating cursor, and no live cursor
-// carries URL-significant characters. Ordinary and multi-page listings are
-// recorded — `prompt_caching/explicit_cache_lifecycle` for a single page,
+// carries an empty cursor, and no live cursor carries URL-significant
+// characters. Ordinary and multi-page listings are recorded —
+// `prompt_caching/explicit_cache_lifecycle` for a single page,
 // `cached_content_matrix/edge_list_pagination` for three pages at
-// `pageSize=1`. These cells exist to pin the three termination guards,
-// which a recording cannot exercise.
+// `pageSize=1`.
 
 /// One page of Gemini's `cachedContents` list envelope.
 fn cached_page(names: &[&str], next_page_token: Option<&str>) -> MockHttpResponse {
@@ -198,7 +195,7 @@ fn cached_page(names: &[&str], next_page_token: Option<&str>) -> MockHttpRespons
 fn caches(
     pages: Vec<MockHttpResponse>,
 ) -> (
-    super::CachedContents<SequencedHttpClient>,
+    crate::driver::Bound<CachedContents, SequencedHttpClient>,
     SequencedHttpClient,
 ) {
     let http_client = SequencedHttpClient::new(pages);
@@ -240,62 +237,6 @@ async fn pagination_stops_on_an_empty_cursor() {
     assert_eq!(http_client.remaining_responses(), 1);
 }
 
-/// A server that keeps echoing the same cursor cannot advance the listing
-/// either — the next request would be byte-identical to the one just
-/// answered, so the same page would come back forever.
-#[tokio::test]
-async fn pagination_stops_on_a_cursor_that_does_not_advance() {
-    let (caches, http_client) = caches(vec![
-        cached_page(&["a"], Some("stuck")),
-        cached_page(&["b"], Some("stuck")),
-        cached_page(&["c"], Some("stuck")),
-    ]);
-
-    let listed = caches
-        .list_with_page_size(1)
-        .await
-        .expect("listing should terminate");
-
-    let names: Vec<_> = listed.iter().map(|entry| entry.name.as_str()).collect();
-    assert_eq!(
-        names,
-        ["cachedContents/a", "cachedContents/b"],
-        "the repeat is only detectable on the second page, so both are kept",
-    );
-    assert_eq!(http_client.remaining_responses(), 1);
-}
-
-/// A cursor that keeps *changing* without making progress — a gateway
-/// alternating between two values, or minting a fresh one per request —
-/// defeats the repeat check, which only remembers the previous cursor. Only
-/// the page ceiling stops it, and without one `list` never returns while
-/// `all` grows without bound (rig#2334).
-#[tokio::test]
-async fn pagination_stops_at_the_page_ceiling_on_an_alternating_cursor() {
-    // Two cursors that alternate forever: every request differs from the
-    // one before, so no repeat is ever observed.
-    let pages: Vec<_> = (0..MAX_LISTING_PAGES + 10)
-        .map(|i| cached_page(&["a"], Some(if i % 2 == 0 { "ping" } else { "pong" })))
-        .collect();
-    let (caches, http_client) = caches(pages);
-
-    let listed = caches
-        .list_with_page_size(1)
-        .await
-        .expect("the ceiling ends the listing instead of looping");
-
-    assert_eq!(
-        listed.len(),
-        MAX_LISTING_PAGES,
-        "exactly the ceiling's worth of pages is fetched",
-    );
-    assert_eq!(
-        http_client.remaining_responses(),
-        10,
-        "the loop stops at the ceiling rather than draining every page",
-    );
-}
-
 /// A cursor carrying URL-significant characters is percent-encoded rather
 /// than interpolated, so it cannot truncate the path or inject a query
 /// parameter — Gemini appends `key=` to every URI, so a raw `&` in the
@@ -332,7 +273,9 @@ async fn pagination_percent_encodes_the_cursor() {
 // (`tests/providers/gemini/support.rs`, which asserts the literal
 // `DELETE /v1beta/cachedContents/leaky`) match on.
 
-fn bound_caches(http: SequencedHttpClient) -> super::CachedContents<SequencedHttpClient> {
+fn bound_caches(
+    http: SequencedHttpClient,
+) -> crate::driver::Bound<CachedContents, SequencedHttpClient> {
     crate::driver::Bound::new(crate::providers::gemini::Gemini::new("test-key"), http)
         .cached_contents()
 }
@@ -409,5 +352,48 @@ async fn the_bound_cache_follows_the_listing_cursor() {
             "https://generativelanguage.googleapis.com/v1beta/cachedContents?pageSize=1&key=test-key",
             "https://generativelanguage.googleapis.com/v1beta/cachedContents?pageSize=1&pageToken=two&key=test-key",
         ]
+    );
+}
+
+/// A wire is data a host may serialize into a scene or a config file, and
+/// the key is the one credential in it. Nothing serialized may carry it,
+/// and what comes back must be the same wire.
+#[test]
+fn a_serialized_wire_carries_no_key_material_and_round_trips() {
+    let wire = crate::providers::gemini::Gemini::new("AIzaSyNOTAREALKEY-0123456789")
+        .cached_contents()
+        .with_page_size(7);
+    let json = serde_json::to_string(&wire).expect("the wire serializes");
+    assert!(
+        !json.contains("AIzaSyNOTAREALKEY"),
+        "the serialized wire leaked the key: {json}"
+    );
+    assert!(!format!("{wire:?}").contains("AIzaSyNOTAREALKEY"));
+    let restored: CachedContents = serde_json::from_str(&json).expect("the wire deserializes");
+    assert_eq!(restored.page_size, 7);
+    assert_eq!(restored.provider.base_url, wire.provider.base_url);
+}
+
+/// The one delete reply shape the cassettes never show — an empty body —
+/// still acknowledges: the status already said yes. The same emptiness on a
+/// verb that needs the resource is reported as such rather than as a
+/// parse failure.
+#[tokio::test]
+async fn an_empty_body_acknowledges_a_delete_but_answers_no_get() {
+    let caches = bound_caches(SequencedHttpClient::new([
+        MockHttpResponse::success(""),
+        MockHttpResponse::success(""),
+    ]));
+    caches
+        .delete("cachedContents/leaky")
+        .await
+        .expect("an empty 200 acknowledges the delete");
+    let error = caches
+        .get("cachedContents/leaky")
+        .await
+        .expect_err("an empty 200 carries no resource");
+    assert!(
+        matches!(error, CachedContentError::ResponseError(_)),
+        "{error:?}"
     );
 }

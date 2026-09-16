@@ -114,14 +114,8 @@ fn cohere_missing_ids_and_later_explicit_collision() {
     let mut message = chat_wire()["choices"][0]["message"].clone();
     message["content"] = json!([{"type":"text","text":"prefix"}]);
     let wire = json!({"id":"response","finish_reason":"TOOL_CALL","message":message});
-    assert_normalization(|| {
-        serde_json::from_value::<crate::providers::cohere::completion::CompletionResponse>(
-            wire.clone(),
-        )
-        .unwrap()
-        .try_into()
-        .unwrap()
-    });
+    let chat = crate::providers::cohere::Cohere::new("test-key").chat("test");
+    assert_normalization(|| fold_document(&chat, &wire));
 }
 
 #[test]
@@ -129,14 +123,8 @@ fn gemini_rest_missing_ids_and_later_explicit_collision() {
     let wire = json!({"candidates":[{"content":{"role":"model","parts":
         (0..3).map(|i|json!({"functionCall":{"id":if i==1 {"tool-0"} else {""},"name":"same","args":{"n":i}}})).collect::<Vec<_>>()
     },"finishReason":"STOP"}]});
-    assert_normalization(|| {
-        serde_json::from_value::<
-            crate::providers::gemini::completion::gemini_api_types::GenerateContentResponse,
-        >(wire.clone())
-        .unwrap()
-        .try_into()
-        .unwrap()
-    });
+    let generate = crate::providers::gemini::Gemini::new("test-key").generate_content("test");
+    assert_normalization(|| fold_document(&generate, &wire));
 }
 
 #[test]
@@ -144,14 +132,8 @@ fn gemini_interactions_missing_ids_and_later_explicit_collision() {
     let wire = json!({"id":"response","status":"completed","steps":
         (0..3).map(|i|json!({"type":"function_call","id":if i==1 {"tool-0"} else {""},"name":"same","arguments":{"n":i}})).collect::<Vec<_>>()
     });
-    assert_normalization(|| {
-        serde_json::from_value::<
-            crate::providers::gemini::interactions_api::interactions_api_types::Interaction,
-        >(wire.clone())
-        .unwrap()
-        .try_into()
-        .unwrap()
-    });
+    let interactions = crate::providers::gemini::Gemini::new("test-key").interactions("test");
+    assert_normalization(|| fold_document(&interactions, &wire));
 }
 
 #[test]

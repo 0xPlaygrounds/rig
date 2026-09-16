@@ -1,7 +1,7 @@
 use crate::{
     completion::{self, CompletionError},
     json_utils,
-    message::{self, Reasoning, ToolChoice},
+    message::{self, ToolChoice},
 };
 use std::collections::HashMap;
 
@@ -127,66 +127,6 @@ pub struct Tokens {
     pub input_tokens: Option<f64>,
     #[serde(default)]
     pub output_tokens: Option<f64>,
-}
-
-impl TryFrom<CompletionResponse> for completion::CompletionResponse {
-    type Error = CompletionError;
-
-    fn try_from(response: CompletionResponse) -> Result<Self, Self::Error> {
-        let (content, _, tool_calls) = response.message()?;
-
-        let mut model_response = if !tool_calls.is_empty() {
-            crate::message::require_non_empty(
-                tool_calls
-                    .into_iter()
-                    .filter_map(|tool_call| {
-                        let ToolCallFunction { name, arguments } = tool_call.function?;
-                        // The wire's id when present, or empty so the
-                        // conversion mints — never the tool name: a name-as-id
-                        // is fake provenance and collides two same-tool calls
-                        // in one turn.
-                        let id = tool_call.id.unwrap_or_default();
-
-                        Some(completion::AssistantContent::tool_call(id, name, arguments))
-                    })
-                    .collect::<Vec<_>>(),
-                || {
-                    CompletionError::ResponseError(
-                        "response contained tool call metadata without any callable tool content"
-                            .to_owned(),
-                    )
-                },
-            )?
-        } else {
-            crate::message::require_non_empty_response(
-                content
-                    .into_iter()
-                    .map(|content| match content {
-                        AssistantContent::Text { text } => completion::AssistantContent::text(text),
-                        AssistantContent::Thinking { thinking } => {
-                            completion::AssistantContent::Reasoning(Reasoning::new(&thinking))
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            )?
-        };
-
-        crate::message::normalize_missing_tool_call_ids(&mut model_response);
-
-        let usage = response
-            .usage
-            .as_ref()
-            .map(completion::Usage::from)
-            .unwrap_or_default();
-
-        Ok(
-            // Cohere's `/v2/chat` payload reports no model identifier, so the
-            // normalized `model` stays unset.
-            completion::CompletionResponse::new(model_response, usage, PROVIDER_NAME)
-                .with_optional_response_id(Some(response.id.as_str()).filter(|id| !id.is_empty()))
-                .with_finish_reason(map_finish_reason(&response.finish_reason)),
-        )
-    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]

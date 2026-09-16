@@ -28,7 +28,9 @@ mod observation;
 pub mod streaming;
 pub mod transcription;
 
-pub use cached_content::{CacheExpiry, CachedContent, CachedContentError, NewCachedContent};
+pub use cached_content::{
+    CacheExpiry, CachedContent, CachedContentError, CachedContents, NewCachedContent,
+};
 pub use embedding::{EMBEDDING_001, EMBEDDING_004};
 #[cfg(feature = "image")]
 pub use image_generation::GEMINI_2_5_FLASH_IMAGE;
@@ -152,7 +154,7 @@ impl Gemini {
     }
 
     /// The model listing wire for the GenerateContent family — the one
-    /// `Bound::model_listing()` builds.
+    /// `Bound::models()` builds.
     pub fn models(&self) -> model_listing::Models {
         model_listing::Models::new(self.clone())
     }

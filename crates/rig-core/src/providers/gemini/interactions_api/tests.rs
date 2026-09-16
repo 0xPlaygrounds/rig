@@ -1,5 +1,5 @@
 use super::*;
-use crate::completion::{CompletionRequest, Message};
+use crate::completion::{self, CompletionRequest, Message};
 use crate::message::{self, ToolChoice as MessageToolChoice};
 use serde_json::json;
 
@@ -371,8 +371,8 @@ fn test_tool_result_images_and_text_serialize_as_ordered_tagged_content() {
     );
 }
 
-#[test]
-fn test_response_function_call_mapping() {
+#[tokio::test]
+async fn test_response_function_call_mapping() {
     let interaction = Interaction {
         id: "interaction-1".to_string(),
         steps: vec![Step::FunctionCall(FunctionCallContent {
@@ -389,8 +389,7 @@ fn test_response_function_call_mapping() {
         ..Default::default()
     };
 
-    let response: completion::CompletionResponse =
-        interaction.try_into().expect("conversion should succeed");
+    let response = fold_resource(&interaction).await;
 
     let choice = response.choice.first();
     match choice {
@@ -894,8 +893,8 @@ fn test_interaction_with_unknown_status_stays_parseable() {
     );
 }
 
-#[test]
-fn test_completion_response_carries_normalized_metadata() {
+#[tokio::test]
+async fn test_completion_response_carries_normalized_metadata() {
     let interaction = Interaction {
         id: "interaction-meta".to_string(),
         model: Some("gemini-2.5-pro".to_string()),
@@ -909,8 +908,7 @@ fn test_completion_response_carries_normalized_metadata() {
         ..Default::default()
     };
 
-    let response: completion::CompletionResponse =
-        interaction.try_into().expect("conversion should succeed");
+    let response = fold_resource(&interaction).await;
 
     assert_eq!(response.provider, PROVIDER_NAME);
     assert_eq!(response.model.as_deref(), Some("gemini-2.5-pro"));
@@ -922,8 +920,8 @@ fn test_completion_response_carries_normalized_metadata() {
     );
 }
 
-#[test]
-fn test_completion_response_upgrades_completed_to_tool_calls() {
+#[tokio::test]
+async fn test_completion_response_upgrades_completed_to_tool_calls() {
     // A `completed` interaction whose outputs are function calls is a tool
     // turn; the normalized response must say so.
     let interaction = Interaction {
@@ -937,8 +935,7 @@ fn test_completion_response_upgrades_completed_to_tool_calls() {
         ..Default::default()
     };
 
-    let response: completion::CompletionResponse =
-        interaction.try_into().expect("conversion should succeed");
+    let response = fold_resource(&interaction).await;
 
     assert_eq!(
         response.finish_reason(),
@@ -1213,6 +1210,17 @@ fn probe() -> CompletionRequest {
         additional_params: None,
         output_schema: None,
     }
+}
+
+/// Fold an interaction resource, as the unary reply's body, through the
+/// bound wire the way a caller's `completion()` does.
+async fn fold_resource(interaction: &Interaction) -> crate::completion::CompletionResponse {
+    use crate::completion::CompletionModel as _;
+    let body = serde_json::to_string(interaction).expect("the resource serializes");
+    Bound::new(interactions_wire(), RecordingHttpClient::new(body))
+        .completion(probe())
+        .await
+        .expect("the interaction resource decodes")
 }
 
 /// The block kinds a folded turn carries, and the signature on its

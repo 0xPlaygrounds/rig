@@ -63,10 +63,22 @@ fn leaves_unterminated_or_inline_reasoning_markers_visible() {
     );
 }
 
-// Test deserialization and conversion for the /api/chat endpoint.
+/// Fold one `/api/chat` reply body through the bound chat wire, the way a
+/// caller's `completion()` does.
+async fn unary(body: serde_json::Value) -> Result<completion::CompletionResponse, CompletionError> {
+    use crate::completion::CompletionModel as _;
+    let model = ollama_model(crate::test_utils::RecordingHttpClient::new(
+        body.to_string(),
+    ));
+    model
+        .completion(model.completion_request("hello").build())
+        .await
+}
+
+// A non-streaming `/api/chat` reply carrying both text and a tool call
+// (shape from the Ollama docs) folds to a choice holding both.
 #[tokio::test]
 async fn test_chat_completion() {
-    // Sample JSON response from /api/chat (non-streaming) based on Ollama docs.
     let sample_chat_response = json!({
         "model": "llama3.2",
         "created_at": "2023-08-04T19:22:45.499127Z",
@@ -95,14 +107,24 @@ async fn test_chat_completion() {
         "eval_count": 468u64,
         "eval_duration": 7700000000u64
     });
-    let sample_text = sample_chat_response.to_string();
 
-    let chat_resp: CompletionResponse =
-        serde_json::from_str(&sample_text).expect("Invalid JSON structure");
-    let conv: completion::CompletionResponse = chat_resp.try_into().unwrap();
+    let conv = unary(sample_chat_response)
+        .await
+        .expect("the reply decodes");
     assert!(
-        !conv.choice.is_empty(),
-        "Expected non-empty choice in chat response"
+        conv.choice
+            .iter()
+            .any(|c| matches!(c, completion::AssistantContent::Text(t) if t.text == "The sky is blue because of Rayleigh scattering.")),
+        "the text survives: {:?}",
+        conv.choice
+    );
+    assert!(
+        conv.choice.iter().any(|c| matches!(
+            c,
+            completion::AssistantContent::ToolCall(call) if call.function.name == "get_current_weather"
+        )),
+        "the tool call survives: {:?}",
+        conv.choice
     );
 }
 
@@ -122,9 +144,9 @@ fn done_reason_maps_documented_values_and_preserves_the_rest() {
     );
 }
 
-#[test]
-fn response_metadata_is_normalized() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+#[tokio::test]
+async fn response_metadata_is_normalized() {
+    let normalized = unary(json!({
         "model": "llama3.2",
         "created_at": "2023-08-04T19:22:45.499127Z",
         "message": {"role": "assistant", "content": "Hi!", "tool_calls": []},
@@ -133,10 +155,8 @@ fn response_metadata_is_normalized() {
         "prompt_eval_count": 12u64,
         "eval_count": 3u64
     }))
-    .expect("fixture should deserialize");
-
-    let normalized: completion::CompletionResponse =
-        response.try_into().expect("normalization should succeed");
+    .await
+    .expect("normalization should succeed");
 
     assert_eq!(normalized.provider, PROVIDER_NAME);
     assert_eq!(normalized.model.as_deref(), Some("llama3.2"));
@@ -153,9 +173,9 @@ fn response_metadata_is_normalized() {
 
 // A `done_reason` of `stop` on a turn that actually called a tool must be
 // upgraded by the response builder's reconciliation.
-#[test]
-fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
-    let response: CompletionResponse = serde_json::from_value(json!({
+#[tokio::test]
+async fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
+    let normalized = unary(json!({
         "model": "qwen3:4b",
         "created_at": "2023-08-04T19:22:45.499127Z",
         "message": {
@@ -168,10 +188,8 @@ fn tool_call_turn_upgrades_a_plain_stop_to_tool_calls() {
         "done": true,
         "done_reason": "stop"
     }))
-    .expect("fixture should deserialize");
-
-    let normalized: completion::CompletionResponse =
-        response.try_into().expect("normalization should succeed");
+    .await
+    .expect("normalization should succeed");
 
     assert_eq!(
         normalized.finish_reason(),
@@ -454,10 +472,9 @@ async fn nonstreaming_response_preserves_thinking_as_reasoning() {
         "eval_duration": 7700000000u64
     });
 
-    let raw: CompletionResponse =
-        serde_json::from_value(sample_response).expect("deserialize ollama response");
-    let completed: completion::CompletionResponse =
-        raw.try_into().expect("convert to completion response");
+    let completed = unary(sample_response)
+        .await
+        .expect("convert to completion response");
 
     let reasoning = completed.choice.iter().find_map(|c| match c {
         completion::AssistantContent::Reasoning(r) => Some(r.clone()),
@@ -1312,7 +1329,7 @@ async fn embeddings_non_success_preserves_status_and_body() {
     assert_eq!(error.provider_response_body(), Some(body));
 }
 
-/// Raw-capture tests: the `TryFrom` shape, driven end to end through
+/// Raw-capture tests: the `/api/chat` reply driven end to end through
 /// `CompletionModel::completion` on the bound chat wire over the recording
 /// mock transport. Ollama has no request-id contract, so there is nothing
 /// transport-side to reattach; `CompletionResponse::raw` is the `/api/chat`
@@ -1346,10 +1363,9 @@ mod raw_capture {
     /// **verbatim** — the body's own document, not a re-serialization of
     /// the typed parse — it still deserializes back into Ollama's
     /// `CompletionResponse` with every field the body carried intact, and
-    /// re-normalizing that capture through the same `TryFrom` reproduces
-    /// every normalized field. Also reads `total_duration` and
-    /// `eval_duration` off the capture, which the normalized response
-    /// provably lacks.
+    /// folding that capture back through the same wire reproduces every
+    /// normalized field. Also reads `total_duration` and `eval_duration`
+    /// off the capture, which the normalized response provably lacks.
     ///
     /// Compared against the body rather than against
     /// `to_value(&typed)`: that equality was the *old* contract, where
@@ -1391,8 +1407,7 @@ mod raw_capture {
         assert_eq!(raw["total_duration"], 5_043_500_667_u64);
         assert_eq!(typed.done_reason.as_deref(), Some("stop"));
 
-        let renormalized: completion::CompletionResponse =
-            typed.try_into().expect("re-normalize the capture");
+        let renormalized = unary(raw.clone()).await.expect("re-fold the capture");
         assert_eq!(response.identity(), renormalized.identity());
         assert_eq!(response.finish_reason(), renormalized.finish_reason());
         assert_eq!(response.model, renormalized.model);
@@ -1409,8 +1424,8 @@ mod raw_capture {
 
 /// Synthetic wire values test absent-ID and explicit-ID collisions deterministically;
 /// recordings cannot reliably force a provider to emit these boundary combinations.
-#[test]
-fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
+#[tokio::test]
+async fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
     let wire = json!({
         "model": "test", "created_at": "2024-01-01T00:00:00Z", "done": true,
         "message": {"role":"assistant", "content":"", "tool_calls":[
@@ -1419,16 +1434,11 @@ fn missing_tool_ids_are_distinct_stable_and_collision_free_in_responses() {
             {"function":{"name":"same","arguments":{"value":3}}}
         ]}
     });
-    let normalize = || {
-        completion::CompletionResponse::try_from(
-            serde_json::from_value::<CompletionResponse>(wire.clone()).unwrap(),
-        )
-        .unwrap()
-    };
-    let first = normalize();
+    let normalize = || async { unary(wire.clone()).await.unwrap() };
+    let first = normalize().await;
     assert_eq!(
         serde_json::to_value(&first.choice).unwrap(),
-        serde_json::to_value(normalize().choice).unwrap()
+        serde_json::to_value(normalize().await.choice).unwrap()
     );
     let calls: Vec<_> = first
         .choice

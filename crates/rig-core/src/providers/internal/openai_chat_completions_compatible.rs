@@ -73,6 +73,25 @@ pub(crate) fn map_openai_finish_reason(reason: &str) -> FinishReason {
     }
 }
 
+/// Map a gateway's upstream-native finish reason (OpenRouter's
+/// `native_finish_reason`).
+///
+/// Its vocabulary is the union of its upstreams' — Anthropic's `end_turn`,
+/// Gemini's `STOP`, the OpenAI-compatible spellings — so it is wider than
+/// the normalized one and cannot be read through [`map_openai_finish_reason`].
+/// Matched case-insensitively because the upstreams disagree on casing.
+pub(crate) fn map_native_finish_reason(reason: &str) -> FinishReason {
+    match reason.to_ascii_lowercase().as_str() {
+        "stop" | "end_turn" | "stop_sequence" | "complete" | "completed" => FinishReason::Stop,
+        "length" | "max_tokens" | "max_output_tokens" | "model_length" => FinishReason::Length,
+        "tool_calls" | "function_call" | "tool_use" => FinishReason::ToolCalls,
+        "content_filter" | "safety" | "blocklist" | "prohibited_content" | "spii" => {
+            FinishReason::ContentFilter
+        }
+        other => FinishReason::Other(other.to_owned()),
+    }
+}
+
 /// Deserialize OpenAI-compatible choices while tolerating only tool calls
 /// that the provider cut off under an output-length finish reason.
 ///

@@ -14,19 +14,28 @@
 //! |---|---|
 //! | no `.await`, `async fn`, or `async` block | a provider owning its transport |
 //! | no `Arc`, `Box<dyn`, or `impl Future` in an `impl Wire` block | a wire that is not data |
-//! | no `struct`/`enum` with an `H` or `T` parameter | the transport parameter returning |
+//! | no `struct`/`enum` with an `H` parameter, or a `T` parameter outside [`DATA_GENERICS`] | the transport parameter returning |
 //! | no consumer-trait impl | a second way to be a model |
 //!
 //! The one exception is `openai/responses_api/websocket.rs`: a session — one
 //! connection, many turns, warmup — is not a request/response exchange, so it
 //! keeps its own API and decodes every message through the shared driver.
+//! Credential exchange (`/auth/`) is exempt from the `async` rules only.
 //!
 //! Source is parsed with `syn`, so an `.await` in a doc comment or a string
 //! cannot trip the check, and a file `syn` cannot parse is an error rather
-//! than a pass.
+//! than a pass. `syn` does not look inside a macro invocation's tokens,
+//! though, so the `.await` rule runs as a second pass over the file's raw
+//! token stream after the AST pass: the one place the AST cannot see is
+//! exactly where an `async_stream::stream! { … .await … }` hides.
+//!
+//! `*tests.rs` files and `tests/` directories are skipped: a test that drives
+//! a wire through a fake socket has to await something, and test code is not
+//! shipped.
 
 use std::path::{Path, PathBuf};
 
+use proc_macro2::{TokenStream, TokenTree};
 use syn::visit::{self, Visit};
 use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct, Type};
 
@@ -34,21 +43,33 @@ use syn::{Expr, File, ImplItemFn, ItemEnum, ItemFn, ItemImpl, ItemStruct, Type};
 /// be, each with the reason it is not a wire:
 ///
 /// - the Responses websocket is a **connection**: one socket, many turns,
-///   warmup — a session rather than a request/response exchange;
-/// - Gemini's cached content is a **resource lifecycle**: its replies are
-///   cache documents, not assistant turns, and it manages the inputs a wire
-///   later references.
+///   warmup — a session rather than a request/response exchange.
 ///
-/// Credential exchange is the third, matched by path in
+/// Credential exchange is the other, matched by path in
 /// [`is_credential_exchange`] because every provider has one.
 ///
-/// These surfaces are exempt from the transport rule as well as the
-/// `async` ones: a session holds the socket it is a session over, which is
-/// exactly what distinguishes it from a wire.
-const SESSION_EXCEPTIONS: &[&str] = &[
-    "openai/responses_api/websocket.rs",
-    "gemini/cached_content.rs",
+/// A session is exempt from the transport rule as well as the `async`
+/// ones: it holds the socket it is a session over, which is exactly what
+/// distinguishes it from a wire.
+const SESSION_EXCEPTIONS: &[&str] = &["openai/responses_api/websocket.rs"];
+
+/// The `T`-generic types that are parametric *data* rather than a held
+/// transport, each with why. A `struct Foo<T>` outside this list is
+/// rejected: `T` is the letter a transport parameter reaches for once `H`
+/// is forbidden.
+const DATA_GENERICS: &[&str] = &[
+    // The classifier's verdict, generic over the wire's own event type.
+    "WireEvent",
+    // The typed-transport triage, generic over an SDK's event type.
+    "TypedEvent",
+    // Cohere's embed reply, generic over the answer shape of the two embed routes.
+    "EmbedReply",
 ];
+
+/// Whether a `T`-generic type is one of the allowlisted data shapes.
+fn is_data_generic(ident: &str) -> bool {
+    DATA_GENERICS.contains(&ident)
+}
 
 /// Whether `relative` is one of the named non-wire surfaces.
 fn is_session(relative: &str) -> bool {
@@ -103,12 +124,9 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
             .map_err(|error| format!("{}: {error}", path.display()))?;
         let parsed: File =
             syn::parse_file(&source).map_err(|error| format!("{}: {error}", path.display()))?;
-        let mut visitor = Wires {
-            file: relative.clone(),
-            session: is_session(&relative) || is_credential_exchange(&relative),
-            offenders: Vec::new(),
-        };
+        let mut visitor = Wires::new(&relative);
         visitor.visit_file(&parsed);
+        visitor.scan_awaits(&source);
         offenders.extend(visitor.offenders);
     }
 
@@ -140,15 +158,91 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
 
 struct Wires {
     file: String,
-    /// Whether this file may own a connection or a conversation: the
-    /// websocket session, or a credential exchange.
+    /// Whether this file may hold a conversation — `async` and `.await` —
+    /// because it is a session or a credential exchange.
+    conversation: bool,
+    /// Whether this file may hold the socket it is a session over: the
+    /// transport parameter is allowed too. A credential exchange is not a
+    /// session; it produces the `Secret` a wire holds.
     session: bool,
     offenders: Vec<String>,
 }
 
 impl Wires {
+    fn new(relative: &str) -> Self {
+        let session = is_session(relative);
+        Self {
+            file: relative.to_owned(),
+            conversation: session || is_credential_exchange(relative),
+            session,
+            offenders: Vec::new(),
+        }
+    }
+
     fn report(&mut self, what: &str) {
         self.offenders.push(format!("  {}: {what}", self.file));
+    }
+
+    /// The transport-parameter rule: no `H`, and no `T` outside
+    /// [`DATA_GENERICS`].
+    fn check_type_params(&mut self, kind: &str, ident: &syn::Ident, generics: &syn::Generics) {
+        if self.session {
+            return;
+        }
+        for parameter in generics.type_params() {
+            let offending = parameter.ident == "H"
+                || (parameter.ident == "T" && !is_data_generic(&ident.to_string()));
+            if offending {
+                self.report(&format!(
+                    "`{kind} {ident}<{}>` — a wire holds no transport (parametric data is \
+                     allowlisted in `DATA_GENERICS`)",
+                    parameter.ident
+                ));
+            }
+        }
+    }
+
+    /// Every `.await` in `source`, by line, macro bodies included: `syn`
+    /// keeps a macro invocation's body as opaque tokens, so the AST pass
+    /// never sees `stream! { … .await … }`. Token-level rather than textual:
+    /// a comment is not a token and a string literal is one, so neither can
+    /// name an `.await` here.
+    fn scan_awaits(&mut self, source: &str) {
+        if self.conversation {
+            return;
+        }
+        let tokens: TokenStream = match source.parse() {
+            Ok(tokens) => tokens,
+            // `syn` already parsed this source, so its tokens lex; report
+            // rather than pass if that ever stops being true.
+            Err(error) => {
+                self.report(&format!(
+                    "could not tokenize for the `.await` scan: {error}"
+                ));
+                return;
+            }
+        };
+        let mut lines = Vec::new();
+        await_lines(tokens, &mut lines);
+        for line in lines {
+            self.report(&format!("line {line}: `.await` — the driver owns the I/O"));
+        }
+    }
+}
+
+/// Collect the line of every `.` immediately followed by `await`,
+/// descending into every delimited group (a macro body is one).
+fn await_lines(tokens: TokenStream, lines: &mut Vec<usize>) {
+    let mut after_dot = false;
+    for token in tokens {
+        match &token {
+            TokenTree::Group(group) => await_lines(group.stream(), lines),
+            TokenTree::Ident(ident) if after_dot && ident == "await" => {
+                lines.push(ident.span().start().line);
+            }
+            _ => {}
+        }
+        after_dot = matches!(&token, TokenTree::Punct(punct) if punct.as_char() == '.');
     }
 }
 
@@ -160,18 +254,14 @@ fn quote_type(ty: &Type) -> String {
 
 impl<'ast> Visit<'ast> for Wires {
     fn visit_expr(&mut self, expr: &'ast Expr) {
-        if !self.session {
-            match expr {
-                Expr::Await(_) => self.report("`.await` — the driver owns the I/O"),
-                Expr::Async(_) => self.report("an `async` block — the driver owns the I/O"),
-                _ => {}
-            }
+        if !self.conversation && matches!(expr, Expr::Async(_)) {
+            self.report("an `async` block — the driver owns the I/O");
         }
         visit::visit_expr(self, expr);
     }
 
     fn visit_item_fn(&mut self, item: &'ast ItemFn) {
-        if !self.session && item.sig.asyncness.is_some() {
+        if !self.conversation && item.sig.asyncness.is_some() {
             self.report(&format!(
                 "`async fn {}` — a wire's encode and decode are pure",
                 item.sig.ident
@@ -181,7 +271,7 @@ impl<'ast> Visit<'ast> for Wires {
     }
 
     fn visit_impl_item_fn(&mut self, item: &'ast ImplItemFn) {
-        if !self.session && item.sig.asyncness.is_some() {
+        if !self.conversation && item.sig.asyncness.is_some() {
             self.report(&format!(
                 "`async fn {}` — a wire's encode and decode are pure",
                 item.sig.ident
@@ -191,26 +281,12 @@ impl<'ast> Visit<'ast> for Wires {
     }
 
     fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
-        for parameter in item.generics.type_params() {
-            if parameter.ident == "H" && !self.session {
-                self.report(&format!(
-                    "`struct {}<{}>` — a wire holds no transport",
-                    item.ident, parameter.ident
-                ));
-            }
-        }
+        self.check_type_params("struct", &item.ident, &item.generics);
         visit::visit_item_struct(self, item);
     }
 
     fn visit_item_enum(&mut self, item: &'ast ItemEnum) {
-        for parameter in item.generics.type_params() {
-            if parameter.ident == "H" && !self.session {
-                self.report(&format!(
-                    "`enum {}<{}>` — a wire holds no transport",
-                    item.ident, parameter.ident
-                ));
-            }
-        }
+        self.check_type_params("enum", &item.ident, &item.generics);
         visit::visit_item_enum(self, item);
     }
 

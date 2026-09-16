@@ -2,15 +2,12 @@
 
 use super::*;
 
-/// Run the visitor over one file's source, as `check` would.
+/// Run both passes over one file's source, as `check` would.
 fn offenders(file: &str, source: &str) -> Vec<String> {
     let parsed: File = syn::parse_file(source).expect("the fixture parses");
-    let mut visitor = Wires {
-        file: file.to_owned(),
-        session: is_session(file) || is_credential_exchange(file),
-        offenders: Vec::new(),
-    };
+    let mut visitor = Wires::new(file);
     visitor.visit_file(&parsed);
+    visitor.scan_awaits(source);
     visitor.offenders
 }
 
@@ -31,14 +28,39 @@ fn the_named_non_wire_surfaces_may_own_what_encode_cannot_be() {
     for file in SESSION_EXCEPTIONS {
         assert!(
             offenders(file, "async fn turn() { socket().await; }").is_empty(),
-            "{file}: a connection and a resource lifecycle are not request/response exchanges"
+            "{file}: a connection is not a request/response exchange"
         );
     }
     assert_eq!(
         SESSION_EXCEPTIONS.len(),
-        2,
+        1,
         "a new non-wire surface must be argued for, not added quietly"
     );
+}
+
+/// An `.await` inside a macro invocation is tokens to `syn`, not an
+/// expression; the token pass sees it anyway, with its line.
+#[test]
+fn an_await_hidden_in_a_macro_body_is_rejected() {
+    let source = "fn open() -> S {\n    stream! {\n        let r = send().await;\n        yield r;\n    }\n}";
+    let found = offenders("internal/adapter.rs", source);
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(
+        found[0].contains("line 3: `.await`"),
+        "the report names the line: {found:?}"
+    );
+}
+
+/// The token pass is not a text search: a comment is not a token and a
+/// string literal is one, so neither can name an `.await`.
+#[test]
+fn an_await_in_a_comment_or_a_string_is_not_one() {
+    let source = r#"
+        // the driver does the .await
+        /// doc: `x.await`
+        fn name() -> &'static str { ".await" }
+    "#;
+    assert!(offenders("anthropic/wire.rs", source).is_empty());
 }
 
 #[test]
@@ -50,18 +72,29 @@ fn a_transport_type_parameter_is_rejected() {
             .first()
             .is_some_and(|report| report.contains("a wire holds no transport"))
     );
-    // An ordinary generic is not a transport. `WireEvent<T>` and a
-    // provider's own `EmbedReply<T>` are the reply shapes a classifier
-    // returns; flagging them would make the check punish parametric data
-    // rather than held sockets.
+    // `T` is the letter a transport reaches for once `H` is forbidden, so it
+    // is rejected unless the type is allowlisted parametric data.
+    let found = offenders("openai/wire.rs", "pub struct Foo<T> { inner: T }");
+    assert_eq!(found.len(), 1, "{found:?}");
+    assert!(found[0].contains("`struct Foo<T>`"), "{found:?}");
     let found = offenders("openai/wire.rs", "pub enum Either<T> { One(T) }");
-    assert!(found.is_empty());
+    assert_eq!(found.len(), 1, "{found:?}");
+    for allowed in DATA_GENERICS {
+        let source = format!("pub enum {allowed}<T> {{ Known(T) }}");
+        assert!(
+            offenders("internal/wire.rs", &source).is_empty(),
+            "{allowed}<T> is parametric data, not a held socket"
+        );
+    }
+    // Any other letter is an ordinary generic.
+    let found = offenders("openai/wire.rs", "pub struct Reply<U> { usage: U }");
+    assert!(found.is_empty(), "{found:?}");
 
     // A session holds the socket it is a session over, which is what makes
     // it not a wire; the named exceptions are exempt from this rule too.
     let found = offenders(
-        "gemini/cached_content.rs",
-        "pub struct CachedContents<H> { http: H }",
+        "openai/responses_api/websocket.rs",
+        "pub struct Session<H> { http: H }",
     );
     assert!(found.is_empty());
 }
@@ -117,6 +150,10 @@ fn a_credential_exchange_may_hold_a_conversation() {
             "{file}: a device flow polls and a refresh round-trips; neither fits a pure encode"
         );
     }
+    // …but it is exempt from the `async` rules only: it produces the
+    // `Secret` a wire holds, and holds no socket of its own.
+    let found = offenders("copilot/auth/native.rs", "pub struct Flow<H> { http: H }");
+    assert_eq!(found.len(), 1, "{found:?}");
 }
 
 #[test]
