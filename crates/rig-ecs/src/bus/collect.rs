@@ -65,13 +65,13 @@ pub fn collect_world(
 /// (`check_ready`), no waker kept, nothing awaited.
 pub fn collect_tasks(
     mut commands: Commands,
-    mut serving: Query<(Entity, &mut Serving, Option<&Publishing>), With<InFlight>>,
+    serving: Query<(Entity, Option<&Publishing>, &Serving), With<InFlight>>,
     policy: Res<super::Policy>,
     wake: Res<Wake>,
     mut tasks: Tasks,
 ) {
-    for (entity, mut serving, publishing) in &mut serving {
-        let Some(reply) = tasks.poll(entity, &mut serving) else {
+    for (entity, publishing, _) in &serving {
+        let Some(reply) = tasks.poll(entity) else {
             continue;
         };
         let mut entity_commands = commands.entity(entity);

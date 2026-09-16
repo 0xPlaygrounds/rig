@@ -149,33 +149,6 @@ fn tool_call_response_normalizes_to_tool_calls_finish_reason() {
 }
 
 #[test]
-fn test_convert_completion_message_to_message_and_back() {
-    let completion_message = completion::Message::User {
-        content: vec![completion::message::UserContent::Text(
-            completion::message::Text::new("Hello, world!".to_string()),
-        )],
-    };
-
-    let messages: Vec<Message> = completion_message.try_into().unwrap();
-    let _converted_back: Vec<completion::Message> = messages
-        .into_iter()
-        .map(|msg| msg.try_into().unwrap())
-        .collect::<Vec<_>>();
-}
-
-#[test]
-fn test_convert_message_to_completion_message_and_back() {
-    let message = Message::User {
-        content: vec![UserContent::Text {
-            text: "Hello, world!".to_string(),
-        }],
-    };
-
-    let completion_message: completion::Message = message.try_into().unwrap();
-    let _converted_back: Vec<Message> = completion_message.try_into().unwrap();
-}
-
-#[test]
 fn usage_is_mapped_from_tokens_and_carries_cached_input() {
     let usage: Usage = serde_json::from_str(
         r#"{

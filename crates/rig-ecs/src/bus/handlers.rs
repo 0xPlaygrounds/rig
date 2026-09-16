@@ -252,56 +252,35 @@ pub fn answered<E: WorldEffect>(
         .insert(super::effect::WorldOutcome::new(outcome));
 }
 
-/// The erased handler, on its entity. Native only: an [`ErasedHandler`] is
-/// `Send + Sync` there; on wasm it is `!Send` and lives in `HandlerTable`.
-#[cfg(not(target_family = "wasm"))]
-#[derive(Component)]
-pub struct Handler(pub Served);
-
 /// The marker of a handler held for the entity in the world's non-send
 /// [`HandlerTable`].
-#[cfg(target_family = "wasm")]
 #[derive(Component)]
 pub struct Handler;
 
-/// The world's erased handlers on wasm, keyed by their [`Bound`] entity: an
-/// [`ErasedHandler`] is `!Send` there and cannot be a component.
-#[cfg(target_family = "wasm")]
+/// The world's erased handlers, keyed by their [`Bound`] entity. Non-send
+/// because an [`ErasedHandler`] is `!Send` on wasm and cannot be a
+/// component there; one storage keeps one code path on both targets.
 #[derive(Default)]
 pub struct HandlerTable {
     served: HashMap<Entity, Served>,
 }
 
 /// A `Handler` component removed — a deregistration, a despawn — takes the
-/// handler out of the wasm table with it.
-#[cfg(target_family = "wasm")]
+/// handler out of the table with it.
 pub fn unbound(removed: On<Remove, Handler>, mut table: NonSendMut<HandlerTable>) {
     table.served.remove(&removed.event().entity);
 }
 
-/// How handler entities are served: the [`Handler`] components on native,
-/// the non-send table on wasm. One code path for `Dispatch` on both.
+/// How handler entities are served: the [`HandlerTable`].
 #[derive(SystemParam)]
-pub struct Registry<'w, 's> {
-    #[cfg(not(target_family = "wasm"))]
-    handlers: Query<'w, 's, &'static Handler>,
-    #[cfg(target_family = "wasm")]
+pub struct Registry<'w> {
     table: NonSend<'w, HandlerTable>,
-    #[cfg(target_family = "wasm")]
-    _marker: std::marker::PhantomData<&'s ()>,
 }
 
-impl Registry<'_, '_> {
+impl Registry<'_> {
     /// How the handler entity `entity` is served, if it is bound.
     pub fn served(&self, entity: Entity) -> Option<&Served> {
-        #[cfg(not(target_family = "wasm"))]
-        {
-            self.handlers.get(entity).ok().map(|handler| &handler.0)
-        }
-        #[cfg(target_family = "wasm")]
-        {
-            self.table.served.get(&entity)
-        }
+        self.table.served.get(&entity)
     }
 }
 
@@ -313,7 +292,6 @@ pub struct Handlers<'w, 's> {
     index: ResMut<'w, HandlerIndex>,
     world_kinds: ResMut<'w, WorldKinds>,
     bound: Query<'w, 's, &'static Bound>,
-    #[cfg(target_family = "wasm")]
     table: NonSendMut<'w, HandlerTable>,
 }
 
@@ -496,13 +474,8 @@ impl Handlers<'_, '_> {
     }
 
     fn serve(&mut self, entity: Entity, served: Served) {
-        #[cfg(not(target_family = "wasm"))]
-        self.commands.entity(entity).insert(Handler(served));
-        #[cfg(target_family = "wasm")]
-        {
-            self.table.served.insert(entity, served);
-            self.commands.entity(entity).insert(Handler);
-        }
+        self.table.served.insert(entity, served);
+        self.commands.entity(entity).insert(Handler);
     }
 
     /// Remove the handler bound to `key`: its entity despawns. Returns

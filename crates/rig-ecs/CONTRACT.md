@@ -86,27 +86,9 @@ to its allocation limit. `run_content_binary` and `run_content_parts` cover sour
 all existing content variants, nested JSON/image results, metadata and shared
 asset lifetime.
 
-Cached utterance views: `gather_turn` keeps the DTO it renders for an utterance
-on that utterance as `content::cache::CachedMessage` — the verbatim
-`MessageParts` `read_message` gives, before any request edit or limit — and
-reads it on later turns instead of walking the part subtree again. A view is
-dropped by Bevy change detection, relative to `gather_turn`'s own last run:
-a change, addition or removal of any component of the utterance (`Role`,
-`MessageId`, `Children`) or of any entity in its part subtree at any depth
-(the typed parts, `ChildOf`, a tool result's `Children` — a sibling reorder is the parent's changed `Children`), a
-`write_message`, a reparenting into or out of it, and an asset collection
-(`collect_binary_assets` / `BinaryAssets::retain`, keyed by the store's
-generation). Removals reach the cache through `RemovedComponents`, which
-Bevy double-buffers: a part component removed from a live entity while
-the schedule is skipped for two or more app updates is not seen by the
-cache (a change, read by its tick, is seen whenever the schedule next
-runs). A view made by another `ENCODER_VERSION` is a miss. The turn's
-`RequestPartEdit`s and the `ToolResultLimit` are applied over the view, as
-over a fresh render, and an utterance an edit targets is rendered with the
-edit, uncached. The request is unchanged: every folded `chat_history` equals
-a fresh uncached render (`run_message_cache.rs`). Views are runtime state, never
-checkpoint or memory data (§13); `AssemblyStats` counts renders, hits, evictions
-and assemblies for measurement.
+History is rendered from the entity graph every turn: `gather_turn` walks each
+utterance's part subtree anew, so a graph edit is in the next request with no
+cache to invalidate.
 
 ## 2. The verbatim strings
 
@@ -643,12 +625,6 @@ loaded or not. Pinned by `tests/run_commands.rs`
 (`a_ready_run_saved_before_it_opened_starts_after_the_load`) and by every
 resumed world cell.
 
-Cached utterance views (§1) are not saved: a loaded utterance holds no
-`CachedMessage`, the first assembly after a load renders every utterance of
-the run from the graph and caches it, and the request it folds is the one
-the saving world would have folded (`run_message_cache.rs`
-`a_loaded_checkpoint_assembles_identical_requests_and_rebuilds_its_views`).
-
 
 The live-handler regressions in `tests/memory_resume.rs` cover memory finalization before
 scheduling, while queued, after an external write but before its outcome,
@@ -774,10 +750,9 @@ Every pass — one `RigSchedule` run — gets a fresh allowance. Deltas raise
 streaming delivery limits, not total CPU-time or payload-size guarantees.
 Hosts must keep updating to expose ready items and settle replies.
 
-The task is a component on the effect — `Serving(Task<Reply>)`, `Streaming
-{ task, .. }` — dropped with it; on wasm the `!Send` task sits in the
-non-send `Executions` table under the same component names, removed when an
-effect leaves `InFlight`.
+The task sits in the non-send `Executions` table under the effect's entity,
+beside the `Serving` marker or `Streaming { events, fold, .. }` component, and
+is removed when the effect leaves `InFlight`.
 Task cancellation reaches pending setup, unary folding and full delivery queues.
 An active native poll cannot be interrupted synchronously; observation closes
 atomically with cancellation so a late result cannot mutate the closed record.

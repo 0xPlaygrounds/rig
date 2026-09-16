@@ -89,7 +89,7 @@ The agent's sets, around the bus's:
 | `RigSet::Checkpoint` | committed graph writes are visible | the host's slot to inspect or save before the next advance |
 | `RigSet::Settle` | a run settled or failed | `append_memory` (a remembering run's append); `diagnostics::measure` when a `DiagnosticsStore` exists; observers on `Settled` / `Failed` |
 
-`systems::diagnostics` publishes `bevy_diagnostic` paths — `EFFECTS_IN_FLIGHT`, `EFFECTS_PENDING`, `RUNS_LIVE`, `ASSEMBLIES`, `RENDERS`, `CACHE_HITS` — one measurement per pass, when the app has a `DiagnosticsStore` (`RigPlugin` adds `DiagnosticsPlugin` and `TimePlugin` if absent).
+`systems::diagnostics` publishes `bevy_diagnostic` paths — `EFFECTS_IN_FLIGHT`, `EFFECTS_PENDING`, `RUNS_LIVE` — one measurement per pass, when the app has a `DiagnosticsStore` (`RigPlugin` adds `DiagnosticsPlugin` and `TimePlugin` if absent).
 
 `tests/tool_batch.rs` pins the batch: two calls are two children dispatched in call order and one utterance of results; `ToolPolicy` sets how many fly at once; a `Judge` system's replacement reaches history while the record keeps the answer; a `Gate` denial is a skipped result and no record; a despawned child fails the run `Cancelled`; a system's `Resolution::{Repair, Retry}` renames or retries an invalid call (`Skip` and `Ignore` likewise). The corpus's nesting cases run through a key the world serves (`Handlers::register_open`), the `lookup` tool answered by a system that spawns its child `ChildOf` the call.
 
@@ -141,11 +141,11 @@ payload bytes, or the cost of user systems. Every pass gets a fresh allowance.
 
 `stream_capacity` supplies the queue's shared slots, clamped to at least one;
 the single sender has one additional reserved slot. The worker awaits each send
-before polling again. The writer's own bridge is separate. The task is a
-component on the effect: `Serving(Task<Reply>)` or `Streaming { task, .. }` on
-native, the same names with the task in the non-send `Executions` table on
-wasm. Dropping the component — removing `InFlight`, despawning, dropping the
-world — cancels the task, including a worker parked on a full queue. An active native
+before polling again. The writer's own bridge is separate. The task lives in
+the non-send `Executions` table under the effect's entity, beside its `Serving`
+marker or `Streaming { events, .. }` component. Leaving `InFlight` — removing
+it, despawning, dropping the world — cancels the task, including a worker
+parked on a full queue. An active native
 poll can finish before cancellation drops its future; closed recordings reject
 its late observations. Handler replacement leaves already-owned work intact.
 Streaming serial slots last through EOF and layer work after `Final`.
@@ -162,14 +162,14 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 | a dispatch | `commands.spawn(PendingEffect { key, kind })`; `PendingEffect::{new, typed, custom}` |
 | dispatch order | `Seq`, stamped on add from `SeqCounter` (global, reserved) |
 | the effect's id | `Issued` after `Dispatch`; `Reserved` before it, for a checkpoint's or a log's id |
-| taken, in flight | `InFlight { key }` plus `Serving` (initial task) or `Streaming { task, events, fold, delivered }`, the task a field of the component (a row in the non-send `Executions` on wasm; `Tasks` is the `SystemParam` over both); `ServedBy(Entity)` → the handler entity (its `Serves` the inverse) |
+| taken, in flight | `InFlight { key }` plus `Serving` (initial task) or `Streaming { events, fold, delivered }`, the task a row in the non-send `Executions` (`Tasks` is the `SystemParam` over it); `ServedBy(Entity)` → the handler entity (its `Serves` the inverse) |
 | a handler that is a system was asked | `Asked<E>`; the system answers with `Answer<E>` — or, for a key bound open (`Handlers::register_open`, any family), the effect entity itself, answered by submitting `WorldOutcome` |
 | the answer | `EffectOutcome(Result<Outcome, ErrorReport>)`; a stream's per-tick fold in `Streamed { events, errors, text, outcome }`, with every error and its item position retained independently of recording |
 | the record closed | `Landed { entity, id }`, an entity event `settle` triggers on the effect; it bubbles up `ChildOf` (effect → turn → run → agent), `original_event_target()` the effect |
 | held by a decision | `Held` |
 | a program's scope | `Scope(String)` on an ancestor; read into the record |
 | a tool call's context (beside the effect) | `ToolInputs(ToolContext)` on the effect entity, attached to the handler's `Dispatch` context; what the tool published lands as `ToolOutputs(ToolContext)` when the outcome does (`Publishing` holds the slot in flight) |
-| a handler | an entity with `Bound { key, descriptor }` (immutable: every change is an insert) and a `Name`; the erased handler as `Handler(Served)` on the same entity (in the `NonSend` `HandlerTable` on wasm); `HandlerIndex` (key → entity), kept exact by `Bound`'s hooks |
+| a handler | an entity with `Bound { key, descriptor }` (immutable: every change is an insert) and a `Name`; the erased handler in the `NonSend` `HandlerTable`, marked by `Handler` on the same entity; `HandlerIndex` (key → entity), kept exact by `Bound`'s hooks |
 | the registry | `Handlers` (a `SystemParam`): `register`, `register_erased`, `register_typed`, `register_world`, `register_open`, `deregister`, `descriptor`, `keys`, `descriptors`; `Handlers::with(world, ..)` outside a system |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |
@@ -355,7 +355,7 @@ Runnable programs over scripted mocks in `examples/support`: `agent_with_tools` 
 
 ## On wasm
 
-Everything a system holds is `Send + Sync` on every target. On native the erased handler is a component (`Handler(Served)`) and the task a field of `Serving`/`Streaming`; on wasm both are `!Send`, so they live in the `NonSend` `HandlerTable` and `Executions` behind the same component names, and a system that registers or dispatches runs on the main thread. `tests/bus_wasm.rs` drives the schedule by hand: `bevy_app`'s runner on the web is frame-scheduled by the browser.
+Everything a system holds is `Send + Sync` on every target. The erased handler and the task are `!Send` on wasm, so on every target they live in the `NonSend` `HandlerTable` and `Executions` behind the `Handler`, `Serving` and `Streaming` component names — one storage, one code path — and a system that registers or dispatches runs on the main thread. `tests/bus_wasm.rs` drives the schedule by hand: `bevy_app`'s runner on the web is frame-scheduled by the browser.
 
 Cancellation after an original handler answer has been observed records a
 `DeliveryKind::Cancelled` boundary instead of an outcome delivery. This preserves

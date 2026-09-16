@@ -85,7 +85,3 @@ name = "bus_wasm"
 
 [[test]]
 name = "run_wasm"
-
-[[bench]]
-name = "run_assembly_cost"
-harness = false

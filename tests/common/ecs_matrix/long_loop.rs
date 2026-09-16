@@ -1114,6 +1114,9 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
         "{}: the tree ran every dispatched call once and nothing else: {invocations:?}",
         cell.name
     );
+    // Turn order is pinned; within a turn, a batch under concurrency
+    // reaches the tree in scheduling order, so each turn's calls are
+    // compared as a set.
     let mut seen: Vec<(String, serde_json::Value)> = invocations
         .iter()
         .map(|invocation| (invocation.tool.to_owned(), invocation.args.clone()))
@@ -1122,10 +1125,19 @@ pub(crate) fn assert_log(cell: &Cell, thinking: ThinkingWire, log: &EffectLog) {
         .iter()
         .map(|record| dispatched_call(record))
         .collect();
-    if shape == Shape::Parallel {
-        // A batch under concurrency reaches the tree in scheduling order.
-        seen.sort_by_key(|call| serde_json::to_string(call).expect("serializes"));
-        expected.sort_by_key(|call| serde_json::to_string(call).expect("serializes"));
+    let mut start = 0;
+    for turn in &turns {
+        let batch = turn
+            .tools
+            .iter()
+            .filter(|record| !dispatched_result(record).is_error_kind(ToolErrorKind::InvalidArgs))
+            .count();
+        let end = (start + batch).min(seen.len());
+        let key =
+            |call: &(String, serde_json::Value)| serde_json::to_string(call).expect("serializes");
+        seen[start..end].sort_by_key(key);
+        expected[start..end].sort_by_key(key);
+        start = end;
     }
     assert_eq!(seen, expected, "{}: the tree's invocations", cell.name);
     // Each record consumes the first still-unmatched invocation with its

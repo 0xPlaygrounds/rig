@@ -104,8 +104,7 @@ The default sweep excludes root ECS/corpus parity tests and rig-verify.
 `ecs-parity` owns those root tests (both root parity configurations, including
 the extracted ECS helper regressions in `rig-test-support`), the golden pairing
 guard, and rig-verify's separate `world_replay` target; `bus-verification` owns
-the remaining rig-verify tests and compiles the explicitly invoked
-`run_assembly_cost` benchmark. Default-member and standalone package graphs
+the remaining rig-verify tests. Default-member and standalone package graphs
 remain separate executions: JSON ordering/float parsing and allocator features
 differ between them. Default-member executions and standalone root parity
 retain two retries; standalone rig-verify retains zero. The all-feature, wasm,

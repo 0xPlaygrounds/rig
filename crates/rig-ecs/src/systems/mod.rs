@@ -24,7 +24,6 @@ use crate::agent::checkpoint::{
 };
 use crate::agent::content::{
     binary::BinaryAssets,
-    cache::{AssemblyStats, Cached, CachedMessage},
     parts::{
         ContentError, ContentGraph, ToolResultLimit, ToolResultStatus, replace_deferred,
         spawn_deferred, spawn_deferred_with, write_message,
@@ -376,7 +375,6 @@ fn install_agent(world: &mut World) {
     );
     world.init_resource::<BinaryAssets>();
     world.init_resource::<RunCounter>();
-    world.init_resource::<AssemblyStats>();
     world.add_observer(effect_cancelled);
     world.add_observer(run_cancelled);
     world.add_observer(batch_marker_follows_the_hold);
@@ -1232,28 +1230,18 @@ fn part_edits_of(
 }
 
 /// `run`'s utterances in order, as DTOs, under the part edits linked to
-/// `turn` ([`part_edits_of`]): an edited one rendered with its edit
-/// (uncached: the view is verbatim), one with a fresh view read from it,
-/// any other rendered and its render cached for the next turn. With them,
-/// the edit links consumed.
-#[allow(
-    clippy::too_many_arguments,
-    reason = "one read of the graph: the edits, the cache, its counters, and what stales it"
-)]
+/// `turn` ([`part_edits_of`]): an edited one rendered with its edit, any
+/// other rendered plain. With them, the edit links consumed.
 fn render_history(
-    commands: &mut Commands,
     turn: Entity,
     run: Entity,
     patch: Option<&RequestPatch>,
-    stale: &std::collections::HashSet<Entity>,
     children: &Query<&Children>,
     utterances: &Query<Entity, With<Utterance>>,
     part_edits: &Query<PartEdit>,
     content: &ContentGraph,
-    cached: &mut Cached,
 ) -> Result<(Vec<MessageParts>, Vec<Entity>), ContentError> {
     let edits = part_edits_of(turn, run, patch, children, part_edits, content)?;
-    let assets_generation = cached.cache.assets_generation();
     let history = children
         .get(run)
         .into_iter()
@@ -1261,18 +1249,9 @@ fn render_history(
         .filter_map(|child| utterances.get(child).ok())
         .map(|entity| {
             if edits.edited.contains(&entity) {
-                cached.stats.renders += 1;
                 content.message_with(entity, &edits.edits)
-            } else if let Some(view) = cached.cache.view(entity, stale) {
-                cached.stats.hits += 1;
-                Ok(view.clone())
             } else {
-                cached.stats.renders += 1;
-                content.message(entity).inspect(|parts| {
-                    commands
-                        .entity(entity)
-                        .insert(CachedMessage::new(parts.clone(), assets_generation));
-                })
+                content.message(entity)
             }
         })
         .collect::<Result<_, _>>()?;
@@ -1562,10 +1541,6 @@ impl Settings<'_, '_> {
 /// model — resolve the output mode, mint the output tool's name once per
 /// run, and leave it all on the turn as [`AssemblyInputs`] for `fold_turn`,
 /// with the run's `ToolAccess` snapshot on the turn.
-/// An utterance is read from its `CachedMessage` when it holds one and
-/// nothing of it changed since this system last ran (CONTRACT §1); else
-/// it is rendered and the render cached for the next turn. An utterance a
-/// `RequestPartEdit` targets is rendered with the edit, uncached.
 /// A retrieving turn instead gets its `Retrieve` effects on its first pass
 /// (CONTRACT §12). A missing selected model or non-completion binding
 /// terminates the run with a provider `HandlerUnavailable` report; it
@@ -1590,17 +1565,7 @@ pub fn gather_turn(
     documents: Query<(&DocumentId, &DocumentText, Option<&DocumentProps>)>,
     bound: Query<&Bound>,
     settings: Settings,
-    mut cached: Cached,
 ) {
-    // Every run, fresh turn or none: the changes since the last run are
-    // read once, and the views they stale are dropped.
-    let stale = cached.cache.stale();
-    for utterance in &stale {
-        if cached.cache.holds(*utterance) {
-            commands.entity(*utterance).remove::<CachedMessage>();
-            cached.stats.evictions += 1;
-        }
-    }
     let mut turns: Vec<_> = fresh
         .iter()
         .filter_map(|turn| {
@@ -1624,16 +1589,13 @@ pub fn gather_turn(
         };
         let patch = turn.patch;
         let rendered = render_history(
-            &mut commands,
             turn.entity,
             run,
             patch,
-            &stale,
             &children,
             &utterances,
             &part_edits,
             &content,
-            &mut cached,
         );
         let (mut history, consumed_edits) = match rendered {
             Ok(rendered) => rendered,
@@ -1759,7 +1721,6 @@ pub fn fold_turn(
     mut turns: Query<(Entity, &ChildOf, &mut AssemblyInputs), With<Fresh>>,
     runs: Query<&RunSeq, LiveRun>,
     bound: Query<&Bound>,
-    mut stats: ResMut<AssemblyStats>,
 ) {
     let mut turns: Vec<_> = turns
         .iter_mut()
@@ -1794,7 +1755,6 @@ pub fn fold_turn(
             output_tool_config: inputs.output_tool_config.as_ref(),
         };
         let request = policy::fold_request(&graph);
-        stats.assemblies += 1;
         commands.spawn((
             PendingEffect::new(
                 model.key.clone(),

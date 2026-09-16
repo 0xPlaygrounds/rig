@@ -239,15 +239,6 @@ pub(super) fn all() -> Vec<Check> {
                     "-E",
                     "package(rig-verify) and not binary(world_replay)",
                 ]),
-                // Benchmarks retain a locked build owner without executing a measurement.
-                cargo(&[
-                    "check",
-                    "--locked",
-                    "-p",
-                    "rig-ecs",
-                    "--bench",
-                    "run_assembly_cost",
-                ]),
             ],
         ),
         check(

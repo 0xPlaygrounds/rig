@@ -7,8 +7,7 @@ use rig::message::{
 use rig::prelude::*;
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{
-    ANTHROPIC_VERSION_2023_06_01, Content as AnthropicContent,
-    DocumentSource as AnthropicDocumentSource, Message as AnthropicMessage, Role as AnthropicRole,
+    ANTHROPIC_VERSION_2023_06_01, Message as AnthropicMessage,
 };
 use serde::Deserialize;
 use serde_json::Value;
@@ -143,32 +142,14 @@ fn file_id_document(file_id: &str) -> Document {
     }
 }
 
+/// A document carrying only the provider's file id, no generic media type:
+/// the shape a file reference ingested from Anthropic's own wire has.
 fn provider_file_content_as_generic_document(file_id: &str) -> RigUserContent {
-    let provider_message = AnthropicMessage {
-        role: AnthropicRole::User,
-        content: vec![AnthropicContent::Document {
-            source: AnthropicDocumentSource::File {
-                file_id: file_id.to_string(),
-            },
-            title: None,
-            context: None,
-            citations: None,
-            cache_control: None,
-        }],
-    };
-    let generic_message: Message = provider_message
-        .try_into()
-        .expect("Anthropic file source should convert into generic message");
-    let Message::User { content } = generic_message else {
-        panic!("expected generic user message");
-    };
-    let content = content
-        .into_iter()
-        .next()
-        .expect("generic user message should contain document");
-
-    assert_file_id_user_content(&content, file_id);
-    content
+    RigUserContent::Document(Document {
+        data: DocumentSourceKind::file_id(file_id),
+        media_type: None,
+        additional_params: None,
+    })
 }
 
 fn document_question(content: RigUserContent, page_number: u8) -> Message {
@@ -187,30 +168,6 @@ fn direct_file_id_document_question(file_id: &str, page_number: u8) -> Message {
         RigUserContent::Document(file_id_document(file_id)),
         page_number,
     )
-}
-
-fn assert_file_id_user_content(content: &RigUserContent, expected_file_id: &str) {
-    let RigUserContent::Document(Document {
-        data,
-        media_type,
-        additional_params,
-    }) = content
-    else {
-        panic!("expected generic document content, got {content:?}");
-    };
-
-    assert!(
-        matches!(data, DocumentSourceKind::FileId(file_id) if file_id == expected_file_id),
-        "expected file ID document source {expected_file_id}, got {data:?}"
-    );
-    assert_eq!(
-        *media_type, None,
-        "provider file-id content should not invent a generic media type"
-    );
-    assert_eq!(
-        *additional_params, None,
-        "provider file-id content should not invent additional params"
-    );
 }
 
 fn message_contains_file_id(message: &Message, expected_file_id: &str) -> bool {

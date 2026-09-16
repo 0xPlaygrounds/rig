@@ -236,13 +236,10 @@ impl BusPlugin {
         world.init_resource::<WorldOutcomeCounter>();
         world.init_resource::<HandlerIndex>();
         world.init_resource::<WorldKinds>();
-        #[cfg(target_family = "wasm")]
-        {
-            world.init_non_send::<super::effect::Executions>();
-            world.init_non_send::<super::handlers::HandlerTable>();
-            world.add_observer(super::effect::drop_execution);
-            world.add_observer(super::handlers::unbound);
-        }
+        world.init_non_send::<super::effect::Executions>();
+        world.init_non_send::<super::handlers::HandlerTable>();
+        world.add_observer(super::effect::drop_execution);
+        world.add_observer(super::handlers::unbound);
         world.add_observer(record_outcome);
         world.add_observer(record_cancelled);
         world.add_observer(super::record::witness_cancelled);
