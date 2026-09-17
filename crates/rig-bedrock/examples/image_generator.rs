@@ -9,7 +9,7 @@ const DEFAULT_PATH: &str = "./output.png";
 
 #[tokio::main]
 async fn main() -> Result<(), anyhow::Error> {
-    let client = Client::from_env()?;
+    let client = Client::from_env();
     let image_generation_model = client.image_generation(AMAZON_NOVA_CANVAS);
     let response = image_generation_model
         .image_generation_request()

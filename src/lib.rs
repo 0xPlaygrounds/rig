@@ -143,8 +143,8 @@ pub mod client {
     // implemented directly by the typed-transport ones.
     pub use rig_core::driver::{Bind, Bound, CompletionProvider};
 
-    // The construction errors and environment handling every provider shares:
-    // `EnvError`, `ProviderClientError`, `VerifyError`.
+    // The environment handling every provider shares, and the one operation
+    // whose error is a status: `EnvError`, `VerifyError`.
     pub use rig_core::client::*;
 
     // Default-transport construction — `Provider::from_env()?.bound()?` —

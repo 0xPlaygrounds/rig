@@ -190,3 +190,72 @@ fn a_wire_next_to_a_credential_exchange_is_still_a_wire() {
         2
     );
 }
+
+/// The hole the parameter rule left: a parameter is one way to put the
+/// socket back into a wire, and a field of the concrete erased transport is
+/// the shorter one. Neither is data.
+#[test]
+fn a_transport_field_is_rejected_however_it_is_spelled() {
+    for rejected in [
+        "pub struct Chat { pub model: String, pub http: BoxedHttpClient }",
+        "pub struct Chat(String, rig_core::http_client::BoxedHttpClient);",
+        "pub struct Chat { pub http: Option<BoxedHttpClient> }",
+        "pub enum Route { Chat { http: BoxedHttpClient }, Responses }",
+    ] {
+        let found = offenders("openai/wire.rs", rejected);
+        assert!(
+            found
+                .iter()
+                .any(|report| report.contains("a wire holds no transport")),
+            "{rejected} should be rejected, got {found:?}"
+        );
+    }
+
+    for accepted in [
+        // The credential, the dialect and the model are the data a wire is.
+        "pub struct Chat { pub model: String, pub api_key: Secret }",
+        // A field named for the socket but typed as data is data.
+        "pub struct Chat { pub http_version: String }",
+    ] {
+        let found = offenders("openai/wire.rs", accepted);
+        assert!(found.is_empty(), "{accepted}: {found:?}");
+    }
+
+    // A session holds the socket it is a session over.
+    let found = offenders(
+        "openai/responses_api/websocket.rs",
+        "pub struct Session { http: BoxedHttpClient }",
+    );
+    assert!(found.is_empty(), "{found:?}");
+}
+
+/// A green run states what it inspected. A checker that prints nothing on
+/// success cannot be told apart from one that ran over no files, which is
+/// how an invariant stops holding without anybody noticing.
+#[test]
+fn the_success_report_names_what_was_inspected_and_what_was_exempt() {
+    let inspected = Inspected {
+        files: 120,
+        skipped_tests: 40,
+        items: 310,
+        wire_impls: 22,
+        exempt_sessions: vec!["openai/responses_api/websocket.rs".to_owned()],
+        exempt_conversations: vec!["copilot/auth/mod.rs".to_owned()],
+    };
+    let report = summary(&inspected);
+    for expected in [
+        "120 files",
+        "310 structs/enums",
+        "22 `impl Wire` blocks",
+        "40 test files skipped",
+        "openai/responses_api/websocket.rs",
+        "copilot/auth/mod.rs",
+    ] {
+        assert!(report.contains(expected), "{expected} missing: {report}");
+    }
+
+    // An empty run says so rather than reading as a clean one.
+    let empty = summary(&Inspected::default());
+    assert!(empty.contains("0 files"), "{empty}");
+    assert!(empty.contains("none"), "{empty}");
+}

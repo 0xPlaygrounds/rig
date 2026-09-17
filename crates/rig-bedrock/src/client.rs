@@ -102,8 +102,8 @@ impl Client {
     /// Bedrock talks through the AWS SDK rather than an HTTP transport, so
     /// there is no socket to bind: construction is inherent, and the client
     /// is itself the [`CompletionProvider`] a `Bound` would be for a wire.
-    pub fn from_env() -> Result<Self, rig_core::client::ProviderClientError> {
-        Ok(Client::new())
+    pub fn from_env() -> Self {
+        Client::new()
     }
 
     /// This provider's embedding model for `model`, at `ndims` dimensions

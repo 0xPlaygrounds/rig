@@ -31,7 +31,7 @@ async fn main() -> Result<(), anyhow::Error> {
 }
 
 fn client() -> Result<Client, anyhow::Error> {
-    Ok(Client::from_env()?)
+    Ok(Client::from_env())
 }
 
 fn partial_agent() -> Result<AgentBuilder, anyhow::Error> {

@@ -17,7 +17,6 @@
 //! `use rig_reqwest::prelude::*`. To keep the concrete transport in the type
 //! instead, use rig-core's `Bind::bind(ReqwestClient::default())`.
 
-use rig_core::client::ProviderClientError;
 use rig_core::driver::Bound;
 use rig_core::http_client::{self, BoxedHttpClient};
 
@@ -25,8 +24,9 @@ use rig_core::http_client::{self, BoxedHttpClient};
 /// `ReqwestClient::default()`) panics when the client cannot be built — on a
 /// host with no CA store, for one — while every constructor below promises
 /// a `Result`. Build through the builder and hand the failure back as the
-/// `Http` variant the rest of the client-construction path already uses.
-pub fn bundled() -> Result<BoxedHttpClient, ProviderClientError> {
+/// transport error it is: constructing a socket is the transport layer's
+/// business, so there is no second error type for it.
+pub fn bundled() -> Result<BoxedHttpClient, http_client::Error> {
     let client = reqwest::Client::builder()
         .build()
         .map_err(|error| http_client::Error::Instance(Box::new(TransportBuildError(error))))?;
@@ -71,7 +71,7 @@ impl std::error::Error for TransportBuildError {
 /// `Bind::bind(ReqwestClient::default())`.
 pub trait DefaultTransport: Sized {
     /// Bind `self` to a fresh bundled transport.
-    fn bound(self) -> Result<Bound<Self, BoxedHttpClient>, ProviderClientError> {
+    fn bound(self) -> Result<Bound<Self, BoxedHttpClient>, http_client::Error> {
         Ok(Bound::new(self, bundled()?))
     }
 }

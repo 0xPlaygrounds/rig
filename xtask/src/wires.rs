@@ -14,7 +14,7 @@
 //! |---|---|
 //! | no `.await`, `async fn`, or `async` block | a provider owning its transport |
 //! | no `Arc`, `Box<dyn`, or `impl Future` in an `impl Wire` block | a wire that is not data |
-//! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `BoxedHttpClient` | the transport parameter returning |
+//! | no `struct`/`enum` parameter bounded by `HttpClientExt` or defaulted to `BoxedHttpClient`, and no field of either type | the transport parameter returning |
 //! | no consumer-trait impl | a second way to be a model |
 //!
 //! The one exception is `openai/responses_api/websocket.rs`: a session — one
@@ -32,7 +32,10 @@
 //!
 //! `*tests.rs` files and `tests/` directories are skipped: a test that drives
 //! a wire through a fake socket has to await something, and test code is not
-//! shipped.
+//! shipped. That is the check's one blind spot — with the exemption lists
+//! below, it is the whole of what a green run does *not* prove — and a
+//! successful run prints what it did inspect so that a scan which matched
+//! nothing cannot pass for a scan which found nothing.
 
 use std::path::{Path, PathBuf};
 
@@ -92,6 +95,19 @@ const CONSUMER_TRAITS: &[&str] = &[
     "ModelLister",
 ];
 
+/// What a successful run inspected. A checker that prints nothing on success
+/// is indistinguishable from a checker that ran on no files, which is how an
+/// invariant quietly stops holding.
+#[derive(Default)]
+struct Inspected {
+    files: usize,
+    skipped_tests: usize,
+    items: usize,
+    wire_impls: usize,
+    exempt_sessions: Vec<String>,
+    exempt_conversations: Vec<String>,
+}
+
 /// Run the check over `crates/rig-core/src/providers/`.
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     let providers = workspace.join("crates/rig-core/src/providers");
@@ -103,6 +119,7 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     files.sort();
 
     let mut offenders = Vec::new();
+    let mut inspected = Inspected::default();
     for path in &files {
         let relative = path
             .strip_prefix(&providers)
@@ -112,6 +129,7 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
         // Test code may do whatever it likes: it is not shipped, and a test
         // that drives a wire through a fake socket has to await something.
         if relative.ends_with("tests.rs") || relative.contains("/tests/") {
+            inspected.skipped_tests += 1;
             continue;
         }
         let source = std::fs::read_to_string(path)
@@ -121,10 +139,19 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
         let mut visitor = Wires::new(&relative);
         visitor.visit_file(&parsed);
         visitor.scan_awaits(&source);
+        inspected.files += 1;
+        inspected.items += visitor.items;
+        inspected.wire_impls += visitor.wire_impls;
+        if visitor.session {
+            inspected.exempt_sessions.push(relative.clone());
+        } else if visitor.conversation {
+            inspected.exempt_conversations.push(relative.clone());
+        }
         offenders.extend(visitor.offenders);
     }
 
     if offenders.is_empty() {
+        report(&inspected);
         return Ok(());
     }
     Err(format!(
@@ -133,6 +160,38 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
          and consumer-trait impls belong to rig_core::driver",
         offenders.join("\n")
     ))
+}
+
+/// The counts a green run stands behind, and the exemptions it applied.
+fn report(inspected: &Inspected) {
+    println!("{}", summary(inspected));
+}
+
+/// The report text, so `wires/tests.rs` can assert it without capturing
+/// stdout.
+fn summary(inspected: &Inspected) -> String {
+    let sessions = inspected.exempt_sessions.join(", ");
+    let conversations = inspected.exempt_conversations.join(", ");
+    format!(
+        "ok: everything under rig-core's providers/ is a wire — {files} files, \
+         {items} structs/enums, {wires} `impl Wire` blocks ({skipped} test files skipped)\n\
+         exempt from every rule (a session holds its socket): {sessions}\n\
+         exempt from the async rules (a credential exchange is a conversation): {conversations}",
+        files = inspected.files,
+        items = inspected.items,
+        wires = inspected.wire_impls,
+        skipped = inspected.skipped_tests,
+        sessions = if sessions.is_empty() {
+            "none".to_owned()
+        } else {
+            sessions
+        },
+        conversations = if conversations.is_empty() {
+            "none".to_owned()
+        } else {
+            conversations
+        },
+    )
 }
 
 /// Every `.rs` file under `dir`, recursively.
@@ -156,9 +215,14 @@ struct Wires {
     /// because it is a session or a credential exchange.
     conversation: bool,
     /// Whether this file may hold the socket it is a session over: the
-    /// transport parameter is allowed too. A credential exchange is not a
-    /// session; it produces the `Secret` a wire holds.
+    /// transport parameter and a transport field are allowed too. A
+    /// credential exchange is not a session; it produces the `Secret` a wire
+    /// holds.
     session: bool,
+    /// Structs and enums inspected, for the success report.
+    items: usize,
+    /// `impl Wire for` blocks inspected, for the success report.
+    wire_impls: usize,
     offenders: Vec<String>,
 }
 
@@ -169,6 +233,8 @@ impl Wires {
             file: relative.to_owned(),
             conversation: session || CREDENTIAL_EXCHANGES.contains(&relative),
             session,
+            items: 0,
+            wire_impls: 0,
             offenders: Vec::new(),
         }
     }
@@ -196,6 +262,35 @@ impl Wires {
                 "`{kind} {ident}<{}>` — a wire holds no transport, and that parameter is \
                  bounded by `HttpClientExt` or defaulted to `BoxedHttpClient`",
                 parameter.ident
+            ));
+        }
+    }
+
+    /// The same rule for a **field**. A parameter is one way to put the
+    /// socket back in a wire; a field of the concrete erased transport is
+    /// the other, and it is the shorter one to write. `BoxedHttpClient` is
+    /// the socket whatever it is called, and a field bounded through
+    /// `impl HttpClientExt` is one too.
+    fn check_fields(&mut self, kind: &str, ident: &syn::Ident, fields: &syn::Fields) {
+        if self.session {
+            return;
+        }
+        for (position, field) in fields.iter().enumerate() {
+            let text = source_text(&field.ty);
+            let Some(found) = ["BoxedHttpClient", "HttpClientExt"]
+                .into_iter()
+                .find(|needle| text.contains(needle))
+            else {
+                continue;
+            };
+            let named = field
+                .ident
+                .as_ref()
+                .map(ToString::to_string)
+                .unwrap_or_else(|| position.to_string());
+            self.report(&format!(
+                "`{kind} {ident}` field `{named}: {text}` — a wire holds no transport, and \
+                 `{found}` is one"
             ));
         }
     }
@@ -305,12 +400,18 @@ impl<'ast> Visit<'ast> for Wires {
     }
 
     fn visit_item_struct(&mut self, item: &'ast ItemStruct) {
+        self.items += 1;
         self.check_type_params("struct", &item.ident, &item.generics);
+        self.check_fields("struct", &item.ident, &item.fields);
         visit::visit_item_struct(self, item);
     }
 
     fn visit_item_enum(&mut self, item: &'ast ItemEnum) {
+        self.items += 1;
         self.check_type_params("enum", &item.ident, &item.generics);
+        for variant in &item.variants {
+            self.check_fields("enum", &item.ident, &variant.fields);
+        }
         visit::visit_item_enum(self, item);
     }
 
@@ -331,6 +432,7 @@ impl<'ast> Visit<'ast> for Wires {
             // A wire is data: nothing in its own impl may be shared,
             // erased, or deferred.
             if name == "Wire" {
+                self.wire_impls += 1;
                 for forbidden in ["Arc<", "Box<dyn", "implFuture"] {
                     if item
                         .items

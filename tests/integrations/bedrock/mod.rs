@@ -16,7 +16,7 @@ pub(crate) fn anthropic_signature_only_model() -> String {
 }
 
 pub(crate) fn client() -> Client {
-    Client::from_env().expect("client should build")
+    Client::from_env()
 }
 
 mod adaptive_thinking;

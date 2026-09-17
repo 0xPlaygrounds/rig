@@ -5,7 +5,7 @@
 //! client; on a host with none (a bare `ubuntu` container, say)
 //! `reqwest::Client::new()` panics with "No CA certificates were loaded from
 //! the system". [`DefaultTransport::bound`] promises a `Result`, so that
-//! failure must come back as `ProviderClientError::Http`.
+//! failure must come back as an `http_client::Error`.
 //!
 //! `bound()` is the one place the bundled transport is built now: the
 //! provider config itself is infallible data, so a construction error can
@@ -24,7 +24,6 @@
 
 #![cfg(all(target_os = "linux", feature = "rustls", not(feature = "native-tls")))]
 
-use rig_core::client::ProviderClientError;
 use rig_core::providers::openai::OpenAI;
 use rig_reqwest::prelude::*;
 
@@ -49,8 +48,7 @@ fn every_default_transport_constructor_reports_a_missing_ca_store() {
 
     for (name, result) in [("from_env", from_env.map(drop)), ("new", new.map(drop))] {
         let outcome = match result {
-            Err(ProviderClientError::Http(error)) => error.to_string(),
-            Err(other) => format!("wrong variant: {other}"),
+            Err(error) => error.to_string(),
             Ok(()) => "built a client with no CA store".to_owned(),
         };
         assert!(
