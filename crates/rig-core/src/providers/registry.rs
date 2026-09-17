@@ -68,7 +68,7 @@
 //!
 //! `vendor/format` is registry syntax. The provider string a record and a
 //! span carry is still the dialect's own `name`
-//! ([`Wire::name`](crate::wire::Wire::name)) — `deepseek`, `gcp.gemini`,
+//! ([`Wire::name`]) — `deepseek`, `gcp.gemini`,
 //! `azure.openai`. The two have different contracts and neither renames the
 //! other.
 
