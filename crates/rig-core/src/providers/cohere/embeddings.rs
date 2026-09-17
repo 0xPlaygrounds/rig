@@ -38,10 +38,6 @@ pub struct Meta {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiVersion {
     pub version: String,
-    #[serde(default)]
-    pub is_deprecated: Option<bool>,
-    #[serde(default)]
-    pub is_experimental: Option<bool>,
 }
 
 /// Cohere's `meta.billed_units`. Token counters are absent when the request

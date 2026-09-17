@@ -51,7 +51,7 @@ pub use rig_core::wire::Secret;
 ///
 /// rig-ecs keeps no provider vocabulary of its own: the names, the
 /// dialects, the options and the lookup are rig-core's
-/// ([`providers::by_name`](rig_core::providers::by_name)), and a binding is
+/// ([`providers::resolve`](rig_core::providers::resolve)), and a binding is
 /// the wish to build one of them later.
 pub use rig_core::providers::{ProviderConfig, ProviderRef};
 

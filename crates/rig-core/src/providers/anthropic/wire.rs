@@ -118,9 +118,10 @@ pub fn all() -> impl Iterator<Item = &'static Dialect> {
 impl Dialect {
     /// The dialect this crate ships under `name`.
     ///
-    /// Names are unique across every format rig speaks, so
-    /// [`providers::by_name`](crate::providers::by_name) can answer without
-    /// being told which one to ask.
+    /// A name here is a vendor's, and four vendors front an OpenAI-shaped
+    /// endpoint under the same one, so
+    /// [`providers::resolve`](crate::providers::resolve) reads the format
+    /// too (`zai/anthropic`).
     pub fn by_name(name: &str) -> Option<Self> {
         ALL.iter().find(|dialect| dialect.name == name).cloned()
     }
