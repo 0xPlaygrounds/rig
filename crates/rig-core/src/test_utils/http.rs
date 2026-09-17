@@ -29,7 +29,8 @@ fn not_implemented() -> http_client::Error {
 /// holding it: a poisoned lock in a test double is never a reason to fail a
 /// different assertion than the one that panicked.
 fn guard<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
-    lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    lock.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// The unary half of a streaming-only double.

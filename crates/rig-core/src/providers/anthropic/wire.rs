@@ -13,7 +13,7 @@
 use crate::client::env::{self, EnvError};
 use crate::completion::{CompletionError, CompletionRequest, ProviderCapabilities};
 use crate::model::{Model, ModelList, ModelListingError};
-use crate::operation::{Completion, ModelListing, Verify as VerifyOp};
+use crate::operation::{Completion, ModelListing, Verify as VerifyOp, VerifyDecoder};
 use crate::wire::{
     Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
     WireFrame,
@@ -753,29 +753,6 @@ impl Wire for Verify {
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
         VerifyDecoder
-    }
-}
-
-/// A success status is the whole answer; the body is not read for meaning.
-pub struct VerifyDecoder;
-
-impl Decoder<VerifyOp> for VerifyDecoder {
-    type Event = ();
-
-    fn classify(&self, _frame: WireFrame) -> WireEvent<Self::Event> {
-        WireEvent::Known(())
-    }
-
-    fn interpret(&mut self, _event: Self::Event, out: &mut Output<VerifyOp>) {
-        out.push(Ok(()));
-    }
-
-    /// A 2xx with no body at all still verifies: the driver only reaches
-    /// `finish` when nothing framed, and the status already said yes.
-    fn finish(&mut self, out: &mut Output<VerifyOp>) {
-        if out.items().is_empty() {
-            out.push(Ok(()));
-        }
     }
 }
 

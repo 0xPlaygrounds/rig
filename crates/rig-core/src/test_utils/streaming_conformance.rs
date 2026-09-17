@@ -224,6 +224,28 @@ pub fn invalid_xfail_entries(xfail: &[&str]) -> Vec<String> {
         .collect()
 }
 
+/// Resolve a scenario's result against the suite's `xfail` list: `Ok(None)`
+/// when a listed failure was expected and reported, `Ok(Some(value))` when it
+/// genuinely passed and only its outcome is left to judge — the same rule for
+/// gated and ungated scenarios, so it is stated once.
+fn against_xfail<T>(
+    scenario: &'static str,
+    xfail: &[&str],
+    result: Result<T, ConformanceError>,
+) -> Result<Option<T>, String> {
+    match (xfail_reason(xfail, scenario), result) {
+        (Some(reason), Err(error)) => {
+            eprintln!("xfail {scenario}: {reason} ({error})");
+            Ok(None)
+        }
+        (Some(reason), Ok(_)) => Err(format!(
+            "{scenario} passed but is listed as xfail ({reason}); remove the xfail entry"
+        )),
+        (None, Err(error)) => Err(format!("{scenario} failed: {error}")),
+        (None, Ok(value)) => Ok(Some(value)),
+    }
+}
+
 /// Enforce a capability-gated scenario's outcome against the suite's declared
 /// capability flag and its `xfail` list.
 ///
@@ -237,34 +259,21 @@ pub fn check_gated_outcome(
     xfail: &[&str],
     outcome: Result<ScenarioOutcome, ConformanceError>,
 ) -> Result<(), String> {
-    match (xfail_reason(xfail, scenario), outcome) {
-        (Some(reason), Err(error)) => {
-            eprintln!("xfail {scenario}: {reason} ({error})");
-            Ok(())
-        }
-        (Some(reason), Ok(_)) => Err(format!(
-            "{scenario} passed but is listed as xfail ({reason}); remove the xfail entry"
+    let Some(outcome) = against_xfail(scenario, xfail, outcome)? else {
+        return Ok(());
+    };
+    match (outcome, capability) {
+        (ScenarioOutcome::Ran(_), true) => Ok(()),
+        (ScenarioOutcome::Ran(_), false) => Err(format!(
+            "{scenario} ran but the suite disclaims the capability; set the flag to true"
         )),
-        (None, Err(error)) => Err(format!("{scenario} failed: {error}")),
-        (None, Ok(ScenarioOutcome::Ran(_))) => {
-            if capability {
-                Ok(())
-            } else {
-                Err(format!(
-                    "{scenario} ran but the suite disclaims the capability; set the flag to true"
-                ))
-            }
-        }
-        (None, Ok(ScenarioOutcome::Skipped { reason, .. })) => {
-            if capability {
-                Err(format!(
-                    "{scenario} skipped ({reason}) but the suite declares the capability; \
-                     a declared capability's scenario must run"
-                ))
-            } else {
-                eprintln!("skipped {scenario}: {reason}");
-                Ok(())
-            }
+        (ScenarioOutcome::Skipped { reason, .. }, true) => Err(format!(
+            "{scenario} skipped ({reason}) but the suite declares the capability; \
+             a declared capability's scenario must run"
+        )),
+        (ScenarioOutcome::Skipped { reason, .. }, false) => {
+            eprintln!("skipped {scenario}: {reason}");
+            Ok(())
         }
     }
 }
@@ -275,17 +284,7 @@ pub fn check_ungated_outcome(
     xfail: &[&str],
     result: Result<ScenarioReport, ConformanceError>,
 ) -> Result<(), String> {
-    match (xfail_reason(xfail, scenario), result) {
-        (Some(reason), Err(error)) => {
-            eprintln!("xfail {scenario}: {reason} ({error})");
-            Ok(())
-        }
-        (Some(reason), Ok(_)) => Err(format!(
-            "{scenario} passed but is listed as xfail ({reason}); remove the xfail entry"
-        )),
-        (None, Err(error)) => Err(format!("{scenario} failed: {error}")),
-        (None, Ok(_)) => Ok(()),
-    }
+    against_xfail(scenario, xfail, result).map(|_| ())
 }
 
 /// One scripted wire input frame.
@@ -1772,6 +1771,17 @@ pub mod fixtures {
             .unwrap_or_default()
     }
 
+    /// The interleaving shape every wire spells with the same content: a
+    /// thought, the interleaved `get_weather` call, then another thought.
+    fn interleaved_around_tool_call(frames: Vec<WireInput>) -> InterleavedReasoningFixture {
+        InterleavedReasoningFixture {
+            frames,
+            first_reasoning: "before tool",
+            tool_name: "get_weather",
+            second_reasoning: "after tool",
+        }
+    }
+
     /// OpenAI chat-completions wire (the shared OpenAI-compatible SSE path).
     pub mod openai_chat {
         use super::*;
@@ -1936,20 +1946,46 @@ pub mod fixtures {
             }))
         }
 
-        fn tool_call_done() -> WireInput {
+        /// A `function_call` output item — the six keys every frame that
+        /// carries one spells, with only name, arguments and status varying.
+        fn function_call_item(name: &str, arguments: &str, status: &str) -> serde_json::Value {
+            json!({
+                "type": "function_call",
+                "id": "fc_1",
+                "arguments": arguments,
+                "call_id": "call_1",
+                "name": name,
+                "status": status,
+            })
+        }
+
+        /// An output-item lifecycle event (`added` or `done`) carrying `item`.
+        fn output_item(event: &str, sequence: u64, item: serde_json::Value) -> WireInput {
             sse(&json!({
-                "type": "response.output_item.done",
+                "type": event,
                 "output_index": 0,
-                "sequence_number": 2,
-                "item": {
-                    "type": "function_call",
-                    "id": "fc_1",
-                    "arguments": "{\"city\":\"Tokyo\"}",
-                    "call_id": "call_1",
-                    "name": "get_weather",
-                    "status": "completed",
-                },
+                "sequence_number": sequence,
+                "item": item,
             }))
+        }
+
+        /// One streamed fragment of a function call's arguments.
+        fn arguments_delta(sequence: u64, delta: &str) -> WireInput {
+            sse(&json!({
+                "type": "response.function_call_arguments.delta",
+                "item_id": "fc_1",
+                "output_index": 0,
+                "sequence_number": sequence,
+                "delta": delta,
+            }))
+        }
+
+        fn tool_call_done() -> WireInput {
+            output_item(
+                "response.output_item.done",
+                2,
+                function_call_item("get_weather", "{\"city\":\"Tokyo\"}", "completed"),
+            )
         }
 
         /// Synthetic twin of the recorded
@@ -1960,33 +1996,13 @@ pub mod fixtures {
         /// ends with a genuine `response.incomplete` terminal.
         pub fn incomplete_mid_tool_call_frames() -> Vec<WireInput> {
             vec![
-                sse(&json!({
-                    "type": "response.output_item.added",
-                    "output_index": 0,
-                    "sequence_number": 1,
-                    "item": {
-                        "type": "function_call",
-                        "id": "fc_1",
-                        "arguments": "",
-                        "call_id": "call_1",
-                        "name": "add",
-                        "status": "in_progress",
-                    },
-                })),
-                sse(&json!({
-                    "type": "response.function_call_arguments.delta",
-                    "item_id": "fc_1",
-                    "output_index": 0,
-                    "sequence_number": 2,
-                    "delta": "{\"x",
-                })),
-                sse(&json!({
-                    "type": "response.function_call_arguments.delta",
-                    "item_id": "fc_1",
-                    "output_index": 0,
-                    "sequence_number": 3,
-                    "delta": "\":48151",
-                })),
+                output_item(
+                    "response.output_item.added",
+                    1,
+                    function_call_item("add", "", "in_progress"),
+                ),
+                arguments_delta(2, "{\"x"),
+                arguments_delta(3, "\":48151"),
                 sse(&json!({
                     "type": "response.function_call_arguments.done",
                     "item_id": "fc_1",
@@ -1994,19 +2010,11 @@ pub mod fixtures {
                     "sequence_number": 4,
                     "arguments": "{\"x\":48151",
                 })),
-                sse(&json!({
-                    "type": "response.output_item.done",
-                    "output_index": 0,
-                    "sequence_number": 5,
-                    "item": {
-                        "type": "function_call",
-                        "id": "fc_1",
-                        "arguments": "{\"x\":48151",
-                        "call_id": "call_1",
-                        "name": "add",
-                        "status": "incomplete",
-                    },
-                })),
+                output_item(
+                    "response.output_item.done",
+                    5,
+                    function_call_item("add", "{\"x\":48151", "incomplete"),
+                ),
                 sse(&json!({
                     "type": "response.incomplete",
                     "sequence_number": 6,
@@ -2017,14 +2025,7 @@ pub mod fixtures {
                         "status": "incomplete",
                         "incomplete_details": {"reason": "max_output_tokens"},
                         "model": "gpt-5.4",
-                        "output": [{
-                            "type": "function_call",
-                            "id": "fc_1",
-                            "arguments": "{\"x\":48151",
-                            "call_id": "call_1",
-                            "name": "add",
-                            "status": "incomplete",
-                        }],
+                        "output": [function_call_item("add", "{\"x\":48151", "incomplete")],
                         "tools": [],
                         "usage": usage_json(),
                     },
@@ -2048,12 +2049,7 @@ pub mod fixtures {
             if let (Some(encrypted), Some(object)) = (encrypted, item.as_object_mut()) {
                 object.insert("encrypted_content".to_string(), json!(encrypted));
             }
-            sse(&json!({
-                "type": "response.output_item.done",
-                "output_index": 0,
-                "sequence_number": 3,
-                "item": item,
-            }))
+            output_item("response.output_item.done", 3, item)
         }
 
         /// The Responses-API fixture.
@@ -2065,26 +2061,12 @@ pub mod fixtures {
                 tool_call_frames: vec![tool_call_done()],
                 expected_tool_name: "get_weather",
                 partial_tool_call_frames: Some(vec![
-                    sse(&json!({
-                        "type": "response.output_item.added",
-                        "output_index": 0,
-                        "sequence_number": 1,
-                        "item": {
-                            "type": "function_call",
-                            "id": "fc_1",
-                            "arguments": "",
-                            "call_id": "call_1",
-                            "name": "get_weather",
-                            "status": "in_progress",
-                        },
-                    })),
-                    sse(&json!({
-                        "type": "response.function_call_arguments.delta",
-                        "item_id": "fc_1",
-                        "output_index": 0,
-                        "sequence_number": 2,
-                        "delta": "{\"cit",
-                    })),
+                    output_item(
+                        "response.output_item.added",
+                        1,
+                        function_call_item("get_weather", "", "in_progress"),
+                    ),
+                    arguments_delta(2, "{\"cit"),
                 ]),
                 terminal_frames: vec![terminal(Some(&usage_json()), &json!([]))],
                 expected_usage_total: 15,
@@ -2371,19 +2353,14 @@ pub mod fixtures {
         /// Thought delta, interleaved tool call, thought delta, terminal —
         /// the constant-id (`reasoning-0`) interleaving shape.
         fn interleaved_thought_fixture() -> InterleavedReasoningFixture {
-            InterleavedReasoningFixture {
-                frames: vec![
-                    chunk(&json!([{"text": "before tool", "thought": true}])),
-                    chunk(&json!([{
-                        "functionCall": {"name": "get_weather", "args": {"city": "Tokyo"}},
-                    }])),
-                    chunk(&json!([{"text": "after tool", "thought": true}])),
-                    terminal_frame(),
-                ],
-                first_reasoning: "before tool",
-                tool_name: "get_weather",
-                second_reasoning: "after tool",
-            }
+            interleaved_around_tool_call(vec![
+                chunk(&json!([{"text": "before tool", "thought": true}])),
+                chunk(&json!([{
+                    "functionCall": {"name": "get_weather", "args": {"city": "Tokyo"}},
+                }])),
+                chunk(&json!([{"text": "after tool", "thought": true}])),
+                terminal_frame(),
+            ])
         }
 
         /// Thought delta, interleaved tool call, then a signed full thought
@@ -2435,35 +2412,50 @@ pub mod fixtures {
             }))
         }
 
+        /// A `step.delta` event carrying `delta` on the only step.
+        fn step_delta(delta: &serde_json::Value) -> WireInput {
+            sse(&json!({"event_type": "step.delta", "index": 0, "delta": delta}))
+        }
+
+        /// A thought-summary delta carrying `text`.
+        fn thought_summary(text: &str) -> WireInput {
+            step_delta(&json!({
+                "type": "thought_summary",
+                "content": {"type": "text", "text": text},
+            }))
+        }
+
+        /// The interleaved `get_weather` call, delivered whole.
+        fn function_call() -> WireInput {
+            step_delta(&json!({
+                "type": "function_call",
+                "name": "get_weather",
+                "arguments": {"city": "Tokyo"},
+                "id": "call-1",
+            }))
+        }
+
+        /// The genuine terminal every Interactions sequence ends with.
+        fn completed_with_usage() -> WireInput {
+            completed(Some(json!({
+                "total_input_tokens": 5,
+                "total_output_tokens": 2,
+                "total_tokens": 7,
+            })))
+        }
+
         /// The Interactions fixture.
         pub fn fixture() -> ProviderWireFixture {
             ProviderWireFixture {
                 driver: driver(),
-                text_frames: vec![sse(&json!({
-                    "event_type": "step.delta",
-                    "index": 0,
-                    "delta": {"type": "text", "text": "hi"},
-                }))],
+                text_frames: vec![step_delta(&json!({"type": "text", "text": "hi"}))],
                 expected_texts: vec!["hi"],
-                tool_call_frames: vec![sse(&json!({
-                    "event_type": "step.delta",
-                    "index": 0,
-                    "delta": {
-                        "type": "function_call",
-                        "name": "get_weather",
-                        "arguments": {"city": "Tokyo"},
-                        "id": "call-1",
-                    },
-                }))],
+                tool_call_frames: vec![function_call()],
                 expected_tool_name: "get_weather",
                 // The Interactions wire delivers function calls whole;
                 // arguments never stream.
                 partial_tool_call_frames: None,
-                terminal_frames: vec![completed(Some(json!({
-                    "total_input_tokens": 5,
-                    "total_output_tokens": 2,
-                    "total_tokens": 7,
-                })))],
+                terminal_frames: vec![completed_with_usage()],
                 expected_usage_total: 7,
                 expected_finish_reason: Some(FinishReason::Stop),
                 zero_usage_terminal_frames: Some(vec![completed(None)]),
@@ -2488,45 +2480,12 @@ pub mod fixtures {
         /// delta, terminal — the constant-id (`reasoning-0`) interleaving
         /// shape on the Interactions wire.
         fn interleaved_thought_fixture() -> InterleavedReasoningFixture {
-            let frames = vec![
-                sse(&json!({
-                    "event_type": "step.delta",
-                    "index": 0,
-                    "delta": {
-                        "type": "thought_summary",
-                        "content": {"type": "text", "text": "before tool"},
-                    },
-                })),
-                sse(&json!({
-                    "event_type": "step.delta",
-                    "index": 0,
-                    "delta": {
-                        "type": "function_call",
-                        "name": "get_weather",
-                        "arguments": {"city": "Tokyo"},
-                        "id": "call-1",
-                    },
-                })),
-                sse(&json!({
-                    "event_type": "step.delta",
-                    "index": 0,
-                    "delta": {
-                        "type": "thought_summary",
-                        "content": {"type": "text", "text": "after tool"},
-                    },
-                })),
-                completed(Some(json!({
-                    "total_input_tokens": 5,
-                    "total_output_tokens": 2,
-                    "total_tokens": 7,
-                }))),
-            ];
-            InterleavedReasoningFixture {
-                frames,
-                first_reasoning: "before tool",
-                tool_name: "get_weather",
-                second_reasoning: "after tool",
-            }
+            interleaved_around_tool_call(vec![
+                thought_summary("before tool"),
+                function_call(),
+                thought_summary("after tool"),
+                completed_with_usage(),
+            ])
         }
     }
 
@@ -2559,6 +2518,25 @@ pub mod fixtures {
             }))
         }
 
+        /// The tool-call block opener both tool-call sequences share.
+        fn tool_use_start() -> WireInput {
+            sse(&json!({
+                "type": "content_block_start",
+                "index": 0,
+                "content_block": {
+                    "type": "tool_use",
+                    "id": "toolu_1",
+                    "name": "get_weather",
+                    "input": {},
+                },
+            }))
+        }
+
+        /// A `content_block_delta` carrying `delta` on the first block.
+        fn content_block_delta(delta: serde_json::Value) -> WireInput {
+            sse(&json!({"type": "content_block_delta", "index": 0, "delta": delta}))
+        }
+
         /// The Anthropic fixture.
         pub fn fixture() -> ProviderWireFixture {
             ProviderWireFixture {
@@ -2570,50 +2548,24 @@ pub mod fixtures {
                         "index": 0,
                         "content_block": {"type": "text", "text": ""},
                     })),
-                    sse(&json!({
-                        "type": "content_block_delta",
-                        "index": 0,
-                        "delta": {"type": "text_delta", "text": "hi"},
-                    })),
+                    content_block_delta(json!({"type": "text_delta", "text": "hi"})),
                 ],
                 expected_texts: vec!["hi"],
                 tool_call_frames: vec![
-                    sse(&json!({
-                        "type": "content_block_start",
-                        "index": 0,
-                        "content_block": {
-                            "type": "tool_use",
-                            "id": "toolu_1",
-                            "name": "get_weather",
-                            "input": {},
-                        },
-                    })),
-                    sse(&json!({
-                        "type": "content_block_delta",
-                        "index": 0,
-                        "delta": {"type": "input_json_delta", "partial_json": "{\"city\":\"Tokyo\"}"},
-                    })),
+                    tool_use_start(),
+                    content_block_delta(
+                        json!({"type": "input_json_delta", "partial_json": "{\"city\":\"Tokyo\"}"}),
+                    ),
                     // `content_block_stop` completes the call; the stream
                     // terminal (`message_delta`) is deliberately absent.
                     sse(&json!({"type": "content_block_stop", "index": 0})),
                 ],
                 expected_tool_name: "get_weather",
                 partial_tool_call_frames: Some(vec![
-                    sse(&json!({
-                        "type": "content_block_start",
-                        "index": 0,
-                        "content_block": {
-                            "type": "tool_use",
-                            "id": "toolu_1",
-                            "name": "get_weather",
-                            "input": {},
-                        },
-                    })),
-                    sse(&json!({
-                        "type": "content_block_delta",
-                        "index": 0,
-                        "delta": {"type": "input_json_delta", "partial_json": "{\"cit"},
-                    })),
+                    tool_use_start(),
+                    content_block_delta(
+                        json!({"type": "input_json_delta", "partial_json": "{\"cit"}),
+                    ),
                 ]),
                 terminal_frames: vec![sse(&json!({
                     "type": "message_delta",
@@ -2660,26 +2612,44 @@ pub mod fixtures {
             })
         }
 
+        /// A `content-delta` carrying `content`.
+        fn content_delta(content: serde_json::Value) -> WireInput {
+            sse(&json!({"type": "content-delta", "delta": {"message": {"content": content}}}))
+        }
+
+        /// A `tool-call-start` naming `get_weather` with `arguments`.
+        fn tool_call_start(arguments: &str) -> WireInput {
+            sse(&json!({
+                "type": "tool-call-start",
+                "delta": {"message": {"tool_calls": {
+                    "id": "call_1",
+                    "function": {"name": "get_weather", "arguments": arguments},
+                }}},
+            }))
+        }
+
+        /// The genuine terminal, reporting both token counters.
+        fn terminal_frame() -> WireInput {
+            sse(&json!({
+                "type": "message-end",
+                "delta": {
+                    "finish_reason": "COMPLETE",
+                    "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}},
+                },
+            }))
+        }
+
         /// The Cohere fixture.
         pub fn fixture() -> ProviderWireFixture {
             ProviderWireFixture {
                 driver: driver(),
                 text_frames: vec![
                     sse(&json!({"type": "message-start", "id": "msg_1"})),
-                    sse(&json!({
-                        "type": "content-delta",
-                        "delta": {"message": {"content": {"text": "hi"}}},
-                    })),
+                    content_delta(json!({"text": "hi"})),
                 ],
                 expected_texts: vec!["hi"],
                 tool_call_frames: vec![
-                    sse(&json!({
-                        "type": "tool-call-start",
-                        "delta": {"message": {"tool_calls": {
-                            "id": "call_1",
-                            "function": {"name": "get_weather", "arguments": ""},
-                        }}},
-                    })),
+                    tool_call_start(""),
                     sse(&json!({
                         "type": "tool-call-delta",
                         "delta": {"message": {"tool_calls": {
@@ -2689,20 +2659,8 @@ pub mod fixtures {
                     sse(&json!({"type": "tool-call-end"})),
                 ],
                 expected_tool_name: "get_weather",
-                partial_tool_call_frames: Some(vec![sse(&json!({
-                    "type": "tool-call-start",
-                    "delta": {"message": {"tool_calls": {
-                        "id": "call_1",
-                        "function": {"name": "get_weather", "arguments": "{\"cit"},
-                    }}},
-                }))]),
-                terminal_frames: vec![sse(&json!({
-                    "type": "message-end",
-                    "delta": {
-                        "finish_reason": "COMPLETE",
-                        "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}},
-                    },
-                }))],
+                partial_tool_call_frames: Some(vec![tool_call_start("{\"cit")]),
+                terminal_frames: vec![terminal_frame()],
                 expected_usage_total: 14,
                 expected_finish_reason: Some(FinishReason::Stop),
                 zero_usage_terminal_frames: Some(vec![sse(&json!({"type": "message-end"}))]),
@@ -2723,38 +2681,14 @@ pub mod fixtures {
         /// the constant-id (`reasoning-0`) interleaving shape on the Cohere
         /// v2 SSE wire.
         fn interleaved_thinking_fixture() -> InterleavedReasoningFixture {
-            let frames = vec![
+            interleaved_around_tool_call(vec![
                 sse(&json!({"type": "message-start", "id": "msg_1"})),
-                sse(&json!({
-                    "type": "content-delta",
-                    "delta": {"message": {"content": {"thinking": "before tool"}}},
-                })),
-                sse(&json!({
-                    "type": "tool-call-start",
-                    "delta": {"message": {"tool_calls": {
-                        "id": "call_1",
-                        "function": {"name": "get_weather", "arguments": "{\"city\":\"Tokyo\"}"},
-                    }}},
-                })),
+                content_delta(json!({"thinking": "before tool"})),
+                tool_call_start("{\"city\":\"Tokyo\"}"),
                 sse(&json!({"type": "tool-call-end"})),
-                sse(&json!({
-                    "type": "content-delta",
-                    "delta": {"message": {"content": {"thinking": "after tool"}}},
-                })),
-                sse(&json!({
-                    "type": "message-end",
-                    "delta": {
-                        "finish_reason": "COMPLETE",
-                        "usage": {"tokens": {"input_tokens": 10, "output_tokens": 4}},
-                    },
-                })),
-            ];
-            InterleavedReasoningFixture {
-                frames,
-                first_reasoning: "before tool",
-                tool_name: "get_weather",
-                second_reasoning: "after tool",
-            }
+                content_delta(json!({"thinking": "after tool"})),
+                terminal_frame(),
+            ])
         }
     }
 
@@ -2769,37 +2703,53 @@ pub mod fixtures {
             })
         }
 
+        /// A streaming NDJSON chunk carrying `message`. `created_at` is
+        /// decorative: the wire's response type has no field for it.
+        fn chunk(message: serde_json::Value) -> WireInput {
+            ndjson(&json!({
+                "model": "llama3.2",
+                "created_at": "2023-08-04T19:22:45.499127Z",
+                "message": message,
+                "done": false,
+            }))
+        }
+
+        /// A thinking delta carrying `text`.
+        fn thinking(text: &str) -> WireInput {
+            chunk(json!({"role": "assistant", "content": "", "thinking": text}))
+        }
+
+        /// The interleaved `get_weather` call, delivered whole.
+        fn tool_call() -> WireInput {
+            chunk(json!({"role": "assistant", "content": "", "tool_calls": [{
+                "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}},
+            }]}))
+        }
+
+        /// The genuine terminal, reporting both token counters.
+        fn terminal_frame() -> WireInput {
+            ndjson(&json!({
+                "model": "llama3.2",
+                "created_at": "2023-08-04T19:22:47.499127Z",
+                "message": {"role": "assistant", "content": ""},
+                "done": true,
+                "done_reason": "stop",
+                "prompt_eval_count": 10,
+                "eval_count": 4,
+            }))
+        }
+
         /// The Ollama fixture.
         pub fn fixture() -> ProviderWireFixture {
             ProviderWireFixture {
                 driver: driver(),
-                text_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "hi"},
-                    "done": false,
-                }))],
+                text_frames: vec![chunk(json!({"role": "assistant", "content": "hi"}))],
                 expected_texts: vec!["hi"],
-                tool_call_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "", "tool_calls": [{
-                        "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}},
-                    }]},
-                    "done": false,
-                }))],
+                tool_call_frames: vec![tool_call()],
                 expected_tool_name: "get_weather",
                 // NDJSON delivers tool calls whole; arguments never stream.
                 partial_tool_call_frames: None,
-                terminal_frames: vec![ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:47.499127Z",
-                    "message": {"role": "assistant", "content": ""},
-                    "done": true,
-                    "done_reason": "stop",
-                    "prompt_eval_count": 10,
-                    "eval_count": 4,
-                }))],
+                terminal_frames: vec![terminal_frame()],
                 expected_usage_total: 14,
                 expected_finish_reason: Some(FinishReason::Stop),
                 zero_usage_terminal_frames: Some(vec![ndjson(&json!({
@@ -2812,12 +2762,7 @@ pub mod fixtures {
                 bare_terminal_frames: None,
                 malformed_frame: Some(WireInput::Bytes(Bytes::from_static(b"{not json\n"))),
                 unknown_event_frame: None,
-                defective_known_frame: Some(ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:46.499127Z",
-                    "message": {"role": "assistant", "content": 42},
-                    "done": false,
-                }))),
+                defective_known_frame: Some(chunk(json!({"role": "assistant", "content": 42}))),
                 delta_less_prelude_frame: None,
                 refusal: None,
                 interleaved_reasoning: Some(interleaved_thinking_fixture()),
@@ -2827,43 +2772,12 @@ pub mod fixtures {
         /// Thinking delta, interleaved tool call, thinking delta, terminal —
         /// the constant-id (`reasoning-0`) interleaving shape on NDJSON.
         fn interleaved_thinking_fixture() -> InterleavedReasoningFixture {
-            let frames = vec![
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.499127Z",
-                    "message": {"role": "assistant", "content": "", "thinking": "before tool"},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.599127Z",
-                    "message": {"role": "assistant", "content": "", "tool_calls": [{
-                        "function": {"name": "get_weather", "arguments": {"city": "Tokyo"}},
-                    }]},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:45.699127Z",
-                    "message": {"role": "assistant", "content": "", "thinking": "after tool"},
-                    "done": false,
-                })),
-                ndjson(&json!({
-                    "model": "llama3.2",
-                    "created_at": "2023-08-04T19:22:47.499127Z",
-                    "message": {"role": "assistant", "content": ""},
-                    "done": true,
-                    "done_reason": "stop",
-                    "prompt_eval_count": 10,
-                    "eval_count": 4,
-                })),
-            ];
-            InterleavedReasoningFixture {
-                frames,
-                first_reasoning: "before tool",
-                tool_name: "get_weather",
-                second_reasoning: "after tool",
-            }
+            interleaved_around_tool_call(vec![
+                thinking("before tool"),
+                tool_call(),
+                thinking("after tool"),
+                terminal_frame(),
+            ])
         }
     }
 }

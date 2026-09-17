@@ -369,3 +369,65 @@ fn the_two_forms_are_read_by_shape_and_report_the_field() {
         );
     }
 }
+
+/// The four two-door vendors, pinned without credentials.
+///
+/// `zai`, `minimax`, `moonshot` and `xiaomimimo` each front an OpenAI-shaped
+/// endpoint and an Anthropic-shaped one, and their cassette suites are
+/// ignore-only wherever the keys are absent — so the fact that the two doors
+/// are *different providers at different hosts* is asserted here, off the
+/// dialect consts, where no key is needed. Without this, the pair model is
+/// proved only where someone has credentials.
+#[test]
+fn each_two_door_vendor_has_two_endpoints_at_two_hosts() {
+    for vendor in ["zai", "minimax", "moonshot", "xiaomimimo"] {
+        let openai = resolve(&format!("{vendor}/openai"))
+            .unwrap_or_else(|error| panic!("{vendor}/openai: {error}"));
+        let anthropic = resolve(&format!("{vendor}/anthropic"))
+            .unwrap_or_else(|error| panic!("{vendor}/anthropic: {error}"));
+
+        assert_eq!(openai.vendor(), vendor);
+        assert_eq!(anthropic.vendor(), vendor, "one vendor, not two");
+        assert_eq!(openai.format(), Format::OpenAi);
+        assert_eq!(anthropic.format(), Format::Anthropic);
+        assert_ne!(openai, anthropic, "two doors are two providers");
+
+        // Different hosts: the reason naming only the vendor has to refuse.
+        let (chat, messages) = (openai.config(), anthropic.config());
+        let hosts = (host_of(&chat).to_owned(), host_of(&messages).to_owned());
+        assert_ne!(hosts.0, hosts.1, "{vendor}: {hosts:?}");
+        assert!(!hosts.0.is_empty() && !hosts.1.is_empty(), "{hosts:?}");
+
+        // …and the same vendor credential opens both.
+        assert_eq!(
+            chat.required_env().next(),
+            messages.required_env().next(),
+            "{vendor} issues one key"
+        );
+
+        // The unqualified name is refused, listing both doors.
+        let error = format!("{vendor}:some-model")
+            .parse::<ProviderRef>()
+            .expect_err("two doors");
+        let message = error.to_string();
+        assert!(
+            matches!(error, UnknownProvider::Ambiguous { .. }),
+            "{message}"
+        );
+        assert!(message.contains(&format!("{vendor}/openai")), "{message}");
+        assert!(
+            message.contains(&format!("{vendor}/anthropic")),
+            "{message}"
+        );
+    }
+
+    // And a one-door vendor takes no qualifier: the short spelling is not a
+    // special case, it is what all but four providers use.
+    assert_eq!(
+        all()
+            .filter(|id| endpoints(id.vendor()).count() > 1)
+            .count(),
+        8,
+        "four vendors, two doors each"
+    );
+}

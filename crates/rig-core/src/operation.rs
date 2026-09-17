@@ -27,7 +27,7 @@ pub use modality::ImageGeneration;
 pub use modality::{
     Embedding, EmbeddingCapabilities, ImageEmbedding, Rerank, RerankRequest, Transcription,
 };
-pub use verify::Verify;
+pub use verify::{Verify, VerifyDecoder};
 
 /// The sink of an operation whose reply is one event.
 pub struct One<Op: Operation> {

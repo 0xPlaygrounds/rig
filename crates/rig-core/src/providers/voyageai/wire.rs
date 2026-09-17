@@ -135,6 +135,19 @@ fn raw_and_usage<T: Serialize>(
     ))
 }
 
+/// Carry `key` only when the wire names a value: every option both routes
+/// take is a key Voyage supplies its own default for, and a request that
+/// omits it is how that default is asked for.
+fn insert_some(
+    body: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    value: Option<impl Into<serde_json::Value>>,
+) {
+    if let Some(value) = value {
+        body.insert(key.to_owned(), value.into());
+    }
+}
+
 /// The embedding wire: `POST /embeddings`.
 ///
 /// Every option defaults to `None`, which is Voyage's own server default:
@@ -202,18 +215,9 @@ impl Wire for Embeddings {
         let mut body = serde_json::Map::new();
         body.insert("model".to_owned(), serde_json::json!(self.model));
         body.insert("input".to_owned(), serde_json::json!(texts));
-        if let Some(input_type) = &self.input_type {
-            body.insert("input_type".to_owned(), serde_json::json!(input_type));
-        }
-        if let Some(truncation) = self.truncation {
-            body.insert("truncation".to_owned(), serde_json::json!(truncation));
-        }
-        if let Some(output_dimension) = self.output_dimension {
-            body.insert(
-                "output_dimension".to_owned(),
-                serde_json::json!(output_dimension),
-            );
-        }
+        insert_some(&mut body, "input_type", self.input_type.as_deref());
+        insert_some(&mut body, "truncation", self.truncation);
+        insert_some(&mut body, "output_dimension", self.output_dimension);
         self.provider.post("/embeddings", &body)
     }
 
@@ -319,16 +323,12 @@ impl Wire for Rerank {
         body.insert("query".to_owned(), serde_json::json!(request.query));
         body.insert("documents".to_owned(), serde_json::json!(request.documents));
         body.insert("model".to_owned(), serde_json::json!(self.model));
-        if let Some(top_k) = self.top_k {
-            body.insert("top_k".to_owned(), serde_json::json!(top_k));
-        }
+        insert_some(&mut body, "top_k", self.top_k);
         body.insert(
             "return_documents".to_owned(),
             serde_json::json!(self.return_documents),
         );
-        if let Some(truncation) = self.truncation {
-            body.insert("truncation".to_owned(), serde_json::json!(truncation));
-        }
+        insert_some(&mut body, "truncation", self.truncation);
         self.provider.post("/rerank", &body)
     }
 

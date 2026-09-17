@@ -73,7 +73,7 @@ pub use dto::{ChatChoice, ChatFrame, ChatUsage, FinishReason, StreamingCompletio
 pub use modality::{
     Embeddings, EmbeddingsDecoder, ModelEntry, Models, ModelsDecoder, ModelsReply, Rerank,
     RerankDecoder, RerankReply, RerankResultEntry, RerankUsage, Transcriptions,
-    TranscriptionsDecoder, Verify, VerifyDecoder,
+    TranscriptionsDecoder, Verify,
 };
 pub use route::{OpenAiDecoder, OpenAiEvent, OpenAiWire, Route};
 

@@ -123,7 +123,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     completion::ToolDefinition,
-    serve::{ErasedHandler, adapters::ToolCallback, adapters::ToolFn},
+    serve::{ErasedHandler, adapters::ToolCallback},
     wasm_compat::{WasmBoxedFuture, WasmCompatSend, WasmCompatSync},
 };
 

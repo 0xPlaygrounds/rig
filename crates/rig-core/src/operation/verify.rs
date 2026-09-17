@@ -2,7 +2,7 @@
 
 use super::{One, Take};
 use crate::client::VerifyError;
-use crate::wire::Operation;
+use crate::wire::{Decoder, Operation, Output, Sink, WireEvent, WireFrame};
 
 /// Checking that a provider accepts the configured credentials.
 ///
@@ -30,4 +30,32 @@ impl Operation for Verify {
     }
 
     fn telemetry(_streaming: bool) -> Self::Telemetry {}
+}
+
+/// The decoder every verify wire uses.
+///
+/// There is nothing provider-specific to decode: the status is the whole
+/// answer, so the only judgement — that a 2xx with no body still verifies —
+/// belongs here rather than once per provider.
+#[derive(Default)]
+pub struct VerifyDecoder;
+
+impl Decoder<Verify> for VerifyDecoder {
+    type Event = ();
+
+    fn classify(&self, _frame: WireFrame) -> WireEvent<Self::Event> {
+        WireEvent::Known(())
+    }
+
+    fn interpret(&mut self, _event: Self::Event, out: &mut Output<Verify>) {
+        out.push(Ok(()));
+    }
+
+    /// A 2xx with no body at all still verifies: the driver only reaches
+    /// `finish` when nothing framed, and the status already said yes.
+    fn finish(&mut self, out: &mut Output<Verify>) {
+        if out.items().is_empty() {
+            out.push(Ok(()));
+        }
+    }
 }

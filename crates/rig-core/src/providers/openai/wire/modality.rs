@@ -14,7 +14,7 @@ use crate::embeddings::{self, EmbeddingError};
 use crate::model::{Model, ModelList, ModelListingError};
 use crate::operation::{
     Embedding, EmbeddingCapabilities, ModelListing, Rerank as RerankOp, Transcription,
-    Verify as VerifyOp,
+    Verify as VerifyOp, VerifyDecoder,
 };
 use crate::providers::internal::wire::classify_untyped_line;
 use crate::providers::openai::completion::Usage;
@@ -1356,35 +1356,6 @@ impl Verify {
     /// The credential-check wire.
     pub fn new(provider: OpenAI) -> Self {
         Self { provider }
-    }
-}
-
-/// The verification decoder.
-///
-/// The reply body is not read for meaning: a success status is the answer,
-/// and the 401/403 classification lives in [`VerifyError`]'s `WireError`
-/// impl, so this wire does not restate it.
-#[derive(Default)]
-pub struct VerifyDecoder;
-
-impl Decoder<VerifyOp> for VerifyDecoder {
-    type Event = ();
-
-    fn classify(&self, _frame: WireFrame) -> WireEvent<Self::Event> {
-        WireEvent::Known(())
-    }
-
-    fn interpret(&mut self, _event: Self::Event, out: &mut Output<VerifyOp>) {
-        out.push(Ok(()));
-    }
-
-    fn finish(&mut self, out: &mut Output<VerifyOp>) {
-        // A 200 with an empty body still verifies the credential: the status
-        // is the whole answer, so the fold must not see an empty reply as a
-        // missing payload.
-        if out.items().is_empty() {
-            out.push(Ok(()));
-        }
     }
 }
 

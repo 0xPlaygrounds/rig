@@ -370,6 +370,23 @@ fn media_parts<M: MimeType>(
     Ok((data, uri, mime_type))
 }
 
+/// One image or video payload, read at the model's default resolution:
+/// image and video content are the same item on this wire, tagged by the
+/// variant that carries it.
+fn media_content<M: MimeType>(
+    data: message::DocumentSourceKind,
+    media_type: Option<M>,
+    kind: &str,
+) -> Result<MediaContent, message::MessageError> {
+    let (data, uri, mime_type) = media_parts(data, media_type, kind)?;
+    Ok(MediaContent {
+        data,
+        uri,
+        mime_type: Some(mime_type),
+        resolution: None,
+    })
+}
+
 fn split_data_uri(
     src: message::DocumentSourceKind,
 ) -> Result<(Option<String>, Option<String>), message::MessageError> {
@@ -391,7 +408,7 @@ fn split_data_uri(
 
 /// Raw request/response types and convenience helpers for the Gemini Interactions API.
 pub mod interactions_api_types {
-    use super::{media_parts, split_data_uri};
+    use super::{media_content, media_parts, split_data_uri};
     use crate::completion::{CompletionError, Usage};
     use crate::message::{self, MimeType};
     use base64::{Engine, prelude::BASE64_STANDARD};
@@ -543,24 +560,17 @@ pub mod interactions_api_types {
         fn call_id(&self) -> Option<&str>;
     }
 
-    macro_rules! impl_exchange_ids {
-        ($call:ty, $result:ty) => {
-            impl ExchangeCall for $call {
-                fn id(&self) -> Option<&str> {
-                    self.id.as_deref()
-                }
-            }
-            impl ExchangeResult for $result {
-                fn call_id(&self) -> Option<&str> {
-                    self.call_id.as_deref()
-                }
-            }
-        };
+    impl<A> ExchangeCall for BuiltinCallContent<A> {
+        fn id(&self) -> Option<&str> {
+            self.id.as_deref()
+        }
     }
 
-    impl_exchange_ids!(GoogleSearchCallContent, GoogleSearchResultContent);
-    impl_exchange_ids!(UrlContextCallContent, UrlContextResultContent);
-    impl_exchange_ids!(CodeExecutionCallContent, CodeExecutionResultContent);
+    impl<R> ExchangeResult for BuiltinResultContent<R> {
+        fn call_id(&self) -> Option<&str> {
+            self.call_id.as_deref()
+        }
+    }
 
     /// Pairs tool calls with their results by call_id.
     ///
@@ -643,8 +653,24 @@ pub mod interactions_api_types {
         exchanges
     }
 
+    impl<C, R: Clone> Exchange<C, BuiltinResultContent<Vec<R>>> {
+        /// Collects every entry the tool returned across this exchange's
+        /// results.
+        pub fn result_items(&self) -> Vec<R> {
+            self.results
+                .iter()
+                .filter_map(|result| result.result.as_ref())
+                .flatten()
+                .cloned()
+                .collect()
+        }
+    }
+
     /// Groups Google Search tool calls and results for a single interaction.
-    pub type GoogleSearchExchange = Exchange<GoogleSearchCallContent, GoogleSearchResultContent>;
+    pub type GoogleSearchExchange = Exchange<
+        BuiltinCallContent<GoogleSearchCallArguments>,
+        BuiltinResultContent<Vec<GoogleSearchResult>>,
+    >;
 
     impl GoogleSearchExchange {
         /// Collects all queries from the stored Google Search tool calls.
@@ -656,20 +682,13 @@ pub mod interactions_api_types {
                 .cloned()
                 .collect()
         }
-
-        /// Collects all Google Search result entries from tool results.
-        pub fn result_items(&self) -> Vec<GoogleSearchResult> {
-            self.results
-                .iter()
-                .filter_map(|result| result.result.as_ref())
-                .flatten()
-                .cloned()
-                .collect()
-        }
     }
 
     /// Groups URL context tool calls and results for a single interaction.
-    pub type UrlContextExchange = Exchange<UrlContextCallContent, UrlContextResultContent>;
+    pub type UrlContextExchange = Exchange<
+        BuiltinCallContent<UrlContextCallArguments>,
+        BuiltinResultContent<Vec<UrlContextResult>>,
+    >;
 
     impl UrlContextExchange {
         /// Collects all URLs from the stored URL context tool calls.
@@ -681,20 +700,11 @@ pub mod interactions_api_types {
                 .cloned()
                 .collect()
         }
-
-        /// Collects all URL context result entries from tool results.
-        pub fn result_items(&self) -> Vec<UrlContextResult> {
-            self.results
-                .iter()
-                .filter_map(|result| result.result.as_ref())
-                .flatten()
-                .cloned()
-                .collect()
-        }
     }
 
     /// Groups code execution tool calls and results for a single interaction.
-    pub type CodeExecutionExchange = Exchange<CodeExecutionCallContent, CodeExecutionResultContent>;
+    pub type CodeExecutionExchange =
+        Exchange<BuiltinCallContent<CodeExecutionCallArguments>, BuiltinResultContent<String>>;
 
     impl CodeExecutionExchange {
         /// Collects all code snippets from the stored code execution tool calls.
@@ -778,8 +788,8 @@ pub mod interactions_api_types {
         interaction_exchange_accessors!(
             "Google Search", GoogleSearchExchange, GoogleSearchCall, GoogleSearchResult,
             google_search_exchanges,
-            google_search_call_contents -> GoogleSearchCallContent,
-            google_search_result_contents -> GoogleSearchResultContent,
+            google_search_call_contents -> BuiltinCallContent<GoogleSearchCallArguments>,
+            google_search_result_contents -> BuiltinResultContent<Vec<GoogleSearchResult>>,
             "Collects all Google Search queries from tool calls in the outputs."
                 google_search_queries => queries -> String,
             "Collects all Google Search result entries from tool results in the outputs."
@@ -789,8 +799,8 @@ pub mod interactions_api_types {
         interaction_exchange_accessors!(
             "URL context", UrlContextExchange, UrlContextCall, UrlContextResult,
             url_context_exchanges,
-            url_context_call_contents -> UrlContextCallContent,
-            url_context_result_contents -> UrlContextResultContent,
+            url_context_call_contents -> BuiltinCallContent<UrlContextCallArguments>,
+            url_context_result_contents -> BuiltinResultContent<Vec<UrlContextResult>>,
             "Collects all URLs from URL context tool calls in the outputs."
                 url_context_urls => urls -> String,
             "Collects all URL context result entries from tool results in the outputs."
@@ -800,8 +810,8 @@ pub mod interactions_api_types {
         interaction_exchange_accessors!(
             "code execution", CodeExecutionExchange, CodeExecutionCall, CodeExecutionResult,
             code_execution_exchanges,
-            code_execution_call_contents -> CodeExecutionCallContent,
-            code_execution_result_contents -> CodeExecutionResultContent,
+            code_execution_call_contents -> BuiltinCallContent<CodeExecutionCallArguments>,
+            code_execution_result_contents -> BuiltinResultContent<String>,
             "Collects all code snippets from code execution calls in the outputs."
                 code_execution_snippets => code_snippets -> String,
             "Collects all code execution outputs from tool results in the outputs."
@@ -1006,12 +1016,12 @@ pub mod interactions_api_types {
         Thought(ThoughtContent),
         FunctionCall(FunctionCallContent),
         FunctionResult(FunctionResultContent),
-        CodeExecutionCall(CodeExecutionCallContent),
-        CodeExecutionResult(CodeExecutionResultContent),
-        UrlContextCall(UrlContextCallContent),
-        UrlContextResult(UrlContextResultContent),
-        GoogleSearchCall(GoogleSearchCallContent),
-        GoogleSearchResult(GoogleSearchResultContent),
+        CodeExecutionCall(BuiltinCallContent<CodeExecutionCallArguments>),
+        CodeExecutionResult(BuiltinResultContent<String>),
+        UrlContextCall(BuiltinCallContent<UrlContextCallArguments>),
+        UrlContextResult(BuiltinResultContent<Vec<UrlContextResult>>),
+        GoogleSearchCall(BuiltinCallContent<GoogleSearchCallArguments>),
+        GoogleSearchResult(BuiltinResultContent<Vec<GoogleSearchResult>>),
         McpServerToolCall(McpServerToolCallContent),
         McpServerToolResult(McpServerToolResultContent),
         FileSearchResult(FileSearchResultContent),
@@ -1254,9 +1264,15 @@ pub mod interactions_api_types {
         }
     }
 
-    /// Image content item.
+    /// Image or video content item: the bytes or a URI, the MIME type, and
+    /// the resolution the model should read the media at.
+    ///
+    /// Images and video carry the same four fields with the same serde, and
+    /// the wire tells them apart by the enclosing variant's `type` tag
+    /// ([`Content::Image`] against [`Content::Video`]), never by the
+    /// payload.
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct ImageContent {
+    pub struct MediaContent {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub data: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1289,19 +1305,6 @@ pub mod interactions_api_types {
         pub mime_type: Option<String>,
     }
 
-    /// Video content item.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct VideoContent {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub data: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub uri: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub mime_type: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub resolution: Option<MediaResolution>,
-    }
-
     /// Thought summary content.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct ThoughtContent {
@@ -1318,7 +1321,7 @@ pub mod interactions_api_types {
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ThoughtSummaryContent {
         Text(TextContent),
-        Image(ImageContent),
+        Image(MediaContent),
     }
 
     /// Function call content item.
@@ -1354,20 +1357,31 @@ pub mod interactions_api_types {
         pub code: Option<String>,
     }
 
-    /// Code execution call content item.
+    /// The call half of a built-in tool exchange: the arguments the model
+    /// passed, and the id the matching result quotes back.
+    ///
+    /// Code execution, URL context and Google Search all call with this
+    /// shape and differ only in `A`, the argument object the tool takes;
+    /// the wire tells them apart by the enclosing variant's `type` tag,
+    /// never by the payload.
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct CodeExecutionCallContent {
+    pub struct BuiltinCallContent<A> {
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<CodeExecutionCallArguments>,
+        pub arguments: Option<A>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub id: Option<String>,
     }
 
-    /// Code execution result content item.
+    /// The result half of a built-in tool exchange: what the tool returned,
+    /// whether it failed, the model's signature over it, and the call it
+    /// answers.
+    ///
+    /// `R` is what the tool returns — a code execution's output text, the
+    /// entries a URL context or a Google Search call fetched.
     #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct CodeExecutionResultContent {
+    pub struct BuiltinResultContent<R> {
         #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<String>,
+        pub result: Option<R>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub is_error: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1383,15 +1397,6 @@ pub mod interactions_api_types {
         pub urls: Option<Vec<String>>,
     }
 
-    /// URL context call content item.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct UrlContextCallContent {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<UrlContextCallArguments>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
-    }
-
     /// URL context result entry.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct UrlContextResult {
@@ -1401,33 +1406,11 @@ pub mod interactions_api_types {
         pub status: Option<String>,
     }
 
-    /// URL context result content item.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct UrlContextResultContent {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<UrlContextResult>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
-    }
-
     /// Arguments for a Google Search call.
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct GoogleSearchCallArguments {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub queries: Option<Vec<String>>,
-    }
-
-    /// Google Search call content item.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct GoogleSearchCallContent {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub arguments: Option<GoogleSearchCallArguments>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub id: Option<String>,
     }
 
     /// Google Search result entry.
@@ -1439,19 +1422,6 @@ pub mod interactions_api_types {
         pub title: Option<String>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub rendered_content: Option<String>,
-    }
-
-    /// Google Search result content item.
-    #[derive(Clone, Debug, Deserialize, Serialize)]
-    pub struct GoogleSearchResultContent {
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub signature: Option<String>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub result: Option<Vec<GoogleSearchResult>>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub is_error: Option<bool>,
-        #[serde(skip_serializing_if = "Option::is_none")]
-        pub call_id: Option<String>,
     }
 
     /// MCP server tool call content item.
@@ -1495,19 +1465,19 @@ pub mod interactions_api_types {
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum Content {
         Text(TextContent),
-        Image(ImageContent),
+        Image(MediaContent),
         Audio(AudioContent),
         Document(DocumentContent),
-        Video(VideoContent),
+        Video(MediaContent),
         Thought(ThoughtContent),
         FunctionCall(FunctionCallContent),
         FunctionResult(FunctionResultContent),
-        CodeExecutionCall(CodeExecutionCallContent),
-        CodeExecutionResult(CodeExecutionResultContent),
-        UrlContextCall(UrlContextCallContent),
-        UrlContextResult(UrlContextResultContent),
-        GoogleSearchCall(GoogleSearchCallContent),
-        GoogleSearchResult(GoogleSearchResultContent),
+        CodeExecutionCall(BuiltinCallContent<CodeExecutionCallArguments>),
+        CodeExecutionResult(BuiltinResultContent<String>),
+        UrlContextCall(BuiltinCallContent<UrlContextCallArguments>),
+        UrlContextResult(BuiltinResultContent<Vec<UrlContextResult>>),
+        GoogleSearchCall(BuiltinCallContent<GoogleSearchCallArguments>),
+        GoogleSearchResult(BuiltinResultContent<Vec<GoogleSearchResult>>),
         McpServerToolCall(McpServerToolCallContent),
         McpServerToolResult(McpServerToolResultContent),
         FileSearchResult(FileSearchResultContent),
@@ -1536,7 +1506,7 @@ pub mod interactions_api_types {
                 })?;
                 let (data, uri) = split_data_uri(data)?;
 
-                Content::Image(ImageContent {
+                Content::Image(MediaContent {
                     data,
                     uri,
                     mime_type: Some(media_type.to_mime_type().to_string()),
@@ -1615,15 +1585,7 @@ pub mod interactions_api_types {
                 }
                 message::UserContent::Image(message::Image {
                     data, media_type, ..
-                }) => {
-                    let (data, uri, mime_type) = media_parts(data, media_type, "image")?;
-                    Ok(Self::Image(ImageContent {
-                        data,
-                        uri,
-                        mime_type: Some(mime_type),
-                        resolution: None,
-                    }))
-                }
+                }) => Ok(Self::Image(media_content(data, media_type, "image")?)),
                 message::UserContent::Audio(message::Audio {
                     data, media_type, ..
                 }) => {
@@ -1636,15 +1598,7 @@ pub mod interactions_api_types {
                 }
                 message::UserContent::Video(message::Video {
                     data, media_type, ..
-                }) => {
-                    let (data, uri, mime_type) = media_parts(data, media_type, "video")?;
-                    Ok(Self::Video(VideoContent {
-                        data,
-                        uri,
-                        mime_type: Some(mime_type),
-                        resolution: None,
-                    }))
-                }
+                }) => Ok(Self::Video(media_content(data, media_type, "video")?)),
                 message::UserContent::Document(message::Document {
                     data, media_type, ..
                 }) => {
@@ -1763,21 +1717,7 @@ pub mod interactions_api_types {
                 }
                 message::AssistantContent::Image(message::Image {
                     data, media_type, ..
-                }) => {
-                    let media_type = media_type.ok_or_else(|| {
-                        message::MessageError::ConversionError(
-                            "Media type for image is required for Gemini".to_string(),
-                        )
-                    })?;
-                    let mime_type = media_type.to_mime_type().to_string();
-                    let (data, uri) = split_data_uri(data)?;
-                    Ok(Self::Image(ImageContent {
-                        data,
-                        uri,
-                        mime_type: Some(mime_type),
-                        resolution: None,
-                    }))
-                }
+                }) => Ok(Self::Image(media_content(data, media_type, "image")?)),
             }
         }
     }
@@ -2072,21 +2012,21 @@ pub mod interactions_api_types {
     #[serde(tag = "type", rename_all = "snake_case")]
     pub enum ContentDelta {
         Text(TextDelta),
-        Image(ImageContent),
+        Image(MediaContent),
         Audio(AudioContent),
         Document(DocumentContent),
-        Video(VideoContent),
+        Video(MediaContent),
         ThoughtSummary(ThoughtSummaryDelta),
         ThoughtSignature(ThoughtSignatureDelta),
         FunctionCall(FunctionCallContent),
         ArgumentsDelta(ArgumentsDelta),
         FunctionResult(FunctionResultContent),
-        CodeExecutionCall(CodeExecutionCallContent),
-        CodeExecutionResult(CodeExecutionResultContent),
-        UrlContextCall(UrlContextCallContent),
-        UrlContextResult(UrlContextResultContent),
-        GoogleSearchCall(GoogleSearchCallContent),
-        GoogleSearchResult(GoogleSearchResultContent),
+        CodeExecutionCall(BuiltinCallContent<CodeExecutionCallArguments>),
+        CodeExecutionResult(BuiltinResultContent<String>),
+        UrlContextCall(BuiltinCallContent<UrlContextCallArguments>),
+        UrlContextResult(BuiltinResultContent<Vec<UrlContextResult>>),
+        GoogleSearchCall(BuiltinCallContent<GoogleSearchCallArguments>),
+        GoogleSearchResult(BuiltinResultContent<Vec<GoogleSearchResult>>),
         McpServerToolCall(McpServerToolCallContent),
         McpServerToolResult(McpServerToolResultContent),
         FileSearchResult(FileSearchResultContent),

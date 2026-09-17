@@ -434,13 +434,13 @@ fn test_code_execution_tool_serialization() {
 fn test_google_search_helpers() {
     let interaction = Interaction {
         steps: vec![
-            Step::GoogleSearchCall(GoogleSearchCallContent {
+            Step::GoogleSearchCall(BuiltinCallContent {
                 arguments: Some(GoogleSearchCallArguments {
                     queries: Some(vec!["query-one".to_string(), "query-two".to_string()]),
                 }),
                 id: Some("call-1".to_string()),
             }),
-            Step::GoogleSearchResult(GoogleSearchResultContent {
+            Step::GoogleSearchResult(BuiltinResultContent {
                 result: Some(vec![GoogleSearchResult {
                     url: Some("https://example.com".to_string()),
                     title: Some("Example One".to_string()),
@@ -450,13 +450,13 @@ fn test_google_search_helpers() {
                 is_error: None,
                 call_id: Some("call-1".to_string()),
             }),
-            Step::GoogleSearchCall(GoogleSearchCallContent {
+            Step::GoogleSearchCall(BuiltinCallContent {
                 arguments: Some(GoogleSearchCallArguments {
                     queries: Some(vec!["query-three".to_string()]),
                 }),
                 id: Some("call-2".to_string()),
             }),
-            Step::GoogleSearchResult(GoogleSearchResultContent {
+            Step::GoogleSearchResult(BuiltinResultContent {
                 result: Some(vec![GoogleSearchResult {
                     url: Some("https://example.org".to_string()),
                     title: Some("Example Two".to_string()),
@@ -510,13 +510,13 @@ fn test_google_search_helpers() {
 fn test_google_search_helpers_without_call_id() {
     let interaction = Interaction {
         steps: vec![
-            Step::GoogleSearchCall(GoogleSearchCallContent {
+            Step::GoogleSearchCall(BuiltinCallContent {
                 arguments: Some(GoogleSearchCallArguments {
                     queries: Some(vec!["query-one".to_string()]),
                 }),
                 id: None,
             }),
-            Step::GoogleSearchResult(GoogleSearchResultContent {
+            Step::GoogleSearchResult(BuiltinResultContent {
                 result: Some(vec![GoogleSearchResult {
                     url: Some("https://example.com".to_string()),
                     title: Some("Example One".to_string()),
@@ -526,13 +526,13 @@ fn test_google_search_helpers_without_call_id() {
                 is_error: None,
                 call_id: None,
             }),
-            Step::GoogleSearchCall(GoogleSearchCallContent {
+            Step::GoogleSearchCall(BuiltinCallContent {
                 arguments: Some(GoogleSearchCallArguments {
                     queries: Some(vec!["query-two".to_string()]),
                 }),
                 id: Some("call-2".to_string()),
             }),
-            Step::GoogleSearchResult(GoogleSearchResultContent {
+            Step::GoogleSearchResult(BuiltinResultContent {
                 result: Some(vec![GoogleSearchResult {
                     url: Some("https://example.org".to_string()),
                     title: Some("Example Two".to_string()),
@@ -568,7 +568,7 @@ fn test_google_search_helpers_without_call_id() {
 fn test_url_context_helpers() {
     let interaction = Interaction {
         steps: vec![
-            Step::UrlContextCall(UrlContextCallContent {
+            Step::UrlContextCall(BuiltinCallContent {
                 arguments: Some(UrlContextCallArguments {
                     urls: Some(vec![
                         "https://example.com".to_string(),
@@ -577,7 +577,7 @@ fn test_url_context_helpers() {
                 }),
                 id: Some("call-1".to_string()),
             }),
-            Step::UrlContextResult(UrlContextResultContent {
+            Step::UrlContextResult(BuiltinResultContent {
                 result: Some(vec![UrlContextResult {
                     url: Some("https://example.com".to_string()),
                     status: Some("success".to_string()),
@@ -621,13 +621,13 @@ fn test_url_context_helpers() {
 fn test_url_context_helpers_without_call_id() {
     let interaction = Interaction {
         steps: vec![
-            Step::UrlContextCall(UrlContextCallContent {
+            Step::UrlContextCall(BuiltinCallContent {
                 arguments: Some(UrlContextCallArguments {
                     urls: Some(vec!["https://example.com".to_string()]),
                 }),
                 id: None,
             }),
-            Step::UrlContextResult(UrlContextResultContent {
+            Step::UrlContextResult(BuiltinResultContent {
                 result: Some(vec![UrlContextResult {
                     url: Some("https://example.com".to_string()),
                     status: Some("success".to_string()),
@@ -636,13 +636,13 @@ fn test_url_context_helpers_without_call_id() {
                 is_error: None,
                 call_id: None,
             }),
-            Step::UrlContextCall(UrlContextCallContent {
+            Step::UrlContextCall(BuiltinCallContent {
                 arguments: Some(UrlContextCallArguments {
                     urls: Some(vec!["https://example.org".to_string()]),
                 }),
                 id: Some("call-2".to_string()),
             }),
-            Step::UrlContextResult(UrlContextResultContent {
+            Step::UrlContextResult(BuiltinResultContent {
                 result: Some(vec![UrlContextResult {
                     url: Some("https://example.org".to_string()),
                     status: Some("success".to_string()),
@@ -677,14 +677,14 @@ fn test_url_context_helpers_without_call_id() {
 fn test_code_execution_helpers() {
     let interaction = Interaction {
         steps: vec![
-            Step::CodeExecutionCall(CodeExecutionCallContent {
+            Step::CodeExecutionCall(BuiltinCallContent {
                 arguments: Some(CodeExecutionCallArguments {
                     language: Some("python".to_string()),
                     code: Some("print(2 + 2)".to_string()),
                 }),
                 id: Some("call-1".to_string()),
             }),
-            Step::CodeExecutionResult(CodeExecutionResultContent {
+            Step::CodeExecutionResult(BuiltinResultContent {
                 result: Some("4\n".to_string()),
                 signature: None,
                 is_error: None,
@@ -719,27 +719,27 @@ fn test_code_execution_helpers() {
 fn test_code_execution_helpers_without_call_id() {
     let interaction = Interaction {
         steps: vec![
-            Step::CodeExecutionCall(CodeExecutionCallContent {
+            Step::CodeExecutionCall(BuiltinCallContent {
                 arguments: Some(CodeExecutionCallArguments {
                     language: Some("python".to_string()),
                     code: Some("print(1 + 1)".to_string()),
                 }),
                 id: None,
             }),
-            Step::CodeExecutionResult(CodeExecutionResultContent {
+            Step::CodeExecutionResult(BuiltinResultContent {
                 result: Some("2\n".to_string()),
                 signature: None,
                 is_error: None,
                 call_id: None,
             }),
-            Step::CodeExecutionCall(CodeExecutionCallContent {
+            Step::CodeExecutionCall(BuiltinCallContent {
                 arguments: Some(CodeExecutionCallArguments {
                     language: Some("python".to_string()),
                     code: Some("print(2 + 2)".to_string()),
                 }),
                 id: Some("call-2".to_string()),
             }),
-            Step::CodeExecutionResult(CodeExecutionResultContent {
+            Step::CodeExecutionResult(BuiltinResultContent {
                 result: Some("4\n".to_string()),
                 signature: None,
                 is_error: None,

@@ -388,3 +388,73 @@ fn embedding_and_rerank_http_reports_retain_body_and_headers() {
         assert!(report.request_id.is_none());
     }
 }
+
+/// Every row these two capabilities classify *away* from the report table's
+/// `Request` default. Both conversions now go through
+/// `impl_report_for_provider_error!`, which sends any variant it is not told
+/// about to `ErrorKind::Request`; dropping one of the named rows is a silent
+/// regression, because the variant keeps reporting — just as a request fault
+/// instead of the URL or response fault it is. The last two rows are the
+/// default itself, so the table cannot be pinned by over-naming either.
+#[test]
+fn embedding_and_rerank_variants_classify_away_from_the_request_default() {
+    let cases = [
+        (
+            EmbeddingError::UrlError(url::ParseError::EmptyHost),
+            ErrorKind::Url,
+        ),
+        (
+            EmbeddingError::ResponseError("bad".into()),
+            ErrorKind::Response,
+        ),
+        (
+            EmbeddingError::UnsupportedResponseEncoding {
+                provider: "openai",
+                encoding_format: "base64",
+            },
+            ErrorKind::Response,
+        ),
+        (
+            EmbeddingError::MissingUsage { provider: "cohere" },
+            ErrorKind::Response,
+        ),
+        (
+            EmbeddingError::MismatchedDimensions {
+                provider: "llamacpp".to_string(),
+                requested: 128,
+                returned: 1024,
+            },
+            ErrorKind::Response,
+        ),
+        (
+            EmbeddingError::UnsupportedParameter {
+                provider: "openai",
+                parameter: "dimensions",
+            },
+            ErrorKind::Request,
+        ),
+        (
+            EmbeddingError::MissingCredential {
+                env_var: "OPENAI_API_KEY",
+            },
+            ErrorKind::Request,
+        ),
+    ];
+    for (error, kind) in cases {
+        let report = ErrorReport::from(&error);
+        assert_eq!(report.kind, kind, "{error}");
+        assert!(!report.retryable, "{error}");
+        assert_eq!(report.message, error.to_string());
+        assert!(report.provider_response.is_none(), "{error}");
+        assert!(report.http_status.is_none(), "{error}");
+    }
+
+    let url = ErrorReport::from(&RerankError::UrlError(url::ParseError::EmptyHost));
+    assert_eq!(url.kind, ErrorKind::Url);
+    assert!(!url.retryable);
+    let credential = ErrorReport::from(&RerankError::MissingCredential {
+        env_var: "COHERE_API_KEY",
+    });
+    assert_eq!(credential.kind, ErrorKind::Request);
+    assert!(!credential.retryable);
+}
