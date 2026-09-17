@@ -59,17 +59,23 @@ fn populated() -> bevy_app::App {
         ],
     );
     let model = register(&mut app, MODEL, model);
-    // The served key's binding as data beside it (what a scene load leaves).
-    app.world_mut().entity_mut(model).insert(
-        rig_ecs::bus::ProviderBinding::new(
+    // The served key's binding as data beside it (what a scene load leaves):
+    // the provider's own configuration, with a typed provider option and no
+    // credential in it.
+    app.world_mut()
+        .entity_mut(model)
+        .insert(rig_ecs::bus::ProviderBinding::new(
             MODEL,
-            rig_ecs::bus::ProviderFamily::AnthropicMessages,
+            rig_ecs::bus::ProviderConfig::Anthropic(
+                rig_core::providers::anthropic::wire::Anthropic::new(
+                    rig_ecs::bus::Secret::default(),
+                )
+                .with_base_url("http://cassette.invalid")
+                .with_beta("b-1"),
+            ),
             "model-x",
             "cassette",
-        )
-        .at("http://cassette.invalid")
-        .with_extra_params(serde_json::json!({"anthropic_betas": ["b-1"]})),
-    );
+        ));
     let add = register(&mut app, ADD, Adder::new(ADD));
     let agent = spawn_agent(app.world_mut(), "t", model);
     let world = app.world_mut();

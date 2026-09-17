@@ -70,7 +70,7 @@ use rig_core::wire::Secret;
 
 use cells::Cell;
 use corpus::Program;
-use rig_ecs::bus::{ProviderBinding, ProviderFamily};
+use rig_ecs::bus::{ProviderBinding, ProviderConfig};
 
 /// The owner every producer names itself: the golden's keys are
 /// `golden/model:default`, `golden/tool:<name>#<n>`, `golden/memory`.
@@ -138,65 +138,63 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     /// harness cannot describe (a wrapped transport, a mock): that wire
     /// stays hand-registered.
     ///
-    /// Under the wire model these are plain fields of the bound wire, so
-    /// the arms read `bound.wire.model`, `bound.wire.provider.base_url`,
-    /// `bound.wire.provider.api_key` and `bound.http` instead of asking a
-    /// client for its configuration. Chat and DeepSeek are one wire on two
-    /// dialects, so the dialect's name — not the type — names the kind. The
-    /// dialect's default route (`OpenAiWire`) is one of the two concrete
-    /// wires, so it is matched onto the same arms.
+    /// A binding is the provider's own configuration, which is what a bound
+    /// wire already holds beside its model: every arm clones
+    /// `bound.wire.provider` into its [`ProviderConfig`] variant, so the
+    /// dialect, the base URL and every provider option travel as that
+    /// config instead of as a taxonomy beside it, and the only thing lifted
+    /// out is the credential — into [`WireBinding::api_key`], which the
+    /// harness resolver hands back under [`CASSETTE_CREDENTIAL`].
+    ///
+    /// The two OpenAI endpoints are one configuration, so each arm names
+    /// its own [`openai::Route`]: the config's route defaults to the
+    /// dialect's flagship, so a `Bound<Chat>` head on a Responses-flagship
+    /// dialect (every gpt-5 chat cell) would otherwise materialize as
+    /// `/responses`, and a `Bound<Responses>` head on a chat-flagship
+    /// gateway the other way round. The dialect's default route
+    /// (`OpenAiWire`) is one of those two concrete wires, so it is matched
+    /// onto the same two arms.
     pub(crate) fn binding(&self) -> Option<WireBinding> {
         let model: &dyn std::any::Any = &self.model;
         let key = format!("{OWNER}/model:default");
-        let describe = |family: ProviderFamily,
-                        dialect: Option<&str>,
-                        model_id: &str,
-                        base_url: &str,
-                        api_key: &Secret,
-                        transport: &BoxedHttpClient| {
-            let mut binding =
-                ProviderBinding::new(key.clone(), family, model_id, CASSETTE_CREDENTIAL)
-                    .labelled("default")
-                    .at(base_url);
-            if let Some(dialect) = dialect {
-                binding = binding.speaking(dialect);
-            }
+        let describe = |config: ProviderConfig, model_id: &str, transport: &BoxedHttpClient| {
+            // The head wire's config carries its key; the binding carries
+            // the reference the harness resolver answers, and no secret —
+            // which is also what a scene load leaves in it.
+            let api_key = config.credential().expose().to_owned();
             Some(WireBinding {
-                binding,
-                api_key: api_key.expose().to_owned(),
+                binding: ProviderBinding::new(
+                    key.clone(),
+                    config.with_credential(Secret::default()),
+                    model_id,
+                    CASSETTE_CREDENTIAL,
+                )
+                .labelled("default"),
+                api_key,
                 transport: transport.clone(),
             })
         };
         if let Some(bound) = model.downcast_ref::<Bound<anthropic::Messages, BoxedHttpClient>>() {
             return describe(
-                ProviderFamily::AnthropicMessages,
-                Some(bound.wire.provider.dialect.name),
+                ProviderConfig::Anthropic(bound.wire.provider.clone()),
                 &bound.wire.model,
-                &bound.wire.provider.base_url,
-                &bound.wire.provider.api_key,
                 &bound.http,
             );
         }
         let chat = |wire: &openai::Chat, http: &BoxedHttpClient| {
-            // One wire on many dialects, and the dialect is what the
-            // record's `provider` is: the binding names the dialect by name,
-            // so every gateway describes itself without an arm here.
+            // One config on many dialects and two endpoints: the dialect is
+            // the config's own, and the route is named so the wire this
+            // builds is the chat one whatever the dialect's flagship is.
             describe(
-                ProviderFamily::OpenAiChat,
-                Some(wire.provider.dialect.name),
+                ProviderConfig::OpenAi(wire.provider.clone().with_route(openai::Route::Chat)),
                 &wire.model,
-                &wire.provider.base_url,
-                &wire.provider.api_key,
                 http,
             )
         };
         let responses = |wire: &responses::Responses, http: &BoxedHttpClient| {
             describe(
-                ProviderFamily::OpenAiResponses,
-                Some(wire.provider.dialect.name),
+                ProviderConfig::OpenAi(wire.provider.clone().with_route(openai::Route::Responses)),
                 &wire.model,
-                &wire.provider.base_url,
-                &wire.provider.api_key,
                 http,
             )
         };
@@ -215,11 +213,8 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         if let Some(bound) = model.downcast_ref::<Bound<gemini::GenerateContent, BoxedHttpClient>>()
         {
             return describe(
-                ProviderFamily::GeminiGenerateContent,
-                None,
+                ProviderConfig::Gemini(bound.wire.provider.clone()),
                 &bound.wire.model,
-                &bound.wire.provider.base_url,
-                &bound.wire.provider.api_key,
                 &bound.http,
             );
         }

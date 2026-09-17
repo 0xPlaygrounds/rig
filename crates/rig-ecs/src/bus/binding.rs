@@ -1,6 +1,6 @@
 //! Provider bindings as data: a [`ProviderBinding`] component says *which*
-//! provider serves a key — kind, model, base URL, a credential *reference*
-//! — and nothing executable. A scene saves it beside the handler's
+//! provider serves a key — the provider's own configuration, a model, and a
+//! credential *reference* — and nothing executable. A scene saves it beside the handler's
 //! [`Bound`]; loading it spawns the same data and makes no network call and
 //! no credential lookup. The executable half is built later, on the host's
 //! word: [`materialize_bindings`] reads the host-installed [`Materializer`]
@@ -13,10 +13,13 @@
 //! hand-registered adapter would produce.
 //!
 //! A binding was always the wish to build a provider from data, which is
-//! what a [`Wire`](rig_core::wire::Wire) is: the kind names the config
-//! struct, the binding's own fields and the resolved secret fill it in, and
-//! [`Bind::bind`] pairs it with the transport. Nothing is constructed that
-//! could fail.
+//! what a provider *is* since the wire model landed: every config struct in
+//! rig-core is `Serialize + Deserialize` with its credential redacted, so a
+//! binding holds the config itself ([`ProviderConfig`]) rather than a
+//! taxonomy of its own. There is nothing to keep in step: a gateway is a
+//! dialect name inside the config, an option is a field of the config, and
+//! the endpoint is the config's `route`. [`Bind::bind`] pairs the wire the
+//! config yields with the transport, and nothing built here can fail.
 //!
 //! Secrets never enter the world: the component holds a [`CredentialRef`]
 //! (a name — an environment variable, a key id in the host's vault), the
@@ -43,51 +46,104 @@ use super::handlers::{Bound, Handler, Handlers};
 /// the same reason they are here.
 pub use rig_core::wire::Secret;
 
-/// Which request shape a binding builds.
+/// Which provider serves a binding: the provider's own configuration.
 ///
-/// A family is a *wire*: what the request looks like on the way out. Which
-/// gateway speaks it is the binding's [`dialect`](ProviderBinding::dialect),
-/// looked up by name in rig-core — so DeepSeek, Venice, Groq, zAI and every
-/// other compatible gateway is reachable without a variant here, which is
-/// what made the old per-provider enum a list that could never be complete.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Reflect)]
-#[serde(rename_all = "snake_case")]
-pub enum ProviderFamily {
-    /// `anthropic::wire::Anthropic` — the Messages API, on any
-    /// Anthropic-compatible dialect.
-    AnthropicMessages,
-    /// `openai::OpenAI` over Chat Completions, on any compatible dialect.
-    OpenAiChat,
-    /// `openai::OpenAI` over the Responses API.
-    OpenAiResponses,
-    /// `gemini::Gemini` — GenerateContent.
-    GeminiGenerateContent,
+/// Not a taxonomy — the config structs rig-core already ships, which carry
+/// everything that used to be spread across a `kind` enum, a `dialect`
+/// string, a `base_url` and an untyped `extra_params` bag:
+///
+/// - **which gateway**: `OpenAI::dialect` / `Anthropic::dialect`, a `Dialect`
+///   that serializes as its name and deserializes by looking the name up, so
+///   `"deepseek"`, `"venice"`, `"zai"` and every other compatible gateway is
+///   data and an unknown name is a decode error where the names live.
+/// - **which endpoint**: `OpenAI::route` (`Chat` or `Responses`), defaulting
+///   to the dialect's flagship. Choosing it is provider configuration, which
+///   is the decision rig-core already made.
+/// - **provider options**: `Anthropic::{version, betas}`,
+///   `OpenAI::{api_version, audio_api_version}` — typed fields, validated by
+///   serde rather than by a hand-written key allowlist.
+/// - **the base URL**: every config's own `base_url`.
+///
+/// The credential inside is the empty [`Secret`]: it is redacted on the way
+/// out and dropped on the way back in by contract, and
+/// [`Materializer::build`] puts the resolved one in. So a scene carries a
+/// complete provider configuration and no key.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "provider", rename_all = "snake_case")]
+pub enum ProviderConfig {
+    /// Every OpenAI-shaped provider, by dialect: OpenAI itself, Azure,
+    /// DeepSeek, Groq, Venice, OpenRouter, xAI, ChatGPT, … over Chat
+    /// Completions or Responses per the config's `route`.
+    OpenAi(openai::wire::OpenAI),
+    /// Anthropic's Messages API, by dialect: Anthropic itself, zAI,
+    /// MiniMax, Moonshot, XiaomiMiMo.
+    Anthropic(anthropic::wire::Anthropic),
+    /// Gemini's GenerateContent.
+    Gemini(gemini::Gemini),
 }
 
-impl ProviderFamily {
-    /// The family's serde spelling.
-    pub fn as_str(self) -> &'static str {
+impl ProviderConfig {
+    /// The provider's descriptor name, as records and telemetry name it.
+    pub fn provider(&self) -> &str {
         match self {
-            Self::AnthropicMessages => "anthropic_messages",
-            Self::OpenAiChat => "openai_chat",
-            Self::OpenAiResponses => "openai_responses",
-            Self::GeminiGenerateContent => "gemini_generate_content",
+            Self::OpenAi(config) => config.dialect.name,
+            Self::Anthropic(config) => config.dialect.name,
+            Self::Gemini(_) => "gemini",
         }
     }
 
-    /// The dialect this family speaks when the binding names none.
-    pub fn default_dialect(self) -> &'static str {
+    /// The base URL every request resolves against.
+    pub fn base_url(&self) -> &str {
         match self {
-            Self::AnthropicMessages => anthropic::wire::ANTHROPIC.name,
-            Self::OpenAiChat | Self::OpenAiResponses => openai::wire::OPENAI.name,
-            Self::GeminiGenerateContent => "gemini",
+            Self::OpenAi(config) => &config.base_url,
+            Self::Anthropic(config) => &config.base_url,
+            Self::Gemini(config) => &config.base_url,
+        }
+    }
+
+    /// The credential this configuration would send.
+    pub fn credential(&self) -> &Secret {
+        match self {
+            Self::OpenAi(config) => &config.api_key,
+            Self::Anthropic(config) => &config.api_key,
+            Self::Gemini(config) => &config.api_key,
+        }
+    }
+
+    /// The same configuration carrying `secret`: what the host's resolver
+    /// returned, put in at materialization and nowhere else.
+    pub fn with_credential(mut self, secret: Secret) -> Self {
+        match &mut self {
+            Self::OpenAi(config) => config.api_key = secret,
+            Self::Anthropic(config) => config.api_key = secret,
+            Self::Gemini(config) => config.api_key = secret,
+        }
+        self
+    }
+
+    /// This configuration's completion adapter for `model`, under `label`,
+    /// over `transport`.
+    fn adapter(self, model: &str, label: &str, transport: BoxedHttpClient) -> ErasedHandler {
+        match self {
+            Self::OpenAi(config) => ErasedHandler::new(CompletionAdapter::new(
+                label,
+                config.bind(transport).completion(model),
+            )),
+            Self::Anthropic(config) => ErasedHandler::new(CompletionAdapter::new(
+                label,
+                config.bind(transport).completion(model),
+            )),
+            Self::Gemini(config) => ErasedHandler::new(CompletionAdapter::new(
+                label,
+                config.bind(transport).completion(model),
+            )),
         }
     }
 }
 
-impl std::fmt::Display for ProviderFamily {
+impl std::fmt::Display for ProviderConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.as_str())
+        f.write_str(self.provider())
     }
 }
 
@@ -130,92 +186,51 @@ impl std::fmt::Display for CredentialRef {
 /// and a load spawns exactly that — the key resolves for the scene's links
 /// as any bound key does, and nothing is served until the host
 /// materializes.
-#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Reflect)]
+#[derive(Component, Debug, Clone, PartialEq, Serialize, Deserialize, Reflect)]
 #[reflect(Component)]
 pub struct ProviderBinding {
     /// The key the built handler serves (`Bound.key` once materialized).
     #[reflect(remote = crate::bus::reflect::HandlerKeyReflect)]
     pub key: HandlerKey,
-    /// Which request shape.
-    pub family: ProviderFamily,
-    /// Which gateway speaks it, by the dialect's own name (`"openai"`,
-    /// `"deepseek"`, `"venice"`, `"zai"`). `None` is the family's own
-    /// provider. A name rig-core does not know is
-    /// [`MaterializeError::UnknownDialect`] under the binding's key, never a
-    /// silent fall back to the default — a binding that quietly talked to
-    /// the wrong provider is worse than one that refuses.
-    pub dialect: Option<String>,
+    /// Which provider, as its own configuration: the dialect, the endpoint,
+    /// the base URL and every provider option, with no credential in it.
+    #[reflect(remote = crate::bus::reflect::ProviderConfigReflect)]
+    pub config: ProviderConfig,
     /// The provider's model id (`claude-haiku-4-5-20251001`, `gpt-4.1-mini`).
     pub model: String,
     /// The adapter's label: the `ModelRef` the bound descriptor advertises
     /// (`CompletionAdapter::new(label, model)`), which is what the log's
     /// header and the policy hash name. Defaults to `model`.
     pub label: String,
-    /// The provider base URL; `None` is the provider's default.
-    pub base_url: Option<String>,
     /// Which credential the host's resolver hands the provider config. A
     /// name, never a secret.
     pub credential: CredentialRef,
-    /// Provider-specific settings, by family — see
-    /// [`ProviderBinding::extra_params`](#extra-params). Unknown keys are
-    /// refused at materialization.
-    ///
-    /// # Extra params
-    ///
-    /// | family | keys |
-    /// |---|---|
-    /// | `anthropic_messages` | `anthropic_version: string`, `anthropic_betas: [string]` |
-    /// | `openai_responses` | `system_instructions_as_messages: bool` |
-    /// | `openai_chat`, `gemini_generate_content` | none |
-    #[reflect(remote = crate::bus::reflect::ExtraParamsReflect)]
-    pub extra_params: Option<serde_json::Value>,
 }
 
 impl ProviderBinding {
-    /// A binding of `key` to `model` on `family`, speaking the family's own
-    /// dialect, labelled by the model id, on the provider's default base
-    /// URL, with no extra params.
+    /// A binding of `key` to `model` on `config`, labelled by the model id.
+    ///
+    /// Provider options are `config`'s own fields, so there is no second
+    /// place to put them and nothing to validate twice.
     pub fn new(
         key: impl Into<HandlerKey>,
-        family: ProviderFamily,
+        config: ProviderConfig,
         model: impl Into<String>,
         credential: impl Into<CredentialRef>,
     ) -> Self {
         let model = model.into();
         Self {
             key: key.into(),
-            family,
-            dialect: None,
+            config,
             label: model.clone(),
             model,
-            base_url: None,
             credential: credential.into(),
-            extra_params: None,
         }
-    }
-
-    /// Speaking `dialect` rather than the family's own provider: the name
-    /// rig-core knows the gateway by.
-    pub fn speaking(mut self, dialect: impl Into<String>) -> Self {
-        self.dialect = Some(dialect.into());
-        self
     }
 
     /// With the adapter's label.
     pub fn labelled(mut self, label: impl Into<String>) -> Self {
         self.label = label.into();
-        self
-    }
-
-    /// With a base URL.
-    pub fn at(mut self, base_url: impl Into<String>) -> Self {
-        self.base_url = Some(base_url.into());
-        self
-    }
-
-    /// With provider-specific client settings.
-    pub fn with_extra_params(mut self, params: serde_json::Value) -> Self {
-        self.extra_params = Some(params);
         self
     }
 }
@@ -264,27 +279,6 @@ pub enum MaterializeError {
         saved: String,
         /// The built descriptor, as JSON.
         built: String,
-    },
-    /// `extra_params` holds something the family does not take.
-    #[error("`{key}`: extra params for {family}: {detail}")]
-    ExtraParams {
-        /// The key.
-        key: HandlerKey,
-        /// The family.
-        family: ProviderFamily,
-        /// What was wrong.
-        detail: String,
-    },
-    /// The binding names a dialect this build of rig-core does not know, or
-    /// one its family does not speak.
-    #[error("`{key}`: {family} does not speak the dialect `{dialect}`")]
-    UnknownDialect {
-        /// The key.
-        key: HandlerKey,
-        /// The family that was asked.
-        family: ProviderFamily,
-        /// The name the binding gave.
-        dialect: String,
     },
     /// The bus refused the registration.
     #[error("`{key}`: the bus refused the handler: {detail}")]
@@ -366,11 +360,6 @@ impl Materializer {
     /// [`materialize_bindings`] registers; a host can also build one to
     /// register itself.
     pub fn build(&self, binding: &ProviderBinding) -> Result<ErasedHandler, MaterializeError> {
-        // Everything readable off the binding alone is checked first: a
-        // binding nobody can build must not spend a credential lookup or a
-        // transport handle on the way to saying so.
-        extra_object(binding, allowed_extra_params(binding.family))?;
-        dialect_is_known(binding)?;
         let secret = self.resolve(&binding.credential).map_err(|detail| {
             MaterializeError::MissingCredential {
                 key: binding.key.clone(),
@@ -378,7 +367,15 @@ impl Materializer {
                 detail,
             }
         })?;
-        let handler = build_adapter(binding, &secret, self.transport())?;
+        // Nothing between the data and the socket can fail: the config is
+        // the provider, the resolved secret goes into it, and binding it is
+        // a struct literal. The only failure a binding has left is the
+        // credential lookup above, and the bus refusing the registration.
+        let handler = binding.config.clone().with_credential(secret).adapter(
+            &binding.model,
+            &binding.label,
+            self.transport(),
+        );
         Ok((self.serving)(handler))
     }
 }
@@ -392,211 +389,6 @@ fn bound_descriptor(key: &HandlerKey, handler: &ErasedHandler) -> HandlerDescrip
         family: described.family,
         layers: described.layers,
     }
-}
-
-fn extra_object<'a>(
-    binding: &'a ProviderBinding,
-    allowed: &[&str],
-) -> Result<Option<&'a serde_json::Map<String, serde_json::Value>>, MaterializeError> {
-    let Some(params) = &binding.extra_params else {
-        return Ok(None);
-    };
-    let Some(object) = params.as_object() else {
-        return Err(MaterializeError::ExtraParams {
-            key: binding.key.clone(),
-            family: binding.family,
-            detail: "not an object".to_owned(),
-        });
-    };
-    if let Some(unknown) = object.keys().find(|k| !allowed.contains(&k.as_str())) {
-        return Err(MaterializeError::ExtraParams {
-            key: binding.key.clone(),
-            family: binding.family,
-            detail: format!("unknown key `{unknown}` (takes {allowed:?})"),
-        });
-    }
-    Ok(Some(object))
-}
-
-/// The keys a family's `extra_params` may hold. An option belongs to a
-/// request shape, not to a gateway, which is why this keys off the family
-/// and gains nothing when a dialect is added.
-fn allowed_extra_params(family: ProviderFamily) -> &'static [&'static str] {
-    match family {
-        ProviderFamily::AnthropicMessages => &["anthropic_version", "anthropic_betas"],
-        ProviderFamily::OpenAiResponses => &["system_instructions_as_messages"],
-        ProviderFamily::OpenAiChat | ProviderFamily::GeminiGenerateContent => &[],
-    }
-}
-
-/// Whether the family speaks the dialect the binding names — the same
-/// lookups `build_adapter` does, run before a credential or a transport is
-/// spent on a binding that cannot be built.
-fn dialect_is_known(binding: &ProviderBinding) -> Result<(), MaterializeError> {
-    match binding.family {
-        ProviderFamily::AnthropicMessages => anthropic_dialect(binding).map(drop),
-        ProviderFamily::OpenAiChat | ProviderFamily::OpenAiResponses => {
-            openai_dialect(binding).map(drop)
-        }
-        // Gemini speaks one dialect, its own.
-        ProviderFamily::GeminiGenerateContent => match &binding.dialect {
-            Some(named) if named != binding.family.default_dialect() => {
-                Err(MaterializeError::UnknownDialect {
-                    key: binding.key.clone(),
-                    family: binding.family,
-                    dialect: named.clone(),
-                })
-            }
-            _ => Ok(()),
-        },
-    }
-}
-
-/// The dialect the binding names, looked up in rig-core: a name is data, so
-/// a gateway is reachable without a variant in this crate.
-fn openai_dialect(
-    binding: &ProviderBinding,
-) -> Result<&'static openai::wire::Dialect, MaterializeError> {
-    let name = binding
-        .dialect
-        .as_deref()
-        .unwrap_or(binding.family.default_dialect());
-    openai::wire::by_name(name).ok_or_else(|| MaterializeError::UnknownDialect {
-        key: binding.key.clone(),
-        family: binding.family,
-        dialect: name.to_owned(),
-    })
-}
-
-/// The same for the Messages family, whose dialects are their own type.
-fn anthropic_dialect(
-    binding: &ProviderBinding,
-) -> Result<anthropic::wire::Dialect, MaterializeError> {
-    let name = binding
-        .dialect
-        .as_deref()
-        .unwrap_or(binding.family.default_dialect());
-    anthropic::wire::Dialect::by_name(name).ok_or_else(|| MaterializeError::UnknownDialect {
-        key: binding.key.clone(),
-        family: binding.family,
-        dialect: name.to_owned(),
-    })
-}
-
-/// An OpenAI-shaped kind's configuration: its dialect, the resolved secret
-/// and the binding's base URL when it names one.
-fn openai_config(
-    binding: &ProviderBinding,
-    secret: &Secret,
-    dialect: &openai::wire::Dialect,
-) -> openai::wire::OpenAI {
-    let provider = openai::wire::OpenAI::with_key(dialect, secret.clone());
-    match &binding.base_url {
-        Some(base_url) => provider.with_base_url(base_url.as_str()),
-        None => provider,
-    }
-}
-
-/// The binding's data plus the resolved secret as the provider's config,
-/// bound to the host's transport: the completion wire a hand-registered
-/// adapter would have been given.
-///
-/// Nothing here can fail but reading `extra_params`: a provider config is
-/// data, and binding it to a socket is a struct literal.
-fn build_adapter(
-    binding: &ProviderBinding,
-    secret: &Secret,
-    transport: BoxedHttpClient,
-) -> Result<ErasedHandler, MaterializeError> {
-    let label = binding.label.as_str();
-    let model = binding.model.as_str();
-    Ok(match binding.family {
-        ProviderFamily::AnthropicMessages => {
-            let params = extra_object(binding, allowed_extra_params(binding.family))?;
-            let dialect = anthropic_dialect(binding)?;
-            let mut provider = anthropic::wire::Anthropic::with_dialect(secret.clone(), &dialect);
-            if let Some(base_url) = &binding.base_url {
-                provider = provider.with_base_url(base_url);
-            }
-            if let Some(params) = params {
-                if let Some(version) = params.get("anthropic_version") {
-                    let version =
-                        version
-                            .as_str()
-                            .ok_or_else(|| MaterializeError::ExtraParams {
-                                key: binding.key.clone(),
-                                family: binding.family,
-                                detail: "`anthropic_version` is not a string".to_owned(),
-                            })?;
-                    provider = provider.with_version(version);
-                }
-                if let Some(betas) = params.get("anthropic_betas") {
-                    let betas: Vec<&str> = betas
-                        .as_array()
-                        .and_then(|items| items.iter().map(|v| v.as_str()).collect())
-                        .ok_or_else(|| MaterializeError::ExtraParams {
-                            key: binding.key.clone(),
-                            family: binding.family,
-                            detail: "`anthropic_betas` is not an array of strings".to_owned(),
-                        })?;
-                    for beta in betas {
-                        provider = provider.with_beta(beta);
-                    }
-                }
-            }
-            ErasedHandler::new(CompletionAdapter::new(
-                label,
-                provider.bind(transport).completion(model),
-            ))
-        }
-        ProviderFamily::OpenAiChat => {
-            extra_object(binding, allowed_extra_params(binding.family))?;
-            ErasedHandler::new(CompletionAdapter::new(
-                label,
-                openai_config(binding, secret, openai_dialect(binding)?)
-                    .bind(transport)
-                    .chat(model),
-            ))
-        }
-        ProviderFamily::OpenAiResponses => {
-            let params = extra_object(binding, allowed_extra_params(binding.family))?;
-            // The placement is the wire's option now, not the client's, so
-            // `map_wire` is where it goes.
-            let mut bound = openai_config(binding, secret, openai_dialect(binding)?)
-                .bind(transport)
-                .responses(model);
-            if let Some(params) = params
-                && let Some(flag) = params.get("system_instructions_as_messages")
-            {
-                match flag.as_bool() {
-                    Some(true) => {
-                        bound = bound.map_wire(|wire| wire.with_system_instructions_as_messages());
-                    }
-                    Some(false) => {}
-                    None => {
-                        return Err(MaterializeError::ExtraParams {
-                            key: binding.key.clone(),
-                            family: binding.family,
-                            detail: "`system_instructions_as_messages` is not a bool".to_owned(),
-                        });
-                    }
-                }
-            }
-            ErasedHandler::new(CompletionAdapter::new(label, bound))
-        }
-        ProviderFamily::GeminiGenerateContent => {
-            extra_object(binding, allowed_extra_params(binding.family))?;
-            dialect_is_known(binding)?;
-            let mut provider = gemini::Gemini::new(secret.clone());
-            if let Some(base_url) = &binding.base_url {
-                provider = provider.with_base_url(base_url.as_str());
-            }
-            ErasedHandler::new(CompletionAdapter::new(
-                label,
-                provider.bind(transport).completion(model),
-            ))
-        }
-    })
 }
 
 /// One binding the world holds, as [`materialize_bindings`] sees it.

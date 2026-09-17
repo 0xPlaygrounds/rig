@@ -483,19 +483,17 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 ### 12.1 A model bound as data
 
 A `bus::ProviderBinding` component is the data half of a provider-served
-key: `family` — the request shape: `anthropic_messages`, `openai_chat`,
-`openai_responses`, `gemini_generate_content` — `dialect` (the name
-rig-core knows a gateway by: `"deepseek"`, `"venice"`, `"zai"`, …; `None`
-is the family's own provider, and a name the family does not speak is
-`MaterializeError::UnknownDialect` before a credential or a transport is
-spent), `model`, `label` (the `ModelRef` the descriptor advertises; the
-model id unless set), `base_url` (`None` is the provider's default), a
-`credential` *reference* (a name the host's resolver knows — never a
-secret) and per-family `extra_params` (`anthropic_version` /
-`anthropic_betas`; `system_instructions_as_messages` for
-`openai_responses`; none elsewhere, unknown keys refused). A family is a
-wire and a dialect is data, so a gateway is bindable without a variant in
-rig-ecs. It holds
+key: `config` — the provider's own rig-core configuration, as a tagged
+`bus::ProviderConfig` (`openai`, `anthropic`, `gemini`), which carries the
+gateway (its `Dialect`, serialized as the dialect's name), the endpoint
+(`OpenAI::route`), the base URL and every provider option (`Anthropic::
+{version, betas}`, `OpenAI::{api_version, audio_api_version}`) as typed
+fields — `model`, `label` (the `ModelRef` the descriptor advertises; the
+model id unless set) and a `credential` *reference* (a name the host's
+resolver knows — never a secret). There is no second vocabulary for "which
+provider": a gateway is a dialect name in the config, an option is a field
+of the config, and a name rig-core does not know is a deserialization error
+where those names live rather than a materialization error here. It holds
 nothing executable. The executable half is built on the host's word:
 `materialize_bindings(world)` (or the `materialize` system, which leaves a
 refusal in `MaterializeFailed`) reads the host-installed `Materializer`
@@ -532,10 +530,11 @@ as saved (`Register`):
 | a binding beside a `Bound` of another key | `KeyMismatch` |
 | no `Materializer` | `NoMaterializer` |
 | a reference the resolver refuses | `MissingCredential { key, credential, detail }` |
-| `extra_params` the kind does not take | `ExtraParams` |
 
-A kind the reader does not know is refused by serde before anything is
-spawned. Pinned by `run_binding.rs`; the harness (`tests/common/ecs_matrix/world.rs`)
+An unknown `provider` tag, an unknown dialect name and a provider option
+the config does not take are all refused by serde, before anything is
+spawned — there is no materialization error for them, because the names
+live in rig-core and so does the refusal. Pinned by `run_binding.rs`; the harness (`tests/common/ecs_matrix/world.rs`)
 binds `golden/model:default` this way on every ungated cassette wire, with
 a resolver that maps the reference `cassette` to the cassette's key and a
 factory that hands out the cassette transport, and every cell's request is
