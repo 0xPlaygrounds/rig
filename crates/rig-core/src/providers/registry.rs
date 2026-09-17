@@ -1,11 +1,13 @@
 //! One name for a provider.
 //!
 //! Every gateway rig speaks is a [`Dialect`](openai::wire::Dialect) const —
-//! data, not code — and every dialect's name is unique across the whole
-//! tree. So a provider is nameable: [`by_name`] resolves one to the
-//! configuration that talks to it, [`all`] enumerates every name this build
-//! knows, and [`ProviderRef`] is the `"provider:model"` pair a host stores when
-//! it has nothing to override.
+//! data, not code — and a provider is the **pair** of a vendor and the wire
+//! format it serves, because four vendors front two differently-shaped
+//! endpoints under one name. So a provider is nameable: [`resolve`] takes a
+//! vendor (`"deepseek"`) or a vendor and a format (`"zai/anthropic"`) and
+//! returns the configuration that talks to it, [`all`] enumerates every
+//! provider this build knows, and [`ProviderRef`] is the `"provider:model"`
+//! pair a host stores when it has nothing to override.
 //!
 //! ```
 //! use rig_core::providers::{ProviderConfig, ProviderRef};
@@ -21,7 +23,10 @@
 //! // The short form is the provider's default configuration: no base URL,
 //! // no route override, no betas. Anything else is `ProviderConfig`.
 //! assert!(matches!(reference.config(), ProviderConfig::OpenAi(_)));
-//! assert_eq!(reference.to_string(), "deepseek:deepseek-chat");
+//! // What a caller types may be short; what rig writes always names the
+//! // format, so a stored reference cannot be invalidated by a release that
+//! // gives its vendor a second door.
+//! assert_eq!(reference.to_string(), "deepseek/openai:deepseek-chat");
 //! # Ok::<(), rig_core::providers::UnknownProvider>(())
 //! ```
 //!
