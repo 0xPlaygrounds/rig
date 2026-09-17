@@ -1,6 +1,7 @@
 //! Shared ChatGPT authentication types and target-specific dispatch.
 
 use crate::http_client::HttpClientExt;
+use crate::wire::Secret;
 use futures::lock::Mutex;
 use std::fmt;
 use std::path::PathBuf;
@@ -58,7 +59,8 @@ pub use crate::providers::internal::auth::AuthError;
 
 #[derive(Debug, Clone)]
 pub struct AuthContext {
-    pub access_token: String,
+    /// Resolved credential. Use [`Secret::expose`] only when raw bytes are required.
+    pub access_token: Secret,
     pub account_id: Option<String>,
 }
 
@@ -90,7 +92,7 @@ impl Authenticator {
                 access_token,
                 account_id,
             } => Ok(AuthContext {
-                access_token: access_token.clone(),
+                access_token: access_token.clone().into(),
                 account_id: account_id.clone(),
             }),
             AuthSource::OAuth => self.platform.lock().await.auth_context_oauth(http).await,

@@ -129,3 +129,46 @@ fn stale_access_token_retries_only_on_auth_failures() {
     )));
     assert!(!should_retry_with_fresh_access_token_status(None));
 }
+
+/// Disk persistence and reuse are local contracts, not provider responses.
+#[tokio::test]
+async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<()> {
+    let dir = assert_fs::TempDir::new()?;
+    let path = dir.path().join("api-key.json");
+    let fixture = serde_json::json!({
+        "token": "synthetic-cached-copilot-key",
+        "expires_at": i64::MAX,
+        "endpoints": { "api": "https://cached-copilot.example.invalid" },
+        "bootstrap_token_fingerprint": bootstrap_token_fingerprint("synthetic-bootstrap")
+    });
+    let record: ApiKeyRecord = serde_json::from_value(fixture.clone())?;
+    super::write_json_record(Some(&path), &record)?;
+    let http = RecordingHttpClient::new("");
+    let auth = PlatformAuthenticator::new(
+        None,
+        Some(path.clone()),
+        DeviceCodeHandler::default(),
+        false,
+    );
+    let oauth = auth.auth_context_oauth(&http).await?;
+    let explicit = auth
+        .auth_context_with_github_access_token(&http, "synthetic-bootstrap")
+        .await?;
+    anyhow::ensure!(
+        http.requests().is_empty(),
+        "a fresh cache must not exchange"
+    );
+    for context in [oauth, explicit] {
+        anyhow::ensure!(
+            context.api_key.expose() == "synthetic-cached-copilot-key",
+            "cached API key changed"
+        );
+        anyhow::ensure!(
+            context.api_base.as_deref() == Some("https://cached-copilot.example.invalid"),
+            "cached API endpoint changed"
+        );
+    }
+    let persisted: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    anyhow::ensure!(persisted == fixture, "persisted cache changed");
+    Ok(())
+}

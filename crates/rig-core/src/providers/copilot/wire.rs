@@ -145,7 +145,7 @@ impl Copilot {
     /// also names the API base the credential belongs to, which takes
     /// precedence over the endpoint encoded in the token.
     pub fn from_auth(context: &super::auth::AuthContext) -> Self {
-        let mut provider = Self::new(context.api_key.as_str());
+        let mut provider = Self::new(context.api_key.clone());
         if let Some(api_base) = &context.api_base {
             provider.base_url = api_base.clone();
         }
