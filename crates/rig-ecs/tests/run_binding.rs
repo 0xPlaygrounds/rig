@@ -231,15 +231,17 @@ fn a_binding_round_trips_verbatim() {
 }
 
 /// The short form is one string. A binding that overrides nothing writes
-/// its provider as `"deepseek:deepseek-chat"` and nothing else — no base
-/// URL, no dialect field, no redacted key — which is the whole reason a
-/// name exists beside a configuration.
+/// its provider as `"deepseek/openai:deepseek-chat"` and nothing else — no
+/// base URL, no dialect field, no redacted key — which is the whole reason a
+/// name exists beside a configuration. What it *writes* is qualified even
+/// though `deepseek` alone is what a caller types: a stored reference must
+/// not stop resolving the release deepseek gains a second door.
 #[test]
 fn a_named_binding_is_one_string_and_round_trips() {
     let binding = named(KEY, "deepseek:deepseek-chat", "cassette");
     let json = serde_json::to_string(&binding).unwrap();
     assert!(
-        json.contains(r#""provider":"deepseek:deepseek-chat""#),
+        json.contains(r#""provider":"deepseek/openai:deepseek-chat""#),
         "{json}"
     );
     for written_out in ["config", "base_url", "dialect", "api_key"] {
@@ -269,7 +271,7 @@ fn a_named_binding_is_one_string_and_round_trips() {
 fn an_unknown_provider_name_is_refused_by_the_reader() {
     let json = serde_json::to_string(&named(KEY, "deepseek:deepseek-chat", "cassette"))
         .unwrap()
-        .replace("deepseek:deepseek-chat", "telepathy:t-1");
+        .replace("deepseek/openai:deepseek-chat", "telepathy:t-1");
     assert!(
         serde_json::from_str::<ProviderBinding>(&json).is_err(),
         "{json}"
@@ -1417,7 +1419,13 @@ fn a_world_reports_what_it_binds_and_what_the_build_knows() {
 
     // Every provider this build knows, which is what makes a wrong name
     // actionable.
-    for known in ["openai", "deepseek", "anthropic", "zai/anthropic", "gemini"] {
+    for known in [
+        "openai/openai",
+        "deepseek/openai",
+        "anthropic/anthropic",
+        "zai/anthropic",
+        "gemini/gemini",
+    ] {
         assert!(
             report.known.iter().any(|name| name == known),
             "{:?}",

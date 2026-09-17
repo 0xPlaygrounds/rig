@@ -243,17 +243,20 @@ impl ProviderId {
         }
     }
 
-    /// How a reference spells this provider: the vendor alone when it has
-    /// one door, `vendor/format` when it has several.
+    /// How rig writes this provider: always `vendor/format`.
     ///
-    /// The short spelling is not a convenience — it is the whole name for
-    /// every vendor but four, and writing `openai/openai` would be noise.
+    /// Qualified even for a vendor with one door, because this is the form
+    /// that gets *stored* -- in a scene, a checkpoint, a config file. A
+    /// spelling that omits the format is only unambiguous for as long as
+    /// the vendor fronts one endpoint, so writing the short form would make
+    /// every saved reference to a one-door vendor fail to load the release
+    /// that gives that vendor a second door. The refusal would be correct
+    /// and the data would still be lost.
+    ///
+    /// The short form remains what a caller may *type*: [`resolve`] accepts
+    /// `deepseek` as readily as `deepseek/openai`.
     pub fn spelling(&self) -> String {
-        if endpoints(self.vendor()).count() > 1 {
-            format!("{}/{}", self.vendor(), self.format())
-        } else {
-            self.vendor().to_owned()
-        }
+        format!("{}/{}", self.vendor(), self.format())
     }
 
     /// The provider configured the way it is by default, with no

@@ -48,10 +48,17 @@ fn a_provider_is_a_unique_vendor_and_format_pair() {
             "`{vendor}` is one vendor"
         );
     }
-    // And a one-door vendor is spelled by its name alone.
+    // And what rig *writes* is qualified either way, so a saved reference
+    // cannot be invalidated by a later release giving the vendor a second
+    // door -- while the short form stays what a caller may type.
     assert_eq!(
         resolve("deepseek").expect("deepseek").spelling(),
-        "deepseek"
+        "deepseek/openai"
+    );
+    assert_eq!(
+        resolve("deepseek").expect("deepseek"),
+        resolve("deepseek/openai").expect("deepseek/openai"),
+        "the short form a caller types and the qualified form rig writes are one provider"
     );
     assert_eq!(
         resolve("zai/anthropic").expect("zai/anthropic").spelling(),
@@ -177,19 +184,29 @@ fn a_model_id_is_taken_verbatim() {
     let versioned: ProviderRef = "openai:ft:gpt-4.1:acme".parse().expect("a fine-tune id");
     assert_eq!(versioned.provider(), "openai");
     assert_eq!(versioned.model(), "ft:gpt-4.1:acme");
-    assert_eq!(versioned.to_string(), "openai:ft:gpt-4.1:acme");
+    assert_eq!(versioned.to_string(), "openai/openai:ft:gpt-4.1:acme");
 }
 
-/// A reference serializes as the string it is, so a scene that overrides
-/// nothing stores one line.
+/// A reference serializes as one line, and the line it serializes as is
+/// the **qualified** one: a stored reference must not depend on how many
+/// endpoints its vendor happened to front on the day it was saved.
 #[test]
-fn a_reference_serializes_as_its_string() {
+fn a_reference_serializes_as_its_qualified_string() {
     let reference: ProviderRef = "deepseek:deepseek-chat".parse().expect("deepseek");
     let json = serde_json::to_string(&reference).expect("a reference serializes");
-    assert_eq!(json, "\"deepseek:deepseek-chat\"");
+    assert_eq!(json, "\"deepseek/openai:deepseek-chat\"");
     assert_eq!(
         serde_json::from_str::<ProviderRef>(&json).expect("a reference reloads"),
-        reference
+        reference,
+        "the qualified form reloads as the reference the short form parsed to"
+    );
+    // The round trip canonicalizes rather than preserving bytes, and then
+    // it is a fixed point -- which is the property that makes a stored
+    // reference survive a release that adds a door to its vendor.
+    let reloaded: ProviderRef = serde_json::from_str(&json).expect("a reference reloads");
+    assert_eq!(
+        serde_json::to_string(&reloaded).expect("a reference serializes"),
+        json
     );
     // And an unknown provider is refused by the reader, before anything is
     // built from it.
@@ -430,4 +447,57 @@ fn each_two_door_vendor_has_two_endpoints_at_two_hosts() {
         8,
         "four vendors, two doors each"
     );
+}
+
+/// The hazard this canonical form exists to remove: a vendor gains a second
+/// door in a later release, and every reference saved before it still
+/// resolves.
+///
+/// z.ai is the case already shipped -- two doors -- and deepseek is the case
+/// that has one today. What a caller *typed* for deepseek (`deepseek:…`) is
+/// exactly what a caller could type for zai before its second door existed,
+/// and that spelling is now `Ambiguous`. So the short form is provably not
+/// durable, and the qualified form provably is: for every provider this
+/// build knows, including both of z.ai's, the written spelling resolves back
+/// to the same provider even though its vendor is ambiguous unqualified.
+#[test]
+fn a_saved_reference_survives_its_vendor_gaining_a_door() {
+    // The short form stops resolving the moment a second door appears.
+    let ambiguous = resolve("zai").expect_err("z.ai fronts two doors");
+    assert!(
+        matches!(ambiguous, UnknownProvider::Ambiguous { .. }),
+        "{ambiguous}"
+    );
+
+    // The written form never does, for any provider, two-door or not --
+    // because rig writes the format even when it is not yet needed to
+    // disambiguate. That is the whole mechanism: a spelling that already
+    // names the door cannot be made ambiguous by adding another.
+    for id in all() {
+        let written = id.spelling();
+        assert!(
+            written.contains('/'),
+            "`{written}` omits the format, so it is durable only until this vendor gains a door"
+        );
+        let saved = format!("{written}:a-model");
+        let reloaded: ProviderRef = saved.parse().unwrap_or_else(|error| {
+            panic!("`{saved}` was written by rig but does not parse: {error}")
+        });
+        assert_eq!(
+            reloaded.spelling(),
+            saved,
+            "a written reference must round-trip unchanged"
+        );
+    }
+
+    // Including the two-door vendor's own references, which is the state
+    // every one-door vendor is one release away from.
+    for door in ["zai/openai", "zai/anthropic"] {
+        let reference: ProviderRef = format!("{door}:glm-4.6").parse().expect(door);
+        assert_eq!(reference.provider(), "zai");
+        assert_eq!(
+            serde_json::to_string(&reference).expect("serializes"),
+            format!("\"{door}:glm-4.6\"")
+        );
+    }
 }
