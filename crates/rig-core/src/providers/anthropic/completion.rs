@@ -234,13 +234,6 @@ impl CacheControl {
     pub fn ephemeral() -> Self {
         Self::Ephemeral { ttl: None }
     }
-
-    /// Create a cache control with a 1-hour TTL.
-    pub fn ephemeral_1h() -> Self {
-        Self::Ephemeral {
-            ttl: Some(CacheTtl::OneHour),
-        }
-    }
 }
 
 /// System message content block with optional cache control

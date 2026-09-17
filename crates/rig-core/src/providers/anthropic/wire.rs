@@ -149,7 +149,7 @@ impl<'de> Deserialize<'de> for Dialect {
 ///
 /// Their names carry an `-anthropic` suffix (`"zai-anthropic"`), because a
 /// dialect name is unique across the whole tree — it is how
-/// [`ModelRef`](crate::providers::ModelRef) resolves a provider without
+/// [`ProviderRef`](crate::providers::ProviderRef) resolves a provider without
 /// being told which format it speaks — and each of these vendors also
 /// fronts an OpenAI-shaped endpoint at a different host. Their own docs
 /// call that one "the API" and this one "the Anthropic-compatible
@@ -377,12 +377,6 @@ pub struct Messages {
 }
 
 impl Messages {
-    /// Set the `max_tokens` a request without one defaults to.
-    pub fn with_default_max_tokens(mut self, tokens: u64) -> Self {
-        self.default_max_tokens = Some(tokens);
-        self
-    }
-
     /// Enable manual prompt caching.
     ///
     /// `cache_control` breakpoints are added to the system prompt, the final

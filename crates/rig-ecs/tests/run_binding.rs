@@ -50,9 +50,8 @@ use rig_core::{
 use rig_ecs::{
     bus::{
         Bound, CredentialRef, EffectLogResource, EffectOutcome, Handler, Handlers,
-        MaterializeError, MaterializeFailed, MaterializeReport, Materializer, ModelRef,
-        PendingEffect, ProviderBinding, ProviderConfig, ProviderRef, Replay, Secret,
-        provider_diagnostics,
+        MaterializeError, MaterializeFailed, MaterializeReport, Materializer, PendingEffect,
+        ProviderBinding, ProviderConfig, ProviderRef, Replay, Secret, provider_diagnostics,
     },
     checkpoint::{Checkpoint, load_world, save_world},
 };
@@ -202,7 +201,7 @@ fn a_binding_round_trips_verbatim() {
     // spawned, and so is a dialect name no Messages-format gateway answers
     // to: the dialect is where gateway names live, so that is where one
     // that does not exist is refused. The binding's `provider` field is a
-    // `ProviderRef`, whose two spellings are told apart untagged, so the
+    // `ProviderRef`, whose two spellings are told apart by shape, so the
     // offender is named by the configuration's own reader — the layer the
     // names belong to — and the binding above it simply refuses.
     let config = serde_json::to_string(&binding.provider.config()).unwrap();
@@ -265,7 +264,7 @@ fn a_named_binding_is_one_string_and_round_trips() {
 /// before anything is spawned, and the diagnostic lists what the build
 /// does know. The binding's `provider` field tells its two spellings
 /// apart untagged, so the refusal is the binding's and the list is the
-/// reference's own — read the field as a `ModelRef` and there it is.
+/// reference's own — read the field as a `ProviderRef` and there it is.
 #[test]
 fn an_unknown_provider_name_is_refused_by_the_reader() {
     let json = serde_json::to_string(&named(KEY, "deepseek:deepseek-chat", "cassette"))
@@ -276,7 +275,7 @@ fn an_unknown_provider_name_is_refused_by_the_reader() {
         "{json}"
     );
     let field = serde_json::from_str::<serde_json::Value>(&json).unwrap()["provider"].clone();
-    let error = serde_json::from_value::<ModelRef>(field).unwrap_err();
+    let error = serde_json::from_value::<ProviderRef>(field).unwrap_err();
     let text = error.to_string();
     assert!(text.contains("unknown provider `telepathy`"), "{text}");
     // Every name this build knows, both formats of a two-shaped gateway
@@ -479,7 +478,7 @@ fn a_named_binding_materializes_as_its_configured_twin() {
 /// materialize. Nothing is left for `materialize_bindings` to refuse, which
 /// is why it has no dialect and no option error any more. What each cell
 /// names is named by the configuration's own reader: the binding holds a
-/// `ProviderRef`, whose two spellings are told apart untagged, so the
+/// `ProviderRef`, whose two spellings are told apart by shape, so the
 /// diagnostic lives one layer down — with the names.
 #[test]
 fn a_dialect_the_provider_does_not_speak_is_refused_by_the_reader() {
@@ -1426,7 +1425,6 @@ fn a_world_reports_what_it_binds_and_what_the_build_knows() {
     let deepseek = &report.bindings[0];
     assert_eq!(deepseek.provider, "deepseek");
     assert_eq!(deepseek.model, "model-x");
-    assert!(deepseek.known);
     assert!(!deepseek.served, "nothing serves it yet");
     assert_eq!(deepseek.credential, CredentialRef::new("cassette"));
     assert!(

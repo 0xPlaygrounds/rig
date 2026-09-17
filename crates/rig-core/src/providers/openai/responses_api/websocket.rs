@@ -236,24 +236,10 @@ impl ResponsesWebSocketSessionBuilder {
         self
     }
 
-    /// Disables the websocket connection timeout.
-    #[must_use]
-    pub fn without_connect_timeout(mut self) -> Self {
-        self.connect_timeout = None;
-        self
-    }
-
     /// Sets the timeout for waiting on the next websocket event.
     #[must_use]
     pub fn event_timeout(mut self, timeout: Duration) -> Self {
         self.event_timeout = Some(timeout);
-        self
-    }
-
-    /// Disables the websocket event timeout.
-    #[must_use]
-    pub fn without_event_timeout(mut self) -> Self {
-        self.event_timeout = None;
         self
     }
 }

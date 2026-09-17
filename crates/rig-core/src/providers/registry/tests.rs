@@ -2,6 +2,17 @@
 
 use super::*;
 
+/// The host a configuration talks to. A test-only reading: no shipped
+/// caller asks a `ProviderConfig` for its base URL — the wire it builds
+/// uses it — so there is no accessor for it.
+fn host_of(config: &ProviderConfig) -> &str {
+    match config {
+        ProviderConfig::OpenAi(config) => &config.base_url,
+        ProviderConfig::Anthropic(config) => &config.base_url,
+        ProviderConfig::Gemini(config) => &config.base_url,
+    }
+}
+
 /// The invariant every other test here rests on, and the one a new gateway
 /// can break: a dialect name is unique across every format rig speaks. Two
 /// dialects sharing a name would make `provider:model` ambiguous — z.ai,
@@ -14,7 +25,7 @@ fn every_provider_name_is_unique() {
     for name in all().map(|id| id.name()) {
         assert!(
             !seen.contains(&name),
-            "`{name}` names two providers; a name must resolve to one, or `ModelRef` cannot"
+            "`{name}` names two providers; a name must resolve to one, or `ProviderRef` cannot"
         );
         seen.push(name);
     }
@@ -54,18 +65,17 @@ fn every_listed_provider_resolves_and_round_trips() {
         // it: Azure's endpoint is per-resource, so its default is empty and
         // `AZURE_ENDPOINT` is how a caller learns to set one.
         assert!(
-            !config.base_url().is_empty() || id.required_env().len() > 1,
+            !host_of(&config).is_empty() || config.required_env().count() > 1,
             "`{name}` resolved with no host and names no variable that would give it one"
         );
 
-        let reference: ModelRef = format!("{name}:some-model")
+        let reference: ProviderRef = format!("{name}:some-model")
             .parse()
             .unwrap_or_else(|error| panic!("`{name}` does not parse: {error}"));
         assert_eq!(reference.provider(), name);
         assert_eq!(reference.model(), "some-model");
         assert_eq!(reference.to_string(), format!("{name}:some-model"));
         assert_eq!(reference.config(), config);
-        assert_eq!(reference.id(), id);
     }
 }
 
@@ -77,7 +87,7 @@ fn the_two_zai_endpoints_are_two_providers() {
     let messages = by_name("zai-anthropic").expect("zai-anthropic").config();
     assert!(matches!(chat, ProviderConfig::OpenAi(_)));
     assert!(matches!(messages, ProviderConfig::Anthropic(_)));
-    assert_ne!(chat.base_url(), messages.base_url());
+    assert_ne!(host_of(&chat), host_of(&messages));
     // Same credential, different endpoints: the vendor issues one key.
     assert_eq!(
         chat.required_env().next(),
@@ -90,7 +100,7 @@ fn the_two_zai_endpoints_are_two_providers() {
 /// the list that would have worked.
 #[test]
 fn an_unnameable_reference_says_what_would_have_worked() {
-    let unqualified = "gpt-5.2".parse::<ModelRef>().expect_err("no provider");
+    let unqualified = "gpt-5.2".parse::<ProviderRef>().expect_err("no provider");
     assert!(
         matches!(unqualified, UnknownProvider::Unqualified { .. }),
         "{unqualified:?}"
@@ -100,7 +110,9 @@ fn an_unnameable_reference_says_what_would_have_worked() {
         "{unqualified}"
     );
 
-    let unknown = "telepathy:tm-1".parse::<ModelRef>().expect_err("unknown");
+    let unknown = "telepathy:tm-1"
+        .parse::<ProviderRef>()
+        .expect_err("unknown");
     let message = unknown.to_string();
     assert!(message.contains("telepathy"), "{message}");
     for known in ["openai", "anthropic", "gemini", "zai-anthropic"] {
@@ -110,9 +122,9 @@ fn an_unnameable_reference_says_what_would_have_worked() {
         );
     }
 
-    let modelless = "openai:".parse::<ModelRef>().expect_err("no model");
+    let modelless = "openai:".parse::<ProviderRef>().expect_err("no model");
     assert!(
-        matches!(modelless, UnknownProvider::NoModel { .. }),
+        matches!(modelless, UnknownProvider::Unqualified { .. }),
         "{modelless:?}"
     );
 }
@@ -121,13 +133,13 @@ fn an_unnameable_reference_says_what_would_have_worked() {
 /// without a rig release, so an unknown one is the provider's 404.
 #[test]
 fn a_model_id_is_taken_verbatim() {
-    let reference: ModelRef = "openai:a-model-released-tomorrow"
+    let reference: ProviderRef = "openai:a-model-released-tomorrow"
         .parse()
         .expect("an unlisted model id is still a reference");
     assert_eq!(reference.model(), "a-model-released-tomorrow");
     // A colon inside the model id belongs to the model: only the first
     // splits provider from model.
-    let versioned: ModelRef = "openai:ft:gpt-4.1:acme".parse().expect("a fine-tune id");
+    let versioned: ProviderRef = "openai:ft:gpt-4.1:acme".parse().expect("a fine-tune id");
     assert_eq!(versioned.provider(), "openai");
     assert_eq!(versioned.model(), "ft:gpt-4.1:acme");
     assert_eq!(versioned.to_string(), "openai:ft:gpt-4.1:acme");
@@ -137,16 +149,16 @@ fn a_model_id_is_taken_verbatim() {
 /// nothing stores one line.
 #[test]
 fn a_reference_serializes_as_its_string() {
-    let reference: ModelRef = "deepseek:deepseek-chat".parse().expect("deepseek");
+    let reference: ProviderRef = "deepseek:deepseek-chat".parse().expect("deepseek");
     let json = serde_json::to_string(&reference).expect("a reference serializes");
     assert_eq!(json, "\"deepseek:deepseek-chat\"");
     assert_eq!(
-        serde_json::from_str::<ModelRef>(&json).expect("a reference reloads"),
+        serde_json::from_str::<ProviderRef>(&json).expect("a reference reloads"),
         reference
     );
     // And an unknown provider is refused by the reader, before anything is
     // built from it.
-    let error = serde_json::from_str::<ModelRef>("\"telepathy:tm-1\"")
+    let error = serde_json::from_str::<ProviderRef>("\"telepathy:tm-1\"")
         .expect_err("an unknown provider is not a reference");
     assert!(error.to_string().contains("telepathy"), "{error}");
 }
@@ -174,7 +186,7 @@ fn a_config_names_the_environment_it_reads() {
     // what a scene needs.
     for id in all() {
         assert!(
-            !id.required_env().is_empty(),
+            id.config().required_env().next().is_some(),
             "`{}` names no credential variable",
             id.name()
         );
@@ -206,7 +218,7 @@ fn a_config_persists_without_its_credential() {
 /// only add a *name*, and a name's whole job is to be resolvable by
 /// [`by_name`] — which a value living in one scene is not. It would also
 /// make "a name resolves to one provider" world-dependent instead of
-/// build-dependent, which is the invariant `ModelRef` rests on.
+/// build-dependent, which is the invariant `ProviderRef` rests on.
 #[test]
 fn a_self_hosted_endpoint_is_the_long_form() {
     let config = by_name("llamacpp")
@@ -217,12 +229,12 @@ fn a_self_hosted_endpoint_is_the_long_form() {
         panic!("llama.cpp speaks chat completions");
     };
     let config = ProviderConfig::OpenAi(openai.with_base_url("http://10.0.0.7:8080/v1"));
-    assert_eq!(config.base_url(), "http://10.0.0.7:8080/v1");
+    assert_eq!(host_of(&config), "http://10.0.0.7:8080/v1");
 
     // And it round-trips, so a host stores exactly this.
     let json = serde_json::to_string(&config).expect("a config serializes");
     let reloaded: ProviderConfig = serde_json::from_str(&json).expect("a config reloads");
-    assert_eq!(reloaded.base_url(), "http://10.0.0.7:8080/v1");
+    assert_eq!(host_of(&reloaded), "http://10.0.0.7:8080/v1");
     assert_eq!(reloaded.provider(), "llamacpp");
 }
 
@@ -242,12 +254,12 @@ fn an_id_is_proof_the_name_resolves() {
     assert_eq!(id.config().provider(), "venice");
     // And a reference carries the id rather than a configuration, so
     // equality compares what the user wrote.
-    let reference: ModelRef = "venice:venice-uncensored".parse().expect("venice");
-    assert_eq!(reference.id(), id);
+    let reference: ProviderRef = "venice:venice-uncensored".parse().expect("venice");
+    assert_eq!(reference.provider(), id.name());
     assert_eq!(
         reference,
         "venice:venice-uncensored"
-            .parse::<ModelRef>()
+            .parse::<ProviderRef>()
             .expect("venice"),
         "a reference is its name, not a snapshot"
     );
@@ -266,14 +278,14 @@ fn the_two_forms_are_read_by_shape_and_report_the_field() {
     // A string is a name.
     let named: ProviderRef =
         serde_json::from_str("\"deepseek:deepseek-chat\"").expect("the short form");
-    assert!(matches!(named, ProviderRef::Named(_)));
+    assert!(matches!(named, ProviderRef::Named { .. }));
     assert_eq!(named.provider(), "deepseek");
 
     // A map is a configuration, and the model beside it. The document is
     // the one a host would have written: a config's own serialized form.
     let venice = match by_name("venice").expect("venice").config() {
         ProviderConfig::OpenAi(config) => config.with_base_url("http://local"),
-        other => panic!("venice speaks chat completions, not {other}"),
+        other => panic!("venice speaks chat completions, not {other:?}"),
     };
     let long_form = serde_json::json!({
         "config": ProviderConfig::OpenAi(venice),
@@ -282,7 +294,7 @@ fn the_two_forms_are_read_by_shape_and_report_the_field() {
     .to_string();
     let configured: ProviderRef = serde_json::from_str(&long_form).expect("the long form");
     assert_eq!(configured.provider(), "venice");
-    assert_eq!(configured.config().base_url(), "http://local");
+    assert_eq!(host_of(&configured.config()), "http://local");
     assert_eq!(configured.model(), "m");
 
     // A wrong field in the long form is reported as that field…

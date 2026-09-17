@@ -323,12 +323,6 @@ where
         }
         self
     }
-
-    /// Sets the additional parameters for the transcription request.
-    pub fn additional_params_opt(mut self, additional_params: Option<serde_json::Value>) -> Self {
-        self.additional_params = additional_params;
-        self
-    }
 }
 
 /// The build and send methods are only available when data is provided, ensuring that the request cannot be sent without the required data.

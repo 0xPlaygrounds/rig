@@ -4,13 +4,13 @@
 //! data, not code — and every dialect's name is unique across the whole
 //! tree. So a provider is nameable: [`by_name`] resolves one to the
 //! configuration that talks to it, [`all`] enumerates every name this build
-//! knows, and [`ModelRef`] is the `"provider:model"` pair a host stores when
+//! knows, and [`ProviderRef`] is the `"provider:model"` pair a host stores when
 //! it has nothing to override.
 //!
 //! ```
-//! use rig_core::providers::{ModelRef, ProviderConfig};
+//! use rig_core::providers::{ProviderConfig, ProviderRef};
 //!
-//! let reference: ModelRef = "deepseek:deepseek-chat".parse()?;
+//! let reference: ProviderRef = "deepseek:deepseek-chat".parse()?;
 //! assert_eq!(reference.provider(), "deepseek");
 //! assert_eq!(reference.model(), "deepseek-chat");
 //! // The short form is the provider's default configuration: no base URL,
@@ -20,7 +20,7 @@
 //! # Ok::<(), rig_core::providers::UnknownProvider>(())
 //! ```
 //!
-//! What a `ModelRef` does **not** do is validate the model id. rig ships
+//! What a `ProviderRef` does **not** do is validate the model id. rig ships
 //! model-name constants, not a catalog: a provider's list changes without a
 //! rig release, and refusing a model this build has not heard of would make
 //! every new model wait for one. A wrong model id is the provider's 404,
@@ -65,21 +65,12 @@ pub enum ProviderConfig {
 
 impl ProviderConfig {
     /// The provider's descriptor name, as records, telemetry and
-    /// [`ModelRef`] name it.
+    /// [`ProviderRef`] name it.
     pub fn provider(&self) -> &str {
         match self {
             Self::OpenAi(config) => config.dialect.name,
             Self::Anthropic(config) => config.dialect.name,
             Self::Gemini(_) => GEMINI,
-        }
-    }
-
-    /// The base URL every request resolves against.
-    pub fn base_url(&self) -> &str {
-        match self {
-            Self::OpenAi(config) => &config.base_url,
-            Self::Anthropic(config) => &config.base_url,
-            Self::Gemini(config) => &config.base_url,
         }
     }
 
@@ -152,12 +143,6 @@ impl ProviderConfig {
     }
 }
 
-impl fmt::Display for ProviderConfig {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.provider())
-    }
-}
-
 /// Gemini's provider name. It speaks one format at one host, so it has no
 /// `Dialect` to carry the name for it.
 const GEMINI: &str = "gemini";
@@ -211,12 +196,6 @@ impl ProviderId {
             Shape::Gemini => ProviderConfig::Gemini(gemini::Gemini::new(Secret::default())),
         }
     }
-
-    /// The environment this provider reads when it is built from the
-    /// environment.
-    pub fn required_env(&self) -> Vec<&'static str> {
-        self.config().required_env().collect()
-    }
 }
 
 impl PartialEq for ProviderId {
@@ -230,12 +209,6 @@ impl Eq for ProviderId {}
 impl std::hash::Hash for ProviderId {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name().hash(state);
-    }
-}
-
-impl fmt::Display for ProviderId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(self.name())
     }
 }
 
@@ -293,130 +266,37 @@ pub enum UnknownProvider {
         /// Every name that would have resolved, comma-separated.
         known: String,
     },
-    /// The model half was empty.
-    #[error("`{reference}` names the provider `{provider}` but no model")]
-    NoModel {
-        /// What was parsed.
-        reference: String,
-        /// The provider half, which did resolve.
-        provider: String,
-    },
-}
-
-/// A provider and a model, by name: `"deepseek:deepseek-chat"`.
-///
-/// The short form of "which model serves this". It resolves to the
-/// provider's default configuration, so it says nothing about a base URL, a
-/// route, an api-version or a beta — a host that needs one of those stores
-/// a [`ProviderConfig`] instead. Serialized as the one string it is, which
-/// is the point: a config file or a scene that overrides nothing should not
-/// have to spell out a provider object.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(try_from = "String", into = "String")]
-pub struct ModelRef {
-    /// The provider, as a name this build is known to have. Not a config
-    /// snapshot — equality compares the name the user wrote — and not a
-    /// bare `String` either, so reading the configuration back cannot fail.
-    provider: ProviderId,
-    model: String,
-}
-
-impl ModelRef {
-    /// The reference to `model` on `provider`, if this build knows the
-    /// provider.
-    pub fn new(provider: &str, model: impl Into<String>) -> Result<Self, UnknownProvider> {
-        let provider = by_name(provider).ok_or_else(|| UnknownProvider::Provider {
-            provider: provider.to_owned(),
-            known: known_names(),
-        })?;
-        Ok(Self {
-            provider,
-            model: model.into(),
-        })
-    }
-
-    /// The provider.
-    pub fn id(&self) -> ProviderId {
-        self.provider
-    }
-
-    /// The provider's name.
-    pub fn provider(&self) -> &'static str {
-        self.provider.name()
-    }
-
-    /// The model id, verbatim. rig does not check it against a catalog: a
-    /// provider adds models without a rig release, so a model this build has
-    /// not heard of is the provider's 404, not a parse error.
-    pub fn model(&self) -> &str {
-        &self.model
-    }
-
-    /// The provider's default configuration, with no credential.
-    pub fn config(&self) -> ProviderConfig {
-        self.provider.config()
-    }
-}
-
-impl FromStr for ModelRef {
-    type Err = UnknownProvider;
-
-    fn from_str(reference: &str) -> Result<Self, Self::Err> {
-        let Some((provider, model)) = reference.split_once(':') else {
-            return Err(UnknownProvider::Unqualified {
-                reference: reference.to_owned(),
-            });
-        };
-        if model.is_empty() {
-            return Err(UnknownProvider::NoModel {
-                reference: reference.to_owned(),
-                provider: provider.to_owned(),
-            });
-        }
-        Self::new(provider, model)
-    }
-}
-
-impl TryFrom<String> for ModelRef {
-    type Error = UnknownProvider;
-
-    fn try_from(reference: String) -> Result<Self, Self::Error> {
-        reference.parse()
-    }
-}
-
-impl From<ModelRef> for String {
-    fn from(reference: ModelRef) -> Self {
-        reference.to_string()
-    }
-}
-
-impl fmt::Display for ModelRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.provider.name(), self.model)
-    }
 }
 
 /// Which provider and model serve something, in either of the two forms a
-/// host writes: the name, or the configuration.
+/// host writes.
 ///
-/// One field, two spellings, and the serialized form is the reason both
-/// exist: a host that overrides nothing writes `"deepseek:deepseek-chat"`
-/// and a host that needs a base URL, a route, a beta or an api-version
-/// writes the configuration out.
+/// `"deepseek:deepseek-chat"` when nothing is overridden — one line in a
+/// config file or a scene — and the configuration written out when a base
+/// URL, a route, a beta or an api-version has to be named. One type, not
+/// two: a name is a provider plus a model, which is what the long form is
+/// as well.
 ///
-/// Read by the *shape of the input* rather than by trying variants in turn:
-/// a string is a name and a map is a configuration, decided in
-/// `deserialize` before either is parsed. `#[serde(untagged)]` would read
-/// the same documents, but it reports a wrong field as "data did not match
-/// any variant", where this reports the field — which is the whole reason
-/// the untyped `extra_params` bag was deleted from the binding in the
-/// first place.
+/// Read by the *shape* of the input rather than by trying variants: a
+/// string is a name, a map is a configuration. `#[serde(untagged)]` reads
+/// the same documents but, once both variants have failed, can only report
+/// "data did not match any variant".
+///
+/// What neither form validates is the model id. rig ships model-name
+/// constants, not a catalog: a provider adds models without a rig release,
+/// so an id this build has not heard of is the provider's 404, which is
+/// where that fact lives.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ProviderRef {
-    /// `"provider:model"` — the provider's default configuration.
-    Named(ModelRef),
+    /// A provider by name, on its default configuration.
+    #[serde(serialize_with = "serialize_named")]
+    Named {
+        /// The provider.
+        provider: ProviderId,
+        /// The model id.
+        model: String,
+    },
     /// A configuration written out, with the model beside it.
     Configured {
         /// The provider, configured.
@@ -426,27 +306,49 @@ pub enum ProviderRef {
     },
 }
 
+/// The short form writes the one string it parsed from, which is also its
+/// [`Display`](fmt::Display).
+fn serialize_named<S: serde::Serializer>(
+    provider: &ProviderId,
+    model: &str,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&format!("{}:{model}", provider.name()))
+}
+
 impl ProviderRef {
+    /// The reference to `model` on the provider named `provider`, if this
+    /// build knows it.
+    pub fn named(provider: &str, model: impl Into<String>) -> Result<Self, UnknownProvider> {
+        let provider = by_name(provider).ok_or_else(|| UnknownProvider::Provider {
+            provider: provider.to_owned(),
+            known: known_names(),
+        })?;
+        Ok(Self::Named {
+            provider,
+            model: model.into(),
+        })
+    }
+
     /// The provider's name.
     pub fn provider(&self) -> &str {
         match self {
-            Self::Named(reference) => reference.provider(),
+            Self::Named { provider, .. } => provider.name(),
             Self::Configured { config, .. } => config.provider(),
         }
     }
 
-    /// The model id.
+    /// The model id, verbatim.
     pub fn model(&self) -> &str {
         match self {
-            Self::Named(reference) => reference.model(),
-            Self::Configured { model, .. } => model,
+            Self::Named { model, .. } | Self::Configured { model, .. } => model,
         }
     }
 
     /// The configuration to talk to it with, credential-less either way.
     pub fn config(&self) -> ProviderConfig {
         match self {
-            Self::Named(reference) => reference.config(),
+            Self::Named { provider, .. } => provider.config(),
             Self::Configured { config, .. } => config.clone(),
         }
     }
@@ -458,9 +360,30 @@ impl ProviderRef {
     }
 }
 
+impl fmt::Display for ProviderRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.provider(), self.model())
+    }
+}
+
+impl FromStr for ProviderRef {
+    type Err = UnknownProvider;
+
+    fn from_str(reference: &str) -> Result<Self, Self::Err> {
+        // Both halves have to be there: a bare model name has no provider
+        // to resolve, and a bare provider names no model to send.
+        match reference.split_once(':') {
+            Some((provider, model)) if !model.is_empty() => Self::named(provider, model),
+            _ => Err(UnknownProvider::Unqualified {
+                reference: reference.to_owned(),
+            }),
+        }
+    }
+}
+
 impl<'de> Deserialize<'de> for ProviderRef {
     fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        /// The long form, named so serde attributes an error to the field
+        /// The long form, named so serde attributes an error to the value
         /// that was wrong rather than to the union.
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
@@ -479,7 +402,7 @@ impl<'de> Deserialize<'de> for ProviderRef {
             }
 
             fn visit_str<E: serde::de::Error>(self, reference: &str) -> Result<Self::Value, E> {
-                reference.parse().map(ProviderRef::Named).map_err(E::custom)
+                reference.parse().map_err(E::custom)
             }
 
             fn visit_map<M: serde::de::MapAccess<'de>>(
@@ -493,18 +416,6 @@ impl<'de> Deserialize<'de> for ProviderRef {
         }
 
         deserializer.deserialize_any(EitherForm)
-    }
-}
-
-impl From<ModelRef> for ProviderRef {
-    fn from(reference: ModelRef) -> Self {
-        Self::Named(reference)
-    }
-}
-
-impl fmt::Display for ProviderRef {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.provider(), self.model())
     }
 }
 

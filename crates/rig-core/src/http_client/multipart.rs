@@ -58,16 +58,6 @@ impl Part {
         &self.name
     }
 
-    /// Get the filename if set
-    pub fn get_filename(&self) -> Option<&str> {
-        self.filename.as_deref()
-    }
-
-    /// Get the content type if set
-    pub fn get_content_type(&self) -> Option<&Mime> {
-        self.content_type.as_ref()
-    }
-
     /// The part's payload.
     pub fn content(&self) -> &PartContent {
         &self.content

@@ -96,19 +96,6 @@ impl AudioGenerationResponse {
 
 crate::provider_response::modality_response_metadata_setters!(AudioGenerationResponse);
 
-/// Convert a provider's own audio generation payload into the normalized
-/// [`AudioGenerationResponse`].
-///
-/// The provider descriptor name is an *input*, never something the conversion
-/// knows — several providers share one wire shape, and a hardcoded name would
-/// mislabel every provider but one. A trait rather than `TryFrom<(&str, T)>`
-/// so that out-of-tree provider extensions can implement it on their own
-/// response type without tripping the orphan rule.
-pub trait NormalizeAudioGenerationResponse {
-    /// Normalize this payload, attributing it to `provider`.
-    fn normalize(self, provider: &str) -> Result<AudioGenerationResponse, AudioGenerationError>;
-}
-
 /// Trait defining an audio generation (text-to-speech) model.
 ///
 /// The trait describes only what a model *does*: it has no associated types.

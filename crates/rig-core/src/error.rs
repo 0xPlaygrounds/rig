@@ -244,12 +244,6 @@ impl ErrorReport {
         self
     }
 
-    /// Attach the provider's request id.
-    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
-        self.request_id = Some(request_id.into());
-        self
-    }
-
     /// Attach a typed diagnostic.
     pub fn with_detail(mut self, detail: ErrorDetail) -> Self {
         self.detail = Some(detail);

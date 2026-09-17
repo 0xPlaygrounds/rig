@@ -301,11 +301,6 @@ impl CopilotWire {
         self
     }
 
-    /// Declare the generic chat-panel conversation semantics.
-    pub fn with_panel_intent(self) -> Self {
-        self.with_intent(CopilotIntent::Panel)
-    }
-
     /// Declare the edit-oriented conversation semantics.
     pub fn with_edits_intent(self) -> Self {
         self.with_intent(CopilotIntent::Edits)

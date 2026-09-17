@@ -1054,12 +1054,6 @@ impl OpenAI {
         self
     }
 
-    /// Send the credential with `auth`'s header.
-    pub fn with_auth(mut self, auth: Auth) -> Self {
-        self.auth = auth;
-        self
-    }
-
     /// Override the base URL.
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();

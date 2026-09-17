@@ -45,11 +45,6 @@ impl<F: Family> Key<F> {
         &self.raw
     }
 
-    /// The wire key, by value.
-    pub fn into_raw(self) -> HandlerKey {
-        self.raw
-    }
-
     /// The key as a string.
     pub fn as_str(&self) -> &str {
         self.raw.as_str()

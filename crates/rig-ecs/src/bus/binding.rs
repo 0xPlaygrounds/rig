@@ -53,7 +53,7 @@ pub use rig_core::wire::Secret;
 /// dialects, the options and the lookup are rig-core's
 /// ([`providers::by_name`](rig_core::providers::by_name)), and a binding is
 /// the wish to build one of them later.
-pub use rig_core::providers::{ModelRef, ProviderConfig, ProviderRef};
+pub use rig_core::providers::{ProviderConfig, ProviderRef};
 
 /// A reference to a credential the host resolves — an environment variable
 /// name, a vault key id, a label the host's resolver knows. Never the
@@ -117,20 +117,20 @@ pub struct ProviderBinding {
 
 impl ProviderBinding {
     /// A binding of `key` to a named model
-    /// ([`ModelRef`]: `"deepseek:deepseek-chat"`), labelled by the model
-    /// id, on the provider's default configuration.
+    /// ([`ProviderRef`]: `"deepseek:deepseek-chat"`), labelled by the
+    /// model id, on the provider's default configuration.
     ///
     /// The short form, and the common one: a provider that needs no
     /// override needs no configuration written out.
     pub fn new(
         key: impl Into<HandlerKey>,
-        model: ModelRef,
+        model: ProviderRef,
         credential: impl Into<CredentialRef>,
     ) -> Self {
         let label = model.model().to_owned();
         Self {
             key: key.into(),
-            provider: ProviderRef::Named(model),
+            provider: model,
             label,
             credential: credential.into(),
         }
@@ -541,10 +541,6 @@ pub struct BindingDiagnostic {
     pub provider: String,
     /// The model id it names.
     pub model: String,
-    /// Whether the provider is one this build knows. A binding read from a
-    /// scene cannot be `false` — serde refuses an unknown name — but one
-    /// built in code from a config whose dialect this build dropped can be.
-    pub known: bool,
     /// Whether something already serves the key, in which case
     /// materialization would keep it rather than build this binding.
     pub served: bool,
@@ -577,7 +573,6 @@ pub fn provider_diagnostics(world: &mut World) -> ProviderDiagnostics {
             key: binding.key.clone(),
             provider: binding.provider.provider().to_owned(),
             model: binding.model().to_owned(),
-            known: known.contains(&binding.provider.provider()),
             // Served here (a hand registration, an earlier pass) or bound
             // on any entity: either way materialization keeps what serves
             // the key instead of building this one.
