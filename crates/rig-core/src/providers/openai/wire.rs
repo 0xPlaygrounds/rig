@@ -519,6 +519,7 @@ pub struct Identity {
 
 /// The identity a gateway requires on every request, resolved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CallerIdentity {
     /// The `originator` header.
     pub originator: String,
@@ -864,6 +865,7 @@ impl<'de> Deserialize<'de> for Dialect {
 /// [`chat`](Self::chat) for Chat Completions, and one constructor per
 /// modality endpoint.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct OpenAI {
     /// The credential. Never serialized (see [`Secret`]).
     pub api_key: Secret,
@@ -906,6 +908,17 @@ pub struct OpenAI {
     /// The caller identity, when the gateway requires one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<CallerIdentity>,
+    /// Where Rig's system instructions go on the Responses endpoint, when
+    /// this configuration overrides the dialect's placement
+    /// ([`ResponsesQuirks::system_instructions`]). `None` is the dialect's
+    /// own default.
+    ///
+    /// A placement is configuration rather than a per-wire option because a
+    /// backend that ignores top-level `instructions` ignores them for every
+    /// turn, and a host that stores this configuration as data must be able
+    /// to say so.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_instructions: Option<SystemInstructionsPlacement>,
 }
 
 impl OpenAI {
@@ -939,6 +952,7 @@ impl OpenAI {
                 originator: identity.originator.to_owned(),
                 user_agent: default_user_agent(identity.originator),
             }),
+            system_instructions: None,
         }
     }
 
@@ -1088,6 +1102,32 @@ impl OpenAI {
     pub fn with_instructions(mut self, instructions: impl Into<String>) -> Self {
         self.instructions = Some(instructions.into());
         self
+    }
+
+    /// Put Rig's system instructions somewhere other than the dialect's
+    /// default placement, for every Responses wire this configuration
+    /// builds.
+    pub fn with_system_instructions_placement(
+        mut self,
+        placement: SystemInstructionsPlacement,
+    ) -> Self {
+        self.system_instructions = Some(placement);
+        self
+    }
+
+    /// Send Rig's system instructions as `system` messages in `input`, for a
+    /// backend that rejects or ignores top-level `instructions`.
+    pub fn with_system_instructions_as_messages(self) -> Self {
+        self.with_system_instructions_placement(SystemInstructionsPlacement::InputSystemMessages)
+    }
+
+    /// Where a Responses wire built from this configuration puts Rig's
+    /// system instructions: the dialect's placement unless
+    /// [`with_system_instructions_placement`](Self::with_system_instructions_placement)
+    /// chose another.
+    pub fn system_instructions_placement(&self) -> SystemInstructionsPlacement {
+        self.system_instructions
+            .unwrap_or(self.dialect.quirks.responses.system_instructions)
     }
 
     /// Serve every completion — [`completion`](Self::completion) and the

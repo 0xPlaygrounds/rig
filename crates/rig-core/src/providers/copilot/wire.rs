@@ -184,24 +184,9 @@ impl Copilot {
         self.wire_for(model)
     }
 
-    /// The one place the route is chosen. Named apart from the two public
-    /// entry points ([`Self::completion`] and [`HasCompletion::completion`])
-    /// so neither can delegate to the other by accident.
+    /// Shared construction for the inherent and trait completion entry points.
     fn wire_for(&self, model: impl Into<String>) -> CopilotWire {
-        let model = model.into();
-        let provider = self.openai();
-        let wire = if routes_through_responses(&model) {
-            // Copilot's Responses route wants strict function schemas for
-            // reliable tool calls; the chat route keeps strict mode opt-in,
-            // exactly as the client layer had it.
-            OpenAiWire::Responses(provider.responses(model).with_strict_tools())
-        } else {
-            OpenAiWire::Chat(provider.chat(model))
-        };
-        CopilotWire {
-            wire,
-            intent: CopilotIntent::default(),
-        }
+        CopilotWire::from_openai(self.openai(), model)
     }
 
     /// The embeddings wire for `model`.
@@ -290,6 +275,33 @@ pub struct CopilotWire {
 }
 
 impl CopilotWire {
+    /// Keep an explicit OpenAI-shaped configuration intact while applying
+    /// Copilot's model-dependent route and request envelope.
+    pub(crate) fn from_openai(provider: OpenAI, model: impl Into<String>) -> Self {
+        use crate::providers::openai::{Route, responses_api::wire::Responses, wire::Chat};
+
+        let model = model.into();
+        let route = provider.route.unwrap_or_else(|| {
+            if routes_through_responses(&model) {
+                Route::Responses
+            } else {
+                Route::Chat
+            }
+        });
+        let wire = match route {
+            // Copilot's Responses endpoint expects strict function schemas;
+            // its Chat endpoint keeps strict mode opt-in.
+            Route::Responses => {
+                OpenAiWire::Responses(Responses::new(provider, model).with_strict_tools())
+            }
+            Route::Chat => OpenAiWire::Chat(Chat::new(provider, model)),
+        };
+        Self {
+            wire,
+            intent: CopilotIntent::default(),
+        }
+    }
+
     /// The conversation intent this wire declares.
     pub fn intent(&self) -> CopilotIntent {
         self.intent

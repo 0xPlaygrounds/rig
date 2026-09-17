@@ -70,7 +70,8 @@ use rig_core::wire::Secret;
 
 use cells::Cell;
 use corpus::Program;
-use rig_ecs::bus::{ProviderBinding, ProviderKind};
+use rig_core::providers::registry::ProviderConfig;
+use rig_ecs::bus::ProviderBinding;
 
 /// The owner every producer names itself: the golden's keys are
 /// `golden/model:default`, `golden/tool:<name>#<n>`, `golden/memory`.
@@ -134,67 +135,61 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     /// resolves and sends through — the head wire's own key (under the
     /// reference [`CASSETTE_CREDENTIAL`]) and its own socket, so the
     /// materialized model is the head model rebuilt: same model id, same
-    /// base URL, same credential, same cassette. `None` for a model the
+    /// configuration, same credential, same cassette. `None` for a model the
     /// harness cannot describe (a wrapped transport, a mock): that wire
     /// stays hand-registered.
     ///
-    /// Under the wire model these are plain fields of the bound wire, so
-    /// the arms read `bound.wire.model`, `bound.wire.provider.base_url`,
-    /// `bound.wire.provider.api_key` and `bound.http` instead of asking a
-    /// client for its configuration. Chat and DeepSeek are one wire on two
-    /// dialects, so the dialect's name — not the type — names the kind. The
-    /// dialect's default route (`OpenAiWire`) is one of the two concrete
-    /// wires, so it is matched onto the same arms.
+    /// A bound wire already holds the provider's configuration, so the
+    /// binding carries *that* — dialect, host and every typed option
+    /// included — rather than a re-description of it. No dialect is
+    /// undescribable any more: what used to need an enum variant per vendor
+    /// is now the configuration itself. The one thing the arms add is the
+    /// route, because a concrete wire says which endpoint it is and a
+    /// configuration whose dialect flagships the other one would otherwise
+    /// rebuild the wrong grammar.
     pub(crate) fn binding(&self) -> Option<WireBinding> {
         let model: &dyn std::any::Any = &self.model;
         let key = format!("{OWNER}/model:default");
-        let describe = |kind: ProviderKind,
+        let describe = |config: ProviderConfig,
                         model_id: &str,
-                        base_url: &str,
                         api_key: &Secret,
                         transport: &BoxedHttpClient| {
             Some(WireBinding {
-                binding: ProviderBinding::new(key.clone(), kind, model_id, CASSETTE_CREDENTIAL)
-                    .labelled("default")
-                    .at(base_url),
+                // The credential is a *reference* in the world: the
+                // configuration the binding holds carries none, and the
+                // harness resolver supplies the head wire's key at
+                // materialization.
+                binding: ProviderBinding::configured(
+                    key.clone(),
+                    config.with_credential(""),
+                    model_id,
+                    CASSETTE_CREDENTIAL,
+                )
+                .labelled("default"),
                 api_key: api_key.expose().to_owned(),
                 transport: transport.clone(),
             })
         };
         if let Some(bound) = model.downcast_ref::<Bound<anthropic::Messages, BoxedHttpClient>>() {
             return describe(
-                ProviderKind::Anthropic,
+                ProviderConfig::Anthropic(bound.wire.provider.clone()),
                 &bound.wire.model,
-                &bound.wire.provider.base_url,
                 &bound.wire.provider.api_key,
                 &bound.http,
             );
         }
         let chat = |wire: &openai::Chat, http: &BoxedHttpClient| {
-            // One wire on many dialects, and the dialect is what the record's
-            // `provider` is: the kind must name the *same* dialect or the
-            // materialized model answers under another provider's name. A
-            // dialect `ProviderKind` cannot name is undescribable — the
-            // harness leaves that wire hand-registered rather than
-            // materializing it as some other provider.
-            let kind = match wire.provider.dialect.name {
-                "openai" => ProviderKind::OpenAiChat,
-                "deepseek" => ProviderKind::DeepSeek,
-                _ => return None,
-            };
             describe(
-                kind,
+                ProviderConfig::OpenAi(wire.provider.clone().with_route(openai::Route::Chat)),
                 &wire.model,
-                &wire.provider.base_url,
                 &wire.provider.api_key,
                 http,
             )
         };
         let responses = |wire: &responses::Responses, http: &BoxedHttpClient| {
             describe(
-                ProviderKind::OpenAiResponses,
+                ProviderConfig::OpenAi(wire.provider.clone().with_route(openai::Route::Responses)),
                 &wire.model,
-                &wire.provider.base_url,
                 &wire.provider.api_key,
                 http,
             )
@@ -214,9 +209,8 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         if let Some(bound) = model.downcast_ref::<Bound<gemini::GenerateContent, BoxedHttpClient>>()
         {
             return describe(
-                ProviderKind::Gemini,
+                ProviderConfig::Gemini(bound.wire.provider.clone()),
                 &bound.wire.model,
-                &bound.wire.provider.base_url,
                 &bound.wire.provider.api_key,
                 &bound.http,
             );

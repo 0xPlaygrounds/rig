@@ -104,12 +104,21 @@ pub const ANTHROPIC: Dialect = Dialect {
     quirks: Quirks::anthropic(),
 };
 
+/// Every Messages-format dialect this build knows, in declaration order.
+///
+/// One table, so [`Dialect::by_name`], [`all`] and the provider registry
+/// cannot disagree about which dialects exist.
+const ALL: &[&Dialect] = &[&ANTHROPIC, &ZAI, &MINIMAX, &MOONSHOT, &XIAOMIMIMO];
+
+/// Every Messages-format dialect this build knows, in declaration order.
+pub fn all() -> impl Iterator<Item = &'static Dialect> {
+    ALL.iter().copied()
+}
+
 impl Dialect {
     /// The dialect this crate ships under `name`.
     pub fn by_name(name: &str) -> Option<Self> {
-        [ANTHROPIC, ZAI, MINIMAX, MOONSHOT, XIAOMIMIMO]
-            .into_iter()
-            .find(|dialect| dialect.name == name)
+        all().copied().find(|dialect| dialect.name == name)
     }
 }
 
@@ -199,6 +208,7 @@ pub const XIAOMIMIMO: Dialect = compatible(
 
 /// The shared configuration of an Anthropic-format provider.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Anthropic {
     /// The API key, sent as `x-api-key`.
     pub api_key: Secret,

@@ -47,11 +47,13 @@ pub struct Responses {
 }
 
 impl Responses {
-    /// The Responses wire for `model` on `provider`, with the dialect's
-    /// defaults.
+    /// The Responses wire for `model` on `provider`, with the placement
+    /// `provider` configures — the dialect's default unless the
+    /// configuration overrode it
+    /// ([`OpenAI::system_instructions`](crate::providers::openai::wire::OpenAI::system_instructions)).
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
         Self {
-            system_instructions: provider.dialect.quirks.responses.system_instructions,
+            system_instructions: provider.system_instructions_placement(),
             provider,
             model: model.into(),
             tools: Vec::new(),

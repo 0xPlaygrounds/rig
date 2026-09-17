@@ -13,6 +13,7 @@ use bevy_reflect::{ReflectDeserialize, ReflectSerialize, prelude::ReflectDefault
 use rig_core::{
     effect::{EffectId, EffectKind, HandlerDescriptor, HandlerKey, Outcome},
     error::ErrorReport,
+    providers::registry::ProviderRef,
     streaming::StreamEvent,
     tool::ToolContext,
 };
@@ -26,9 +27,11 @@ crate::reflect::opaque_reflect! {
     struct EffectIdReflect(EffectId): PartialEq;
     /// [`HandlerDescriptor`], reflected.
     struct HandlerDescriptorReflect(HandlerDescriptor): PartialEq;
-    /// A [`ProviderBinding`](super::ProviderBinding)'s `extra_params`
-    /// (`Option<serde_json::Value>`), reflected.
-    enum ExtraParamsReflect(Option<serde_json::Value>): Default, PartialEq;
+    /// A [`ProviderBinding`](super::ProviderBinding)'s
+    /// [`ProviderRef`], reflected: the provider selection or explicit
+    /// configuration travels as a whole, through the serde form a scene
+    /// already writes.
+    struct ProviderRefReflect(ProviderRef): PartialEq;
     /// [`ToolContext`], reflected.
     struct ToolContextReflect(ToolContext): Default, PartialEq;
     /// An effect's answer, `Result<Outcome, ErrorReport>`, reflected.
