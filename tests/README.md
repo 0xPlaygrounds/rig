@@ -56,11 +56,49 @@ encodes the team's model of the wire and structurally cannot falsify it.
 
 ## Core Tests
 
+Start with the owning package and a test-name filter. Confirm that the filter
+actually ran the intended tests; a successful command running zero tests is not
+verification.
+
+```bash
+cargo test --locked -p rig-core --lib <test-name-filter>
+cargo test --locked -p rig --test <provider> <test-name-filter>
+cargo clippy --locked -p rig-core --all-features --tests -- -D warnings
+```
+
+The Clippy command is useful for core test changes involving lint-sensitive
+patterns, not a mandatory check for every edit. Use the owning package and
+relevant features for other changes. Broader facade test commands:
+
 ```bash
 cargo test -p rig --test core          # provider-agnostic core tests
 cargo test -p rig                      # all default non-ignored root-crate tests
 cargo test -p rig --all-features       # same, with all root crate features
 ```
+
+### Fallible test assertions
+
+Workspace Clippy denies `panic_in_result_fn`: `assert!` and `assert_eq!` inside
+a test returning `Result` fail that check even when the test itself passes.
+Use `anyhow::ensure!(actual == expected, "value changed")` in such tests,
+alongside `?` for fallible setup. Preserve each assertion's condition; do not
+add lint suppressions or weaken the test. Unit-returning tests can keep their
+existing assertion style.
+
+### Core feature isolation
+
+The core crate's dev-dependency on itself enables `test-utils`, `websocket`,
+and its default features. Consequently, a core unit-test run with
+`--no-default-features` does not prove those features are absent. For an actual
+feature-disabled library check, select core alone without test targets:
+
+```bash
+cargo check --locked -p rig-core --no-default-features --lib
+```
+
+When the change needs WASM coverage and the target is installed, add
+`--target wasm32-unknown-unknown`. Keep runtime test coverage and compilation
+coverage distinct in the report.
 
 ## Cassette Provider Tests
 

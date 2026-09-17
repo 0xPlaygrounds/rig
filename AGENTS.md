@@ -1,8 +1,9 @@
 # AGENTS.md
 
 Operational instructions for AI coding agents working in Rig. Contributor
-policy and PR etiquette live in `CONTRIBUTING.md`; verification, review, and
-publication workflow in `DEVELOPING.md`; test commands in `tests/README.md`.
+policy and PR etiquette live in [CONTRIBUTING.md](CONTRIBUTING.md); verification,
+review, and publication in [DEVELOPING.md](DEVELOPING.md); test conventions and
+commands in [tests/README.md](tests/README.md).
 This file states rules, not APIs: read the code and manifests for names,
 signatures, module paths, and feature flags.
 
@@ -14,6 +15,20 @@ signatures, module paths, and feature flags.
 - Do not add TODOs, stubs, placeholder implementations, speculative APIs, or backwards compatibility shims.
 - Do not make commits, comments, stage changes, push branches, or open PRs unless the user explicitly asks.
 - Do not discard user changes.
+
+## Efficient Investigation
+
+- Reuse instructions and unchanged source already in context. Read the relevant
+  sections of linked documents, not every document for every task.
+- Use the repository map below to narrow searches to the owning crate or test
+  target. Read complete relevant constructs; widen only when needed.
+- Check actual signatures and existing test conventions before writing examples
+  or smoke programs, rather than discovering APIs through compiler errors.
+- Keep commands and edits on the intended worktree. Confirm the language server
+  indexes it before trusting references; empty results outside its workspace
+  are not proof of no callers. Inspect native/WASM branches explicitly.
+- Request only decision-relevant output. Recover missing diagnostic context from
+  truncated output rather than dumping or fetching the entire log again.
 
 ## Repository Shape
 
@@ -68,8 +83,6 @@ reuse the shared generic completion model for that dialect and express their
 differences through its extension hooks — never a hand-rolled completion
 model, request struct, or message conversion.
 
-For provider bug fixes or behavior changes, prefer recording cassette backed provider tests.
-
 ## Vector Store Changes
 
 Vector stores should live in companion crates. Implement both the scored-document and the
@@ -91,20 +104,14 @@ errors, and use the WASM-compatible bounds.
 
 ## Cassette Regression Tests
 
-Provider regressions should usually include cassette-backed tests. Read
-`tests/README.md` for layout, replay/record commands, and the cassette diff
-review checklist before adding, updating, or running provider tests. Replay
-needs no API keys; record mode needs the provider's key and overwrites fixtures,
-so keep record runs targeted to the provider and test being changed. The scrub
-checks in `tests/common/cassette_safety.rs` are not a substitute for inspecting
-generated fixtures before presenting changes. Make sure cassettes never leak keys before pushing. 
+Provider regressions should usually include cassette-backed tests. Follow
+[tests/README.md](tests/README.md#cassette-provider-tests) for replay/record
+commands and fixture safety review; never record or rewrite fixtures merely
+to make verification pass.
 
 ## Verification
 
-Run the smallest useful local check for the changed behavior; documentation
-edits get diff and link review only. Obtain independent full-diff review, fix
-confirmed P0/P1 findings, and publish promptly when authorized — CI is the
-comprehensive gate. Never claim fully verified or ready to merge while required
-checks are pending or failing. `DEVELOPING.md` is the complete workflow:
-check selection, `cargo xtask verify` modes, review loop, publication, and
-CI completion. Keep progress reports outside the repository.
+Follow [DEVELOPING.md](DEVELOPING.md) for check selection, independent review,
+and authorized publication. Run the smallest useful local check; docs-only
+edits get diff and link review, not Rust builds. Keep progress reports outside
+the repository and never claim merge readiness with required checks pending.
