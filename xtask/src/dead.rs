@@ -11,7 +11,7 @@
 //! The second gate is two conditions on purpose. "No shipped reader" alone
 //! is not enough to delete a field: most unread fields *are* in the
 //! recordings, which means a provider really sends them and a caller
-//! reading [`CompletionResponse::raw`] sees them. Deleting one of those
+//! reading `CompletionResponse::raw` sees them. Deleting one of those
 //! narrows what rig can be asked about a reply. Both conditions together
 //! mean the field is a shape nobody has ever observed, and those are the
 //! only ones worth removing.

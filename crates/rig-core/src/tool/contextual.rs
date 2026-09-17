@@ -356,7 +356,7 @@ where
 }
 
 /// A tool defined at runtime: a name, a schema and a callback. The callback
-/// is the handler ([`ToolFn`]); this struct is its definition plus the
+/// is the handler ([`ToolFn`](crate::serve::adapters::ToolFn)); this struct is its definition plus the
 /// erased handler a registry stages until a bus takes it.
 #[derive(Clone)]
 pub struct DynamicTool {
