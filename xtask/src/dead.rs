@@ -147,19 +147,13 @@ fn listing(items: &[String]) -> String {
 /// Every Rust source file in the workspace, as text.
 fn sources(workspace: &Path) -> Result<Vec<(std::path::PathBuf, String)>, String> {
     let mut out = Vec::new();
-    walk(workspace, &workspace.join("crates"), &mut out)?;
-    walk(workspace, &workspace.join("tests"), &mut out)?;
-    walk(workspace, &workspace.join("examples"), &mut out)?;
-    walk(workspace, &workspace.join("xtask"), &mut out)?;
-    walk(workspace, &workspace.join("test-support"), &mut out)?;
+    for root in ["crates", "tests", "examples", "xtask", "test-support"] {
+        walk(&workspace.join(root), &mut out)?;
+    }
     Ok(out)
 }
 
-fn walk(
-    workspace: &Path,
-    dir: &Path,
-    out: &mut Vec<(std::path::PathBuf, String)>,
-) -> Result<(), String> {
+fn walk(dir: &Path, out: &mut Vec<(std::path::PathBuf, String)>) -> Result<(), String> {
     if !dir.is_dir() {
         return Ok(());
     }
@@ -171,7 +165,7 @@ fn walk(
             if path.file_name().is_some_and(|name| name == "target") {
                 continue;
             }
-            walk(workspace, &path, out)?;
+            walk(&path, out)?;
         } else if path.extension().is_some_and(|ext| ext == "rs") {
             let source = std::fs::read_to_string(&path)
                 .map_err(|error| format!("{}: {error}", path.display()))?;
@@ -331,7 +325,7 @@ fn fields(source: &str) -> Vec<(String, String)> {
             _ => name.clone(),
         };
         for back in 1..4 {
-            let Some(above) = index.checked_sub(back).map(|i| lines[i]) else {
+            let Some(above) = index.checked_sub(back).and_then(|i| lines.get(i)) else {
                 break;
             };
             if let Some(start) = above.find("rename = \"") {

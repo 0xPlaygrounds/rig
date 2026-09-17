@@ -64,6 +64,7 @@ pub(super) fn all() -> Vec<Check> {
             vec![
                 Step::new("@layout", &[]),
                 Step::new("@wires", &[]),
+                Step::new("@dead", &[]),
                 Step::new("@bevy-sources", &[]),
                 Step::new(
                     "python3",
