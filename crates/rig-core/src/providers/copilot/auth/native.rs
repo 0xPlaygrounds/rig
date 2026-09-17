@@ -87,7 +87,7 @@ impl PlatformAuthenticator {
             && let Some(token) = record.token
         {
             return Ok(AuthContext {
-                api_key: token,
+                api_key: token.into(),
                 api_base,
             });
         }
@@ -114,7 +114,7 @@ impl PlatformAuthenticator {
         let api_base = record.api_base();
         write_json_record(self.api_key_file.as_deref(), &record)?;
         Ok(AuthContext {
-            api_key: record.token.unwrap_or_default(),
+            api_key: record.token.unwrap_or_default().into(),
             api_base,
         })
     }
@@ -133,7 +133,7 @@ impl PlatformAuthenticator {
             && let Some(token) = record.token
         {
             return Ok(AuthContext {
-                api_key: token,
+                api_key: token.into(),
                 api_base,
             });
         }
@@ -145,7 +145,7 @@ impl PlatformAuthenticator {
         let api_base = record.api_base();
         write_json_record(self.api_key_file.as_deref(), &record)?;
         Ok(AuthContext {
-            api_key: record.token.unwrap_or_default(),
+            api_key: record.token.unwrap_or_default().into(),
             api_base,
         })
     }

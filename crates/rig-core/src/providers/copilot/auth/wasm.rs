@@ -67,7 +67,7 @@ impl PlatformAuthenticator {
         };
 
         Ok(AuthContext {
-            api_key,
+            api_key: api_key.into(),
             api_base: response.endpoints.and_then(|endpoints| endpoints.api),
         })
     }

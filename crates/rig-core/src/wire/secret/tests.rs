@@ -169,3 +169,90 @@ where
         "a reloaded wire sent the redaction sentinel as a credential: {sent}"
     );
 }
+
+/// Local diagnostic policy, independent of provider responses or cassettes.
+#[test]
+fn chatgpt_auth_context_debug_redacts_retained_credential() {
+    let key = "synthetic-chatgpt-context-token";
+    let context = crate::providers::chatgpt::auth::AuthContext {
+        access_token: key.into(),
+        account_id: Some("synthetic-account".into()),
+    };
+    assert_eq!(context.access_token.expose(), key);
+    for debug in [format!("{context:?}"), format!("{context:#?}")] {
+        assert!(!debug.contains(key), "AuthContext leaked its credential");
+    }
+}
+
+/// Local diagnostic policy, independent of provider responses or cassettes.
+#[test]
+fn copilot_auth_context_debug_redacts_retained_credential() {
+    let key = "synthetic-copilot-context-key";
+    let context = crate::providers::copilot::auth::AuthContext {
+        api_key: key.into(),
+        api_base: Some("https://copilot.example.invalid".into()),
+    };
+    assert_eq!(context.api_key.expose(), key);
+    for debug in [format!("{context:?}"), format!("{context:#?}")] {
+        assert!(!debug.contains(key), "AuthContext leaked its credential");
+    }
+}
+
+/// Encoding and diagnostics are local boundaries; no response needs recording.
+#[test]
+fn gemini_encoded_debug_redacts_query_without_removing_authentication() -> anyhow::Result<()> {
+    let key = "synthetic-gemini-query-key";
+    let encoded = Gemini::new(key)
+        .generate_content("gemini-2.5-flash")
+        .encode(probe_request(), Mode::Unary)?;
+    assert_eq!(
+        encoded.requests[0].uri().query(),
+        Some("key=synthetic-gemini-query-key")
+    );
+    for debug in [format!("{encoded:?}"), format!("{encoded:#?}")] {
+        assert!(!debug.contains(key), "Encoded leaked its query credential");
+        assert!(debug.contains("POST"));
+        assert!(debug.contains("/v1beta/models/gemini-2.5-flash:generateContent"));
+    }
+    Ok(())
+}
+
+#[test]
+fn encoded_debug_excludes_every_non_path_request_surface() -> anyhow::Result<()> {
+    use crate::http_client::framing::Framing;
+    use crate::wire::{Body, Encoded};
+
+    let encoded = Encoded::batch(
+        vec![
+            http::Request::post(
+                "https://synthetic-authority.invalid/first?unknown=synthetic-query",
+            )
+            .header("authorization", "synthetic-header")
+            .body(Body::Bytes(b"synthetic-body".to_vec()))?,
+            http::Request::get("http://second-authority.invalid/second?key=second-query")
+                .header("x-private", "second-header")
+                .body(Body::Bytes(b"second-body".to_vec()))?,
+        ],
+        Framing::Whole,
+    );
+    for debug in [format!("{encoded:?}"), format!("{encoded:#?}")] {
+        for marker in [
+            "synthetic-authority",
+            "synthetic-query",
+            "synthetic-header",
+            "synthetic-body",
+            "second-authority",
+            "second-query",
+            "second-header",
+            "second-body",
+            "https://",
+            "http://",
+        ] {
+            assert!(!debug.contains(marker), "Encoded leaked {marker}");
+        }
+        for useful in ["POST", "/first", "GET", "/second"] {
+            assert!(debug.contains(useful), "Encoded omitted {useful}");
+        }
+    }
+    Ok(())
+}

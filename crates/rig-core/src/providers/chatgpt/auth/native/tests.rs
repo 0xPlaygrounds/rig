@@ -99,3 +99,34 @@ fn build_auth_record_preserves_existing_refresh_token_when_refresh_omits_one() {
         Some("cached-refresh-token")
     );
 }
+
+/// Disk persistence and reuse are local contracts, not provider responses.
+#[tokio::test]
+async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<()> {
+    let dir = assert_fs::TempDir::new()?;
+    let path = dir.path().join("auth.json");
+    let fixture = serde_json::json!({
+        "access_token": "synthetic-cached-chatgpt-token",
+        "refresh_token": "synthetic-cached-refresh-token",
+        "id_token": null,
+        "expires_at": i64::MAX,
+        "account_id": "synthetic-cached-account"
+    });
+    let record: super::AuthRecord = serde_json::from_value(fixture.clone())?;
+    super::write_json_record(Some(&path), &record)?;
+    let http = RecordingHttpClient::new("");
+    let auth = PlatformAuthenticator::new(Some(path.clone()), DeviceCodeHandler::default(), false);
+    let context = auth.auth_context_oauth(&http).await?;
+    assert!(http.requests().is_empty(), "a fresh cache must not refresh");
+    assert_eq!(
+        context.access_token.expose(),
+        "synthetic-cached-chatgpt-token"
+    );
+    assert_eq!(
+        context.account_id.as_deref(),
+        Some("synthetic-cached-account")
+    );
+    let persisted: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
+    assert_eq!(persisted, fixture);
+    Ok(())
+}

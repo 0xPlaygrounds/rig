@@ -235,6 +235,10 @@ impl WireFrame {
 ///
 /// Data only: built by [`Wire::encode`] from the wire and the request, and
 /// read by the driver. A wire never touches a socket or a request extension.
+///
+/// `Debug` shows request methods and URI paths, not schemes, authorities,
+/// queries, header values or bodies. Paths are not scrubbed: callers must
+/// still avoid placing sensitive data in them.
 pub struct Encoded {
     /// The HTTP requests to send, in order — one for all but the batch
     /// endpoints. A wire whose provider takes one item per request (Cohere
@@ -312,17 +316,23 @@ impl std::fmt::Debug for Body {
 
 impl std::fmt::Debug for Encoded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // The URIs and the framing, not the bodies: an encoded request is
-        // the one place a credential is already in a header.
+        // Diagnostics omit query, authority, headers and bodies. A caller's
+        // path can still contain sensitive data; it is not scrubbed here.
+        struct Requests<'a>(&'a [http::Request<Body>]);
+
+        impl std::fmt::Debug for Requests<'_> {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.debug_list()
+                    .entries(
+                        self.0
+                            .iter()
+                            .map(|request| (request.method(), request.uri().path())),
+                    )
+                    .finish()
+            }
+        }
         f.debug_struct("Encoded")
-            .field(
-                "requests",
-                &self
-                    .requests
-                    .iter()
-                    .map(|request| format!("{} {}", request.method(), request.uri()))
-                    .collect::<Vec<_>>(),
-            )
+            .field("requests", &Requests(&self.requests))
             .field("framing", &self.framing)
             .field("request_id_header", &self.request_id_header)
             .field("relaxed_content_type", &self.relaxed_content_type)

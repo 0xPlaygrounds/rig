@@ -1,4 +1,5 @@
 use crate::http_client::HttpClientExt;
+use crate::wire::Secret;
 use futures::lock::Mutex;
 use std::fmt;
 use std::path::PathBuf;
@@ -69,7 +70,8 @@ pub use crate::providers::internal::auth::AuthError;
 
 #[derive(Debug, Clone)]
 pub struct AuthContext {
-    pub api_key: String,
+    /// Resolved credential. Use [`Secret::expose`] only when raw bytes are required.
+    pub api_key: Secret,
     pub api_base: Option<String>,
 }
 
@@ -100,7 +102,7 @@ impl Authenticator {
     {
         match &self.source {
             AuthSource::ApiKey(api_key) => Ok(AuthContext {
-                api_key: api_key.clone(),
+                api_key: api_key.clone().into(),
                 api_base: None,
             }),
             AuthSource::GitHubAccessToken(access_token) => {

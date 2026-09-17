@@ -104,7 +104,7 @@ impl PlatformAuthenticator {
                 write_json_record(self.auth_file.as_deref(), &record)?;
             }
             return Ok(AuthContext {
-                access_token,
+                access_token: access_token.into(),
                 account_id,
             });
         }
@@ -114,7 +114,7 @@ impl PlatformAuthenticator {
                 Ok(refreshed) => {
                     write_json_record(self.auth_file.as_deref(), &refreshed)?;
                     return Ok(AuthContext {
-                        access_token: refreshed.access_token.unwrap_or_default(),
+                        access_token: refreshed.access_token.unwrap_or_default().into(),
                         account_id: refreshed.account_id,
                     });
                 }
@@ -133,7 +133,7 @@ impl PlatformAuthenticator {
         let fresh = self.login_device_flow(http).await?;
         write_json_record(self.auth_file.as_deref(), &fresh)?;
         Ok(AuthContext {
-            access_token: fresh.access_token.unwrap_or_default(),
+            access_token: fresh.access_token.unwrap_or_default().into(),
             account_id: fresh.account_id,
         })
     }
