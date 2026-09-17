@@ -4,20 +4,24 @@
 //! the provider, and `ModelListingError::RequestError` reported a fault its
 //! own `boundary()` called a request fault as `ErrorKind::Http`.
 //!
-//! All seven are listed. Adding an operation without adding it here is the
-//! failure mode, so `refusals()` names them rather than deriving them, and
-//! a reader can check the list against `provider_error_enum!`'s callers.
+//! All seven are listed; image and audio generation are features, so the
+//! list shrinks with the build rather than the claim quietly shrinking with
+//! it. Adding an operation without adding it here is the failure mode, so
+//! `refusals()` names them rather than deriving them, and a reader can
+//! check the list against `provider_error_enum!`'s callers.
 //!
 //! | claim | test |
 //! |---|---|
 //! | all seven operations call a credential-less request a fault in the request | `a_missing_credential_is_a_request_fault_in_every_operation` |
 //! | all seven name the variable the same way | `every_operation_names_the_variable_the_same_way` |
 
+#[cfg(feature = "audio")]
 use crate::audio_generation::AudioGenerationError;
 use crate::client::VerifyError;
 use crate::completion::CompletionError;
 use crate::embeddings::EmbeddingError;
 use crate::error::{ErrorKind, ErrorReport};
+#[cfg(feature = "image")]
 use crate::image_generation::ImageGenerationError;
 use crate::model::ModelListingError;
 use crate::observe::AdapterErrorBoundary;
@@ -39,16 +43,21 @@ fn refusals() -> Vec<Refusal> {
         (name, error.boundary(), report.kind, error.to_string())
     }
 
-    vec![
+    let mut refusals = vec![
         refusal::<CompletionError>("completion"),
         refusal::<EmbeddingError>("embedding"),
         refusal::<TranscriptionError>("transcription"),
-        refusal::<ImageGenerationError>("image generation"),
         refusal::<RerankError>("rerank"),
-        refusal::<AudioGenerationError>("audio generation"),
         refusal::<ModelListingError>("model listing"),
         refusal::<VerifyError>("verify"),
-    ]
+    ];
+    // These two operations are features, so the list shrinks with the build
+    // rather than the claim quietly shrinking with it.
+    #[cfg(feature = "image")]
+    refusals.push(refusal::<ImageGenerationError>("image generation"));
+    #[cfg(feature = "audio")]
+    refusals.push(refusal::<AudioGenerationError>("audio generation"));
+    refusals
 }
 
 /// The refusal happens inside `encode`: no request was sent, so no provider
