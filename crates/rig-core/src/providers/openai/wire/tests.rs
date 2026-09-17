@@ -602,7 +602,7 @@ fn an_optional_credential_encodes_without_one() {
         .chat("qwen3")
         .encode(a_prompt(), Mode::Unary)
         .expect("a keyless local server needs no credential");
-    let request = encoded.requests.iter().next().expect("one request");
+    let request = encoded.requests.first().expect("one request");
     assert!(
         !request.headers().contains_key(http::header::AUTHORIZATION),
         "an optional credential that is absent sends no header"
@@ -619,7 +619,7 @@ fn a_credentialed_completion_encodes_and_carries_the_key() {
         keyed.responses("gpt-5.2").encode(a_prompt(), Mode::Unary),
     ] {
         let encoded = encoded.expect("a keyed configuration encodes");
-        let request = encoded.requests.iter().next().expect("one request");
+        let request = encoded.requests.first().expect("one request");
         assert_eq!(
             request.headers()[http::header::AUTHORIZATION],
             "Bearer sk-test"
