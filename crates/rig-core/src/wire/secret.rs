@@ -41,7 +41,7 @@ impl Secret {
     /// credential (a local Ollama, a gateway whose key is optional) never
     /// calls this.
     pub fn require<E: super::WireError>(&self, env_var: &'static str) -> Result<&str, E> {
-        if self.0.is_empty() {
+        if self.0.trim().is_empty() {
             return Err(E::missing_credential(env_var));
         }
         Ok(&self.0)

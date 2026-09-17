@@ -225,19 +225,28 @@ fn recorded_keys(workspace: &Path) -> Result<HashSet<String>, String> {
         let mut files = Vec::new();
         collect(&workspace.join(root), &mut files)?;
         for source in files {
+            // A cassette stores a JSON body as a YAML scalar, so most recordings
+            // carry `\"model\"` rather than `"model"`. Unescaping is half the
+            // job: the scalar's own opening quote shifts the quote parity, so a
+            // scan that always resumes past a closing quote reads `:` and `,` as
+            // the keys and finds none of the real ones -- the gate would then
+            // report "no recording carries this field" for files that do.
+            // Resuming past the *opening* quote instead tries both parities.
+            let source = source.replace("\\\"", "\"");
             let mut rest = source.as_str();
             while let Some(start) = rest.find('"') {
                 rest = &rest[start + 1..];
                 let Some(end) = rest.find('"') else { break };
                 let (candidate, after) = (&rest[..end], &rest[end + 1..]);
                 if after.trim_start().starts_with(':')
+                    && !candidate.is_empty()
                     && candidate
                         .chars()
                         .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
                 {
                     keys.insert(candidate.to_owned());
+                    rest = after;
                 }
-                rest = after;
             }
         }
     }
@@ -324,10 +333,19 @@ fn fields(source: &str) -> Vec<(String, String)> {
             Some("camelCase") => camel_case(&name),
             _ => name.clone(),
         };
+        // A field rig *writes* when a caller sets it is a request option, and a
+        // recording of rig's own past traffic cannot speak to it: nothing
+        // in-tree constructs `FileSearchTool`, yet dropping the store names
+        // leaves a search of nowhere. `skip_serializing_if` is exactly that
+        // marker, so such a field is never reported as unread.
+        let mut request_side = false;
         for back in 1..4 {
             let Some(above) = index.checked_sub(back).and_then(|i| lines.get(i)) else {
                 break;
             };
+            if above.contains("skip_serializing_if") {
+                request_side = true;
+            }
             if let Some(start) = above.find("rename = \"") {
                 let after = &above[start + "rename = \"".len()..];
                 if let Some(end) = after.find('"') {
@@ -338,6 +356,9 @@ fn fields(source: &str) -> Vec<(String, String)> {
             if !above.trim_start().starts_with('#') {
                 break;
             }
+        }
+        if request_side {
+            continue;
         }
         out.push((name, wire));
     }

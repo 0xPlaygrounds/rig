@@ -259,7 +259,12 @@ fn stamp<E: WireError>(
     has_vision: bool,
     intent: CopilotIntent,
 ) -> Result<(), E> {
-    let headers = super::default_headers(provider.api_key.expose(), initiator, has_vision, intent);
+    // Copilot's own seam, not the delegated wire's: the listing route builds its
+    // request here and nowhere else, so a credential-less config reached the
+    // provider as `Bearer ` and came back 401 -- the fault this refusal exists
+    // to name locally.
+    let api_key = provider.api_key.require::<E>(DIALECT.api_key_env)?;
+    let headers = super::default_headers(api_key, initiator, has_vision, intent);
     let map = request.headers_mut();
     for (name, value) in &headers {
         let name = http::HeaderName::from_bytes(name.as_bytes())

@@ -169,7 +169,10 @@ impl ProviderBinding {
 }
 
 /// Why a materialization did not happen. Every variant is deterministic
-/// for a given world and resolver; none carries a secret.
+/// for a given world and resolver. No variant rig constructs carries a
+/// secret; `MissingCredential::detail` is the host resolver's own string,
+/// reproduced verbatim, so a resolver that echoes a value it tried puts it
+/// here.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum MaterializeError {
     /// The world has no [`Materializer`].

@@ -1785,6 +1785,8 @@ pub mod interactions_api_types {
         pub thinking_summaries: Option<ThinkingSummaries>,
         #[serde(skip_serializing_if = "Option::is_none")]
         pub max_output_tokens: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub speech_config: Option<Vec<SpeechConfig>>,
     }
 
     impl GenerationConfig {
@@ -1798,6 +1800,7 @@ pub mod interactions_api_types {
                 && self.thinking_level.is_none()
                 && self.thinking_summaries.is_none()
                 && self.max_output_tokens.is_none()
+                && self.speech_config.is_none()
         }
     }
 
@@ -1863,6 +1866,8 @@ pub mod interactions_api_types {
     pub struct ComputerUseTool {
         #[serde(skip_serializing_if = "Option::is_none")]
         pub environment: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub excluded_predefined_functions: Option<Vec<String>>,
     }
 
     /// MCP server tool configuration.
@@ -1882,7 +1887,11 @@ pub mod interactions_api_types {
     #[derive(Clone, Debug, Deserialize, Serialize)]
     pub struct FileSearchTool {
         #[serde(skip_serializing_if = "Option::is_none")]
+        pub file_search_store_names: Option<Vec<String>>,
+        #[serde(skip_serializing_if = "Option::is_none")]
         pub top_k: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub metadata_filter: Option<String>,
     }
 
     impl TryFrom<crate::completion::ToolDefinition> for Tool {

@@ -447,3 +447,32 @@ fn the_base_url_comes_from_the_token_unless_overridden() {
         "https://api.githubcopilot.com"
     );
 }
+
+/// Copilot stamps its own envelope onto every route, including the listing
+/// route it builds by hand, so the refusal has to live in `stamp` rather than
+/// in the delegated OpenAI wire: a reloaded config has no credential, and it
+/// used to reach GitHub as `Bearer ` and come back 401.
+#[test]
+fn no_credential_refuses_every_route_by_naming_the_variable() {
+    let unauthenticated = Copilot::new("");
+
+    let Err(listing) = unauthenticated.models().encode((), Mode::Unary) else {
+        panic!("a model listing with no credential must not be built");
+    };
+    assert!(matches!(listing, ModelListingError::RequestError { .. }));
+
+    let Err(chat) = unauthenticated
+        .completion(super::super::GPT_4O)
+        .encode(prompt(), Mode::Unary)
+    else {
+        panic!("a chat request with no credential must not be built");
+    };
+    assert!(matches!(chat, CompletionError::MissingCredential { .. }));
+
+    for error in [listing.to_string(), chat.to_string()] {
+        assert!(
+            error.contains("GITHUB_COPILOT_API_KEY"),
+            "the failure must name the variable that supplies a key: {error}"
+        );
+    }
+}

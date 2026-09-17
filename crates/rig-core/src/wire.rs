@@ -312,15 +312,16 @@ impl std::fmt::Debug for Body {
 
 impl std::fmt::Debug for Encoded {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // The URIs and the framing, not the bodies: an encoded request is
-        // the one place a credential is already in a header.
+        // The routes and the framing, not the bodies and not the query: a
+        // Gemini request carries its key as a `key=` query pair, so a full
+        // URI here would print a live credential.
         f.debug_struct("Encoded")
             .field(
                 "requests",
                 &self
                     .requests
                     .iter()
-                    .map(|request| format!("{} {}", request.method(), request.uri()))
+                    .map(|request| format!("{} {}", request.method(), request.uri().path()))
                     .collect::<Vec<_>>(),
             )
             .field("framing", &self.framing)

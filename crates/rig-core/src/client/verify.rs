@@ -23,6 +23,11 @@ pub enum VerifyError {
     /// verification with a body is [`Self::ProviderResponse`].
     #[error("http error: {0}")]
     HttpError(#[source] http_client::Error),
+    /// There was no credential to check. The refusal happens in `encode`,
+    /// so no request was sent and the provider gave no verdict -- which is
+    /// why this is not [`Self::InvalidAuthentication`].
+    #[error("no credential to verify; set `{env_var}` or build the configuration with a key")]
+    MissingCredential { env_var: &'static str },
 }
 
 crate::provider_response::impl_provider_response_helpers!(VerifyError);
@@ -64,11 +69,10 @@ impl WireError for VerifyError {
         Self::ProviderError(message)
     }
 
-    /// A key check with no key is the answer the check exists to give.
+    /// A key check with no key is the answer the check exists to give, and
+    /// it is rig's answer rather than the provider's.
     fn missing_credential(env_var: &'static str) -> Self {
-        Self::ProviderError(format!(
-            "no credential to verify; set `{env_var}` or build the configuration with a key"
-        ))
+        Self::MissingCredential { env_var }
     }
 
     fn provider_body(body: &str) -> Self {
@@ -105,6 +109,7 @@ impl WireError for VerifyError {
             Self::InvalidAuthentication | Self::ProviderError(_) | Self::ProviderResponse(_) => {
                 AdapterErrorBoundary::ProviderResponse
             }
+            Self::MissingCredential { .. } => AdapterErrorBoundary::Request,
         }
     }
 }
@@ -123,6 +128,7 @@ impl From<&VerifyError> for ErrorReport {
                 ErrorKind::Provider
             }
             VerifyError::ProviderResponse(_) => ErrorKind::ProviderResponse,
+            VerifyError::MissingCredential { .. } => ErrorKind::Request,
         };
         let mut report =
             ErrorReport::new(kind, error.to_string()).with_retryable(error.is_retryable());

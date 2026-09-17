@@ -114,6 +114,28 @@ fn a_recorded_key_is_a_key_and_not_a_value() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
+/// Most cassettes store the body as a double-quoted YAML scalar, so the JSON
+/// quotes arrive escaped. Reading those is the whole point of the gate: if
+/// they are skipped, a field 180 recordings carry looks unrecorded and the
+/// gate licenses deleting it.
+#[test]
+fn an_escaped_body_is_read_like_a_plain_one() {
+    let dir = tempdir();
+    let cassettes = dir.join("tests/cassettes");
+    std::fs::create_dir_all(&cassettes).expect("the fixture root");
+    std::fs::write(
+        cassettes.join("one.yaml"),
+        "    body: \"{\\\"updateTime\\\":\\\"now\\\",\\\"response_type\\\":\\\"message\\\"}\"",
+    )
+    .expect("a cassette");
+    std::fs::create_dir_all(dir.join("crates/rig-verify/fixtures")).expect("the golden root");
+
+    let keys = recorded_keys(&dir).expect("the keys");
+    assert!(keys.contains("updateTime"), "{keys:?}");
+    assert!(keys.contains("response_type"), "{keys:?}");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
 /// The exemption list is the only way a caller-less function passes, and it
 /// is named one at a time so a new one is argued for rather than matched by
 /// a path pattern.
@@ -161,4 +183,33 @@ fn tempdir() -> std::path::PathBuf {
     ));
     std::fs::create_dir_all(&dir).expect("a scratch directory");
     dir
+}
+
+/// The two gates answer different questions, and only one of them can speak
+/// about a field a caller sets: `FileSearchTool`'s store names have no
+/// in-tree constructor and appear in no recording, and deleting them left a
+/// search of nowhere. A written field is a request option, not dead weight.
+#[test]
+fn a_field_a_caller_sets_is_never_reported_as_unread() {
+    let source = r#"
+    pub struct FileSearchTool {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pub file_search_store_names: Option<Vec<String>>,
+    }
+    pub struct ListedModel {
+        #[serde(default)]
+        pub is_deprecated: Option<bool>,
+    }
+"#;
+    let found = fields(source);
+    assert!(
+        !found
+            .iter()
+            .any(|(name, _)| name == "file_search_store_names"),
+        "a written field is a request option: {found:?}"
+    );
+    assert!(
+        found.iter().any(|(name, _)| name == "is_deprecated"),
+        "a read-only field is still judged: {found:?}"
+    );
 }
