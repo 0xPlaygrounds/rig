@@ -146,6 +146,12 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     /// out is the credential — into [`WireBinding::api_key`], which the
     /// harness resolver hands back under [`CASSETTE_CREDENTIAL`].
     ///
+    /// So the binding is written out (`ProviderBinding::configured`), never
+    /// named: the head wire's base URL is the cassette's own socket, which
+    /// no provider name resolves to, so the short named form
+    /// (`"openai:gpt-4.1"`) would materialize a client pointed at the live
+    /// gateway instead of the recording.
+    ///
     /// The two OpenAI endpoints are one configuration, so each arm names
     /// its own [`openai::Route`]: the config's route defaults to the
     /// dialect's flagship, so a `Bound<Chat>` head on a Responses-flagship
@@ -163,7 +169,7 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
             // which is also what a scene load leaves in it.
             let api_key = config.credential().expose().to_owned();
             Some(WireBinding {
-                binding: ProviderBinding::new(
+                binding: ProviderBinding::configured(
                     key.clone(),
                     config.with_credential(Secret::default()),
                     model_id,

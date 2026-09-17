@@ -29,11 +29,9 @@
 use bevy_ecs::prelude::*;
 use bevy_reflect::Reflect;
 use rig_core::{
-    driver::Bind,
     effect::{HandlerDescriptor, HandlerKey},
     http_client::BoxedHttpClient,
-    providers::{anthropic, gemini, openai},
-    serve::{ErasedHandler, adapters::CompletionAdapter},
+    serve::ErasedHandler,
 };
 use serde::{Deserialize, Serialize};
 
@@ -46,106 +44,16 @@ use super::handlers::{Bound, Handler, Handlers};
 /// the same reason they are here.
 pub use rig_core::wire::Secret;
 
-/// Which provider serves a binding: the provider's own configuration.
+/// Which provider a binding names, and how: rig-core's own
+/// [`ProviderRef`] — `"deepseek:deepseek-chat"`, or a
+/// [`ProviderConfig`] written out when a base URL, a route, a beta or an
+/// api-version has to be named.
 ///
-/// Not a taxonomy — the config structs rig-core already ships, which carry
-/// everything that used to be spread across a `kind` enum, a `dialect`
-/// string, a `base_url` and an untyped `extra_params` bag:
-///
-/// - **which gateway**: `OpenAI::dialect` / `Anthropic::dialect`, a `Dialect`
-///   that serializes as its name and deserializes by looking the name up, so
-///   `"deepseek"`, `"venice"`, `"zai"` and every other compatible gateway is
-///   data and an unknown name is a decode error where the names live.
-/// - **which endpoint**: `OpenAI::route` (`Chat` or `Responses`), defaulting
-///   to the dialect's flagship. Choosing it is provider configuration, which
-///   is the decision rig-core already made.
-/// - **provider options**: `Anthropic::{version, betas}`,
-///   `OpenAI::{api_version, audio_api_version}` — typed fields, validated by
-///   serde rather than by a hand-written key allowlist.
-/// - **the base URL**: every config's own `base_url`.
-///
-/// The credential inside is the empty [`Secret`]: it is redacted on the way
-/// out and dropped on the way back in by contract, and
-/// [`Materializer::build`] puts the resolved one in. So a scene carries a
-/// complete provider configuration and no key.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "provider", rename_all = "snake_case")]
-pub enum ProviderConfig {
-    /// Every OpenAI-shaped provider, by dialect: OpenAI itself, Azure,
-    /// DeepSeek, Groq, Venice, OpenRouter, xAI, ChatGPT, … over Chat
-    /// Completions or Responses per the config's `route`.
-    OpenAi(openai::wire::OpenAI),
-    /// Anthropic's Messages API, by dialect: Anthropic itself, zAI,
-    /// MiniMax, Moonshot, XiaomiMiMo.
-    Anthropic(anthropic::wire::Anthropic),
-    /// Gemini's GenerateContent.
-    Gemini(gemini::Gemini),
-}
-
-impl ProviderConfig {
-    /// The provider's descriptor name, as records and telemetry name it.
-    pub fn provider(&self) -> &str {
-        match self {
-            Self::OpenAi(config) => config.dialect.name,
-            Self::Anthropic(config) => config.dialect.name,
-            Self::Gemini(_) => "gemini",
-        }
-    }
-
-    /// The base URL every request resolves against.
-    pub fn base_url(&self) -> &str {
-        match self {
-            Self::OpenAi(config) => &config.base_url,
-            Self::Anthropic(config) => &config.base_url,
-            Self::Gemini(config) => &config.base_url,
-        }
-    }
-
-    /// The credential this configuration would send.
-    pub fn credential(&self) -> &Secret {
-        match self {
-            Self::OpenAi(config) => &config.api_key,
-            Self::Anthropic(config) => &config.api_key,
-            Self::Gemini(config) => &config.api_key,
-        }
-    }
-
-    /// The same configuration carrying `secret`: what the host's resolver
-    /// returned, put in at materialization and nowhere else.
-    pub fn with_credential(mut self, secret: Secret) -> Self {
-        match &mut self {
-            Self::OpenAi(config) => config.api_key = secret,
-            Self::Anthropic(config) => config.api_key = secret,
-            Self::Gemini(config) => config.api_key = secret,
-        }
-        self
-    }
-
-    /// This configuration's completion adapter for `model`, under `label`,
-    /// over `transport`.
-    fn adapter(self, model: &str, label: &str, transport: BoxedHttpClient) -> ErasedHandler {
-        match self {
-            Self::OpenAi(config) => ErasedHandler::new(CompletionAdapter::new(
-                label,
-                config.bind(transport).completion(model),
-            )),
-            Self::Anthropic(config) => ErasedHandler::new(CompletionAdapter::new(
-                label,
-                config.bind(transport).completion(model),
-            )),
-            Self::Gemini(config) => ErasedHandler::new(CompletionAdapter::new(
-                label,
-                config.bind(transport).completion(model),
-            )),
-        }
-    }
-}
-
-impl std::fmt::Display for ProviderConfig {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.provider())
-    }
-}
+/// rig-ecs keeps no provider vocabulary of its own: the names, the
+/// dialects, the options and the lookup are rig-core's
+/// ([`providers::by_name`](rig_core::providers::by_name)), and a binding is
+/// the wish to build one of them later.
+pub use rig_core::providers::{ModelRef, ProviderConfig, ProviderRef};
 
 /// A reference to a credential the host resolves — an environment variable
 /// name, a vault key id, a label the host's resolver knows. Never the
@@ -192,12 +100,12 @@ pub struct ProviderBinding {
     /// The key the built handler serves (`Bound.key` once materialized).
     #[reflect(remote = crate::bus::reflect::HandlerKeyReflect)]
     pub key: HandlerKey,
-    /// Which provider, as its own configuration: the dialect, the endpoint,
-    /// the base URL and every provider option, with no credential in it.
-    #[reflect(remote = crate::bus::reflect::ProviderConfigReflect)]
-    pub config: ProviderConfig,
-    /// The provider's model id (`claude-haiku-4-5-20251001`, `gpt-4.1-mini`).
-    pub model: String,
+    /// Which provider and model, in either form: a name, or a
+    /// configuration. One field, because a name already implies the
+    /// configuration it resolves to — a scene that overrides nothing saves
+    /// `"anthropic:claude-haiku-4-5"` and nothing else.
+    #[reflect(remote = crate::bus::reflect::ProviderRefReflect)]
+    pub provider: ProviderRef,
     /// The adapter's label: the `ModelRef` the bound descriptor advertises
     /// (`CompletionAdapter::new(label, model)`), which is what the log's
     /// header and the policy hash name. Defaults to `model`.
@@ -208,11 +116,32 @@ pub struct ProviderBinding {
 }
 
 impl ProviderBinding {
-    /// A binding of `key` to `model` on `config`, labelled by the model id.
+    /// A binding of `key` to a named model
+    /// ([`ModelRef`]: `"deepseek:deepseek-chat"`), labelled by the model
+    /// id, on the provider's default configuration.
     ///
-    /// Provider options are `config`'s own fields, so there is no second
-    /// place to put them and nothing to validate twice.
+    /// The short form, and the common one: a provider that needs no
+    /// override needs no configuration written out.
     pub fn new(
+        key: impl Into<HandlerKey>,
+        model: ModelRef,
+        credential: impl Into<CredentialRef>,
+    ) -> Self {
+        let label = model.model().to_owned();
+        Self {
+            key: key.into(),
+            provider: ProviderRef::Named(model),
+            label,
+            credential: credential.into(),
+        }
+    }
+
+    /// A binding of `key` to `model` on a configuration written out: a base
+    /// URL, a route, a beta, an api-version.
+    ///
+    /// Provider options are `config`'s own typed fields, so there is no
+    /// second place to put them and nothing to validate twice.
+    pub fn configured(
         key: impl Into<HandlerKey>,
         config: ProviderConfig,
         model: impl Into<String>,
@@ -221,11 +150,15 @@ impl ProviderBinding {
         let model = model.into();
         Self {
             key: key.into(),
-            config,
             label: model.clone(),
-            model,
+            provider: ProviderRef::Configured { config, model },
             credential: credential.into(),
         }
+    }
+
+    /// The model id this binding names.
+    pub fn model(&self) -> &str {
+        self.provider.model()
     }
 
     /// With the adapter's label.
@@ -371,11 +304,11 @@ impl Materializer {
         // the provider, the resolved secret goes into it, and binding it is
         // a struct literal. The only failure a binding has left is the
         // credential lookup above, and the bus refusing the registration.
-        let handler = binding.config.clone().with_credential(secret).adapter(
-            &binding.model,
-            &binding.label,
-            self.transport(),
-        );
+        let handler = binding
+            .provider
+            .config()
+            .with_credential(secret)
+            .completion_adapter(binding.model(), &binding.label, self.transport());
         Ok((self.serving)(handler))
     }
 }
@@ -577,6 +510,90 @@ pub fn materialize(world: &mut World) {
             log::error!("provider bindings did not materialize: {error}");
             world.insert_resource(MaterializeFailed(error));
         }
+    }
+}
+
+/// What a host can answer about a world's providers without resolving a
+/// credential, touching the environment or sending a request.
+///
+/// The question a startup screen asks: which providers does this build
+/// know, what does this scene bind, and what would it need to run? A
+/// refusal is *reported* here rather than aborting the world — the
+/// all-or-nothing rule is about registration, which the policy hash
+/// depends on, not about diagnosis.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProviderDiagnostics {
+    /// Every provider name this build knows, in the registry's order.
+    pub known: Vec<&'static str>,
+    /// Every binding in the world, by key.
+    pub bindings: Vec<BindingDiagnostic>,
+    /// Why the last [`materialize`] pass refused, when one did.
+    pub refused: Option<MaterializeError>,
+}
+
+/// One binding, as a diagnostic: everything readable off the data, and no
+/// secret.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BindingDiagnostic {
+    /// The key it serves once materialized.
+    pub key: HandlerKey,
+    /// The provider it names.
+    pub provider: String,
+    /// The model id it names.
+    pub model: String,
+    /// Whether the provider is one this build knows. A binding read from a
+    /// scene cannot be `false` — serde refuses an unknown name — but one
+    /// built in code from a config whose dialect this build dropped can be.
+    pub known: bool,
+    /// Whether something already serves the key, in which case
+    /// materialization would keep it rather than build this binding.
+    pub served: bool,
+    /// The credential reference the host's resolver is asked for. A name,
+    /// never a secret.
+    pub credential: CredentialRef,
+    /// The environment this binding's provider reads when it is built from
+    /// the environment — the credential's variable, and the base URL's
+    /// where the dialect names one.
+    pub required_env: Vec<&'static str>,
+}
+
+/// Report what this world binds and what this build knows.
+///
+/// Read-only: it registers nothing, resolves nothing and sends nothing, so
+/// it is safe to call before a [`Materializer`] is installed and after a
+/// refusal. Bindings come back ordered by key, so two runs over one world
+/// report the same thing.
+pub fn provider_diagnostics(world: &mut World) -> ProviderDiagnostics {
+    let known: Vec<&'static str> = rig_core::providers::all().collect();
+    let bound: Vec<HandlerKey> = world
+        .query::<&Bound>()
+        .iter(world)
+        .map(|bound| bound.key.clone())
+        .collect();
+    let mut bindings: Vec<BindingDiagnostic> = world
+        .query::<(Entity, &ProviderBinding)>()
+        .iter(world)
+        .map(|(entity, binding)| BindingDiagnostic {
+            key: binding.key.clone(),
+            provider: binding.provider.provider().to_owned(),
+            model: binding.model().to_owned(),
+            known: known.contains(&binding.provider.provider()),
+            // Served here (a hand registration, an earlier pass) or bound
+            // on any entity: either way materialization keeps what serves
+            // the key instead of building this one.
+            served: world.get::<Handler>(entity).is_some()
+                || bound.iter().any(|key| key == &binding.key),
+            credential: binding.credential.clone(),
+            required_env: binding.provider.required_env(),
+        })
+        .collect();
+    bindings.sort_by(|a, b| a.key.cmp(&b.key));
+    ProviderDiagnostics {
+        known,
+        bindings,
+        refused: world
+            .get_resource::<MaterializeFailed>()
+            .map(|failed| failed.0.clone()),
     }
 }
 

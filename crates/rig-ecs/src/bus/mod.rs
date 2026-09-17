@@ -124,8 +124,9 @@ pub mod stream_delivery;
 pub mod witness;
 
 pub use binding::{
-    CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport, Materializer,
-    ProviderBinding, ProviderConfig, Secret, materialize, materialize_bindings,
+    BindingDiagnostic, CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport,
+    Materializer, ModelRef, ProviderBinding, ProviderConfig, ProviderDiagnostics, ProviderRef,
+    Secret, materialize, materialize_bindings, provider_diagnostics,
 };
 pub use collect::{Landed, Landing, StreamingView, collect_streams, collect_tasks, settle};
 pub use delivery::{ReplayDelivery, ReplayFailure};

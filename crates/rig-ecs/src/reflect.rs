@@ -62,7 +62,7 @@ pub fn install_reflect(world: &mut World) {
             bus::Bound,
             bus::ProviderBinding,
             bus::CredentialRef,
-            ProviderConfigReflect,
+            ProviderRefReflect,
             HandlerKeyReflect,
             EffectKindReflect,
             EffectIdReflect,

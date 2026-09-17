@@ -32,6 +32,9 @@ use std::str::FromStr;
 use serde::{Deserialize, Serialize};
 
 use super::{anthropic, gemini, openai};
+use crate::driver::Bind;
+use crate::http_client::BoxedHttpClient;
+use crate::serve::{ErasedHandler, adapters::CompletionAdapter};
 use crate::wire::Secret;
 
 /// Which provider serves a request, as its own configuration.
@@ -117,6 +120,35 @@ impl ProviderConfig {
             Self::Gemini(_) => (gemini::API_KEY_ENV, None),
         };
         std::iter::once(api_key_env).chain(base_url_env)
+    }
+
+    /// This configuration's completion handler for `model`, advertised
+    /// under `label`, over `transport`.
+    ///
+    /// The one place a named provider becomes something that answers: a
+    /// host that stores providers as data (rig-ecs's bindings, a config
+    /// file) builds them here rather than keeping its own table of which
+    /// config yields which wire.
+    pub fn completion_adapter(
+        self,
+        model: &str,
+        label: &str,
+        transport: BoxedHttpClient,
+    ) -> ErasedHandler {
+        match self {
+            Self::OpenAi(config) => ErasedHandler::new(CompletionAdapter::new(
+                label,
+                config.bind(transport).completion(model),
+            )),
+            Self::Anthropic(config) => ErasedHandler::new(CompletionAdapter::new(
+                label,
+                config.bind(transport).completion(model),
+            )),
+            Self::Gemini(config) => ErasedHandler::new(CompletionAdapter::new(
+                label,
+                config.bind(transport).completion(model),
+            )),
+        }
     }
 }
 
@@ -286,6 +318,73 @@ impl From<ModelRef> for String {
 impl fmt::Display for ModelRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}:{}", self.provider, self.model)
+    }
+}
+
+/// Which provider and model serve something, in either of the two forms a
+/// host writes: the name, or the configuration.
+///
+/// One field, two spellings, and the serialized form is the reason both
+/// exist: a host that overrides nothing writes `"deepseek:deepseek-chat"`
+/// and a host that needs a base URL, a route, a beta or an api-version
+/// writes the configuration out. Untagged, because a string and an object
+/// are already distinguishable — so the short form in a file is one line,
+/// which is the whole point of having it.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ProviderRef {
+    /// `"provider:model"` — the provider's default configuration.
+    Named(ModelRef),
+    /// A configuration written out, with the model beside it.
+    Configured {
+        /// The provider, configured.
+        config: ProviderConfig,
+        /// The model id.
+        model: String,
+    },
+}
+
+impl ProviderRef {
+    /// The provider's name.
+    pub fn provider(&self) -> &str {
+        match self {
+            Self::Named(reference) => reference.provider(),
+            Self::Configured { config, .. } => config.provider(),
+        }
+    }
+
+    /// The model id.
+    pub fn model(&self) -> &str {
+        match self {
+            Self::Named(reference) => reference.model(),
+            Self::Configured { model, .. } => model,
+        }
+    }
+
+    /// The configuration to talk to it with, credential-less either way.
+    pub fn config(&self) -> ProviderConfig {
+        match self {
+            Self::Named(reference) => reference.config(),
+            Self::Configured { config, .. } => config.clone(),
+        }
+    }
+
+    /// The environment this reference reads when built from the
+    /// environment.
+    pub fn required_env(&self) -> Vec<&'static str> {
+        self.config().required_env().collect()
+    }
+}
+
+impl From<ModelRef> for ProviderRef {
+    fn from(reference: ModelRef) -> Self {
+        Self::Named(reference)
+    }
+}
+
+impl fmt::Display for ProviderRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}:{}", self.provider(), self.model())
     }
 }
 

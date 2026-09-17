@@ -27,10 +27,10 @@ crate::reflect::opaque_reflect! {
     /// [`HandlerDescriptor`], reflected.
     struct HandlerDescriptorReflect(HandlerDescriptor): PartialEq;
     /// A [`ProviderBinding`](super::ProviderBinding)'s
-    /// [`ProviderConfig`](super::ProviderConfig), reflected: a provider's
-    /// own configuration is rig-core data, so it reflects through its serde
-    /// form like every other value here.
-    enum ProviderConfigReflect(super::ProviderConfig): PartialEq;
+    /// [`ProviderRef`](super::ProviderRef), reflected: a provider name and
+    /// a provider configuration are both rig-core data, so they reflect
+    /// through their serde form like every other value here.
+    enum ProviderRefReflect(super::ProviderRef): PartialEq;
     /// [`ToolContext`], reflected.
     struct ToolContextReflect(ToolContext): Default, PartialEq;
     /// An effect's answer, `Result<Outcome, ErrorReport>`, reflected.

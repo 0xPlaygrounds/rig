@@ -60,11 +60,11 @@ fn populated() -> bevy_app::App {
     );
     let model = register(&mut app, MODEL, model);
     // The served key's binding as data beside it (what a scene load leaves):
-    // the provider's own configuration, with a typed provider option and no
-    // credential in it.
+    // the provider's own configuration written out — a base URL and a typed
+    // provider option to override — with no credential in it.
     app.world_mut()
         .entity_mut(model)
-        .insert(rig_ecs::bus::ProviderBinding::new(
+        .insert(rig_ecs::bus::ProviderBinding::configured(
             MODEL,
             rig_ecs::bus::ProviderConfig::Anthropic(
                 rig_core::providers::anthropic::wire::Anthropic::new(
