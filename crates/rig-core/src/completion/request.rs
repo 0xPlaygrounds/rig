@@ -94,8 +94,8 @@ pub enum CompletionError {
     /// request was never sent, and `env_var` is the variable that would
     /// supply one.
     #[error(
-        "MissingCredential: no credential for this provider; set `{env_var}` or build its \
-         configuration with a key"
+        "MissingCredential: {}",
+        crate::wire::missing_credential_message(env_var)
     )]
     MissingCredential {
         /// The environment variable that supplies the credential.

@@ -77,10 +77,22 @@ impl ProviderConfig {
     /// The provider's descriptor name, as records, telemetry and
     /// [`ProviderRef`] name it.
     pub fn provider(&self) -> &str {
+        self.parts().0
+    }
+
+    /// Which format this configuration speaks.
+    pub fn format(&self) -> Format {
+        self.parts().1
+    }
+
+    /// Vendor and format from one match, for the same reason
+    /// [`ProviderId::parts`] exists: a fourth variant must not be able to
+    /// extend one half and not the other.
+    fn parts(&self) -> (&str, Format) {
         match self {
-            Self::OpenAi(config) => config.dialect.name,
-            Self::Anthropic(config) => config.dialect.name,
-            Self::Gemini(_) => GEMINI,
+            Self::OpenAi(config) => (config.dialect.name, Format::OpenAi),
+            Self::Anthropic(config) => (config.dialect.name, Format::Anthropic),
+            Self::Gemini(_) => (GEMINI, Format::Gemini),
         }
     }
 
@@ -230,22 +242,29 @@ enum Endpoint {
 }
 
 impl ProviderId {
+    /// Both halves of the identity, from one match.
+    ///
+    /// `vendor` and `format` were separately-matched three-arm functions
+    /// over the same enum, so a fourth format meant two places to extend
+    /// and one of them could be forgotten. Deriving the pair together
+    /// makes that impossible rather than merely unlikely, and it is also
+    /// the only place the identity is spelled out.
+    fn parts(&self) -> (&'static str, Format) {
+        match self.0 {
+            Endpoint::OpenAi(dialect) => (dialect.name, Format::OpenAi),
+            Endpoint::Anthropic(dialect) => (dialect.name, Format::Anthropic),
+            Endpoint::Gemini => (GEMINI, Format::Gemini),
+        }
+    }
+
     /// The vendor's name: `"zai"` for both of z.ai's doors.
     pub fn vendor(&self) -> &'static str {
-        match self.0 {
-            Endpoint::OpenAi(dialect) => dialect.name,
-            Endpoint::Anthropic(dialect) => dialect.name,
-            Endpoint::Gemini => GEMINI,
-        }
+        self.parts().0
     }
 
     /// Which format this door speaks.
     pub fn format(&self) -> Format {
-        match self.0 {
-            Endpoint::OpenAi(_) => Format::OpenAi,
-            Endpoint::Anthropic(_) => Format::Anthropic,
-            Endpoint::Gemini => Format::Gemini,
-        }
+        self.parts().1
     }
 
     /// How rig writes this provider: always `vendor/format`.
@@ -341,24 +360,26 @@ pub fn resolve(spec: &str) -> Result<ProviderId, UnknownProvider> {
     if doors.is_empty() {
         return Err(UnknownProvider::Vendor {
             vendor: vendor.to_owned(),
-            known: vendors().collect::<Vec<_>>().join(", "),
+            known: spellings(&all().collect::<Vec<_>>()),
         });
     }
     match format {
-        Some(format) => {
-            let format = Format::by_name(format).ok_or_else(|| UnknownProvider::Format {
+        Some(named) => {
+            // One refusal for "that format", however it failed: an unknown
+            // format name and a format this vendor does not front are the
+            // same answer, and building it twice is how the two lists came
+            // to be gathered two different ways.
+            let refused = || UnknownProvider::Format {
                 vendor: vendor.to_owned(),
-                format: format.to_owned(),
+                format: named.to_owned(),
                 known: spellings(&doors),
-            })?;
+            };
+            let format = Format::by_name(named).ok_or_else(refused)?;
             doors
-                .into_iter()
+                .iter()
+                .copied()
                 .find(|id| id.format() == format)
-                .ok_or_else(|| UnknownProvider::Format {
-                    vendor: vendor.to_owned(),
-                    format: format.as_str().to_owned(),
-                    known: spellings(&endpoints(vendor).collect::<Vec<_>>()),
-                })
+                .ok_or_else(refused)
         }
         None => match doors.as_slice() {
             [only] => Ok(*only),
@@ -371,6 +392,11 @@ pub fn resolve(spec: &str) -> Result<ProviderId, UnknownProvider> {
 }
 
 /// How a set of providers is written, for a refusal that teaches.
+///
+/// Every list in an [`UnknownProvider`] comes through here, so a refusal
+/// cannot name a provider in a spelling [`resolve`] would not accept. Four
+/// sites gathered their own lists before, one of them in bare vendor names,
+/// which is the kind of second copy that survives a change to the first.
 fn spellings(ids: &[ProviderId]) -> String {
     ids.iter()
         .map(ProviderId::spelling)
@@ -476,13 +502,23 @@ impl ProviderRef {
         }
     }
 
+    /// Which format this reference's provider speaks.
+    pub fn format(&self) -> Format {
+        match self {
+            Self::Named { provider, .. } => provider.format(),
+            Self::Configured { config, .. } => config.format(),
+        }
+    }
+
     /// How this reference is written: the provider's spelling and the
     /// model, which is exactly what it parses from and serializes as.
     pub fn spelling(&self) -> String {
-        match self {
-            Self::Named { provider, model } => format!("{}:{model}", provider.spelling()),
-            Self::Configured { config, model } => format!("{}:{model}", config.provider()),
-        }
+        // One body, both variants. These were two arms, and the arm for a
+        // written-out configuration spelled the vendor without its format --
+        // the same short-form hazard that made a saved `Named` reference
+        // perishable, still live in the second copy of the rule. A reference
+        // is spelled from its provider and its format wherever it came from.
+        format!("{}/{}:{}", self.provider(), self.format(), self.model())
     }
 
     /// The model id, verbatim.

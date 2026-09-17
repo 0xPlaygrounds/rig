@@ -26,7 +26,7 @@ pub enum VerifyError {
     /// There was no credential to check. The refusal happens in `encode`,
     /// so no request was sent and the provider gave no verdict -- which is
     /// why this is not [`Self::InvalidAuthentication`].
-    #[error("no credential to verify; set `{env_var}` or build the configuration with a key")]
+    #[error("{}", crate::wire::missing_credential_message(env_var))]
     MissingCredential { env_var: &'static str },
 }
 

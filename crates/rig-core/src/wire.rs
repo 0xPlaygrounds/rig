@@ -207,6 +207,7 @@ pub(crate) mod secret;
 
 pub use error::WireError;
 pub(crate) use error::impl_wire_error;
+pub(crate) use error::missing_credential_message;
 pub use secret::Secret;
 
 /// One transport frame, after framing but before decoding.
