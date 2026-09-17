@@ -105,7 +105,7 @@ impl crate::wire::Wire for Interactions {
             .header("Content-Type", "application/json")
             .header(
                 crate::providers::gemini::Gemini::INTERACTIONS_KEY_HEADER,
-                self.provider.api_key.expose(),
+                self.provider.credential::<CompletionError>()?,
             )
             .body(crate::wire::Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
@@ -211,7 +211,7 @@ impl crate::wire::Wire for InteractionResume {
         let request = http::Request::get(self.provider.interactions_uri(&path))
             .header(
                 crate::providers::gemini::Gemini::INTERACTIONS_KEY_HEADER,
-                self.provider.api_key.expose(),
+                self.provider.credential::<CompletionError>()?,
             )
             .body(crate::wire::Body::empty())
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;

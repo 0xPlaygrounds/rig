@@ -61,7 +61,7 @@ pub fn install_reflect(world: &mut World) {
             bus::ToolOutputs,
             bus::Bound,
             bus::ProviderBinding,
-            bus::ProviderKind,
+            bus::ProviderFamily,
             bus::CredentialRef,
             ExtraParamsReflect,
             HandlerKeyReflect,

@@ -101,16 +101,17 @@ where
         if self.done {
             return;
         }
-        let analysis_only = self.observation.is_some() && self.decoder.is_analysis_only(&frame);
         let classified = self.decoder.classify(frame);
-        // Never exempt a corrupt frame, even when the provider's metadata
-        // predicate accepts its shape.
-        let corrupt = matches!(classified, WireEvent::Corrupt(_));
-        if (corrupt || !analysis_only) && self.observation.is_some() {
+        // A metadata-only frame carries no part of the turn, so it advances
+        // no position; every other classification does, a corrupt one
+        // included.
+        if self.observation.is_some() && !matches!(classified, WireEvent::Metadata(_)) {
             self.frames += 1;
         }
         match classified {
-            WireEvent::Known(event) => self.decoder.interpret(event, &mut self.out),
+            WireEvent::Known(event) | WireEvent::Metadata(event) => {
+                self.decoder.interpret(event, &mut self.out)
+            }
             // Skipped semantically, but surfaced verbatim where the
             // operation has a raw passthrough channel; aggregation never
             // folds it into the answer.
@@ -295,7 +296,7 @@ pub fn triage_frame<T>(
     event: WireEvent<T>,
 ) -> Result<TriagedFrame<T>, crate::completion::CompletionError> {
     match event {
-        WireEvent::Known(event) => Ok(TriagedFrame::Event(event)),
+        WireEvent::Known(event) | WireEvent::Metadata(event) => Ok(TriagedFrame::Event(event)),
         WireEvent::Unknown { event_type, value } => {
             // Structural metadata only — see `warn_unmodeled`. The full
             // payload survives on the `Unknown` raw passthrough channel;
@@ -509,7 +510,15 @@ where
             .ok()
             .or_else(|| page.document())
             .unwrap_or(serde_json::Value::Null);
-        reply.provider_request_id = page_reply.provider_request_id;
+        // The first page's id, not the last. An operation answered by
+        // several replies — a batch endpoint taking one item per call, a
+        // listing followed across pages — has one id per reply and one
+        // field to report, and the opening reply is the one that is the
+        // same value however many pages the loop went on to read. `raw`
+        // carries every document, so a caller who needs the rest has them.
+        if reply.provider_request_id.is_none() {
+            reply.provider_request_id = page_reply.provider_request_id;
+        }
         crate::providers::internal::trace_json(
             crate::providers::internal::LogTarget::Completions,
             &format!("{} {} reply", wire.name(), <W::Op as Operation>::NAME),
@@ -590,7 +599,7 @@ where
     } = wire.encode(request, Mode::Streaming)?;
     // No streamed operation sends a batch: a batch exists for providers
     // that take one item per request, and those are all unary.
-    let [http_request] = <[_; 1]>::try_from(requests).map_err(|requests| {
+    let [http_request] = <[_; 1]>::try_from(requests).map_err(|requests: Vec<_>| {
         <Error<W> as WireError>::decode(format!(
             "a streamed reply takes exactly one request, not {}",
             requests.len()

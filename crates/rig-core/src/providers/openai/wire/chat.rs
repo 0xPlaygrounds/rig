@@ -888,7 +888,7 @@ impl Wire for Chat {
         let builder = http::Request::post(uri).header("Content-Type", "application/json");
         let request = self
             .provider
-            .headers(builder)
+            .headers::<CompletionError>(builder)?
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;
 
@@ -1524,7 +1524,9 @@ impl Decoder<Completion> for ChatDecoder {
         // token and decoded as `{}` — and both are settled on the raw body.
         let may_be_budget_cut = match &classified {
             WireEvent::Corrupt(_) => true,
-            WireEvent::Known(frame) => self.is_budget_cut_tool_turn(frame),
+            WireEvent::Known(frame) | WireEvent::Metadata(frame) => {
+                self.is_budget_cut_tool_turn(frame)
+            }
             WireEvent::Unknown { .. } => false,
         };
         if may_be_budget_cut && let Some(frame) = self.body_without_calls_cut_by_the_budget(&data) {

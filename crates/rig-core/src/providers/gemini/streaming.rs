@@ -94,6 +94,17 @@ pub struct StreamGenerateContentResponse {
     pub error: Option<serde_json::Value>,
 }
 
+impl StreamGenerateContentResponse {
+    /// Whether this chunk states only response-scoped metadata: an id and
+    /// nothing the turn is made of. Gemini sends such a chunk mid-stream.
+    fn is_metadata_only(&self) -> bool {
+        self.candidates.is_empty()
+            && self.prompt_feedback.is_none()
+            && self.usage_metadata.is_none()
+            && self.error.is_none()
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StreamingCompletionResponse {
     pub usage_metadata: PartialUsage,
@@ -130,8 +141,13 @@ fn tool_protocol_finish_reason_error(choice: &ContentCandidate) -> Option<Comple
 /// the feedback), and the service's in-band abort carries only `error`. A
 /// frame with any of them must fully decode (else `Corrupt`). A valid ID-only
 /// frame is recognized separately as metadata; other JSON is `Unknown`.
-const RECOGNIZABLE_CHUNK_KEYS: &[&str] =
-    &["candidates", "usageMetadata", "promptFeedback", "error"];
+const CHUNK_KEYS: &[&str] = &[
+    "candidates",
+    "usageMetadata",
+    "promptFeedback",
+    "error",
+    "responseId",
+];
 
 /// The Gemini GenerateContent wire's decoder, serving both of its modes.
 ///
@@ -229,26 +245,22 @@ impl Decoder<Completion> for GenerateContentDecoder {
     type Event = StreamGenerateContentResponse;
 
     fn classify(&self, frame: WireFrame) -> WireEvent<StreamGenerateContentResponse> {
-        // ID-only frames update terminal metadata without manufacturing an
-        // Unknown content item (and therefore a semantic truncation tail).
-        // This applies equally with observation enabled or disabled.
-        if <Self as Decoder<Completion>>::is_analysis_only(self, &frame) {
-            return wire::classify_marker_keyed_frame(&frame.as_str(), &["responseId"]);
+        // An id-only frame updates terminal metadata and is no part of the
+        // turn: `Metadata` interprets it without manufacturing an Unknown
+        // content item (and therefore a semantic truncation tail), and
+        // without advancing an observation position.
+        // `responseId` is a recognizable key of its own, so an id-only
+        // chunk decodes here rather than falling through as an unmodeled
+        // frame (which would manufacture an Unknown content item, and with
+        // it a semantic truncation tail). It carries no part of the turn, so
+        // it is `Metadata`: interpreted, counted by nothing.
+        match wire::classify_marker_keyed_frame::<StreamGenerateContentResponse>(
+            &frame.as_str(),
+            CHUNK_KEYS,
+        ) {
+            WireEvent::Known(chunk) if chunk.is_metadata_only() => WireEvent::Metadata(chunk),
+            classified => classified,
         }
-        wire::classify_marker_keyed_frame(&frame.as_str(), RECOGNIZABLE_CHUNK_KEYS)
-    }
-
-    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct ResponseIdOnly {
-            #[serde(rename = "responseId")]
-            _id: String,
-        }
-        matches!(
-            wire::classify_marker_keyed_frame::<ResponseIdOnly>(&frame.as_str(), &["responseId"]),
-            WireEvent::Known(_)
-        )
     }
 
     fn interpret(&mut self, data: StreamGenerateContentResponse, out: &mut Output<Completion>) {

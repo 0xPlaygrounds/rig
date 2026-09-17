@@ -70,7 +70,7 @@ use rig_core::wire::Secret;
 
 use cells::Cell;
 use corpus::Program;
-use rig_ecs::bus::{ProviderBinding, ProviderKind};
+use rig_ecs::bus::{ProviderBinding, ProviderFamily};
 
 /// The owner every producer names itself: the golden's keys are
 /// `golden/model:default`, `golden/tool:<name>#<n>`, `golden/memory`.
@@ -148,22 +148,29 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
     pub(crate) fn binding(&self) -> Option<WireBinding> {
         let model: &dyn std::any::Any = &self.model;
         let key = format!("{OWNER}/model:default");
-        let describe = |kind: ProviderKind,
+        let describe = |family: ProviderFamily,
+                        dialect: Option<&str>,
                         model_id: &str,
                         base_url: &str,
                         api_key: &Secret,
                         transport: &BoxedHttpClient| {
-            Some(WireBinding {
-                binding: ProviderBinding::new(key.clone(), kind, model_id, CASSETTE_CREDENTIAL)
+            let mut binding =
+                ProviderBinding::new(key.clone(), family, model_id, CASSETTE_CREDENTIAL)
                     .labelled("default")
-                    .at(base_url),
+                    .at(base_url);
+            if let Some(dialect) = dialect {
+                binding = binding.speaking(dialect);
+            }
+            Some(WireBinding {
+                binding,
                 api_key: api_key.expose().to_owned(),
                 transport: transport.clone(),
             })
         };
         if let Some(bound) = model.downcast_ref::<Bound<anthropic::Messages, BoxedHttpClient>>() {
             return describe(
-                ProviderKind::Anthropic,
+                ProviderFamily::AnthropicMessages,
+                Some(bound.wire.provider.dialect.name),
                 &bound.wire.model,
                 &bound.wire.provider.base_url,
                 &bound.wire.provider.api_key,
@@ -171,19 +178,12 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
             );
         }
         let chat = |wire: &openai::Chat, http: &BoxedHttpClient| {
-            // One wire on many dialects, and the dialect is what the record's
-            // `provider` is: the kind must name the *same* dialect or the
-            // materialized model answers under another provider's name. A
-            // dialect `ProviderKind` cannot name is undescribable — the
-            // harness leaves that wire hand-registered rather than
-            // materializing it as some other provider.
-            let kind = match wire.provider.dialect.name {
-                "openai" => ProviderKind::OpenAiChat,
-                "deepseek" => ProviderKind::DeepSeek,
-                _ => return None,
-            };
+            // One wire on many dialects, and the dialect is what the
+            // record's `provider` is: the binding names the dialect by name,
+            // so every gateway describes itself without an arm here.
             describe(
-                kind,
+                ProviderFamily::OpenAiChat,
+                Some(wire.provider.dialect.name),
                 &wire.model,
                 &wire.provider.base_url,
                 &wire.provider.api_key,
@@ -192,7 +192,8 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         };
         let responses = |wire: &responses::Responses, http: &BoxedHttpClient| {
             describe(
-                ProviderKind::OpenAiResponses,
+                ProviderFamily::OpenAiResponses,
+                Some(wire.provider.dialect.name),
                 &wire.model,
                 &wire.provider.base_url,
                 &wire.provider.api_key,
@@ -214,7 +215,8 @@ impl<M: CompletionModel + Clone + 'static> Wire<M> {
         if let Some(bound) = model.downcast_ref::<Bound<gemini::GenerateContent, BoxedHttpClient>>()
         {
             return describe(
-                ProviderKind::Gemini,
+                ProviderFamily::GeminiGenerateContent,
+                None,
                 &bound.wire.model,
                 &bound.wire.provider.base_url,
                 &bound.wire.provider.api_key,

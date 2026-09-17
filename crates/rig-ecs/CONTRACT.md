@@ -483,13 +483,19 @@ The required row names `<owner>/memory` as `memory` from `Remembers`. `Memory { 
 ### 12.1 A model bound as data
 
 A `bus::ProviderBinding` component is the data half of a provider-served
-key: `kind` (`anthropic`, `openai_chat`, `openai_responses`, `gemini`,
-`deepseek`), `model`, `label` (the `ModelRef` the descriptor advertises;
-the model id unless set), `base_url` (`None` is the provider's default), a
+key: `family` — the request shape: `anthropic_messages`, `openai_chat`,
+`openai_responses`, `gemini_generate_content` — `dialect` (the name
+rig-core knows a gateway by: `"deepseek"`, `"venice"`, `"zai"`, …; `None`
+is the family's own provider, and a name the family does not speak is
+`MaterializeError::UnknownDialect` before a credential or a transport is
+spent), `model`, `label` (the `ModelRef` the descriptor advertises; the
+model id unless set), `base_url` (`None` is the provider's default), a
 `credential` *reference* (a name the host's resolver knows — never a
-secret) and per-kind `extra_params` (`anthropic_version` /
+secret) and per-family `extra_params` (`anthropic_version` /
 `anthropic_betas`; `system_instructions_as_messages` for
-`openai_responses`; none elsewhere, unknown keys refused). It holds
+`openai_responses`; none elsewhere, unknown keys refused). A family is a
+wire and a dialect is data, so a gateway is bindable without a variant in
+rig-ecs. It holds
 nothing executable. The executable half is built on the host's word:
 `materialize_bindings(world)` (or the `materialize` system, which leaves a
 refusal in `MaterializeFailed`) reads the host-installed `Materializer`

@@ -97,12 +97,13 @@ fn probe_request() -> CompletionRequest {
     }
 }
 
-/// Every URI and header one encode produced, as one searchable string.
-pub(crate) fn request_envelope<W: Wire<Op = Completion>>(wire: &W) -> String {
-    let encoded = wire
-        .encode(probe_request(), Mode::Unary)
-        .expect("the request encodes");
-    encoded
+/// Every URI and header one encode produced, as one searchable string, or
+/// the reason the wire refused to build a request at all.
+pub(crate) fn encoded_envelope<W: Wire<Op = Completion>>(
+    wire: &W,
+) -> Result<String, crate::completion::CompletionError> {
+    let encoded = wire.encode(probe_request(), Mode::Unary)?;
+    Ok(encoded
         .requests
         .iter()
         .map(|request| {
@@ -113,7 +114,13 @@ pub(crate) fn request_envelope<W: Wire<Op = Completion>>(wire: &W) -> String {
                 .collect();
             format!("{}\n{headers}", request.uri())
         })
-        .collect()
+        .collect())
+}
+
+/// Every URI and header one encode produced, for a wire that carries what
+/// its endpoint requires.
+pub(crate) fn request_envelope<W: Wire<Op = Completion>>(wire: &W) -> String {
+    encoded_envelope(wire).expect("the request encodes")
 }
 
 /// Assert `config` writes `key` nowhere, and that reloading what it *does*
@@ -162,8 +169,22 @@ where
 
     let json = serde_json::to_string(wire).expect("a wire serializes");
     let reloaded: W = serde_json::from_str(&json).expect("a wire reloads");
-    let sent = request_envelope(&reloaded);
-    // `[redacted]` percent-encodes its brackets in a query, never its body.
+    // Two legal answers, and the sentinel is neither: a wire whose endpoint
+    // requires a credential refuses to encode without one, naming the
+    // variable that supplies it, and a wire whose endpoint does not require
+    // one sends a request with no credential in it. What must never happen
+    // is `[redacted]` travelling as the key.
+    let sent = match encoded_envelope(&reloaded) {
+        Ok(sent) => sent,
+        Err(error) => {
+            let refusal = error.to_string();
+            assert!(
+                refusal.contains("MissingCredential"),
+                "a reloaded wire must refuse for want of a credential, not for {refusal}"
+            );
+            return;
+        }
+    };
     assert!(
         !sent.contains("redacted"),
         "a reloaded wire sent the redaction sentinel as a credential: {sent}"

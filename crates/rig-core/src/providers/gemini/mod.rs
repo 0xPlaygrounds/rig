@@ -98,16 +98,29 @@ impl Gemini {
         self
     }
 
+    /// The credential both Gemini families authenticate with, or the
+    /// operation's error naming [`API_KEY_ENV`].
+    ///
+    /// Gemini has no anonymous mode: every endpoint spends this key, the
+    /// GenerateContent family as a `key=` query pair and the Interactions
+    /// family as `x-goog-api-key`. One accessor rather than a check per
+    /// site, so a config reloaded without its key cannot leak an empty
+    /// credential onto a wire through whichever site was missed.
+    pub(crate) fn credential<E: crate::wire::WireError>(&self) -> Result<&str, E> {
+        self.api_key.require(API_KEY_ENV)
+    }
+
     /// The URI for a GenerateContent-family `path`, key included.
     ///
     /// Gemini authenticates this family by query string, so the credential
     /// is part of the URI — appended last, after any query the path already
     /// carries (`?alt=sse`), which is the order the recorded traffic pins.
-    pub(crate) fn uri(&self, path: &str) -> String {
+    pub(crate) fn uri<E: crate::wire::WireError>(&self, path: &str) -> Result<String, E> {
         let trimmed = path.trim_start_matches('/');
         let separator = if trimmed.contains('?') { "&" } else { "?" };
         let base = self.base_url.trim_end_matches('/');
-        format!("{base}/{trimmed}{separator}key={}", self.api_key.expose())
+        let key = self.credential::<E>()?;
+        Ok(format!("{base}/{trimmed}{separator}key={key}"))
     }
 
     /// The URI for an Interactions-family `path`. No key: that family

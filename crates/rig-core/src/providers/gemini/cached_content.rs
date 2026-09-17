@@ -548,14 +548,19 @@ impl CachedContents {
     /// concatenating the cursor raw would let a `+`, `&`, `=` or `/` in it
     /// truncate the cursor or inject a query parameter — next to the
     /// credential `Gemini::uri` appends — silently dropping pages.
-    fn list_request(&self, page_token: Option<&str>) -> Result<http::Request<Body>, http::Error> {
+    fn list_request(
+        &self,
+        page_token: Option<&str>,
+    ) -> Result<http::Request<Body>, CachedContentError> {
         let page_size = self.page_size.to_string();
         let mut pairs = vec![("pageSize", page_size.as_str())];
         if let Some(token) = page_token {
             pairs.push(("pageToken", token));
         }
         let path = with_query_pairs(CACHED_CONTENTS_PATH, &pairs);
-        http::Request::get(self.provider.uri(&path)).body(Body::empty())
+        let request = http::Request::get(self.provider.uri::<CachedContentError>(&path)?)
+            .body(Body::empty())?;
+        Ok(request)
     }
 }
 
@@ -597,12 +602,17 @@ impl Wire for CachedContents {
         let request = match request {
             CachedContentRequest::Create(new) => {
                 new.validate()?;
-                http::Request::post(self.provider.uri(CACHED_CONTENTS_PATH))
-                    .body(Body::Bytes(serde_json::to_vec(&new)?))?
+                http::Request::post(
+                    self.provider
+                        .uri::<CachedContentError>(CACHED_CONTENTS_PATH)?,
+                )
+                .body(Body::Bytes(serde_json::to_vec(&new)?))?
             }
-            CachedContentRequest::Get(name) => {
-                http::Request::get(self.provider.uri(&resource_path(&name)?)).body(Body::empty())?
-            }
+            CachedContentRequest::Get(name) => http::Request::get(
+                self.provider
+                    .uri::<CachedContentError>(&resource_path(&name)?)?,
+            )
+            .body(Body::empty())?,
             CachedContentRequest::List => self.list_request(None)?,
             CachedContentRequest::UpdateExpiry { name, expiry } => {
                 let (patch, mask) = expiry_patch(expiry)?;
@@ -611,12 +621,14 @@ impl Wire for CachedContents {
                 // `updateMask` inside the caller's query string on a resource
                 // we did not mean to patch.
                 let path = format!("{}?updateMask={mask}", resource_path(&name)?);
-                http::Request::patch(self.provider.uri(&path)).body(Body::Bytes(patch))?
+                http::Request::patch(self.provider.uri::<CachedContentError>(&path)?)
+                    .body(Body::Bytes(patch))?
             }
-            CachedContentRequest::Delete(name) => {
-                http::Request::delete(self.provider.uri(&resource_path(&name)?))
-                    .body(Body::empty())?
-            }
+            CachedContentRequest::Delete(name) => http::Request::delete(
+                self.provider
+                    .uri::<CachedContentError>(&resource_path(&name)?)?,
+            )
+            .body(Body::empty())?,
         };
         Ok(Encoded::new(request, Framing::Whole))
     }

@@ -922,11 +922,11 @@ fn websocket_request(wire: &Responses) -> Result<http_client::Request<NoBody>, C
     let url = crate::ws_client::websocket_url(&wire.provider.base_url, WEBSOCKET_PATH)
         .map_err(CompletionError::HttpError)?;
 
-    let request = wire.provider.headers(
+    let request = wire.provider.headers::<CompletionError>(
         http_client::Request::builder()
             .method(http::Method::GET)
             .uri(url),
-    );
+    )?;
 
     request.body(NoBody).map_err(|error| {
         CompletionError::ProviderError(format!("Failed to build OpenAI websocket request: {error}"))

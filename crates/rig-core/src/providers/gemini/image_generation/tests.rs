@@ -221,3 +221,25 @@ fn the_wire_decodes_a_recorded_image_reply() {
     assert_eq!(response.usage.output_tokens, Some(1290));
     assert_eq!(response.usage.total_tokens, Some(1305));
 }
+
+/// The image endpoint authenticates by the `key` query parameter like the
+/// rest of the GenerateContent family, so a config without a credential
+/// fails before a request is built.
+#[test]
+fn a_config_without_a_key_refuses_to_encode() {
+    let error = Images::new(
+        crate::providers::gemini::Gemini::new(""),
+        GEMINI_2_5_FLASH_IMAGE,
+    )
+    .encode(
+        image_generation_request("Generate an image of an axolotl"),
+        crate::wire::Mode::Unary,
+    )
+    .expect_err("an empty credential is refused");
+    assert!(
+        error
+            .to_string()
+            .contains(crate::providers::gemini::API_KEY_ENV),
+        "{error}"
+    );
+}

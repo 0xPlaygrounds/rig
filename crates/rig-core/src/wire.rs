@@ -551,12 +551,6 @@ pub trait Decoder<Op: Operation, Frame = WireFrame> {
         None
     }
 
-    /// Whether this frame carries only analysis metadata: it still decodes,
-    /// but does not advance observation's EOF/corruption positions.
-    fn is_analysis_only(&self, _frame: &Frame) -> bool {
-        false
-    }
-
     /// Whether `interpret` consumed the wire's own in-band terminal failure
     /// and already pushed the flush-then-error sequence itself.
     fn is_finished(&self) -> bool {

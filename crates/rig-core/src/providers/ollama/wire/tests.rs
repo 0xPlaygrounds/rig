@@ -239,6 +239,26 @@ fn a_local_daemon_sends_no_authorization_header() {
     assert_eq!(request.uri(), "http://localhost:11434/api/chat");
     assert!(!request.headers().contains_key(http::header::AUTHORIZATION));
 
+    // Every Ollama wire: none of them demands a credential, because a local
+    // daemon authenticates nothing — the empty `Secret` this config was
+    // built with is a valid configuration here, not a reloaded one missing
+    // its key.
+    for encoded in [
+        Ollama::new()
+            .embeddings("all-minilm:latest", None)
+            .encode(vec!["first".to_owned()], Mode::Unary)
+            .expect("an embedding request encodes with no credential"),
+        Ollama::new()
+            .models()
+            .encode((), Mode::Unary)
+            .expect("a model listing encodes with no credential"),
+    ] {
+        let [request] = encoded.requests.as_slice() else {
+            panic!("one request");
+        };
+        assert!(!request.headers().contains_key(http::header::AUTHORIZATION));
+    }
+
     let encoded = Ollama::new()
         .with_api_key("ollama-proxy-key")
         .chat("qwen3:4b")

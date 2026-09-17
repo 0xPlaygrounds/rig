@@ -64,6 +64,13 @@ impl WireError for VerifyError {
         Self::ProviderError(message)
     }
 
+    /// A key check with no key is the answer the check exists to give.
+    fn missing_credential(env_var: &'static str) -> Self {
+        Self::ProviderError(format!(
+            "no credential to verify; set `{env_var}` or build the configuration with a key"
+        ))
+    }
+
     fn provider_body(body: &str) -> Self {
         Self::from_provider_body(body)
     }

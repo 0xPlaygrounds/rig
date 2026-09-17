@@ -193,3 +193,72 @@ fn a_serialized_config_carries_no_key_material() {
         );
     }
 }
+
+/// The bearer token one encode put on the wire.
+fn bearer_of(encoded: &Encoded) -> Option<&str> {
+    let [request] = encoded.requests.as_slice() else {
+        panic!(
+            "expected exactly one request, got {}",
+            encoded.requests.len()
+        );
+    };
+    request
+        .headers()
+        .get(http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+}
+
+/// Voyage authenticates both routes, so a config with no credential — the
+/// state a reloaded one is in — is a fault in the request, named before
+/// anything is sent.
+#[test]
+fn no_credential_refuses_both_routes_by_naming_the_variable() {
+    let unauthenticated = VoyageAi::new("");
+
+    let Err(texts) = unauthenticated
+        .embeddings("voyage-3.5", None)
+        .encode(vec!["first".to_owned()], Mode::Unary)
+    else {
+        panic!("an embedding request with no credential must not be built");
+    };
+    assert!(matches!(texts, EmbeddingError::MissingCredential { .. }));
+
+    let Err(rerank) = unauthenticated.rerank("rerank-2.5").encode(
+        RerankRequest {
+            query: "which is best?".to_owned(),
+            documents: vec!["worse".to_owned(), "better".to_owned()],
+        },
+        Mode::Unary,
+    ) else {
+        panic!("a rerank request with no credential must not be built");
+    };
+    assert!(matches!(rerank, RerankError::MissingCredential { .. }));
+
+    for error in [texts.to_string(), rerank.to_string()] {
+        assert!(
+            error.contains("VOYAGE_API_KEY"),
+            "the failure must name the variable that supplies a key: {error}"
+        );
+    }
+}
+
+#[test]
+fn a_credential_travels_as_a_bearer_token_on_both_routes() {
+    let texts = voyage()
+        .embeddings("voyage-3.5", None)
+        .encode(vec!["first".to_owned()], Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(bearer_of(&texts), Some("Bearer voyage-test-key"));
+
+    let rerank = voyage()
+        .rerank("rerank-2.5")
+        .encode(
+            RerankRequest {
+                query: "which is best?".to_owned(),
+                documents: vec!["worse".to_owned()],
+            },
+            Mode::Unary,
+        )
+        .expect("the request encodes");
+    assert_eq!(bearer_of(&rerank), Some("Bearer voyage-test-key"));
+}

@@ -29,7 +29,10 @@ fn the_wire_encodes_the_recorded_generate_content_request() {
         .encode(transcription_request(), Mode::Unary)
         .expect("the request encodes");
 
-    let request = encoded.requests.first().expect("exactly one request");
+    let request = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request");
     assert_eq!(request.method().as_str(), "POST");
     assert_eq!(
         request.uri().path(),
@@ -69,5 +72,24 @@ fn the_wire_encodes_the_recorded_generate_content_request() {
             },
             "toolConfig": null
         })
+    );
+}
+
+/// The `key` query parameter above is not optional, so a config that
+/// reloaded without its credential fails before the audio is built into a
+/// request — naming the variable that supplies one.
+#[test]
+fn a_config_without_a_key_refuses_to_encode() {
+    let error = Transcriptions::new(
+        crate::providers::gemini::Gemini::new(""),
+        GEMINI_3_FLASH_PREVIEW,
+    )
+    .encode(transcription_request(), Mode::Unary)
+    .expect_err("an empty credential is refused");
+    assert!(
+        error
+            .to_string()
+            .contains(crate::providers::gemini::API_KEY_ENV),
+        "{error}"
     );
 }

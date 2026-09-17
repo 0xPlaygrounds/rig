@@ -163,10 +163,12 @@ fn list_models_request(
     let request = match auth {
         Auth::Query => http::Request::get(format!(
             "{base_url}/{trimmed}&key={}",
-            provider.api_key.expose()
+            provider.credential::<ModelListingError>()?
         )),
-        Auth::Header => http::Request::get(format!("{base_url}/{trimmed}"))
-            .header("x-goog-api-key", provider.api_key.expose()),
+        Auth::Header => http::Request::get(format!("{base_url}/{trimmed}")).header(
+            super::Gemini::INTERACTIONS_KEY_HEADER,
+            provider.credential::<ModelListingError>()?,
+        ),
     };
     request
         .body(Body::empty())
@@ -330,7 +332,7 @@ impl Wire for VerifyKey {
         let request = http::Request::get(format!(
             "{}/v1beta/models?key={}",
             self.provider.base_url,
-            self.provider.api_key.expose()
+            self.provider.credential::<VerifyError>()?
         ))
         .body(Body::empty())
         .map_err(|error| VerifyError::HttpError(crate::http_client::Error::Protocol(error)))?;

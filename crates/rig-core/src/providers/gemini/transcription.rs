@@ -131,7 +131,7 @@ impl Wire for Transcriptions {
             "{}/v1beta/models/{}:generateContent?key={}",
             self.provider.base_url,
             self.model,
-            self.provider.api_key.expose()
+            self.provider.credential::<TranscriptionError>()?
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::Bytes(body))

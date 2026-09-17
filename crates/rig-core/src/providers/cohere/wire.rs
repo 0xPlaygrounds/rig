@@ -12,8 +12,8 @@ use crate::embeddings::{Embedding as Vector, EmbeddingError};
 use crate::json_utils;
 use crate::operation::{Completion, Embedding, EmbeddingCapabilities, ImageEmbedding};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireEvent,
-    WireFrame,
+    Body, Decoder, Encoded, Framing, HasCompletion, Mode, Output, Secret, Sink, Wire, WireError,
+    WireEvent, WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -93,13 +93,18 @@ impl Cohere {
     }
 
     /// One request, authenticated and typed as JSON.
-    fn post(&self, path: &str) -> http::request::Builder {
-        http::Request::post(format!("{}{path}", self.base_url))
+    ///
+    /// Cohere authenticates every route it serves here, so the credential
+    /// is read through [`Secret::require`]: a wire reloaded from a scene or
+    /// a config file carries no key by contract, and an error naming
+    /// `COHERE_API_KEY` beats sending `Bearer ` for a provider 401.
+    fn post<E: WireError>(&self, path: &str) -> Result<http::request::Builder, E> {
+        Ok(http::Request::post(format!("{}{path}", self.base_url))
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(
                 http::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
-            )
+                format!("Bearer {}", self.api_key.require::<E>(API_KEY_ENV)?),
+            ))
     }
 }
 
@@ -144,7 +149,7 @@ impl Wire for Chat {
         );
         let request = self
             .provider
-            .post("/v2/chat")
+            .post::<CompletionError>("/v2/chat")?
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::HttpError(error.into()))?;
         // Cohere reports no request-id response header: its
@@ -270,7 +275,7 @@ impl Wire for Embeddings {
         });
         let request = self
             .provider
-            .post("/v1/embed")
+            .post::<EmbeddingError>("/v1/embed")?
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| EmbeddingError::HttpError(error.into()))?;
         Ok(Encoded::new(request, Framing::Whole))
@@ -380,7 +385,7 @@ impl Wire for ImageEmbeddings {
                     "embedding_types": ["float"],
                 });
                 self.provider
-                    .post("/v1/embed")
+                    .post::<EmbeddingError>("/v1/embed")?
                     .body(Body::Bytes(serde_json::to_vec(&body)?))
                     .map_err(|error| EmbeddingError::HttpError(error.into()))
             })

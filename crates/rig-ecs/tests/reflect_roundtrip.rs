@@ -63,7 +63,7 @@ fn populated() -> bevy_app::App {
     app.world_mut().entity_mut(model).insert(
         rig_ecs::bus::ProviderBinding::new(
             MODEL,
-            rig_ecs::bus::ProviderKind::Anthropic,
+            rig_ecs::bus::ProviderFamily::AnthropicMessages,
             "model-x",
             "cassette",
         )

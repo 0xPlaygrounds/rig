@@ -147,7 +147,10 @@ fn the_request_carries_the_key_version_and_endpoint() {
     let encoded = wire()
         .encode(request(), Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.first().expect("one request");
+    let request = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request");
     assert_eq!(request.uri().path(), "/v1/messages");
     assert_eq!(
         request
@@ -167,7 +170,10 @@ fn the_request_carries_the_key_version_and_endpoint() {
 }
 
 fn body_of(encoded: &Encoded) -> serde_json::Value {
-    let request = encoded.requests.first().expect("one request");
+    let request = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request");
     match request.body() {
         Body::Bytes(bytes) => {
             serde_json::from_slice(bytes).expect("the body is the JSON the wire built")
@@ -190,6 +196,50 @@ fn a_serialized_provider_never_carries_its_key() {
     assert_eq!(restored.model, "claude-haiku-4-5");
     assert_eq!(restored.provider.dialect, ANTHROPIC);
     assert!(restored.provider.api_key.is_empty());
+}
+
+/// `x-api-key` is not optional on any Messages-format endpoint, and a
+/// config reloaded from a scene or a config file carries no key by
+/// contract — so the request fails here, naming the variable that supplies
+/// one, rather than buying a 401.
+#[test]
+fn a_config_without_a_credential_refuses_to_encode_and_names_its_variable() {
+    // Each dialect names its own variable, so the error must come from the
+    // dialect rather than from a literal.
+    for dialect in [ANTHROPIC, ZAI] {
+        let error = Anthropic::with_dialect("", &dialect)
+            .messages("claude-haiku-4-5")
+            .encode(request(), Mode::Unary)
+            .expect_err("an empty key is refused before a request is built");
+        assert!(
+            matches!(&error, CompletionError::MissingCredential { env_var } if *env_var == dialect.api_key_env),
+            "{error:?}"
+        );
+        assert!(error.to_string().contains(dialect.api_key_env), "{error}");
+    }
+    assert_eq!(ANTHROPIC.api_key_env, "ANTHROPIC_API_KEY");
+}
+
+/// The listing and verification wires share the header builder, so they
+/// refuse the same request — each through its own operation's error.
+#[test]
+fn the_listing_and_verify_wires_refuse_a_credential_less_config_too() {
+    let provider = Anthropic::new("");
+
+    let listing = provider
+        .models()
+        .encode((), Mode::Unary)
+        .expect_err("a listing with no key is refused");
+    assert!(
+        listing.to_string().contains("ANTHROPIC_API_KEY"),
+        "{listing}"
+    );
+
+    let verify = provider
+        .verify()
+        .encode((), Mode::Unary)
+        .expect_err("a key check with no key is refused");
+    assert!(verify.to_string().contains("ANTHROPIC_API_KEY"), "{verify}");
 }
 
 #[test]

@@ -29,6 +29,23 @@ impl Secret {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    /// The credential, or the operation's error naming the variable that
+    /// would supply one.
+    ///
+    /// An endpoint that requires a credential and has none is a fault in the
+    /// request, known before it is sent: reloading a wire from a scene or a
+    /// config file empties its `Secret` by contract, and sending
+    /// `Authorization: Bearer ` in that state buys a provider 401 in place of
+    /// a local error that names `env_var`. A provider that needs no
+    /// credential (a local Ollama, a gateway whose key is optional) never
+    /// calls this.
+    pub fn require<E: super::WireError>(&self, env_var: &'static str) -> Result<&str, E> {
+        if self.0.is_empty() {
+            return Err(E::missing_credential(env_var));
+        }
+        Ok(&self.0)
+    }
 }
 
 impl<S: Into<String>> From<S> for Secret {

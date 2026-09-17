@@ -112,6 +112,13 @@ impl Ollama {
     }
 
     /// One request to `path`, with the credential only when there is one.
+    ///
+    /// The one provider whose wires never call [`Secret::require`]: a local
+    /// daemon authenticates nothing, so an empty `Secret` is a valid
+    /// configuration here — the default one — and not the credential-less
+    /// state a reloaded wire is in. `OLLAMA_API_KEY` matters only to a
+    /// proxied daemon, which is why it is sent when set and absent when not
+    /// rather than demanded before the request is built.
     fn request(&self, method: http::Method, path: &str) -> http::request::Builder {
         let builder = http::Request::builder()
             .method(method)

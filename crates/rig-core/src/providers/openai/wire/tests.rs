@@ -1,7 +1,9 @@
 //! The provider configuration and the dialect table.
 
 use super::*;
+use crate::completion::{CompletionError, CompletionRequest};
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
+use crate::wire::{Mode, Wire as _};
 
 /// A recorded request (`"when"`) or reply (`"then"`) body from a cassette
 /// under `tests/cassettes/openai/`.
@@ -224,7 +226,8 @@ fn azure_routes_the_model_through_the_url() {
 fn the_dialect_decides_the_credential_header() {
     fn headers(provider: &OpenAI) -> http::HeaderMap {
         provider
-            .authenticate(http::Request::get("https://example.invalid/"))
+            .authenticate::<CompletionError>(http::Request::get("https://example.invalid/"))
+            .expect("every configuration here holds the credential its dialect needs")
             .body(())
             .expect("builds")
             .headers()
@@ -274,7 +277,8 @@ fn a_dialect_without_a_verify_endpoint_refuses_to_invent_one() {
 fn azure_accepts_either_credential_under_its_own_header() {
     fn headers(provider: &OpenAI) -> http::HeaderMap {
         provider
-            .authenticate(http::Request::get("https://example.invalid/"))
+            .authenticate::<CompletionError>(http::Request::get("https://example.invalid/"))
+            .expect("both configurations hold a credential")
             .body(())
             .expect("builds")
             .headers()
@@ -517,5 +521,108 @@ fn llamacpp_serves_its_operational_routes_unversioned() {
                 dialect.name
             );
         }
+    }
+}
+
+/// The smallest turn either completion endpoint accepts: what a request is
+/// *about* is irrelevant to whether it can be credentialed.
+fn a_prompt() -> CompletionRequest {
+    CompletionRequest {
+        model: None,
+        chat_history: vec![crate::message::Message::user("hi")],
+        documents: Vec::new(),
+        tools: Vec::new(),
+        temperature: None,
+        max_tokens: None,
+        tool_choice: None,
+        additional_params: None,
+        output_schema: None,
+        record_telemetry_content: false,
+    }
+}
+
+/// A dialect that requires a credential and holds none fails in `encode`,
+/// naming the variable that would supply one — no request is built.
+///
+/// That is the state a stored wire reloads in, because `Secret` drops the
+/// value on deserialize by contract; sending `Authorization: Bearer ` buys
+/// a provider 401 for a fault whose name rig already knows. Both endpoints,
+/// because both authenticate.
+#[test]
+fn a_credential_less_completion_is_refused_before_it_is_sent() {
+    assert_eq!(OPENAI.api_key_env, "OPENAI_API_KEY");
+    let keyless = OpenAI::with_key(&OPENAI, "");
+
+    for refused in [
+        keyless.chat("gpt-5.2").encode(a_prompt(), Mode::Unary),
+        keyless.responses("gpt-5.2").encode(a_prompt(), Mode::Unary),
+    ] {
+        let error = refused.expect_err("no request is built without a key");
+        assert!(
+            matches!(
+                &error,
+                CompletionError::MissingCredential { env_var } if *env_var == OPENAI.api_key_env
+            ),
+            "{error:?}"
+        );
+        assert!(
+            error.to_string().contains("OPENAI_API_KEY"),
+            "the refusal names the variable: {error}"
+        );
+    }
+}
+
+/// Azure's credential is required under its own header, so the same fault
+/// is reported there — the check follows the credential, not the one header
+/// that happens to carry it.
+#[test]
+fn a_credential_less_azure_completion_is_refused_too() {
+    let error = OpenAI::with_key(&AZURE, "")
+        .with_base_url("https://example.openai.azure.com")
+        .chat("my-deployment")
+        .encode(a_prompt(), Mode::Unary)
+        .expect_err("an `api-key` header with no key is not a request");
+    assert!(
+        matches!(
+            &error,
+            CompletionError::MissingCredential { env_var } if *env_var == "AZURE_API_KEY"
+        ),
+        "{error:?}"
+    );
+}
+
+/// A credential that is genuinely optional is not a missing one: a local
+/// `llama-server` started without `--api-key` rejects a request that
+/// carries an `Authorization` header, so an empty key must encode and send
+/// none.
+#[test]
+fn an_optional_credential_encodes_without_one() {
+    assert_eq!(LLAMACPP.quirks.auth, Auth::OptionalBearer);
+    let encoded = OpenAI::with_key(&LLAMACPP, "")
+        .chat("qwen3")
+        .encode(a_prompt(), Mode::Unary)
+        .expect("a keyless local server needs no credential");
+    let request = encoded.requests.iter().next().expect("one request");
+    assert!(
+        !request.headers().contains_key(http::header::AUTHORIZATION),
+        "an optional credential that is absent sends no header"
+    );
+}
+
+/// And the check is only a check: a configuration that holds its key
+/// encodes exactly as before, carrying it.
+#[test]
+fn a_credentialed_completion_encodes_and_carries_the_key() {
+    let keyed = OpenAI::with_key(&OPENAI, "sk-test");
+    for encoded in [
+        keyed.chat("gpt-5.2").encode(a_prompt(), Mode::Unary),
+        keyed.responses("gpt-5.2").encode(a_prompt(), Mode::Unary),
+    ] {
+        let encoded = encoded.expect("a keyed configuration encodes");
+        let request = encoded.requests.iter().next().expect("one request");
+        assert_eq!(
+            request.headers()[http::header::AUTHORIZATION],
+            "Bearer sk-test"
+        );
     }
 }

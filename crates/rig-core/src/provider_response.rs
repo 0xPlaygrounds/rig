@@ -738,6 +738,18 @@ macro_rules! provider_error_enum {
             #[error("JsonError: {0}")]
             JsonError(#[from] serde_json::Error),
 
+            /// The endpoint requires a credential and the wire holds none:
+            /// the request was never sent, and `env_var` is the variable
+            /// that would supply one.
+            #[error(
+                "MissingCredential: no credential for this provider; set `{env_var}` or build \
+                 its configuration with a key"
+            )]
+            MissingCredential {
+                /// The environment variable that supplies the credential.
+                env_var: &'static str,
+            },
+
             $($mid_variants)*
 
             #[doc = concat!("Error parsing the ", $noun, " response")]

@@ -26,6 +26,15 @@ pub trait WireError: std::error::Error + WasmCompatSend + WasmCompatSync + Sized
     /// A reply that decoded but does not answer the request.
     fn decode(message: String) -> Self;
 
+    /// A request an endpoint requires a credential for, built from a wire
+    /// that has none: `env_var` is the variable that would supply one.
+    ///
+    /// Detected in `encode`, so no request is sent. A credential-less wire
+    /// is the state a reloaded one is in — `Secret` drops the value on
+    /// deserialize by contract — and the alternative is a provider 401 for
+    /// a fault rig already knows the name of.
+    fn missing_credential(env_var: &'static str) -> Self;
+
     /// The provider's error envelope, preserved without a status: the
     /// decoder read it off a 2xx body, and the driver stamps the status it
     /// arrived with.
@@ -88,6 +97,10 @@ macro_rules! impl_wire_error {
 
             fn decode(message: String) -> Self {
                 Self::ResponseError(message)
+            }
+
+            fn missing_credential(env_var: &'static str) -> Self {
+                Self::MissingCredential { env_var }
             }
 
             fn provider_body(body: &str) -> Self {

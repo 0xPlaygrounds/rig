@@ -203,7 +203,7 @@ impl Wire for Responses {
 
         let request = self
             .provider
-            .headers(http::Request::post(self.provider.uri(quirks.path, None)))
+            .headers::<CompletionError>(http::Request::post(self.provider.uri(quirks.path, None)))?
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(body))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;

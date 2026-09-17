@@ -125,7 +125,7 @@ pub mod witness;
 
 pub use binding::{
     CredentialRef, MaterializeError, MaterializeFailed, MaterializeReport, Materializer,
-    ProviderBinding, ProviderKind, Secret, materialize, materialize_bindings,
+    ProviderBinding, ProviderFamily, Secret, materialize, materialize_bindings,
 };
 pub use collect::{Landed, Landing, StreamingView, collect_streams, collect_tasks, settle};
 pub use delivery::{ReplayDelivery, ReplayFailure};

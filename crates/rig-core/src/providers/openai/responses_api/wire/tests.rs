@@ -220,7 +220,7 @@ fn encoded_body_of(wire: &Responses, request: CompletionRequest, mode: Mode) -> 
     let request = encoded
         .requests
         .first()
-        .expect("a Responses request is one request");
+        .expect("an encode produces a request");
     let Body::Bytes(body) = request.body() else {
         panic!("a Responses body is bytes");
     };
@@ -432,7 +432,11 @@ fn the_xai_dialect_keeps_every_system_message_in_input() {
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
     assert_eq!(
-        encoded.requests.first().expect("one request").uri(),
+        encoded
+            .requests
+            .first()
+            .expect("an encode produces a request")
+            .uri(),
         "https://api.x.ai/v1/responses"
     );
 

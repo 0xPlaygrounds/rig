@@ -462,7 +462,12 @@ fn additional_params_wins_over_the_typed_field_it_collides_with() {
         .chat("m")
         .encode(request, Mode::Unary)
         .expect("the request should encode");
-    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+    let Body::Bytes(bytes) = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request")
+        .body()
+    else {
         panic!("the chat wire sends a serialized body, not a multipart form")
     };
     let body: Value = serde_json::from_slice(bytes).expect("the chat body is JSON");

@@ -15,6 +15,12 @@ pub enum WireEvent<T> {
     /// The frame carries a discriminator this client models and its payload
     /// decoded fully.
     Known(T),
+    /// The frame decoded fully, and carries only response-scoped metadata:
+    /// an id, a heartbeat's sequence number — nothing the turn is made of.
+    /// Interpreted like [`Self::Known`], but it advances no observation
+    /// position, because a consumer counting frames is counting the turn's
+    /// content and a metadata-only chunk is not part of it.
+    Metadata(T),
     /// Valid JSON whose discriminator this client does not model. Policy
     /// (owned by the stream driver, never per adapter): warn — structural
     /// metadata only, so payloads never leak into logs — and skip, for
@@ -41,6 +47,7 @@ impl<T> WireEvent<T> {
     pub fn map<U>(self, f: impl FnOnce(T) -> U) -> WireEvent<U> {
         match self {
             Self::Known(event) => WireEvent::Known(f(event)),
+            Self::Metadata(event) => WireEvent::Metadata(f(event)),
             Self::Unknown { event_type, value } => WireEvent::Unknown { event_type, value },
             Self::Corrupt(error) => WireEvent::Corrupt(error),
         }
@@ -257,7 +264,7 @@ pub fn classify_with_repair<T>(
         WireEvent::Corrupt(corrupt) => match repair(data) {
             None => WireEvent::Corrupt(on_unrepairable(&corrupt)),
             Some(repaired) => match classify(&repaired) {
-                WireEvent::Known(event) => WireEvent::Known(event),
+                event @ (WireEvent::Known(_) | WireEvent::Metadata(_)) => event,
                 // `Unknown` is unreachable in practice (an unknown tag never
                 // classified `Corrupt` in the first pass); treat it as the
                 // defect it would be.
@@ -294,7 +301,7 @@ pub fn classify_or<T>(
 ) -> WireEvent<T> {
     match first(data) {
         WireEvent::Corrupt(first_error) => match then(data) {
-            WireEvent::Known(event) => WireEvent::Known(event),
+            event @ (WireEvent::Known(_) | WireEvent::Metadata(_)) => event,
             WireEvent::Corrupt(error) => WireEvent::Corrupt(error),
             WireEvent::Unknown { .. } => WireEvent::Corrupt(first_error),
         },

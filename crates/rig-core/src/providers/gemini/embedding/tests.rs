@@ -65,7 +65,10 @@ fn the_batch_request_is_the_recorded_one() {
         )
         .expect("the batch encodes");
 
-    let request = encoded.requests.first().expect("one request");
+    let request = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request");
     assert_eq!(request.method(), http::Method::POST);
     assert_eq!(
         request.uri().path(),

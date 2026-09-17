@@ -34,9 +34,9 @@ use rig_core::{
     error::ErrorKind,
     http_client::BoxedHttpClient,
     providers::{
-        anthropic::wire::Anthropic,
+        anthropic::wire::{ANTHROPIC, Anthropic, Dialect as AnthropicDialect},
         gemini::Gemini,
-        openai::wire::{DEEPSEEK, OpenAI},
+        openai::wire::{OPENAI, OpenAI, by_name},
     },
     serve::{ErasedHandler, adapters::CompletionAdapter},
     test_utils::RecordingHttpClient,
@@ -45,7 +45,7 @@ use rig_ecs::{
     bus::{
         Bound, CredentialRef, EffectLogResource, EffectOutcome, Handler, Handlers,
         MaterializeError, MaterializeFailed, MaterializeReport, Materializer, PendingEffect,
-        ProviderBinding, ProviderKind, Replay, Secret,
+        ProviderBinding, ProviderFamily, Replay, Secret,
     },
     checkpoint::{Checkpoint, load_world, save_world},
 };
@@ -68,10 +68,16 @@ fn completion() -> rig_core::effect::EffectKind {
     }
 }
 
-fn binding(kind: ProviderKind) -> ProviderBinding {
-    ProviderBinding::new(KEY, kind, "model-x", "cassette")
+fn binding(family: ProviderFamily) -> ProviderBinding {
+    ProviderBinding::new(KEY, family, "model-x", "cassette")
         .labelled("default")
         .at(BASE)
+}
+
+/// A binding on `family` speaking a named gateway rather than the family's
+/// own provider.
+fn binding_speaking(family: ProviderFamily, dialect: &str) -> ProviderBinding {
+    binding(family).speaking(dialect)
 }
 
 /// A materializer over a sentinel credential and a recording transport:
@@ -111,33 +117,46 @@ fn served(world: &mut World) -> usize {
 
 #[test]
 fn a_binding_round_trips_verbatim() {
-    let binding = binding(ProviderKind::Anthropic)
+    let binding = binding(ProviderFamily::AnthropicMessages)
         .with_extra_params(serde_json::json!({"anthropic_betas": ["b-1"]}));
     let json = serde_json::to_string(&binding).unwrap();
     assert!(json.contains(r#""credential":"cassette""#), "{json}");
-    assert!(json.contains(r#""kind":"anthropic""#), "{json}");
+    assert!(json.contains(r#""family":"anthropic_messages""#), "{json}");
     let again: ProviderBinding = serde_json::from_str(&json).unwrap();
     assert_eq!(again, binding);
     assert_eq!(again.credential, CredentialRef::new("cassette"));
-    // An unknown kind is refused by the reader, before anything is spawned.
-    let unknown = json.replace(r#""kind":"anthropic""#, r#""kind":"mistral""#);
+    // An unknown family is refused by the reader, before anything is spawned.
+    let unknown = json.replace(
+        r#""family":"anthropic_messages""#,
+        r#""family":"telepathy""#,
+    );
     let error = serde_json::from_str::<ProviderBinding>(&unknown).unwrap_err();
     assert!(error.to_string().contains("unknown variant"), "{error}");
 }
 
+/// Every family, and — because a dialect is a name rather than a variant —
+/// two gateways no enum arm could have expressed: DeepSeek, which used to
+/// need its own kind, and Venice, which never had one at all.
 #[test]
 fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
-    for kind in [
-        ProviderKind::Anthropic,
-        ProviderKind::OpenAiChat,
-        ProviderKind::OpenAiResponses,
-        ProviderKind::Gemini,
-        ProviderKind::DeepSeek,
+    for (family, dialect) in [
+        (ProviderFamily::AnthropicMessages, None),
+        (ProviderFamily::AnthropicMessages, Some("zai")),
+        (ProviderFamily::OpenAiChat, None),
+        (ProviderFamily::OpenAiChat, Some("deepseek")),
+        (ProviderFamily::OpenAiChat, Some("venice")),
+        (ProviderFamily::OpenAiResponses, None),
+        (ProviderFamily::GeminiGenerateContent, None),
     ] {
+        let named = dialect.unwrap_or("-");
         let mut app = bus_support::app();
         let (materializer, transport, _) = materializer(ANTHROPIC_BODY);
         app.world_mut().insert_resource(materializer);
-        let entity = app.world_mut().spawn(binding(kind)).id();
+        let mut spawned = binding(family);
+        if let Some(dialect) = dialect {
+            spawned = spawned.speaking(dialect);
+        }
+        let entity = app.world_mut().spawn(spawned).id();
         assert!(app.world().get::<Bound>(entity).is_none());
         let report = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
         assert_eq!(
@@ -146,55 +165,58 @@ fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
                 materialized: vec![HandlerKey::from(KEY)],
                 kept: vec![],
             },
-            "{kind}"
+            "{family}/{named}"
         );
         // The binding's own entity is the handler entity.
         let bound = app
             .world()
             .get::<Bound>(entity)
-            .unwrap_or_else(|| panic!("{kind}: bound"));
+            .unwrap_or_else(|| panic!("{family}/{named}: bound"));
         assert_eq!(bound.key, HandlerKey::from(KEY));
         assert!(app.world().get::<Handler>(entity).is_some());
         // The descriptor is the one `CompletionAdapter::new("default", model)`
         // registered by hand under the key would produce.
         let by_hand: ErasedHandler = {
             let http = BoxedHttpClient::new(transport.clone());
-            match kind {
-                ProviderKind::Anthropic => ErasedHandler::new(CompletionAdapter::new(
-                    "default",
-                    Anthropic::new(SENTINEL)
-                        .with_base_url(BASE)
-                        .bind(http)
-                        .completion("model-x"),
-                )),
-                ProviderKind::OpenAiChat => ErasedHandler::new(CompletionAdapter::new(
-                    "default",
-                    OpenAI::new(SENTINEL)
-                        .with_base_url(BASE)
-                        .bind(http)
-                        .chat("model-x"),
-                )),
-                ProviderKind::OpenAiResponses => ErasedHandler::new(CompletionAdapter::new(
+            match family {
+                ProviderFamily::AnthropicMessages => {
+                    let dialect = AnthropicDialect::by_name(dialect.unwrap_or(ANTHROPIC.name))
+                        .expect("the fixture names a dialect this build knows");
+                    ErasedHandler::new(CompletionAdapter::new(
+                        "default",
+                        Anthropic::with_dialect(SENTINEL, &dialect)
+                            .with_base_url(BASE)
+                            .bind(http)
+                            .completion("model-x"),
+                    ))
+                }
+                ProviderFamily::OpenAiChat => {
+                    let dialect = by_name(dialect.unwrap_or(OPENAI.name))
+                        .expect("the fixture names a dialect this build knows");
+                    ErasedHandler::new(CompletionAdapter::new(
+                        "default",
+                        OpenAI::with_key(dialect, SENTINEL)
+                            .with_base_url(BASE)
+                            .bind(http)
+                            .chat("model-x"),
+                    ))
+                }
+                ProviderFamily::OpenAiResponses => ErasedHandler::new(CompletionAdapter::new(
                     "default",
                     OpenAI::new(SENTINEL)
                         .with_base_url(BASE)
                         .bind(http)
                         .responses("model-x"),
                 )),
-                ProviderKind::Gemini => ErasedHandler::new(CompletionAdapter::new(
-                    "default",
-                    Gemini::new(SENTINEL)
-                        .with_base_url(BASE)
-                        .bind(http)
-                        .completion("model-x"),
-                )),
-                ProviderKind::DeepSeek => ErasedHandler::new(CompletionAdapter::new(
-                    "default",
-                    OpenAI::with_key(&DEEPSEEK, SENTINEL)
-                        .with_base_url(BASE)
-                        .bind(http)
-                        .completion("model-x"),
-                )),
+                ProviderFamily::GeminiGenerateContent => {
+                    ErasedHandler::new(CompletionAdapter::new(
+                        "default",
+                        Gemini::new(SENTINEL)
+                            .with_base_url(BASE)
+                            .bind(http)
+                            .completion("model-x"),
+                    ))
+                }
             }
         };
         let mut hand = bus_support::app();
@@ -210,16 +232,57 @@ fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
             .unwrap()
             .descriptor
             .clone();
-        assert_eq!(bound.descriptor, expected, "{kind}: the bound descriptor");
+        assert_eq!(
+            bound.descriptor, expected,
+            "{family}/{named}: the bound descriptor"
+        );
         assert_eq!(
             serde_json::to_value(&bound.descriptor).unwrap(),
             serde_json::to_value(&expected).unwrap(),
-            "{kind}: the descriptor's JSON (what the policy hash folds)"
+            "{family}/{named}: the descriptor's JSON (what the policy hash folds)"
         );
         // Materializing again finds the key served and builds nothing.
         let again = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
-        assert_eq!(again.kept, vec![HandlerKey::from(KEY)], "{kind}");
-        assert!(again.materialized.is_empty(), "{kind}");
+        assert_eq!(again.kept, vec![HandlerKey::from(KEY)], "{family}/{named}");
+        assert!(again.materialized.is_empty(), "{family}/{named}");
+    }
+}
+
+/// A dialect the family does not speak is refused under the binding's key,
+/// rather than served by the family's default provider.
+#[test]
+fn a_dialect_the_family_does_not_speak_is_refused() {
+    for (family, dialect) in [
+        (ProviderFamily::OpenAiChat, "telepathy"),
+        // Anthropic's dialects are their own list: an OpenAI gateway name is
+        // not one of them.
+        (ProviderFamily::AnthropicMessages, "deepseek"),
+        // Gemini speaks one dialect, its own.
+        (ProviderFamily::GeminiGenerateContent, "openai"),
+    ] {
+        let mut app = bus_support::app();
+        let (materializer, _, built) = materializer(ANTHROPIC_BODY);
+        app.world_mut().insert_resource(materializer);
+        app.world_mut().spawn(binding_speaking(family, dialect));
+        let failed = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err();
+        match failed {
+            MaterializeError::UnknownDialect {
+                key,
+                family: reported,
+                dialect: named,
+            } => {
+                assert_eq!(key, HandlerKey::from(KEY));
+                assert_eq!(reported, family);
+                assert_eq!(named, dialect);
+            }
+            other => panic!("{family}/{dialect}: {other}"),
+        }
+        assert_eq!(served(app.world_mut()), 0, "{family}/{dialect}");
+        assert_eq!(
+            built.load(Ordering::SeqCst),
+            0,
+            "{family}/{dialect}: a refused binding builds no transport"
+        );
     }
 }
 
@@ -228,11 +291,12 @@ fn the_host_transport_is_built_once_per_binding_and_sends_to_the_base_url() {
     let mut app = bus_support::app();
     let (materializer, transport, built) = materializer(ANTHROPIC_BODY);
     app.world_mut().insert_resource(materializer);
-    app.world_mut().spawn(binding(ProviderKind::Anthropic));
+    app.world_mut()
+        .spawn(binding(ProviderFamily::AnthropicMessages));
     app.world_mut().spawn(
         ProviderBinding::new(
             "t/model:chat",
-            ProviderKind::DeepSeek,
+            ProviderFamily::OpenAiChat,
             "deepseek-x",
             "cassette",
         )
@@ -283,12 +347,15 @@ fn materialization_is_all_or_nothing() {
     let mut app = bus_support::app();
     let (materializer, _, built) = materializer(ANTHROPIC_BODY);
     app.world_mut().insert_resource(materializer);
-    let good = app.world_mut().spawn(binding(ProviderKind::Anthropic)).id();
+    let good = app
+        .world_mut()
+        .spawn(binding(ProviderFamily::AnthropicMessages))
+        .id();
     let bad = app
         .world_mut()
         .spawn(ProviderBinding::new(
             "t/model:other",
-            ProviderKind::OpenAiChat,
+            ProviderFamily::OpenAiChat,
             "m",
             "vault:missing",
         ))
@@ -332,7 +399,10 @@ fn an_existing_handler_wins_over_a_binding() {
     );
     app.world_mut().insert_resource(panicking_materializer());
     // A binding on its own entity for a key another entity serves.
-    let standalone = app.world_mut().spawn(binding(ProviderKind::Anthropic)).id();
+    let standalone = app
+        .world_mut()
+        .spawn(binding(ProviderFamily::AnthropicMessages))
+        .id();
     let report = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
     assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
     assert!(report.materialized.is_empty());
@@ -342,7 +412,7 @@ fn an_existing_handler_wins_over_a_binding() {
     app.world_mut().entity_mut(standalone).despawn();
     app.world_mut()
         .entity_mut(by_hand)
-        .insert(binding(ProviderKind::Anthropic));
+        .insert(binding(ProviderFamily::AnthropicMessages));
     let report = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
     assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
     let effect = app
@@ -365,7 +435,8 @@ fn a_replayer_wins_and_no_transport_is_built() {
     EffectLogResource::install(live.world_mut(), EffectLogRecorder::new());
     let (materializer, _, _) = materializer(ANTHROPIC_BODY);
     live.world_mut().insert_resource(materializer);
-    live.world_mut().spawn(binding(ProviderKind::Anthropic));
+    live.world_mut()
+        .spawn(binding(ProviderFamily::AnthropicMessages));
     rig_ecs::bus::materialize_bindings(live.world_mut()).unwrap();
     let effect = live
         .world_mut()
@@ -396,7 +467,7 @@ fn a_replayer_wins_and_no_transport_is_built() {
     replay
         .world_mut()
         .entity_mut(replayer)
-        .insert(binding(ProviderKind::Anthropic));
+        .insert(binding(ProviderFamily::AnthropicMessages));
     replay.world_mut().insert_resource(panicking_materializer());
     let report = rig_ecs::bus::materialize_bindings(replay.world_mut()).unwrap();
     assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
@@ -414,7 +485,8 @@ fn a_replayer_wins_and_no_transport_is_built() {
 fn refusals_are_deterministic_and_register_nothing() {
     // No materializer.
     let mut app = bus_support::app();
-    app.world_mut().spawn(binding(ProviderKind::Anthropic));
+    app.world_mut()
+        .spawn(binding(ProviderFamily::AnthropicMessages));
     assert_eq!(
         rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err(),
         MaterializeError::NoMaterializer
@@ -422,7 +494,10 @@ fn refusals_are_deterministic_and_register_nothing() {
     let (materializer, _, built) = materializer(CHAT_BODY);
     app.world_mut().insert_resource(materializer);
     // Duplicate key.
-    let second = app.world_mut().spawn(binding(ProviderKind::DeepSeek)).id();
+    let second = app
+        .world_mut()
+        .spawn(binding_speaking(ProviderFamily::OpenAiChat, "deepseek"))
+        .id();
     assert_eq!(
         rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err(),
         MaterializeError::DuplicateKey {
@@ -438,9 +513,13 @@ fn refusals_are_deterministic_and_register_nothing() {
         .unwrap()
         .extra_params = Some(serde_json::json!({"organization": "acme"}));
     match rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err() {
-        MaterializeError::ExtraParams { key, kind, detail } => {
+        MaterializeError::ExtraParams {
+            key,
+            family,
+            detail,
+        } => {
             assert_eq!(key, HandlerKey::from(KEY));
-            assert_eq!(kind, ProviderKind::Anthropic);
+            assert_eq!(family, ProviderFamily::AnthropicMessages);
             assert!(detail.contains("organization"), "{detail}");
         }
         other => panic!("{other:?}"),
@@ -471,7 +550,7 @@ fn refusals_are_deterministic_and_register_nothing() {
     app.world_mut().entity_mut(standalone).despawn();
     app.world_mut()
         .entity_mut(other)
-        .insert(binding(ProviderKind::Anthropic));
+        .insert(binding(ProviderFamily::AnthropicMessages));
     assert_eq!(
         rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap_err(),
         MaterializeError::KeyMismatch {
@@ -482,7 +561,7 @@ fn refusals_are_deterministic_and_register_nothing() {
     // A dispatch to a bound-but-unserved key is refused, never a panic.
     let mut fresh = bus_support::app();
     fresh.world_mut().spawn((
-        binding(ProviderKind::Anthropic),
+        binding(ProviderFamily::AnthropicMessages),
         Bound {
             key: HandlerKey::from(KEY),
             descriptor: HandlerDescriptor {
@@ -515,7 +594,7 @@ fn secrets_never_leave_the_resolver() {
     assert_eq!(format!("{secret:?}"), "[redacted]");
     assert_eq!(serde_json::to_string(&secret).unwrap(), "\"[redacted]\"");
     assert_eq!(secret.expose(), SENTINEL);
-    let binding = binding(ProviderKind::Anthropic);
+    let binding = binding(ProviderFamily::AnthropicMessages);
     let debug = format!("{binding:?}");
     assert!(debug.contains("cassette"), "{debug}");
     assert!(!debug.contains(SENTINEL));
@@ -573,7 +652,8 @@ fn materialized_binding_checkpoint() -> Checkpoint {
     let mut head = world_app();
     let (head_materializer, _, _) = materializer(ANTHROPIC_BODY);
     head.world_mut().insert_resource(head_materializer);
-    head.world_mut().spawn(binding(ProviderKind::Anthropic));
+    head.world_mut()
+        .spawn(binding(ProviderFamily::AnthropicMessages));
     rig_ecs::bus::materialize_bindings(head.world_mut()).unwrap();
     save_world(head.world_mut()).unwrap()
 }
@@ -584,11 +664,17 @@ fn a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() 
     let mut head = world_app();
     let (head_materializer, _, _) = materializer(ANTHROPIC_BODY);
     head.world_mut().insert_resource(head_materializer);
-    head.world_mut().spawn(binding(ProviderKind::Anthropic));
+    head.world_mut()
+        .spawn(binding(ProviderFamily::AnthropicMessages));
     rig_ecs::bus::materialize_bindings(head.world_mut()).unwrap();
     head.world_mut().spawn(
-        ProviderBinding::new("t/model:later", ProviderKind::Gemini, "g", "cassette")
-            .labelled("later"),
+        ProviderBinding::new(
+            "t/model:later",
+            ProviderFamily::GeminiGenerateContent,
+            "g",
+            "cassette",
+        )
+        .labelled("later"),
     );
     let checkpoint = save_world(head.world_mut()).unwrap();
     let saved = head
@@ -622,7 +708,7 @@ fn a_checkpoint_loads_its_bindings_as_data_and_materializes_on_the_hosts_word() 
     let (entity, restored, restored_binding) = bound.remove(0);
     assert_eq!(restored.key, HandlerKey::from(KEY));
     assert_eq!(restored.descriptor, saved);
-    assert_eq!(restored_binding, binding(ProviderKind::Anthropic));
+    assert_eq!(restored_binding, binding(ProviderFamily::AnthropicMessages));
     assert!(
         app.world().get::<Handler>(entity).is_none(),
         "bound, not served: the load built no client"
@@ -750,12 +836,12 @@ fn a_loaded_binding_that_would_build_another_descriptor_is_refused() {
     head.world_mut().insert_resource(head_materializer);
     let entity = head
         .world_mut()
-        .spawn(binding(ProviderKind::Anthropic))
+        .spawn(binding(ProviderFamily::AnthropicMessages))
         .id();
     rig_ecs::bus::materialize_bindings(head.world_mut()).unwrap();
     head.world_mut()
         .entity_mut(entity)
-        .insert(binding(ProviderKind::Anthropic).labelled("renamed"));
+        .insert(binding(ProviderFamily::AnthropicMessages).labelled("renamed"));
     let checkpoint = save_world(head.world_mut()).unwrap();
     let mut app = world_app();
     load_world(&checkpoint, app.world_mut()).unwrap();
@@ -775,7 +861,8 @@ fn a_loaded_binding_that_would_build_another_descriptor_is_refused() {
 #[test]
 fn the_materialize_system_reports_through_the_resource() {
     let mut app = bus_support::app();
-    app.world_mut().spawn(binding(ProviderKind::DeepSeek));
+    app.world_mut()
+        .spawn(binding_speaking(ProviderFamily::OpenAiChat, "deepseek"));
     rig_ecs::bus::materialize(app.world_mut());
     assert_eq!(
         app.world().get_resource::<MaterializeFailed>(),
@@ -809,7 +896,7 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
     };
     let loaded = app
         .world_mut()
-        .spawn((binding(ProviderKind::Anthropic), saved.clone()))
+        .spawn((binding(ProviderFamily::AnthropicMessages), saved.clone()))
         .id();
     let report = rig_ecs::bus::materialize_bindings(app.world_mut()).unwrap();
     assert_eq!(
@@ -846,7 +933,8 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
     EffectLogResource::install(live.world_mut(), EffectLogRecorder::new());
     let (materializer, _, _) = materializer(ANTHROPIC_BODY);
     live.world_mut().insert_resource(materializer);
-    live.world_mut().spawn(binding(ProviderKind::Anthropic));
+    live.world_mut()
+        .spawn(binding(ProviderFamily::AnthropicMessages));
     rig_ecs::bus::materialize_bindings(live.world_mut()).unwrap();
     let recorded = live
         .world_mut()
@@ -878,7 +966,7 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
         .expect("the replayer is bound under the key");
     let loaded = replay
         .world_mut()
-        .spawn((binding(ProviderKind::Anthropic), live_bound))
+        .spawn((binding(ProviderFamily::AnthropicMessages), live_bound))
         .id();
     replay.world_mut().insert_resource(panicking_materializer());
     let report = rig_ecs::bus::materialize_bindings(replay.world_mut()).unwrap();
@@ -901,7 +989,7 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
     let holder = fresh.world_mut().spawn(saved.clone()).id();
     let loaded = fresh
         .world_mut()
-        .spawn((binding(ProviderKind::Anthropic), saved.clone()))
+        .spawn((binding(ProviderFamily::AnthropicMessages), saved.clone()))
         .id();
     let report = rig_ecs::bus::materialize_bindings(fresh.world_mut()).unwrap();
     assert_eq!(report.kept, vec![HandlerKey::from(KEY)]);
@@ -948,7 +1036,7 @@ fn a_key_bound_to_another_family_is_kept_beside_a_good_binding() {
         .spawn(
             ProviderBinding::new(
                 good_key.clone(),
-                ProviderKind::Anthropic,
+                ProviderFamily::AnthropicMessages,
                 "model-x",
                 "cassette",
             )
@@ -963,7 +1051,7 @@ fn a_key_bound_to_another_family_is_kept_beside_a_good_binding() {
         .spawn((
             ProviderBinding::new(
                 tool_key.clone(),
-                ProviderKind::Anthropic,
+                ProviderFamily::AnthropicMessages,
                 "model-x",
                 "cassette",
             )

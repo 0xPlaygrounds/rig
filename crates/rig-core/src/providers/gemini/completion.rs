@@ -145,7 +145,7 @@ impl Wire for GenerateContent {
             ),
         };
         crate::providers::internal::trace_json(target, "Gemini completion request", &body);
-        let request = http::Request::post(self.provider.uri(&path))
+        let request = http::Request::post(self.provider.uri::<CompletionError>(&path)?)
             .header("Content-Type", "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::ResponseError(error.to_string()))?;

@@ -1255,17 +1255,29 @@ impl OpenAI {
     }
 
     /// Apply the dialect's authentication to a request builder.
-    pub(crate) fn authenticate(&self, builder: http::request::Builder) -> http::request::Builder {
-        match self.auth {
-            Auth::Bearer => {
-                builder.header("Authorization", format!("Bearer {}", self.api_key.expose()))
-            }
+    ///
+    /// Generic over the operation's error, and fallible: a dialect whose
+    /// credential is required has no request to build when the `Secret` is
+    /// empty, so the fault is reported here — naming the variable that
+    /// would supply one — rather than sent as `Bearer ` for a provider to
+    /// answer with a 401. [`Auth::OptionalBearer`] needs no credential, so
+    /// an empty one is not a fault there: the header is simply omitted.
+    pub(crate) fn authenticate<E: crate::wire::WireError>(
+        &self,
+        builder: http::request::Builder,
+    ) -> Result<http::request::Builder, E> {
+        let env_var = self.dialect.api_key_env;
+        Ok(match self.auth {
+            Auth::Bearer => builder.header(
+                "Authorization",
+                format!("Bearer {}", self.api_key.require::<E>(env_var)?),
+            ),
             Auth::OptionalBearer if self.api_key.is_empty() => builder,
             Auth::OptionalBearer => {
                 builder.header("Authorization", format!("Bearer {}", self.api_key.expose()))
             }
-            Auth::ApiKeyHeader => builder.header("api-key", self.api_key.expose()),
-        }
+            Auth::ApiKeyHeader => builder.header("api-key", self.api_key.require::<E>(env_var)?),
+        })
     }
 
     /// Every header a request from this configuration carries: the
@@ -1276,8 +1288,11 @@ impl OpenAI {
     /// handshake — the identity is a property of the configuration, not of
     /// the route, so a dialect that asks who is calling is answered
     /// whichever endpoint serves the turn.
-    pub(crate) fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
-        let mut builder = self.authenticate(builder);
+    pub(crate) fn headers<E: crate::wire::WireError>(
+        &self,
+        builder: http::request::Builder,
+    ) -> Result<http::request::Builder, E> {
+        let mut builder = self.authenticate::<E>(builder)?;
         if let Some(identity) = &self.identity {
             builder = builder
                 .header("originator", &identity.originator)
@@ -1297,7 +1312,7 @@ impl OpenAI {
         if let Some(account_id) = &self.account_id {
             builder = builder.header("ChatGPT-Account-Id", account_id);
         }
-        builder
+        Ok(builder)
     }
 }
 

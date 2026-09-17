@@ -160,7 +160,10 @@ fn models_sends_the_credential_as_the_last_query_pair() {
     let encoded = Models::new(Gemini::new("test-key"))
         .encode((), Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.first().expect("one request");
+    let request = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request");
 
     assert_eq!(encoded.framing, Framing::Whole);
     assert_eq!(encoded.request_id_header, None);
@@ -177,7 +180,10 @@ fn interactions_models_sends_the_credential_as_a_header_only() {
     let encoded = InteractionsModels::new(Gemini::new("test-key"))
         .encode((), Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.first().expect("one request");
+    let request = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request");
 
     assert_eq!(encoded.framing, Framing::Whole);
     assert_eq!(request.uri().path(), "/v1beta/models");

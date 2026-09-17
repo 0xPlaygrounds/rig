@@ -264,10 +264,6 @@ impl Decoder<Completion> for OpenAiDecoder {
         on_route!(self, decoder => decoder.continuation())
     }
 
-    fn is_analysis_only(&self, frame: &WireFrame) -> bool {
-        on_route!(self, decoder => decoder.is_analysis_only(frame))
-    }
-
     fn is_finished(&self) -> bool {
         on_route!(self, decoder => decoder.is_finished())
     }

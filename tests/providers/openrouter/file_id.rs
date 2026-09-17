@@ -42,7 +42,12 @@ fn sole_body(encoded: Encoded) -> Value {
         1,
         "the chat wire sends exactly one request"
     );
-    let Body::Bytes(bytes) = encoded.requests[0].body() else {
+    let Body::Bytes(bytes) = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request")
+        .body()
+    else {
         panic!("the chat wire sends a serialized body, not a multipart form")
     };
     serde_json::from_slice(bytes).expect("the chat body is JSON")

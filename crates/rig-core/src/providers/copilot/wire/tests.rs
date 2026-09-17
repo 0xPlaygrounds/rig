@@ -14,6 +14,15 @@ use crate::test_utils::RecordingHttpClient;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 use bytes::Bytes;
 
+/// The one request an encode produced.
+fn one(encoded: Encoded) -> http::Request<Body> {
+    encoded
+        .requests
+        .into_iter()
+        .next()
+        .expect("an encode produces a request")
+}
+
 /// One recorded interaction's request or reply body, read out of a cassette.
 ///
 /// The format is a `when:`/`then:` document whose bodies are single-quoted
@@ -73,11 +82,11 @@ fn text_of(response: &crate::completion::CompletionResponse) -> Option<String> {
 
 /// The request one `encode` produced, for the envelope assertions.
 fn encoded(wire: &CopilotWire) -> http::Request<Body> {
-    let mut encoded = wire
+    let encoded = wire
         .encode(prompt(), Mode::Unary)
         .expect("the request encodes");
     assert_eq!(encoded.requests.len(), 1, "one route, one request");
-    encoded.requests.remove(0)
+    one(encoded)
 }
 
 // ── routing ─────────────────────────────────────────────────────────────
@@ -305,10 +314,10 @@ async fn the_embeddings_wire_folds_its_recorded_reply() {
 #[test]
 fn the_embeddings_request_sends_the_resolved_width() {
     let wire = copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None);
-    let mut encoded = wire
+    let encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
-    let Body::Bytes(bytes) = encoded.requests.remove(0).into_body() else {
+    let Body::Bytes(bytes) = one(encoded).into_body() else {
         panic!("the embeddings body is bytes");
     };
     let body: serde_json::Value = serde_json::from_slice(&bytes).expect("the body is JSON");
@@ -317,10 +326,10 @@ fn the_embeddings_request_sends_the_resolved_width() {
 
     // The legacy Ada model accepts no width at all.
     let ada = copilot().embeddings(super::super::TEXT_EMBEDDING_ADA_002, None);
-    let mut encoded = ada
+    let encoded = ada
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
-    let Body::Bytes(bytes) = encoded.requests.remove(0).into_body() else {
+    let Body::Bytes(bytes) = one(encoded).into_body() else {
         panic!("the embeddings body is bytes");
     };
     let body: serde_json::Value = serde_json::from_slice(&bytes).expect("the body is JSON");
@@ -334,10 +343,10 @@ fn the_embeddings_request_sends_the_resolved_width() {
 #[test]
 fn the_embeddings_route_carries_copilots_editor_envelope() {
     let wire = copilot().embeddings(super::super::TEXT_EMBEDDING_3_SMALL, None);
-    let mut encoded = wire
+    let encoded = wire
         .encode(vec!["one".to_owned()], Mode::Unary)
         .expect("the request encodes");
-    let request = encoded.requests.remove(0);
+    let request = one(encoded);
     assert_eq!(request.uri().path(), "/embeddings");
     let headers = request.headers();
     assert_eq!(

@@ -170,6 +170,85 @@ fn a_serialized_config_carries_no_key_material() {
     );
 }
 
+/// Every bearer token one encode put on the wire.
+fn bearers_of(encoded: &Encoded) -> Vec<String> {
+    encoded
+        .requests
+        .iter()
+        .map(|request| {
+            request
+                .headers()
+                .get(http::header::AUTHORIZATION)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect()
+}
+
+/// Cohere authenticates every route it serves, so a config with no
+/// credential — the state a reloaded one is in — is a fault in the request,
+/// named before anything is sent.
+#[test]
+fn no_credential_refuses_every_route_by_naming_the_variable() {
+    let unauthenticated = Cohere::new("");
+
+    let Err(chat) = unauthenticated
+        .chat("command-a-03-2025")
+        .encode(recorded_request(), Mode::Unary)
+    else {
+        panic!("a chat request with no credential must not be built");
+    };
+    assert!(matches!(chat, CompletionError::MissingCredential { .. }));
+
+    let Err(texts) = unauthenticated
+        .embeddings("embed-v4.0", None)
+        .encode(vec!["first".to_owned()], Mode::Unary)
+    else {
+        panic!("an embedding request with no credential must not be built");
+    };
+    assert!(matches!(texts, EmbeddingError::MissingCredential { .. }));
+
+    let Err(images) = unauthenticated
+        .image_embeddings()
+        .encode(vec![png(b"first")], Mode::Unary)
+    else {
+        panic!("an image request with no credential must not be built");
+    };
+    assert!(matches!(images, EmbeddingError::MissingCredential { .. }));
+
+    for error in [chat.to_string(), texts.to_string(), images.to_string()] {
+        assert!(
+            error.contains("COHERE_API_KEY"),
+            "the failure must name the variable that supplies a key: {error}"
+        );
+    }
+}
+
+#[test]
+fn a_credential_travels_as_a_bearer_token_on_every_route() {
+    let bearer = "Bearer cohere-test-key".to_owned();
+
+    let chat = cohere()
+        .chat("command-a-03-2025")
+        .encode(recorded_request(), Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(bearers_of(&chat), vec![bearer.clone()]);
+
+    let texts = cohere()
+        .embeddings("embed-v4.0", None)
+        .encode(vec!["first".to_owned()], Mode::Unary)
+        .expect("the request encodes");
+    assert_eq!(bearers_of(&texts), vec![bearer.clone()]);
+
+    // One request per image, each authenticated on its own.
+    let images = cohere()
+        .image_embeddings()
+        .encode(vec![png(b"first"), png(b"second")], Mode::Unary)
+        .expect("both images are PNGs");
+    assert_eq!(bearers_of(&images), vec![bearer.clone(), bearer]);
+}
+
 /// A `/v1/embed` reply, shaped as `tests/cassettes/cohere/embeddings/
 /// embed_texts_smoke.yaml` records it (`id`, `embeddings`, `texts`, and
 /// `meta.billed_units`), with two-element vectors in place of the recorded

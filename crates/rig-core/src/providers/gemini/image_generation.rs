@@ -189,7 +189,7 @@ impl Wire for Images {
             "{}{}?key={}",
             self.provider.base_url,
             generate_content_path(&self.model),
-            self.provider.api_key.expose()
+            self.provider.credential::<ImageGenerationError>()?
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::Bytes(body))

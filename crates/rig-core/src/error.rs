@@ -430,7 +430,9 @@ impl From<&CompletionError> for ErrorReport {
             CompletionError::HttpError(_) => (ErrorKind::Http, None),
             CompletionError::JsonError(_) => (ErrorKind::Json, None),
             CompletionError::UrlError(_) => (ErrorKind::Url, None),
-            CompletionError::RequestError(_) => (ErrorKind::Request, None),
+            CompletionError::RequestError(_) | CompletionError::MissingCredential { .. } => {
+                (ErrorKind::Request, None)
+            }
             CompletionError::ResponseError(_) => (ErrorKind::Response, None),
             CompletionError::ProviderError(_) => (ErrorKind::Provider, None),
             CompletionError::ProviderResponse(response) => {
@@ -444,6 +446,7 @@ impl From<&CompletionError> for ErrorReport {
             | CompletionError::JsonError(_)
             | CompletionError::UrlError(_)
             | CompletionError::RequestError(_)
+            | CompletionError::MissingCredential { .. }
             | CompletionError::ResponseError(_)
             | CompletionError::ProviderError(_) => None,
         };
@@ -456,6 +459,7 @@ impl From<&CompletionError> for ErrorReport {
             | CompletionError::JsonError(_)
             | CompletionError::UrlError(_)
             | CompletionError::RequestError(_)
+            | CompletionError::MissingCredential { .. }
             | CompletionError::ResponseError(_)
             | CompletionError::ProviderError(_) => None,
         };
@@ -571,7 +575,9 @@ impl From<&EmbeddingError> for ErrorReport {
             EmbeddingError::HttpError(_) => (ErrorKind::Http, None),
             EmbeddingError::JsonError(_) => (ErrorKind::Json, None),
             EmbeddingError::UrlError(_) => (ErrorKind::Url, None),
-            EmbeddingError::DocumentError(_) => (ErrorKind::Request, None),
+            EmbeddingError::DocumentError(_) | EmbeddingError::MissingCredential { .. } => {
+                (ErrorKind::Request, None)
+            }
             EmbeddingError::ResponseError(_) => (ErrorKind::Response, None),
             EmbeddingError::UnsupportedParameter { .. }
             | EmbeddingError::InvalidParameterValue { .. } => (ErrorKind::Request, None),
@@ -627,6 +633,7 @@ impl From<&RerankError> for ErrorReport {
             RerankError::HttpError(_) => (ErrorKind::Http, None),
             RerankError::JsonError(_) => (ErrorKind::Json, None),
             RerankError::UrlError(_) => (ErrorKind::Url, None),
+            RerankError::MissingCredential { .. } => (ErrorKind::Request, None),
             RerankError::ResponseError(_) => (ErrorKind::Response, None),
             RerankError::ProviderError(_) => (ErrorKind::Provider, None),
             RerankError::ProviderResponse(response) => {

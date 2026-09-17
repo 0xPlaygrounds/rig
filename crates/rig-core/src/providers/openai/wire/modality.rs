@@ -84,7 +84,7 @@ fn encoded<E: crate::wire::WireError>(
     body: Body,
 ) -> Result<Encoded, E> {
     let request = provider
-        .authenticate(builder)
+        .authenticate::<E>(builder)?
         .body(body)
         .map_err(|error| E::decode(error.to_string()))?;
     Ok(Encoded::new(request, Framing::Whole)

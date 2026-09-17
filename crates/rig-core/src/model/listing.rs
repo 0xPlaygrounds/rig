@@ -466,6 +466,12 @@ impl crate::wire::WireError for ModelListingError {
         Self::parse_error(error.to_string())
     }
 
+    fn missing_credential(env_var: &'static str) -> Self {
+        Self::request_error(format!(
+            "no credential for this provider; set `{env_var}` or build its configuration with a key"
+        ))
+    }
+
     fn decode(message: String) -> Self {
         Self::parse_error(message)
     }

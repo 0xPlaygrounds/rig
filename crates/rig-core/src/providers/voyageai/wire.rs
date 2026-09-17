@@ -10,7 +10,8 @@ use crate::embeddings::{Embedding as Vector, EmbeddingError};
 use crate::operation::{Embedding, EmbeddingCapabilities, Rerank as RerankOp, RerankRequest};
 use crate::rerank::{RerankError, RerankResponse, RerankResult};
 use crate::wire::{
-    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireEvent, WireFrame,
+    Body, Decoder, Encoded, Framing, Mode, Output, Secret, Sink, Wire, WireError, WireEvent,
+    WireFrame,
 };
 use serde::{Deserialize, Serialize};
 
@@ -89,13 +90,18 @@ impl VoyageAi {
     }
 
     /// One request, authenticated and typed as JSON.
-    fn post(&self, path: &str) -> http::request::Builder {
-        http::Request::post(format!("{}{path}", self.base_url))
+    ///
+    /// Voyage authenticates both routes, so the credential is read through
+    /// [`Secret::require`]: a wire reloaded from a scene or a config file
+    /// carries no key by contract, and an error naming `VOYAGE_API_KEY`
+    /// beats sending `Bearer ` for a provider 401.
+    fn post<E: WireError>(&self, path: &str) -> Result<http::request::Builder, E> {
+        Ok(http::Request::post(format!("{}{path}", self.base_url))
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(
                 http::header::AUTHORIZATION,
-                format!("Bearer {}", self.api_key.expose()),
-            )
+                format!("Bearer {}", self.api_key.require::<E>(API_KEY_ENV)?),
+            ))
     }
 }
 
@@ -180,7 +186,7 @@ impl Wire for Embeddings {
         }
         let request = self
             .provider
-            .post("/embeddings")
+            .post::<EmbeddingError>("/embeddings")?
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| EmbeddingError::HttpError(error.into()))?;
         Ok(Encoded::new(request, Framing::Whole))
@@ -306,7 +312,7 @@ impl Wire for Rerank {
         }
         let request = self
             .provider
-            .post("/rerank")
+            .post::<RerankError>("/rerank")?
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| RerankError::HttpError(error.into()))?;
         Ok(Encoded::new(request, Framing::Whole))

@@ -100,7 +100,7 @@ fn built_streaming_body(
     let request = encoded
         .requests
         .first()
-        .ok_or_else(|| CompletionError::RequestError("the wire encoded no request".into()))?;
+        .expect("an encode produces a request");
     match request.body() {
         Body::Bytes(bytes) => Ok(serde_json::from_slice(bytes)?),
         Body::Multipart(_) => Err(CompletionError::RequestError(

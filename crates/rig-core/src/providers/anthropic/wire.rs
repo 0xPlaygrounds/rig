@@ -293,15 +293,26 @@ impl Anthropic {
     }
 
     /// The request headers every Messages-format endpoint takes.
-    fn headers(&self, builder: http::request::Builder) -> http::request::Builder {
+    ///
+    /// Every Messages-format endpoint authenticates by `x-api-key` and none
+    /// of them has an anonymous mode, so a config without a credential
+    /// fails here — naming the variable that supplies one — instead of
+    /// spending a round trip on the provider's 401.
+    fn headers<E: crate::wire::WireError>(
+        &self,
+        builder: http::request::Builder,
+    ) -> Result<http::request::Builder, E> {
         let builder = builder
-            .header("x-api-key", self.api_key.expose())
+            .header(
+                "x-api-key",
+                self.api_key.require::<E>(self.dialect.api_key_env)?,
+            )
             .header("anthropic-version", &self.version);
-        if self.betas.is_empty() {
+        Ok(if self.betas.is_empty() {
             builder
         } else {
             builder.header("anthropic-beta", self.betas.join(","))
-        }
+        })
     }
 }
 
@@ -558,10 +569,10 @@ impl Wire for Messages {
         );
         let request = self
             .provider
-            .headers(http::Request::post(format!(
+            .headers::<CompletionError>(http::Request::post(format!(
                 "{}/v1/messages",
                 self.provider.base_url
-            )))
+            )))?
             .header(http::header::CONTENT_TYPE, "application/json")
             .body(Body::Bytes(serde_json::to_vec(&body)?))
             .map_err(|error| CompletionError::HttpError(error.into()))?;
@@ -629,7 +640,7 @@ impl Models {
             None => format!("{}/v1/models", self.provider.base_url),
         };
         self.provider
-            .headers(http::Request::get(uri))
+            .headers::<ModelListingError>(http::Request::get(uri))?
             .body(Body::empty())
             .map_err(|error| ModelListingError::request_error(error.to_string()))
     }
@@ -713,10 +724,10 @@ impl Wire for Verify {
     fn encode(&self, _request: (), _mode: Mode) -> Result<Encoded, crate::client::VerifyError> {
         let request = self
             .provider
-            .headers(http::Request::get(format!(
+            .headers::<crate::client::VerifyError>(http::Request::get(format!(
                 "{}/v1/models",
                 self.provider.base_url
-            )))
+            )))?
             .body(Body::empty())
             .map_err(|error| {
                 crate::client::VerifyError::HttpError(crate::http_client::Error::Protocol(error))

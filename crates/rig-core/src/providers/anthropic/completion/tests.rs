@@ -401,7 +401,11 @@ fn strict_tool_hook_is_a_noop_for_anthropic_compatible_gateways() {
     .with_strict_tools()
     .encode(request, Mode::Unary)
     .expect("the request encodes");
-    let crate::wire::Body::Bytes(body) = encoded.requests.first().expect("one request").body()
+    let crate::wire::Body::Bytes(body) = encoded
+        .requests
+        .first()
+        .expect("an encode produces a request")
+        .body()
     else {
         panic!("the Messages endpoint takes JSON")
     };

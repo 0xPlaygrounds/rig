@@ -105,7 +105,7 @@ impl Wire for Embeddings {
             "{}/v1beta/models/{}:batchEmbedContents?key={}",
             self.provider.base_url,
             self.model,
-            self.provider.api_key.expose()
+            self.provider.credential::<EmbeddingError>()?
         ))
         .header(http::header::CONTENT_TYPE, "application/json")
         .body(Body::Bytes(serde_json::to_vec(&body)?))
