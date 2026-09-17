@@ -154,18 +154,21 @@ async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<(
     let explicit = auth
         .auth_context_with_github_access_token(&http, "synthetic-bootstrap")
         .await?;
-    assert!(
+    anyhow::ensure!(
         http.requests().is_empty(),
         "a fresh cache must not exchange"
     );
     for context in [oauth, explicit] {
-        assert_eq!(context.api_key.expose(), "synthetic-cached-copilot-key");
-        assert_eq!(
-            context.api_base.as_deref(),
-            Some("https://cached-copilot.example.invalid")
+        anyhow::ensure!(
+            context.api_key.expose() == "synthetic-cached-copilot-key",
+            "cached API key changed"
+        );
+        anyhow::ensure!(
+            context.api_base.as_deref() == Some("https://cached-copilot.example.invalid"),
+            "cached API endpoint changed"
         );
     }
     let persisted: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-    assert_eq!(persisted, fixture);
+    anyhow::ensure!(persisted == fixture, "persisted cache changed");
     Ok(())
 }

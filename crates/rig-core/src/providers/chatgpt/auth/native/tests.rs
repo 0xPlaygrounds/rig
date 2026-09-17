@@ -117,16 +117,16 @@ async fn cached_credential_remains_persistent_and_reusable() -> anyhow::Result<(
     let http = RecordingHttpClient::new("");
     let auth = PlatformAuthenticator::new(Some(path.clone()), DeviceCodeHandler::default(), false);
     let context = auth.auth_context_oauth(&http).await?;
-    assert!(http.requests().is_empty(), "a fresh cache must not refresh");
-    assert_eq!(
-        context.access_token.expose(),
-        "synthetic-cached-chatgpt-token"
+    anyhow::ensure!(http.requests().is_empty(), "a fresh cache must not refresh");
+    anyhow::ensure!(
+        context.access_token.expose() == "synthetic-cached-chatgpt-token",
+        "cached access token changed"
     );
-    assert_eq!(
-        context.account_id.as_deref(),
-        Some("synthetic-cached-account")
+    anyhow::ensure!(
+        context.account_id.as_deref() == Some("synthetic-cached-account"),
+        "cached account changed"
     );
     let persisted: serde_json::Value = serde_json::from_slice(&std::fs::read(path)?)?;
-    assert_eq!(persisted, fixture);
+    anyhow::ensure!(persisted == fixture, "persisted cache changed");
     Ok(())
 }

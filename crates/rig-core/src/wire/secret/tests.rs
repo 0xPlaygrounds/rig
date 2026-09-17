@@ -205,14 +205,17 @@ fn gemini_encoded_debug_redacts_query_without_removing_authentication() -> anyho
     let encoded = Gemini::new(key)
         .generate_content("gemini-2.5-flash")
         .encode(probe_request(), Mode::Unary)?;
-    assert_eq!(
-        encoded.requests[0].uri().query(),
-        Some("key=synthetic-gemini-query-key")
+    anyhow::ensure!(
+        encoded.requests[0].uri().query() == Some("key=synthetic-gemini-query-key"),
+        "Gemini query credential changed"
     );
     for debug in [format!("{encoded:?}"), format!("{encoded:#?}")] {
-        assert!(!debug.contains(key), "Encoded leaked its query credential");
-        assert!(debug.contains("POST"));
-        assert!(debug.contains("/v1beta/models/gemini-2.5-flash:generateContent"));
+        anyhow::ensure!(!debug.contains(key), "Encoded leaked its query credential");
+        anyhow::ensure!(debug.contains("POST"), "Encoded omitted the method");
+        anyhow::ensure!(
+            debug.contains("/v1beta/models/gemini-2.5-flash:generateContent"),
+            "Encoded omitted the path"
+        );
     }
     Ok(())
 }
@@ -248,10 +251,10 @@ fn encoded_debug_excludes_every_non_path_request_surface() -> anyhow::Result<()>
             "https://",
             "http://",
         ] {
-            assert!(!debug.contains(marker), "Encoded leaked {marker}");
+            anyhow::ensure!(!debug.contains(marker), "Encoded leaked {marker}");
         }
         for useful in ["POST", "/first", "GET", "/second"] {
-            assert!(debug.contains(useful), "Encoded omitted {useful}");
+            anyhow::ensure!(debug.contains(useful), "Encoded omitted {useful}");
         }
     }
     Ok(())
