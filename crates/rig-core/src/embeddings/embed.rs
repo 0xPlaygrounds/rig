@@ -100,75 +100,25 @@ impl Embed for String {
     }
 }
 
-impl Embed for &str {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
+/// [`Embed`] for the scalars whose embeddable text *is* their `Display`
+/// rendering: one fragment, the value as it prints. `String` is written out
+/// above rather than listed here because it hands over a clone instead of
+/// formatting itself, and `serde_json::Value` below embeds its JSON rather
+/// than its `Display`.
+macro_rules! embed_via_display {
+    ($($ty:ty),+ $(,)?) => {
+        $(
+            impl Embed for $ty {
+                fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
+                    embedder.embed(self.to_string());
+                    Ok(())
+                }
+            }
+        )+
+    };
 }
 
-impl Embed for i8 {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
-
-impl Embed for i16 {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
-
-impl Embed for i32 {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
-
-impl Embed for i64 {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
-
-impl Embed for i128 {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
-
-impl Embed for f32 {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
-
-impl Embed for f64 {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
-
-impl Embed for bool {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
-
-impl Embed for char {
-    fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {
-        embedder.embed(self.to_string());
-        Ok(())
-    }
-}
+embed_via_display!(&str, i8, i16, i32, i64, i128, f32, f64, bool, char);
 
 impl Embed for serde_json::Value {
     fn embed(&self, embedder: &mut TextEmbedder) -> Result<(), EmbedError> {

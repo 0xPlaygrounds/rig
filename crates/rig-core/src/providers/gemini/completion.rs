@@ -669,11 +669,6 @@ pub mod gemini_api_types {
             self.generation_config = Some(cfg);
             self
         }
-
-        pub fn with_params(mut self, params: serde_json::Value) -> Self {
-            self.additional_params = Some(params);
-            self
-        }
     }
 
     /// Response from the model supporting multiple candidate responses.

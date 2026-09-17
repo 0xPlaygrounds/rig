@@ -159,21 +159,6 @@ pub async fn text(response: Response<LazyBody<Vec<u8>>>) -> Result<String> {
     Ok(String::from(String::from_utf8_lossy(&text)))
 }
 
-pub fn make_auth_header(key: impl AsRef<str>) -> Result<(HeaderName, HeaderValue)> {
-    Ok((
-        http::header::AUTHORIZATION,
-        HeaderValue::from_str(&format!("Bearer {}", key.as_ref()))?,
-    ))
-}
-
-pub fn bearer_auth_header(headers: &mut HeaderMap, key: impl AsRef<str>) -> Result<()> {
-    let (k, v) = make_auth_header(key)?;
-
-    headers.insert(k, v);
-
-    Ok(())
-}
-
 /// A helper trait to make generic requests (both regular and SSE) possible.
 pub trait HttpClientExt: WasmCompatSend + WasmCompatSync {
     /// Send a HTTP request, get a response back (as bytes). Response must be able to be turned back into Bytes.

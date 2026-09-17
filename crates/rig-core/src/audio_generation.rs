@@ -1,6 +1,6 @@
 //! Everything related to audio generation (ie, Text To Speech).
 //! Rig abstracts over a number of different providers using the [AudioGenerationModel] trait.
-use crate::completion::{ResponseIdentity, Usage};
+use crate::completion::Usage;
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
@@ -81,20 +81,9 @@ impl AudioGenerationResponse {
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
 
-crate::provider_response::modality_response_metadata_setters!(AudioGenerationResponse);
+crate::provider_response::modality_response_metadata!(AudioGenerationResponse);
 
 /// Trait defining an audio generation (text-to-speech) model.
 ///

@@ -15,9 +15,11 @@
 //! ```console
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! cargo xtask check-wires         # fail if a provider is not a wire
+//! cargo xtask check-dead          # fail if rig-core keeps surface nobody calls
 //! ```
 
 mod bevy;
+mod dead;
 mod test_layout;
 mod verify;
 mod wires;
@@ -33,6 +35,7 @@ fn main() -> ExitCode {
         Some("verify") => verify::run(&workspace_root(), args.collect()).map_err(|e| e.to_string()),
         Some("check-test-layout") => test_layout::check(&workspace_root()),
         Some("check-wires") => wires::check(&workspace_root()),
+        Some("check-dead") => dead::check(&workspace_root()),
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
         None => Err(format!("no task given\n{USAGE}")),
     };
@@ -57,6 +60,9 @@ tasks:
   check-wires                 fail if anything under rig-core's providers/ is
                               not a wire: `.await`, `async`, a transport type
                               parameter, or a consumer-trait impl
+  check-dead                  fail if rig-core declares a `pub fn`/`pub trait`
+                              nothing calls; report fields no code reads and no
+                              cassette or golden carries
 ";
 
 fn workspace_root() -> PathBuf {

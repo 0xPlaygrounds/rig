@@ -411,78 +411,24 @@ impl_report_for_provider_error!(ImageGenerationError);
 #[cfg(feature = "audio")]
 impl_report_for_provider_error!(AudioGenerationError);
 
+// `CompletionError`, `EmbeddingError` and `RerankError` classify through the
+// same table; each names only the rows the table's default arm would get
+// wrong. `UrlError` is a distinct kind on all three (a URL that will not
+// build is not the same fault as a request the provider rejected), and the
+// embedding wire raises three response-shaped faults of its own.
+impl_report_for_provider_error!(CompletionError, CompletionError::UrlError(_) => ErrorKind::Url);
+impl_report_for_provider_error!(EmbeddingError,
+    EmbeddingError::UrlError(_) => ErrorKind::Url,
+    EmbeddingError::UnsupportedResponseEncoding { .. } => ErrorKind::Response,
+    EmbeddingError::MissingUsage { .. } => ErrorKind::Response,
+    EmbeddingError::MismatchedDimensions { .. } => ErrorKind::Response,
+);
+impl_report_for_provider_error!(RerankError, RerankError::UrlError(_) => ErrorKind::Url);
+
 impl CompletionError {
     /// The wire form of this error.
     pub fn report(&self) -> ErrorReport {
         ErrorReport::from(self)
-    }
-}
-
-impl From<&CompletionError> for ErrorReport {
-    fn from(error: &CompletionError) -> Self {
-        let (kind, http_status) = match error {
-            CompletionError::HttpError(_) => (ErrorKind::Http, None),
-            CompletionError::JsonError(_) => (ErrorKind::Json, None),
-            CompletionError::UrlError(_) => (ErrorKind::Url, None),
-            CompletionError::RequestError(_) | CompletionError::MissingCredential { .. } => {
-                (ErrorKind::Request, None)
-            }
-            CompletionError::ResponseError(_) => (ErrorKind::Response, None),
-            CompletionError::ProviderError(_) => (ErrorKind::Provider, None),
-            CompletionError::ProviderResponse(response) => {
-                let status = response.status.map(|s| s.as_u16());
-                (ErrorKind::ProviderResponse, status)
-            }
-        };
-        let request_id = match error {
-            CompletionError::ProviderResponse(response) => response.provider_request_id.clone(),
-            CompletionError::HttpError(_)
-            | CompletionError::JsonError(_)
-            | CompletionError::UrlError(_)
-            | CompletionError::RequestError(_)
-            | CompletionError::MissingCredential { .. }
-            | CompletionError::ResponseError(_)
-            | CompletionError::ProviderError(_) => None,
-        };
-        // The provider's response travels with the report: what the
-        // provider error exposed (status, body, headers, request id) stays
-        // readable after the failure crossed the wire.
-        let provider_response = match error {
-            CompletionError::ProviderResponse(response) => Some(response.clone()),
-            CompletionError::HttpError(_)
-            | CompletionError::JsonError(_)
-            | CompletionError::UrlError(_)
-            | CompletionError::RequestError(_)
-            | CompletionError::MissingCredential { .. }
-            | CompletionError::ResponseError(_)
-            | CompletionError::ProviderError(_) => None,
-        };
-        let code = match error {
-            CompletionError::ProviderResponse(response) => response.machine_code(),
-            _ => None,
-        };
-        let refusal = match error {
-            CompletionError::ProviderResponse(response) => response.refusal,
-            _ => false,
-        };
-        ErrorReport {
-            kind,
-            retryable: error.is_retryable(),
-            message: error.to_string(),
-            code,
-            http_status,
-            refusal,
-            source_chain: source_chain(error),
-            request_id,
-            provider_response,
-            detail: None,
-        }
-    }
-}
-
-impl From<CompletionError> for ErrorReport {
-    fn from(error: CompletionError) -> Self {
-        Self::from(&error)
     }
 }
 
@@ -559,115 +505,6 @@ impl From<&MemoryError> for ErrorReport {
 
 impl From<MemoryError> for ErrorReport {
     fn from(error: MemoryError) -> Self {
-        Self::from(&error)
-    }
-}
-
-impl From<&EmbeddingError> for ErrorReport {
-    fn from(error: &EmbeddingError) -> Self {
-        let (kind, http_status) = match error {
-            EmbeddingError::HttpError(_) => (ErrorKind::Http, None),
-            EmbeddingError::JsonError(_) => (ErrorKind::Json, None),
-            EmbeddingError::UrlError(_) => (ErrorKind::Url, None),
-            EmbeddingError::DocumentError(_) | EmbeddingError::MissingCredential { .. } => {
-                (ErrorKind::Request, None)
-            }
-            EmbeddingError::ResponseError(_) => (ErrorKind::Response, None),
-            EmbeddingError::UnsupportedParameter { .. }
-            | EmbeddingError::InvalidParameterValue { .. } => (ErrorKind::Request, None),
-            EmbeddingError::UnsupportedResponseEncoding { .. }
-            | EmbeddingError::MissingUsage { .. }
-            | EmbeddingError::MismatchedDimensions { .. } => (ErrorKind::Response, None),
-            EmbeddingError::ProviderError(_) => (ErrorKind::Provider, None),
-            EmbeddingError::ProviderResponse(response) => {
-                let status = response.status.map(|s| s.as_u16());
-                (ErrorKind::ProviderResponse, status)
-            }
-        };
-        // One rule per error type: the retry verdict is the error's own,
-        // never a copy of its table kept beside the report.
-        let retryable = error.is_retryable();
-        let provider_response = match error {
-            EmbeddingError::ProviderResponse(response) => Some(response.clone()),
-            _ => None,
-        };
-        let request_id = provider_response
-            .as_ref()
-            .and_then(|response| response.provider_request_id.clone());
-        let code = provider_response
-            .as_ref()
-            .and_then(|response| response.machine_code());
-        let refusal = provider_response
-            .as_ref()
-            .is_some_and(|response| response.refusal);
-        ErrorReport {
-            kind,
-            retryable,
-            message: error.to_string(),
-            code,
-            http_status,
-            refusal,
-            source_chain: source_chain(error),
-            request_id,
-            provider_response,
-            detail: None,
-        }
-    }
-}
-
-impl From<EmbeddingError> for ErrorReport {
-    fn from(error: EmbeddingError) -> Self {
-        Self::from(&error)
-    }
-}
-
-impl From<&RerankError> for ErrorReport {
-    fn from(error: &RerankError) -> Self {
-        let (kind, http_status) = match error {
-            RerankError::HttpError(_) => (ErrorKind::Http, None),
-            RerankError::JsonError(_) => (ErrorKind::Json, None),
-            RerankError::UrlError(_) => (ErrorKind::Url, None),
-            RerankError::MissingCredential { .. } => (ErrorKind::Request, None),
-            RerankError::ResponseError(_) => (ErrorKind::Response, None),
-            RerankError::ProviderError(_) => (ErrorKind::Provider, None),
-            RerankError::ProviderResponse(response) => {
-                let status = response.status.map(|s| s.as_u16());
-                (ErrorKind::ProviderResponse, status)
-            }
-        };
-        // One rule per error type: the retry verdict is the error's own,
-        // never a copy of its table kept beside the report.
-        let retryable = error.is_retryable();
-        let provider_response = match error {
-            RerankError::ProviderResponse(response) => Some(response.clone()),
-            _ => None,
-        };
-        let request_id = provider_response
-            .as_ref()
-            .and_then(|response| response.provider_request_id.clone());
-        let code = provider_response
-            .as_ref()
-            .and_then(|response| response.machine_code());
-        let refusal = provider_response
-            .as_ref()
-            .is_some_and(|response| response.refusal);
-        ErrorReport {
-            kind,
-            retryable,
-            message: error.to_string(),
-            code,
-            http_status,
-            refusal,
-            source_chain: source_chain(error),
-            request_id,
-            provider_response,
-            detail: None,
-        }
-    }
-}
-
-impl From<RerankError> for ErrorReport {
-    fn from(error: RerankError) -> Self {
         Self::from(&error)
     }
 }

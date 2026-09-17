@@ -1,6 +1,6 @@
 //! Everything related to core image generation abstractions in Rig.
 //! Rig allows calling a number of different providers (that support image generation) using the [ImageGenerationModel] trait.
-use crate::completion::{ResponseIdentity, Usage};
+use crate::completion::Usage;
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
 use serde::{Deserialize, Serialize};
@@ -76,20 +76,9 @@ impl ImageGenerationResponse {
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
 
-crate::provider_response::modality_response_metadata_setters!(ImageGenerationResponse);
+crate::provider_response::modality_response_metadata!(ImageGenerationResponse);
 
 /// Convert a provider's own image generation payload into the normalized
 /// [`ImageGenerationResponse`].

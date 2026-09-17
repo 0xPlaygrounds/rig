@@ -29,9 +29,6 @@ pub const HUNYUAN_IMAGE_V3: &str = "hunyuan-image-v3";
 /// How long Venice spent generating an image, in milliseconds.
 #[derive(Debug, Clone, Copy, Default, Deserialize, Serialize)]
 pub struct ImageGenerationTiming {
-    /// Inference time.
-    #[serde(default)]
-    pub inference_duration: f64,
     /// Preprocessing time.
     #[serde(default, rename = "inferencePreprocessingTime")]
     pub inference_preprocessing_time: f64,

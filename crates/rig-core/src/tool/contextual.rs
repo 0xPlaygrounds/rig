@@ -367,6 +367,11 @@ pub struct DynamicTool {
 
 impl DynamicTool {
     /// Define a tool from a callback over the dispatch-scoped context.
+    ///
+    /// The definition and the erased handler are built by
+    /// [`PortableDynamicTool::new_with_context`] — one construction for both
+    /// runtime-defined tool types — and adopted here; a context-taking
+    /// callback is what that constructor already accepts.
     pub fn new<F>(
         name: impl Into<String>,
         description: impl Into<String>,
@@ -376,23 +381,12 @@ impl DynamicTool {
     where
         F: ToolCallback + 'static,
     {
-        let name = name.into();
-        let description = description.into();
-        let handler = ErasedHandler::new(ToolFn::new(
-            name.clone(),
-            description.clone(),
-            parameters.clone(),
+        Self::from_portable(PortableDynamicTool::new_with_context(
+            name,
+            description,
+            parameters,
             callback,
-        ));
-        Self {
-            definition: ToolDefinition {
-                name,
-                description,
-                parameters,
-            },
-            handler,
-            liveness: None,
-        }
+        ))
     }
 
     /// Adopt a portable tool, keeping its liveness probe.

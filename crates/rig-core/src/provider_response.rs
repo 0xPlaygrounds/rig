@@ -537,111 +537,28 @@ macro_rules! impl_provider_response_helpers {
 
 pub(crate) use impl_provider_response_helpers;
 
-/// Implements the shared response-metadata setters (`with_message_id`,
-/// `with_response_id`, `with_provider_request_id`, `with_model`, `with_raw`
-/// and their `_optional` forms) on a response type with `message_id`,
-/// `response_id`, `provider_request_id`, and `model` fields of type
-/// `Option<String>` and a `raw` field of type `serde_json::Value`.
+/// The response-metadata setters every normalized response shares:
+/// `with_response_id`, `with_provider_request_id`, `with_model`, their
+/// `_optional` forms, and `with_raw`. The type needs `response_id`,
+/// `provider_request_id` and `model` fields of type `Option<String>` and a
+/// `raw` field of type `serde_json::Value`.
 ///
 /// An empty string is treated as absent: gateways that echo `""` for fields
 /// they don't populate must not produce a `Some("")` that differs between the
 /// buffered and streaming paths. The invariant lives in these generated
-/// setters so no provider call site can diverge. `finish_reason` handling is
-/// intentionally left to each type, since reconciliation rules differ.
+/// setters — in *one* macro, so no capability's response can drift from
+/// another's — and no provider call site can diverge from it.
 ///
 /// `raw` is not an identifier, but it belongs here for the same reason the
-/// identifiers do: it is per-attempt metadata that both surfaces observe —
+/// identifiers do: it is per-attempt metadata that every surface observes —
 /// the unary response and the streaming terminal record carry the same field
 /// with the same meaning, populated at the provider seams from one setter, so
 /// neither surface can grow a variant the other lacks.
-macro_rules! response_metadata_setters {
-    ($ty:ty) => {
-        impl $ty {
-            /// Attach the provider-assigned message ID.
-            ///
-            /// An empty string is treated as absent: gateways that echo `""`
-            /// for fields they don't populate must not produce a `Some("")`
-            /// that differs between the buffered and streaming paths. All
-            /// identifier and model setters share this rule so the invariant
-            /// lives here rather than at every provider call site.
-            pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
-                self.with_optional_message_id(Some(message_id.into()))
-            }
-
-            /// Attach the provider-assigned message ID when the provider
-            /// reported one.
-            pub fn with_optional_message_id(
-                mut self,
-                message_id: Option<impl Into<String>>,
-            ) -> Self {
-                self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
-                self
-            }
-
-            /// Attach the provider-assigned response-scoped ID.
-            pub fn with_response_id(self, response_id: impl Into<String>) -> Self {
-                self.with_optional_response_id(Some(response_id.into()))
-            }
-
-            /// Attach the provider-assigned response-scoped ID when the
-            /// provider reported one.
-            pub fn with_optional_response_id(
-                mut self,
-                response_id: Option<impl Into<String>>,
-            ) -> Self {
-                self.response_id = response_id.map(Into::into).filter(|id| !id.is_empty());
-                self
-            }
-
-            /// Attach the provider's transport-level request identifier.
-            pub fn with_provider_request_id(self, request_id: impl Into<String>) -> Self {
-                self.with_optional_provider_request_id(Some(request_id.into()))
-            }
-
-            /// Attach the provider's transport-level request identifier when
-            /// the provider reported one.
-            pub fn with_optional_provider_request_id(
-                mut self,
-                request_id: Option<impl Into<String>>,
-            ) -> Self {
-                self.provider_request_id = request_id.map(Into::into).filter(|id| !id.is_empty());
-                self
-            }
-
-            /// Attach the provider-reported model identifier.
-            ///
-            /// An empty string is treated as absent, matching the identifier
-            /// setters.
-            pub fn with_model(self, model: impl Into<String>) -> Self {
-                self.with_optional_model(Some(model.into()))
-            }
-
-            /// Attach the provider-reported model identifier when the
-            /// response carried one.
-            pub fn with_optional_model(mut self, model: Option<impl Into<String>>) -> Self {
-                self.model = model.map(Into::into).filter(|model| !model.is_empty());
-                self
-            }
-
-            /// Attach the provider's own response, serialized — the value the
-            /// model's inherent raw method would have returned. Every provider
-            /// seam calls this; see the `raw` field for the exact meaning of
-            /// the payload (and of `Value::Null`).
-            pub fn with_raw(mut self, raw: impl Into<serde_json::Value>) -> Self {
-                self.raw = raw.into();
-                self
-            }
-        }
-    };
-}
-
-pub(crate) use response_metadata_setters;
-/// Metadata setters for the normalized non-completion modality responses
-/// (transcription, image generation, audio generation). Same empty-string
-/// filtering rule as [`response_metadata_setters`]; these responses carry no
-/// message-scoped ID because nothing they produce is ever replayed as an
-/// assistant message.
-macro_rules! modality_response_metadata_setters {
+///
+/// Reached through [`response_metadata_setters!`], which adds the
+/// message-scoped ID, or [`modality_response_metadata!`], which adds usage and
+/// the identity accessor; never invoked directly.
+macro_rules! shared_response_metadata_setters {
     ($ty:ty) => {
         impl $ty {
             /// Attach the provider-assigned response-scoped ID.
@@ -674,7 +591,8 @@ macro_rules! modality_response_metadata_setters {
                 self
             }
 
-            /// Attach the provider-reported model identifier.
+            /// Attach the provider-reported model identifier. An empty string
+            /// is treated as absent, matching the identifier setters.
             pub fn with_model(self, model: impl Into<String>) -> Self {
                 self.with_optional_model(Some(model.into()))
             }
@@ -686,14 +604,10 @@ macro_rules! modality_response_metadata_setters {
                 self
             }
 
-            /// Attach the usage the provider reported.
-            pub fn with_usage(mut self, usage: $crate::completion::Usage) -> Self {
-                self.usage = usage;
-                self
-            }
-
             /// Attach the provider's own response, serialized — the value the
-            /// model's inherent raw method would have returned.
+            /// model's inherent raw method would have returned. Every provider
+            /// seam calls this; see the `raw` field for the exact meaning of
+            /// the payload (and of `Value::Null`).
             pub fn with_raw(mut self, raw: impl Into<serde_json::Value>) -> Self {
                 self.raw = raw.into();
                 self
@@ -701,7 +615,76 @@ macro_rules! modality_response_metadata_setters {
         }
     };
 }
-pub(crate) use modality_response_metadata_setters;
+
+pub(crate) use shared_response_metadata_setters;
+
+/// [`shared_response_metadata_setters!`] plus the message-scoped ID, for the
+/// responses whose content is replayed as an assistant message.
+///
+/// `finish_reason` handling is intentionally left to each type, since
+/// reconciliation rules differ.
+macro_rules! response_metadata_setters {
+    ($ty:ty) => {
+        $crate::provider_response::shared_response_metadata_setters!($ty);
+
+        impl $ty {
+            /// Attach the provider-assigned message ID.
+            ///
+            /// An empty string is treated as absent, like every other
+            /// identifier setter.
+            pub fn with_message_id(self, message_id: impl Into<String>) -> Self {
+                self.with_optional_message_id(Some(message_id.into()))
+            }
+
+            /// Attach the provider-assigned message ID when the provider
+            /// reported one.
+            pub fn with_optional_message_id(
+                mut self,
+                message_id: Option<impl Into<String>>,
+            ) -> Self {
+                self.message_id = message_id.map(Into::into).filter(|id| !id.is_empty());
+                self
+            }
+        }
+    };
+}
+
+pub(crate) use response_metadata_setters;
+
+/// [`shared_response_metadata_setters!`] plus `with_usage` and `identity`, for
+/// the normalized non-completion modality responses (embeddings, reranking,
+/// transcription, image generation, audio generation).
+///
+/// These carry no message-scoped ID, and their `identity()` reports
+/// `message_id: None` for the same reason: nothing they produce is ever
+/// replayed as an assistant message.
+macro_rules! modality_response_metadata {
+    ($ty:ty) => {
+        $crate::provider_response::shared_response_metadata_setters!($ty);
+
+        impl $ty {
+            /// Attach the usage the provider reported.
+            pub fn with_usage(mut self, usage: $crate::completion::Usage) -> Self {
+                self.usage = usage;
+                self
+            }
+
+            /// This response's identity metadata as one
+            /// [`ResponseIdentity`](crate::completion::ResponseIdentity)
+            /// carrier. `message_id` is always `None`: nothing this response
+            /// carries is ever replayed as an assistant message.
+            pub fn identity(&self) -> $crate::completion::ResponseIdentity {
+                $crate::completion::ResponseIdentity {
+                    message_id: None,
+                    response_id: self.response_id.clone(),
+                    provider_request_id: self.provider_request_id.clone(),
+                }
+            }
+        }
+    };
+}
+
+pub(crate) use modality_response_metadata;
 
 /// Declares a capability error enum with the shared core variants
 /// (`HttpError`, `JsonError`, `ResponseError`, `ProviderError`,

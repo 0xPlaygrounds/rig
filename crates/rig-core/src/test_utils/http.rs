@@ -25,6 +25,13 @@ fn not_implemented() -> http_client::Error {
     )
 }
 
+/// A double's shared state, still readable after a test panicked while
+/// holding it: a poisoned lock in a test double is never a reason to fail a
+/// different assertion than the one that panicked.
+fn guard<T>(lock: &Mutex<T>) -> MutexGuard<'_, T> {
+    lock.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 /// The unary half of a streaming-only double.
 ///
 /// Four doubles below script `send_streaming` and nothing else; that they
@@ -53,6 +60,25 @@ macro_rules! no_unary_surface {
         + 'static
         where
             U: From<Bytes> + WasmCompatSend + 'static,
+        {
+            future::ready(Err(not_implemented()))
+        }
+    };
+}
+
+/// The streaming half of a unary-only double.
+///
+/// The two recording doubles below script the unary surfaces and nothing
+/// else; that they have no streaming surface is one fact about unary-only
+/// doubles, so it is written here once and each impl states it by name.
+macro_rules! no_streaming_surface {
+    () => {
+        fn send_streaming<T>(
+            &self,
+            _req: Request<T>,
+        ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
+        where
+            T: Into<Bytes> + WasmCompatSend,
         {
             future::ready(Err(not_implemented()))
         }
@@ -140,30 +166,18 @@ pub struct RecordingHttpClient {
 impl RecordingHttpClient {
     /// Create a client that returns `response_body` for unary requests.
     pub fn new(response_body: impl Into<Bytes>) -> Self {
-        Self {
-            requests: Arc::new(Mutex::new(Vec::new())),
-            response: Arc::new(Mutex::new(MockHttpResponse::success(response_body))),
-        }
+        Self::scripted(MockHttpResponse::success(response_body))
     }
 
     /// Create a client that returns an HTTP status error for unary requests.
     pub fn with_error(status: http::StatusCode, message: impl Into<String>) -> Self {
-        Self {
-            requests: Arc::new(Mutex::new(Vec::new())),
-            response: Arc::new(Mutex::new(MockHttpResponse::error(status, message))),
-        }
+        Self::scripted(MockHttpResponse::error(status, message))
     }
 
     /// Create a client that returns a non-success HTTP response (status and body)
     /// for unary requests, instead of a transport-level error.
     pub fn with_error_response(status: http::StatusCode, body: impl Into<Bytes>) -> Self {
-        Self {
-            requests: Arc::new(Mutex::new(Vec::new())),
-            response: Arc::new(Mutex::new(MockHttpResponse::ErrorResponse(
-                status,
-                body.into(),
-            ))),
-        }
+        Self::scripted(MockHttpResponse::ErrorResponse(status, body.into()))
     }
 
     /// Create a client whose transport reports a non-success status *and*
@@ -174,12 +188,9 @@ impl RecordingHttpClient {
         message: impl Into<String>,
         headers: http::HeaderMap,
     ) -> Self {
-        Self {
-            requests: Arc::new(Mutex::new(Vec::new())),
-            response: Arc::new(Mutex::new(MockHttpResponse::error_with_headers(
-                status, message, headers,
-            ))),
-        }
+        Self::scripted(MockHttpResponse::error_with_headers(
+            status, message, headers,
+        ))
     }
 
     /// Create a client that hands back a non-success HTTP response carrying
@@ -189,43 +200,34 @@ impl RecordingHttpClient {
         body: impl Into<Bytes>,
         headers: http::HeaderMap,
     ) -> Self {
+        Self::scripted(MockHttpResponse::ErrorResponseWithHeaders(
+            status,
+            body.into(),
+            headers,
+        ))
+    }
+
+    /// A client with no captured requests and one scripted reply — what every
+    /// constructor above is, once its reply is named.
+    fn scripted(response: MockHttpResponse) -> Self {
         Self {
             requests: Arc::new(Mutex::new(Vec::new())),
-            response: Arc::new(Mutex::new(MockHttpResponse::ErrorResponseWithHeaders(
-                status,
-                body.into(),
-                headers,
-            ))),
+            response: Arc::new(Mutex::new(response)),
         }
     }
 
     /// Return the requests captured so far.
     pub fn requests(&self) -> Vec<CapturedHttpRequest> {
-        self.requests_guard().clone()
+        guard(&self.requests).clone()
     }
 
     /// Replace the scripted unary response.
     pub fn set_response(&self, response: MockHttpResponse) {
-        *self.response_guard() = response;
-    }
-
-    fn requests_guard(&self) -> MutexGuard<'_, Vec<CapturedHttpRequest>> {
-        match self.requests.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
-    }
-
-    fn response_guard(&self) -> MutexGuard<'_, MockHttpResponse> {
-        match self.response.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        }
+        *guard(&self.response) = response;
     }
 
     fn record_request(&self, uri: String, headers: http::HeaderMap, body: Bytes) {
-        self.requests_guard()
-            .push(CapturedHttpRequest { uri, headers, body });
+        guard(&self.requests).push(CapturedHttpRequest { uri, headers, body });
     }
 
     fn build_unary_response<U>(
@@ -271,7 +273,7 @@ impl HttpClientExt for RecordingHttpClient {
         T: Into<Bytes> + WasmCompatSend,
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        let response = self.response_guard().clone();
+        let response = guard(&self.response).clone();
         let (parts, body) = req.into_parts();
         self.record_request(parts.uri.to_string(), parts.headers, body.into());
 
@@ -285,7 +287,7 @@ impl HttpClientExt for RecordingHttpClient {
     where
         U: From<Bytes> + WasmCompatSend + 'static,
     {
-        let response = self.response_guard().clone();
+        let response = guard(&self.response).clone();
         let (parts, body) = req.into_parts();
         let (_, body) = body.boundary("recording-http-client").encode();
         self.record_request(parts.uri.to_string(), parts.headers, body);
@@ -293,15 +295,7 @@ impl HttpClientExt for RecordingHttpClient {
         async move { Self::build_unary_response(response) }
     }
 
-    fn send_streaming<T>(
-        &self,
-        _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        future::ready(Err(not_implemented()))
-    }
+    no_streaming_surface!();
 }
 
 /// An [`HttpClientExt`] implementation that records unary requests and returns
@@ -326,33 +320,20 @@ impl SequencedHttpClient {
 
     /// Return the requests captured so far.
     pub fn requests(&self) -> Vec<CapturedHttpRequest> {
-        match self.requests.lock() {
-            Ok(guard) => guard.clone(),
-            Err(poisoned) => poisoned.into_inner().clone(),
-        }
+        guard(&self.requests).clone()
     }
 
     /// Return the number of scripted responses that have not been consumed.
     pub fn remaining_responses(&self) -> usize {
-        match self.responses.lock() {
-            Ok(guard) => guard.len(),
-            Err(poisoned) => poisoned.into_inner().len(),
-        }
+        guard(&self.responses).len()
     }
 
     fn record_request(&self, uri: String, headers: http::HeaderMap, body: Bytes) {
-        let request = CapturedHttpRequest { uri, headers, body };
-        match self.requests.lock() {
-            Ok(mut guard) => guard.push(request),
-            Err(poisoned) => poisoned.into_inner().push(request),
-        }
+        guard(&self.requests).push(CapturedHttpRequest { uri, headers, body });
     }
 
     fn next_response(&self) -> Option<MockHttpResponse> {
-        match self.responses.lock() {
-            Ok(mut guard) => guard.pop_front(),
-            Err(poisoned) => poisoned.into_inner().pop_front(),
-        }
+        guard(&self.responses).pop_front()
     }
 }
 
@@ -396,15 +377,7 @@ impl HttpClientExt for SequencedHttpClient {
         }
     }
 
-    fn send_streaming<T>(
-        &self,
-        _req: Request<T>,
-    ) -> impl Future<Output = http_client::Result<StreamingResponse>> + WasmCompatSend
-    where
-        T: Into<Bytes> + WasmCompatSend,
-    {
-        future::ready(Err(not_implemented()))
-    }
+    no_streaming_surface!();
 }
 
 /// A mock HTTP client that returns pre-built SSE bytes from `send_streaming`.
@@ -551,10 +524,7 @@ impl HttpClientExt for SequencedStreamingHttpClient {
     where
         T: Into<Bytes> + WasmCompatSend,
     {
-        let chunks = match self.chunks.lock() {
-            Ok(mut guard) => guard.take(),
-            Err(poisoned) => poisoned.into_inner().take(),
-        };
+        let chunks = guard(&self.chunks).take();
 
         async move {
             let Some(chunks) = chunks else {

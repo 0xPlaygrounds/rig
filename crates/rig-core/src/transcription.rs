@@ -1,7 +1,7 @@
 //! This module provides functionality for working with audio transcription models.
 //! It provides traits, structs, and enums for generating audio transcription requests,
 //! handling transcription responses, and defining transcription models.
-use crate::completion::{ResponseIdentity, Usage};
+use crate::completion::Usage;
 use crate::json_utils;
 use crate::markers::{Missing, Provided};
 use crate::wasm_compat::{WasmCompatSend, WasmCompatSync};
@@ -82,20 +82,9 @@ impl TranscriptionResponse {
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// Transcriptions are never replayed as assistant messages, so
-    /// `message_id` is always `None`.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
 
-crate::provider_response::modality_response_metadata_setters!(TranscriptionResponse);
+crate::provider_response::modality_response_metadata!(TranscriptionResponse);
 
 /// Convert a provider's own transcription payload into the normalized
 /// [`TranscriptionResponse`].

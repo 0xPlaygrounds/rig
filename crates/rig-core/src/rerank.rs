@@ -5,7 +5,7 @@
 //! carries both the scored results and token usage.
 
 use crate::{
-    completion::{ResponseIdentity, Usage},
+    completion::Usage,
     wasm_compat::{WasmCompatSend, WasmCompatSync},
 };
 use serde::{Deserialize, Serialize};
@@ -115,17 +115,6 @@ impl RerankResponse {
             raw: serde_json::Value::Null,
         }
     }
-
-    /// This response's identity metadata as one [`ResponseIdentity`] carrier.
-    /// `message_id` is always `None`: nothing here is replayed as an
-    /// assistant message.
-    pub fn identity(&self) -> ResponseIdentity {
-        ResponseIdentity {
-            message_id: None,
-            response_id: self.response_id.clone(),
-            provider_request_id: self.provider_request_id.clone(),
-        }
-    }
 }
 
-crate::provider_response::modality_response_metadata_setters!(RerankResponse);
+crate::provider_response::modality_response_metadata!(RerankResponse);

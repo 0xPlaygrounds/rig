@@ -89,20 +89,50 @@ impl VoyageAi {
         }
     }
 
-    /// One request, authenticated and typed as JSON.
+    /// One JSON request, authenticated and framed whole.
+    ///
+    /// Both Voyage routes are the same request — one JSON object POSTed to
+    /// a path under this root, answered by one whole reply — so the two
+    /// wires differ only in the path and the object they hand here, which
+    /// travels in the order they built it.
     ///
     /// Voyage authenticates both routes, so the credential is read through
     /// [`Secret::require`]: a wire reloaded from a scene or a config file
     /// carries no key by contract, and an error naming `VOYAGE_API_KEY`
     /// beats sending `Bearer ` for a provider 401.
-    fn post<E: WireError>(&self, path: &str) -> Result<http::request::Builder, E> {
-        Ok(http::Request::post(format!("{}{path}", self.base_url))
+    fn post<E: WireError>(
+        &self,
+        path: &str,
+        body: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Encoded, E> {
+        let request = http::Request::post(format!("{}{path}", self.base_url))
             .header(http::header::CONTENT_TYPE, "application/json")
             .header(
                 http::header::AUTHORIZATION,
                 format!("Bearer {}", self.api_key.require::<E>(API_KEY_ENV)?),
-            ))
+            )
+            .body(Body::Bytes(serde_json::to_vec(body).map_err(E::json)?))
+            .map_err(|error| E::transport(error.into()))?;
+        Ok(Encoded::new(request, Framing::Whole))
     }
+}
+
+/// What both Voyage replies carry besides their payload: the body verbatim,
+/// for the fields this crate does not model, and the usage Voyage reports —
+/// one count on either route, and every token of an embedding or an
+/// ordering is an input token.
+fn raw_and_usage<T: Serialize>(
+    reply: &T,
+    total_tokens: usize,
+) -> Result<(serde_json::Value, crate::completion::Usage), serde_json::Error> {
+    Ok((
+        serde_json::to_value(reply)?,
+        crate::completion::Usage {
+            input_tokens: Some(total_tokens as u64),
+            total_tokens: Some(total_tokens as u64),
+            ..Default::default()
+        },
+    ))
 }
 
 /// The embedding wire: `POST /embeddings`.
@@ -184,12 +214,7 @@ impl Wire for Embeddings {
                 serde_json::json!(output_dimension),
             );
         }
-        let request = self
-            .provider
-            .post::<EmbeddingError>("/embeddings")?
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| EmbeddingError::HttpError(error.into()))?;
-        Ok(Encoded::new(request, Framing::Whole))
+        self.provider.post("/embeddings", &body)
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
@@ -212,18 +237,12 @@ impl Decoder<Embedding> for EmbeddingsDecoder {
     }
 
     fn interpret(&mut self, reply: Self::Event, out: &mut Output<Embedding>) {
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
+        let (raw, usage) = match raw_and_usage(&reply, reply.usage.total_tokens) {
+            Ok(parts) => parts,
             Err(error) => {
                 out.push(Err(error.into()));
                 return;
             }
-        };
-        // Voyage reports one count; every token of an embedding is input.
-        let usage = crate::completion::Usage {
-            input_tokens: Some(reply.usage.total_tokens as u64),
-            total_tokens: Some(reply.usage.total_tokens as u64),
-            ..Default::default()
         };
         // The vectors only; the operation's fold pairs them with the texts
         // that were sent, which `/embeddings` does not echo back.
@@ -310,12 +329,7 @@ impl Wire for Rerank {
         if let Some(truncation) = self.truncation {
             body.insert("truncation".to_owned(), serde_json::json!(truncation));
         }
-        let request = self
-            .provider
-            .post::<RerankError>("/rerank")?
-            .body(Body::Bytes(serde_json::to_vec(&body)?))
-            .map_err(|error| RerankError::HttpError(error.into()))?;
-        Ok(Encoded::new(request, Framing::Whole))
+        self.provider.post("/rerank", &body)
     }
 
     fn decoder(&self, _mode: Mode) -> Self::Decoder {
@@ -391,18 +405,12 @@ impl Decoder<RerankOp> for RerankDecoder {
                 return;
             }
         };
-        let raw = match serde_json::to_value(&reply) {
-            Ok(raw) => raw,
+        let (raw, usage) = match raw_and_usage(&reply, reply.usage.total_tokens) {
+            Ok(parts) => parts,
             Err(error) => {
                 out.push(Err(error.into()));
                 return;
             }
-        };
-        // Voyage reports one count; every token of a rerank is input.
-        let usage = crate::completion::Usage {
-            input_tokens: Some(reply.usage.total_tokens as u64),
-            total_tokens: Some(reply.usage.total_tokens as u64),
-            ..Default::default()
         };
         let results = reply
             .data
