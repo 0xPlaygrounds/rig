@@ -1490,3 +1490,52 @@ fn a_world_reports_what_it_binds_and_what_the_build_knows() {
     let after = provider_diagnostics(app.world_mut());
     assert!(after.bindings[0].served, "now something serves it");
 }
+
+/// `served` must mean what materialization means by it. Materialization asks
+/// whether *another* entity serves the key (`*entity != item.entity`), so a
+/// binding carrying its own `Bound` — the state a checkpoint load leaves
+/// behind — is still one it will build. The diagnostic said `served: true`
+/// for exactly that binding, which is the primary path the API exists for.
+#[test]
+fn a_binding_carrying_its_own_bound_is_not_served_by_it() {
+    let mut app = bus_support::app();
+    let entity = app
+        .world_mut()
+        .spawn((
+            named(KEY, "deepseek:model-x", "cassette"),
+            Bound {
+                key: HandlerKey::from(KEY),
+                descriptor: descriptor("default"),
+            },
+        ))
+        .id();
+
+    let report = provider_diagnostics(app.world());
+    let row = report
+        .bindings
+        .iter()
+        .find(|row| row.key == HandlerKey::from(KEY))
+        .expect("the binding is reported");
+    assert!(
+        !row.served,
+        "a binding's own `Bound` does not serve it: materialization will build this one"
+    );
+
+    // A *second* entity holding the key does serve it, which is the case the
+    // field exists to report.
+    app.world_mut().spawn(Bound {
+        key: HandlerKey::from(KEY),
+        descriptor: descriptor("default"),
+    });
+    let report = provider_diagnostics(app.world());
+    let row = report
+        .bindings
+        .iter()
+        .find(|row| row.key == HandlerKey::from(KEY))
+        .expect("the binding is reported");
+    assert!(
+        row.served,
+        "another entity serving the key is what `served` means"
+    );
+    let _ = entity;
+}

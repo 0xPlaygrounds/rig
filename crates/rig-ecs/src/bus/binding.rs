@@ -568,10 +568,18 @@ pub struct BindingDiagnostic {
 /// same thing.
 pub fn provider_diagnostics(world: &World) -> ProviderDiagnostics {
     let known: Vec<String> = rig_core::providers::all().map(|id| id.spelling()).collect();
-    let bound: Vec<HandlerKey> = world
+    // Keyed by entity, because materialization asks whether *another*
+    // entity serves the key (`*entity != item.entity`). Dropping the entity
+    // made a binding carrying its own stale `Bound` -- the state a
+    // checkpoint load leaves -- report `served: true` and then be
+    // materialized by the very next pass.
+    let bound: Vec<(Entity, HandlerKey)> = world
         .iter_entities()
-        .filter_map(|entity| entity.get::<Bound>())
-        .map(|bound| bound.key.clone())
+        .filter_map(|entity| {
+            entity
+                .get::<Bound>()
+                .map(|bound| (entity.id(), bound.key.clone()))
+        })
         .collect();
     let mut bindings: Vec<BindingDiagnostic> = world
         .iter_entities()
@@ -583,7 +591,10 @@ pub fn provider_diagnostics(world: &World) -> ProviderDiagnostics {
             // Served here (a hand registration, an earlier pass) or bound
             // on any entity: either way materialization keeps what serves
             // the key instead of building this one.
-            served: entity.contains::<Handler>() || bound.iter().any(|key| key == &binding.key),
+            served: entity.contains::<Handler>()
+                || bound
+                    .iter()
+                    .any(|(holder, key)| *holder != entity.id() && key == &binding.key),
             credential: binding.credential.clone(),
             required_env: binding.provider.required_env().collect(),
         })

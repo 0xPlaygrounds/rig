@@ -136,19 +136,6 @@ fn an_escaped_body_is_read_like_a_plain_one() {
     std::fs::remove_dir_all(&dir).ok();
 }
 
-/// The exemption list is the only way a caller-less function passes, and it
-/// is named one at a time so a new one is argued for rather than matched by
-/// a path pattern.
-#[test]
-fn the_exemption_list_is_named_one_at_a_time() {
-    for name in QUERY_BUILDERS {
-        assert!(
-            !name.is_empty() && name.chars().all(|c| c.is_lowercase() || c == '_'),
-            "`{name}` is not a function name"
-        );
-    }
-}
-
 /// Test code is not a reader: a `pub fn` whose only callers are tests is
 /// surface kept for the test that calls it.
 #[test]
@@ -212,4 +199,80 @@ fn a_field_a_caller_sets_is_never_reported_as_unread() {
         found.iter().any(|(name, _)| name == "is_deprecated"),
         "a read-only field is still judged: {found:?}"
     );
+}
+
+/// A container's casing does not leak to the next container.
+#[test]
+fn a_neighbours_casing_does_not_key_this_container() {
+    let source = "\
+#[derive(Deserialize)]
+#[serde(rename_all = \"camelCase\")]
+pub struct Renamed {
+    pub update_time: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct Plain {
+    pub max_items: Option<u64>,
+}
+";
+    let found = fields(source);
+    assert_eq!(
+        found,
+        vec![
+            ("update_time".to_owned(), "updateTime".to_owned()),
+            ("max_items".to_owned(), "max_items".to_owned()),
+        ],
+        "the second container has no `rename_all` of its own"
+    );
+}
+
+/// A word inside a value is not a key, whichever quote it sits behind.
+/// Accepting any quote-delimited run before a colon minted `ent` and `lue`
+/// out of the middles of values, and a junk key that collides with a short
+/// field name reads as "a recording carries this".
+#[test]
+fn a_key_must_open_where_a_key_can_open() {
+    let dir = tempdir();
+    let cassettes = dir.join("tests/cassettes");
+    std::fs::create_dir_all(&cassettes).expect("the fixture root");
+    std::fs::write(
+        cassettes.join("one.yaml"),
+        "    body: \"{\\\"content\\\":\\\"a value: with a colon\\\",\\\"id\\\":\\\"x\\\"}\"",
+    )
+    .expect("a cassette");
+    std::fs::create_dir_all(dir.join("crates/rig-verify/fixtures")).expect("the golden root");
+
+    let keys = recorded_keys(&dir).expect("the keys");
+    assert!(keys.contains("content"), "{keys:?}");
+    assert!(keys.contains("id"), "{keys:?}");
+    assert!(
+        !keys.contains("a value"),
+        "a colon inside a value does not make the text before it a key: {keys:?}"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The gate reports and does not fail: its inputs cannot distinguish a
+/// symbol with no caller from one whose caller is a string, a macro body or
+/// a downstream crate, so a run over a workspace full of uncalled surface
+/// still succeeds. What it must not do is fail a release on a heuristic.
+#[test]
+fn the_gate_reports_rather_than_failing() {
+    let dir = tempdir();
+    let core = dir.join("crates/rig-core/src");
+    std::fs::create_dir_all(&core).expect("the crate root");
+    std::fs::write(
+        core.join("lib.rs"),
+        "pub fn nobody_calls_this() {}\npub trait NobodyImplementsThis {}\n",
+    )
+    .expect("a source file");
+    std::fs::create_dir_all(dir.join("tests/cassettes")).expect("the cassette root");
+    std::fs::create_dir_all(dir.join("crates/rig-verify/fixtures")).expect("the golden root");
+
+    assert!(
+        check(&dir).is_ok(),
+        "an uncalled function is reported, not a build failure"
+    );
+    std::fs::remove_dir_all(&dir).ok();
 }

@@ -906,6 +906,18 @@ pub struct OpenAI {
     /// The caller identity, when the gateway requires one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub identity: Option<CallerIdentity>,
+    /// Where a Responses request puts rig's system instructions, when the
+    /// gateway disagrees with its dialect's default — a backend that
+    /// rejects or ignores top-level `instructions` wants them as `system`
+    /// messages in `input`.
+    ///
+    /// `None` takes [`Quirks::responses`]'s placement. This is a field
+    /// rather than only a builder on the wire because a configuration is
+    /// what a scene stores: an option only reachable through
+    /// `Responses::with_system_instructions_as_messages` cannot be
+    /// expressed by a host that binds a provider from data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_instructions: Option<super::responses_api::SystemInstructionsPlacement>,
 }
 
 impl OpenAI {
@@ -939,6 +951,9 @@ impl OpenAI {
                 originator: identity.originator.to_owned(),
                 user_agent: default_user_agent(identity.originator),
             }),
+            // None means "the dialect's placement", so a configuration that
+            // says nothing behaves exactly as before.
+            system_instructions: None,
         }
     }
 

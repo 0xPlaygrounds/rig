@@ -5,7 +5,7 @@
 //!
 //! | gate | what it finds |
 //! |---|---|
-//! | a `pub fn`/`pub trait` in `crates/rig-core/src` whose identifier occurs nowhere else in the workspace | surface kept for no caller |
+//! | a `pub fn`/`pub trait` in `crates/rig-core/src` no **non-test** file outside its own mentions | surface with no caller this workspace can see |
 //! | a `pub` struct field that no shipped code reads **and** no cassette or golden carries | a document rig models but nobody reads |
 //!
 //! The second gate is two conditions on purpose. "No shipped reader" alone
@@ -16,18 +16,34 @@
 //! mean the field is a shape nobody has ever observed, and those are the
 //! only ones worth removing.
 //!
-//! The first gate *fails the build* on a function nothing calls: it was
-//! dead the moment it was written, and the check is here so that stays
-//! true. A function only its own module calls is *reported*, not failed —
-//! it is real behaviour behind a door that should not be public, which is a
-//! smaller problem than dead code and a judgement about API rather than a
-//! fact about callers. The field gate reports too, because a field's
-//! readers can live in a downstream crate this workspace cannot see.
+//! **Both gates report; neither fails the build.** The first one used to
+//! fail, and it could not carry that weight. Three reasons, each a fact
+//! about Rust rather than about this implementation:
 //!
-//! Vector-store filter builders are exempt by name
-//! ([`QUERY_BUILDERS`]): `nprobes`, `range_inclusive`, `array_contains`
-//! and their siblings are the query DSL a *user* calls, and a DSL is
-//! complete or it is not — "no in-tree caller" says nothing about it.
+//! - A caller can be a **string**. `#[serde(serialize_with =
+//!   "crate::json_utils::serialize_map_sorted")]` at
+//!   `providers/cohere/completion.rs:145` is the only non-test reference to
+//!   that function, so a scan that ignores string literals calls it dead
+//!   and licenses a deletion that would silently change what cohere sends.
+//!   A scan that reads them lets prose and a checker's own name table
+//!   vouch for a symbol instead. There is no third option that is a word
+//!   count.
+//! - A caller can be **generated**. A macro body spells a method name that
+//!   no call site contains.
+//! - A caller can be **downstream**. rig-core is published; a user's call
+//!   is a call, and this workspace is not the user.
+//!
+//! So the scan is a heuristic, and a heuristic must not be able to stop a
+//! release. What it is good for is a list a human reads: 199 functions with
+//! no caller outside their own file is a real finding about the surface,
+//! and it is the list the follow-up works through. What CI enforces is the
+//! part that is a fact — `check-wires`, `check-test-layout`, and the
+//! suites.
+//!
+//! Test files no longer vouch for anything: [`occurrences`] is built from
+//! non-test files only, which is what [`is_test`] always claimed and the
+//! code did not do. A symbol kept alive solely by its own test is exactly
+//! the thing worth reporting.
 
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
@@ -37,14 +53,6 @@ use std::path::Path;
 /// rig-core only: a companion crate's surface is called by its users, and
 /// this workspace is not them.
 const CHECKED: &str = "crates/rig-core/src";
-
-/// Builder methods that exist to be called from outside the workspace.
-///
-/// A filter DSL is a vocabulary: `range_lower_inclusive` without
-/// `range_higher_inclusive` is a worse API than both, so "no in-tree
-/// caller" is not evidence about it. Named one at a time rather than
-/// matched by path, so a new exemption is argued for.
-const QUERY_BUILDERS: &[&str] = &[];
 
 /// What a green run inspected, so a scan that matched nothing cannot pass
 /// for a scan that found nothing.
@@ -61,6 +69,8 @@ struct Report {
 /// Run both gates over the workspace.
 pub(crate) fn check(workspace: &Path) -> Result<(), String> {
     let files = sources(workspace)?;
+    // Non-test files only: a symbol its own test is the sole mention of is
+    // the finding, not a symbol with a caller.
     let occurrences = occurrences(&files);
     let recorded = recorded_keys(workspace)?;
 
@@ -74,9 +84,6 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
         let own = words(source);
         for (kind, name) in declarations(source) {
             report.functions += 1;
-            if QUERY_BUILDERS.contains(&name.as_str()) {
-                continue;
-            }
             let total = occurrences.get(&name).copied().unwrap_or_default();
             let here = own.get(&name).copied().unwrap_or_default();
             if total != here {
@@ -87,9 +94,9 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
             // More means it is called, but only from inside: real
             // behaviour behind an unnecessarily public door.
             if here <= 1 {
-                report
-                    .dead_functions
-                    .push(format!("  {relative}: `pub {kind} {name}` has no caller"));
+                report.dead_functions.push(format!(
+                    "  {relative}: `pub {kind} {name}` is mentioned by no other non-test file"
+                ));
             } else {
                 report.module_private.push(format!(
                     "  {relative}: `pub {kind} {name}` is called only by its own module"
@@ -112,27 +119,22 @@ pub(crate) fn check(workspace: &Path) -> Result<(), String> {
         }
     }
 
-    if report.dead_functions.is_empty() {
-        println!(
-            "ok: {} rig-core files, {} public functions and traits with callers, {} fields checked\n\
-             public but module-private: {}{}\n\
-             fields no code reads and no recording carries: {}{}",
-            report.files,
-            report.functions,
-            report.fields,
-            report.module_private.len(),
-            listing(&report.module_private),
-            report.unread_fields.len(),
-            listing(&report.unread_fields)
-        );
-        return Ok(());
-    }
-    Err(format!(
-        "rig-core keeps public surface nobody calls:\n{}\n\
-         a function with no caller is dead the moment it is written; delete it, or if it is a \
-         vocabulary a user completes (a filter DSL), name it in `QUERY_BUILDERS` with the reason",
-        report.dead_functions.join("\n")
-    ))
+    println!(
+        "ok: {} rig-core files, {} public functions and traits, {} fields inspected\n\
+         no caller outside their own file: {}{}\n\
+         called only by their own module: {}{}\n\
+         fields no code reads and no recording carries: {}{}",
+        report.files,
+        report.functions,
+        report.fields,
+        report.dead_functions.len(),
+        listing(&report.dead_functions),
+        report.module_private.len(),
+        listing(&report.module_private),
+        report.unread_fields.len(),
+        listing(&report.unread_fields)
+    );
+    Ok(())
 }
 
 /// A count's detail, when there is any.
@@ -147,7 +149,16 @@ fn listing(items: &[String]) -> String {
 /// Every Rust source file in the workspace, as text.
 fn sources(workspace: &Path) -> Result<Vec<(std::path::PathBuf, String)>, String> {
     let mut out = Vec::new();
-    for root in ["crates", "tests", "examples", "xtask", "test-support"] {
+    // `src` is the root facade crate, which re-exports rig-core's surface
+    // item by item: without it a re-export-only symbol has no caller.
+    for root in [
+        "crates",
+        "src",
+        "tests",
+        "examples",
+        "xtask",
+        "test-support",
+    ] {
         walk(&workspace.join(root), &mut out)?;
     }
     Ok(out)
@@ -210,7 +221,13 @@ fn words(source: &str) -> HashMap<String, usize> {
 /// Every identifier in the workspace, with how often it occurs.
 fn occurrences(files: &[(std::path::PathBuf, String)]) -> HashMap<String, usize> {
     let mut total: HashMap<String, usize> = HashMap::new();
-    for (_, source) in files {
+    for (path, source) in files {
+        // A test is not a caller. `is_test` has always said so; counting
+        // every walked file said otherwise, and 63 rig-core functions
+        // passed on a test-file mention alone.
+        if is_test(&path.to_string_lossy().replace('\\', "/")) {
+            continue;
+        }
         for (word, count) in words(source) {
             *total.entry(word).or_default() += count;
         }
@@ -233,19 +250,36 @@ fn recorded_keys(workspace: &Path) -> Result<HashSet<String>, String> {
             // report "no recording carries this field" for files that do.
             // Resuming past the *opening* quote instead tries both parities.
             let source = source.replace("\\\"", "\"");
+            let bytes = source.as_bytes();
             let mut rest = source.as_str();
+            let mut offset = 0usize;
             while let Some(start) = rest.find('"') {
+                let open = offset + start;
                 rest = &rest[start + 1..];
+                offset = open + 1;
                 let Some(end) = rest.find('"') else { break };
                 let (candidate, after) = (&rest[..end], &rest[end + 1..]);
-                if after.trim_start().starts_with(':')
+                // A key opens where a key can open: at the start of an
+                // object, after a comma, or after the enclosing scalar's own
+                // quote. Accepting any quote-delimited run followed by a
+                // colon minted `ent`, `elo`, `lue` and `Tok` out of the
+                // middles of values, and a junk key that happens to match a
+                // short field name reads as "a recording carries this".
+                let opens_a_key = bytes
+                    .get(..open)
+                    .unwrap_or_default()
+                    .iter()
+                    .rev()
+                    .find(|byte| !byte.is_ascii_whitespace())
+                    .is_none_or(|byte| matches!(byte, b'{' | b',' | b'"' | b':' | b'['));
+                if opens_a_key
+                    && after.trim_start().starts_with(':')
                     && !candidate.is_empty()
                     && candidate
                         .chars()
                         .all(|c| c.is_alphanumeric() || c == '_' || c == '-')
                 {
                     keys.insert(candidate.to_owned());
-                    rest = after;
                 }
             }
         }
@@ -312,10 +346,40 @@ fn fields(source: &str) -> Vec<(String, String)> {
     let lines: Vec<&str> = source.lines().collect();
     let mut container = None;
     for (index, line) in lines.iter().enumerate() {
-        if let Some(start) = line.find("rename_all = \"") {
-            let after = &line[start + "rename_all = \"".len()..];
-            if let Some(end) = after.find('"') {
-                container = Some(after[..end].to_owned());
+        // A container's `rename_all` governs that container only. Carrying
+        // the first one seen through the rest of the file keyed 18
+        // rig-core containers off a neighbour's casing -- `Schema`'s
+        // `max_items` looked up as `maxItems` -- so every one of their
+        // fields was compared against a key no recording could hold.
+        let trimmed_line = line.trim_start();
+        if trimmed_line.starts_with("pub struct ")
+            || trimmed_line.starts_with("pub enum ")
+            || trimmed_line.starts_with("struct ")
+            || trimmed_line.starts_with("enum ")
+        {
+            // Read this container's own casing from its own attributes.
+            // Carrying the first `rename_all` in the file through the rest
+            // of it keyed 18 rig-core containers off a neighbour's casing
+            // -- `Schema`'s `max_items` looked up as `maxItems` -- so every
+            // field of theirs was compared against a key no recording could
+            // hold.
+            container = None;
+            for back in 1..6 {
+                let Some(above) = index.checked_sub(back).and_then(|i| lines.get(i)) else {
+                    break;
+                };
+                if let Some(start) = above.find("rename_all = \"") {
+                    let after = &above[start + "rename_all = \"".len()..];
+                    if let Some(end) = after.find('"') {
+                        container = Some(after[..end].to_owned());
+                    }
+                    break;
+                }
+                let above = above.trim_start();
+                if !above.starts_with('#') && !above.starts_with("///") && !above.starts_with("//")
+                {
+                    break;
+                }
             }
         }
         let trimmed = line.trim_start();

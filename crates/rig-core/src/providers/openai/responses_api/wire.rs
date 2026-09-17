@@ -51,7 +51,9 @@ impl Responses {
     /// defaults.
     pub fn new(provider: OpenAI, model: impl Into<String>) -> Self {
         Self {
-            system_instructions: provider.dialect.quirks.responses.system_instructions,
+            system_instructions: provider
+                .system_instructions
+                .unwrap_or(provider.dialect.quirks.responses.system_instructions),
             provider,
             model: model.into(),
             tools: Vec::new(),

@@ -487,8 +487,8 @@ key: `config` — the provider's own rig-core configuration, as a tagged
 `bus::ProviderConfig` (`openai`, `anthropic`, `gemini`), which carries the
 gateway (its `Dialect`, serialized as the dialect's name), the endpoint
 (`OpenAI::route`), the base URL and every provider option (`Anthropic::
-{version, betas}`, `OpenAI::{api_version, audio_api_version}`) as typed
-fields — `model`, `label` (the `ModelRef` the descriptor advertises; the
+{version, betas}`, `OpenAI::{api_version, audio_api_version,
+system_instructions}`) as typed fields — `model`, `label` (the `ModelRef` the descriptor advertises; the
 model id unless set) and a `credential` *reference* (a name the host's
 resolver knows — never a secret). There is no second vocabulary for "which
 provider": a gateway is a dialect name in the config, an option is a field

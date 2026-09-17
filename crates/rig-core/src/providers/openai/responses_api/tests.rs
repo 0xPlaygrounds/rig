@@ -2801,3 +2801,38 @@ fn full_request_preserves_typed_tool_pairs_across_turns() {
         assert_adapter_pairs(serde_json::to_value(wire).unwrap());
     }
 }
+
+/// The placement is a field of the configuration, not only a builder on the
+/// wire, because a configuration is what a scene stores: a host binding a
+/// Responses gateway that rejects top-level `instructions` has to be able to
+/// say so from data. `None` keeps the dialect's own placement.
+#[test]
+fn the_instruction_placement_is_expressible_as_configuration() {
+    let dialect_default = openai_wire("gpt-4o-mini");
+    let mut config = super::super::wire::OpenAI::new("k");
+    config.system_instructions = Some(super::SystemInstructionsPlacement::InputSystemMessages);
+
+    let configured = config.responses("gpt-4o-mini");
+    assert_eq!(
+        configured.system_instructions,
+        super::SystemInstructionsPlacement::InputSystemMessages,
+        "the configuration's placement reaches the wire"
+    );
+    assert_eq!(
+        dialect_default.system_instructions,
+        super::super::wire::OPENAI
+            .quirks
+            .responses
+            .system_instructions,
+        "a configuration that says nothing keeps the dialect's placement"
+    );
+
+    // And it survives the round trip a scene puts it through.
+    let json = serde_json::to_string(&config).expect("the configuration serializes");
+    let reloaded: super::super::wire::OpenAI =
+        serde_json::from_str(&json).expect("the configuration reloads");
+    assert_eq!(
+        reloaded.system_instructions,
+        Some(super::SystemInstructionsPlacement::InputSystemMessages)
+    );
+}
