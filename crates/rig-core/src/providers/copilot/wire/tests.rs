@@ -190,6 +190,117 @@ fn the_intent_is_a_wire_option_on_both_routes() {
     }
 }
 
+/// Exercise the registry's erased handler against recorded Copilot replies,
+/// including the actual outbound request; no live credentials are needed.
+async fn registry_request(
+    reference: crate::providers::registry::ProviderRef,
+    cassette: &str,
+) -> crate::test_utils::CapturedHttpRequest {
+    use crate::effect::{EffectId, EffectKind};
+    use crate::http_client::BoxedHttpClient;
+    use crate::serve::Dispatch;
+
+    let transport = RecordingHttpClient::new(Bytes::from(cassette_body(cassette, "then")));
+    let handler = reference
+        .config("tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2")
+        .completion_handler(
+            "copilot",
+            &reference.model,
+            BoxedHttpClient::new(transport.clone()),
+        );
+    let mut request = prompt();
+    request.chat_history.insert(0, Message::system("be brief"));
+    handler
+        .handle(
+            EffectKind::Completion {
+                request,
+                stream: false,
+            },
+            Dispatch::new(EffectId::from_raw(1), false),
+        )
+        .await
+        .into_outcome()
+        .await
+        .expect("the registry handler folds the recorded Copilot reply");
+    let mut requests = transport.requests();
+    assert_eq!(requests.len(), 1);
+    requests.remove(0)
+}
+
+/// The registry must select the same routes and editor envelope as the
+/// dedicated provider. Recorded replies catch a wrong decoder as well.
+#[tokio::test]
+async fn registry_copilot_preserves_model_routing_and_editor_envelope() {
+    use crate::providers::registry::ProviderRef;
+
+    for (model, path, cassette) in [
+        (
+            super::super::GPT_4O,
+            "/chat/completions",
+            "agent/completion_smoke.yaml",
+        ),
+        (
+            super::super::GPT_5_3_CODEX,
+            "/responses",
+            "routing/codex_models_route_through_responses.yaml",
+        ),
+    ] {
+        let reference = ProviderRef::parse(&format!("copilot/openai:{model}"))
+            .expect("a registered Copilot selection");
+        let request = registry_request(reference, cassette).await;
+        assert_eq!(
+            request.uri,
+            format!("https://api.individual.githubcopilot.com{path}"),
+            "the session endpoint and model route must both survive materialization"
+        );
+        assert_eq!(request.headers["copilot-integration-id"], "vscode-chat");
+        assert_eq!(
+            request.headers["editor-version"],
+            super::super::EDITOR_VERSION
+        );
+        assert_eq!(request.headers["openai-intent"], "conversation-panel");
+        assert_eq!(request.headers["x-initiator"], "user");
+        assert_eq!(
+            request.headers[http::header::AUTHORIZATION],
+            "Bearer tid=1;proxy-ep=proxy.individual.githubcopilot.com;exp=2"
+        );
+        if path == "/responses" {
+            let body: serde_json::Value =
+                serde_json::from_slice(&request.body).expect("JSON request");
+            assert!(body.get("instructions").is_none());
+            assert_eq!(body["input"][0]["role"], "system");
+        }
+    }
+}
+
+/// Explicit registry configuration overrides the model's default route and
+/// instruction placement, while keeping the gateway's editor envelope.
+#[tokio::test]
+async fn registry_copilot_preserves_explicit_configuration_after_reload() {
+    use crate::providers::openai::Route;
+    use crate::providers::registry::{ProviderConfig, ProviderRef};
+
+    let reference = ProviderRef::configured(
+        ProviderConfig::OpenAi(
+            OpenAI::with_key(&DIALECT, "")
+                .with_base_url("https://gateway.invalid/copilot")
+                .with_route(Route::Responses)
+                .with_system_instructions_placement(SystemInstructionsPlacement::Instructions),
+        ),
+        super::super::GPT_4O,
+    );
+    let saved = serde_json::to_string(&reference).expect("configuration serializes");
+    let loaded = serde_json::from_str(&saved).expect("configuration reloads");
+    let request =
+        registry_request(loaded, "routing/codex_models_route_through_responses.yaml").await;
+    assert_eq!(request.uri, "https://gateway.invalid/copilot/responses");
+    assert_eq!(request.headers["copilot-integration-id"], "vscode-chat");
+    assert_eq!(request.headers["openai-intent"], "conversation-panel");
+    let body: serde_json::Value = serde_json::from_slice(&request.body).expect("JSON request");
+    assert_eq!(body["instructions"], "be brief");
+    assert_eq!(body["model"], super::super::GPT_4O);
+}
+
 // ── the two completion routes, folded from recorded replies ─────────────
 
 /// The chat route's recorded turn folds to the normalized response.

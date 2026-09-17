@@ -8,7 +8,7 @@
 //! - a **registered selection** — [`ProviderId`], a validated
 //!   `(vendor, format)` pair such as `deepseek/openai` or `zai/anthropic`.
 //!   It names a provider this build ships and nothing else: its preset
-//!   configuration is whatever the provider's dialect says, today.
+//!   configuration follows the provider's defaults today.
 //! - a **configuration** — [`ProviderConfig`], one of the crate's existing
 //!   provider configuration types. It carries explicit choices: the host, the
 //!   route, the API version, the beta flags, where system instructions go.
@@ -57,6 +57,13 @@
 //! preset default or a retired model; a short reference selects a preset, it
 //! does not freeze one.
 //!
+//! `copilot/openai` takes an already-exchanged Copilot session token, not a
+//! GitHub OAuth token. Its preset derives the endpoint from that token, and
+//! [`ProviderConfig::completion_handler`] uses Copilot's model-dependent
+//! routing and editor headers. An explicit configuration preserves its host,
+//! route and instruction placement rather than replacing them with the
+//! preset. Token exchange remains the host's responsibility.
+//!
 //! # Registry, not telemetry
 //!
 //! `vendor/format` is registry syntax. The provider string a record and a
@@ -75,10 +82,11 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use crate::completion::CompletionModel;
 use crate::driver::{Bind, Bound};
 use crate::http_client::BoxedHttpClient;
-use crate::providers::{anthropic, gemini, openai};
+use crate::operation::Completion;
+use crate::providers::{anthropic, copilot, gemini, openai};
 use crate::serve::ErasedHandler;
 use crate::serve::adapters::CompletionAdapter;
-use crate::wire::{HasCompletion, Secret};
+use crate::wire::{HasCompletion, Secret, Wire};
 
 /// A protocol family: the request grammar a provider speaks, and so which of
 /// this crate's configuration types describes it.
@@ -305,6 +313,13 @@ impl ProviderId {
     /// exists, so there is nothing to look up and nothing to fail.
     pub fn config(&self, api_key: impl Into<Secret>) -> ProviderConfig {
         match &self.0 {
+            Registered::OpenAi(dialect) if dialect.name == copilot::PROVIDER_NAME => {
+                let provider = copilot::wire::Copilot::new(api_key);
+                ProviderConfig::OpenAi(
+                    openai::wire::OpenAI::with_key(dialect, provider.api_key)
+                        .with_base_url(provider.base_url),
+                )
+            }
             Registered::OpenAi(dialect) => {
                 ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(dialect, api_key))
             }
@@ -468,13 +483,9 @@ impl ProviderConfig {
     /// The completion wire for `model`, bound to `http`, erased behind a
     /// [`CompletionAdapter`] labelled `label`.
     ///
-    /// The one path from a configuration to a served model: the same
-    /// `config.completion(model).bind(http)` a hand-written caller makes, so
-    /// a handler built from data describes itself exactly as a
-    /// hand-registered one does. Everything a configuration expresses — the
-    /// route, the `anthropic-version`, the beta flags, the instruction
-    /// placement — reaches the wire through the configuration itself; nothing
-    /// is patched on here.
+    /// A handler built from data uses the provider's own completion wire,
+    /// including Copilot's model-dependent routing and request envelope.
+    /// Explicit hosts, routes and typed options are preserved.
     pub fn completion_handler(
         &self,
         label: &str,
@@ -482,24 +493,25 @@ impl ProviderConfig {
         http: BoxedHttpClient,
     ) -> ErasedHandler {
         match self {
-            Self::OpenAi(provider) => erase(provider, label, model, http),
-            Self::Anthropic(provider) => erase(provider, label, model, http),
-            Self::Gemini(provider) => erase(provider, label, model, http),
+            Self::OpenAi(provider) if provider.dialect.name == copilot::PROVIDER_NAME => erase(
+                copilot::wire::CopilotWire::from_openai(provider.clone(), model),
+                label,
+                http,
+            ),
+            Self::OpenAi(provider) => erase(provider.completion(model), label, http),
+            Self::Anthropic(provider) => erase(provider.completion(model), label, http),
+            Self::Gemini(provider) => erase(provider.completion(model), label, http),
         }
     }
 }
 
-/// `config`'s completion wire for `model`, bound to `http` and erased under
-/// `label`. One body for every family: what differs is only the wire type.
-fn erase<C>(config: &C, label: &str, model: &str, http: BoxedHttpClient) -> ErasedHandler
+/// Bind the provider's completion wire to `http` and erase it under `label`.
+fn erase<W>(wire: W, label: &str, http: BoxedHttpClient) -> ErasedHandler
 where
-    C: HasCompletion,
-    Bound<C::Wire, BoxedHttpClient>: CompletionModel + 'static,
+    W: Wire<Op = Completion>,
+    Bound<W, BoxedHttpClient>: CompletionModel + 'static,
 {
-    ErasedHandler::new(CompletionAdapter::new(
-        label,
-        config.completion(model).bind(http),
-    ))
+    ErasedHandler::new(CompletionAdapter::new(label, wire.bind(http)))
 }
 
 /// Which provider a [`ProviderRef`] names: the registry's preset for a
