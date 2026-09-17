@@ -104,12 +104,25 @@ pub const ANTHROPIC: Dialect = Dialect {
     quirks: Quirks::anthropic(),
 };
 
+/// Every Messages-format dialect this build knows, in declaration order.
+const ALL: &[Dialect] = &[ANTHROPIC, ZAI, MINIMAX, MOONSHOT, XIAOMIMIMO];
+
+/// Every Messages-format dialect this build knows.
+///
+/// Half of [`providers::all`](crate::providers::all), which is the list a
+/// caller naming a provider wants.
+pub fn all() -> impl Iterator<Item = &'static Dialect> {
+    ALL.iter()
+}
+
 impl Dialect {
     /// The dialect this crate ships under `name`.
+    ///
+    /// Names are unique across every format rig speaks, so
+    /// [`providers::by_name`](crate::providers::by_name) can answer without
+    /// being told which one to ask.
     pub fn by_name(name: &str) -> Option<Self> {
-        [ANTHROPIC, ZAI, MINIMAX, MOONSHOT, XIAOMIMIMO]
-            .into_iter()
-            .find(|dialect| dialect.name == name)
+        ALL.iter().find(|dialect| dialect.name == name).cloned()
     }
 }
 
@@ -133,6 +146,14 @@ impl<'de> Deserialize<'de> for Dialect {
 /// The compatible providers share every field but their name, URL and
 /// environment variables: they mirror Anthropic's `request-id` header and
 /// take the [`Quirks::gateway`] contract.
+///
+/// Their names carry an `-anthropic` suffix (`"zai-anthropic"`), because a
+/// dialect name is unique across the whole tree — it is how
+/// [`ModelRef`](crate::providers::ModelRef) resolves a provider without
+/// being told which format it speaks — and each of these vendors also
+/// fronts an OpenAI-shaped endpoint at a different host. Their own docs
+/// call that one "the API" and this one "the Anthropic-compatible
+/// endpoint", so the unsuffixed name stays with the former.
 pub const fn compatible(
     name: &'static str,
     base_url: &'static str,
@@ -167,7 +188,7 @@ impl Dialect {
 
 /// Z.AI's Anthropic-format endpoint.
 pub const ZAI: Dialect = compatible(
-    "zai",
+    "zai-anthropic",
     "https://api.z.ai/api/anthropic",
     "ZAI_API_KEY",
     Some("ZAI_ANTHROPIC_API_BASE"),
@@ -175,7 +196,7 @@ pub const ZAI: Dialect = compatible(
 
 /// MiniMax's Anthropic-format endpoint.
 pub const MINIMAX: Dialect = compatible(
-    "minimax",
+    "minimax-anthropic",
     "https://api.minimax.io/anthropic",
     "MINIMAX_API_KEY",
     Some("MINIMAX_ANTHROPIC_API_BASE"),
@@ -183,7 +204,7 @@ pub const MINIMAX: Dialect = compatible(
 
 /// Moonshot's Anthropic-format endpoint.
 pub const MOONSHOT: Dialect = compatible(
-    "moonshot",
+    "moonshot-anthropic",
     "https://api.moonshot.ai/anthropic",
     "MOONSHOT_API_KEY",
     Some("MOONSHOT_ANTHROPIC_API_BASE"),
@@ -191,7 +212,7 @@ pub const MOONSHOT: Dialect = compatible(
 
 /// Xiaomi MiMo's Anthropic-format endpoint.
 pub const XIAOMIMIMO: Dialect = compatible(
-    "xiaomimimo",
+    "xiaomimimo-anthropic",
     "https://api.xiaomimimo.com/anthropic/v1",
     "XIAOMI_MIMO_API_KEY",
     Some("XIAOMI_MIMO_ANTHROPIC_API_BASE"),

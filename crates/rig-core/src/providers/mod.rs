@@ -119,6 +119,10 @@
 //!     }
 //! }
 //! ```
+mod registry;
+
+pub use registry::{ModelRef, ProviderConfig, UnknownProvider, all, by_name};
+
 pub mod anthropic;
 pub mod azure;
 pub mod chatgpt;
