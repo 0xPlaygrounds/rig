@@ -19,9 +19,10 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, VectorSearchRequest},
     },
+    wasm_compat::WasmCompatSend,
 };
 use rig_reqwest::from_reqwest;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 /// Represents a vector store implementation using Milvus - <https://milvus.io/> as the backend.
 ///
@@ -199,7 +200,7 @@ impl<M: EmbeddingModel> MilvusVectorStore<M> {
 }
 
 impl<M: EmbeddingModel> InsertDocuments for MilvusVectorStore<M> {
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -244,7 +245,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for MilvusVectorStore<M> {
 
     /// Search for the top `n` nearest neighbors to the given query within the Milvus vector store.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

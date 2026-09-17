@@ -22,8 +22,9 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
+    wasm_compat::WasmCompatSend,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -170,7 +171,10 @@ impl<M: EmbeddingModel> S3VectorsVectorStore<M> {
         return_metadata: bool,
     ) -> Result<Vec<(f64, aws_sdk_s3vectors::types::QueryOutputVector)>, VectorStoreError> {
         if req.samples() > i32::MAX as u64 {
-            return Err(VectorStoreError::DatastoreError(format!("The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}", i32::MAX).into()));
+            return Err(VectorStoreError::BuilderError(format!(
+                "The number of samples to return with the `rig` AWS S3Vectors integration cannot be higher than {}",
+                i32::MAX
+            )));
         }
 
         let embedding = self
@@ -225,7 +229,7 @@ impl<M: EmbeddingModel> S3VectorsVectorStore<M> {
 }
 
 impl<M: EmbeddingModel> InsertDocuments for S3VectorsVectorStore<M> {
-    async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + Send>(
+    async fn insert_documents<Doc: serde::Serialize + rig_core::Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<rig_core::embeddings::Embedding>)>,
     ) -> Result<(), rig_core::vector_store::VectorStoreError> {
@@ -244,16 +248,7 @@ impl<M: EmbeddingModel> InsertDocuments for S3VectorsVectorStore<M> {
                     .data(VectorData::Float32(vec))
                     .key(Uuid::new_v4())
                     .build()
-                    .map_err(|x| {
-                        VectorStoreError::DatastoreError(
-                            format!("Couldn't build vector input: {x}").into(),
-                        )
-                    })
-            })
-            .map_err(|x| {
-                VectorStoreError::DatastoreError(
-                    format!("Could not build vector store data: {x}").into(),
-                )
+                    .map_err(VectorStoreError::datastore)
             })?;
 
         self.client
@@ -263,11 +258,7 @@ impl<M: EmbeddingModel> InsertDocuments for S3VectorsVectorStore<M> {
             .set_index_name(Some(self.index_name.clone()))
             .send()
             .await
-            .map_err(|x| {
-                VectorStoreError::DatastoreError(
-                    format!("Error while submitting document insertion request: {x}").into(),
-                )
-            })?;
+            .map_err(VectorStoreError::datastore)?;
 
         Ok(())
     }
@@ -328,7 +319,7 @@ fn document_to_json_value(value: &Document) -> Value {
 impl<M: EmbeddingModel> VectorStoreIndex for S3VectorsVectorStore<M> {
     type Filter = S3SearchFilter;
 
-    async fn top_n<T: for<'a> serde::Deserialize<'a> + Send>(
+    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<S3SearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

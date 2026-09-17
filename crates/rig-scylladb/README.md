@@ -5,7 +5,11 @@ Vector store implementation for [ScyllaDB](https://www.scylladb.com/). This inte
 ## Usage
 
 ```rust
-use rig::{providers::openai, vector_store::VectorStoreIndex, Embed};
+use rig::{
+    Embed,
+    providers::openai,
+    vector_store::{VectorStoreIndex, request::VectorSearchRequest},
+};
 use rig_scylladb::{ScyllaDbVectorStore, create_session};
 
 #[derive(Embed, serde::Deserialize, serde::Serialize, Debug)]
@@ -34,9 +38,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ).await?;
     
     // Query the store
-    let results = vector_store
-        .top_n::<Document>("search query", 5)
-        .await?;
+    let req = VectorSearchRequest::builder()
+        .query("search query")
+        .samples(5)
+        .build();
+    let results = vector_store.top_n::<Document>(req).await?;
     
     for (score, id, doc) in results {
         println!("Score: {}, ID: {}, Document: {:?}", score, id, doc);

@@ -39,50 +39,48 @@
 //!
 //! ## Simple example:
 //! More examples can be found in the [/examples](https://github.com/0xPlaygrounds/rig/tree/main/crates/rig-neo4j/examples) folder.
-//! ```ignore
-//! use rig_neo4j::{vector_index::*, Neo4jClient};
+//! ```no_run
 //! use neo4rs::ConfigBuilder;
-//! use rig_core::{providers::openai::{self, wire::OpenAI}, vector_store::VectorStoreIndex};
+//! use rig_core::providers::openai::{self, wire::OpenAI};
+//! use rig_core::vector_store::VectorStoreIndex;
+//! use rig_core::vector_store::request::VectorSearchRequest;
+//! use rig_neo4j::Neo4jClient;
 //! use rig_reqwest::prelude::*;
 //! use serde::Deserialize;
-//! use std::env;
+//!
+//! #[derive(Debug, Deserialize)]
+//! struct Movie {
+//!     title: String,
+//!     plot: String,
+//! }
 //!
 //! #[tokio::main]
-//! async fn main() {
-//!     let openai_api_key = env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY not set");
-//!     let openai = OpenAI::new(&openai_api_key).bound().unwrap();
+//! async fn main() -> Result<(), anyhow::Error> {
+//!     let openai = OpenAI::from_env()?.bound()?;
 //!     let model = openai.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
-//!
-//!
-//!     const NEO4J_URI: &str = "neo4j+s://demo.neo4jlabs.com:7687";
-//!     const NEO4J_DB: &str = "recommendations";
-//!     const NEO4J_USERNAME: &str = "recommendations";
-//!     const NEO4J_PASSWORD: &str = "recommendations";
 //!
 //!     let client = Neo4jClient::from_config(
 //!         ConfigBuilder::default()
-//!             .uri(NEO4J_URI)
-//!             .db(NEO4J_DB)
-//!             .user(NEO4J_USERNAME)
-//!             .password(NEO4J_PASSWORD)
-//!             .build()
-//!             .unwrap(),
+//!             .uri("neo4j+s://demo.neo4jlabs.com:7687")
+//!             .db("recommendations")
+//!             .user("recommendations")
+//!             .password("recommendations")
+//!             .build()?,
 //!     )
-//!    .await
-//!    .unwrap();
+//!     .await?;
 //!
-//!     let index = client.get_index(
-//!         model,
-//!         "moviePlotsEmbedding"
-//!     ).await.unwrap();
+//!     // ❗IMPORTANT: reuse the model the stored embeddings were generated with.
+//!     let index = client.get_index(model, "moviePlotsEmbedding").await?;
 //!
-//!     #[derive(Debug, Deserialize)]
-//!     struct Movie {
-//!         title: String,
-//!         plot: String,
-//!     }
-//!     let results = index.top_n::<Movie>("Batman", 3).await.unwrap();
+//!     let req = VectorSearchRequest::builder()
+//!         .query("Batman")
+//!         .samples(3)
+//!         .build();
+//!
+//!     let results = index.top_n::<Movie>(req).await?;
 //!     println!("{results:#?}");
+//!
+//!     Ok(())
 //! }
 //! ```
 pub mod vector_index;

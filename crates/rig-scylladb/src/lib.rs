@@ -17,13 +17,14 @@ use rig_core::{
             VectorSearchRequest,
         },
     },
+    wasm_compat::WasmCompatSend,
 };
 use scylla::{
     client::{Compression, session::Session, session_builder::SessionBuilder},
     statement::prepared::PreparedStatement,
     value::CqlValue,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use std::{
     collections::HashMap,
     hash::{DefaultHasher, Hash, Hasher},
@@ -429,7 +430,7 @@ impl<M: EmbeddingModel> ScyllaDbVectorStore<M> {
 }
 
 impl<M: EmbeddingModel> InsertDocuments for ScyllaDbVectorStore<M> {
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -473,7 +474,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for ScyllaDbVectorStore<M> {
     /// Note: This implementation performs a brute-force search since ScyllaDB's native vector
     /// search is still in development. Once available, this will be optimized to use native
     /// vector search capabilities with ANN (Approximate Nearest Neighbor) algorithms.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<ScyllaSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {

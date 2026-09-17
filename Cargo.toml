@@ -457,6 +457,7 @@ rustls = [
   "rig-helixdb?/rustls",
   "rig-lancedb?/rig-rustls",
   "rig-milvus?/rustls",
+  "rig-vectorize?/rustls",
 ]
 native-tls = [
   "rig-reqwest?/native-tls",
@@ -465,6 +466,7 @@ native-tls = [
   "rig-helixdb?/native-tls",
   "rig-lancedb?/rig-native-tls",
   "rig-milvus?/native-tls",
+  "rig-vectorize?/native-tls",
 ]
 reqwest-middleware = ["reqwest", "rig-reqwest/reqwest-middleware"]
 reqwest-middleware-rustls = ["reqwest", "rig-reqwest/reqwest-middleware-rustls"]

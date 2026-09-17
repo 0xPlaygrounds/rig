@@ -17,6 +17,7 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{SearchFilter, SqlCondition, VectorSearchRequest},
     },
+    wasm_compat::WasmCompatSend,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::Value;
@@ -268,13 +269,10 @@ impl<M: EmbeddingModel> PostgresVectorStore<M> {
         R: for<'r> sqlx::FromRow<'r, sqlx::postgres::PgRow> + Send + Unpin,
     {
         if req.samples() > i64::MAX as u64 {
-            return Err(VectorStoreError::DatastoreError(
-                format!(
-                    "The maximum amount of samples to return with the `rig` Postgres integration cannot be larger than {}",
-                    i64::MAX
-                )
-                .into(),
-            ));
+            return Err(VectorStoreError::BuilderError(format!(
+                "The maximum amount of samples to return with the `rig` Postgres integration cannot be larger than {}",
+                i64::MAX
+            )));
         }
 
         let embedded_query: pgvector::Vector = self
@@ -382,7 +380,7 @@ fn render_search_query(
 }
 
 impl<M: EmbeddingModel> InsertDocuments for PostgresVectorStore<M> {
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -417,7 +415,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for PostgresVectorStore<M> {
 
     /// Get the top n documents based on the distance to the given query.
     /// The result is a list of tuples of the form (score, id, document)
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<PgSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
