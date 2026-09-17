@@ -251,7 +251,10 @@ fn a_named_binding_is_one_string_and_round_trips() {
     assert_eq!(binding.model(), "deepseek-chat");
     assert_eq!(binding.label, "deepseek-chat");
     assert_eq!(binding.provider.provider(), "deepseek");
-    assert_eq!(binding.provider.config(), by_name("deepseek").unwrap());
+    assert_eq!(
+        binding.provider.config(),
+        by_name("deepseek").expect("deepseek").config()
+    );
     assert_eq!(
         serde_json::from_str::<ProviderBinding>(&json).unwrap(),
         binding
@@ -278,7 +281,7 @@ fn an_unknown_provider_name_is_refused_by_the_reader() {
     assert!(text.contains("unknown provider `telepathy`"), "{text}");
     // Every name this build knows, both formats of a two-shaped gateway
     // included — the list is what makes the refusal actionable.
-    for known in rig_core::providers::all() {
+    for known in rig_core::providers::all().map(|id| id.name()) {
         assert!(text.contains(known), "{text} does not name {known}");
     }
 }
@@ -446,7 +449,9 @@ fn a_named_binding_materializes_as_its_configured_twin() {
         named(KEY, "deepseek:deepseek-chat", "cassette"),
         ProviderBinding::configured(
             KEY,
-            by_name("deepseek").expect("deepseek is a name this build knows"),
+            by_name("deepseek")
+                .expect("deepseek is a name this build knows")
+                .config(),
             "deepseek-chat",
             "cassette",
         ),

@@ -18,7 +18,7 @@
 //! binding holds the config itself ([`ProviderConfig`]) rather than a
 //! taxonomy of its own. There is nothing to keep in step: a gateway is a
 //! dialect name inside the config, an option is a field of the config, and
-//! the endpoint is the config's `route`. [`Bind::bind`] pairs the wire the
+//! the endpoint is the config's `route`. [`Bind::bind`](rig_core::driver::Bind::bind) pairs the wire the
 //! config yields with the transport, and nothing built here can fail.
 //!
 //! Secrets never enter the world: the component holds a [`CredentialRef`]
@@ -564,7 +564,7 @@ pub struct BindingDiagnostic {
 /// refusal. Bindings come back ordered by key, so two runs over one world
 /// report the same thing.
 pub fn provider_diagnostics(world: &mut World) -> ProviderDiagnostics {
-    let known: Vec<&'static str> = rig_core::providers::all().collect();
+    let known: Vec<&'static str> = rig_core::providers::all().map(|id| id.name()).collect();
     let bound: Vec<HandlerKey> = world
         .query::<&Bound>()
         .iter(world)

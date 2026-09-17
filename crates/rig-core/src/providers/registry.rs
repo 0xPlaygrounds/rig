@@ -162,41 +162,115 @@ impl fmt::Display for ProviderConfig {
 /// `Dialect` to carry the name for it.
 const GEMINI: &str = "gemini";
 
-/// The provider named `name`, configured the way it is by default and with
-/// no credential.
+/// A provider this build knows, by name.
+///
+/// The type is the proof: the only way to obtain one is [`by_name`] or
+/// [`all`], so *holding* a `ProviderId` means the name resolves, and
+/// [`Self::config`] is infallible without an `unwrap`, an `unreachable!` or
+/// an `Option` that cannot be `None`. The invariant lives in the type
+/// rather than in a comment asking the reader to trust the constructor.
+///
+/// `Copy`, because it is a `&'static` dialect and a name — equality and
+/// hashing are by name, which is what a caller means by "the same
+/// provider".
+#[derive(Debug, Clone, Copy)]
+pub struct ProviderId(Shape);
+
+/// Which format's table the name came out of, and the entry it named. Both
+/// halves are `&'static`: a dialect is a const, so an id borrows it rather
+/// than copying a configuration out of it.
+#[derive(Debug, Clone, Copy)]
+enum Shape {
+    OpenAi(&'static openai::wire::Dialect),
+    Anthropic(&'static anthropic::wire::Dialect),
+    Gemini,
+}
+
+impl ProviderId {
+    /// The name, as the registry spells it.
+    pub fn name(&self) -> &'static str {
+        match self.0 {
+            Shape::OpenAi(dialect) => dialect.name,
+            Shape::Anthropic(dialect) => dialect.name,
+            Shape::Gemini => GEMINI,
+        }
+    }
+
+    /// The provider configured the way it is by default, with no
+    /// credential.
+    ///
+    /// Infallible by construction — see the type's documentation.
+    pub fn config(&self) -> ProviderConfig {
+        match self.0 {
+            Shape::OpenAi(dialect) => {
+                ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(dialect, Secret::default()))
+            }
+            Shape::Anthropic(dialect) => ProviderConfig::Anthropic(
+                anthropic::wire::Anthropic::with_dialect(Secret::default(), dialect),
+            ),
+            Shape::Gemini => ProviderConfig::Gemini(gemini::Gemini::new(Secret::default())),
+        }
+    }
+
+    /// The environment this provider reads when it is built from the
+    /// environment.
+    pub fn required_env(&self) -> Vec<&'static str> {
+        self.config().required_env().collect()
+    }
+}
+
+impl PartialEq for ProviderId {
+    fn eq(&self, other: &Self) -> bool {
+        self.name() == other.name()
+    }
+}
+
+impl Eq for ProviderId {}
+
+impl std::hash::Hash for ProviderId {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.name().hash(state);
+    }
+}
+
+impl fmt::Display for ProviderId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.name())
+    }
+}
+
+/// The provider named `name`.
 ///
 /// `None` is "this build has no such provider"; [`all`] is the list that
 /// makes that answer actionable.
-pub fn by_name(name: &str) -> Option<ProviderConfig> {
+pub fn by_name(name: &str) -> Option<ProviderId> {
     if name == GEMINI {
-        return Some(ProviderConfig::Gemini(gemini::Gemini::new(
-            Secret::default(),
-        )));
+        return Some(ProviderId(Shape::Gemini));
     }
     if let Some(dialect) = openai::wire::by_name(name) {
-        return Some(ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(
-            dialect,
-            Secret::default(),
-        )));
+        return Some(ProviderId(Shape::OpenAi(dialect)));
     }
-    anthropic::wire::Dialect::by_name(name).map(|dialect| {
-        ProviderConfig::Anthropic(anthropic::wire::Anthropic::with_dialect(
-            Secret::default(),
-            &dialect,
-        ))
-    })
+    anthropic::wire::all()
+        .find(|dialect| dialect.name == name)
+        .map(|dialect| ProviderId(Shape::Anthropic(dialect)))
 }
 
-/// Every provider name this build knows, OpenAI-shaped first, then
+/// Every provider this build knows, OpenAI-shaped first, then
 /// Anthropic-shaped, then Gemini.
 ///
-/// The order is the declaration order of the dialect tables, which is what
-/// makes a diagnostic listing them stable between runs.
-pub fn all() -> impl Iterator<Item = &'static str> {
+/// The order is the declaration order of the dialect tables, so a
+/// diagnostic listing them is stable between runs.
+pub fn all() -> impl Iterator<Item = ProviderId> {
     openai::wire::all()
-        .map(|dialect| dialect.name)
-        .chain(anthropic::wire::all().map(|dialect| dialect.name))
-        .chain(std::iter::once(GEMINI))
+        .map(|dialect| ProviderId(Shape::OpenAi(dialect)))
+        .chain(anthropic::wire::all().map(|dialect| ProviderId(Shape::Anthropic(dialect))))
+        .chain(std::iter::once(ProviderId(Shape::Gemini)))
+}
+
+/// Every known name, for a refusal that tells the caller what would have
+/// worked.
+fn known_names() -> String {
+    all().map(|id| id.name()).collect::<Vec<_>>().join(", ")
 }
 
 /// A provider name this build does not know, with the names it does.
@@ -240,7 +314,10 @@ pub enum UnknownProvider {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "String", into = "String")]
 pub struct ModelRef {
-    provider: String,
+    /// The provider, as a name this build is known to have. Not a config
+    /// snapshot — equality compares the name the user wrote — and not a
+    /// bare `String` either, so reading the configuration back cannot fail.
+    provider: ProviderId,
     model: String,
 }
 
@@ -248,21 +325,24 @@ impl ModelRef {
     /// The reference to `model` on `provider`, if this build knows the
     /// provider.
     pub fn new(provider: &str, model: impl Into<String>) -> Result<Self, UnknownProvider> {
-        if by_name(provider).is_none() {
-            return Err(UnknownProvider::Provider {
-                provider: provider.to_owned(),
-                known: all().collect::<Vec<_>>().join(", "),
-            });
-        }
-        Ok(Self {
+        let provider = by_name(provider).ok_or_else(|| UnknownProvider::Provider {
             provider: provider.to_owned(),
+            known: known_names(),
+        })?;
+        Ok(Self {
+            provider,
             model: model.into(),
         })
     }
 
+    /// The provider.
+    pub fn id(&self) -> ProviderId {
+        self.provider
+    }
+
     /// The provider's name.
-    pub fn provider(&self) -> &str {
-        &self.provider
+    pub fn provider(&self) -> &'static str {
+        self.provider.name()
     }
 
     /// The model id, verbatim. rig does not check it against a catalog: a
@@ -273,12 +353,8 @@ impl ModelRef {
     }
 
     /// The provider's default configuration, with no credential.
-    ///
-    /// Infallible: a `ModelRef` exists only for a provider that resolved.
     pub fn config(&self) -> ProviderConfig {
-        by_name(&self.provider).unwrap_or_else(|| {
-            unreachable!("a `ModelRef` is only built for a provider this build knows")
-        })
+        self.provider.config()
     }
 }
 
@@ -317,7 +393,7 @@ impl From<ModelRef> for String {
 
 impl fmt::Display for ModelRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.provider, self.model)
+        write!(f, "{}:{}", self.provider.name(), self.model)
     }
 }
 
@@ -327,10 +403,16 @@ impl fmt::Display for ModelRef {
 /// One field, two spellings, and the serialized form is the reason both
 /// exist: a host that overrides nothing writes `"deepseek:deepseek-chat"`
 /// and a host that needs a base URL, a route, a beta or an api-version
-/// writes the configuration out. Untagged, because a string and an object
-/// are already distinguishable — so the short form in a file is one line,
-/// which is the whole point of having it.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+/// writes the configuration out.
+///
+/// Read by the *shape of the input* rather than by trying variants in turn:
+/// a string is a name and a map is a configuration, decided in
+/// `deserialize` before either is parsed. `#[serde(untagged)]` would read
+/// the same documents, but it reports a wrong field as "data did not match
+/// any variant", where this reports the field — which is the whole reason
+/// the untyped `extra_params` bag was deleted from the binding in the
+/// first place.
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(untagged)]
 pub enum ProviderRef {
     /// `"provider:model"` — the provider's default configuration.
@@ -373,6 +455,44 @@ impl ProviderRef {
     /// environment.
     pub fn required_env(&self) -> Vec<&'static str> {
         self.config().required_env().collect()
+    }
+}
+
+impl<'de> Deserialize<'de> for ProviderRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        /// The long form, named so serde attributes an error to the field
+        /// that was wrong rather than to the union.
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Configured {
+            config: ProviderConfig,
+            model: String,
+        }
+
+        struct EitherForm;
+
+        impl<'de> serde::de::Visitor<'de> for EitherForm {
+            type Value = ProviderRef;
+
+            fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                f.write_str("a `provider:model` string, or a map of `config` and `model`")
+            }
+
+            fn visit_str<E: serde::de::Error>(self, reference: &str) -> Result<Self::Value, E> {
+                reference.parse().map(ProviderRef::Named).map_err(E::custom)
+            }
+
+            fn visit_map<M: serde::de::MapAccess<'de>>(
+                self,
+                map: M,
+            ) -> Result<Self::Value, M::Error> {
+                let Configured { config, model } =
+                    Deserialize::deserialize(serde::de::value::MapAccessDeserializer::new(map))?;
+                Ok(ProviderRef::Configured { config, model })
+            }
+        }
+
+        deserializer.deserialize_any(EitherForm)
     }
 }
 
