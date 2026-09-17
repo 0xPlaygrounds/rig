@@ -13,6 +13,11 @@
 //! let reference: ProviderRef = "deepseek:deepseek-chat".parse()?;
 //! assert_eq!(reference.provider(), "deepseek");
 //! assert_eq!(reference.model(), "deepseek-chat");
+//! // A vendor with two doors is asked which: `"zai:glm-4.6"` refuses and
+//! // lists them, rather than picking a host for you.
+//! assert!("zai:glm-4.6".parse::<ProviderRef>().is_err());
+//! let messages: ProviderRef = "zai/anthropic:glm-4.6".parse()?;
+//! assert_eq!(messages.provider(), "zai");
 //! // The short form is the provider's default configuration: no base URL,
 //! // no route override, no betas. Anything else is `ProviderConfig`.
 //! assert!(matches!(reference.config(), ProviderConfig::OpenAi(_)));
@@ -143,41 +148,104 @@ impl ProviderConfig {
     }
 }
 
-/// Gemini's provider name. It speaks one format at one host, so it has no
+/// Gemini's vendor name. It speaks one format at one host, so it has no
 /// `Dialect` to carry the name for it.
 const GEMINI: &str = "gemini";
 
-/// A provider this build knows, by name.
+/// Which request format an endpoint speaks.
 ///
-/// The type is the proof: the only way to obtain one is [`by_name`] or
-/// [`all`], so *holding* a `ProviderId` means the name resolves, and
-/// [`Self::config`] is infallible without an `unwrap`, an `unreachable!` or
-/// an `Option` that cannot be `None`. The invariant lives in the type
-/// rather than in a comment asking the reader to trust the constructor.
-///
-/// `Copy`, because it is a `&'static` dialect and a name — equality and
-/// hashing are by name, which is what a caller means by "the same
-/// provider".
-#[derive(Debug, Clone, Copy)]
-pub struct ProviderId(Shape);
+/// Orthogonal to *whose* endpoint it is: a vendor may front one door or
+/// several, and z.ai, MiniMax, Moonshot and Xiaomi MiMo each front two —
+/// an OpenAI-shaped one and an Anthropic-shaped one, at different hosts,
+/// under the same vendor name. Keeping the two facts apart is why nothing
+/// in this tree is called `zai-anthropic`: that would name a vendor that
+/// does not exist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Format {
+    /// OpenAI's shape — Chat Completions or Responses, per the
+    /// configuration's `route`.
+    OpenAi,
+    /// Anthropic's Messages shape.
+    Anthropic,
+    /// Gemini's GenerateContent.
+    Gemini,
+}
 
-/// Which format's table the name came out of, and the entry it named. Both
-/// halves are `&'static`: a dialect is a const, so an id borrows it rather
-/// than copying a configuration out of it.
+impl Format {
+    /// How the format is written in a reference's qualifier
+    /// (`zai/anthropic`).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::OpenAi => "openai",
+            Self::Anthropic => "anthropic",
+            Self::Gemini => "gemini",
+        }
+    }
+
+    /// The format a qualifier names.
+    pub fn by_name(name: &str) -> Option<Self> {
+        [Self::OpenAi, Self::Anthropic, Self::Gemini]
+            .into_iter()
+            .find(|format| format.as_str() == name)
+    }
+}
+
+impl fmt::Display for Format {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// One provider: a vendor's endpoint in one format.
+///
+/// The identity is the *pair*. The only way to obtain one is [`resolve`],
+/// [`endpoints`] or [`all`], so holding a `ProviderId` means the pair
+/// exists, and [`Self::config`] is infallible without an `unwrap`, an
+/// `unreachable!` or an `Option` that cannot be `None` — the invariant
+/// lives in the type rather than in a comment asking the reader to trust
+/// the constructor.
 #[derive(Debug, Clone, Copy)]
-enum Shape {
+pub struct ProviderId(Endpoint);
+
+/// The dialect an id names, and with it the format. Both halves are
+/// `&'static`: a dialect is a const, so an id borrows it rather than
+/// copying a configuration out of it.
+#[derive(Debug, Clone, Copy)]
+enum Endpoint {
     OpenAi(&'static openai::wire::Dialect),
     Anthropic(&'static anthropic::wire::Dialect),
     Gemini,
 }
 
 impl ProviderId {
-    /// The name, as the registry spells it.
-    pub fn name(&self) -> &'static str {
+    /// The vendor's name: `"zai"` for both of z.ai's doors.
+    pub fn vendor(&self) -> &'static str {
         match self.0 {
-            Shape::OpenAi(dialect) => dialect.name,
-            Shape::Anthropic(dialect) => dialect.name,
-            Shape::Gemini => GEMINI,
+            Endpoint::OpenAi(dialect) => dialect.name,
+            Endpoint::Anthropic(dialect) => dialect.name,
+            Endpoint::Gemini => GEMINI,
+        }
+    }
+
+    /// Which format this door speaks.
+    pub fn format(&self) -> Format {
+        match self.0 {
+            Endpoint::OpenAi(_) => Format::OpenAi,
+            Endpoint::Anthropic(_) => Format::Anthropic,
+            Endpoint::Gemini => Format::Gemini,
+        }
+    }
+
+    /// How a reference spells this provider: the vendor alone when it has
+    /// one door, `vendor/format` when it has several.
+    ///
+    /// The short spelling is not a convenience — it is the whole name for
+    /// every vendor but four, and writing `openai/openai` would be noise.
+    pub fn spelling(&self) -> String {
+        if endpoints(self.vendor()).count() > 1 {
+            format!("{}/{}", self.vendor(), self.format())
+        } else {
+            self.vendor().to_owned()
         }
     }
 
@@ -187,20 +255,20 @@ impl ProviderId {
     /// Infallible by construction — see the type's documentation.
     pub fn config(&self) -> ProviderConfig {
         match self.0 {
-            Shape::OpenAi(dialect) => {
+            Endpoint::OpenAi(dialect) => {
                 ProviderConfig::OpenAi(openai::wire::OpenAI::with_key(dialect, Secret::default()))
             }
-            Shape::Anthropic(dialect) => ProviderConfig::Anthropic(
+            Endpoint::Anthropic(dialect) => ProviderConfig::Anthropic(
                 anthropic::wire::Anthropic::with_dialect(Secret::default(), dialect),
             ),
-            Shape::Gemini => ProviderConfig::Gemini(gemini::Gemini::new(Secret::default())),
+            Endpoint::Gemini => ProviderConfig::Gemini(gemini::Gemini::new(Secret::default())),
         }
     }
 }
 
 impl PartialEq for ProviderId {
     fn eq(&self, other: &Self) -> bool {
-        self.name() == other.name()
+        self.vendor() == other.vendor() && self.format() == other.format()
     }
 }
 
@@ -208,62 +276,130 @@ impl Eq for ProviderId {}
 
 impl std::hash::Hash for ProviderId {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.name().hash(state);
+        self.vendor().hash(state);
+        self.format().hash(state);
     }
 }
 
-/// The provider named `name`.
-///
-/// `None` is "this build has no such provider"; [`all`] is the list that
-/// makes that answer actionable.
-pub fn by_name(name: &str) -> Option<ProviderId> {
-    if name == GEMINI {
-        return Some(ProviderId(Shape::Gemini));
-    }
-    if let Some(dialect) = openai::wire::by_name(name) {
-        return Some(ProviderId(Shape::OpenAi(dialect)));
-    }
-    anthropic::wire::all()
-        .find(|dialect| dialect.name == name)
-        .map(|dialect| ProviderId(Shape::Anthropic(dialect)))
-}
-
-/// Every provider this build knows, OpenAI-shaped first, then
-/// Anthropic-shaped, then Gemini.
-///
-/// The order is the declaration order of the dialect tables, so a
-/// diagnostic listing them is stable between runs.
+/// Every provider this build knows: OpenAI-shaped first, then
+/// Anthropic-shaped, then Gemini, in the dialect tables' declaration
+/// order, so a diagnostic listing them is stable between runs.
 pub fn all() -> impl Iterator<Item = ProviderId> {
     openai::wire::all()
-        .map(|dialect| ProviderId(Shape::OpenAi(dialect)))
-        .chain(anthropic::wire::all().map(|dialect| ProviderId(Shape::Anthropic(dialect))))
-        .chain(std::iter::once(ProviderId(Shape::Gemini)))
+        .map(|dialect| ProviderId(Endpoint::OpenAi(dialect)))
+        .chain(anthropic::wire::all().map(|dialect| ProviderId(Endpoint::Anthropic(dialect))))
+        .chain(std::iter::once(ProviderId(Endpoint::Gemini)))
 }
 
-/// Every known name, for a refusal that tells the caller what would have
-/// worked.
-fn known_names() -> String {
-    all().map(|id| id.name()).collect::<Vec<_>>().join(", ")
+/// Every vendor name this build knows, each once however many doors it
+/// fronts.
+pub fn vendors() -> impl Iterator<Item = &'static str> {
+    let mut seen: Vec<&'static str> = Vec::new();
+    all().filter_map(move |id| {
+        let vendor = id.vendor();
+        (!seen.contains(&vendor)).then(|| {
+            seen.push(vendor);
+            vendor
+        })
+    })
 }
 
-/// A provider name this build does not know, with the names it does.
+/// Every door `vendor` fronts, in format order.
+pub fn endpoints(vendor: &str) -> impl Iterator<Item = ProviderId> + use<> {
+    let vendor = vendor.to_owned();
+    all().filter(move |id| id.vendor() == vendor)
+}
+
+/// The provider `spec` names: a vendor (`"deepseek"`) or a vendor and a
+/// format (`"zai/anthropic"`).
+///
+/// A vendor with one door needs no qualifier. A vendor with several and no
+/// qualifier is [`UnknownProvider::Ambiguous`] listing its doors — never a
+/// silent pick, because the doors are different hosts and a binding that
+/// quietly talked to the wrong one is worse than one that refuses.
+pub fn resolve(spec: &str) -> Result<ProviderId, UnknownProvider> {
+    let (vendor, format) = match spec.split_once('/') {
+        Some((vendor, format)) => (vendor, Some(format)),
+        None => (spec, None),
+    };
+    let doors: Vec<ProviderId> = endpoints(vendor).collect();
+    if doors.is_empty() {
+        return Err(UnknownProvider::Vendor {
+            vendor: vendor.to_owned(),
+            known: vendors().collect::<Vec<_>>().join(", "),
+        });
+    }
+    match format {
+        Some(format) => {
+            let format = Format::by_name(format).ok_or_else(|| UnknownProvider::Format {
+                vendor: vendor.to_owned(),
+                format: format.to_owned(),
+                known: spellings(&doors),
+            })?;
+            doors
+                .into_iter()
+                .find(|id| id.format() == format)
+                .ok_or_else(|| UnknownProvider::Format {
+                    vendor: vendor.to_owned(),
+                    format: format.as_str().to_owned(),
+                    known: spellings(&endpoints(vendor).collect::<Vec<_>>()),
+                })
+        }
+        None => match doors.as_slice() {
+            [only] => Ok(*only),
+            several => Err(UnknownProvider::Ambiguous {
+                vendor: vendor.to_owned(),
+                doors: spellings(several),
+            }),
+        },
+    }
+}
+
+/// How a set of providers is written, for a refusal that teaches.
+fn spellings(ids: &[ProviderId]) -> String {
+    ids.iter()
+        .map(ProviderId::spelling)
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// A reference this build cannot resolve, with what it could have.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum UnknownProvider {
-    /// The string named no provider at all.
+    /// The string named no vendor and no model.
     #[error(
         "`{reference}` is not a `provider:model` reference: name the provider before the colon \
-         (for example `openai:gpt-5.2`)"
+         (for example `openai:gpt-5.2`, or `zai/anthropic:glm-4.6`)"
     )]
     Unqualified {
         /// What was parsed.
         reference: String,
     },
-    /// The provider is not one this build ships.
-    #[error("unknown provider `{provider}`; this build knows {known}")]
-    Provider {
+    /// The vendor is not one this build ships.
+    #[error("unknown provider `{vendor}`; this build knows {known}")]
+    Vendor {
         /// The name that resolved to nothing.
-        provider: String,
-        /// Every name that would have resolved, comma-separated.
+        vendor: String,
+        /// Every vendor that would have resolved.
+        known: String,
+    },
+    /// The vendor fronts several endpoints and the reference named none of
+    /// them.
+    #[error("`{vendor}` fronts more than one endpoint; name which: {doors}")]
+    Ambiguous {
+        /// The vendor.
+        vendor: String,
+        /// Its doors, as they are written.
+        doors: String,
+    },
+    /// The vendor does not front an endpoint in that format.
+    #[error("`{vendor}` has no `{format}` endpoint; it fronts {known}")]
+    Format {
+        /// The vendor.
+        vendor: String,
+        /// The format the reference asked for.
+        format: String,
+        /// The doors it does front.
         known: String,
     },
 }
@@ -313,28 +449,34 @@ fn serialize_named<S: serde::Serializer>(
     model: &str,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&format!("{}:{model}", provider.name()))
+    serializer.serialize_str(&format!("{}:{model}", provider.spelling()))
 }
 
 impl ProviderRef {
-    /// The reference to `model` on the provider named `provider`, if this
-    /// build knows it.
-    pub fn named(provider: &str, model: impl Into<String>) -> Result<Self, UnknownProvider> {
-        let provider = by_name(provider).ok_or_else(|| UnknownProvider::Provider {
-            provider: provider.to_owned(),
-            known: known_names(),
-        })?;
+    /// The reference to `model` on the provider `spec` names — a vendor,
+    /// or a vendor and a format (`"zai/anthropic"`).
+    pub fn named(spec: &str, model: impl Into<String>) -> Result<Self, UnknownProvider> {
         Ok(Self::Named {
-            provider,
+            provider: resolve(spec)?,
             model: model.into(),
         })
     }
 
-    /// The provider's name.
+    /// The vendor's name. Both of a two-door vendor's endpoints report the
+    /// same one, which is the point: `zai` is one company.
     pub fn provider(&self) -> &str {
         match self {
-            Self::Named { provider, .. } => provider.name(),
+            Self::Named { provider, .. } => provider.vendor(),
             Self::Configured { config, .. } => config.provider(),
+        }
+    }
+
+    /// How this reference is written: the provider's spelling and the
+    /// model, which is exactly what it parses from and serializes as.
+    pub fn spelling(&self) -> String {
+        match self {
+            Self::Named { provider, model } => format!("{}:{model}", provider.spelling()),
+            Self::Configured { config, model } => format!("{}:{model}", config.provider()),
         }
     }
 
@@ -362,7 +504,7 @@ impl ProviderRef {
 
 impl fmt::Display for ProviderRef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}:{}", self.provider(), self.model())
+        f.write_str(&self.spelling())
     }
 }
 

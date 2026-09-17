@@ -523,8 +523,10 @@ pub fn materialize(world: &mut World) {
 /// depends on, not about diagnosis.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderDiagnostics {
-    /// Every provider name this build knows, in the registry's order.
-    pub known: Vec<&'static str>,
+    /// Every provider this build knows, as a reference spells it — the
+    /// vendor alone, or `vendor/format` where a vendor fronts several
+    /// endpoints.
+    pub known: Vec<String>,
     /// Every binding in the world, by key.
     pub bindings: Vec<BindingDiagnostic>,
     /// Why the last [`materialize`] pass refused, when one did.
@@ -560,7 +562,7 @@ pub struct BindingDiagnostic {
 /// refusal. Bindings come back ordered by key, so two runs over one world
 /// report the same thing.
 pub fn provider_diagnostics(world: &mut World) -> ProviderDiagnostics {
-    let known: Vec<&'static str> = rig_core::providers::all().map(|id| id.name()).collect();
+    let known: Vec<String> = rig_core::providers::all().map(|id| id.spelling()).collect();
     let bound: Vec<HandlerKey> = world
         .query::<&Bound>()
         .iter(world)

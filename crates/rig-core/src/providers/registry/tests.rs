@@ -13,36 +13,50 @@ fn host_of(config: &ProviderConfig) -> &str {
     }
 }
 
-/// The invariant every other test here rests on, and the one a new gateway
-/// can break: a dialect name is unique across every format rig speaks. Two
-/// dialects sharing a name would make `provider:model` ambiguous — z.ai,
-/// MiniMax, Moonshot and Xiaomi MiMo each front an OpenAI-shaped endpoint
-/// *and* an Anthropic-shaped one at different hosts, which is why the
-/// Messages-format ones carry the `-anthropic` suffix.
+/// The invariant every other test here rests on: a provider is a *pair* —
+/// vendor and format — and the pair is unique. A vendor may front several
+/// doors (z.ai, MiniMax, Moonshot and Xiaomi MiMo each front an
+/// OpenAI-shaped endpoint and an Anthropic-shaped one, at different
+/// hosts), and that is representable rather than renamed away.
 #[test]
-fn every_provider_name_is_unique() {
-    let mut seen: Vec<&str> = Vec::new();
-    for name in all().map(|id| id.name()) {
+fn a_provider_is_a_unique_vendor_and_format_pair() {
+    let mut seen: Vec<(&str, Format)> = Vec::new();
+    for id in all() {
+        let pair = (id.vendor(), id.format());
         assert!(
-            !seen.contains(&name),
-            "`{name}` names two providers; a name must resolve to one, or `ProviderRef` cannot"
+            !seen.contains(&pair),
+            "`{}/{}` is two providers; the pair must identify one",
+            pair.0,
+            pair.1
         );
-        seen.push(name);
+        seen.push(pair);
     }
     assert!(seen.len() > 20, "the registry looks empty: {seen:?}");
-    // The four that used to collide, both halves present and distinct.
-    for name in [
-        "zai",
-        "zai-anthropic",
-        "minimax",
-        "minimax-anthropic",
-        "moonshot",
-        "moonshot-anthropic",
-        "xiaomimimo",
-        "xiaomimimo-anthropic",
-    ] {
-        assert!(seen.contains(&name), "`{name}` is not in {seen:?}");
+
+    // The four two-door vendors: one vendor name, two formats, and nothing
+    // in the tree pretends they are different companies.
+    for vendor in ["zai", "minimax", "moonshot", "xiaomimimo"] {
+        let doors: Vec<Format> = endpoints(vendor).map(|id| id.format()).collect();
+        assert_eq!(
+            doors,
+            vec![Format::OpenAi, Format::Anthropic],
+            "`{vendor}` fronts two doors"
+        );
+        assert_eq!(
+            vendors().filter(|name| *name == vendor).count(),
+            1,
+            "`{vendor}` is one vendor"
+        );
     }
+    // And a one-door vendor is spelled by its name alone.
+    assert_eq!(
+        resolve("deepseek").expect("deepseek").spelling(),
+        "deepseek"
+    );
+    assert_eq!(
+        resolve("zai/anthropic").expect("zai/anthropic").spelling(),
+        "zai/anthropic"
+    );
 }
 
 /// Every name the registry lists is reachable *by* that name, resolves to a
@@ -51,12 +65,12 @@ fn every_provider_name_is_unique() {
 #[test]
 fn every_listed_provider_resolves_and_round_trips() {
     for id in all() {
-        let name = id.name();
-        let resolved =
-            by_name(name).unwrap_or_else(|| panic!("`{name}` is listed but unresolvable"));
+        let name = id.spelling();
+        let resolved = resolve(&name)
+            .unwrap_or_else(|error| panic!("`{name}` is listed but unresolvable: {error}"));
         assert_eq!(resolved, id, "`{name}` resolves to a different provider");
         let config = id.config();
-        assert_eq!(config.provider(), name);
+        assert_eq!(config.provider(), id.vendor());
         assert!(
             config.credential().is_empty(),
             "`{name}` resolved with a credential in it"
@@ -72,7 +86,7 @@ fn every_listed_provider_resolves_and_round_trips() {
         let reference: ProviderRef = format!("{name}:some-model")
             .parse()
             .unwrap_or_else(|error| panic!("`{name}` does not parse: {error}"));
-        assert_eq!(reference.provider(), name);
+        assert_eq!(reference.provider(), id.vendor());
         assert_eq!(reference.model(), "some-model");
         assert_eq!(reference.to_string(), format!("{name}:some-model"));
         assert_eq!(reference.config(), config);
@@ -82,9 +96,9 @@ fn every_listed_provider_resolves_and_round_trips() {
 /// The two halves of the old collision are two providers, at two hosts, in
 /// two formats — which is the whole reason for the rename.
 #[test]
-fn the_two_zai_endpoints_are_two_providers() {
-    let chat = by_name("zai").expect("zai").config();
-    let messages = by_name("zai-anthropic").expect("zai-anthropic").config();
+fn the_two_zai_endpoints_are_one_vendors_two_doors() {
+    let chat = resolve("zai/openai").expect("zai/openai").config();
+    let messages = resolve("zai/anthropic").expect("zai/anthropic").config();
     assert!(matches!(chat, ProviderConfig::OpenAi(_)));
     assert!(matches!(messages, ProviderConfig::Anthropic(_)));
     assert_ne!(host_of(&chat), host_of(&messages));
@@ -115,12 +129,33 @@ fn an_unnameable_reference_says_what_would_have_worked() {
         .expect_err("unknown");
     let message = unknown.to_string();
     assert!(message.contains("telepathy"), "{message}");
-    for known in ["openai", "anthropic", "gemini", "zai-anthropic"] {
+    for known in ["openai", "anthropic", "gemini", "zai"] {
         assert!(
             message.contains(known),
             "the refusal must list what this build knows; `{known}` missing from: {message}"
         );
     }
+
+    // A vendor with two doors and no qualifier is asked which, and told
+    // what the doors are — never answered with a guess.
+    let ambiguous = "zai:glm-4.6".parse::<ProviderRef>().expect_err("two doors");
+    let message = ambiguous.to_string();
+    assert!(
+        matches!(ambiguous, UnknownProvider::Ambiguous { .. }),
+        "{message}"
+    );
+    assert!(message.contains("zai/openai"), "{message}");
+    assert!(message.contains("zai/anthropic"), "{message}");
+
+    // …and a door the vendor does not have says so.
+    let wrong_door = "deepseek/anthropic:x"
+        .parse::<ProviderRef>()
+        .expect_err("deepseek speaks one format");
+    assert!(
+        matches!(wrong_door, UnknownProvider::Format { .. }),
+        "{wrong_door:?}"
+    );
+    assert!(wrong_door.to_string().contains("deepseek"), "{wrong_door}");
 
     let modelless = "openai:".parse::<ProviderRef>().expect_err("no model");
     assert!(
@@ -166,18 +201,18 @@ fn a_reference_serializes_as_its_string() {
 /// What a host needs in the environment, off the data alone.
 #[test]
 fn a_config_names_the_environment_it_reads() {
-    let openai = by_name("openai").expect("openai").config();
+    let openai = resolve("openai").expect("openai").config();
     assert_eq!(
         openai.required_env().collect::<Vec<_>>(),
         vec!["OPENAI_API_KEY", "OPENAI_BASE_URL"]
     );
-    let anthropic = by_name("anthropic").expect("anthropic").config();
+    let anthropic = resolve("anthropic").expect("anthropic").config();
     assert_eq!(
         anthropic.required_env().collect::<Vec<_>>(),
         vec!["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"]
     );
     // Gemini has one host and one variable.
-    let gemini = by_name("gemini").expect("gemini").config();
+    let gemini = resolve("gemini").expect("gemini").config();
     assert_eq!(
         gemini.required_env().collect::<Vec<_>>(),
         vec!["GEMINI_API_KEY"]
@@ -188,7 +223,7 @@ fn a_config_names_the_environment_it_reads() {
         assert!(
             id.config().required_env().next().is_some(),
             "`{}` names no credential variable",
-            id.name()
+            id.spelling()
         );
     }
 }
@@ -197,7 +232,7 @@ fn a_config_names_the_environment_it_reads() {
 /// and the provider tag plus the dialect name are what identify it.
 #[test]
 fn a_config_persists_without_its_credential() {
-    let config = by_name("deepseek")
+    let config = resolve("deepseek")
         .expect("deepseek")
         .config()
         .with_credential("sk-secret-value".into());
@@ -221,8 +256,8 @@ fn a_config_persists_without_its_credential() {
 /// build-dependent, which is the invariant `ProviderRef` rests on.
 #[test]
 fn a_self_hosted_endpoint_is_the_long_form() {
-    let config = by_name("llamacpp")
-        .expect("llama.cpp")
+    let config = resolve("llamacpp")
+        .expect("llamacpp")
         .config()
         .with_credential(Secret::default());
     let ProviderConfig::OpenAi(openai) = config else {
@@ -244,18 +279,18 @@ fn a_self_hosted_endpoint_is_the_long_form() {
 /// taken when the name was read.
 #[test]
 fn an_id_is_proof_the_name_resolves() {
-    assert!(by_name("telepathy").is_none());
-    let id = by_name("venice").expect("venice");
-    // Identity is the name, so two lookups of one name are one provider
-    // and two names never are.
-    assert_eq!(id, by_name("venice").expect("venice"));
-    assert_ne!(id, by_name("openai").expect("openai"));
-    assert_eq!(id.name(), "venice");
+    assert!(resolve("telepathy").is_err());
+    let id = resolve("venice").expect("venice");
+    // Identity is the pair, so two lookups of one spelling are one
+    // provider and two vendors never are.
+    assert_eq!(id, resolve("venice").expect("venice"));
+    assert_ne!(id, resolve("openai").expect("openai"));
+    assert_eq!(id.vendor(), "venice");
     assert_eq!(id.config().provider(), "venice");
     // And a reference carries the id rather than a configuration, so
     // equality compares what the user wrote.
     let reference: ProviderRef = "venice:venice-uncensored".parse().expect("venice");
-    assert_eq!(reference.provider(), id.name());
+    assert_eq!(reference.provider(), id.vendor());
     assert_eq!(
         reference,
         "venice:venice-uncensored"
@@ -283,7 +318,7 @@ fn the_two_forms_are_read_by_shape_and_report_the_field() {
 
     // A map is a configuration, and the model beside it. The document is
     // the one a host would have written: a config's own serialized form.
-    let venice = match by_name("venice").expect("venice").config() {
+    let venice = match resolve("venice").expect("venice").config() {
         ProviderConfig::OpenAi(config) => config.with_base_url("http://local"),
         other => panic!("venice speaks chat completions, not {other:?}"),
     };

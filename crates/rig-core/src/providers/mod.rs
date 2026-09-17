@@ -121,7 +121,10 @@
 //! ```
 mod registry;
 
-pub use registry::{ProviderConfig, ProviderId, ProviderRef, UnknownProvider, all, by_name};
+pub use registry::{
+    Format, ProviderConfig, ProviderId, ProviderRef, UnknownProvider, all, endpoints, resolve,
+    vendors,
+};
 
 pub mod anthropic;
 pub mod azure;

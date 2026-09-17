@@ -40,9 +40,9 @@ use rig_core::{
     http_client::BoxedHttpClient,
     providers::{
         anthropic::wire::{ANTHROPIC, Anthropic, Dialect as AnthropicDialect, ZAI},
-        by_name,
         gemini::Gemini,
         openai::wire::{DEEPSEEK, Dialect as OpenAiDialect, OPENAI, OpenAI, Route, VENICE},
+        resolve,
     },
     serve::{ErasedHandler, adapters::CompletionAdapter},
     test_utils::RecordingHttpClient,
@@ -252,7 +252,7 @@ fn a_named_binding_is_one_string_and_round_trips() {
     assert_eq!(binding.provider.provider(), "deepseek");
     assert_eq!(
         binding.provider.config(),
-        by_name("deepseek").expect("deepseek").config()
+        resolve("deepseek").expect("deepseek").config()
     );
     assert_eq!(
         serde_json::from_str::<ProviderBinding>(&json).unwrap(),
@@ -280,7 +280,10 @@ fn an_unknown_provider_name_is_refused_by_the_reader() {
     assert!(text.contains("unknown provider `telepathy`"), "{text}");
     // Every name this build knows, both formats of a two-shaped gateway
     // included — the list is what makes the refusal actionable.
-    for known in rig_core::providers::all().map(|id| id.name()) {
+    // An unknown *vendor* is answered with the vendors — a two-door vendor
+    // is one entry here, and which door is a second question the refusal
+    // for `zai:…` asks separately.
+    for known in rig_core::providers::vendors() {
         assert!(text.contains(known), "{text} does not name {known}");
     }
 }
@@ -308,7 +311,7 @@ fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
             }),
         ),
         (
-            "zai-anthropic",
+            "zai/anthropic",
             anthropic_on(&ZAI),
             Box::new(|http| {
                 ErasedHandler::new(CompletionAdapter::new(
@@ -439,7 +442,7 @@ fn a_materialized_binding_describes_itself_as_a_hand_registered_adapter() {
 
 /// A name *is* its configuration: the binding built from
 /// `"deepseek:deepseek-chat"` materializes to the very descriptor the
-/// written-out binding over `by_name("deepseek")` does — the same policy
+/// written-out binding over `resolve("deepseek")` does — the same policy
 /// hash — so a host that overrides nothing gives up nothing by saying so
 /// in one string.
 #[test]
@@ -448,8 +451,8 @@ fn a_named_binding_materializes_as_its_configured_twin() {
         named(KEY, "deepseek:deepseek-chat", "cassette"),
         ProviderBinding::configured(
             KEY,
-            by_name("deepseek")
-                .expect("deepseek is a name this build knows")
+            resolve("deepseek")
+                .expect("deepseek is a provider this build knows")
                 .config(),
             "deepseek-chat",
             "cassette",
@@ -503,11 +506,10 @@ fn a_dialect_the_provider_does_not_speak_is_refused_by_the_reader() {
             "deepseek",
         ),
         // And the other way round: Anthropic's own name is not an
-        // OpenAI-shaped provider. (Most Messages-format gateways — z.ai,
-        // MiniMax, Moonshot, Xiaomi MiMo — serve both shapes, and *are*
-        // dialects of both lists under a name each: `zai` speaks the
-        // OpenAI format and `zai-anthropic` the Messages one, so one name
-        // means one endpoint.)
+        // OpenAI-shaped provider. (Four vendors — z.ai, MiniMax, Moonshot,
+        // Xiaomi MiMo — front both shapes under one vendor name, which is
+        // why a reference to one of them names the format too:
+        // `zai/anthropic`.)
         (
             "openai/anthropic",
             (&openai, &openai_config),
@@ -1415,8 +1417,12 @@ fn a_world_reports_what_it_binds_and_what_the_build_knows() {
 
     // Every provider this build knows, which is what makes a wrong name
     // actionable.
-    for known in ["openai", "deepseek", "anthropic", "zai-anthropic", "gemini"] {
-        assert!(report.known.contains(&known), "{:?}", report.known);
+    for known in ["openai", "deepseek", "anthropic", "zai/anthropic", "gemini"] {
+        assert!(
+            report.known.iter().any(|name| name == known),
+            "{:?}",
+            report.known
+        );
     }
     // Both bindings, ordered by key, with no secret anywhere in them.
     let keys: Vec<&str> = report.bindings.iter().map(|b| b.key.as_str()).collect();
