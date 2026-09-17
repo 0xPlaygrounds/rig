@@ -551,26 +551,28 @@ pub struct BindingDiagnostic {
     pub credential: CredentialRef,
     /// The environment this binding's provider reads when it is built from
     /// the environment — the credential's variable, and the base URL's
-    /// where the dialect names one.
+    /// where the dialect names one. Owned because a report is data the
+    /// caller keeps; the reference itself hands out an iterator.
     pub required_env: Vec<&'static str>,
 }
 
 /// Report what this world binds and what this build knows.
 ///
-/// Read-only: it registers nothing, resolves nothing and sends nothing, so
-/// it is safe to call before a [`Materializer`] is installed and after a
-/// refusal. Bindings come back ordered by key, so two runs over one world
-/// report the same thing.
-pub fn provider_diagnostics(world: &mut World) -> ProviderDiagnostics {
+/// Read-only, in the signature as well as in fact: it takes `&World`,
+/// registers nothing, resolves nothing and sends nothing, so it is safe to
+/// call before a [`Materializer`] is installed and after a refusal.
+/// Bindings come back ordered by key, so two runs over one world report the
+/// same thing.
+pub fn provider_diagnostics(world: &World) -> ProviderDiagnostics {
     let known: Vec<String> = rig_core::providers::all().map(|id| id.spelling()).collect();
     let bound: Vec<HandlerKey> = world
-        .query::<&Bound>()
-        .iter(world)
+        .iter_entities()
+        .filter_map(|entity| entity.get::<Bound>())
         .map(|bound| bound.key.clone())
         .collect();
     let mut bindings: Vec<BindingDiagnostic> = world
-        .query::<(Entity, &ProviderBinding)>()
-        .iter(world)
+        .iter_entities()
+        .filter_map(|entity| entity.get::<ProviderBinding>().map(|b| (entity, b)))
         .map(|(entity, binding)| BindingDiagnostic {
             key: binding.key.clone(),
             provider: binding.provider.provider().to_owned(),
@@ -578,10 +580,9 @@ pub fn provider_diagnostics(world: &mut World) -> ProviderDiagnostics {
             // Served here (a hand registration, an earlier pass) or bound
             // on any entity: either way materialization keeps what serves
             // the key instead of building this one.
-            served: world.get::<Handler>(entity).is_some()
-                || bound.iter().any(|key| key == &binding.key),
+            served: entity.contains::<Handler>() || bound.iter().any(|key| key == &binding.key),
             credential: binding.credential.clone(),
-            required_env: binding.provider.required_env(),
+            required_env: binding.provider.required_env().collect(),
         })
         .collect();
     bindings.sort_by(|a, b| a.key.cmp(&b.key));

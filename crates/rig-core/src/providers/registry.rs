@@ -110,12 +110,19 @@ impl ProviderConfig {
     /// need?" — answerable off the data alone, with no resolver, no
     /// environment access and no request.
     pub fn required_env(&self) -> impl Iterator<Item = &'static str> {
-        let (api_key_env, base_url_env) = match self {
+        let (api_key_env, base_url_env) = self.env();
+        std::iter::once(api_key_env).chain(base_url_env)
+    }
+
+    /// The credential's variable and the base URL's, as the dialect names
+    /// them. Both are `&'static`, which is what lets a caller holding a
+    /// temporary configuration still hand out an iterator.
+    fn env(&self) -> (&'static str, Option<&'static str>) {
+        match self {
             Self::OpenAi(config) => (config.dialect.api_key_env, config.dialect.base_url_env),
             Self::Anthropic(config) => (config.dialect.api_key_env, config.dialect.base_url_env),
             Self::Gemini(_) => (gemini::API_KEY_ENV, None),
-        };
-        std::iter::once(api_key_env).chain(base_url_env)
+        }
     }
 
     /// This configuration's completion handler for `model`, advertised
@@ -413,20 +420,20 @@ pub enum UnknownProvider {
 /// two: a name is a provider plus a model, which is what the long form is
 /// as well.
 ///
-/// Read by the *shape* of the input rather than by trying variants: a
-/// string is a name, a map is a configuration. `#[serde(untagged)]` reads
-/// the same documents but, once both variants have failed, can only report
-/// "data did not match any variant".
+/// Written and read by *shape*, symmetrically and by hand: the short form
+/// is the string it parsed from, the long form is a map of `config` and
+/// `model`, and the reader decides which by what it is given rather than
+/// by trying variants. `#[serde(untagged)]` would read the same documents
+/// but, once both variants have failed, could only report "data did not
+/// match any variant".
 ///
 /// What neither form validates is the model id. rig ships model-name
 /// constants, not a catalog: a provider adds models without a rig release,
 /// so an id this build has not heard of is the provider's 404, which is
 /// where that fact lives.
-#[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ProviderRef {
     /// A provider by name, on its default configuration.
-    #[serde(serialize_with = "serialize_named")]
     Named {
         /// The provider.
         provider: ProviderId,
@@ -440,16 +447,6 @@ pub enum ProviderRef {
         /// The model id.
         model: String,
     },
-}
-
-/// The short form writes the one string it parsed from, which is also its
-/// [`Display`](fmt::Display).
-fn serialize_named<S: serde::Serializer>(
-    provider: &ProviderId,
-    model: &str,
-    serializer: S,
-) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&format!("{}:{model}", provider.spelling()))
 }
 
 impl ProviderRef {
@@ -497,8 +494,12 @@ impl ProviderRef {
 
     /// The environment this reference reads when built from the
     /// environment.
-    pub fn required_env(&self) -> Vec<&'static str> {
-        self.config().required_env().collect()
+    ///
+    /// The variables are `&'static`, so the configuration this reads them
+    /// off is a temporary and nothing is allocated.
+    pub fn required_env(&self) -> impl Iterator<Item = &'static str> {
+        let (api_key_env, base_url_env) = self.config().env();
+        std::iter::once(api_key_env).chain(base_url_env)
     }
 }
 
@@ -519,6 +520,22 @@ impl FromStr for ProviderRef {
             _ => Err(UnknownProvider::Unqualified {
                 reference: reference.to_owned(),
             }),
+        }
+    }
+}
+
+impl Serialize for ProviderRef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            // The one string it parsed from, which is also its `Display`.
+            Self::Named { .. } => serializer.serialize_str(&self.spelling()),
+            Self::Configured { config, model } => {
+                use serde::ser::SerializeStruct;
+                let mut map = serializer.serialize_struct("ProviderRef", 2)?;
+                map.serialize_field("config", config)?;
+                map.serialize_field("model", model)?;
+                map.end()
+            }
         }
     }
 }
