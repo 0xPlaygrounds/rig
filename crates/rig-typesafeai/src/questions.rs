@@ -619,6 +619,12 @@ fn probability(value: f64) -> Result<(), Error> {
     }
     Ok(())
 }
+fn rounded_to_hundredths(probabilities: &BTreeMap<String, f64>) -> bool {
+    probabilities.values().all(|value| {
+        let cents = value * 100.0;
+        (cents - cents.round()).abs() <= 1e-9
+    })
+}
 pub(crate) fn distribution(probabilities: &BTreeMap<String, f64>) -> Result<(), Error> {
     for &weight in probabilities.values() {
         probability(weight)?;
@@ -626,10 +632,7 @@ pub(crate) fn distribution(probabilities: &BTreeMap<String, f64>) -> Result<(), 
     // Recorded Jev responses round probabilities to hundredths independently.
     // Allow their accumulated rounding error, but cap the relaxation so a large
     // choice set cannot make a substantially unnormalized distribution valid.
-    let rounded_to_cents = probabilities.values().all(|value| {
-        let cents = value * 100.0;
-        (cents - cents.round()).abs() <= 1e-9
-    });
+    let rounded_to_cents = rounded_to_hundredths(probabilities);
     let tolerance = if rounded_to_cents {
         (probabilities.len() as f64 * 0.005).min(0.02) + 1e-12
     } else {
@@ -691,6 +694,31 @@ pub(crate) fn validate(question: &Question, answer: &Answer) -> Result<(), Error
             probability(*confidence)?;
             if !score.is_finite() || *score < 0.0 || *score > (criteria.len() - 1) as f64 {
                 return Err(Error::InvalidResponse("score is outside the rubric".into()));
+            }
+            let total = probabilities.values().sum::<f64>();
+            // Keys were checked against the zero-based rubric above (at most ten
+            // levels), so BTreeMap order is also numeric order here.
+            let mean = probabilities
+                .values()
+                .enumerate()
+                .map(|(index, weight)| index as f64 * weight)
+                .sum::<f64>()
+                / total;
+            // Independently rounded weights can move the normalized mean by
+            // sum(|index - mean| * 0.005), since the unrounded weights sum
+            // to one. The score itself is also
+            // rounded to hundredths in recorded responses.
+            let weight_error = if rounded_to_hundredths(probabilities) {
+                (0..criteria.len())
+                    .map(|index| (index as f64 - mean).abs() * 0.005)
+                    .sum::<f64>()
+            } else {
+                0.0
+            };
+            if (*score - mean).abs() > weight_error + 0.005 + 1e-12 {
+                return Err(Error::InvalidResponse(
+                    "score differs from the probability-weighted mean".into(),
+                ));
             }
         }
         (Question::Noul { .. }, Answer::Noul { noul }) => probability(*noul)?,

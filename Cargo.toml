@@ -60,6 +60,7 @@ default-members = [
     "crates/rig-ecs",
     "crates/rig-reqwest",
     "crates/rig-tungstenite",
+    "crates/rig-typesafeai",
     "crates/rig-bedrock",
     "crates/rig-candle",
     "crates/rig-gemini-grpc",

@@ -482,3 +482,49 @@ fn dynamic_query_rejects_invalid_runtime_definitions() -> anyhow::Result<()> {
     }
     Ok(())
 }
+
+/// Synthetic contradictions and rounding boundaries cannot be captured as valid provider traffic.
+#[test]
+fn validates_score_against_distribution() -> anyhow::Result<()> {
+    let dynamic = DynamicScore::new("Rate", ["low", "medium", "high", "highest"])?;
+    let typed = Score::new(
+        "Rate",
+        [(0, "low"), (1, "medium"), (2, "high"), (3, "highest")],
+    )?;
+    for (weights, score, valid) in [
+        ([0.0, 0.0, 1.0, 0.0], 0.0, false),
+        ([0.0, 0.0, 1.0, 0.0], 2.0, true),
+        ([0.01, 0.23, 0.67, 0.08], 1.83, true),
+        ([0.02, 0.23, 0.67, 0.09], 1.82 / 1.01, true),
+        ([0.0, 0.0, 0.0, 0.99], 3.0, true),
+        ([0.0, 0.0, 0.0, 1.0], 2.9, false),
+        ([0.0, 0.14, 0.76, 0.1], 1.95, true),
+        ([0.01, 0.23, 0.67, 0.08], 2.0, false),
+        ([0.1234, 0.2345, 0.3456, 0.2965], 1.82, true),
+        ([0.1234, 0.2345, 0.3456, 0.2965], 1.84, false),
+    ] {
+        let answer = types::Answer::Score {
+            score,
+            probabilities: weights
+                .into_iter()
+                .enumerate()
+                .map(|(index, weight)| (index.to_string(), weight))
+                .collect(),
+            legend: ["low", "medium", "high", "highest"]
+                .into_iter()
+                .enumerate()
+                .map(|(index, description)| (index.to_string(), json!(description)))
+                .collect(),
+            confidence: 0.5,
+        };
+        ensure!(
+            dynamic.decode(answer.clone()).is_ok() == valid,
+            "dynamic: {weights:?}, {score}"
+        );
+        ensure!(
+            typed.decode(answer).is_ok() == valid,
+            "typed: {weights:?}, {score}"
+        );
+    }
+    Ok(())
+}
