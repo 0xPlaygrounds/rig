@@ -1,0 +1,111 @@
+{
+  "request": {
+    "model": "jev-latest",
+    "state": {
+      "message": "I was charged twice. Please refund the duplicate today."
+    },
+    "questions": {
+      "route": {
+        "type": "choice",
+        "instructions": {
+          "question": "Which team should handle this request?",
+          "focus": "Use the customer message"
+        },
+        "criteria": {
+          "billing": {
+            "description": "Charges and refunds",
+            "examples": [
+              "duplicate charge"
+            ]
+          },
+          "technical": {
+            "description": "Software faults",
+            "examples": [
+              "page crashes"
+            ]
+          },
+          "other": null
+        }
+      },
+      "urgency": {
+        "type": "score",
+        "instructions": "How soon does the customer ask for action?",
+        "criteria": [
+          {
+            "deadline": "none"
+          },
+          {
+            "deadline": "within a week"
+          },
+          {
+            "deadline": "today"
+          }
+        ]
+      },
+      "refund_requested": {
+        "type": "noul",
+        "instructions": {
+          "question": "Does the customer explicitly request a refund?"
+        },
+        "criteria": {
+          "true": {
+            "description": "Explicit refund request",
+            "examples": [
+              "please refund"
+            ]
+          },
+          "false": {
+            "description": "No explicit refund request",
+            "examples": [
+              "explain this charge"
+            ]
+          }
+        }
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "route": {
+        "type": "choice",
+        "choice": "billing",
+        "confidence": 1.0,
+        "probabilities": {
+          "billing": 1.0,
+          "technical": 0.0,
+          "other": 0.0
+        }
+      },
+      "urgency": {
+        "type": "score",
+        "score": 2.0,
+        "confidence": 1.0,
+        "legend": {
+          "0": {
+            "deadline": "none"
+          },
+          "1": {
+            "deadline": "within a week"
+          },
+          "2": {
+            "deadline": "today"
+          }
+        },
+        "probabilities": {
+          "0": 0.0,
+          "1": 0.0,
+          "2": 1.0
+        }
+      },
+      "refund_requested": {
+        "type": "noul",
+        "noul": 0.99
+      }
+    },
+    "usage": {
+      "input_tokens": 525,
+      "output_tokens": 70
+    }
+  }
+}

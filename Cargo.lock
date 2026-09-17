@@ -10402,6 +10402,7 @@ dependencies = [
  "rig-surrealdb",
  "rig-test-support",
  "rig-tungstenite",
+ "rig-typesafeai",
  "rig-vectorize",
  "rig-vertexai",
  "rmcp",
@@ -10965,6 +10966,21 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite 0.29.0",
+]
+
+[[package]]
+name = "rig-typesafeai"
+version = "0.42.0"
+dependencies = [
+ "anyhow",
+ "http 1.4.2",
+ "httpmock",
+ "rig-core",
+ "rig-reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -13948,6 +13964,26 @@ name = "typenum"
 version = "1.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
+
+[[package]]
+name = "typesafeai_chat"
+version = "0.42.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "typesafeai_triage"
+version = "0.42.0"
+dependencies = [
+ "anyhow",
+ "rig",
+ "serde",
+ "tokio",
+]
 
 [[package]]
 name = "typewit"
