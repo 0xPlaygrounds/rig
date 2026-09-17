@@ -33,6 +33,38 @@ between runs. A failed step stops the run and prints which checks did not run.
 Verification always replays cassettes (`RIG_PROVIDER_TEST_MODE=replay`), never
 records, and never regenerates goldens.
 
+## Choosing a focused check
+
+| Change | Useful local evidence |
+| --- | --- |
+| Documentation or agent instructions only | Full diff, relative links, and consistency with the referenced code/configuration; no Rust build |
+| Test implementation | Run the affected tests; use package-scoped Clippy for new lint-sensitive patterns |
+| Public API or feature boundary | Focused behavior test and compilation of known consumers in the affected configuration |
+| Target-specific implementation | Inspect both branches; check the affected target when available, and distinguish source review from executed checks |
+| CI failure | Read the failed job's diagnostics, fix the cause, then run the narrow owning check |
+
+These are selection guidelines, not a checklist to run in full. Command recipes
+and test-specific pitfalls live in [tests/README.md](tests/README.md#core-tests).
+Serialize Cargo commands sharing a target directory unless they can make real
+progress independently; concurrent commands often just wait for the build lock.
+
+## Reading CI failures
+
+Start with check names and status on the current PR head, then inspect only
+failed-job diagnostics and enough surrounding context to understand the failure.
+Retain the fetched log outside the repository; search it instead of repeatedly
+fetching or printing the entire workflow log.
+
+If `gh run view --log-failed` cannot read a completed job while its workflow is
+still running, fetch that job directly:
+
+```sh
+gh api repos/0xPlaygrounds/rig/actions/jobs/JOB_ID/logs
+```
+
+Capture the response before extracting diagnostics; replace `JOB_ID` with the
+failed job's ID. A truncated log is not evidence that later errors are absent.
+
 ## What each mode selects
 
 `--changed` compares the working tree (staged, unstaged and untracked files)
@@ -157,5 +189,7 @@ waiting for CI; continue monitoring when the task asks for completion through
 CI. Never claim fully verified or ready to merge with required checks pending
 or failing, confirmed P0/P1 findings, or unresolved required work. Keep the
 handoff concise: PR link, review findings, local checks actually run, CI status,
-and concrete blockers. Keep progress notes outside the repository; generated
-release documents stay untouched (see `AGENTS.md`).
+and concrete blockers. Keep one verification ledger outside the repository
+when needed; reuse its commands/results in the PR and handoff rather than
+maintaining duplicate progress reports. Generated release documents stay
+untouched (see `AGENTS.md`).
