@@ -23,8 +23,9 @@ use rig_core::{
     vector_store::{
         InsertDocuments, VectorStoreError, VectorStoreIndex, request::VectorSearchRequest,
     },
+    wasm_compat::WasmCompatSend,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Serialize, de::DeserializeOwned};
 use uuid::Uuid;
 
 /// Represents a vector store implementation using Qdrant - <https://qdrant.tech/> as the backend.
@@ -117,7 +118,7 @@ impl<M: EmbeddingModel> QdrantVectorStore<M> {
 }
 
 impl<M: EmbeddingModel> InsertDocuments for QdrantVectorStore<M> {
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
@@ -143,9 +144,10 @@ impl<M: EmbeddingModel> InsertDocuments for QdrantVectorStore<M> {
 
             let request =
                 UpsertPointsBuilder::new(&collection_name, embeddings_as_point_structs).wait(true);
-            self.client.upsert_points(request).await.map_err(|err| {
-                VectorStoreError::DatastoreError(format!("Error while upserting: {err}").into())
-            })?;
+            self.client
+                .upsert_points(request)
+                .await
+                .map_err(VectorStoreError::datastore)?;
         }
 
         Ok(())
@@ -157,10 +159,15 @@ fn stringify_id(id: PointId) -> Result<String, VectorStoreError> {
     match id.point_id_options {
         Some(PointIdOptions::Num(num)) => Ok(num.to_string()),
         Some(PointIdOptions::Uuid(uuid)) => Ok(uuid),
-        None => Err(VectorStoreError::DatastoreError(
-            "Invalid point ID format".into(),
+        None => Err(VectorStoreError::MissingIdError(
+            "Qdrant point carries no id".to_string(),
         )),
     }
+}
+
+/// The backend returned a search hit without a point id.
+fn missing_point_id() -> VectorStoreError {
+    VectorStoreError::MissingIdError("Qdrant search result carries no point id".to_string())
 }
 
 impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
@@ -168,7 +175,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
 
     /// Search for the top `n` nearest neighbors to the given query within the Qdrant vector store.
     /// Returns a vector of tuples containing the score, ID, and payload of the nearest neighbors.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<Self::Filter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -176,10 +183,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
             .await?
             .into_iter()
             .map(|item| {
-                let id =
-                    stringify_id(item.id.ok_or_else(|| {
-                        VectorStoreError::DatastoreError("Missing point ID".into())
-                    })?)?;
+                let id = stringify_id(item.id.ok_or_else(missing_point_id)?)?;
                 let score = item.score as f64;
                 let payload = serde_json::from_value(serde_json::to_value(item.payload)?)?;
                 Ok((score, id, payload))
@@ -197,10 +201,7 @@ impl<M: EmbeddingModel> VectorStoreIndex for QdrantVectorStore<M> {
             .await?
             .into_iter()
             .map(|point| {
-                let id =
-                    stringify_id(point.id.ok_or_else(|| {
-                        VectorStoreError::DatastoreError("Missing point ID".into())
-                    })?)?;
+                let id = stringify_id(point.id.ok_or_else(missing_point_id)?)?;
                 Ok((point.score as f64, id))
             })
             .collect()

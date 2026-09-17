@@ -30,26 +30,17 @@ use rig_core::{
         VectorStoreError, VectorStoreIndex,
         request::{FilterError, SearchFilter, VectorSearchRequest},
     },
+    wasm_compat::WasmCompatSend,
 };
-use serde::Deserialize;
+use serde::de::DeserializeOwned;
 use serde_json::Value;
 use utils::{FilterTableColumns, QueryToJson};
 
 mod utils;
 
 /// Type on which vector searches can be performed for a lanceDb table.
-/// # Example
-/// ```ignore
-/// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-/// use rig_reqwest::prelude::*;
-/// use rig_core::providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI};
 ///
-/// let openai = OpenAI::from_env()?.bound()?;
-///
-/// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-/// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None); // <-- Replace with your embedding model here.
-/// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
-/// ```
+/// See [`LanceDbVectorIndex::top_n`] for a worked construct-then-query example.
 ///
 /// The store is generic over its embedding model `M`, which is fixed for the
 /// store's lifetime: an index populated under one model is only meaningful under
@@ -373,23 +364,29 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
 
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
     /// # Example
-    /// ```ignore
+    /// ```no_run
+    /// use rig_core::providers::openai::{self, wire::OpenAI};
+    /// use rig_core::vector_store::VectorStoreIndex;
+    /// use rig_core::vector_store::request::VectorSearchRequest;
     /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
     /// use rig_reqwest::prelude::*;
-    /// use rig_core::providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI};
     ///
-    /// let openai = OpenAI::from_env()?.bound()?;
+    /// # async fn example(table: lancedb::Table) -> Result<(), anyhow::Error> {
+    /// let openai_client = OpenAI::from_env()?.bound()?;
+    /// let model = openai_client.embedding(openai::TEXT_EMBEDDING_ADA_002, None);
+    /// let vector_store_index =
+    ///     LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
     ///
-    /// let table: lancedb::Table = db.create_table("fake_definitions"); // <-- Replace with your lancedb table here.
-    /// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None); // <-- Replace with your embedding model here.
-    /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
+    /// let req = VectorSearchRequest::builder()
+    ///     .query("My boss says I zindle too much, what does that mean?")
+    ///     .samples(1)
+    ///     .build();
     ///
-    /// // Query the index
-    /// let result = vector_store_index
-    ///     .top_n::<String>("My boss says I zindle too much, what does that mean?", 1)
-    ///     .await?;
+    /// let results = vector_store_index.top_n::<String>(req).await?;
+    /// # Ok(())
+    /// # }
     /// ```
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -434,24 +431,8 @@ impl<M: EmbeddingModel> VectorStoreIndex for LanceDbVectorIndex<M> {
             .collect()
     }
 
-    /// Implement the `top_n_ids` method of the `VectorStoreIndex` trait for `LanceDbVectorIndex`.
-    /// # Example
-    /// ```ignore
-    /// use rig_lancedb::{LanceDbVectorIndex, SearchParams};
-    /// use rig_reqwest::prelude::*;
-    /// use rig_core::providers::openai::{TEXT_EMBEDDING_ADA_002, wire::OpenAI};
-    ///
-    /// let openai = OpenAI::from_env()?.bound()?;
-    ///
-    /// let table: lancedb::Table = db.create_table(""); // <-- Replace with your lancedb table here.
-    /// let model = openai.embedding(TEXT_EMBEDDING_ADA_002, None); // <-- Replace with your embedding model here.
-    /// let vector_store_index = LanceDbVectorIndex::new(table, model, "id", SearchParams::default()).await?;
-    ///
-    /// // Query the index
-    /// let result = vector_store_index
-    ///     .top_n_ids("My boss says I zindle too much, what does that mean?", 1)
-    ///     .await?;
-    /// ```
+    /// Like [`LanceDbVectorIndex::top_n`], but projects only the id column —
+    /// see that example for the setup, and pass the same request here.
     async fn top_n_ids(
         &self,
         req: VectorSearchRequest<LanceDBFilter>,

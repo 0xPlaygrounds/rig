@@ -127,7 +127,11 @@ Example usage
     vector_store.insert_documents(documents).await?;
 
     // retrieve embeddings
-    let results = vector_store.top_n::<Product>("Which phones have more than 16Gb and support 5G", 50).await?
+    let req = VectorSearchRequest::builder()
+        .query("Which phones have more than 16Gb and support 5G")
+        .samples(50)
+        .build();
+    let results = vector_store.top_n::<Product>(req).await?;
 
     ...
 

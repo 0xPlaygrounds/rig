@@ -16,8 +16,9 @@ use rig_core::{
         InsertDocuments, VectorStoreError, VectorStoreIndex,
         request::{DynamicSearchFilter, Filter, FilterError, SearchFilter, VectorSearchRequest},
     },
+    wasm_compat::WasmCompatSend,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -201,8 +202,8 @@ where
             let id = doc
                 .get("_id")
                 .ok_or_else(|| {
-                    VectorStoreError::DatastoreError(
-                        "MongoDB vector search result missing _id".into(),
+                    VectorStoreError::MissingIdError(
+                        "MongoDB vector search result missing _id".to_string(),
                     )
                 })?
                 .to_string();
@@ -403,7 +404,7 @@ where
     /// Implement the `top_n` method of the `VectorStoreIndex` trait for `MongoDbVectorIndex`.
     ///
     /// `VectorSearchRequest` similarity search threshold filter gets ignored here because it is already present and can already be added in the MongoDB vector store struct.
-    async fn top_n<T: for<'a> Deserialize<'a> + Send>(
+    async fn top_n<T: DeserializeOwned + WasmCompatSend>(
         &self,
         req: VectorSearchRequest<MongoDbSearchFilter>,
     ) -> Result<Vec<(f64, String, T)>, VectorStoreError> {
@@ -448,7 +449,7 @@ impl<C, M: EmbeddingModel> InsertDocuments for MongoDbVectorIndex<C, M>
 where
     C: Send + Sync,
 {
-    async fn insert_documents<Doc: Serialize + Embed + Send>(
+    async fn insert_documents<Doc: Serialize + Embed + WasmCompatSend>(
         &self,
         documents: Vec<(Doc, Vec<Embedding>)>,
     ) -> Result<(), VectorStoreError> {
