@@ -33,6 +33,14 @@
 //! matching wire through [`HasCompletion`](crate::wire::HasCompletion),
 //! [`HasEmbedding`](crate::driver::HasEmbedding) and their siblings.
 //!
+//! A caller that names a provider in *code* reaches for the module directly.
+//! A caller that names one in *data* — a config file, a database row, a
+//! saved world — reaches for [`registry`]: a validated
+//! [`ProviderId`](registry::ProviderId) selects a vendor and a protocol
+//! family and yields that provider's preset configuration, and a
+//! [`ProviderConfig`](registry::ProviderConfig) carries an explicit one.
+//! Both travel as a [`ProviderRef`](registry::ProviderRef).
+//!
 //! # Provider implementation checklist
 //!
 //! When adding or changing a provider, verify that the integration includes:
@@ -140,6 +148,7 @@ pub mod ollama;
 pub mod openai;
 pub mod openrouter;
 pub mod perplexity;
+pub mod registry;
 pub mod together;
 pub mod venice;
 pub mod voyageai;

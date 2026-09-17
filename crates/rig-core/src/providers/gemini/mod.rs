@@ -70,6 +70,7 @@ pub const GEMINI_RAW_CONTENT_KEY: &str = "gemini_content";
 /// each *endpoint*, so it lives in that wire's `encode` rather than in two
 /// configs a caller has to convert between.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Gemini {
     /// The API key, redacted in `Debug` and in serialized form.
     pub api_key: Secret,
