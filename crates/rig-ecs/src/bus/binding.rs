@@ -103,7 +103,7 @@ pub struct ProviderBinding {
     /// Which provider and model, in either form: a name, or a
     /// configuration. One field, because a name already implies the
     /// configuration it resolves to — a scene that overrides nothing saves
-    /// `"anthropic:claude-haiku-4-5"` and nothing else.
+    /// `"anthropic/anthropic:claude-haiku-4-5"` and nothing else.
     #[reflect(remote = crate::bus::reflect::ProviderRefReflect)]
     pub provider: ProviderRef,
     /// The adapter's label: the `ModelRef` the bound descriptor advertises

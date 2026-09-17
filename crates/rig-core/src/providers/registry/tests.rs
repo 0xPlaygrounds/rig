@@ -78,6 +78,15 @@ fn every_listed_provider_resolves_and_round_trips() {
         assert_eq!(resolved, id, "`{name}` resolves to a different provider");
         let config = id.config();
         assert_eq!(config.provider(), id.vendor());
+        // `ProviderId::parts` and `ProviderConfig::parts` are two tables
+        // over the same fact, so the refactor that gave each one match is
+        // only worth having if they cannot disagree.
+        assert_eq!(
+            config.format(),
+            id.format(),
+            "`{}` reports one format as an id and another as a configuration",
+            id.spelling()
+        );
         assert!(
             config.credential().is_empty(),
             "`{name}` resolved with a credential in it"

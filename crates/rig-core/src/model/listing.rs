@@ -467,9 +467,7 @@ impl crate::wire::WireError for ModelListingError {
     }
 
     fn missing_credential(env_var: &'static str) -> Self {
-        Self::request_error(format!(
-            "no credential for this provider; set `{env_var}` or build its configuration with a key"
-        ))
+        Self::request_error(crate::wire::missing_credential_message(env_var))
     }
 
     fn decode(message: String) -> Self {
@@ -566,7 +564,11 @@ impl From<&ModelListingError> for crate::error::ErrorReport {
                 ErrorKind::ProviderResponse
             }
             ModelListingError::ParseError { .. } => ErrorKind::Response,
-            ModelListingError::RequestError { .. } => ErrorKind::Http,
+            // `boundary()` already calls this a fault in the request rig was
+            // asked to build; reporting it as `Http` was the same enum's two
+            // classification tables disagreeing, and it charged a local
+            // refusal -- a credential-less listing -- to the transport.
+            ModelListingError::RequestError { .. } => ErrorKind::Request,
         };
         let mut report = crate::error::ErrorReport::new(kind, error.to_string())
             .with_retryable(retryable_status(status));

@@ -1,14 +1,27 @@
+//! Every operation that can refuse a credential-less request, in one place,
+//! because the two defects this pins were both a second classification
+//! table disagreeing with the first: `VerifyError` charged the refusal to
+//! the provider, and `ModelListingError::RequestError` reported a fault its
+//! own `boundary()` called a request fault as `ErrorKind::Http`.
+//!
+//! All seven are listed. Adding an operation without adding it here is the
+//! failure mode, so `refusals()` names them rather than deriving them, and
+//! a reader can check the list against `provider_error_enum!`'s callers.
+//!
 //! | claim | test |
 //! |---|---|
-//! | a credential-less request is a fault in the request, in every operation's vocabulary | `a_missing_credential_is_a_request_fault_in_every_operation` |
-//! | every operation names the variable the same way | `every_operation_names_the_variable_the_same_way` |
+//! | all seven operations call a credential-less request a fault in the request | `a_missing_credential_is_a_request_fault_in_every_operation` |
+//! | all seven name the variable the same way | `every_operation_names_the_variable_the_same_way` |
 
+use crate::audio_generation::AudioGenerationError;
 use crate::client::VerifyError;
 use crate::completion::CompletionError;
 use crate::embeddings::EmbeddingError;
 use crate::error::{ErrorKind, ErrorReport};
 use crate::image_generation::ImageGenerationError;
+use crate::model::ModelListingError;
 use crate::observe::AdapterErrorBoundary;
+use crate::rerank::RerankError;
 use crate::transcription::TranscriptionError;
 use crate::wire::WireError;
 
@@ -31,6 +44,9 @@ fn refusals() -> Vec<Refusal> {
         refusal::<EmbeddingError>("embedding"),
         refusal::<TranscriptionError>("transcription"),
         refusal::<ImageGenerationError>("image generation"),
+        refusal::<RerankError>("rerank"),
+        refusal::<AudioGenerationError>("audio generation"),
+        refusal::<ModelListingError>("model listing"),
         refusal::<VerifyError>("verify"),
     ]
 }
