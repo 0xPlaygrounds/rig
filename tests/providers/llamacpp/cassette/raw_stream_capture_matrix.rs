@@ -46,15 +46,14 @@
 //! Re-record with:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_stream_capture_matrix -- --test-threads=1`
 
-use futures::StreamExt;
 use rig::completion::CompletionModel;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse as WireTerminal};
-use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::cassette_support::*;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
+use crate::support::{Observed, collect_sole_terminal};
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
@@ -69,21 +68,6 @@ type LlamacppTerminal = WireTerminal<ChatUsage>;
 
 fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
-}
-
-async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
-    let mut finals = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
-            finals.push(record);
-        }
-    }
-    assert_eq!(
-        finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
-    finals.remove(0)
 }
 
 /// The premise every streaming cell rests on: the scenario recorded exactly
@@ -128,13 +112,13 @@ fn recorded_envelope_field(frames: &[Value], key: &str, scenario: &str) -> Value
 #[tokio::test]
 async fn stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -161,17 +145,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             assert_eq!(usage.to_normalized(), terminal.usage);
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.model, terminal.model);
-            *sink.lock().expect("capture mutex") = Some(raw.clone());
+            sink.put(raw.clone());
         },
     )
     .await;
 
     let (_, terminal_frame) = recorded_frames_with_terminal(scenario);
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     assert_eq!(
         raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
@@ -189,13 +169,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 #[tokio::test]
 async fn stream_raw_exposes_envelope_fields() {
     let scenario = "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -221,16 +201,12 @@ async fn stream_raw_exposes_envelope_fields() {
             }
 
             let raw = terminal.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     let (frames, terminal_frame) = recorded_frames_with_terminal(scenario);
     let params = raw
         .get("additional_params")
@@ -280,30 +256,26 @@ async fn stream_raw_exposes_envelope_fields() {
 #[tokio::test]
 async fn stream_raw_preserves_llamacpp_timings() {
     let scenario = "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
 
     with_llamacpp_cassette(
         "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings",
         |client| async move {
             let model = client.completion(CASSETTE_MODEL);
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
                     .expect("stream should start"),
             )
             .await;
-            *sink.lock().expect("capture mutex") = Some(terminal.raw);
+            sink.put(terminal.raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     let (_, terminal_frame) = recorded_frames_with_terminal(scenario);
 
     let recorded_timings = terminal_frame

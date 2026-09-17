@@ -33,15 +33,14 @@
 //! Re-record with a local Ollama daemon serving `qwen3:4b`:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 
-use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::providers::ollama;
-use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_interaction_bodies;
+use crate::support::{Observed, collect_sole_terminal};
 
 const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
@@ -55,22 +54,6 @@ fn request(
         .max_tokens(64)
         .additional_params(json!({ "think": false }))
         .build()
-}
-
-/// Drains a stream and returns the single terminal record it yielded.
-async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
-    let mut finals = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
-            finals.push(record);
-        }
-    }
-    assert_eq!(
-        finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
-    finals.remove(0)
 }
 
 /// The premise every streaming cell rests on: the scenario recorded exactly
@@ -118,8 +101,8 @@ fn recorded_terminal_line(scenario: &str) -> Value {
 #[tokio::test]
 async fn stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
@@ -128,7 +111,7 @@ async fn stream_raw_terminal_round_trips_provider_type() {
                 .stream(request(&model))
                 .await
                 .expect("stream should start");
-            let terminal = terminal_of(stream).await;
+            let terminal = collect_sole_terminal(stream).await;
 
             let raw = &terminal.raw;
             let typed = ollama::StreamingCompletionResponse::deserialize(raw)
@@ -150,18 +133,14 @@ async fn stream_raw_terminal_round_trips_provider_type() {
                 typed.prompt_eval_count, terminal.usage.input_tokens,
                 "normalized input tokens come from the raw prompt_eval_count"
             );
-            *sink.lock().expect("capture mutex") = Some(raw.clone());
+            sink.put(raw.clone());
         },
     )
     .await;
 
     // Premise: the wire's terminal line is what raw carries.
     let terminal_line = recorded_terminal_line(scenario);
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     assert_eq!(raw["eval_count"], terminal_line["eval_count"]);
     assert_eq!(raw["prompt_eval_count"], terminal_line["prompt_eval_count"]);
     assert_eq!(raw["done_reason"], terminal_line["done_reason"]);
@@ -174,8 +153,8 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 #[tokio::test]
 async fn stream_raw_exposes_terminal_durations() {
     let scenario = "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
         |client| async move {
@@ -184,7 +163,7 @@ async fn stream_raw_exposes_terminal_durations() {
                 .stream(request(&model))
                 .await
                 .expect("stream should start");
-            let terminal = terminal_of(stream).await;
+            let terminal = collect_sole_terminal(stream).await;
 
             // The normalized terminal record provably lacks the timings.
             let mut without_raw = terminal.clone();
@@ -199,16 +178,12 @@ async fn stream_raw_exposes_terminal_durations() {
             }
 
             let raw = terminal.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     let terminal_line = recorded_terminal_line(scenario);
     for field in [
         "total_duration",

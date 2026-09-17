@@ -49,10 +49,9 @@ use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
 
 use super::super::support::with_gemini_cassette;
-use crate::support::Adder;
+use crate::support::{Adder, Observed, json_contains_key};
 
 const PROVIDER: &str = "gemini";
 
@@ -207,16 +206,6 @@ fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
         .unwrap_or_else(|| panic!("{scenario}: no recorded frame carries usageMetadata"))
 }
 
-fn contains_key(value: &Value, needle: &str) -> bool {
-    match value {
-        Value::Object(map) => map
-            .iter()
-            .any(|(key, value)| key == needle || contains_key(value, needle)),
-        Value::Array(items) => items.iter().any(|item| contains_key(item, needle)),
-        _ => false,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // 1: typed access is recoverable
 // ---------------------------------------------------------------------------
@@ -224,8 +213,8 @@ fn contains_key(value: &Value, needle: &str) -> bool {
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed);
+    let observed: Observed<Value> = Observed::default();
+    let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
@@ -252,16 +241,12 @@ async fn raw_roundtrips_streaming_completion_response() {
                 Some(typed.usage_metadata.total_token_count as u64),
                 terminal.usage.total_tokens
             );
-            *sink.lock().expect("observation lock") = Some(raw.clone());
+            sink.put(raw.clone());
         },
     )
     .await;
 
-    let raw = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body observed a raw payload");
+    let raw = observed.take();
     let last = last_usage_frame(SCENARIO);
     assert_eq!(
         raw.pointer("/usage_metadata/totalTokenCount"),
@@ -277,8 +262,8 @@ async fn raw_roundtrips_streaming_completion_response() {
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed);
+    let observed: Observed<Value> = Observed::default();
+    let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
@@ -286,7 +271,7 @@ async fn raw_exposes_terminal_only_fields() {
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;
-            *sink.lock().expect("observation lock") = Some(raw.clone());
+            sink.put(raw.clone());
 
             // The normalized terminal provably lacks these: `finish_reason` is
             // rig's vocabulary (`stop`), and the per-modality breakdown has no
@@ -297,7 +282,7 @@ async fn raw_exposes_terminal_only_fields() {
                 .as_object_mut()
                 .expect("terminal is an object")
                 .remove("raw");
-            assert!(!contains_key(&normalized, "promptTokensDetails"));
+            assert!(!json_contains_key(&normalized, "promptTokensDetails"));
             assert_ne!(
                 normalized.get("finish_reason"),
                 Some(&Value::String("STOP".to_string())),
@@ -308,11 +293,7 @@ async fn raw_exposes_terminal_only_fields() {
     )
     .await;
 
-    let raw = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body observed a raw payload");
+    let raw = observed.take();
     let last = last_usage_frame(SCENARIO);
     assert_eq!(
         raw.get("finish_reason"),
@@ -339,8 +320,8 @@ async fn raw_exposes_terminal_only_fields() {
 async fn raw_terminal_keeps_stop_on_forced_function_call() {
     const SCENARIO: &str =
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call";
-    let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed);
+    let observed: Observed<Value> = Observed::default();
+    let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call",
         |client| async move {
@@ -360,7 +341,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
 
             let terminal = &drained.terminal;
             let raw = &terminal.raw;
-            *sink.lock().expect("observation lock") = Some(raw.clone());
+            sink.put(raw.clone());
 
             // The typed round trip holds for a tool turn's terminal too.
             let typed = StreamingCompletionResponse::deserialize(raw)
@@ -388,11 +369,7 @@ async fn raw_terminal_keeps_stop_on_forced_function_call() {
     )
     .await;
 
-    let raw = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body observed a raw payload");
+    let raw = observed.take();
     let last = last_usage_frame_of_function_call_stream(SCENARIO);
     assert_eq!(
         raw.pointer("/usage_metadata/totalTokenCount"),

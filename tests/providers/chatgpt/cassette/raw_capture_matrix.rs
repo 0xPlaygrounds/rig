@@ -36,9 +36,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/chatgpt/raw_capture_matrix/`.
 
-use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-};
+use rig::completion::{CompletionModel as _, FinishReason};
 use rig::driver::Bound;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
@@ -48,6 +46,7 @@ use serde_json::Value;
 
 use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
+use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw};
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
@@ -92,34 +91,6 @@ fn recorded_terminal_response(scenario: &str) -> Value {
         "{scenario}: the terminal response must be completed"
     );
     response
-}
-
-/// Replay reads the scrubbed fixture back, so volatile fields (`created_at`
-/// → 0, ids → placeholders) compare exactly; a live recording proves only
-/// that both sides carry the field with the same JSON type.
-fn assert_wire_value_matches(live: &Value, recorded: &Value, field: &str) {
-    let (live_value, recorded_value) = (live.get(field), recorded.get(field));
-    match CassetteMode::current() {
-        CassetteMode::Replay => assert_eq!(
-            live_value, recorded_value,
-            "{field}: replayed value must equal the recorded wire value"
-        ),
-        CassetteMode::Record => {
-            let (Some(live_value), Some(recorded_value)) = (live_value, recorded_value) else {
-                panic!("{field}: both the live value and the recording must carry it");
-            };
-            assert_eq!(
-                std::mem::discriminant(live_value),
-                std::mem::discriminant(recorded_value),
-                "{field}: live and recorded values must share a JSON type"
-            );
-        }
-    }
-}
-
-fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = Value::Null;
-    serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
 // ---------------------------------------------------------------------------
@@ -180,8 +151,8 @@ async fn raw_round_trips_provider_type() {
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn raw_exposes_response_envelope() {
     let scenario = "raw_capture_matrix/raw_exposes_response_envelope";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_chatgpt_cassette(
         "raw_capture_matrix/raw_exposes_response_envelope",
         |client| async move {
@@ -199,16 +170,12 @@ async fn raw_exposes_response_envelope() {
                 );
             }
             let raw = response.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     let terminal = recorded_terminal_response(scenario);
     for field in ["object", "status", "model"] {
         assert_eq!(
@@ -240,8 +207,8 @@ async fn raw_exposes_response_envelope() {
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn normalized_fields_equal_raw_renormalized() {
     let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_chatgpt_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
@@ -282,16 +249,12 @@ async fn normalized_fields_equal_raw_renormalized() {
             assert_eq!(response.usage.total_tokens, Some(usage.total_tokens));
             assert!(!response.choice.is_empty());
 
-            *sink.lock().expect("capture mutex") = Some(response);
+            sink.put(response);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
+    let response = captured.take();
     let terminal = recorded_terminal_response(scenario);
     // Both sides are read through the same wire type, so the comparison is of
     // the facts the envelope models rather than of incidental JSON shape.

@@ -73,7 +73,10 @@ fn write_fixture(root: &Path, scenario: &str, response: &str) {
         },
         then: CassetteResponse {
             status: 200,
-            header: Vec::new(),
+            header: vec![NameValue {
+                name: "X-Request-Id".into(),
+                value: "req_REDACTED_1".into(),
+            }],
             body: Some(response.into()),
             body_encoding: BodyEncoding::Utf8,
         },
@@ -124,7 +127,84 @@ fn every_reader_uses_the_supplied_repository_or_downstream_root() {
             recorded_sse_json_frames(&root, "example", "nested/stream"),
             vec![json!({"answer":"ok"})]
         );
+        assert_eq!(
+            recorded_response_header_pairs(&root, "example", "nested/unary"),
+            vec![vec![("x-request-id".into(), "req_REDACTED_1".into())]]
+        );
+        assert_eq!(
+            recorded_json_turn(&root, "example", "nested/unary"),
+            (json!({"input":"hello"}), json!({"answer":"ok"}))
+        );
     }
+}
+
+/// Fixture text for the response-header reader's uncertain boundary, written
+/// as YAML rather than serialized from the DTOs: duplicate header names, a
+/// mixed-case name, and an interaction that recorded no response header at
+/// all are all shapes the DTO writer would never produce but a real recording
+/// can carry.
+const DUPLICATE_RESPONSE_HEADERS: &str = "\
+when:
+  path: /v1/answer
+  method: POST
+  body: '{}'
+then:
+  status: 200
+  header:
+    - name: Set-Cookie
+      value: a=1
+    - name: set-cookie
+      value: b=2
+    - name: X-Request-Id
+      value: req_REDACTED_1
+  body: '{}'
+---
+when:
+  path: /v1/answer
+  method: POST
+  body: '{}'
+then:
+  status: 200
+  body: '{}'
+";
+
+fn write_raw_fixture(root: &Path, scenario: &str, contents: &str) {
+    let path = cassette_path(root, "example", scenario);
+    fs::create_dir_all(path.parent().expect("fixture parent")).expect("create fixture directory");
+    fs::write(&path, contents).expect("write fixture");
+}
+
+#[test]
+fn recorded_response_headers_keep_duplicates_order_and_empty_interactions() {
+    let scratch = assert_fs::TempDir::new().expect("temporary fixtures");
+    let root = scratch.path().join("cassettes");
+    write_raw_fixture(&root, "headers/response", DUPLICATE_RESPONSE_HEADERS);
+
+    assert_eq!(
+        recorded_response_header_pairs(&root, "example", "headers/response"),
+        vec![
+            vec![
+                ("set-cookie".to_string(), "a=1".to_string()),
+                ("set-cookie".to_string(), "b=2".to_string()),
+                ("x-request-id".to_string(), "req_REDACTED_1".to_string()),
+            ],
+            Vec::new(),
+        ]
+    );
+}
+
+#[test]
+#[should_panic(expected = "headers/malformed.yaml should deserialize")]
+fn a_malformed_fixture_names_its_path_instead_of_reading_as_headerless() {
+    let scratch = assert_fs::TempDir::new().expect("temporary fixtures");
+    let root = scratch.path().join("cassettes");
+    write_raw_fixture(
+        &root,
+        "headers/malformed",
+        "then:\n  status: not-a-number\n",
+    );
+
+    let _ = recorded_response_header_pairs(&root, "example", "headers/malformed");
 }
 
 #[tokio::test]

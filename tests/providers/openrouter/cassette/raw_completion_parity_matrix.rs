@@ -35,7 +35,7 @@
 //! literals keep the names they were recorded under; the cell names describe
 //! what the cells now assert.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
 use rig::providers::openai::wire::OPENROUTER;
 use rig::providers::openrouter;
 use serde::Deserialize as _;
@@ -45,6 +45,7 @@ use super::super::DEFAULT_MODEL;
 use super::super::support::{
     BoundOpenRouter, assert_matches_recorded_token, with_openrouter_cassette_result,
 };
+use crate::support::{Observed, recorded_chat_finish_reason};
 
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -65,14 +66,6 @@ fn recorded_json(scenario: &str) -> Vec<(Value, Value)> {
         .collect()
 }
 
-fn recorded_finish_reason(body: &Value) -> FinishReason {
-    match body["choices"][0]["finish_reason"].as_str() {
-        Some("stop") => FinishReason::Stop,
-        Some("length") => FinishReason::Length,
-        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
-    }
-}
-
 fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value, context: &str) {
     assert_eq!(response.provider, PROVIDER, "{context}: provider");
     let identity = response.identity();
@@ -91,7 +84,7 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value, contex
     );
     assert_eq!(
         response.finish_reason(),
-        Some(recorded_finish_reason(body)),
+        Some(recorded_chat_finish_reason(body)),
         "{context}: finish reason"
     );
     assert_eq!(
@@ -120,22 +113,17 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value, contex
 /// literal: `cassette_safety` reads the registered scenarios out of the AST
 /// and accepts only a literal, so a shared helper that took the scenario as a
 /// parameter would register nothing and orphan the fixture.
-type Observed = std::sync::Arc<std::sync::Mutex<Option<(CompletionResponse, CompletionResponse)>>>;
-
+///
 /// The body both cells share: the same built request, sent twice.
-async fn run_two_turns(client: BoundOpenRouter, sink: Observed) -> Result<(), anyhow::Error> {
+async fn run_two_turns(
+    client: BoundOpenRouter,
+    sink: Observed<(CompletionResponse, CompletionResponse)>,
+) -> Result<(), anyhow::Error> {
     let model = client.completion(DEFAULT_MODEL);
     let first = model.completion(request(&model)).await?;
     let second = model.completion(request(&model)).await?;
-    *sink.lock().expect("observation lock") = Some((first, second));
+    sink.put((first, second));
     Ok(())
-}
-
-fn observed(sink: &Observed) -> (CompletionResponse, CompletionResponse) {
-    sink.lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe both turns")
 }
 
 // ================================================================
@@ -152,7 +140,7 @@ async fn raw_reproduces_the_completion_it_rode_on() {
     )
     .await
     .expect("raw_with_request_id_reproduces_completion should replay from its cassette");
-    let (first, second) = observed(&sink);
+    let (first, second) = sink.take();
 
     let interactions = recorded_json(SCENARIO);
     assert_eq!(interactions.len(), 2, "one turn, then its twin");
@@ -223,7 +211,7 @@ async fn no_request_id_contract_holds_on_both_turns() {
     )
     .await
     .expect("plain_raw_completion_matches_completion_without_id should replay from its cassette");
-    let (first, second) = observed(&sink);
+    let (first, second) = sink.take();
 
     let interactions = recorded_json(SCENARIO);
     assert_eq!(interactions.len(), 2);

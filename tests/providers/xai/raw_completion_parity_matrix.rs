@@ -36,40 +36,25 @@ use rig::providers::xai;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::support::{
-    assert_matches_recorded_token, recorded_response_headers, with_xai_cassette_result,
-};
+use super::support::{assert_matches_recorded_token, with_xai_cassette_result};
+use crate::cassettes::{recorded_json_turns, recorded_response_header};
+use crate::support::Observed;
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
+const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request(model: &Bound<OpenAiWire>) -> CompletionRequest {
     model.completion_request(PROMPT).build()
 }
 
-fn recorded_json(scenario: &str) -> Vec<(Value, Value)> {
-    crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario)
-        .into_iter()
-        .map(|(request, response)| {
-            (
-                serde_json::from_str(&request).expect("recorded request should be JSON"),
-                serde_json::from_str(&response).expect("recorded response should be JSON"),
-            )
-        })
-        .collect()
-}
-
 /// The `x-request-id` the recorded interaction at `index` carried — the
 /// premise of every cell here.
 fn recorded_request_id(scenario: &str, index: usize) -> String {
-    recorded_response_headers(scenario)[index]
-        .iter()
-        .find(|(name, _)| name == "x-request-id").map_or_else(|| {
-            panic!(
-                "interaction {index} of {scenario} must carry the x-request-id header xAI contracts"
-            )
-        }, |(_, value)| value.clone())
+    recorded_response_header(PROVIDER, scenario, index, REQUEST_ID_HEADER).unwrap_or_else(|| {
+        panic!("interaction {index} of {scenario} must carry the x-request-id header xAI contracts")
+    })
 }
 
 fn recorded_message_id(body: &Value) -> &str {
@@ -196,7 +181,7 @@ fn assert_maps_provider_fields(response: &rig::completion::CompletionResponse, c
 #[tokio::test]
 async fn raw_normalize_reproduces_completion() {
     const SCENARIO: &str = "raw_completion_parity_matrix/raw_normalize_reproduces_completion";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_xai_cassette_result(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
@@ -204,19 +189,15 @@ async fn raw_normalize_reproduces_completion() {
             let model = client.completion(MODEL);
             let first = model.completion(request(&model)).await?;
             let second = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some((first, second));
+            sink.put((first, second));
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("raw_normalize_reproduces_completion should replay from its cassette");
 
-    let (first, second) = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe both turns");
-    let interactions = recorded_json(SCENARIO);
+    let (first, second) = observed.take();
+    let interactions = recorded_json_turns(PROVIDER, SCENARIO);
     assert_eq!(interactions.len(), 2, "two completion turns");
     assert_eq!(
         interactions[0].0, interactions[1].0,
@@ -245,7 +226,7 @@ async fn raw_normalize_reproduces_completion() {
 async fn raw_completion_carries_request_id_on_the_type() {
     const SCENARIO: &str =
         "raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_xai_cassette_result(
         "raw_completion_parity_matrix/raw_completion_carries_request_id_on_the_type",
@@ -254,7 +235,7 @@ async fn raw_completion_carries_request_id_on_the_type() {
             let response = model.completion(request(&model)).await?;
             let reply = responses_api::CompletionResponse::deserialize(&response.raw)
                 .expect("`raw` is the serialized Responses CompletionResponse");
-            *sink.lock().expect("observation lock") = Some((
+            sink.put((
                 response.provider_request_id,
                 response.raw,
                 reply.provider_request_id,
@@ -265,11 +246,7 @@ async fn raw_completion_carries_request_id_on_the_type() {
     .await
     .expect("raw_completion_carries_request_id_on_the_type should replay from its cassette");
 
-    let (normalized_id, mirrored, document_id) = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe the captured view");
+    let (normalized_id, mirrored, document_id) = observed.take();
     let recorded_id = recorded_request_id(SCENARIO, 0);
     assert_matches_recorded_token(
         normalized_id.as_deref(),
@@ -289,6 +266,6 @@ async fn raw_completion_carries_request_id_on_the_type() {
         mirrored.get("provider_request_id").is_none(),
         "the transport id is not part of the wire body: {mirrored}"
     );
-    let (_, body) = &recorded_json(SCENARIO)[0];
+    let (_, body) = &recorded_json_turns(PROVIDER, SCENARIO)[0];
     assert!(body.get("provider_request_id").is_none());
 }

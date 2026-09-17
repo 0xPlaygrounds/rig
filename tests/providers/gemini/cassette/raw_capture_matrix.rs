@@ -61,10 +61,11 @@ use rig::providers::gemini::completion::gemini_api_types::{
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
 
 use super::super::support::{recorded_request_generation_configs, with_gemini_cassette};
-use crate::support::{Adder, STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput};
+use crate::support::{
+    Adder, Observed, STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, json_contains_key,
+};
 
 const PROVIDER: &str = "gemini";
 
@@ -239,16 +240,6 @@ fn choice_text(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
-fn contains_key(value: &Value, needle: &str) -> bool {
-    match value {
-        Value::Object(map) => map
-            .iter()
-            .any(|(key, value)| key == needle || contains_key(value, needle)),
-        Value::Array(items) => items.iter().any(|item| contains_key(item, needle)),
-        _ => false,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // 1: typed access is recoverable, and tells the same story
 // ---------------------------------------------------------------------------
@@ -330,8 +321,8 @@ async fn raw_exposes_prompt_tokens_details() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_prompt_tokens_details";
     // The observed `raw` is compared against the fixture bytes only after the
     // wrapper returns, so it is carried out of the test body.
-    let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed);
+    let observed: Observed<Value> = Observed::default();
+    let sink = observed.clone();
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_prompt_tokens_details",
         |client| async move {
@@ -342,12 +333,12 @@ async fn raw_exposes_prompt_tokens_details() {
                 .expect("completion should succeed");
 
             let raw = &response.raw;
-            *sink.lock().expect("observation lock") = Some(raw.clone());
+            sink.put(raw.clone());
 
             // The normalized response provably lacks the field: it is only
             // reachable through `raw`.
             assert!(
-                !contains_key(&normalized_without_raw(&response), "promptTokensDetails"),
+                !json_contains_key(&normalized_without_raw(&response), "promptTokensDetails"),
                 "promptTokensDetails is not part of rig's normalized response — it is exactly \
              the kind of provider detail `raw` exists to expose"
             );
@@ -355,11 +346,7 @@ async fn raw_exposes_prompt_tokens_details() {
     )
     .await;
 
-    let raw = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body observed a raw payload");
+    let raw = observed.take();
     let body = assert_recorded_generate_content_body(SCENARIO);
     assert_eq!(
         raw.pointer("/usageMetadata/promptTokensDetails"),
@@ -385,8 +372,8 @@ async fn raw_exposes_prompt_tokens_details() {
 #[tokio::test]
 async fn raw_exposes_forced_function_call() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_forced_function_call";
-    let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed);
+    let observed: Observed<Value> = Observed::default();
+    let sink = observed.clone();
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_forced_function_call",
         |client| async move {
@@ -397,7 +384,7 @@ async fn raw_exposes_forced_function_call() {
                 .expect("forced tool completion should succeed");
 
             let raw = &response.raw;
-            *sink.lock().expect("observation lock") = Some(raw.clone());
+            sink.put(raw.clone());
 
             // The typed read-back holds for a functionCall turn too.
             let typed = GenerateContentResponse::deserialize(raw)
@@ -457,18 +444,14 @@ async fn raw_exposes_forced_function_call() {
                 "the normalized finish reason is rig's vocabulary, not Gemini's"
             );
             assert!(
-                !contains_key(&normalized_without_raw(&response), "functionCall"),
+                !json_contains_key(&normalized_without_raw(&response), "functionCall"),
                 "functionCall is Gemini's wire spelling; the normalized choice carries a ToolCall"
             );
         },
     )
     .await;
 
-    let raw = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body observed a raw payload");
+    let raw = observed.take();
     let body = assert_recorded_function_call_body(SCENARIO);
     assert_eq!(
         raw.pointer("/candidates/0/content/parts"),
@@ -502,8 +485,8 @@ async fn raw_exposes_forced_function_call() {
 #[tokio::test]
 async fn raw_exposes_structured_output_turn() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_structured_output_turn";
-    let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed);
+    let observed: Observed<Value> = Observed::default();
+    let sink = observed.clone();
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_structured_output_turn",
         |client| async move {
@@ -514,7 +497,7 @@ async fn raw_exposes_structured_output_turn() {
                 .expect("structured output completion should succeed");
 
             let raw = &response.raw;
-            *sink.lock().expect("observation lock") = Some(raw.clone());
+            sink.put(raw.clone());
 
             let typed = GenerateContentResponse::deserialize(raw)
                 .expect("raw must deserialize into Gemini's GenerateContentResponse");
@@ -547,7 +530,7 @@ async fn raw_exposes_structured_output_turn() {
             // … and provably carries neither Gemini's finishReason spelling nor
             // the per-modality breakdown: both are only reachable through raw.
             let normalized = normalized_without_raw(&response);
-            assert!(!contains_key(&normalized, "promptTokensDetails"));
+            assert!(!json_contains_key(&normalized, "promptTokensDetails"));
             assert_ne!(
                 normalized.get("finish_reason"),
                 Some(&Value::String("STOP".to_string()))
@@ -556,11 +539,7 @@ async fn raw_exposes_structured_output_turn() {
     )
     .await;
 
-    let raw = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body observed a raw payload");
+    let raw = observed.take();
     let body = assert_recorded_structured_output_turn(SCENARIO);
     assert_eq!(
         raw.pointer("/candidates/0/finishReason"),

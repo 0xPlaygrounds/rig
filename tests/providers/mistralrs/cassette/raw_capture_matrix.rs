@@ -42,15 +42,14 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test mistralrs mistralrs::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/mistralrs/raw_capture_matrix/`.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse as RigCompletionResponse,
-};
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
+use crate::cassettes::recorded_json_turn;
+use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw};
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
 /// The plain OpenAI dialect names itself `openai`, and a normalized response
@@ -87,51 +86,6 @@ fn assert_recorded_envelope(body: &Value, scenario: &str) {
     );
 }
 
-/// The single recorded interaction of a scenario, request and response parsed
-/// as JSON.
-fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
-    let bodies = recorded_interaction_bodies(MISTRALRS_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        1,
-        "{scenario}: the scenario must record exactly one interaction"
-    );
-    let (request, response) = &bodies[0];
-    let request: Value = serde_json::from_str(request)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
-    let response: Value = serde_json::from_str(response)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded response should be JSON: {err}"));
-    (request, response)
-}
-
-/// Replay reads the scrubbed fixture back, so volatile fields (`created` → 0,
-/// `chatcmpl-…` → placeholders) compare exactly; a live recording proves only
-/// that both sides carry the field with the same JSON type.
-fn assert_wire_value_matches(live: &Value, recorded: &Value, field: &str) {
-    let (live_value, recorded_value) = (live.get(field), recorded.get(field));
-    match CassetteMode::current() {
-        CassetteMode::Replay => assert_eq!(
-            live_value, recorded_value,
-            "{field}: replayed value must equal the recorded wire value"
-        ),
-        CassetteMode::Record => {
-            let (Some(live_value), Some(recorded_value)) = (live_value, recorded_value) else {
-                panic!("{field}: both the live value and the recording must carry it");
-            };
-            assert_eq!(
-                std::mem::discriminant(live_value),
-                std::mem::discriminant(recorded_value),
-                "{field}: live and recorded values must share a JSON type"
-            );
-        }
-    }
-}
-
-fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = Value::Null;
-    serde_json::to_value(&response).expect("normalized response should serialize")
-}
-
 // ---------------------------------------------------------------------------
 // 1: raw is the reply document, and the shared type reads it back
 // ---------------------------------------------------------------------------
@@ -140,8 +94,8 @@ fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn raw_is_the_reply_document() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
@@ -158,17 +112,13 @@ async fn raw_is_the_reply_document() {
             assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
             assert_eq!(response.provider, NORMALIZED_PROVIDER);
             assert!(!response.choice.is_empty());
-            *sink.lock().expect("capture mutex") = Some(response.raw);
+            sink.put(response.raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interaction(scenario);
+    let raw = captured.take();
+    let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     openai::CompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response");
@@ -200,8 +150,8 @@ async fn raw_is_the_reply_document() {
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn raw_exposes_envelope_fields() {
     let scenario = "raw_capture_matrix/raw_exposes_envelope_fields";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_exposes_envelope_fields",
         |client| async move {
@@ -218,17 +168,13 @@ async fn raw_exposes_envelope_fields() {
                 );
             }
             let raw = response.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interaction(scenario);
+    let raw = captured.take();
+    let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     for field in ["object", "system_fingerprint", "model"] {
         assert_eq!(
@@ -260,8 +206,8 @@ async fn raw_exposes_envelope_fields() {
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn normalized_fields_equal_raw_renormalized() {
     let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
@@ -293,17 +239,13 @@ async fn normalized_fields_equal_raw_renormalized() {
             assert_eq!(Some(usage.total_tokens as u64), response.usage.total_tokens);
             assert!(!response.choice.is_empty());
 
-            *sink.lock().expect("capture mutex") = Some(response);
+            sink.put(response);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
-    let (_, body) = recorded_json_interaction(scenario);
+    let response = captured.take();
+    let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     // And the same fields against the recorded bytes, so a recording that
     // stopped carrying them fails loudly instead of covering nothing.

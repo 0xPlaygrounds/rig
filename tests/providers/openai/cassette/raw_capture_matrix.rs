@@ -73,6 +73,7 @@ use serde::Deserialize as _;
 use serde_json::{Value, json};
 
 use super::super::support::{OpenAiCassette, assert_matches_recorded_token, with_openai_cassette};
+use crate::support::Observed;
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
@@ -146,8 +147,6 @@ fn structured_request(model: &(impl CompletionModel + Clone)) -> CompletionReque
         .build()
 }
 
-type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
-
 /// A cassette test body: boxed so the cell can build it in a helper while the
 /// wrapper call — and its string-literal scenario, which the cassette safety
 /// scan reads — stays in the test itself.
@@ -156,7 +155,7 @@ type Body = Box<dyn FnOnce(OpenAiCassette) -> Pin<Box<dyn Future<Output = ()>>>>
 /// One `completion()` on the chat route with the request `build` makes for
 /// the model, saved onto `sink`.
 fn chat_body_with(
-    sink: Observed,
+    sink: Observed<CompletionResponse>,
     build: impl FnOnce(&Bound<Chat>) -> CompletionRequest + 'static,
 ) -> Body {
     Box::new(move |client| {
@@ -166,18 +165,18 @@ fn chat_body_with(
                 .completion(build(&model))
                 .await
                 .expect("chat completion should succeed");
-            *sink.lock().expect("observation mutex") = Some(response);
+            sink.put(response);
         })
     })
 }
 
 /// The text turn every original chat cell records.
-fn chat_body(sink: Observed) -> Body {
+fn chat_body(sink: Observed<CompletionResponse>) -> Body {
     chat_body_with(sink, request)
 }
 
 fn responses_body_with(
-    sink: Observed,
+    sink: Observed<CompletionResponse>,
     model_name: &'static str,
     build: impl FnOnce(&Bound<OpenAiWire>) -> CompletionRequest + 'static,
 ) -> Body {
@@ -188,21 +187,13 @@ fn responses_body_with(
                 .completion(build(&model))
                 .await
                 .expect("responses completion should succeed");
-            *sink.lock().expect("observation mutex") = Some(response);
+            sink.put(response);
         })
     })
 }
 
-fn responses_body(sink: Observed) -> Body {
+fn responses_body(sink: Observed<CompletionResponse>) -> Body {
     responses_body_with(sink, MODEL, request)
-}
-
-fn take(observed: &Observed) -> CompletionResponse {
-    observed
-        .lock()
-        .expect("observation mutex")
-        .take()
-        .expect("test body should save its observation")
 }
 
 /// The premise shared by every chat cell: the recorded turn completed the way
@@ -386,7 +377,7 @@ async fn chat_raw_round_trips_typed() {
         chat_body(observed.clone()),
     )
     .await;
-    let response = take(&observed);
+    let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
 
@@ -431,7 +422,7 @@ async fn chat_raw_exposes_service_tier() {
         chat_body(observed.clone()),
     )
     .await;
-    let response = take(&observed);
+    let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
     // Premise: the recorded body reports a service tier at all.
@@ -471,7 +462,7 @@ async fn responses_raw_round_trips_typed() {
         responses_body(observed.clone()),
     )
     .await;
-    let response = take(&observed);
+    let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_responses_fixture_premise(SCENARIO, &response, &body);
 
@@ -514,7 +505,7 @@ async fn responses_raw_exposes_service_tier_and_store() {
         responses_body(observed.clone()),
     )
     .await;
-    let response = take(&observed);
+    let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_responses_fixture_premise(SCENARIO, &response, &body);
     let recorded_tier = body["service_tier"].as_str().unwrap_or_else(|| {
@@ -581,7 +572,7 @@ async fn responses_reasoning_raw_round_trips_typed() {
         responses_body_with(observed.clone(), REASONING_MODEL, reasoning_request),
     )
     .await;
-    let response = take(&observed);
+    let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_responses_fixture_premise(SCENARIO, &response, &body);
     // Premise: the recorded request was a reasoning request that asked for
@@ -674,7 +665,7 @@ async fn chat_tool_call_raw_round_trips_typed() {
         chat_body_with(observed.clone(), tool_request),
     )
     .await;
-    let response = take(&observed);
+    let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_chat_fixture_premise(
         SCENARIO,
@@ -778,7 +769,7 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
         chat_body_with(observed.clone(), structured_request),
     )
     .await;
-    let response = take(&observed);
+    let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
     // Premise: the recorded request asked for a strict JSON schema, and the

@@ -42,6 +42,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::support::{assert_matches_recorded_token, with_deepseek_cassette_result};
+use crate::cassettes::recorded_json_turn;
+use crate::support::{Observed, assistant_text};
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -96,21 +98,6 @@ fn has_key(value: &Value, key: &str) -> bool {
     }
 }
 
-/// The single recorded interaction of `scenario` as `(request, response)` JSON.
-fn recorded_json(scenario: &str) -> (Value, Value) {
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
-    assert_eq!(
-        interactions.len(),
-        1,
-        "every cell here is a single completion turn"
-    );
-    let (request, response) = &interactions[0];
-    (
-        serde_json::from_str(request).expect("recorded request should be JSON"),
-        serde_json::from_str(response).expect("recorded response should be JSON"),
-    )
-}
-
 /// The normalized reading of a DeepSeek wire finish reason.
 fn finish_reason_of(wire: &str) -> FinishReason {
     match wire {
@@ -126,16 +113,6 @@ fn recorded_finish_reason(body: &Value) -> FinishReason {
             .as_str()
             .unwrap_or_default(),
     )
-}
-
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The normalized fields, checked against the wire bytes that produced them.
@@ -173,7 +150,7 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
         "cached input tokens come from prompt_cache_hit_tokens"
     );
     assert_eq!(
-        text_of(&response.choice),
+        assistant_text(&response.choice),
         body["choices"][0]["message"]["content"]
             .as_str()
             .expect("recorded content"),
@@ -219,7 +196,7 @@ fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &Co
         "the hit count is the half of the split that gets normalized"
     );
     let deepseek::Message::Assistant { content, .. } = &choice.message;
-    assert_eq!(&text_of(&response.choice), content, "choice text");
+    assert_eq!(&assistant_text(&response.choice), content, "choice text");
 }
 
 // ================================================================
@@ -250,7 +227,7 @@ async fn raw_round_trips_deepseek_type() {
     .await
     .expect("raw_round_trips_deepseek_type should replay from its cassette");
 
-    let (_, response_body) = recorded_json(SCENARIO);
+    let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert!(
         response_body["choices"][0]["message"]["content"].is_string(),
         "the recorded turn should be a plain text answer"
@@ -264,26 +241,22 @@ async fn raw_round_trips_deepseek_type() {
 #[tokio::test]
 async fn raw_exposes_prompt_cache_miss_tokens() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens",
         |client| async move {
             let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
+            sink.put(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("raw_exposes_prompt_cache_miss_tokens should replay from its cassette");
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
-    let (_, body) = recorded_json(SCENARIO);
+    let response = observed.take();
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let recorded_miss = body["usage"]["prompt_cache_miss_tokens"]
         .as_u64()
         .expect("DeepSeek reports prompt_cache_miss_tokens on every usage block");
@@ -319,26 +292,22 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_deepseek_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| async move {
             let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
+            sink.put(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
-    let (_, body) = recorded_json(SCENARIO);
+    let response = observed.take();
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert_reproduces_fixture(&response, &body);
 
     // One seam, two views: the typed read of the response's own `raw` is the
@@ -357,14 +326,14 @@ async fn normalized_fields_match_raw_renormalized() {
 async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     const SCENARIO: &str =
         "raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_deepseek_cassette_result(
         "raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content",
         |client| async move {
             let model = client.completion(MODEL);
             let response = model.completion(reasoning_request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
+            sink.put(response);
             Ok::<(), anyhow::Error>(())
         },
     )
@@ -373,12 +342,8 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
         "reasoning_raw_round_trips_and_exposes_reasoning_content should replay from its cassette",
     );
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
-    let (request_body, body) = recorded_json(SCENARIO);
+    let response = observed.take();
+    let (request_body, body) = recorded_json_turn(PROVIDER, SCENARIO);
     // Premise, from the bytes: thinking was asked for and the recorded turn
     // carries a non-empty reasoning string next to its answer.
     assert_eq!(request_body["thinking"], json!({ "type": "enabled" }));

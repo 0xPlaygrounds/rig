@@ -47,7 +47,9 @@ use rig::providers::llamacpp;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::cassettes::{CassetteMode, recorded_statuses_and_bodies};
+use crate::cassettes::{
+    CassetteMode, recorded_response_header_pairs, recorded_statuses_and_bodies,
+};
 
 use super::super::cassette_support::*;
 
@@ -115,7 +117,7 @@ async fn the_transport_request_id_is_absent_because_the_server_sends_none() {
         "response_identity_matrix/blocking_identity",
         "response_identity_matrix/streaming_identity",
     ] {
-        let headers = recorded_response_headers(scenario);
+        let headers = recorded_response_header_pairs("llamacpp", scenario);
         assert!(!headers.is_empty(), "{scenario}: no interactions recorded");
         for interaction in &headers {
             for (name, _) in interaction {

@@ -69,6 +69,7 @@ use serde_json::{Value, json};
 use super::super::support::{
     OpenAiCassette, assert_matches_recorded_token, sse_json_frames, with_openai_cassette,
 };
+use crate::support::Observed;
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
@@ -146,8 +147,6 @@ async fn drain_to_terminal(
     terminal.unwrap_or_else(|| panic!("{context}: stream should yield a terminal record"))
 }
 
-type Observed = std::sync::Arc<std::sync::Mutex<Option<StreamFinal>>>;
-
 /// A cassette test body: boxed so the cell can build it in a helper while the
 /// wrapper call — and its string-literal scenario, which the cassette safety
 /// scan reads — stays in the test itself.
@@ -156,7 +155,7 @@ type Body = Box<dyn FnOnce(OpenAiCassette) -> Pin<Box<dyn Future<Output = ()>>>>
 /// One stream on the chat route with the request `build` makes for the
 /// model; its terminal record is saved onto `sink`.
 fn chat_body_with(
-    sink: Observed,
+    sink: Observed<StreamFinal>,
     build: impl FnOnce(&Bound<Chat>) -> CompletionRequest + 'static,
 ) -> Body {
     Box::new(move |client| {
@@ -167,18 +166,18 @@ fn chat_body_with(
                 .await
                 .expect("chat stream should open");
             let terminal = drain_to_terminal(stream, "chat stream").await;
-            *sink.lock().expect("observation mutex") = Some(terminal);
+            sink.put(terminal);
         })
     })
 }
 
 /// The text turn every original chat cell records.
-fn chat_body(sink: Observed) -> Body {
+fn chat_body(sink: Observed<StreamFinal>) -> Body {
     chat_body_with(sink, request)
 }
 
 fn responses_body_with(
-    sink: Observed,
+    sink: Observed<StreamFinal>,
     model_name: &'static str,
     build: impl FnOnce(&Bound<OpenAiWire>) -> CompletionRequest + 'static,
 ) -> Body {
@@ -190,21 +189,13 @@ fn responses_body_with(
                 .await
                 .expect("responses stream should open");
             let terminal = drain_to_terminal(stream, "responses stream").await;
-            *sink.lock().expect("observation mutex") = Some(terminal);
+            sink.put(terminal);
         })
     })
 }
 
-fn responses_body(sink: Observed) -> Body {
+fn responses_body(sink: Observed<StreamFinal>) -> Body {
     responses_body_with(sink, MODEL, request)
-}
-
-fn take(observed: &Observed) -> StreamFinal {
-    observed
-        .lock()
-        .expect("observation mutex")
-        .take()
-        .expect("test body should save its observation")
 }
 
 /// Chat premise: the request asked for usage on the stream and the last
@@ -334,7 +325,7 @@ async fn chat_stream_raw_round_trips_typed() {
         chat_body(observed.clone()),
     )
     .await;
-    let terminal = take(&observed);
+    let terminal = observed.take();
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let frames = chat_frames_with_terminal_usage(SCENARIO, &bodies[0].0, &bodies[0].1);
 
@@ -393,7 +384,7 @@ async fn chat_stream_raw_exposes_service_tier() {
         chat_body(observed.clone()),
     )
     .await;
-    let terminal = take(&observed);
+    let terminal = observed.take();
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let frames = chat_frames_with_terminal_usage(SCENARIO, &bodies[0].0, &bodies[0].1);
     let recorded_tier = last_chunk_field(&frames, "service_tier");
@@ -430,7 +421,7 @@ async fn responses_stream_raw_round_trips_typed() {
         responses_body(observed.clone()),
     )
     .await;
-    let terminal = take(&observed);
+    let terminal = observed.take();
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let completed = responses_completed_frame(SCENARIO, &bodies[0].1);
 
@@ -479,7 +470,7 @@ async fn responses_stream_raw_exposes_status() {
         responses_body(observed.clone()),
     )
     .await;
-    let terminal = take(&observed);
+    let terminal = observed.take();
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let completed = responses_completed_frame(SCENARIO, &bodies[0].1);
     let recorded_status = completed["status"].as_str().unwrap_or_else(|| {
@@ -535,7 +526,7 @@ async fn responses_reasoning_stream_raw_round_trips_typed() {
         responses_body_with(observed.clone(), REASONING_MODEL, reasoning_request),
     )
     .await;
-    let terminal = take(&observed);
+    let terminal = observed.take();
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let completed = responses_completed_frame(SCENARIO, &bodies[0].1);
     // Premise: a reasoning request on the wire, answered with a reasoning
@@ -635,7 +626,7 @@ async fn chat_tool_call_stream_raw_round_trips_typed() {
         chat_body_with(observed.clone(), tool_request),
     )
     .await;
-    let terminal = take(&observed);
+    let terminal = observed.take();
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let frames = chat_frames_with_terminal_usage(SCENARIO, &bodies[0].0, &bodies[0].1);
     // Premise: the request forced the tool, some chunk streamed a tool-call

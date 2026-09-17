@@ -36,63 +36,27 @@
 //! finish reason, or the request-id header fails loudly instead of covering
 //! nothing.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
-use rig::message::AssistantContent;
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
 use rig::providers::openai;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
-use super::support::{
-    BoundGroq, assert_matches_recorded_token, recorded_response_headers, with_groq_cassette_result,
-};
+use super::support::{BoundGroq, assert_matches_recorded_token, with_groq_cassette_result};
+use crate::cassettes::{recorded_json_turn, recorded_response_header};
+use crate::support::{Observed, assistant_text, recorded_chat_finish_reason};
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
+const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
 }
 
-/// The single recorded interaction of `scenario` as `(request, response)` JSON.
-fn recorded_json(scenario: &str) -> (Value, Value) {
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
-    assert_eq!(
-        interactions.len(),
-        1,
-        "every cell here is a single completion turn"
-    );
-    let (request, response) = &interactions[0];
-    (
-        serde_json::from_str(request).expect("recorded request should be JSON"),
-        serde_json::from_str(response).expect("recorded response should be JSON"),
-    )
-}
-
 /// The `x-request-id` the single recorded interaction carried.
 fn recorded_request_id(scenario: &str) -> Option<String> {
-    recorded_response_headers(scenario)[0]
-        .iter()
-        .find(|(name, _)| name == "x-request-id")
-        .map(|(_, value)| value.clone())
-}
-
-fn recorded_finish_reason(body: &Value) -> FinishReason {
-    match body["choices"][0]["finish_reason"].as_str() {
-        Some("stop") => FinishReason::Stop,
-        Some("length") => FinishReason::Length,
-        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
-    }
-}
-
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
+    recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
 }
 
 /// The normalized fields, checked against the wire bytes that produced them.
@@ -110,7 +74,7 @@ fn assert_reproduces_fixture(
     assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
     assert_eq!(
         response.finish_reason(),
-        Some(recorded_finish_reason(body)),
+        Some(recorded_chat_finish_reason(body)),
         "finish reason"
     );
     assert_eq!(
@@ -129,7 +93,7 @@ fn assert_reproduces_fixture(
         "total tokens"
     );
     assert_eq!(
-        text_of(&response.choice),
+        assistant_text(&response.choice),
         body["choices"][0]["message"]["content"]
             .as_str()
             .expect("recorded content"),
@@ -147,26 +111,11 @@ fn assert_reproduces_fixture(
     );
 }
 
-/// Where a cell parks the response its recorded turn produced.
-///
-/// The wrapper call stays inline in every cell with its own scenario
-/// literal — the fixture scan reads that literal out of the AST — so what is
-/// shared here is the turn's body, not the call.
-type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
-
 /// Run one recorded turn and park the response it produced.
-async fn run(client: BoundGroq, sink: Observed) -> Result<(), anyhow::Error> {
+async fn run(client: BoundGroq, sink: Observed<CompletionResponse>) -> Result<(), anyhow::Error> {
     let model = client.completion(RAW_CAPTURE_MATRIX_MODEL);
-    let response = model.completion(request(&model)).await?;
-    *sink.lock().expect("observation lock") = Some(response);
+    sink.put(model.completion(request(&model)).await?);
     Ok(())
-}
-
-fn observed(sink: &Observed) -> CompletionResponse {
-    sink.lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response")
 }
 
 // ================================================================
@@ -182,9 +131,9 @@ async fn raw_is_the_verbatim_response_body() {
     })
     .await
     .expect("raw_round_trips_openai_type should replay from its cassette");
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert!(
         body["choices"][0]["message"]["content"].is_string(),
         "the recorded turn should be a plain text answer"
@@ -253,9 +202,9 @@ async fn raw_exposes_queue_time() {
     })
     .await
     .expect("raw_exposes_queue_time should replay from its cassette");
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let recorded_queue_time = body["usage"]["queue_time"]
         .as_f64()
         .expect("Groq reports usage.queue_time on every response");
@@ -306,9 +255,9 @@ async fn normalized_fields_match_raw_renormalized() {
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let request_id = recorded_request_id(SCENARIO);
     assert_reproduces_fixture(&response, &body, request_id.as_deref());
 

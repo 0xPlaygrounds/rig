@@ -66,6 +66,7 @@ use super::super::support::{
     OpenAiCassette, assert_matches_recorded_token, recorded_request_id_headers,
     with_openai_cassette,
 };
+use crate::support::Observed;
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
@@ -254,20 +255,10 @@ fn assert_parity(
 // Chat Completions
 // ---------------------------------------------------------------------------
 
-type Observed = std::sync::Arc<std::sync::Mutex<Option<(CompletionResponse, CompletionResponse)>>>;
-
 /// A cassette test body: boxed so the cell can build it in a helper while the
 /// wrapper call — and its string-literal scenario, which the cassette safety
 /// scan reads — stays in the test itself.
 type Body = Box<dyn FnOnce(OpenAiCassette) -> Pin<Box<dyn Future<Output = ()>>>>;
-
-fn take(observed: &Observed) -> (CompletionResponse, CompletionResponse) {
-    observed
-        .lock()
-        .expect("observation mutex")
-        .take()
-        .expect("test body should save its observation")
-}
 
 /// The two views of one reply agree on the fields rig normalizes, read off
 /// the provider's own field names.
@@ -310,7 +301,10 @@ fn assert_chat_views_agree(
 /// interactions. The first call's reply is read both ways (the provider's own
 /// type out of `raw`, and the normalized response); the second call's
 /// response is the side the parity assertions compare against.
-fn chat_parity_body(sink: Observed, request_for: fn(&Bound<Chat>) -> CompletionRequest) -> Body {
+fn chat_parity_body(
+    sink: Observed<(CompletionResponse, CompletionResponse)>,
+    request_for: fn(&Bound<Chat>) -> CompletionRequest,
+) -> Body {
     Box::new(move |client| {
         Box::pin(async move {
             let model = client.openai.chat(MODEL);
@@ -322,18 +316,18 @@ fn chat_parity_body(sink: Observed, request_for: fn(&Bound<Chat>) -> CompletionR
                 .completion(request_for(&model))
                 .await
                 .expect("completion() should succeed");
-            *sink.lock().expect("observation mutex") = Some((typed, normalized));
+            sink.put((typed, normalized));
         })
     })
 }
 
 fn assert_chat_parity(
     scenario: &str,
-    observed: &Observed,
+    observed: &Observed<(CompletionResponse, CompletionResponse)>,
     expected_finish: FinishReason,
     expect_tool_call: bool,
 ) {
-    let (typed, normalized) = take(observed);
+    let (typed, normalized) = observed.take();
     let request_ids = recorded_request_ids(scenario, 2);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
     let body = |index: usize| -> Value {
@@ -440,12 +434,12 @@ async fn chat_plain_raw_completion_lacks_request_id() {
                 .completion(text_request(&model))
                 .await
                 .expect("completion() should succeed");
-            *sink.lock().expect("observation mutex") = Some((plain, normalized));
+            sink.put((plain, normalized));
         },
     )
     .await;
 
-    let (plain, normalized) = take(&observed);
+    let (plain, normalized) = observed.take();
     // Premise: the wire reported a request id on *both* interactions — so the
     // document's silence is a property of the body, not of the recording.
     let request_ids = recorded_request_ids(SCENARIO, 2);
@@ -534,7 +528,7 @@ fn assert_responses_views_agree(
 /// interactions. The first reply is read both ways, the second is the
 /// `completion()` side the parity assertions compare against.
 fn responses_parity_body(
-    sink: Observed,
+    sink: Observed<(CompletionResponse, CompletionResponse)>,
     request_for: fn(&Bound<OpenAiWire>) -> CompletionRequest,
 ) -> Body {
     Box::new(move |client| {
@@ -548,18 +542,18 @@ fn responses_parity_body(
                 .completion(request_for(&model))
                 .await
                 .expect("completion() should succeed");
-            *sink.lock().expect("observation mutex") = Some((typed, normalized));
+            sink.put((typed, normalized));
         })
     })
 }
 
 fn assert_responses_parity(
     scenario: &str,
-    observed: &Observed,
+    observed: &Observed<(CompletionResponse, CompletionResponse)>,
     expected_finish: FinishReason,
     expect_tool_call: bool,
 ) {
-    let (typed, normalized) = take(observed);
+    let (typed, normalized) = observed.take();
     let request_ids = recorded_request_ids(scenario, 2);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
     assert_eq!(

@@ -48,7 +48,6 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test copilot copilot::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/copilot/raw_stream_capture_matrix/`.
 
-use futures::StreamExt;
 use rig::completion::CompletionModel as _;
 use rig::driver::Bound;
 use rig::providers::copilot;
@@ -56,12 +55,12 @@ use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
 use crate::copilot::with_copilot_cassette;
+use crate::support::{Observed, collect_sole_terminal};
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
@@ -80,21 +79,6 @@ fn assert_single_interaction(scenario: &str) {
         1,
         "{scenario}: the scenario must record exactly one interaction"
     );
-}
-
-async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
-    let mut finals = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
-            finals.push(record);
-        }
-    }
-    assert_eq!(
-        finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
-    finals.remove(0)
 }
 
 /// Chat-route premise: the recorded SSE stream's last frame carries `usage`
@@ -146,8 +130,8 @@ fn recorded_responses_terminal(scenario: &str) -> Value {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
@@ -156,7 +140,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -185,17 +169,13 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
                 "the terminal record's usage must be the accounting's own normalization"
             );
             assert_eq!(chat.provider_request_id, terminal.provider_request_id);
-            *sink.lock().expect("capture mutex") = Some(raw.clone());
+            sink.put(raw.clone());
         },
     )
     .await;
 
     let (_, terminal_frame) = recorded_chat_frames(scenario);
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     assert_eq!(
         raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
@@ -206,13 +186,13 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_stream_raw_exposes_copilot_usage() {
     let scenario = "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage",
         |client| async move {
             let model = client.completion(CHAT_MODEL);
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -230,16 +210,12 @@ async fn chat_stream_raw_exposes_copilot_usage() {
                 );
             }
             let raw = terminal.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     let (frames, terminal_frame) = recorded_chat_frames(scenario);
     let params = raw
         .get("additional_params")
@@ -293,8 +269,8 @@ async fn chat_stream_raw_exposes_copilot_usage() {
 async fn responses_stream_raw_terminal_round_trips_provider_type() {
     let scenario =
         "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
@@ -303,7 +279,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
             );
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -326,17 +302,13 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
             assert_eq!(responses.response_id, terminal.response_id);
             assert_eq!(responses.message_id, terminal.message_id);
             assert_eq!(responses.provider_request_id, terminal.provider_request_id);
-            *sink.lock().expect("capture mutex") = Some(raw.clone());
+            sink.put(raw.clone());
         },
     )
     .await;
 
     let terminal = recorded_responses_terminal(scenario);
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     assert_eq!(
         raw["usage"]["total_tokens"],
         terminal["usage"]["total_tokens"]
@@ -347,13 +319,13 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_stream_raw_exposes_terminal_status() {
     let scenario = "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status",
         |client| async move {
             let model = client.completion(RESPONSES_MODEL);
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -366,16 +338,12 @@ async fn responses_stream_raw_exposes_terminal_status() {
                 serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
             assert!(normalized.get("status").is_none());
             let raw = terminal.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     let terminal = recorded_responses_terminal(scenario);
     assert_eq!(terminal["status"], Value::String("completed".to_string()));
     assert_eq!(raw["status"], terminal["status"]);

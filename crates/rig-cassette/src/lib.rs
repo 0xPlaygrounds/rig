@@ -1731,6 +1731,35 @@ pub fn cassette_path(cassette_root: &Path, provider: &str, scenario: &str) -> Pa
     path
 }
 
+/// The parsed interactions of one provider scenario, in wire order.
+///
+/// Every reader below goes through this, so a missing or malformed fixture
+/// produces one diagnostic naming the resolved path rather than a different
+/// one per reader.
+fn cassette_interactions(
+    cassette_root: &Path,
+    provider: &str,
+    scenario: &str,
+) -> Vec<CassetteInteraction> {
+    let path = cassette_path(cassette_root, provider, scenario);
+    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
+        panic!(
+            "provider cassette {} should be readable: {error}",
+            path.display()
+        )
+    });
+
+    parse_cassette_interactions(&path, &contents)
+}
+
+/// Lowercase one recorded header list, keeping duplicates and wire order.
+fn lowercased_header_pairs(headers: Vec<NameValue>) -> Vec<(String, String)> {
+    headers
+        .into_iter()
+        .map(|header| (header.name.to_ascii_lowercase(), header.value))
+        .collect()
+}
+
 /// Recorded request/response bodies for one provider scenario, in wire order.
 ///
 /// Provider edge matrices use these bytes to prove that a replay fixture still
@@ -1742,15 +1771,7 @@ pub fn recorded_interaction_bodies(
     provider: &str,
     scenario: &str,
 ) -> Vec<(String, String)> {
-    let path = cassette_path(cassette_root, provider, scenario);
-    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable: {error}",
-            path.display()
-        )
-    });
-
-    parse_cassette_interactions(&path, &contents)
+    cassette_interactions(cassette_root, provider, scenario)
         .into_iter()
         .map(|interaction| {
             (
@@ -1759,6 +1780,42 @@ pub fn recorded_interaction_bodies(
             )
         })
         .collect()
+}
+
+/// Recorded request/response bodies for one provider scenario, parsed as JSON.
+pub fn recorded_json_turns(
+    cassette_root: &Path,
+    provider: &str,
+    scenario: &str,
+) -> Vec<(Value, Value)> {
+    recorded_interaction_bodies(cassette_root, provider, scenario)
+        .into_iter()
+        .map(|(request, response)| {
+            (
+                serde_json::from_str(&request).unwrap_or_else(|error| {
+                    panic!("cassette {provider}/{scenario} request should be JSON: {error}")
+                }),
+                serde_json::from_str(&response).unwrap_or_else(|error| {
+                    panic!("cassette {provider}/{scenario} response should be JSON: {error}")
+                }),
+            )
+        })
+        .collect()
+}
+
+/// The one recorded turn of a single-turn provider scenario, parsed as JSON.
+///
+/// The turn count is part of what a single-completion matrix cell claims, so
+/// a fixture that grew a second interaction fails here instead of quietly
+/// having its later turns ignored.
+pub fn recorded_json_turn(cassette_root: &Path, provider: &str, scenario: &str) -> (Value, Value) {
+    let mut turns = recorded_json_turns(cassette_root, provider, scenario);
+    assert_eq!(
+        turns.len(),
+        1,
+        "cassette {provider}/{scenario} should hold a single completion turn"
+    );
+    turns.remove(0)
 }
 
 /// First recorded request body for one provider scenario, parsed as JSON.
@@ -1794,24 +1851,28 @@ pub fn recorded_request_header_pairs(
     provider: &str,
     scenario: &str,
 ) -> Vec<Vec<(String, String)>> {
-    let path = cassette_path(cassette_root, provider, scenario);
-    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable: {error}",
-            path.display()
-        )
-    });
-
-    parse_cassette_interactions(&path, &contents)
+    cassette_interactions(cassette_root, provider, scenario)
         .into_iter()
-        .map(|interaction| {
-            interaction
-                .when
-                .header
-                .into_iter()
-                .map(|header| (header.name.to_ascii_lowercase(), header.value))
-                .collect()
-        })
+        .map(|interaction| lowercased_header_pairs(interaction.when.header))
+        .collect()
+}
+
+/// Response headers recorded for one provider scenario, lowercased, in wire
+/// order.
+///
+/// The body readers stop at bodies, and a transport identifier such as
+/// `x-request-id` is a header: a matrix whose premise is "the provider sent
+/// its request-id" has to read this side of the fixture. Recording keeps only
+/// `RESPONSE_HEADER_ALLOWLIST` names, so what is here is exactly what replay
+/// serves back.
+pub fn recorded_response_header_pairs(
+    cassette_root: &Path,
+    provider: &str,
+    scenario: &str,
+) -> Vec<Vec<(String, String)>> {
+    cassette_interactions(cassette_root, provider, scenario)
+        .into_iter()
+        .map(|interaction| lowercased_header_pairs(interaction.then.header))
         .collect()
 }
 
@@ -1822,15 +1883,7 @@ pub fn recorded_request_header_pairs(
 /// doubled `/v1`, a missing one, or a capability routed at the wrong endpoint
 /// all leave the body untouched.
 pub fn recorded_request_paths(cassette_root: &Path, provider: &str, scenario: &str) -> Vec<String> {
-    let path = cassette_path(cassette_root, provider, scenario);
-    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable: {error}",
-            path.display()
-        )
-    });
-
-    parse_cassette_interactions(&path, &contents)
+    cassette_interactions(cassette_root, provider, scenario)
         .into_iter()
         .map(|interaction| interaction.when.path)
         .collect()
@@ -1845,15 +1898,7 @@ pub fn recorded_statuses_and_bodies(
     provider: &str,
     scenario: &str,
 ) -> Vec<(u16, String)> {
-    let path = cassette_path(cassette_root, provider, scenario);
-    let contents = fs::read_to_string(&path).unwrap_or_else(|error| {
-        panic!(
-            "provider cassette {} should be readable: {error}",
-            path.display()
-        )
-    });
-
-    parse_cassette_interactions(&path, &contents)
+    cassette_interactions(cassette_root, provider, scenario)
         .into_iter()
         .map(|interaction| {
             (

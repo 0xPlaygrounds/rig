@@ -37,10 +37,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
-use super::support::{
-    assert_matches_recorded_token, recorded_response_headers, with_groq_cassette_result,
-};
-use crate::support::collect_text_and_terminal;
+use super::support::{assert_matches_recorded_token, with_groq_cassette_result};
+use crate::cassettes::recorded_response_header;
+use crate::support::{Observed, collect_required_terminal, collect_text_and_terminal};
 
 /// The wire's terminal record over the wire's own accounting — the typed
 /// escape hatch [`rig::streaming::StreamFinal::raw`] advertises.
@@ -48,6 +47,7 @@ type GroqTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
+const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
@@ -81,11 +81,9 @@ fn recorded_terminal_frame(scenario: &str) -> Value {
     terminal
 }
 
+/// The `x-request-id` the recorded SSE response carried.
 fn recorded_request_id(scenario: &str) -> Option<String> {
-    recorded_response_headers(scenario)[0]
-        .iter()
-        .find(|(name, _)| name == "x-request-id")
-        .map(|(_, value)| value.clone())
+    recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
 }
 
 fn assert_terminal_reproduces_frame(
@@ -133,7 +131,7 @@ fn assert_terminal_reproduces_frame(
 #[tokio::test]
 async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_groq_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
@@ -166,18 +164,14 @@ async fn stream_raw_round_trips_terminal_type() {
                 typed.provider_request_id, None,
                 "the transport id is stamped on the normalized terminal, not the native record"
             );
-            *sink.lock().expect("observation lock") = Some(terminal);
+            sink.put(terminal);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
+    let terminal = observed.take();
     let frame = recorded_terminal_frame(SCENARIO);
     assert_terminal_reproduces_frame(&terminal, &frame, recorded_request_id(SCENARIO).as_deref());
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
@@ -191,27 +185,20 @@ async fn stream_raw_round_trips_terminal_type() {
 #[tokio::test]
 async fn stream_raw_exposes_terminal_queue_time() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_groq_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_queue_time",
         |client| async move {
             let model = client.completion(RAW_CAPTURE_MATRIX_MODEL);
-            let stream = model.stream(request(&model)).await?;
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            *sink.lock().expect("observation lock") =
-                Some(terminal.expect("stream should end with a terminal record"));
+            sink.put(collect_required_terminal(model.stream(request(&model)).await?).await);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("stream_raw_exposes_terminal_queue_time should replay from its cassette");
 
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
+    let terminal = observed.take();
     let frame = recorded_terminal_frame(SCENARIO);
     let recorded_queue_time = frame["usage"]["queue_time"]
         .as_f64()

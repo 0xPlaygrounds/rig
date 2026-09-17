@@ -33,13 +33,14 @@
 //! Re-record with a local Ollama daemon serving `qwen3:4b`:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 
-use rig::completion::{CompletionModel as _, CompletionResponse as RigCompletionResponse};
+use rig::completion::CompletionModel as _;
 use rig::providers::ollama;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_ollama_cassette;
-use crate::cassettes::recorded_interaction_bodies;
+use crate::cassettes::recorded_json_turn;
+use crate::support::{Observed, normalized_without_raw};
 
 const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
@@ -75,30 +76,6 @@ fn assert_recorded_completed_with_durations(body: &Value, scenario: &str) {
              this cell cannot prove raw exposes a provider-only field"
         );
     }
-}
-
-/// The single recorded interaction of a scenario, request and response parsed
-/// as JSON.
-fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
-    let bodies = recorded_interaction_bodies(OLLAMA_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        1,
-        "{scenario}: the scenario must record exactly one interaction"
-    );
-    let (request, response) = &bodies[0];
-    let request: Value = serde_json::from_str(request)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
-    let response: Value = serde_json::from_str(response)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded response should be JSON: {err}"));
-    (request, response)
-}
-
-/// The normalized response minus its `raw`, as JSON, so a response can be
-/// compared field-for-field against a re-normalization that has no `raw`.
-fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = Value::Null;
-    serde_json::to_value(&response).expect("normalized response should serialize")
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +119,7 @@ async fn raw_round_trips_provider_type() {
 
     // Premise: what was captured is what the wire carried — the fixture body
     // deserializes into the same provider type.
-    let (_, body) = recorded_json_interaction(scenario);
+    let (_, body) = recorded_json_turn(OLLAMA_PROVIDER, scenario);
     let recorded = ollama::CompletionResponse::deserialize(&body)
         .expect("recorded body must be an Ollama chat response");
     assert!(recorded.done);
@@ -155,8 +132,8 @@ async fn raw_round_trips_provider_type() {
 #[tokio::test]
 async fn raw_exposes_ollama_durations() {
     let scenario = "raw_capture_matrix/raw_exposes_ollama_durations";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_ollama_cassette(
         "raw_capture_matrix/raw_exposes_ollama_durations",
         |client| async move {
@@ -177,20 +154,16 @@ async fn raw_exposes_ollama_durations() {
             }
 
             let raw = response.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
 
     // Premise + assertion in one: the fixture body reports the durations, and
     // raw carries exactly the values the wire did.
-    let (_, body) = recorded_json_interaction(scenario);
+    let (_, body) = recorded_json_turn(OLLAMA_PROVIDER, scenario);
     assert_recorded_completed_with_durations(&body, scenario);
     for field in [
         "total_duration",
@@ -227,8 +200,8 @@ async fn raw_exposes_ollama_durations() {
 #[tokio::test]
 async fn normalized_fields_equal_raw_renormalized() {
     let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_ollama_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
@@ -275,17 +248,13 @@ async fn normalized_fields_equal_raw_renormalized() {
             assert_eq!(response.identity().response_id, None);
             assert!(!response.choice.is_empty());
 
-            *sink.lock().expect("capture mutex") = Some(response);
+            sink.put(response);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
-    let (_, body) = recorded_json_interaction(scenario);
+    let response = captured.take();
+    let (_, body) = recorded_json_turn(OLLAMA_PROVIDER, scenario);
     assert_recorded_completed_with_durations(&body, scenario);
     let from_wire = ollama::CompletionResponse::deserialize(&body)
         .expect("recorded body must be an Ollama chat response");

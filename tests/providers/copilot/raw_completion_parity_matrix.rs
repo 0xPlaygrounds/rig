@@ -55,8 +55,9 @@ use rig::providers::openai::wire::OpenAiWire;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::cassettes::{CassetteMode, cassette_path, recorded_interaction_bodies};
+use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_response_header};
 use crate::copilot::with_copilot_cassette;
+use crate::support::Observed;
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
@@ -68,62 +69,18 @@ fn request(model: &Bound<CopilotWire>) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
-/// The recorded response headers of every interaction of a scenario, in wire
-/// order. Read straight from the YAML: the shared body readers deliberately
-/// expose bodies only, and the transport id is a header.
-#[derive(Deserialize)]
-struct RecordedInteraction {
-    then: RecordedResponse,
-}
-
-#[derive(Deserialize)]
-struct RecordedResponse {
-    #[serde(default)]
-    header: Vec<RecordedHeader>,
-}
-
-#[derive(Deserialize)]
-struct RecordedHeader {
-    name: String,
-    value: String,
-}
-
-fn recorded_response_headers(scenario: &str) -> Vec<Vec<(String, String)>> {
-    let path = cassette_path(COPILOT_PROVIDER, scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("cassette {} should be readable: {err}", path.display()));
-    serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| {
-            RecordedInteraction::deserialize(document)
-                .unwrap_or_else(|err| panic!("cassette {} should parse: {err}", path.display()))
-                .then
-                .header
-                .into_iter()
-                .map(|header| (header.name.to_ascii_lowercase(), header.value))
-                .collect()
-        })
-        .collect()
-}
-
 /// The premise: interaction `index` of the scenario recorded an
 /// `x-request-id` response header. Returns its (scrubbed, on replay) value.
+/// The transport id is a header, so this reads the fixture's header side.
 fn recorded_request_id(scenario: &str, index: usize) -> String {
-    let headers = recorded_response_headers(scenario);
-    let interaction = headers
-        .get(index)
-        .unwrap_or_else(|| panic!("{scenario}: interaction {index} should be recorded"));
-    interaction
-        .iter()
-        .find(|(name, _)| name == REQUEST_ID_HEADER)
-        .map_or_else(
-            || {
-                panic!(
-                    "{scenario}: interaction {index} must have recorded an `{REQUEST_ID_HEADER}` \
+    recorded_response_header(COPILOT_PROVIDER, scenario, index, REQUEST_ID_HEADER).unwrap_or_else(
+        || {
+            panic!(
+                "{scenario}: interaction {index} must have recorded an `{REQUEST_ID_HEADER}` \
                  response header — without it this cell proves nothing about the transport id"
-                )
-            },
-            |(_, value)| value.clone(),
-        )
+            )
+        },
+    )
 }
 
 /// Replay reads the placeholdered header back, so the id compares exactly; a
@@ -217,8 +174,8 @@ fn assert_route_parity(via_raw: &RigCompletionResponse, via_completion: &RigComp
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_raw_with_request_id_reproduces_completion() {
     let scenario = "raw_completion_parity_matrix/chat_raw_with_request_id_reproduces_completion";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_completion_parity_matrix/chat_raw_with_request_id_reproduces_completion",
         |client| async move {
@@ -245,16 +202,12 @@ async fn chat_raw_with_request_id_reproduces_completion() {
                 .expect("`raw` is the chat route's own reply body");
             assert_chat_parity(&typed, &via_completion);
 
-            *sink.lock().expect("capture mutex") = Some(via_completion);
+            sink.put(via_completion);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the cell ran");
+    let response = captured.take();
     let bodies = recorded_json_bodies(scenario);
     assert_eq!(bodies.len(), 1, "{scenario}: expected one recorded turn");
     assert_request_id_matches_recording(
@@ -276,8 +229,8 @@ async fn chat_raw_with_request_id_reproduces_completion() {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_raw_completion_carries_request_id() {
     let scenario = "raw_completion_parity_matrix/responses_raw_completion_carries_request_id";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_completion_parity_matrix/responses_raw_completion_carries_request_id",
         |client| async move {
@@ -297,16 +250,12 @@ async fn responses_raw_completion_carries_request_id() {
                 .expect("`raw` is the Responses route's own reply body");
             assert_responses_parity(&typed, &via_completion);
 
-            *sink.lock().expect("capture mutex") = Some(via_completion);
+            sink.put(via_completion);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the cell ran");
+    let response = captured.take();
     let bodies = recorded_json_bodies(scenario);
     assert_eq!(bodies.len(), 1, "{scenario}: expected one recorded turn");
     assert_request_id_matches_recording(

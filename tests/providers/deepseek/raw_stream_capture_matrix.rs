@@ -45,7 +45,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::support::{assert_matches_recorded_token, with_deepseek_cassette_result};
-use crate::support::collect_text_and_terminal;
+use crate::support::{Observed, collect_text_and_terminal};
 
 /// The decoder's terminal record, as `raw` holds it: the shared
 /// chat-completions terminal over the wire's own accounting.
@@ -188,7 +188,7 @@ fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
 #[tokio::test]
 async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
@@ -208,18 +208,14 @@ async fn stream_raw_round_trips_terminal_type() {
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);
-            *sink.lock().expect("observation lock") = Some(terminal);
+            sink.put(terminal);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
+    let terminal = observed.take();
     let frame = recorded_terminal_frame(SCENARIO);
     assert_terminal_reproduces_frame(&terminal, &frame);
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
@@ -234,7 +230,7 @@ async fn stream_raw_round_trips_terminal_type() {
 async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     const SCENARIO: &str =
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens",
@@ -242,19 +238,14 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
             let model = client.completion(MODEL);
             let stream = model.stream(request(&model)).await?;
             let (_, terminal) = collect_text_and_terminal(stream).await;
-            *sink.lock().expect("observation lock") =
-                Some(terminal.expect("stream should end with a terminal record"));
+            sink.put(terminal.expect("stream should end with a terminal record"));
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("stream_raw_exposes_terminal_cache_miss_tokens should replay from its cassette");
 
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
+    let terminal = observed.take();
     let frame = recorded_terminal_frame(SCENARIO);
     let recorded_miss = frame["usage"]["prompt_cache_miss_tokens"]
         .as_u64()
@@ -302,7 +293,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
 async fn stream_reasoning_raw_round_trips_terminal_type() {
     const SCENARIO: &str =
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_reasoning_raw_round_trips_terminal_type",
@@ -324,18 +315,14 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
             );
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.finish_reason, terminal.finish_reason);
-            *sink.lock().expect("observation lock") = Some(observation);
+            sink.put(observation);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("stream_reasoning_raw_round_trips_terminal_type should replay from its cassette");
 
-    let observation = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe the stream");
+    let observation = observed.take();
     let terminal = observation
         .terminal
         .as_ref()

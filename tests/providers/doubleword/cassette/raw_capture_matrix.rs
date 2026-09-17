@@ -39,7 +39,6 @@
 //! answer.
 
 use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
-use rig::message::AssistantContent;
 use rig::providers::openai;
 use serde::Deserialize as _;
 use serde_json::{Value, json};
@@ -48,45 +47,14 @@ use super::super::DEFAULT_MODEL;
 use super::super::support::{
     BoundDoubleword, assert_matches_recorded_token, with_doubleword_cassette_result,
 };
+use crate::cassettes::recorded_json_turn;
+use crate::support::{Observed, assistant_text, recorded_chat_finish_reason};
 
 const PROVIDER: &str = "doubleword";
 const PROMPT: &str = "Reply with the single word: pong";
 
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(256).build()
-}
-
-/// The single recorded interaction of `scenario` as `(request, response)` JSON.
-fn recorded_json(scenario: &str) -> (Value, Value) {
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
-    assert_eq!(
-        interactions.len(),
-        1,
-        "every cell here is a single completion turn"
-    );
-    let (request, response) = &interactions[0];
-    (
-        serde_json::from_str(request).expect("recorded request should be JSON"),
-        serde_json::from_str(response).expect("recorded response should be JSON"),
-    )
-}
-
-fn recorded_finish_reason(body: &Value) -> FinishReason {
-    match body["choices"][0]["finish_reason"].as_str() {
-        Some("stop") => FinishReason::Stop,
-        Some("length") => FinishReason::Length,
-        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
-    }
-}
-
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The normalized fields, checked against the wire bytes that produced them.
@@ -100,7 +68,7 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
     assert_eq!(
         response.finish_reason(),
-        Some(recorded_finish_reason(body)),
+        Some(recorded_chat_finish_reason(body)),
         "finish reason"
     );
     assert_eq!(
@@ -119,7 +87,7 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
         "total tokens"
     );
     assert_eq!(
-        text_of(&response.choice),
+        assistant_text(&response.choice),
         body["choices"][0]["message"]["content"]
             .as_str()
             .expect("recorded content"),
@@ -130,28 +98,20 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.provider_request_id, None, "request id");
 }
 
-/// Where a cell parks the response it observed, so the assertions can run
-/// after the cassette wrapper has finished and written its fixture.
-type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
-
 /// One completion under the cell's model, parked in `sink`.
 ///
 /// The wrapper call itself stays at each `#[tokio::test]` site with its
 /// scenario literal: `tests/common/cassette_safety.rs` discovers fixtures by
 /// parsing those literals out of the wrapper's first argument, so hiding one
 /// behind a variable would orphan the cassette.
-async fn run(client: BoundDoubleword, sink: Observed) -> Result<(), anyhow::Error> {
+async fn run(
+    client: BoundDoubleword,
+    sink: Observed<CompletionResponse>,
+) -> Result<(), anyhow::Error> {
     let model = client.completion(DEFAULT_MODEL);
     let response = model.completion(request(&model)).await?;
-    *sink.lock().expect("observation lock") = Some(response);
+    sink.put(response);
     Ok(())
-}
-
-fn observed(sink: &Observed) -> CompletionResponse {
-    sink.lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response")
 }
 
 /// The backend usage fields Doubleword sends that no type here models.
@@ -174,7 +134,7 @@ async fn raw_round_trips_openai_type() {
     })
     .await
     .expect("raw_round_trips_openai_type should replay from its cassette");
-    let response = observed(&sink);
+    let response = sink.take();
 
     let raw = &response.raw;
     let typed = openai::CompletionResponse::deserialize(raw)
@@ -191,7 +151,7 @@ async fn raw_round_trips_openai_type() {
         );
     }
 
-    let (_, response_body) = recorded_json(SCENARIO);
+    let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert!(
         response_body["choices"][0]["message"]["content"].is_string(),
         "the recorded turn should be a plain text answer"
@@ -211,9 +171,9 @@ async fn raw_exposes_object() {
     })
     .await
     .expect("raw_exposes_object should replay from its cassette");
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let recorded_object = body["object"]
         .as_str()
         .expect("Doubleword tags every completion with an object");
@@ -257,9 +217,9 @@ async fn normalized_fields_match_raw_renormalized() {
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert_reproduces_fixture(&response, &body);
 
     // The other half: the provider-native fields of the captured payload are

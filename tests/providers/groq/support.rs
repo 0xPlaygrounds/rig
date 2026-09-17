@@ -102,47 +102,6 @@ pub(super) fn assert_matches_recorded_token(
     }
 }
 
-/// The response headers of every interaction recorded under `scenario`, in
-/// cassette order, as lower-cased `(name, value)` pairs.
-///
-/// The shared body readers deliberately stop at bodies; a matrix whose
-/// premise is "the provider sent its request-id header" has to read the
-/// header side of the fixture, and the recorder keeps only allowlisted
-/// response headers (`x-request-id` among them), so what is here is exactly
-/// what replay serves.
-pub(super) fn recorded_response_headers(scenario: &str) -> Vec<Vec<(String, String)>> {
-    use serde::Deserialize as _;
-
-    let path = crate::cassettes::cassette_path("groq", scenario);
-    let contents = std::fs::read_to_string(&path)
-        .unwrap_or_else(|error| panic!("cassette {} should be readable: {error}", path.display()));
-
-    serde_yaml::Deserializer::from_str(&contents)
-        .map(|document| {
-            let interaction = serde_yaml::Value::deserialize(document).unwrap_or_else(|error| {
-                panic!("cassette {} should deserialize: {error}", path.display())
-            });
-            interaction["then"]["header"]
-                .as_sequence()
-                .map(|headers| {
-                    headers
-                        .iter()
-                        .map(|header| {
-                            (
-                                header["name"]
-                                    .as_str()
-                                    .expect("header name")
-                                    .to_ascii_lowercase(),
-                                header["value"].as_str().expect("header value").to_owned(),
-                            )
-                        })
-                        .collect()
-                })
-                .unwrap_or_default()
-        })
-        .collect()
-}
-
 /// Cassette wrapper for the groq prompt-caching matrix
 /// (`tests/cassettes/groq/prompt_caching/`).
 ///

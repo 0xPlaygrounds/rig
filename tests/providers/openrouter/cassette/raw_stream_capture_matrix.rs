@@ -45,7 +45,7 @@ use super::super::DEFAULT_MODEL;
 use super::super::support::{
     BoundOpenRouter, assert_matches_recorded_token, with_openrouter_cassette_result,
 };
-use crate::support::collect_text_and_terminal;
+use crate::support::{Observed, collect_text_and_terminal, recorded_sole_usage_frame};
 
 type OpenRouterTerminal = StreamingCompletionResponse<ChatUsage>;
 
@@ -54,29 +54,6 @@ const PROMPT: &str = "Reply with the single word: pong";
 
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
-}
-
-/// The single recorded frame that carries usage — the stream's last data
-/// frame.
-fn recorded_terminal_frame(scenario: &str) -> Value {
-    let frames = crate::cassettes::recorded_sse_json_frames(PROVIDER, scenario);
-    let mut with_usage = frames
-        .iter()
-        .enumerate()
-        .filter(|(_, frame)| !frame["usage"].is_null());
-    let (index, terminal) = with_usage
-        .next()
-        .expect("the recorded stream must carry usage on its terminal frame");
-    assert!(
-        with_usage.next().is_none(),
-        "usage must be reported on exactly one (terminal) frame"
-    );
-    assert_eq!(
-        index + 1,
-        frames.len(),
-        "the usage-bearing frame must be the stream's last data frame"
-    );
-    terminal.clone()
 }
 
 fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
@@ -114,24 +91,16 @@ fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
 /// literal: `cassette_safety` reads the registered scenarios out of the AST
 /// and accepts only a literal, so a shared helper that took the scenario as a
 /// parameter would register nothing and orphan the fixture.
-type Observed = std::sync::Arc<std::sync::Mutex<Option<StreamFinal>>>;
-
+///
 /// The body both cells share: drain one stream, park its terminal record.
-async fn run(client: BoundOpenRouter, sink: Observed) -> Result<(), anyhow::Error> {
+async fn run(client: BoundOpenRouter, sink: Observed<StreamFinal>) -> Result<(), anyhow::Error> {
     let model = client.completion(DEFAULT_MODEL);
     let stream = model.stream(request(&model)).await?;
     let (text, terminal) = collect_text_and_terminal(stream).await;
     let terminal = terminal.expect("stream should end with a terminal record");
     assert!(!text.is_empty());
-    *sink.lock().expect("observation lock") = Some(terminal);
+    sink.put(terminal);
     Ok(())
-}
-
-fn observed(sink: &Observed) -> StreamFinal {
-    sink.lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record")
 }
 
 // ================================================================
@@ -148,7 +117,7 @@ async fn stream_raw_reads_back_as_terminal_type() {
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
-    let terminal = observed(&sink);
+    let terminal = sink.take();
 
     let raw = &terminal.raw;
     // The streamed terminal's `raw` is the decoder's own record serialized
@@ -171,7 +140,7 @@ async fn stream_raw_reads_back_as_terminal_type() {
     let usage = typed.usage.as_ref().expect("the terminal reports usage");
     assert_eq!(usage.to_normalized(), terminal.usage);
 
-    let frame = recorded_terminal_frame(SCENARIO);
+    let frame = recorded_sole_usage_frame(PROVIDER, SCENARIO);
     assert_terminal_reproduces_frame(&terminal, &frame);
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
@@ -192,9 +161,9 @@ async fn stream_raw_exposes_terminal_cost_and_provider() {
     )
     .await
     .expect("stream_raw_exposes_terminal_cost_and_provider should replay from its cassette");
-    let terminal = observed(&sink);
+    let terminal = sink.take();
 
-    let frame = recorded_terminal_frame(SCENARIO);
+    let frame = recorded_sole_usage_frame(PROVIDER, SCENARIO);
     let recorded_cost = frame["usage"]["cost"]
         .as_f64()
         .expect("OpenRouter's terminal usage reports cost");

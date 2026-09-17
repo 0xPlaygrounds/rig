@@ -54,7 +54,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
-use crate::cassettes::recorded_interaction_bodies;
+use crate::cassettes::recorded_json_turn;
+use crate::support::{Observed, normalized_without_raw};
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
@@ -88,28 +89,6 @@ fn assert_recorded_converse_with_metrics(body: &Value, scenario: &str) {
     );
 }
 
-/// The single recorded interaction of a scenario, request and response parsed
-/// as JSON.
-fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
-    let bodies = recorded_interaction_bodies(BEDROCK_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        1,
-        "{scenario}: the scenario must record exactly one interaction"
-    );
-    let (request, response) = &bodies[0];
-    let request: Value = serde_json::from_str(request)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
-    let response: Value = serde_json::from_str(response)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded response should be JSON: {err}"));
-    (request, response)
-}
-
-fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = Value::Null;
-    serde_json::to_value(&response).expect("normalized response should serialize")
-}
-
 // ---------------------------------------------------------------------------
 // 1: raw is the raw_completion value, serialized
 // ---------------------------------------------------------------------------
@@ -140,7 +119,7 @@ async fn raw_round_trips_provider_type() {
     )
     .await;
 
-    let (_, body) = recorded_json_interaction(scenario);
+    let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
 }
 
@@ -152,8 +131,8 @@ async fn raw_round_trips_provider_type() {
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn raw_exposes_latency_metrics() {
     let scenario = "raw_capture_matrix/raw_exposes_latency_metrics";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_bedrock_cassette(
         "raw_capture_matrix/raw_exposes_latency_metrics",
         |client| async move {
@@ -170,17 +149,13 @@ async fn raw_exposes_latency_metrics() {
             );
 
             let raw = response.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interaction(scenario);
+    let raw = captured.take();
+    let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
 
     // The mirror type spells the field `latency_ms`; the wire spells it
@@ -217,8 +192,8 @@ async fn raw_exposes_latency_metrics() {
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn normalized_fields_equal_raw_renormalized() {
     let scenario = "raw_capture_matrix/normalized_fields_equal_raw_renormalized";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_bedrock_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
@@ -252,17 +227,13 @@ async fn normalized_fields_equal_raw_renormalized() {
                 "re-normalizing raw must reproduce the normalized response field-for-field"
             );
 
-            *sink.lock().expect("capture mutex") = Some(response);
+            sink.put(response);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
-    let (_, body) = recorded_json_interaction(scenario);
+    let response = captured.take();
+    let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
     assert!(
         response.provider_request_id.is_some(),
