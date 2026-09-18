@@ -34,17 +34,16 @@
 //! pinned as such. Thinking is disabled through `venice_parameters` so the
 //! small reasoning model answers in plain text within the token budget.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::providers::venice::{self, VeniceParameters};
 use serde::Deserialize as _;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
-use super::super::support::{
-    BoundVenice, assert_matches_recorded_token, with_venice_cassette_result,
-};
+use super::super::support::with_venice_cassette_result;
 use crate::cassettes::recorded_json_turn;
-use crate::support::{Observed, assistant_text, recorded_chat_finish_reason};
+use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
+use crate::support::Observed;
 
 const PROVIDER: &str = "venice";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -61,60 +60,6 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
         .build()
 }
 
-/// The normalized fields, checked against the wire bytes that produced them.
-fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
-    assert_eq!(response.provider, PROVIDER, "provider");
-    assert_matches_recorded_token(
-        response.response_id.as_deref(),
-        body["id"].as_str(),
-        "response id",
-    );
-    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
-    assert_eq!(
-        response.finish_reason(),
-        Some(recorded_chat_finish_reason(body)),
-        "finish reason"
-    );
-    assert_eq!(
-        response.usage.input_tokens,
-        body["usage"]["prompt_tokens"].as_u64(),
-        "input tokens"
-    );
-    assert_eq!(
-        response.usage.output_tokens,
-        body["usage"]["completion_tokens"].as_u64(),
-        "output tokens"
-    );
-    assert_eq!(
-        response.usage.total_tokens,
-        body["usage"]["total_tokens"].as_u64(),
-        "total tokens"
-    );
-    assert_eq!(
-        assistant_text(&response.choice),
-        body["choices"][0]["message"]["content"]
-            .as_str()
-            .expect("recorded content"),
-        "choice text"
-    );
-    // Venice contracts no request-id header, so `None` is the documented
-    // outcome.
-    assert_eq!(response.provider_request_id, None, "request id");
-}
-
-/// One completion under the cell's model, parked in `sink`.
-///
-/// The wrapper call itself stays at each `#[tokio::test]` site with its
-/// scenario literal: `tests/common/cassette_safety.rs` discovers fixtures by
-/// parsing those literals out of the wrapper's first argument, so hiding one
-/// behind a variable would orphan the cassette.
-async fn run(client: BoundVenice, sink: Observed<CompletionResponse>) -> Result<(), anyhow::Error> {
-    let model = client.completion(DEFAULT_MODEL);
-    let response = model.completion(request(&model)).await?;
-    sink.put(response);
-    Ok(())
-}
-
 // ================================================================
 // 1. raw reads back as Venice's own type — and carries more
 // ================================================================
@@ -124,7 +69,7 @@ async fn raw_round_trips_venice_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_venice_type";
     let sink = Observed::default();
     with_venice_cassette_result("raw_capture_matrix/raw_round_trips_venice_type", |client| {
-        run(client, sink.clone())
+        capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone())
     })
     .await
     .expect("raw_round_trips_venice_type should replay from its cassette");
@@ -170,7 +115,7 @@ async fn raw_exposes_venice_parameters_and_cost() {
     let sink = Observed::default();
     with_venice_cassette_result(
         "raw_capture_matrix/raw_exposes_venice_parameters_and_cost",
-        |client| run(client, sink.clone()),
+        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
     )
     .await
     .expect("raw_exposes_venice_parameters_and_cost should replay from its cassette");
@@ -211,14 +156,17 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_venice_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| run(client, sink.clone()),
+        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
     let response = sink.take();
 
     let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
-    assert_reproduces_fixture(&response, &body);
+    chat::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
+    // Venice contracts no request-id header, so `None` is the documented
+    // outcome.
+    assert_no_request_id(response.provider_request_id.as_deref(), "Venice");
 
     // The other half: the provider-native fields of the captured payload are
     // the ones the decoder normalized. There is one mapping now, so this pins
@@ -226,37 +174,5 @@ async fn normalized_fields_match_raw_renormalized() {
     // itself.
     let typed = venice::CompletionResponse::deserialize(&response.raw)
         .expect("raw is Venice's own CompletionResponse");
-    let native = &typed.openai;
-    assert_matches_recorded_token(
-        response.response_id.as_deref(),
-        Some(native.id.as_str()),
-        "response id",
-    );
-    assert_eq!(response.model.as_deref(), Some(native.model.as_str()));
-    let native_choice = native
-        .choices
-        .first()
-        .expect("Venice returns at least one choice");
-    assert_eq!(
-        response.finish_reason(),
-        Some(match native_choice.finish_reason.as_str() {
-            "stop" => FinishReason::Stop,
-            "length" => FinishReason::Length,
-            other => panic!("unexpected native finish reason {other:?}"),
-        }),
-        "the normalized reason is the native one"
-    );
-    let native_usage = native.usage.as_ref().expect("Venice reports usage");
-    assert_eq!(
-        response.usage.input_tokens,
-        Some(native_usage.prompt_tokens as u64)
-    );
-    assert_eq!(
-        response.usage.output_tokens,
-        native_usage.completion_tokens.map(|tokens| tokens as u64)
-    );
-    assert_eq!(
-        response.usage.total_tokens,
-        Some(native_usage.total_tokens as u64)
-    );
+    chat::assert_native_matches_normalized(&response, &typed.openai, "the typed view of raw");
 }

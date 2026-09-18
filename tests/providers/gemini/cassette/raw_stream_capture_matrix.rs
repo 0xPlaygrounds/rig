@@ -45,12 +45,13 @@ use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::message::{AssistantContent, ToolCall, ToolChoice};
 use rig::providers::gemini::streaming::StreamingCompletionResponse;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::{StreamEvent, StreamFinal};
 use rig::tool::Tool;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_gemini_cassette;
+use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
 use crate::support::{Adder, Observed, json_contains_key};
 
 const PROVIDER: &str = "gemini";
@@ -83,29 +84,30 @@ fn forced_tool_request(
         .build()
 }
 
-/// What a drained model stream carried: its text, its tool calls, and its
-/// single terminal record.
+/// What a drained model stream carried: its tool calls and its single
+/// terminal record.
 struct Drained {
-    text: String,
     tool_calls: Vec<ToolCall>,
     terminal: StreamFinal,
 }
 
-/// Drain a model stream, keeping every text delta and tool call it yielded.
+/// Drain a model stream, keeping every tool call it yielded.
+///
+/// Local rather than one of the shared `raw_capture::capture_*` stream
+/// helpers: cell 3 is about a streamed `functionCall`, so it needs the tool
+/// calls the stream yielded *beside* the terminal record, which no shared
+/// helper parks. The sole-terminal claim it makes is the same one
+/// [`capture_text_and_sole_terminal`](crate::raw_capture::capture_text_and_sole_terminal)
+/// makes for this file's text-only cells.
 async fn drain_stream(
     model: &(impl CompletionModel + Clone),
     request: rig::completion::CompletionRequest,
 ) -> Drained {
     let mut stream = model.stream(request).await.expect("stream should open");
     let mut terminal = None;
-    let mut text = String::new();
     let mut tool_calls = Vec::new();
     while let Some(item) = stream.next().await {
         match item.expect("stream item should succeed") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: delta },
-                ..
-            } => text.push_str(&delta),
             StreamEvent::BlockEnd {
                 block: Some(AssistantContent::ToolCall(tool_call)),
                 ..
@@ -120,23 +122,9 @@ async fn drain_stream(
         }
     }
     Drained {
-        text,
         tool_calls,
         terminal: terminal.expect("stream should yield a terminal record"),
     }
-}
-
-/// Drain a text-only model stream and return its single terminal record.
-async fn stream_to_terminal(
-    model: &(impl CompletionModel + Clone),
-    request: rig::completion::CompletionRequest,
-) -> StreamFinal {
-    let drained = drain_stream(model, request).await;
-    assert!(
-        !drained.text.is_empty(),
-        "the stream should have carried text"
-    );
-    drained.terminal
 }
 
 /// The last recorded frame carrying `usageMetadata` — Gemini's usage is
@@ -213,40 +201,40 @@ fn last_usage_frame_of_function_call_stream(scenario: &str) -> Value {
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<(String, StreamFinal)> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            let model = client.completion(MODEL);
-            let terminal = stream_to_terminal(&model, request(&model)).await;
-
-            let raw = &terminal.raw;
-
-            // `raw` is the terminal record the decoder built, serialized:
-            // Gemini's own terminal type reads it back and re-serializes to
-            // the same value.
-            let typed = StreamingCompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into Gemini's streaming terminal type");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed raw re-serializes"),
-                *raw,
-                "StreamingCompletionResponse must round-trip through its own Serialize/Deserialize"
-            );
-
-            // And the typed value agrees with the normalized terminal next to it.
-            assert_eq!(typed.model_version, terminal.model);
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(
-                Some(typed.usage_metadata.total_token_count as u64),
-                terminal.usage.total_tokens
-            );
-            sink.put(raw.clone());
+            capture_text_and_sole_terminal(client.completion(MODEL), request, sink)
+                .await
+                .expect("stream should open");
         },
     )
     .await;
 
-    let raw = observed.take();
+    let (text, terminal) = observed.take();
+    assert!(!text.is_empty(), "the stream should have carried text");
+    let raw = &terminal.raw;
+
+    // `raw` is the terminal record the decoder built, serialized: Gemini's
+    // own terminal type reads it back and re-serializes to the same value.
+    let typed = StreamingCompletionResponse::deserialize(raw)
+        .expect("raw must deserialize into Gemini's streaming terminal type");
+    assert_eq!(
+        serde_json::to_value(&typed).expect("typed raw re-serializes"),
+        *raw,
+        "StreamingCompletionResponse must round-trip through its own Serialize/Deserialize"
+    );
+
+    // And the typed value agrees with the normalized terminal next to it.
+    assert_eq!(typed.model_version, terminal.model);
+    assert_eq!(typed.response_id, terminal.response_id);
+    assert_eq!(
+        Some(typed.usage_metadata.total_token_count as u64),
+        terminal.usage.total_tokens
+    );
+
     let last = last_usage_frame(SCENARIO);
     assert_eq!(
         raw.pointer("/usage_metadata/totalTokenCount"),
@@ -262,38 +250,34 @@ async fn raw_roundtrips_streaming_completion_response() {
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<(String, StreamFinal)> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            let model = client.completion(MODEL);
-            let terminal = stream_to_terminal(&model, request(&model)).await;
-
-            let raw = &terminal.raw;
-            sink.put(raw.clone());
-
-            // The normalized terminal provably lacks these: `finish_reason` is
-            // rig's vocabulary (`stop`), and the per-modality breakdown has no
-            // normalized home.
-            let mut normalized =
-                serde_json::to_value(&terminal).expect("normalized terminal serializes");
-            normalized
-                .as_object_mut()
-                .expect("terminal is an object")
-                .remove("raw");
-            assert!(!json_contains_key(&normalized, "promptTokensDetails"));
-            assert_ne!(
-                normalized.get("finish_reason"),
-                Some(&Value::String("STOP".to_string())),
-                "the normalized finish reason is rig's spelling, not Gemini's"
-            );
-            assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+            capture_text_and_sole_terminal(client.completion(MODEL), request, sink)
+                .await
+                .expect("stream should open");
         },
     )
     .await;
 
-    let raw = observed.take();
+    let (text, terminal) = observed.take();
+    assert!(!text.is_empty(), "the stream should have carried text");
+
+    // The normalized terminal provably lacks these: `finish_reason` is rig's
+    // vocabulary (`stop`), and the per-modality breakdown has no normalized
+    // home.
+    let normalized = stream_normalized_without_raw(&terminal);
+    assert!(!json_contains_key(&normalized, "promptTokensDetails"));
+    assert_ne!(
+        normalized.get("finish_reason"),
+        Some(&Value::String("STOP".to_string())),
+        "the normalized finish reason is rig's spelling, not Gemini's"
+    );
+    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+
+    let raw = &terminal.raw;
     let last = last_usage_frame(SCENARIO);
     assert_eq!(
         raw.get("finish_reason"),
@@ -320,56 +304,56 @@ async fn raw_exposes_terminal_only_fields() {
 async fn raw_terminal_keeps_stop_on_forced_function_call() {
     const SCENARIO: &str =
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<Drained> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_stream_capture_matrix/raw_terminal_keeps_stop_on_forced_function_call",
         |client| async move {
             let model = client.completion(MODEL);
-            let drained = drain_stream(&model, forced_tool_request(&model)).await;
-
-            // The stream carried the forced call as a typed ToolCall.
-            let call = drained
-                .tool_calls
-                .iter()
-                .find(|call| call.function.name == Adder::NAME)
-                .expect("the stream should carry the forced add call");
-            assert_eq!(
-                call.function.arguments,
-                serde_json::json!({ "x": 2, "y": 3 })
-            );
-
-            let terminal = &drained.terminal;
-            let raw = &terminal.raw;
-            sink.put(raw.clone());
-
-            // The typed round trip holds for a tool turn's terminal too.
-            let typed = StreamingCompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into Gemini's streaming terminal type");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed raw re-serializes"),
-                *raw,
-                "StreamingCompletionResponse must round-trip a tool turn's terminal"
-            );
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(
-                Some(typed.usage_metadata.total_token_count as u64),
-                terminal.usage.total_tokens
-            );
-
-            // The normalized terminal reports the reconciled ToolCalls …
-            assert_eq!(terminal.finish_reason, Some(FinishReason::ToolCalls));
-            // … while raw keeps Gemini's own STOP.
-            assert_eq!(
-                raw.get("finish_reason"),
-                Some(&Value::String("STOP".to_string())),
-                "raw keeps Gemini's finishReason spelling on a call-only turn"
-            );
+            sink.put(drain_stream(&model, forced_tool_request(&model)).await);
         },
     )
     .await;
 
-    let raw = observed.take();
+    let drained = observed.take();
+
+    // The stream carried the forced call as a typed ToolCall.
+    let call = drained
+        .tool_calls
+        .iter()
+        .find(|call| call.function.name == Adder::NAME)
+        .expect("the stream should carry the forced add call");
+    assert_eq!(
+        call.function.arguments,
+        serde_json::json!({ "x": 2, "y": 3 })
+    );
+
+    let terminal = &drained.terminal;
+    let raw = &terminal.raw;
+
+    // The typed round trip holds for a tool turn's terminal too.
+    let typed = StreamingCompletionResponse::deserialize(raw)
+        .expect("raw must deserialize into Gemini's streaming terminal type");
+    assert_eq!(
+        serde_json::to_value(&typed).expect("typed raw re-serializes"),
+        *raw,
+        "StreamingCompletionResponse must round-trip a tool turn's terminal"
+    );
+    assert_eq!(typed.response_id, terminal.response_id);
+    assert_eq!(
+        Some(typed.usage_metadata.total_token_count as u64),
+        terminal.usage.total_tokens
+    );
+
+    // The normalized terminal reports the reconciled ToolCalls …
+    assert_eq!(terminal.finish_reason, Some(FinishReason::ToolCalls));
+    // … while raw keeps Gemini's own STOP.
+    assert_eq!(
+        raw.get("finish_reason"),
+        Some(&Value::String("STOP".to_string())),
+        "raw keeps Gemini's finishReason spelling on a call-only turn"
+    );
+
     let last = last_usage_frame_of_function_call_stream(SCENARIO);
     assert_eq!(
         raw.pointer("/usage_metadata/totalTokenCount"),

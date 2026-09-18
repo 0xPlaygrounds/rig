@@ -27,19 +27,25 @@
 //! checks the normalized fields against the recorded body and the recorded
 //! `x-request-id` header before reading the provider-native fields back out
 //! of `raw`, so a recording that stopped carrying usage, a status, or the id
-//! header fails loudly instead of covering nothing.
+//! header fails loudly instead of covering nothing. The Responses format
+//! contract those checks are written in — the recorded body's identity,
+//! finish reason and accounting, and the provider-native view of the same
+//! reply — is [`crate::raw_capture::responses`].
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::driver::Bound;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::support::{assert_matches_recorded_token, with_xai_cassette_result};
+use super::support::with_xai_cassette_result;
 use crate::cassettes::{recorded_json_turn, recorded_response_header};
-use crate::support::{Observed, assistant_text};
+use crate::raw_capture::{
+    assert_contracted_request_id, assert_normalized_lacks, capture_completion, responses,
+};
+use crate::support::{Observed, assert_matches_recorded_token, normalized_without_raw};
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
@@ -55,81 +61,6 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
     recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
 }
 
-/// The recorded `output` message item: its id and its output text.
-fn recorded_message(body: &Value) -> (&str, String) {
-    let item = body["output"]
-        .as_array()
-        .expect("output items")
-        .iter()
-        .find(|item| item["type"] == "message")
-        .expect("the recorded turn carries a message item");
-    let text = item["content"]
-        .as_array()
-        .expect("message content")
-        .iter()
-        .filter(|part| part["type"] == "output_text")
-        .map(|part| part["text"].as_str().expect("output_text"))
-        .collect();
-    (item["id"].as_str().expect("message id"), text)
-}
-
-fn recorded_finish_reason(body: &Value) -> FinishReason {
-    match body["status"].as_str() {
-        Some("completed") => FinishReason::Stop,
-        other => panic!("recorded turn should have completed, got {other:?}"),
-    }
-}
-
-/// The normalized fields, checked against the wire bytes that produced them.
-fn assert_reproduces_fixture(
-    response: &CompletionResponse,
-    body: &Value,
-    request_id: Option<&str>,
-) {
-    assert_eq!(response.provider, PROVIDER, "provider");
-    let (message_id, text) = recorded_message(body);
-    assert_matches_recorded_token(
-        response.response_id.as_deref(),
-        body["id"].as_str(),
-        "response id",
-    );
-    assert_matches_recorded_token(
-        response.message_id.as_deref(),
-        Some(message_id),
-        "message id",
-    );
-    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
-    assert_eq!(
-        response.finish_reason(),
-        Some(recorded_finish_reason(body)),
-        "finish reason"
-    );
-    assert_eq!(
-        (
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-            response.usage.total_tokens
-        ),
-        (
-            body["usage"]["input_tokens"].as_u64(),
-            body["usage"]["output_tokens"].as_u64(),
-            body["usage"]["total_tokens"].as_u64(),
-        ),
-        "usage"
-    );
-    assert_eq!(assistant_text(&response.choice), text, "choice text");
-    // xAI contracts `x-request-id`; the recorded header is the premise.
-    assert!(
-        request_id.is_some(),
-        "the recorded response must carry x-request-id"
-    );
-    assert_matches_recorded_token(
-        response.provider_request_id.as_deref(),
-        request_id,
-        "request id",
-    );
-}
-
 // ================================================================
 // 1. raw round-trips the Responses type
 // ================================================================
@@ -137,32 +68,30 @@ fn assert_reproduces_fixture(
 #[tokio::test]
 async fn raw_round_trips_responses_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_responses_type";
+    let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/raw_round_trips_responses_type",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let response = model.completion(request(&model)).await?;
-            let raw = &response.raw;
-            let typed = responses_api::CompletionResponse::deserialize(raw)
-                .expect("raw is the Responses CompletionResponse xAI parses into");
-            // `raw` is the reply document, so the typed view's fields are the
-            // document's fields.
-            assert_eq!(Some(typed.id.as_str()), raw["id"].as_str());
-            assert_eq!(Some(typed.model.as_str()), raw["model"].as_str());
-            assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
-            assert_eq!(raw["status"], json!("completed"));
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            // The transport id is not part of the reply document, so the
-            // capture never carries it — it lives on the normalized response
-            // only.
-            assert!(raw.get("provider_request_id").is_none());
-            assert_eq!(typed.provider_request_id, None);
-            assert!(response.provider_request_id.is_some());
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
     )
     .await
     .expect("raw_round_trips_responses_type should replay from its cassette");
+    let response = sink.take();
+
+    let raw = &response.raw;
+    let typed = responses_api::CompletionResponse::deserialize(raw)
+        .expect("raw is the Responses CompletionResponse xAI parses into");
+    // `raw` is the reply document, so the typed view's fields are the
+    // document's fields.
+    assert_eq!(Some(typed.id.as_str()), raw["id"].as_str());
+    assert_eq!(Some(typed.model.as_str()), raw["model"].as_str());
+    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
+    assert_eq!(raw["status"], json!("completed"));
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    // The transport id is not part of the reply document, so the capture
+    // never carries it — it lives on the normalized response only.
+    assert!(raw.get("provider_request_id").is_none());
+    assert_eq!(typed.provider_request_id, None);
+    assert!(response.provider_request_id.is_some());
 
     let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert_eq!(response_body["object"], json!("response"));
@@ -175,21 +104,15 @@ async fn raw_round_trips_responses_type() {
 #[tokio::test]
 async fn raw_exposes_status_and_service_tier() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_status_and_service_tier";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/raw_exposes_status_and_service_tier",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let response = model.completion(request(&model)).await?;
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
     )
     .await
     .expect("raw_exposes_status_and_service_tier should replay from its cassette");
+    let response = sink.take();
 
-    let response = observed.take();
     let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let recorded_status = body["status"]
         .as_str()
@@ -210,11 +133,11 @@ async fn raw_exposes_status_and_service_tier() {
         "system fingerprint",
     );
     // And the normalized view has no slot for any of them: the status is
-    // folded into a finish reason, the rest has nowhere to go.
-    let normalized = serde_json::to_value(&response).expect("response serializes");
-    assert!(normalized.get("status").is_none());
-    assert!(normalized.get("service_tier").is_none());
-    assert!(normalized.get("metadata").is_none());
+    // folded into a finish reason, the rest has nowhere to go. The capture is
+    // cleared out of the serialized view first, so the fields it carries
+    // cannot satisfy the check it is the counterexample to.
+    let normalized = normalized_without_raw(response);
+    assert_normalized_lacks(&normalized, &["status", "service_tier", "metadata"]);
 }
 
 // ================================================================
@@ -224,54 +147,28 @@ async fn raw_exposes_status_and_service_tier() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_xai_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let response = model.completion(request(&model)).await?;
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = sink.take();
 
-    let response = observed.take();
     let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
-    assert_reproduces_fixture(&response, &body, recorded_request_id(SCENARIO).as_deref());
+    responses::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
+    // xAI contracts `x-request-id`; the recorded header is the premise.
+    assert_contracted_request_id(
+        response.provider_request_id.as_deref(),
+        recorded_request_id(SCENARIO).as_deref(),
+        REQUEST_ID_HEADER,
+    );
 
     // The normalized fields are the mapping of the provider-native fields in
     // the response's own `raw`: one decoder reads that document once, and
     // this pins what it read rather than a second copy of the mapping.
     let typed = responses_api::CompletionResponse::deserialize(&response.raw)
         .expect("raw is the Responses type");
-    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    assert_eq!(typed.status, responses_api::ResponseStatus::Completed);
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-    let usage = typed.usage.as_ref().expect("the reply carries usage");
-    assert_eq!(
-        (
-            Some(usage.input_tokens),
-            Some(usage.output_tokens),
-            Some(usage.total_tokens)
-        ),
-        (
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-            response.usage.total_tokens
-        ),
-        "usage"
-    );
-    let message = typed
-        .output
-        .iter()
-        .find_map(|item| match item {
-            responses_api::Output::Message(message) => Some(message),
-            _ => None,
-        })
-        .expect("the reply carries a message item");
-    assert_eq!(Some(message.id.as_str()), response.message_id.as_deref());
+    responses::assert_native_matches_normalized(&response, &typed, "the typed view of raw");
 }

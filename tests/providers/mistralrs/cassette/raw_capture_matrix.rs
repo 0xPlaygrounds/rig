@@ -49,6 +49,7 @@ use serde_json::Value;
 
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
 use crate::cassettes::recorded_json_turn;
+use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw};
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
@@ -99,25 +100,24 @@ async fn raw_is_the_reply_document() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            let model = client.chat(model_name());
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.chat(model_name()), request, sink)
                 .await
                 .expect("completion should succeed");
-            let typed = openai::CompletionResponse::deserialize(&response.raw)
-                .expect("raw must deserialize into openai::CompletionResponse");
-            // The typed view agrees with the normalized one on what the model
-            // said, so raw is a superset, not a divergent copy.
-            assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            assert_eq!(response.provider, NORMALIZED_PROVIDER);
-            assert!(!response.choice.is_empty());
-            sink.put(response.raw);
         },
     )
     .await;
 
-    let raw = captured.take();
+    let response = captured.take();
+    let typed = openai::CompletionResponse::deserialize(&response.raw)
+        .expect("raw must deserialize into openai::CompletionResponse");
+    // The typed view agrees with the normalized one on what the model said,
+    // so raw is a superset, not a divergent copy.
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(response.provider, NORMALIZED_PROVIDER);
+    assert!(!response.choice.is_empty());
+
+    let raw = &response.raw;
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     openai::CompletionResponse::deserialize(&body)
@@ -138,7 +138,7 @@ async fn raw_is_the_reply_document() {
         );
     }
     for field in ["created", "id"] {
-        assert_wire_value_matches(&raw, &body, field);
+        assert_wire_value_matches(raw, &body, field);
     }
 }
 
@@ -155,25 +155,18 @@ async fn raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/raw_exposes_envelope_fields",
         |client| async move {
-            let model = client.chat(model_name());
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.chat(model_name()), request, sink)
                 .await
                 .expect("completion should succeed");
-            let normalized = normalized_without_raw(response.clone());
-            for field in ["object", "created", "system_fingerprint"] {
-                assert!(
-                    normalized.get(field).is_none(),
-                    "normalized CompletionResponse must not grow a `{field}` field"
-                );
-            }
-            let raw = response.raw;
-            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured.take();
+    let response = captured.take();
+    let normalized = normalized_without_raw(response.clone());
+    assert_normalized_lacks(&normalized, &["object", "created", "system_fingerprint"]);
+
+    let raw = &response.raw;
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     for field in ["object", "system_fingerprint", "model"] {
@@ -184,9 +177,9 @@ async fn raw_exposes_envelope_fields() {
         );
     }
     for field in ["created", "id"] {
-        assert_wire_value_matches(&raw, &body, field);
+        assert_wire_value_matches(raw, &body, field);
     }
-    let typed = openai::CompletionResponse::deserialize(&raw).expect("raw must deserialize");
+    let typed = openai::CompletionResponse::deserialize(raw).expect("raw must deserialize");
     assert_eq!(
         typed.system_fingerprint.as_deref(),
         body["system_fingerprint"].as_str()
@@ -211,40 +204,39 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_mistralrs_completions_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            let model = client.chat(model_name());
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.chat(model_name()), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let typed = openai::CompletionResponse::deserialize(&response.raw)
-                .expect("raw must deserialize into openai::CompletionResponse");
-            assert_eq!(response.provider, NORMALIZED_PROVIDER);
-            assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            let choice = typed
-                .choices
-                .first()
-                .expect("the reply must carry a choice");
-            assert!(
-                !choice.finish_reason.is_empty() && response.finish_reason().is_some(),
-                "the native finish reason `{}` must reach the normalized response",
-                choice.finish_reason
-            );
-            let usage = typed.usage.expect("mistral.rs reports usage");
-            assert_eq!(
-                Some(usage.prompt_tokens as u64),
-                response.usage.input_tokens
-            );
-            assert_eq!(Some(usage.total_tokens as u64), response.usage.total_tokens);
-            assert!(!response.choice.is_empty());
-
-            sink.put(response);
         },
     )
     .await;
 
     let response = captured.take();
+    let typed = openai::CompletionResponse::deserialize(&response.raw)
+        .expect("raw must deserialize into openai::CompletionResponse");
+    assert_eq!(response.provider, NORMALIZED_PROVIDER);
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    let choice = typed
+        .choices
+        .first()
+        .expect("the reply must carry a choice");
+    // Deliberately weaker than the shared body contract: mistral.rs's finish
+    // vocabulary is unrecorded here, so this claims only that a native reason
+    // was reported and that one reached the normalized response.
+    assert!(
+        !choice.finish_reason.is_empty() && response.finish_reason().is_some(),
+        "the native finish reason `{}` must reach the normalized response",
+        choice.finish_reason
+    );
+    let usage = typed.usage.expect("mistral.rs reports usage");
+    assert_eq!(
+        Some(usage.prompt_tokens as u64),
+        response.usage.input_tokens
+    );
+    assert_eq!(Some(usage.total_tokens as u64), response.usage.total_tokens);
+    assert!(!response.choice.is_empty());
+
     let (_, body) = recorded_json_turn(MISTRALRS_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     // And the same fields against the recorded bytes, so a recording that

@@ -25,13 +25,15 @@
 //! | 3 | `stream_reasoning_raw_round_trips_terminal_type` | reasoning turn | a thinking-mode stream's terminal `raw` round-trips the same way and reproduces the recorded terminal frame; the stream's reasoning deltas reassemble the fixture's `delta.reasoning_content` frames, none of which is on the terminal record | recorded |
 //!
 //! Every cell is recorded. The premise every cell re-derives from its own
-//! fixture is that the recorded SSE stream carries usage on exactly one frame
-//! — the terminal one — so the raw terminal record's usage is knowable from
-//! the bytes and a recording whose stream stopped reporting usage fails
-//! loudly instead of covering nothing. Cell 3 additionally re-derives that
-//! the recorded frames carry `delta.reasoning_content` (and that the recorded
-//! request asked for thinking), so a recording that stopped reasoning fails
-//! instead of covering nothing.
+//! fixture is [`chat::recorded_sole_usage_frame`]: the recorded SSE stream
+//! carries usage on exactly one frame, and that frame is the stream's last
+//! data frame — so the raw terminal record's usage is knowable from the bytes
+//! and a recording whose stream stopped reporting usage, or started
+//! reporting it somewhere other than the close, fails loudly instead of
+//! covering nothing. Cell 3 additionally re-derives that the recorded frames
+//! carry `delta.reasoning_content` (and that the recorded request asked for
+//! thinking), so a recording that stopped reasoning fails instead of
+//! covering nothing.
 
 use rig::message::AssistantContent;
 
@@ -39,17 +41,13 @@ use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::message::ReasoningContent;
 use rig::providers::deepseek;
-use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::support::{assert_matches_recorded_token, with_deepseek_cassette_result};
-use crate::support::{Observed, collect_text_and_terminal};
-
-/// The decoder's terminal record, as `raw` holds it: the shared
-/// chat-completions terminal over the wire's own accounting.
-type DeepSeekTerminal = StreamingCompletionResponse<ChatUsage>;
+use super::support::with_deepseek_cassette_result;
+use crate::raw_capture::{assert_no_request_id, capture_terminal, capture_text_and_terminal, chat};
+use crate::support::Observed;
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -87,6 +85,9 @@ struct ReasoningStreamObservation {
     terminal: Option<StreamFinal>,
 }
 
+/// Stays local: the shared [`capture_text_and_terminal`] keeps the text and
+/// the terminal record, and cell 3 is about a third thing the stream carried
+/// — the reasoning deltas, and the completed block that supersedes them.
 async fn collect_reasoning_text_and_terminal(
     mut stream: rig::streaming::StreamingCompletionResponse,
 ) -> ReasoningStreamObservation {
@@ -138,49 +139,6 @@ fn recorded_reasoning(scenario: &str) -> String {
         .collect()
 }
 
-/// The single recorded frame that carries usage: the terminal frame.
-fn recorded_terminal_frame(scenario: &str) -> Value {
-    let frames = crate::cassettes::recorded_sse_json_frames(PROVIDER, scenario);
-    let mut with_usage = frames.into_iter().filter(|frame| !frame["usage"].is_null());
-    let terminal = with_usage
-        .next()
-        .expect("the recorded stream must carry usage on its terminal frame");
-    assert!(
-        with_usage.next().is_none(),
-        "usage must be reported on exactly one (terminal) frame"
-    );
-    terminal
-}
-
-fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
-    assert_eq!(terminal.provider, PROVIDER, "provider");
-    assert_matches_recorded_token(
-        terminal.response_id.as_deref(),
-        frame["id"].as_str(),
-        "response id",
-    );
-    assert_eq!(terminal.model.as_deref(), frame["model"].as_str(), "model");
-    assert_eq!(
-        terminal.usage.input_tokens,
-        frame["usage"]["prompt_tokens"].as_u64(),
-        "input tokens"
-    );
-    assert_eq!(
-        terminal.usage.output_tokens,
-        frame["usage"]["completion_tokens"].as_u64(),
-        "output tokens"
-    );
-    assert_eq!(
-        terminal.usage.total_tokens,
-        frame["usage"]["total_tokens"].as_u64(),
-        "total tokens"
-    );
-    assert_eq!(
-        terminal.provider_request_id, None,
-        "DeepSeek contracts no id header"
-    );
-}
-
 // ================================================================
 // 1. raw round-trips the terminal type
 // ================================================================
@@ -188,36 +146,21 @@ fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
 #[tokio::test]
 async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let stream = model.stream(request(&model)).await?;
-            let (text, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("stream should end with a terminal record");
-            assert!(!text.is_empty());
-            let raw = &terminal.raw;
-            let typed = DeepSeekTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over DeepSeek usage");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed terminal serialized, nothing more"
-            );
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(typed.finish_reason, terminal.finish_reason);
-            sink.put(terminal);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_text_and_terminal(client.completion(MODEL), request, sink.clone()),
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
-    let terminal = observed.take();
-    let frame = recorded_terminal_frame(SCENARIO);
-    assert_terminal_reproduces_frame(&terminal, &frame);
+    let (text, terminal) = sink.take();
+    assert!(!text.is_empty());
+    chat::assert_terminal_round_trips(&terminal);
+
+    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
+    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
+    assert_no_request_id(terminal.provider_request_id.as_deref(), PROVIDER);
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
 }
@@ -230,23 +173,16 @@ async fn stream_raw_round_trips_terminal_type() {
 async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     const SCENARIO: &str =
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_cache_miss_tokens",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let stream = model.stream(request(&model)).await?;
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            sink.put(terminal.expect("stream should end with a terminal record"));
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_terminal(client.completion(MODEL), request, sink.clone()),
     )
     .await
     .expect("stream_raw_exposes_terminal_cache_miss_tokens should replay from its cassette");
 
-    let terminal = observed.take();
-    let frame = recorded_terminal_frame(SCENARIO);
+    let terminal = sink.take();
+    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
     let recorded_miss = frame["usage"]["prompt_cache_miss_tokens"]
         .as_u64()
         .expect("DeepSeek's terminal usage reports prompt_cache_miss_tokens");
@@ -257,7 +193,7 @@ async fn stream_raw_exposes_terminal_cache_miss_tokens() {
     let raw = &terminal.raw;
     // Typed, through the wire's own accounting shape: the OpenAI-compatible
     // counters are modeled and DeepSeek's split rides in `extra`.
-    let usage = DeepSeekTerminal::deserialize(raw)
+    let usage = chat::Terminal::deserialize(raw)
         .expect("raw is the chat-completions terminal over the wire's own usage")
         .usage
         .expect("the recorded terminal carries usage");
@@ -300,22 +236,7 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
         |client| async move {
             let model = client.completion(MODEL);
             let stream = model.stream(reasoning_request(&model)).await?;
-            let observation = collect_reasoning_text_and_terminal(stream).await;
-            let terminal = observation
-                .terminal
-                .as_ref()
-                .expect("stream should end with a terminal record");
-            let raw = &terminal.raw;
-            let typed = DeepSeekTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal over DeepSeek usage");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed terminal serialized, nothing more"
-            );
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(typed.finish_reason, terminal.finish_reason);
-            sink.put(observation);
+            sink.put(collect_reasoning_text_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())
         },
     )
@@ -327,8 +248,10 @@ async fn stream_reasoning_raw_round_trips_terminal_type() {
         .terminal
         .as_ref()
         .expect("the cell should observe a terminal record");
-    let frame = recorded_terminal_frame(SCENARIO);
-    assert_terminal_reproduces_frame(terminal, &frame);
+    chat::assert_terminal_round_trips(terminal);
+    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
+    chat::assert_terminal_reproduces_frame(terminal, PROVIDER, &frame, "the recorded frame");
+    assert_no_request_id(terminal.provider_request_id.as_deref(), PROVIDER);
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
     assert_eq!(request_body["thinking"], json!({ "type": "enabled" }));

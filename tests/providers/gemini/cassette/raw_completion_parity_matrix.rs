@@ -35,9 +35,7 @@
 //! with itself"; the harness replays interactions in order and fails on an
 //! interaction nothing consumed, so both turns are still issued.
 
-use rig::completion::{
-    AssistantContent, CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason,
-};
+use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
 use rig::providers::gemini::completion::gemini_api_types::{
     ContentCandidate, GenerateContentResponse, PartKind,
 };
@@ -46,11 +44,20 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{with_gemini_cassette, with_gemini_interactions_cassette};
+use crate::raw_capture::{assert_no_request_id, capture_completion_pair};
+use crate::support::{Observed, assistant_text};
 
 const PROVIDER: &str = "gemini";
 const REST_MODEL: &str = "gemini-2.5-flash-lite";
 const INTERACTIONS_MODEL: &str = "gemini-3-flash-preview";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: parity";
+
+/// The one request both cells send, twice: the same built request through one
+/// seam is what makes "the same bytes went out twice" a claim about `encode`
+/// rather than about the cell.
+fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
+    model.completion_request(PROMPT).temperature(0.0).build()
+}
 
 /// The parity a caller can rely on across two turns of identical bytes:
 /// everything the contract names, except that each request gets its own
@@ -66,14 +73,11 @@ fn assert_cross_request_parity(first: &RigCompletionResponse, second: &RigComple
     let first_identity = first.identity();
     let second_identity = second.identity();
     assert_eq!(first_identity.message_id, second_identity.message_id);
-    assert_eq!(
-        first_identity.provider_request_id, None,
-        "Gemini sends no request-id header, so the driver reports None by design"
-    );
-    assert_eq!(
-        second_identity.provider_request_id, None,
-        "and so does the second reply — the same seam, the same header set"
-    );
+    // Gemini sends no request-id header, so the driver reports None by
+    // design — and so does the second reply: the same seam, the same header
+    // set.
+    assert_no_request_id(first_identity.provider_request_id.as_deref(), "Gemini");
+    assert_no_request_id(second_identity.provider_request_id.as_deref(), "Gemini");
     assert!(
         first_identity
             .response_id
@@ -99,16 +103,6 @@ fn visible_text(candidate: &ContentCandidate) -> String {
         .filter(|part| !part.thought.unwrap_or(false))
         .filter_map(|part| match &part.part {
             PartKind::Text(text) => Some(text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
-fn choice_text(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
             _ => None,
         })
         .collect()
@@ -147,63 +141,58 @@ fn assert_two_recorded_turns(scenario: &str, status_pointer: &str, status: &str)
 #[tokio::test]
 async fn rest_raw_try_into_matches_completion() {
     const SCENARIO: &str = "raw_completion_parity_matrix/rest_raw_try_into_matches_completion";
+    let observed: Observed<(RigCompletionResponse, RigCompletionResponse)> = Observed::default();
+    let sink = observed.clone();
     with_gemini_cassette(
         "raw_completion_parity_matrix/rest_raw_try_into_matches_completion",
         |client| async move {
-            let model = client.completion(REST_MODEL);
-            let request = || model.completion_request(PROMPT).temperature(0.0).build();
-
-            let first = model
-                .completion(request())
+            capture_completion_pair(client.completion(REST_MODEL), request, sink)
                 .await
-                .expect("completion should succeed");
-            let second = model
-                .completion(request())
-                .await
-                .expect("the same request should succeed again");
-
-            assert_cross_request_parity(&first, &second);
-
-            // Same response: the captured raw, read back as Gemini's own
-            // `generateContent` document, reproduces the response it rode on.
-            let typed = GenerateContentResponse::deserialize(&second.raw)
-                .expect("captured raw is Gemini's own generateContent document");
-            assert_eq!(typed.model_version.as_deref(), second.model.as_deref());
-            assert_eq!(
-                Some(typed.response_id.as_str()),
-                second.response_id.as_deref()
-            );
-            assert_eq!(
-                typed
-                    .usage_metadata
-                    .as_ref()
-                    .map(|usage| usage.prompt_token_count as u64),
-                second.usage.input_tokens
-            );
-            assert_eq!(
-                typed
-                    .usage_metadata
-                    .as_ref()
-                    .map(|usage| usage.total_token_count as u64),
-                second.usage.total_tokens
-            );
-            let candidate = typed
-                .candidates
-                .first()
-                .expect("the recorded turn carries a candidate");
-            assert_eq!(
-                visible_text(candidate),
-                choice_text(&second.choice),
-                "the normalized text is exactly the document's visible text parts"
-            );
-            assert_eq!(
-                second.finish_reason(),
-                Some(FinishReason::Stop),
-                "the document's STOP reaches the caller as rig's Stop"
-            );
+                .expect("both turns of the same request should succeed");
         },
     )
     .await;
+
+    let (first, second) = observed.take();
+    assert_cross_request_parity(&first, &second);
+
+    // Same response: the captured raw, read back as Gemini's own
+    // `generateContent` document, reproduces the response it rode on.
+    let typed = GenerateContentResponse::deserialize(&second.raw)
+        .expect("captured raw is Gemini's own generateContent document");
+    assert_eq!(typed.model_version.as_deref(), second.model.as_deref());
+    assert_eq!(
+        Some(typed.response_id.as_str()),
+        second.response_id.as_deref()
+    );
+    assert_eq!(
+        typed
+            .usage_metadata
+            .as_ref()
+            .map(|usage| usage.prompt_token_count as u64),
+        second.usage.input_tokens
+    );
+    assert_eq!(
+        typed
+            .usage_metadata
+            .as_ref()
+            .map(|usage| usage.total_token_count as u64),
+        second.usage.total_tokens
+    );
+    let candidate = typed
+        .candidates
+        .first()
+        .expect("the recorded turn carries a candidate");
+    assert_eq!(
+        visible_text(candidate),
+        assistant_text(&second.choice),
+        "the normalized text is exactly the document's visible text parts"
+    );
+    assert_eq!(
+        second.finish_reason(),
+        Some(FinishReason::Stop),
+        "the document's STOP reaches the caller as rig's Stop"
+    );
 
     assert_two_recorded_turns(SCENARIO, "/candidates/0/finishReason", "STOP");
 }
@@ -212,53 +201,52 @@ async fn rest_raw_try_into_matches_completion() {
 async fn interactions_raw_try_into_matches_completion() {
     const SCENARIO: &str =
         "raw_completion_parity_matrix/interactions_raw_try_into_matches_completion";
+    let observed: Observed<(RigCompletionResponse, RigCompletionResponse)> = Observed::default();
+    let sink = observed.clone();
     with_gemini_interactions_cassette(
         "raw_completion_parity_matrix/interactions_raw_try_into_matches_completion",
         |client| async move {
-            let model = client.map_wire(|config| config.interactions(INTERACTIONS_MODEL));
-            let request = || model.completion_request(PROMPT).temperature(0.0).build();
-
-            let first = model
-                .completion(request())
-                .await
-                .expect("completion should succeed");
-            let second = model
-                .completion(request())
-                .await
-                .expect("the same request should succeed again");
-
-            assert_cross_request_parity(&first, &second);
-
-            // Same response: the captured raw, read back as the Interactions
-            // API's own document, reproduces the response it rode on.
-            let typed = Interaction::deserialize(&second.raw)
-                .expect("captured raw is the Interactions API's own document");
-            assert_eq!(typed.model, second.model);
-            assert_eq!(Some(typed.id.as_str()), second.response_id.as_deref());
-            assert_eq!(
-                typed
-                    .usage
-                    .as_ref()
-                    .and_then(|usage| usage.total_input_tokens),
-                second.usage.input_tokens
-            );
-            assert_eq!(
-                typed.usage.as_ref().and_then(|usage| usage.total_tokens),
-                second.usage.total_tokens
-            );
-            assert!(
-                matches!(typed.status, Some(InteractionStatus::Completed)),
-                "the document keeps the API's own lifecycle spelling, got {:?}",
-                typed.status
-            );
-            assert_eq!(
-                second.finish_reason(),
-                Some(FinishReason::Stop),
-                "and `completed` reaches the caller as rig's Stop"
-            );
+            capture_completion_pair(
+                client.map_wire(|config| config.interactions(INTERACTIONS_MODEL)),
+                request,
+                sink,
+            )
+            .await
+            .expect("both turns of the same request should succeed");
         },
     )
     .await;
+
+    let (first, second) = observed.take();
+    assert_cross_request_parity(&first, &second);
+
+    // Same response: the captured raw, read back as the Interactions API's
+    // own document, reproduces the response it rode on.
+    let typed = Interaction::deserialize(&second.raw)
+        .expect("captured raw is the Interactions API's own document");
+    assert_eq!(typed.model, second.model);
+    assert_eq!(Some(typed.id.as_str()), second.response_id.as_deref());
+    assert_eq!(
+        typed
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.total_input_tokens),
+        second.usage.input_tokens
+    );
+    assert_eq!(
+        typed.usage.as_ref().and_then(|usage| usage.total_tokens),
+        second.usage.total_tokens
+    );
+    assert!(
+        matches!(typed.status, Some(InteractionStatus::Completed)),
+        "the document keeps the API's own lifecycle spelling, got {:?}",
+        typed.status
+    );
+    assert_eq!(
+        second.finish_reason(),
+        Some(FinishReason::Stop),
+        "and `completed` reaches the caller as rig's Stop"
+    );
 
     assert_two_recorded_turns(SCENARIO, "/status", "completed");
 }

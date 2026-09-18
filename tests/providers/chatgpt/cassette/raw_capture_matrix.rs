@@ -36,7 +36,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/chatgpt/raw_capture_matrix/`.
 
-use rig::completion::{CompletionModel as _, FinishReason};
+use rig::completion::CompletionModel as _;
 use rig::driver::Bound;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
@@ -46,6 +46,9 @@ use serde_json::Value;
 
 use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
+use crate::raw_capture::{
+    assert_no_request_id, assert_normalized_lacks, capture_completion, responses,
+};
 use crate::support::{Observed, assert_wire_value_matches, normalized_without_raw};
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
@@ -61,6 +64,12 @@ fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
 /// The premise every cell rests on: the scenario recorded exactly one
 /// interaction whose SSE body ends with a `response.completed` frame whose
 /// `response` carries usage. Returns that terminal `response` object.
+///
+/// Stays local: a Responses reply arrives as SSE even on the blocking path, so
+/// the "body" the shared contract compares against is a frame's `response`
+/// envelope rather than a plain JSON body, and usage hangs under it — neither
+/// [`crate::raw_capture::chat::recorded_sole_usage_frame`]'s rule nor its
+/// sibling's describes that shape.
 fn recorded_terminal_response(scenario: &str) -> Value {
     assert_eq!(
         recorded_interaction_bodies(CHATGPT_PROVIDER, scenario).len(),
@@ -101,42 +110,42 @@ fn recorded_terminal_response(scenario: &str) -> Value {
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn raw_round_trips_provider_type() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_chatgpt_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-            let typed = responses_api::CompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into responses_api::CompletionResponse");
-            // `raw` is the provider's document, so it may carry more than
-            // the wire type models — never less, and never a different
-            // value for a field the type does parse.
-            let reserialized =
-                serde_json::to_value(&typed).expect("provider type should serialize");
-            for (field, value) in reserialized
-                .as_object()
-                .expect("a Responses envelope is a JSON object")
-            {
-                assert_eq!(
-                    raw.get(field),
-                    Some(value),
-                    "raw.{field} must be the value responses_api::CompletionResponse parsed"
-                );
-            }
-
-            // The typed view agrees with the normalized one on what the model
-            // said, so raw is a superset, not a divergent copy.
-            assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-            assert_eq!(response.provider, CHATGPT_PROVIDER);
-            assert!(!response.choice.is_empty());
         },
     )
     .await;
+
+    let response = captured.take();
+    let raw = &response.raw;
+    let typed = responses_api::CompletionResponse::deserialize(raw)
+        .expect("raw must deserialize into responses_api::CompletionResponse");
+    // `raw` is the provider's document, so it may carry more than
+    // the wire type models — never less, and never a different
+    // value for a field the type does parse.
+    let reserialized = serde_json::to_value(&typed).expect("provider type should serialize");
+    for (field, value) in reserialized
+        .as_object()
+        .expect("a Responses envelope is a JSON object")
+    {
+        assert_eq!(
+            raw.get(field),
+            Some(value),
+            "raw.{field} must be the value responses_api::CompletionResponse parsed"
+        );
+    }
+
+    // The typed view agrees with the normalized one on what the model
+    // said, so raw is a superset, not a divergent copy.
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(response.provider, CHATGPT_PROVIDER);
+    assert!(!response.choice.is_empty());
 
     let terminal = recorded_terminal_response(scenario);
     responses_api::CompletionResponse::deserialize(&terminal)
@@ -156,26 +165,20 @@ async fn raw_exposes_response_envelope() {
     with_chatgpt_cassette(
         "raw_capture_matrix/raw_exposes_response_envelope",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let normalized = normalized_without_raw(response.clone());
-            for field in ["object", "status", "created_at"] {
-                assert!(
-                    normalized.get(field).is_none(),
-                    "normalized CompletionResponse must not grow a `{field}` field"
-                );
-            }
-            let raw = response.raw;
-            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured.take();
+    let response = captured.take();
+    assert_normalized_lacks(
+        &normalized_without_raw(response.clone()),
+        &["object", "status", "created_at"],
+    );
+
+    let raw = response.raw;
     let terminal = recorded_terminal_response(scenario);
     for field in ["object", "status", "model"] {
         assert_eq!(
@@ -212,57 +215,41 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_chatgpt_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            // ChatGPT reads no transport request-id header, so the whole
-            // identity lives in the body and needs no reassembly here.
-            let from_raw = responses_api::CompletionResponse::deserialize(&response.raw)
-                .expect("raw must deserialize into responses_api::CompletionResponse");
-
-            assert_eq!(response.provider, CHATGPT_PROVIDER);
-            assert_eq!(response.model.as_deref(), Some(from_raw.model.as_str()));
-            assert_eq!(from_raw.status, responses_api::ResponseStatus::Completed);
-            assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-
-            let identity = response.identity();
-            assert_eq!(identity.provider_request_id, None);
-            assert_eq!(identity.response_id.as_deref(), Some(from_raw.id.as_str()));
-            assert_eq!(
-                identity.message_id,
-                from_raw.output.iter().find_map(|item| match item {
-                    responses_api::Output::Message(message) => Some(message.id.clone()),
-                    _ => None,
-                }),
-                "the normalized message id is the envelope's output-message id"
-            );
-
-            let usage = from_raw
-                .usage
-                .as_ref()
-                .expect("the terminal envelope must report usage");
-            assert_eq!(response.usage.input_tokens, Some(usage.input_tokens));
-            assert_eq!(response.usage.output_tokens, Some(usage.output_tokens));
-            assert_eq!(response.usage.total_tokens, Some(usage.total_tokens));
-            assert!(!response.choice.is_empty());
-
-            sink.put(response);
         },
     )
     .await;
 
     let response = captured.take();
+    let from_raw = responses_api::CompletionResponse::deserialize(&response.raw)
+        .expect("raw must deserialize into responses_api::CompletionResponse");
+    assert_eq!(response.provider, CHATGPT_PROVIDER);
+    responses::assert_native_matches_normalized(&response, &from_raw, "the envelope on raw");
+    // Both views here come from the *same* reply, so their ids agree
+    // verbatim: the shared contract's token comparison exists for a live
+    // value against a scrubbed fixture, and that relaxation does not apply.
+    assert_eq!(response.response_id.as_deref(), Some(from_raw.id.as_str()));
+    assert_eq!(
+        response.message_id,
+        from_raw.output.iter().find_map(|item| match item {
+            responses_api::Output::Message(message) => Some(message.id.clone()),
+            _ => None,
+        }),
+        "the normalized message id is the envelope's output-message id"
+    );
+    // ChatGPT reads no transport request-id header, so the whole identity
+    // lives in the body and needs no reassembly here.
+    assert_no_request_id(response.provider_request_id.as_deref(), CHATGPT_PROVIDER);
+    assert!(!response.choice.is_empty());
+
     let terminal = recorded_terminal_response(scenario);
     // Both sides are read through the same wire type, so the comparison is of
     // the facts the envelope models rather than of incidental JSON shape.
-    let live = responses_api::CompletionResponse::deserialize(&response.raw)
-        .expect("raw must deserialize into responses_api::CompletionResponse");
     let from_wire = responses_api::CompletionResponse::deserialize(&terminal)
         .expect("recorded terminal response must be a Responses envelope");
-    let mut live = serde_json::to_value(&live).expect("provider type should serialize");
+    let mut live = serde_json::to_value(&from_raw).expect("provider type should serialize");
     let mut from_wire = serde_json::to_value(&from_wire).expect("provider type should serialize");
     // Generated ids and the creation stamp are placeholdered on disk; only a
     // replay compares them exactly, a live recording checks presence and shape.

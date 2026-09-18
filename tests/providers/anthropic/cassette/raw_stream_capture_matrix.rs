@@ -64,6 +64,9 @@ use super::super::support::{
     assert_ids_match_recording, recorded_request_id_headers, with_anthropic_cassette,
 };
 
+use crate::raw_capture::{capture_terminal, stream_normalized_without_raw};
+use crate::support::Observed;
+
 const ANTHROPIC_PROVIDER: &str = "anthropic";
 const PROMPT: &str = "Reply with exactly: raw stream capture probe";
 /// From `empty_stop_sequence_matrix.rs`: one word, so the `alpha` sequence
@@ -133,9 +136,6 @@ struct Streamed {
     terminal: StreamFinal,
 }
 
-type TerminalSink = std::sync::Arc<std::sync::Mutex<Option<StreamFinal>>>;
-type StreamedSink = std::sync::Arc<std::sync::Mutex<Option<Streamed>>>;
-
 async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -> Streamed {
     let mut items = Vec::new();
     let mut terminal = None;
@@ -151,50 +151,25 @@ async fn drain_stream(mut stream: rig::streaming::StreamingCompletionResponse) -
     }
 }
 
-async fn drain_terminal(stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
-    drain_stream(stream).await.terminal
-}
-
-/// The body of cells 1–3: open the stream the cell's request describes and
-/// keep its terminal record for the assertions that run after the wrapper has
-/// written the fixture.
-async fn probe_body(
-    client: Bound<Anthropic>,
-    build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
-    sink: TerminalSink,
-) {
-    let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-    let stream = model
-        .stream(build(&model))
-        .await
-        .expect("stream should open");
-    *sink.lock().expect("sink") = Some(drain_terminal(stream).await);
-}
-
-/// The body of cells 4 and 5: the same, on the model the cell names, keeping
-/// the streamed items as well as the terminal.
+/// The body of cells 4 and 5: open the stream the cell's request describes on
+/// the model the cell names, keeping the streamed items as well as the
+/// terminal.
+///
+/// Cells 1–3 want only the terminal and use the shared
+/// [`capture_terminal`]; these two assert on the non-terminal items too, so
+/// the drain stays local.
 async fn streamed_body(
     client: Bound<Anthropic>,
     model_name: &str,
     build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
-    sink: StreamedSink,
+    sink: Observed<Streamed>,
 ) {
     let model = client.completion(model_name);
     let stream = model
         .stream(build(&model))
         .await
         .expect("stream should open");
-    *sink.lock().expect("sink") = Some(drain_stream(stream).await);
-}
-
-fn take_terminal(sink: &TerminalSink) -> StreamFinal {
-    let terminal = sink.lock().expect("sink").take();
-    terminal.expect("the cell body ran")
-}
-
-fn take_streamed(sink: &StreamedSink) -> Streamed {
-    let streamed = sink.lock().expect("sink").take();
-    streamed.expect("the cell body ran")
+    sink.put(drain_stream(stream).await);
 }
 
 /// Cells 4 and 5 share this: terminal `raw` is populated, and reads back into
@@ -235,18 +210,6 @@ fn contains_string(value: &Value, needle: &str) -> bool {
     let mut strings = Vec::new();
     collect_strings(value, &mut strings);
     strings.contains(&needle)
-}
-
-/// The normalized terminal, serialized, minus `raw` — what a cell inspects to
-/// prove a wire spelling is not part of the normalized vocabulary.
-fn normalized_without_raw(terminal: &StreamFinal) -> Value {
-    let mut normalized = serde_json::to_value(terminal).expect("terminal serializes");
-    normalized
-        .as_object_mut()
-        .expect("the terminal serializes as an object")
-        .remove("raw")
-        .expect("the terminal carries `raw`");
-    normalized
 }
 
 /// The premise every cell rests on, read from its own frames: `message_start`
@@ -337,16 +300,24 @@ fn assert_terminal_matches_fixture(
 
 #[tokio::test]
 async fn terminal_raw_round_trips_into_provider_type() {
-    let sink = TerminalSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette(
         "raw_stream_capture_matrix/terminal_raw_round_trips_into_provider_type",
         {
             let sink = sink.clone();
-            move |client| probe_body(client, probe_request, sink)
+            move |client| async move {
+                capture_terminal(
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    probe_request,
+                    sink,
+                )
+                .await
+                .expect("stream should open");
+            }
         },
     )
     .await;
-    let terminal = take_terminal(&sink);
+    let terminal = sink.take();
     let raw: &Value = &terminal.raw;
     assert!(
         !raw.is_null(),
@@ -434,12 +405,12 @@ async fn terminal_raw_round_trips_into_provider_type() {
 
 #[tokio::test]
 async fn raw_exposes_stop_sequence() {
-    let sink = TerminalSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette("raw_stream_capture_matrix/raw_exposes_stop_sequence", {
         let sink = sink.clone();
-        move |client| {
-            probe_body(
-                client,
+        move |client| async move {
+            capture_terminal(
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                 |model| {
                     model
                         .completion_request(IMMEDIATE_PROMPT)
@@ -449,10 +420,12 @@ async fn raw_exposes_stop_sequence() {
                 },
                 sink,
             )
+            .await
+            .expect("stream should open");
         }
     })
     .await;
-    let terminal = take_terminal(&sink);
+    let terminal = sink.take();
     let raw: &Value = &terminal.raw;
     assert!(
         !raw.is_null(),
@@ -476,13 +449,12 @@ async fn raw_exposes_stop_sequence() {
     // Normalized: folded into `Stop`; the provider's spelling and the
     // sequence itself are only on `raw`.
     assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
-    let normalized = serde_json::to_value(&terminal).expect("terminal serializes");
+    let normalized = stream_normalized_without_raw(&terminal);
     let normalized_keys: Vec<&str> = normalized
         .as_object()
         .expect("object")
         .keys()
         .map(String::as_str)
-        .filter(|key| *key != "raw")
         .collect();
     assert!(
         !normalized_keys.contains(&"stop_sequence") && !normalized_keys.contains(&"stop_reason"),
@@ -507,16 +479,24 @@ async fn raw_exposes_stop_sequence() {
 /// those is what the fixture recorded.
 #[tokio::test]
 async fn normalized_terminal_matches_raw_renormalized() {
-    let sink = TerminalSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette(
         "raw_stream_capture_matrix/normalized_terminal_matches_raw_renormalized",
         {
             let sink = sink.clone();
-            move |client| probe_body(client, probe_request, sink)
+            move |client| async move {
+                capture_terminal(
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    probe_request,
+                    sink,
+                )
+                .await
+                .expect("stream should open");
+            }
         },
     )
     .await;
-    let terminal = take_terminal(&sink);
+    let terminal = sink.take();
     let raw: &Value = &terminal.raw;
     assert!(
         !raw.is_null(),
@@ -560,7 +540,7 @@ async fn normalized_terminal_matches_raw_renormalized() {
 /// it into `reasoning_tokens` and never spells `thinking`.
 #[tokio::test]
 async fn terminal_raw_round_trips_for_thinking_stream() {
-    let sink = StreamedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette(
         "raw_stream_capture_matrix/terminal_raw_round_trips_for_thinking_stream",
         {
@@ -576,7 +556,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
         },
     )
     .await;
-    let Streamed { items, terminal } = take_streamed(&sink);
+    let Streamed { items, terminal } = sink.take();
     let raw: &Value = &terminal.raw;
     let typed = assert_raw_round_trips(raw);
 
@@ -649,7 +629,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
         terminal.usage.reasoning_tokens,
         Some(recorded_thinking_tokens)
     );
-    let normalized = normalized_without_raw(&terminal);
+    let normalized = stream_normalized_without_raw(&terminal);
     assert!(
         !contains_string(&normalized, "thinking")
             && !contains_string(&normalized, "thinking_tokens")
@@ -692,7 +672,7 @@ async fn terminal_raw_round_trips_for_thinking_stream() {
 /// frames and delivered as a `ToolCall` item whose provider id is the frame's.
 #[tokio::test]
 async fn terminal_raw_round_trips_for_tool_use_stream() {
-    let sink = StreamedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette(
         "raw_stream_capture_matrix/terminal_raw_round_trips_for_tool_use_stream",
         {
@@ -708,7 +688,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
         },
     )
     .await;
-    let Streamed { items, terminal } = take_streamed(&sink);
+    let Streamed { items, terminal } = sink.take();
     let raw: &Value = &terminal.raw;
     let typed = assert_raw_round_trips(raw);
 
@@ -757,7 +737,7 @@ async fn terminal_raw_round_trips_for_tool_use_stream() {
     assert_eq!(raw["stop_reason"], "tool_use");
     assert_eq!(typed.stop_reason.as_deref(), Some("tool_use"));
     assert_eq!(terminal.finish_reason, Some(FinishReason::ToolCalls));
-    let normalized = normalized_without_raw(&terminal);
+    let normalized = stream_normalized_without_raw(&terminal);
     assert!(
         !contains_string(&normalized, "tool_use") && !contains_string(&normalized, "stop_reason"),
         "the normalized terminal has neither the spelling `tool_use` nor a verbatim \

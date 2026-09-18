@@ -62,10 +62,8 @@ use rig::providers::openai;
 use rig::streaming::StreamEvent;
 use serde_json::Value;
 
-use super::super::support::{
-    OpenAiCassette, assert_matches_recorded_token, sse_json_frames, with_openai_cassette,
-};
-use crate::support::{Adder, TOOLS_PREAMBLE};
+use super::super::support::{OpenAiCassette, sse_json_frames, with_openai_cassette};
+use crate::support::{Adder, TOOLS_PREAMBLE, assert_matches_recorded_token};
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;

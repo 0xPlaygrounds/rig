@@ -17,6 +17,18 @@
 //! `eval_duration`, …) are what cell 2 reads back: the normalized
 //! [`StreamFinal`](rig::streaming::StreamFinal) has no field for them.
 //!
+//! Because the wire is Ollama's own — NDJSON lines, `done`/`done_reason`,
+//! `prompt_eval_count`/`eval_count`, no response id — the shared
+//! chat-completions terminal contract does not describe it, and neither do
+//! the shared SSE premise readers. What is shared here is the execution layer
+//! ([`capture_sole_terminal`](crate::raw_capture::capture_sole_terminal),
+//! which is the one-terminal-record rule this wire has) and the
+//! format-agnostic normalized-surface assertions
+//! ([`stream_normalized_without_raw`](crate::raw_capture::stream_normalized_without_raw)
+//! with [`assert_normalized_lacks`](crate::raw_capture::assert_normalized_lacks)).
+//! [`recorded_terminal_line`] stays local: it is the NDJSON rule, not the
+//! frame rules the SSE dialects share.
+//!
 //! # Matrix
 //!
 //! Recorded cells re-derive their premise from their own fixture bytes after
@@ -33,14 +45,16 @@
 //! Re-record with a local Ollama daemon serving `qwen3:4b`:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 
-use rig::completion::CompletionModel as _;
 use rig::providers::ollama;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_interaction_bodies;
-use crate::support::{Observed, collect_sole_terminal};
+use crate::raw_capture::{
+    assert_normalized_lacks, capture_sole_terminal, stream_normalized_without_raw,
+};
+use crate::support::Observed;
 
 const OLLAMA_PROVIDER: &str = "ollama";
 const MODEL: &str = "qwen3:4b";
@@ -106,41 +120,37 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(MODEL);
-            let stream = model
-                .stream(request(&model))
+            capture_sole_terminal(client.completion(MODEL), request, sink)
                 .await
                 .expect("stream should start");
-            let terminal = collect_sole_terminal(stream).await;
-
-            let raw = &terminal.raw;
-            let typed = ollama::StreamingCompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into ollama::StreamingCompletionResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("terminal type should serialize"),
-                *raw,
-                "ollama::StreamingCompletionResponse must round-trip through its own serde"
-            );
-
-            // The typed terminal agrees with the normalized one: raw is the
-            // record the adapter mapped, not a divergent copy.
-            assert_eq!(Some(typed.model.as_str()), terminal.model.as_deref());
-            assert_eq!(
-                typed.eval_count, terminal.usage.output_tokens,
-                "normalized output tokens come from the raw eval_count"
-            );
-            assert_eq!(
-                typed.prompt_eval_count, terminal.usage.input_tokens,
-                "normalized input tokens come from the raw prompt_eval_count"
-            );
-            sink.put(raw.clone());
         },
     )
     .await;
+    let terminal = captured.take();
+
+    let raw = &terminal.raw;
+    let typed = ollama::StreamingCompletionResponse::deserialize(raw)
+        .expect("raw must deserialize into ollama::StreamingCompletionResponse");
+    assert_eq!(
+        serde_json::to_value(&typed).expect("terminal type should serialize"),
+        *raw,
+        "ollama::StreamingCompletionResponse must round-trip through its own serde"
+    );
+
+    // The typed terminal agrees with the normalized one: raw is the
+    // record the adapter mapped, not a divergent copy.
+    assert_eq!(Some(typed.model.as_str()), terminal.model.as_deref());
+    assert_eq!(
+        typed.eval_count, terminal.usage.output_tokens,
+        "normalized output tokens come from the raw eval_count"
+    );
+    assert_eq!(
+        typed.prompt_eval_count, terminal.usage.input_tokens,
+        "normalized input tokens come from the raw prompt_eval_count"
+    );
 
     // Premise: the wire's terminal line is what raw carries.
     let terminal_line = recorded_terminal_line(scenario);
-    let raw = captured.take();
     assert_eq!(raw["eval_count"], terminal_line["eval_count"]);
     assert_eq!(raw["prompt_eval_count"], terminal_line["prompt_eval_count"]);
     assert_eq!(raw["done_reason"], terminal_line["done_reason"]);
@@ -158,32 +168,21 @@ async fn stream_raw_exposes_terminal_durations() {
     with_ollama_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_durations",
         |client| async move {
-            let model = client.completion(MODEL);
-            let stream = model
-                .stream(request(&model))
+            capture_sole_terminal(client.completion(MODEL), request, sink)
                 .await
                 .expect("stream should start");
-            let terminal = collect_sole_terminal(stream).await;
-
-            // The normalized terminal record provably lacks the timings.
-            let mut without_raw = terminal.clone();
-            without_raw.raw = Value::Null;
-            let normalized =
-                serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
-            for field in ["total_duration", "eval_duration", "load_duration"] {
-                assert!(
-                    normalized.get(field).is_none(),
-                    "normalized StreamFinal must not grow a `{field}` field"
-                );
-            }
-
-            let raw = terminal.raw;
-            sink.put(raw);
         },
     )
     .await;
+    let terminal = captured.take();
 
-    let raw = captured.take();
+    // The normalized terminal record provably lacks the timings.
+    assert_normalized_lacks(
+        &stream_normalized_without_raw(&terminal),
+        &["total_duration", "eval_duration", "load_duration"],
+    );
+
+    let raw = terminal.raw;
     let terminal_line = recorded_terminal_line(scenario);
     for field in [
         "total_duration",

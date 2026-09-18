@@ -31,14 +31,14 @@
 //! only frame carrying usage and the finish reason, and it is what rig's
 //! terminal record is built from.
 
-use futures::StreamExt;
 use rig::completion::{CompletionModel, FinishReason};
 use rig::providers::cohere::streaming::StreamingCompletionResponse;
-use rig::streaming::{Delta, StreamEvent, StreamFinal};
+use rig::streaming::StreamFinal;
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
+use crate::raw_capture::{capture_text_and_sole_terminal, stream_normalized_without_raw};
 use crate::support::{Observed, json_contains_key};
 
 const PROVIDER: &str = "cohere";
@@ -50,33 +50,6 @@ fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::Completio
         .temperature(0.0)
         .max_tokens(16)
         .build()
-}
-
-/// Drain a model stream and return its single terminal record.
-async fn stream_to_terminal(
-    model: &(impl CompletionModel + Clone),
-    request: rig::completion::CompletionRequest,
-) -> StreamFinal {
-    let mut stream = model.stream(request).await.expect("stream should open");
-    let mut terminal = None;
-    let mut text = String::new();
-    while let Some(item) = stream.next().await {
-        match item.expect("stream item should succeed") {
-            StreamEvent::BlockDelta {
-                delta: Delta::Text { text: delta },
-                ..
-            } => text.push_str(&delta),
-            StreamEvent::Final(final_record) => {
-                assert!(
-                    terminal.replace(final_record).is_none(),
-                    "a stream yields exactly one terminal record"
-                );
-            }
-            _ => {}
-        }
-    }
-    assert!(!text.is_empty(), "the stream should have carried text");
-    terminal.expect("stream should yield a terminal record")
 }
 
 /// The recorded `message-end` frame's `delta` — the premise every cell rests
@@ -125,45 +98,46 @@ fn number_at(value: &Value, pointer: &str) -> Option<f64> {
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<(String, StreamFinal)> = Observed::default();
     let sink = observed.clone();
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let terminal = stream_to_terminal(&model, request(&model)).await;
-
-            let raw = &terminal.raw;
-
-            let typed = StreamingCompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into Cohere's streaming terminal type");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed raw re-serializes"),
-                *raw,
-                "cohere::streaming::StreamingCompletionResponse must round-trip through its own \
-             Serialize/Deserialize"
-            );
-
-            // The typed value agrees with the normalized terminal next to it.
-            assert_eq!(typed.message_id, terminal.response_id);
-            assert_eq!(
-                typed
-                    .usage
-                    .as_ref()
-                    .and_then(|usage| usage.tokens.as_ref())
-                    .and_then(|tokens| tokens.input_tokens)
-                    .map(|tokens| tokens as u64),
-                terminal.usage.input_tokens
-            );
-            sink.put(raw.clone());
+            capture_text_and_sole_terminal(client.completion(CASSETTE_MODEL), request, sink)
+                .await
+                .expect("stream should open");
         },
     )
     .await;
 
-    let raw = observed.take();
+    let (text, terminal) = observed.take();
+    assert!(!text.is_empty(), "the stream should have carried text");
+    let raw = &terminal.raw;
+
+    let typed = StreamingCompletionResponse::deserialize(raw)
+        .expect("raw must deserialize into Cohere's streaming terminal type");
+    assert_eq!(
+        serde_json::to_value(&typed).expect("typed raw re-serializes"),
+        *raw,
+        "cohere::streaming::StreamingCompletionResponse must round-trip through its own \
+         Serialize/Deserialize"
+    );
+
+    // The typed value agrees with the normalized terminal next to it.
+    assert_eq!(typed.message_id, terminal.response_id);
+    assert_eq!(
+        typed
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.tokens.as_ref())
+            .and_then(|tokens| tokens.input_tokens)
+            .map(|tokens| tokens as u64),
+        terminal.usage.input_tokens
+    );
+
     let delta = recorded_message_end_delta(SCENARIO);
     assert_eq!(
-        number_at(&raw, "/usage/tokens/input_tokens"),
+        number_at(raw, "/usage/tokens/input_tokens"),
         number_at(&delta, "/usage/tokens/input_tokens"),
         "{SCENARIO}: the captured terminal usage must be the message-end token counter"
     );
@@ -176,38 +150,34 @@ async fn raw_roundtrips_streaming_completion_response() {
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<(String, StreamFinal)> = Observed::default();
     let sink = observed.clone();
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let terminal = stream_to_terminal(&model, request(&model)).await;
-
-            let raw = &terminal.raw;
-            sink.put(raw.clone());
-
-            // The normalized terminal provably lacks these: billed units have no
-            // normalized home, and the finish reason reaches it only as rig's
-            // vocabulary.
-            let mut normalized =
-                serde_json::to_value(&terminal).expect("normalized terminal serializes");
-            normalized
-                .as_object_mut()
-                .expect("terminal is an object")
-                .remove("raw");
-            assert!(!json_contains_key(&normalized, "billed_units"));
-            assert_ne!(
-                normalized.get("finish_reason"),
-                Some(&Value::String("COMPLETE".to_string())),
-                "the normalized finish reason is rig's spelling, not Cohere's"
-            );
-            assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+            capture_text_and_sole_terminal(client.completion(CASSETTE_MODEL), request, sink)
+                .await
+                .expect("stream should open");
         },
     )
     .await;
 
-    let raw = observed.take();
+    let (text, terminal) = observed.take();
+    assert!(!text.is_empty(), "the stream should have carried text");
+
+    // The normalized terminal provably lacks these: billed units have no
+    // normalized home, and the finish reason reaches it only as rig's
+    // vocabulary.
+    let normalized = stream_normalized_without_raw(&terminal);
+    assert!(!json_contains_key(&normalized, "billed_units"));
+    assert_ne!(
+        normalized.get("finish_reason"),
+        Some(&Value::String("COMPLETE".to_string())),
+        "the normalized finish reason is rig's spelling, not Cohere's"
+    );
+    assert_eq!(terminal.finish_reason, Some(FinishReason::Stop));
+
+    let raw = &terminal.raw;
     let delta = recorded_message_end_delta(SCENARIO);
     assert_eq!(
         raw.get("finish_reason"),
@@ -221,7 +191,7 @@ async fn raw_exposes_terminal_only_fields() {
         "/usage/tokens/output_tokens",
     ] {
         assert_eq!(
-            number_at(&raw, pointer),
+            number_at(raw, pointer),
             number_at(&delta, pointer),
             "raw must carry {pointer} exactly as the message-end delta sent it"
         );

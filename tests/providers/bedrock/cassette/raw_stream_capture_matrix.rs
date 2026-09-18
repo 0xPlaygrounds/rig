@@ -18,6 +18,17 @@
 //! the premise checks below decode the fixture body and locate the JSON
 //! payloads of the `messageStop` and `metadata` events inside it.
 //!
+//! Both cells stream their one recorded turn through the shared execution
+//! helper [`capture_sole_terminal`](crate::raw_capture::capture_sole_terminal)
+//! — Bedrock's contract is exactly one terminal record — and assert against
+//! the parked terminal after the wrapper returns. The shared *format*
+//! contracts (`raw_capture::chat`, `raw_capture::responses`) do not apply:
+//! ConverseStream is neither dialect, the frames are binary rather than SSE
+//! JSON, and the type that would name the claim
+//! ([`BedrockStreamingResponse`]) lives in `rig-bedrock`, which the shared
+//! support crate does not depend on. The terminal-type round trip and the
+//! event-stream premises below are therefore local by necessity.
+//!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
@@ -45,7 +56,10 @@ use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
 use crate::cassettes::recorded_interaction_bodies;
-use crate::support::{Observed, collect_sole_terminal};
+use crate::raw_capture::{
+    assert_normalized_lacks, capture_sole_terminal, stream_normalized_without_raw,
+};
+use crate::support::Observed;
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
@@ -126,42 +140,36 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-
-            let raw = &terminal.raw;
-            let typed = BedrockStreamingResponse::deserialize(raw)
-                .expect("raw must deserialize into BedrockStreamingResponse");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("terminal type should serialize"),
-                *raw,
-                "BedrockStreamingResponse must round-trip through its own serde"
-            );
-
-            // The typed terminal agrees with the normalized one: raw is the
-            // record the adapter's `final_record` mapped.
-            let usage = typed.usage.expect("terminal carries usage");
-            assert_eq!(Some(usage.total_tokens as u64), terminal.usage.total_tokens);
-            assert_eq!(Some(usage.input_tokens as u64), terminal.usage.input_tokens);
-            assert_eq!(
-                Some(usage.output_tokens as u64),
-                terminal.usage.output_tokens
-            );
-            assert_eq!(typed.provider_request_id, terminal.provider_request_id);
-            sink.put(raw.clone());
+            capture_sole_terminal(client.completion(MODEL), request, sink)
+                .await
+                .expect("stream should start");
         },
     )
     .await;
 
-    let (_, usage) = recorded_terminal_events(scenario);
-    let raw = captured.take();
-    assert_eq!(raw["usage"]["total_tokens"], usage["totalTokens"]);
+    let terminal = captured.take();
+    let raw = &terminal.raw;
+    let typed = BedrockStreamingResponse::deserialize(raw)
+        .expect("raw must deserialize into BedrockStreamingResponse");
+    assert_eq!(
+        serde_json::to_value(&typed).expect("terminal type should serialize"),
+        *raw,
+        "BedrockStreamingResponse must round-trip through its own serde"
+    );
+
+    // The typed terminal agrees with the normalized one: raw is the record the
+    // adapter's `final_record` mapped.
+    let usage = typed.usage.expect("terminal carries usage");
+    assert_eq!(Some(usage.total_tokens as u64), terminal.usage.total_tokens);
+    assert_eq!(Some(usage.input_tokens as u64), terminal.usage.input_tokens);
+    assert_eq!(
+        Some(usage.output_tokens as u64),
+        terminal.usage.output_tokens
+    );
+    assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+
+    let (_, recorded_usage) = recorded_terminal_events(scenario);
+    assert_eq!(raw["usage"]["total_tokens"], recorded_usage["totalTokens"]);
 }
 
 // ---------------------------------------------------------------------------
@@ -177,34 +185,23 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_bedrock_stop_reason",
         |client| async move {
-            let model = client.completion(MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-
-            // The normalized terminal spells the finish reason in rig's
-            // vocabulary; Bedrock's own spelling is only on raw.
-            let mut without_raw = terminal.clone();
-            without_raw.raw = Value::Null;
-            let normalized =
-                serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
-            assert!(normalized.get("stop_reason").is_none());
-            assert_eq!(
-                terminal.finish_reason,
-                Some(rig::completion::FinishReason::Stop)
-            );
-
-            let raw = terminal.raw;
-            sink.put(raw);
+            capture_sole_terminal(client.completion(MODEL), request, sink)
+                .await
+                .expect("stream should start");
         },
     )
     .await;
 
-    let raw = captured.take();
+    let terminal = captured.take();
+    // The normalized terminal spells the finish reason in rig's vocabulary;
+    // Bedrock's own spelling is only on raw.
+    assert_normalized_lacks(&stream_normalized_without_raw(&terminal), &["stop_reason"]);
+    assert_eq!(
+        terminal.finish_reason,
+        Some(rig::completion::FinishReason::Stop)
+    );
+
+    let raw = terminal.raw;
     let (stop_reason, usage) = recorded_terminal_events(scenario);
     assert_eq!(
         stop_reason, "end_turn",

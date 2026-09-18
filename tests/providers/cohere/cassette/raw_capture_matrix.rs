@@ -44,7 +44,8 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
-use crate::support::{Observed, json_contains_key};
+use crate::raw_capture::capture_completion;
+use crate::support::{Observed, json_contains_key, normalized_without_raw};
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: captured";
@@ -76,15 +77,6 @@ fn assert_recorded_complete_turn(scenario: &str) -> Value {
     body
 }
 
-fn normalized_without_raw(response: &RigCompletionResponse) -> Value {
-    let mut value = serde_json::to_value(response).expect("normalized response serializes");
-    value
-        .as_object_mut()
-        .expect("normalized response is an object")
-        .remove("raw");
-    value
-}
-
 /// Cohere's counters are `f64` on rig's wire type, so a captured `6.0`
 /// must be compared numerically against the fixture's `6`.
 fn number_at(value: &Value, pointer: &str) -> Option<f64> {
@@ -98,62 +90,59 @@ fn number_at(value: &Value, pointer: &str) -> Option<f64> {
 #[tokio::test]
 async fn raw_roundtrips_cohere_completion_response() {
     const SCENARIO: &str = "raw_capture_matrix/raw_roundtrips_cohere_completion_response";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<RigCompletionResponse> = Observed::default();
     let sink = observed.clone();
     with_cohere_cassette(
         "raw_capture_matrix/raw_roundtrips_cohere_completion_response",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(CASSETTE_MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-
-            let typed = CompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into Cohere's CompletionResponse");
-
-            // The typed value agrees with the normalized fields next to it.
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            assert_eq!(
-                typed
-                    .usage
-                    .as_ref()
-                    .and_then(|usage| usage.tokens.as_ref())
-                    .and_then(|tokens| tokens.input_tokens)
-                    .map(|tokens| tokens as u64),
-                response.usage.input_tokens
-            );
-            sink.put(raw.clone());
-
-            // One decoder, two views: the provider's own fields say what the
-            // normalized response says. Asserting them against each other
-            // pins the decoder's mapping; re-normalizing the typed value by
-            // hand would only compare that mapping to a copy of itself.
-            assert_eq!(
-                typed.finish_reason,
-                CohereFinishReason::Complete,
-                "the recorded turn completed naturally in Cohere's own vocabulary"
-            );
-            assert_eq!(
-                response.finish_reason(),
-                Some(FinishReason::Stop),
-                "and the decoder maps COMPLETE onto a natural stop"
-            );
-            let (content, _, _) = typed
-                .message()
-                .expect("the recorded turn is an assistant message");
-            assert_eq!(
-                content.len(),
-                response.choice.len(),
-                "the provider's blocks and the normalized choice are the same blocks"
-            );
         },
     )
     .await;
 
-    let raw = observed.take();
+    let response = observed.take();
+    let raw = &response.raw;
+
+    let typed = CompletionResponse::deserialize(raw)
+        .expect("raw must deserialize into Cohere's CompletionResponse");
+
+    // The typed value agrees with the normalized fields next to it.
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(
+        typed
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.tokens.as_ref())
+            .and_then(|tokens| tokens.input_tokens)
+            .map(|tokens| tokens as u64),
+        response.usage.input_tokens
+    );
+
+    // One decoder, two views: the provider's own fields say what the
+    // normalized response says. Asserting them against each other pins the
+    // decoder's mapping; re-normalizing the typed value by hand would only
+    // compare that mapping to a copy of itself.
+    assert_eq!(
+        typed.finish_reason,
+        CohereFinishReason::Complete,
+        "the recorded turn completed naturally in Cohere's own vocabulary"
+    );
+    assert_eq!(
+        response.finish_reason(),
+        Some(FinishReason::Stop),
+        "and the decoder maps COMPLETE onto a natural stop"
+    );
+    let (content, _, _) = typed
+        .message()
+        .expect("the recorded turn is an assistant message");
+    assert_eq!(
+        content.len(),
+        response.choice.len(),
+        "the provider's blocks and the normalized choice are the same blocks"
+    );
+
     let body = assert_recorded_complete_turn(SCENARIO);
     // Cohere's generation id is not scrubbed, so the captured value can be
     // pinned to the recorded bytes.
@@ -167,36 +156,33 @@ async fn raw_roundtrips_cohere_completion_response() {
 #[tokio::test]
 async fn raw_exposes_billing_metadata() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_billing_metadata";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<RigCompletionResponse> = Observed::default();
     let sink = observed.clone();
     with_cohere_cassette(
         "raw_capture_matrix/raw_exposes_billing_metadata",
         |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(CASSETTE_MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-            sink.put(raw.clone());
-
-            // The normalized response provably lacks these: billed units have no
-            // normalized home, and the finish reason reaches it only as rig's
-            // vocabulary.
-            let normalized = normalized_without_raw(&response);
-            assert!(!json_contains_key(&normalized, "billed_units"));
-            assert_ne!(
-                normalized.get("finish_reason"),
-                Some(&Value::String("COMPLETE".to_string())),
-                "the normalized finish reason is rig's spelling, not Cohere's"
-            );
-            assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
         },
     )
     .await;
 
-    let raw = observed.take();
+    let response = observed.take();
+
+    // The normalized response provably lacks these: billed units have no
+    // normalized home, and the finish reason reaches it only as rig's
+    // vocabulary.
+    let normalized = normalized_without_raw(response.clone());
+    assert!(!json_contains_key(&normalized, "billed_units"));
+    assert_ne!(
+        normalized.get("finish_reason"),
+        Some(&Value::String("COMPLETE".to_string())),
+        "the normalized finish reason is rig's spelling, not Cohere's"
+    );
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+
+    let raw = &response.raw;
     let body = assert_recorded_complete_turn(SCENARIO);
     assert_eq!(
         raw.get("finish_reason"),
@@ -210,7 +196,7 @@ async fn raw_exposes_billing_metadata() {
         "/usage/tokens/output_tokens",
     ] {
         assert_eq!(
-            number_at(&raw, pointer),
+            number_at(raw, pointer),
             number_at(&body, pointer),
             "raw must carry {pointer} exactly as the wire sent it"
         );

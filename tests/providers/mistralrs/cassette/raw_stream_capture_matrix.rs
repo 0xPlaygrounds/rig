@@ -38,8 +38,11 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
-use crate::support::{Observed, collect_sole_terminal};
+use crate::cassettes::CassetteMode;
+use crate::raw_capture::{
+    assert_normalized_lacks, capture_sole_terminal, chat, stream_normalized_without_raw,
+};
+use crate::support::Observed;
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
 /// The plain OpenAI dialect names itself `openai`, and a terminal record is
@@ -59,37 +62,7 @@ fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
 /// The premise every streaming cell rests on: the scenario recorded exactly
 /// one interaction whose SSE stream's last JSON frame carries `usage`. Returns
 /// `(all frames, terminal frame)`.
-fn recorded_frames_with_terminal(scenario: &str) -> (Vec<Value>, Value) {
-    assert_eq!(
-        recorded_interaction_bodies(MISTRALRS_PROVIDER, scenario).len(),
-        1,
-        "{scenario}: the scenario must record exactly one interaction"
-    );
-    let frames = recorded_sse_json_frames(MISTRALRS_PROVIDER, scenario);
-    let terminal = frames
-        .last()
-        .cloned()
-        .unwrap_or_else(|| panic!("{scenario}: the recorded stream should carry frames"));
-    assert!(
-        terminal.get("usage").is_some_and(Value::is_object),
-        "{scenario}: the recorded stream must end with a usage-bearing frame — \
-         without it the terminal record carries no usage and this cell proves nothing"
-    );
-    (frames, terminal)
-}
-
-/// Every recorded chunk stamps the same envelope value for `key`; returns it.
-fn recorded_envelope_field(frames: &[Value], key: &str, scenario: &str) -> Value {
-    let mut values = frames.iter().filter_map(|frame| frame.get(key)).cloned();
-    let first = values
-        .next()
-        .unwrap_or_else(|| panic!("{scenario}: recorded chunks must carry `{key}`"));
-    assert!(
-        values.all(|value| value == first),
-        "{scenario}: every recorded chunk must agree on `{key}`"
-    );
-    first
-}
+///
 
 // ---------------------------------------------------------------------------
 // 1: raw is the raw_stream FinalResponse, serialized
@@ -104,49 +77,34 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.chat(model_name());
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-            let raw = &terminal.raw;
-            let typed = MistralRsTerminal::deserialize(raw)
-                .expect("raw must deserialize into the wire's terminal record");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("terminal type should serialize"),
-                *raw,
-                "the terminal record must round-trip through its own serde"
-            );
-            let usage = typed
-                .usage
-                .as_ref()
-                .expect("the terminal record carries the reply's accounting");
-            assert_eq!(
-                usage.to_normalized(),
-                terminal.usage,
-                "the normalized usage is that accounting, normalized"
-            );
-            assert_eq!(
-                Some(usage.openai.prompt_tokens as u64),
-                terminal.usage.input_tokens
-            );
-            assert_eq!(
-                usage.openai.completion_tokens.map(|tokens| tokens as u64),
-                terminal.usage.output_tokens
-            );
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(typed.model, terminal.model);
-            assert_eq!(terminal.provider, NORMALIZED_PROVIDER);
-            sink.put(raw.clone());
+            capture_sole_terminal(client.chat(model_name()), request, sink)
+                .await
+                .expect("stream should start");
         },
     )
     .await;
 
-    let (_, terminal_frame) = recorded_frames_with_terminal(scenario);
-    let raw = captured.take();
+    let terminal = captured.take();
+    let typed = chat::assert_terminal_round_trips(&terminal);
+    // mistral.rs keeps its per-second throughput counters beside the
+    // OpenAI-compatible ones, so the flattened shared counts are the halves
+    // the normalized usage is made of.
+    let usage = typed
+        .usage
+        .as_ref()
+        .expect("the terminal record carries the reply's accounting");
+    assert_eq!(
+        Some(usage.openai.prompt_tokens as u64),
+        terminal.usage.input_tokens
+    );
+    assert_eq!(
+        usage.openai.completion_tokens.map(|tokens| tokens as u64),
+        terminal.usage.output_tokens
+    );
+    assert_eq!(terminal.provider, NORMALIZED_PROVIDER);
+
+    let (_, terminal_frame) = chat::recorded_frames_with_terminal(MISTRALRS_PROVIDER, scenario);
+    let raw = &terminal.raw;
     assert_eq!(
         raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
@@ -170,50 +128,41 @@ async fn stream_raw_exposes_envelope_fields() {
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
-            let model = client.chat(model_name());
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-            let mut without_raw = terminal.clone();
-            without_raw.raw = Value::Null;
-            let normalized =
-                serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
-            for field in [
-                "system_fingerprint",
-                "object",
-                "created",
-                "additional_params",
-            ] {
-                assert!(
-                    normalized.get(field).is_none(),
-                    "normalized StreamFinal must not grow a `{field}` field"
-                );
-            }
-            let raw = terminal.raw;
-            sink.put(raw);
+            capture_sole_terminal(client.chat(model_name()), request, sink)
+                .await
+                .expect("stream should start");
         },
     )
     .await;
 
-    let raw = captured.take();
-    let (frames, terminal_frame) = recorded_frames_with_terminal(scenario);
+    let terminal = captured.take();
+    let normalized = stream_normalized_without_raw(&terminal);
+    assert_normalized_lacks(
+        &normalized,
+        &[
+            "system_fingerprint",
+            "object",
+            "created",
+            "additional_params",
+        ],
+    );
+
+    let raw = &terminal.raw;
+    let (frames, terminal_frame) =
+        chat::recorded_frames_with_terminal(MISTRALRS_PROVIDER, scenario);
     let params = raw
         .get("additional_params")
         .expect("raw terminal must carry the accumulated envelope under additional_params");
     for key in ["system_fingerprint", "object"] {
         assert_eq!(
             params.get(key),
-            Some(&recorded_envelope_field(&frames, key, scenario)),
+            Some(&chat::recorded_envelope_field(&frames, key, scenario)),
             "raw.additional_params.{key} must equal the recorded chunk envelope"
         );
     }
     // `created` is volatile: the scrubber placeholders it on disk, so only a
     // replay compares it exactly.
-    let created = recorded_envelope_field(&frames, "created", scenario);
+    let created = chat::recorded_envelope_field(&frames, "created", scenario);
     match CassetteMode::current() {
         CassetteMode::Replay => assert_eq!(params.get("created"), Some(&created)),
         CassetteMode::Record => assert!(
@@ -222,7 +171,7 @@ async fn stream_raw_exposes_envelope_fields() {
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    let typed = MistralRsTerminal::deserialize(&raw)
+    let typed = MistralRsTerminal::deserialize(raw)
         .expect("raw must deserialize into the wire's terminal record");
     let typed_params = typed
         .additional_params

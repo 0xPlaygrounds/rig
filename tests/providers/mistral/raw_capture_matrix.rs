@@ -28,19 +28,28 @@
 //! of the recorded body, so a recording that stopped carrying a usage block,
 //! a finish reason, the correlation-id header, or a tool call fails loudly
 //! instead of covering nothing.
+//!
+//! The format-wide half of cell 3 — "the normalized fields are the recorded
+//! reply's" — is [`chat::assert_reproduces_body`], shared by every
+//! chat-completions dialect. The provider-native half stays here, because
+//! Mistral's decoder maps from [`mistral::CompletionResponse`] rather than
+//! the shared chat-completions type the format helper compares against.
 
-use rig::completion::{
-    CompletionModel, CompletionRequest, CompletionResponse, FinishReason, ToolDefinition,
-};
+use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
 use rig::message::AssistantContent;
 use rig::providers::mistral;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::DEFAULT_MODEL;
-use super::support::{assert_matches_recorded_token, with_mistral_cassette_result};
+use super::support::with_mistral_cassette_result;
 use crate::cassettes::{recorded_json_turn, recorded_response_header};
-use crate::support::{Observed, assistant_text, recorded_chat_finish_reason};
+use crate::raw_capture::{
+    assert_contracted_request_id, assert_normalized_lacks, capture_completion, chat,
+};
+use crate::support::{
+    Observed, assert_matches_recorded_token, assistant_text, normalized_without_raw,
+};
 
 const PROVIDER: &str = "mistral";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -91,59 +100,6 @@ fn provider_text(choice: &mistral::Choice) -> &str {
     }
 }
 
-/// The normalized fields, checked against the wire bytes that produced them.
-fn assert_reproduces_fixture(
-    response: &CompletionResponse,
-    body: &Value,
-    request_id: Option<&str>,
-) {
-    assert_eq!(response.provider, PROVIDER, "provider");
-    assert_matches_recorded_token(
-        response.response_id.as_deref(),
-        body["id"].as_str(),
-        "response id",
-    );
-    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
-    assert_eq!(
-        response.finish_reason(),
-        Some(recorded_chat_finish_reason(body)),
-        "finish reason"
-    );
-    assert_eq!(
-        response.usage.input_tokens,
-        body["usage"]["prompt_tokens"].as_u64(),
-        "input tokens"
-    );
-    assert_eq!(
-        response.usage.output_tokens,
-        body["usage"]["completion_tokens"].as_u64(),
-        "output tokens"
-    );
-    assert_eq!(
-        response.usage.total_tokens,
-        body["usage"]["total_tokens"].as_u64(),
-        "total tokens"
-    );
-    assert_eq!(
-        assistant_text(&response.choice),
-        body["choices"][0]["message"]["content"]
-            .as_str()
-            .expect("recorded content"),
-        "choice text"
-    );
-    // Mistral contracts `mistral-correlation-id`; the recorded header is the
-    // premise.
-    assert!(
-        request_id.is_some(),
-        "the recorded response must carry mistral-correlation-id"
-    );
-    assert_matches_recorded_token(
-        response.provider_request_id.as_deref(),
-        request_id,
-        "request id",
-    );
-}
-
 // ================================================================
 // 1. raw round-trips Mistral's own type
 // ================================================================
@@ -151,34 +107,33 @@ fn assert_reproduces_fixture(
 #[tokio::test]
 async fn raw_round_trips_mistral_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_mistral_type";
+    let observed = Observed::default();
     with_mistral_cassette_result(
         "raw_capture_matrix/raw_round_trips_mistral_type",
-        |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            // `raw` is the reply document, so Mistral's own response type
-            // reads it back — the documented escape hatch — and its
-            // provider-native fields are the normalized response's fields.
-            let typed = mistral::CompletionResponse::deserialize(&response.raw)
-                .expect("raw is Mistral's own CompletionResponse");
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-            let usage = typed.usage.as_ref().expect("Mistral reports usage");
-            assert_eq!(
-                Some(usage.total_tokens as u64),
-                response.usage.total_tokens,
-                "one reply, one token count"
-            );
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
     )
     .await
     .expect("raw_round_trips_mistral_type should replay from its cassette");
 
+    let response = observed.take();
     let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert!(
         response_body["choices"][0]["message"]["content"].is_string(),
         "the recorded turn should be a plain text answer"
+    );
+
+    // `raw` is the reply document, so Mistral's own response type reads it
+    // back — the documented escape hatch — and its provider-native fields
+    // are the normalized response's fields.
+    let typed = mistral::CompletionResponse::deserialize(&response.raw)
+        .expect("raw is Mistral's own CompletionResponse");
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    let usage = typed.usage.as_ref().expect("Mistral reports usage");
+    assert_eq!(
+        Some(usage.total_tokens as u64),
+        response.usage.total_tokens,
+        "one reply, one token count"
     );
 }
 
@@ -190,15 +145,9 @@ async fn raw_round_trips_mistral_type() {
 async fn raw_exposes_object_and_service_tier() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object_and_service_tier";
     let observed = Observed::default();
-    let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_capture_matrix/raw_exposes_object_and_service_tier",
-        |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
     )
     .await
     .expect("raw_exposes_object_and_service_tier should replay from its cassette");
@@ -215,14 +164,12 @@ async fn raw_exposes_object_and_service_tier() {
     let raw = &response.raw;
     assert_eq!(raw["object"], json!(recorded_object));
     assert_eq!(raw["usage"]["service_tier"], json!(recorded_tier));
-    // And the normalized view has no slot for either.
+    // And the normalized view has no slot for either — checked against the
+    // response with its capture cleared, so `raw` cannot satisfy the claim it
+    // is the counterexample to.
     let normalized_usage = serde_json::to_value(response.usage).expect("usage serializes");
-    assert!(
-        normalized_usage.get("service_tier").is_none(),
-        "the normalized usage has no tier slot: {normalized_usage}"
-    );
-    let normalized = serde_json::to_value(&response).expect("response serializes");
-    assert!(normalized.get("object").is_none());
+    assert_normalized_lacks(&normalized_usage, &["service_tier"]);
+    assert_normalized_lacks(&normalized_without_raw(response), &["object"]);
 }
 
 // ================================================================
@@ -233,27 +180,30 @@ async fn raw_exposes_object_and_service_tier() {
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
     let observed = Observed::default();
-    let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
-            let response = model.completion(request(&model)).await?;
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(DEFAULT_MODEL), request, observed.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
 
     let response = observed.take();
     let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
-    assert_reproduces_fixture(&response, &body, recorded_request_id(SCENARIO).as_deref());
+    chat::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
+    // Mistral contracts `mistral-correlation-id`; the recorded header is the
+    // premise.
+    assert_contracted_request_id(
+        response.provider_request_id.as_deref(),
+        recorded_request_id(SCENARIO).as_deref(),
+        REQUEST_ID_HEADER,
+    );
 
     // One reply, two views. `raw` is the document Mistral sent; its own type
     // reads that back, and every provider-native field it exposes must be
     // the normalized response's. There is one decoder and one mapping now,
-    // so this pins that mapping instead of comparing it with a second one.
+    // so this pins that mapping instead of comparing it with a second one —
+    // which is why the native view here is Mistral's own type rather than
+    // the shared chat-completions one.
     let typed =
         mistral::CompletionResponse::deserialize(&response.raw).expect("raw is Mistral's own type");
     assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
@@ -271,7 +221,7 @@ async fn normalized_fields_match_raw_renormalized() {
     );
     assert_eq!(
         response.finish_reason(),
-        Some(recorded_chat_finish_reason(&response.raw)),
+        Some(chat::recorded_chat_finish_reason(&response.raw)),
         "and the normalized reason is that same spelling, mapped"
     );
     assert_eq!(
@@ -302,23 +252,24 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     const SCENARIO: &str =
         "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call";
     let observed = Observed::default();
-    let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call",
-        |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
-            let response = model.completion(tool_request(&model)).await?;
-            let typed = mistral::CompletionResponse::deserialize(&response.raw)
-                .expect("raw is Mistral's own CompletionResponse");
-            assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
+        |client| {
+            capture_completion(
+                client.completion(DEFAULT_MODEL),
+                tool_request,
+                observed.clone(),
+            )
         },
     )
     .await
     .expect("tool_call_raw_round_trips_and_exposes_wire_tool_call should replay from its cassette");
 
     let response = observed.take();
+    let typed = mistral::CompletionResponse::deserialize(&response.raw)
+        .expect("raw is Mistral's own CompletionResponse");
+    assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
+
     let (request_body, body) = recorded_json_turn(PROVIDER, SCENARIO);
     // Premise, from the bytes: the call was forced and the recorded turn is
     // one tool call to `lookup_city`, finishing on the wire's `tool_calls`.

@@ -23,6 +23,16 @@
 //! to the trace stays on the `raw_completion` route
 //! (`raw_provider_data/guardrail_trace_survives_into_raw_completion`).
 //!
+//! Every cell runs its one recorded turn through the shared execution helper
+//! [`capture_completion`](crate::raw_capture::capture_completion) and asserts
+//! against the parked response after the wrapper returns. The shared *format*
+//! contracts (`raw_capture::chat`, `raw_capture::responses`) do not apply:
+//! Converse is neither dialect, `raw` mirrors an SDK type instead of the reply
+//! bytes, and the types that would name the claim ([`AwsConverseOutput`]) live
+//! in `rig-bedrock`, which the shared support crate does not depend on. The
+//! mirror-type round trip, the `#[serde(skip)]` boundary and the fixture
+//! premises below are therefore local by necessity.
+//!
 //! # Matrix
 //!
 //! | # | Cell | Dimension | expected | Status |
@@ -55,6 +65,7 @@ use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
 use crate::cassettes::recorded_json_turn;
+use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{Observed, normalized_without_raw};
 
 const BEDROCK_PROVIDER: &str = "bedrock";
@@ -97,27 +108,28 @@ fn assert_recorded_converse_with_metrics(body: &Value, scenario: &str) {
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn raw_round_trips_provider_type() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_bedrock_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-            let typed = AwsConverseOutput::deserialize(raw)
-                .expect("raw must deserialize into AwsConverseOutput");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("provider type should serialize"),
-                *raw,
-                "AwsConverseOutput must round-trip through its own serde"
-            );
-            assert!(!response.choice.is_empty());
         },
     )
     .await;
+
+    let response = captured.take();
+    let raw = &response.raw;
+    let typed =
+        AwsConverseOutput::deserialize(raw).expect("raw must deserialize into AwsConverseOutput");
+    assert_eq!(
+        serde_json::to_value(&typed).expect("provider type should serialize"),
+        *raw,
+        "AwsConverseOutput must round-trip through its own serde"
+    );
+    assert!(!response.choice.is_empty());
 
     let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
@@ -136,25 +148,19 @@ async fn raw_exposes_latency_metrics() {
     with_bedrock_cassette(
         "raw_capture_matrix/raw_exposes_latency_metrics",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let normalized = normalized_without_raw(response.clone());
-            assert!(
-                normalized.get("metrics").is_none(),
-                "normalized CompletionResponse must not grow a `metrics` field"
-            );
-
-            let raw = response.raw;
-            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured.take();
+    let response = captured.take();
+    let raw = response.raw.clone();
+    // The normalized `CompletionResponse` must not grow a `metrics` field:
+    // the latency is reachable only through the capture.
+    assert_normalized_lacks(&normalized_without_raw(response), &["metrics"]);
+
     let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
 
@@ -197,42 +203,36 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_bedrock_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-            // The AWS request id is the `x-amzn-requestid` header, not part of
-            // the Converse body, so the raw-derived normalization is given the
-            // same one before the field-for-field comparison.
-            let from_raw: RigCompletionResponse = AwsConverseOutput::deserialize(raw)
-                .expect("raw must deserialize into AwsConverseOutput")
-                .try_into()
-                .expect("raw must normalize");
-            let from_raw =
-                from_raw.with_optional_provider_request_id(response.provider_request_id.clone());
-
-            assert_eq!(response.provider, BEDROCK_PROVIDER);
-            assert_eq!(from_raw.provider, response.provider);
-            assert_eq!(from_raw.model, response.model);
-            assert_eq!(from_raw.finish_reason(), response.finish_reason());
-            assert_eq!(from_raw.identity(), response.identity());
-            assert_eq!(from_raw.usage, response.usage);
-            assert!(!response.choice.is_empty());
-            assert_eq!(
-                normalized_without_raw(from_raw),
-                normalized_without_raw(response.clone()),
-                "re-normalizing raw must reproduce the normalized response field-for-field"
-            );
-
-            sink.put(response);
         },
     )
     .await;
 
     let response = captured.take();
+    // The AWS request id is the `x-amzn-requestid` header, not part of the
+    // Converse body, so the raw-derived normalization is given the same one
+    // before the field-for-field comparison.
+    let from_raw: RigCompletionResponse = AwsConverseOutput::deserialize(&response.raw)
+        .expect("raw must deserialize into AwsConverseOutput")
+        .try_into()
+        .expect("raw must normalize");
+    let from_raw = from_raw.with_optional_provider_request_id(response.provider_request_id.clone());
+
+    assert_eq!(response.provider, BEDROCK_PROVIDER);
+    assert_eq!(from_raw.provider, response.provider);
+    assert_eq!(from_raw.model, response.model);
+    assert_eq!(from_raw.finish_reason(), response.finish_reason());
+    assert_eq!(from_raw.identity(), response.identity());
+    assert_eq!(from_raw.usage, response.usage);
+    assert!(!response.choice.is_empty());
+    assert_eq!(
+        normalized_without_raw(from_raw),
+        normalized_without_raw(response.clone()),
+        "re-normalizing raw must reproduce the normalized response field-for-field"
+    );
+
     let (_, body) = recorded_json_turn(BEDROCK_PROVIDER, scenario);
     assert_recorded_converse_with_metrics(&body, scenario);
     assert!(

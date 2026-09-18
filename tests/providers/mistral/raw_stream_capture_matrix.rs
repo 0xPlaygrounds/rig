@@ -5,7 +5,7 @@
 //! [`rig::streaming::StreamFinal::raw`] carries the chat-completions terminal
 //! record the wire's decoder assembled, serialized — and it carries it whole:
 //! a dialect's own usage fields ride along beside the OpenAI-compatible ones
-//! that [`StreamingCompletionResponse`] models. Capture is always on: there is
+//! that [`chat::Terminal`] models. Capture is always on: there is
 //! no flag to request it, nothing about it reaches the wire, and a
 //! `Value::Null` only ever means a terminal built by hand with no provider
 //! record behind it. It is the terminal record only, never the stream's frames.
@@ -22,30 +22,30 @@
 //! Every cell is recorded. The premise every cell re-derives from its own
 //! fixture is that usage appears on exactly one frame — Mistral's finish
 //! frame, the stream's last data frame, which also carries the final content
-//! delta — so the raw terminal record's usage is knowable from the bytes and
-//! a recording whose stream stopped reporting usage fails loudly instead of
-//! covering nothing. Cell 3 additionally re-derives that the recorded frames
-//! carry a `delta.tool_calls` fragment for `lookup_city` (and that the
-//! recorded request forced the call), so a recording that stopped calling
-//! fails instead of covering nothing.
+//! delta. That is [`chat::recorded_sole_usage_frame`], the single-frame rule,
+//! and each cell adds beside it the Mistral-specific half: that same frame
+//! carries the `finish_reason`. So the raw terminal record's usage is
+//! knowable from the bytes and a recording whose stream stopped reporting
+//! usage fails loudly instead of covering nothing. Cell 3 additionally
+//! re-derives that the recorded frames carry a `delta.tool_calls` fragment
+//! for `lookup_city` (and that the recorded request forced the call), so a
+//! recording that stopped calling fails instead of covering nothing.
 
 use rig::message::AssistantContent;
 
 use futures::StreamExt as _;
 use rig::completion::{CompletionModel, CompletionRequest, FinishReason, ToolDefinition};
-use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
 use rig::streaming::{StreamEvent, StreamFinal};
-use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::DEFAULT_MODEL;
-use super::support::{assert_matches_recorded_token, with_mistral_cassette_result};
+use super::support::with_mistral_cassette_result;
 use crate::cassettes::recorded_response_header;
-use crate::support::{Observed, collect_required_terminal, collect_text_and_terminal};
-
-/// The terminal record as the wire assembled it, over the accounting that
-/// keeps a dialect's own usage fields beside the OpenAI-compatible ones.
-type MistralTerminal = StreamingCompletionResponse<ChatUsage>;
+use crate::raw_capture::{
+    assert_contracted_request_id, assert_normalized_lacks, capture_terminal,
+    capture_text_and_terminal, chat,
+};
+use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "mistral";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -151,75 +151,9 @@ fn recorded_tool_call(scenario: &str) -> (String, String, String) {
     (id, name, arguments)
 }
 
-/// The single recorded frame that carries usage — Mistral's finish frame,
-/// which also carries the last content delta and the `finish_reason` — after
-/// checking that it is the stream's last data frame.
-fn recorded_terminal_frame(scenario: &str) -> Value {
-    let frames = crate::cassettes::recorded_sse_json_frames(PROVIDER, scenario);
-    let mut with_usage = frames
-        .iter()
-        .enumerate()
-        .filter(|(_, frame)| !frame["usage"].is_null());
-    let (index, terminal) = with_usage
-        .next()
-        .expect("the recorded stream must carry usage on its terminal frame");
-    assert!(
-        with_usage.next().is_none(),
-        "usage must be reported on exactly one (terminal) frame"
-    );
-    assert_eq!(
-        index + 1,
-        frames.len(),
-        "the usage-bearing frame must be the stream's last data frame"
-    );
-    assert!(
-        terminal["choices"][0]["finish_reason"].is_string(),
-        "Mistral's terminal frame carries the finish reason: {terminal}"
-    );
-    terminal.clone()
-}
-
 /// The `mistral-correlation-id` the recorded SSE response carried.
 fn recorded_request_id(scenario: &str) -> Option<String> {
     recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
-}
-
-fn assert_terminal_reproduces_frame(
-    terminal: &StreamFinal,
-    frame: &Value,
-    request_id: Option<&str>,
-) {
-    assert_eq!(terminal.provider, PROVIDER, "provider");
-    assert_matches_recorded_token(
-        terminal.response_id.as_deref(),
-        frame["id"].as_str(),
-        "response id",
-    );
-    assert_eq!(terminal.model.as_deref(), frame["model"].as_str(), "model");
-    assert_eq!(
-        terminal.usage.input_tokens,
-        frame["usage"]["prompt_tokens"].as_u64(),
-        "input tokens"
-    );
-    assert_eq!(
-        terminal.usage.output_tokens,
-        frame["usage"]["completion_tokens"].as_u64(),
-        "output tokens"
-    );
-    assert_eq!(
-        terminal.usage.total_tokens,
-        frame["usage"]["total_tokens"].as_u64(),
-        "total tokens"
-    );
-    assert!(
-        request_id.is_some(),
-        "the recorded SSE response must carry mistral-correlation-id"
-    );
-    assert_matches_recorded_token(
-        terminal.provider_request_id.as_deref(),
-        request_id,
-        "request id",
-    );
 }
 
 // ================================================================
@@ -230,47 +164,35 @@ fn assert_terminal_reproduces_frame(
 async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
     let observed = Observed::default();
-    let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
-        |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
-            let stream = model.stream(request(&model)).await?;
-            let (text, terminal) = collect_text_and_terminal(stream).await;
-            let terminal = terminal.expect("stream should end with a terminal record");
-            assert!(!text.is_empty());
-            let raw = &terminal.raw;
-            let typed = MistralTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal record");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed terminal serialized, nothing more"
-            );
-            // The accounting rides the record typed: `ChatUsage` folds the
-            // OpenAI-compatible counters and the dialect's extras, and its
-            // mapping is what the normalized terminal reports.
-            let usage = typed
-                .usage
-                .as_ref()
-                .expect("Mistral reports usage on its finish frame");
-            assert_eq!(usage.to_normalized(), terminal.usage);
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(typed.finish_reason, terminal.finish_reason);
-            assert_eq!(
-                typed.provider_request_id, None,
-                "the transport id is stamped on the normalized terminal, not the native record"
-            );
-            sink.put(terminal);
-            Ok::<(), anyhow::Error>(())
+        |client| {
+            capture_text_and_terminal(client.completion(DEFAULT_MODEL), request, observed.clone())
         },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
-    let terminal = observed.take();
-    let frame = recorded_terminal_frame(SCENARIO);
-    assert_terminal_reproduces_frame(&terminal, &frame, recorded_request_id(SCENARIO).as_deref());
+    let (text, terminal) = observed.take();
+    assert!(!text.is_empty());
+    // The accounting rides the record typed: `ChatUsage` folds the
+    // OpenAI-compatible counters and the dialect's extras, and its mapping is
+    // what the normalized terminal reports.
+    chat::assert_terminal_round_trips(&terminal);
+
+    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
+    assert!(
+        frame["choices"][0]["finish_reason"].is_string(),
+        "Mistral's terminal frame carries the finish reason: {frame}"
+    );
+    chat::assert_terminal_reproduces_frame(&terminal, PROVIDER, &frame, "the recorded frame");
+    // Mistral contracts `mistral-correlation-id`; the recorded header is the
+    // premise.
+    assert_contracted_request_id(
+        terminal.provider_request_id.as_deref(),
+        recorded_request_id(SCENARIO).as_deref(),
+        REQUEST_ID_HEADER,
+    );
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
 }
@@ -283,20 +205,19 @@ async fn stream_raw_round_trips_terminal_type() {
 async fn stream_raw_exposes_terminal_service_tier() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier";
     let observed = Observed::default();
-    let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier",
-        |client| async move {
-            let model = client.completion(DEFAULT_MODEL);
-            sink.put(collect_required_terminal(model.stream(request(&model)).await?).await);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_terminal(client.completion(DEFAULT_MODEL), request, observed.clone()),
     )
     .await
     .expect("stream_raw_exposes_terminal_service_tier should replay from its cassette");
 
     let terminal = observed.take();
-    let frame = recorded_terminal_frame(SCENARIO);
+    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
+    assert!(
+        frame["choices"][0]["finish_reason"].is_string(),
+        "Mistral's terminal frame carries the finish reason: {frame}"
+    );
     let recorded_tier = frame["usage"]["service_tier"]
         .as_str()
         .expect("Mistral's terminal usage reports service_tier");
@@ -309,10 +230,7 @@ async fn stream_raw_exposes_terminal_service_tier() {
     assert_eq!(raw["usage"]["prompt_tokens"], json!(recorded_prompt_tokens));
     // The normalized terminal has no slot for the tier.
     let normalized_usage = serde_json::to_value(terminal.usage).expect("usage serializes");
-    assert!(
-        normalized_usage.get("service_tier").is_none(),
-        "the normalized usage has no tier slot: {normalized_usage}"
-    );
+    assert_normalized_lacks(&normalized_usage, &["service_tier"]);
 }
 
 // ================================================================
@@ -328,33 +246,11 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_tool_call_raw_round_trips_terminal_type",
         |client| async move {
+            // No shared capture helper collects completed tool calls beside
+            // the terminal record, so this cell drives the stream itself.
             let model = client.completion(DEFAULT_MODEL);
             let stream = model.stream(tool_request(&model)).await?;
-            let observation = collect_tool_calls_and_terminal(stream).await;
-            let terminal = observation
-                .terminal
-                .as_ref()
-                .expect("stream should end with a terminal record");
-            let raw = &terminal.raw;
-            let typed = MistralTerminal::deserialize(raw)
-                .expect("raw is the chat-completions terminal record");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("typed serializes"),
-                *raw,
-                "the captured value is the typed terminal serialized, nothing more"
-            );
-            let usage = typed
-                .usage
-                .as_ref()
-                .expect("Mistral reports usage on its finish frame");
-            assert_eq!(usage.to_normalized(), terminal.usage);
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(typed.finish_reason, terminal.finish_reason);
-            assert_eq!(
-                typed.provider_request_id, None,
-                "the transport id is stamped on the normalized terminal, not the native record"
-            );
-            sink.put(observation);
+            sink.put(collect_tool_calls_and_terminal(stream).await);
             Ok::<(), anyhow::Error>(())
         },
     )
@@ -366,8 +262,14 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
         .terminal
         .as_ref()
         .expect("the cell should observe a terminal record");
-    let frame = recorded_terminal_frame(SCENARIO);
-    assert_terminal_reproduces_frame(terminal, &frame, recorded_request_id(SCENARIO).as_deref());
+    chat::assert_terminal_round_trips(terminal);
+    let frame = chat::recorded_sole_usage_frame(PROVIDER, SCENARIO);
+    chat::assert_terminal_reproduces_frame(terminal, PROVIDER, &frame, "the recorded frame");
+    assert_contracted_request_id(
+        terminal.provider_request_id.as_deref(),
+        recorded_request_id(SCENARIO).as_deref(),
+        REQUEST_ID_HEADER,
+    );
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
     assert_eq!(request_body["stream"], json!(true));
     assert_eq!(request_body["tool_choice"], json!("any"));
@@ -377,7 +279,9 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
     );
 
     // Premise, from the bytes: the finish frame spells the wire's
-    // `tool_calls`, and the frames carry one call to `lookup_city`.
+    // `tool_calls` — which is also this cell's "the terminal frame carries a
+    // finish reason", spelled exactly — and the frames carry one call to
+    // `lookup_city`.
     assert_eq!(frame["choices"][0]["finish_reason"], json!("tool_calls"));
     let (recorded_id, recorded_name, recorded_arguments) = recorded_tool_call(SCENARIO);
     assert_eq!(recorded_name, TOOL_NAME);

@@ -48,30 +48,25 @@
 //! carries an `x-request-id` header — without that the cells would prove
 //! nothing about the transport id.
 
-use std::future::Future;
-use std::pin::Pin;
-
 use rig::completion::{
-    AssistantContent, CompletionModel as _, CompletionRequest, CompletionResponse, FinishReason,
-    ToolDefinition,
+    AssistantContent, CompletionRequest, CompletionResponse, FinishReason, ToolDefinition,
 };
-use rig::driver::Bound;
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::providers::openai::wire::{Chat, OpenAiWire};
 use serde::Deserialize as _;
 use serde_json::{Value, json};
 
-use super::super::support::{
-    OpenAiCassette, assert_matches_recorded_token, recorded_request_id_headers,
-    with_openai_cassette,
-};
-use crate::support::Observed;
+use super::super::support::{recorded_request_id_headers, with_openai_cassette_result};
+use crate::raw_capture::{assert_contracted_request_id, capture_completion_pair, chat};
+use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
 const TEXT_PROMPT: &str = "Reply with exactly the single word: pong";
 const TOOL_PROMPT: &str = "Call ping exactly once with no arguments.";
+/// The response header OpenAI contracts as the transport request id, on both
+/// routes — the datum `recorded_request_ids` reads back out of the fixture.
+const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn ping_tool() -> ToolDefinition {
     ToolDefinition {
@@ -172,10 +167,10 @@ fn assert_side_matches_fixture(
     let context = format!("{scenario}/{side}");
     let id_prefix = wire.id_prefix();
     let (usage_input_key, usage_output_key) = wire.usage_keys();
-    assert_matches_recorded_token(
+    assert_contracted_request_id(
         response.provider_request_id.as_deref(),
         Some(recorded_request_id),
-        &format!("{context}: provider_request_id vs the fixture's x-request-id header"),
+        REQUEST_ID_HEADER,
     );
     assert_matches_recorded_token(
         response.response_id.as_deref(),
@@ -255,11 +250,6 @@ fn assert_parity(
 // Chat Completions
 // ---------------------------------------------------------------------------
 
-/// A cassette test body: boxed so the cell can build it in a helper while the
-/// wrapper call — and its string-literal scenario, which the cassette safety
-/// scan reads — stays in the test itself.
-type Body = Box<dyn FnOnce(OpenAiCassette) -> Pin<Box<dyn Future<Output = ()>>>>;
-
 /// The two views of one reply agree on the fields rig normalizes, read off
 /// the provider's own field names.
 ///
@@ -295,30 +285,6 @@ fn assert_chat_views_agree(
         response.raw.get("provider_request_id").is_none(),
         "{scenario}: the transport id is a header, so the reply document has none"
     );
-}
-
-/// Chat route: two `completion()` calls on the same request — two
-/// interactions. The first call's reply is read both ways (the provider's own
-/// type out of `raw`, and the normalized response); the second call's
-/// response is the side the parity assertions compare against.
-fn chat_parity_body(
-    sink: Observed<(CompletionResponse, CompletionResponse)>,
-    request_for: fn(&Bound<Chat>) -> CompletionRequest,
-) -> Body {
-    Box::new(move |client| {
-        Box::pin(async move {
-            let model = client.openai.chat(MODEL);
-            let typed = model
-                .completion(request_for(&model))
-                .await
-                .expect("the first call should succeed");
-            let normalized = model
-                .completion(request_for(&model))
-                .await
-                .expect("completion() should succeed");
-            sink.put((typed, normalized));
-        })
-    })
 }
 
 fn assert_chat_parity(
@@ -392,11 +358,12 @@ fn assert_chat_parity(
 async fn chat_text_turn_parity() {
     const SCENARIO: &str = "raw_completion_parity_matrix/chat_text_turn_parity";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_text_turn_parity",
-        chat_parity_body(observed.clone(), text_request),
+        |client| capture_completion_pair(client.openai.chat(MODEL), text_request, observed.clone()),
     )
-    .await;
+    .await
+    .expect("chat_text_turn_parity should replay from its cassette");
     assert_chat_parity(SCENARIO, &observed, FinishReason::Stop, false);
 }
 
@@ -404,11 +371,12 @@ async fn chat_text_turn_parity() {
 async fn chat_tool_turn_parity() {
     const SCENARIO: &str = "raw_completion_parity_matrix/chat_tool_turn_parity";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_tool_turn_parity",
-        chat_parity_body(observed.clone(), tool_request),
+        |client| capture_completion_pair(client.openai.chat(MODEL), tool_request, observed.clone()),
     )
-    .await;
+    .await
+    .expect("chat_tool_turn_parity should replay from its cassette");
     assert_chat_parity(SCENARIO, &observed, FinishReason::ToolCalls, true);
 }
 
@@ -421,23 +389,12 @@ async fn chat_plain_raw_completion_lacks_request_id() {
     const SCENARIO: &str =
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id";
     let observed = Observed::default();
-    let sink = observed.clone();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_completion_parity_matrix/chat_plain_raw_completion_lacks_request_id",
-        |client| async move {
-            let model = client.openai.chat(MODEL);
-            let plain = model
-                .completion(text_request(&model))
-                .await
-                .expect("the first call should succeed");
-            let normalized = model
-                .completion(text_request(&model))
-                .await
-                .expect("completion() should succeed");
-            sink.put((plain, normalized));
-        },
+        |client| capture_completion_pair(client.openai.chat(MODEL), text_request, observed.clone()),
     )
-    .await;
+    .await
+    .expect("chat_plain_raw_completion_lacks_request_id should replay from its cassette");
 
     let (plain, normalized) = observed.take();
     // Premise: the wire reported a request id on *both* interactions — so the
@@ -447,20 +404,20 @@ async fn chat_plain_raw_completion_lacks_request_id() {
         plain.raw.get("provider_request_id").is_none(),
         "{SCENARIO}: the reply document has no slot for the transport id"
     );
-    assert_matches_recorded_token(
+    assert_contracted_request_id(
         plain.provider_request_id.as_deref(),
         Some(&request_ids[0]),
-        &format!("{SCENARIO}: the response carries the header's id the body lacks"),
+        REQUEST_ID_HEADER,
     );
-    assert_matches_recorded_token(
+    assert_contracted_request_id(
         normalized.provider_request_id.as_deref(),
         Some(&request_ids[1]),
-        &format!("{SCENARIO}: completion() reports the fixture's x-request-id"),
+        REQUEST_ID_HEADER,
     );
     // Everything else rig reports still matches the reply document.
     let reply = openai::CompletionResponse::deserialize(&plain.raw)
         .unwrap_or_else(|err| panic!("{SCENARIO}: raw must be the chat wire type: {err}"));
-    assert_chat_views_agree(SCENARIO, &reply, &plain);
+    chat::assert_native_matches_normalized(&plain, &reply, SCENARIO);
     let bodies = crate::cassettes::recorded_interaction_bodies(PROVIDER, SCENARIO);
     let first: Value = serde_json::from_str(&bodies[0].1).expect("recorded body should be JSON");
     assert_matches_recorded_token(
@@ -522,29 +479,6 @@ fn assert_responses_views_agree(
         response.raw.get("provider_request_id").is_none(),
         "{scenario}: the transport id is a header, so the reply document has none"
     );
-}
-
-/// Responses route: two `completion()` calls on the same request — two
-/// interactions. The first reply is read both ways, the second is the
-/// `completion()` side the parity assertions compare against.
-fn responses_parity_body(
-    sink: Observed<(CompletionResponse, CompletionResponse)>,
-    request_for: fn(&Bound<OpenAiWire>) -> CompletionRequest,
-) -> Body {
-    Box::new(move |client| {
-        Box::pin(async move {
-            let model = client.openai.completion(MODEL);
-            let typed = model
-                .completion(request_for(&model))
-                .await
-                .expect("the first call should succeed");
-            let normalized = model
-                .completion(request_for(&model))
-                .await
-                .expect("completion() should succeed");
-            sink.put((typed, normalized));
-        })
-    })
 }
 
 fn assert_responses_parity(
@@ -629,11 +563,18 @@ fn assert_responses_parity(
 async fn responses_text_turn_parity() {
     const SCENARIO: &str = "raw_completion_parity_matrix/responses_text_turn_parity";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_completion_parity_matrix/responses_text_turn_parity",
-        responses_parity_body(observed.clone(), text_request),
+        |client| {
+            capture_completion_pair(
+                client.openai.completion(MODEL),
+                text_request,
+                observed.clone(),
+            )
+        },
     )
-    .await;
+    .await
+    .expect("responses_text_turn_parity should replay from its cassette");
     assert_responses_parity(SCENARIO, &observed, FinishReason::Stop, false);
 }
 
@@ -645,10 +586,17 @@ async fn responses_text_turn_parity() {
 async fn responses_tool_turn_parity() {
     const SCENARIO: &str = "raw_completion_parity_matrix/responses_tool_turn_parity";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_completion_parity_matrix/responses_tool_turn_parity",
-        responses_parity_body(observed.clone(), tool_request),
+        |client| {
+            capture_completion_pair(
+                client.openai.completion(MODEL),
+                tool_request,
+                observed.clone(),
+            )
+        },
     )
-    .await;
+    .await
+    .expect("responses_tool_turn_parity should replay from its cassette");
     assert_responses_parity(SCENARIO, &observed, FinishReason::ToolCalls, true);
 }
