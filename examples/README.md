@@ -74,3 +74,23 @@ Most examples expect provider API keys in the environment (e.g. `OPENAI_API_KEY`
 | `vector_search_cohere` | Demonstrates vector search with separate Cohere document and query embeddings. |
 | `vector_search_ollama` | Demonstrates vector search against a local Ollama embedding model. |
 | `vector_search` | Demonstrates embedding documents and querying an in-memory vector index with OpenAI. |
+
+The `rmcp_example` package also includes a hosted Search MCP example:
+
+```sh
+cargo run -p rmcp_example --bin parallel_search
+```
+
+It discovers `web_search` and `web_fetch` at `https://search.parallel.ai/mcp`,
+then uses Rig's MCP tool adapter to search for Rust ownership documentation and
+fetch the first result. No Parallel account, API key, or model provider key is
+required. Anonymous access is rate limited. The local counter example remains
+available with `cargo run -p rmcp_example --bin rmcp_example`.
+
+Running the hosted example sends its queries, objectives, fetched URLs, and
+conversation metadata to Parallel. Requests identify the calling project with
+`User-Agent: rig/<workspace version>` for aggregate usage measurement; this
+identifier contains no user or installation ID. See the
+[Search MCP documentation](https://docs.parallel.ai/integrations/mcp/search-mcp),
+[Parallel Customer Terms](https://parallel.ai/customer-terms), and
+[Privacy Policy](https://parallel.ai/privacy-policy).
