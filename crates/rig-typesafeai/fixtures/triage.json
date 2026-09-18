@@ -1,0 +1,70 @@
+{
+  "request": {
+    "model": "jev-latest",
+    "state": {
+      "message": "I was charged twice. Please refund the duplicate today."
+    },
+    "questions": {
+      "route": {
+        "type": "choice",
+        "instructions": "Which team should handle the customer message?",
+        "criteria": {
+          "billing": "Charges, payments, and refunds",
+          "technical": "Software faults",
+          "other": "Anything else"
+        }
+      },
+      "urgency": {
+        "type": "score",
+        "instructions": "How soon does the customer ask for action?",
+        "criteria": [
+          "No deadline",
+          "Within a week",
+          "Today"
+        ]
+      },
+      "refund_requested": {
+        "type": "noul",
+        "instructions": "Does the customer explicitly request a refund?"
+      }
+    }
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "route": {
+        "type": "choice",
+        "choice": "billing",
+        "confidence": 1.0,
+        "probabilities": {
+          "billing": 1.0,
+          "technical": 0.0,
+          "other": 0.0
+        }
+      },
+      "urgency": {
+        "type": "score",
+        "score": 2.0,
+        "confidence": 1.0,
+        "legend": {
+          "0": "No deadline",
+          "1": "Within a week",
+          "2": "Today"
+        },
+        "probabilities": {
+          "0": 0.0,
+          "1": 0.0,
+          "2": 1.0
+        }
+      },
+      "refund_requested": {
+        "type": "noul",
+        "noul": 0.99
+      }
+    },
+    "usage": {
+      "input_tokens": 403,
+      "output_tokens": 70
+    }
+  }
+}

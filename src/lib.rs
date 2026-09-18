@@ -339,6 +339,8 @@ macro_rules! companion_modules {
 }
 
 companion_modules! {
+    /// Typed TypeSafe Jev judgments for routing and rubric evaluation.
+    typesafeai = rig_typesafeai ["typesafeai"];
     bedrock = rig_bedrock ["bedrock"];
     /// Local CPU inference with validated Llama/SmolLM2 and native tool-capable Qwen3 models.
     candle = rig_candle ["candle"];

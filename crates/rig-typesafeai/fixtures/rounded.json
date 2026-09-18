@@ -1,0 +1,458 @@
+{
+  "request": {
+    "state": {
+      "available_actions": [
+        {
+          "args": {},
+          "cost": 1,
+          "description": "Read recent application error logs and compare failure signatures.",
+          "id": "logs",
+          "tool": "logs"
+        },
+        {
+          "args": {},
+          "cost": 1,
+          "description": "Inspect latency, error rates, connection usage, and cache behavior.",
+          "id": "metrics",
+          "tool": "metrics"
+        },
+        {
+          "args": {},
+          "cost": 1,
+          "description": "Inspect recent deployment changes and release validation results.",
+          "id": "deploys",
+          "tool": "deploys"
+        }
+      ],
+      "goal": "Restore checkout and verify healthy requests after the repair.",
+      "observations": [
+        {
+          "alert": "Checkout requests are failing; p95 latency is elevated.",
+          "objective": "Restore checkout and verify recovery. All operations affect only this local sandbox.",
+          "service": "checkout",
+          "timeline": "An application release completed 12 minutes before the alert."
+        }
+      ],
+      "remaining_credits": 24
+    },
+    "questions": {
+      "a0_information": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Read recent application error logs and compare failure signatures.",
+            "id": "logs",
+            "tool": "logs"
+          },
+          "question": "How much useful new evidence would this action reveal?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "No new evidence or repeats current known information",
+          "Minor detail unlikely to affect the next decision",
+          "Useful evidence about an unresolved hypothesis",
+          "Directly discriminates plausible causes or verifies an unverified repair"
+        ]
+      },
+      "a0_progress": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Read recent application error logs and compare failure signatures.",
+            "id": "logs",
+            "tool": "logs"
+          },
+          "question": "How directly would this action advance verified recovery?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "No relevant progress, redundant, or contradicted by evidence",
+          "A plausible step but weak evidence it addresses the current blocker",
+          "Evidence supports this repair or a needed prerequisite",
+          "The clearly supported repair, or verification immediately after a repair"
+        ]
+      },
+      "a0_risk": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Read recent application error logs and compare failure signatures.",
+            "id": "logs",
+            "tool": "logs"
+          },
+          "question": "How much avoidable disruption could this action cause in this sandbox?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "Read-only observation with no service mutation",
+          "Narrow reversible change supported by current evidence",
+          "Speculative mutation with little supporting evidence",
+          "Mutation contradicted by evidence or likely to worsen the incident"
+        ]
+      },
+      "a1_information": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Inspect latency, error rates, connection usage, and cache behavior.",
+            "id": "metrics",
+            "tool": "metrics"
+          },
+          "question": "How much useful new evidence would this action reveal?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "No new evidence or repeats current known information",
+          "Minor detail unlikely to affect the next decision",
+          "Useful evidence about an unresolved hypothesis",
+          "Directly discriminates plausible causes or verifies an unverified repair"
+        ]
+      },
+      "a1_progress": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Inspect latency, error rates, connection usage, and cache behavior.",
+            "id": "metrics",
+            "tool": "metrics"
+          },
+          "question": "How directly would this action advance verified recovery?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "No relevant progress, redundant, or contradicted by evidence",
+          "A plausible step but weak evidence it addresses the current blocker",
+          "Evidence supports this repair or a needed prerequisite",
+          "The clearly supported repair, or verification immediately after a repair"
+        ]
+      },
+      "a1_risk": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Inspect latency, error rates, connection usage, and cache behavior.",
+            "id": "metrics",
+            "tool": "metrics"
+          },
+          "question": "How much avoidable disruption could this action cause in this sandbox?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "Read-only observation with no service mutation",
+          "Narrow reversible change supported by current evidence",
+          "Speculative mutation with little supporting evidence",
+          "Mutation contradicted by evidence or likely to worsen the incident"
+        ]
+      },
+      "a2_information": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Inspect recent deployment changes and release validation results.",
+            "id": "deploys",
+            "tool": "deploys"
+          },
+          "question": "How much useful new evidence would this action reveal?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "No new evidence or repeats current known information",
+          "Minor detail unlikely to affect the next decision",
+          "Useful evidence about an unresolved hypothesis",
+          "Directly discriminates plausible causes or verifies an unverified repair"
+        ]
+      },
+      "a2_progress": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Inspect recent deployment changes and release validation results.",
+            "id": "deploys",
+            "tool": "deploys"
+          },
+          "question": "How directly would this action advance verified recovery?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "No relevant progress, redundant, or contradicted by evidence",
+          "A plausible step but weak evidence it addresses the current blocker",
+          "Evidence supports this repair or a needed prerequisite",
+          "The clearly supported repair, or verification immediately after a repair"
+        ]
+      },
+      "a2_risk": {
+        "type": "score",
+        "instructions": {
+          "candidate": {
+            "args": {},
+            "cost": 1,
+            "description": "Inspect recent deployment changes and release validation results.",
+            "id": "deploys",
+            "tool": "deploys"
+          },
+          "question": "How much avoidable disruption could this action cause in this sandbox?",
+          "rules": [
+            "Judge this exact candidate against the current observations.",
+            "Do not assume the candidate has been executed.",
+            "Use the latest observations when older ones were superseded by a repair.",
+            "The goal is verified checkout recovery with few unnecessary actions."
+          ]
+        },
+        "criteria": [
+          "Read-only observation with no service mutation",
+          "Narrow reversible change supported by current evidence",
+          "Speculative mutation with little supporting evidence",
+          "Mutation contradicted by evidence or likely to worsen the incident"
+        ]
+      },
+      "diagnosis": {
+        "type": "choice",
+        "instructions": "Which cause is best supported by the observed tool results? A recent deployment alone does not establish causation. Choose unknown when evidence does not distinguish causes. Judge only observed evidence, not unexecuted actions.",
+        "criteria": {
+          "bad_deploy": "A regression in the newly deployed application version",
+          "pool_exhaustion": "Database connection pool exhaustion; waiting for connections",
+          "stale_cache": "Stale cache entries incompatible with the current application",
+          "unknown": "Observations do not yet distinguish these causes, or suggest another cause"
+        }
+      },
+      "resolved": {
+        "type": "noul",
+        "instructions": "The most recent verification AFTER the most recent repair explicitly shows healthy checkout requests. Repair acknowledgement without verification is not evidence of recovery."
+      }
+    },
+    "model": "jev-latest"
+  },
+  "response": {
+    "model": "jev-1.13.0",
+    "answers": {
+      "a0_information": {
+        "type": "score",
+        "score": 2.58,
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.01,
+          "2": 0.37,
+          "3": 0.61
+        },
+        "legend": {
+          "0": "No new evidence or repeats current known information",
+          "1": "Minor detail unlikely to affect the next decision",
+          "2": "Useful evidence about an unresolved hypothesis",
+          "3": "Directly discriminates plausible causes or verifies an unverified repair"
+        },
+        "confidence": 0.58
+      },
+      "a0_progress": {
+        "type": "score",
+        "score": 1.83,
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.23,
+          "2": 0.67,
+          "3": 0.08
+        },
+        "legend": {
+          "0": "No relevant progress, redundant, or contradicted by evidence",
+          "1": "A plausible step but weak evidence it addresses the current blocker",
+          "2": "Evidence supports this repair or a needed prerequisite",
+          "3": "The clearly supported repair, or verification immediately after a repair"
+        },
+        "confidence": 0.66
+      },
+      "a0_risk": {
+        "type": "score",
+        "score": 0.0,
+        "probabilities": {
+          "0": 1.0,
+          "1": 0.0,
+          "2": 0.0,
+          "3": 0.0
+        },
+        "legend": {
+          "0": "Read-only observation with no service mutation",
+          "1": "Narrow reversible change supported by current evidence",
+          "2": "Speculative mutation with little supporting evidence",
+          "3": "Mutation contradicted by evidence or likely to worsen the incident"
+        },
+        "confidence": 1.0
+      },
+      "a1_information": {
+        "type": "score",
+        "score": 2.53,
+        "probabilities": {
+          "0": 0.08,
+          "1": 0.03,
+          "2": 0.17,
+          "3": 0.72
+        },
+        "legend": {
+          "0": "No new evidence or repeats current known information",
+          "1": "Minor detail unlikely to affect the next decision",
+          "2": "Useful evidence about an unresolved hypothesis",
+          "3": "Directly discriminates plausible causes or verifies an unverified repair"
+        },
+        "confidence": 0.53
+      },
+      "a1_progress": {
+        "type": "score",
+        "score": 2.38,
+        "probabilities": {
+          "0": 0.02,
+          "1": 0.19,
+          "2": 0.18,
+          "3": 0.61
+        },
+        "legend": {
+          "0": "No relevant progress, redundant, or contradicted by evidence",
+          "1": "A plausible step but weak evidence it addresses the current blocker",
+          "2": "Evidence supports this repair or a needed prerequisite",
+          "3": "The clearly supported repair, or verification immediately after a repair"
+        },
+        "confidence": 0.38
+      },
+      "a1_risk": {
+        "type": "score",
+        "score": 0.0,
+        "probabilities": {
+          "0": 1.0,
+          "1": 0.0,
+          "2": 0.0,
+          "3": 0.0
+        },
+        "legend": {
+          "0": "Read-only observation with no service mutation",
+          "1": "Narrow reversible change supported by current evidence",
+          "2": "Speculative mutation with little supporting evidence",
+          "3": "Mutation contradicted by evidence or likely to worsen the incident"
+        },
+        "confidence": 1.0
+      },
+      "a2_information": {
+        "type": "score",
+        "score": 2.66,
+        "probabilities": {
+          "0": 0.01,
+          "1": 0.0,
+          "2": 0.31,
+          "3": 0.68
+        },
+        "legend": {
+          "0": "No new evidence or repeats current known information",
+          "1": "Minor detail unlikely to affect the next decision",
+          "2": "Useful evidence about an unresolved hypothesis",
+          "3": "Directly discriminates plausible causes or verifies an unverified repair"
+        },
+        "confidence": 0.66
+      },
+      "a2_progress": {
+        "type": "score",
+        "score": 1.95,
+        "probabilities": {
+          "0": 0.0,
+          "1": 0.14,
+          "2": 0.76,
+          "3": 0.1
+        },
+        "legend": {
+          "0": "No relevant progress, redundant, or contradicted by evidence",
+          "1": "A plausible step but weak evidence it addresses the current blocker",
+          "2": "Evidence supports this repair or a needed prerequisite",
+          "3": "The clearly supported repair, or verification immediately after a repair"
+        },
+        "confidence": 0.75
+      },
+      "a2_risk": {
+        "type": "score",
+        "score": 0.01,
+        "probabilities": {
+          "0": 0.99,
+          "1": 0.01,
+          "2": 0.0,
+          "3": 0.0
+        },
+        "legend": {
+          "0": "Read-only observation with no service mutation",
+          "1": "Narrow reversible change supported by current evidence",
+          "2": "Speculative mutation with little supporting evidence",
+          "3": "Mutation contradicted by evidence or likely to worsen the incident"
+        },
+        "confidence": 0.99
+      },
+      "diagnosis": {
+        "type": "choice",
+        "choice": "unknown",
+        "probabilities": {
+          "bad_deploy": 0.03,
+          "pool_exhaustion": 0.0,
+          "stale_cache": 0.0,
+          "unknown": 0.97
+        },
+        "confidence": 0.95
+      },
+      "resolved": {
+        "type": "noul",
+        "noul": 0.17
+      }
+    },
+    "usage": {
+      "input_tokens": 2549,
+      "output_tokens": 210
+    }
+  }
+}
