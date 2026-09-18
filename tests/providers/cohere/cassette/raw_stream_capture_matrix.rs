@@ -37,9 +37,9 @@ use rig::providers::cohere::streaming::StreamingCompletionResponse;
 use rig::streaming::{Delta, StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
-use std::sync::{Arc, Mutex};
 
 use super::super::{CASSETTE_MODEL, support::with_cohere_cassette};
+use crate::support::{Observed, json_contains_key};
 
 const PROVIDER: &str = "cohere";
 const PROMPT: &str = "Reply with exactly this one word and nothing else: streamed";
@@ -112,16 +112,6 @@ fn recorded_message_end_delta(scenario: &str) -> Value {
     delta
 }
 
-fn contains_key(value: &Value, needle: &str) -> bool {
-    match value {
-        Value::Object(map) => map
-            .iter()
-            .any(|(key, value)| key == needle || contains_key(value, needle)),
-        Value::Array(items) => items.iter().any(|item| contains_key(item, needle)),
-        _ => false,
-    }
-}
-
 /// Cohere's counters are `f64` on rig's wire type, so a captured `6.0`
 /// must be compared numerically against the fixture's `6`.
 fn number_at(value: &Value, pointer: &str) -> Option<f64> {
@@ -135,8 +125,8 @@ fn number_at(value: &Value, pointer: &str) -> Option<f64> {
 #[tokio::test]
 async fn raw_roundtrips_streaming_completion_response() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response";
-    let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed);
+    let observed: Observed<Value> = Observed::default();
+    let sink = observed.clone();
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_roundtrips_streaming_completion_response",
         |client| async move {
@@ -165,16 +155,12 @@ async fn raw_roundtrips_streaming_completion_response() {
                     .map(|tokens| tokens as u64),
                 terminal.usage.input_tokens
             );
-            *sink.lock().expect("observation lock") = Some(raw.clone());
+            sink.put(raw.clone());
         },
     )
     .await;
 
-    let raw = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body observed a raw payload");
+    let raw = observed.take();
     let delta = recorded_message_end_delta(SCENARIO);
     assert_eq!(
         number_at(&raw, "/usage/tokens/input_tokens"),
@@ -190,8 +176,8 @@ async fn raw_roundtrips_streaming_completion_response() {
 #[tokio::test]
 async fn raw_exposes_terminal_only_fields() {
     const SCENARIO: &str = "raw_stream_capture_matrix/raw_exposes_terminal_only_fields";
-    let observed: Arc<Mutex<Option<Value>>> = Arc::new(Mutex::new(None));
-    let sink = Arc::clone(&observed);
+    let observed: Observed<Value> = Observed::default();
+    let sink = observed.clone();
     with_cohere_cassette(
         "raw_stream_capture_matrix/raw_exposes_terminal_only_fields",
         |client| async move {
@@ -199,7 +185,7 @@ async fn raw_exposes_terminal_only_fields() {
             let terminal = stream_to_terminal(&model, request(&model)).await;
 
             let raw = &terminal.raw;
-            *sink.lock().expect("observation lock") = Some(raw.clone());
+            sink.put(raw.clone());
 
             // The normalized terminal provably lacks these: billed units have no
             // normalized home, and the finish reason reaches it only as rig's
@@ -210,7 +196,7 @@ async fn raw_exposes_terminal_only_fields() {
                 .as_object_mut()
                 .expect("terminal is an object")
                 .remove("raw");
-            assert!(!contains_key(&normalized, "billed_units"));
+            assert!(!json_contains_key(&normalized, "billed_units"));
             assert_ne!(
                 normalized.get("finish_reason"),
                 Some(&Value::String("COMPLETE".to_string())),
@@ -221,11 +207,7 @@ async fn raw_exposes_terminal_only_fields() {
     )
     .await;
 
-    let raw = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body observed a raw payload");
+    let raw = observed.take();
     let delta = recorded_message_end_delta(SCENARIO);
     assert_eq!(
         raw.get("finish_reason"),

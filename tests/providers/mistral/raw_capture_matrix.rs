@@ -38,12 +38,13 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::DEFAULT_MODEL;
-use super::support::{
-    assert_matches_recorded_token, recorded_response_headers, with_mistral_cassette_result,
-};
+use super::support::{assert_matches_recorded_token, with_mistral_cassette_result};
+use crate::cassettes::{recorded_json_turn, recorded_response_header};
+use crate::support::{Observed, assistant_text, recorded_chat_finish_reason};
 
 const PROVIDER: &str = "mistral";
 const PROMPT: &str = "Reply with the single word: pong";
+const REQUEST_ID_HEADER: &str = "mistral-correlation-id";
 /// The forced-call request shape the tool-lifecycle matrix uses: a preamble
 /// that forbids prose, `tool_choice: any`, and a prompt naming the one call.
 const TOOL_PREAMBLE: &str =
@@ -77,35 +78,9 @@ fn tool_request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
         .build()
 }
 
-/// The single recorded interaction of `scenario` as `(request, response)` JSON.
-fn recorded_json(scenario: &str) -> (Value, Value) {
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
-    assert_eq!(
-        interactions.len(),
-        1,
-        "every cell here is a single completion turn"
-    );
-    let (request, response) = &interactions[0];
-    (
-        serde_json::from_str(request).expect("recorded request should be JSON"),
-        serde_json::from_str(response).expect("recorded response should be JSON"),
-    )
-}
-
 /// The `mistral-correlation-id` the recorded interaction carried.
 fn recorded_request_id(scenario: &str) -> Option<String> {
-    recorded_response_headers(scenario)[0]
-        .iter()
-        .find(|(name, _)| name == "mistral-correlation-id")
-        .map(|(_, value)| value.clone())
-}
-
-fn recorded_finish_reason(body: &Value) -> FinishReason {
-    match body["choices"][0]["finish_reason"].as_str() {
-        Some("stop") => FinishReason::Stop,
-        Some("length") => FinishReason::Length,
-        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
-    }
+    recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
 }
 
 /// The assistant text of a provider-native choice, as Mistral spells it.
@@ -114,16 +89,6 @@ fn provider_text(choice: &mistral::Choice) -> &str {
         mistral::Message::Assistant { content, .. } => content.as_str(),
         other => panic!("a completion choice carries an assistant message, got {other:?}"),
     }
-}
-
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The normalized fields, checked against the wire bytes that produced them.
@@ -141,7 +106,7 @@ fn assert_reproduces_fixture(
     assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
     assert_eq!(
         response.finish_reason(),
-        Some(recorded_finish_reason(body)),
+        Some(recorded_chat_finish_reason(body)),
         "finish reason"
     );
     assert_eq!(
@@ -160,7 +125,7 @@ fn assert_reproduces_fixture(
         "total tokens"
     );
     assert_eq!(
-        text_of(&response.choice),
+        assistant_text(&response.choice),
         body["choices"][0]["message"]["content"]
             .as_str()
             .expect("recorded content"),
@@ -210,7 +175,7 @@ async fn raw_round_trips_mistral_type() {
     .await
     .expect("raw_round_trips_mistral_type should replay from its cassette");
 
-    let (_, response_body) = recorded_json(SCENARIO);
+    let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert!(
         response_body["choices"][0]["message"]["content"].is_string(),
         "the recorded turn should be a plain text answer"
@@ -224,26 +189,22 @@ async fn raw_round_trips_mistral_type() {
 #[tokio::test]
 async fn raw_exposes_object_and_service_tier() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_object_and_service_tier";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_capture_matrix/raw_exposes_object_and_service_tier",
         |client| async move {
             let model = client.completion(DEFAULT_MODEL);
             let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
+            sink.put(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("raw_exposes_object_and_service_tier should replay from its cassette");
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
-    let (_, body) = recorded_json(SCENARIO);
+    let response = observed.take();
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let recorded_object = body["object"]
         .as_str()
         .expect("Mistral tags every completion with an object");
@@ -271,26 +232,22 @@ async fn raw_exposes_object_and_service_tier() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| async move {
             let model = client.completion(DEFAULT_MODEL);
             let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
+            sink.put(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
-    let (_, body) = recorded_json(SCENARIO);
+    let response = observed.take();
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert_reproduces_fixture(&response, &body, recorded_request_id(SCENARIO).as_deref());
 
     // One reply, two views. `raw` is the document Mistral sent; its own type
@@ -314,10 +271,13 @@ async fn normalized_fields_match_raw_renormalized() {
     );
     assert_eq!(
         response.finish_reason(),
-        Some(recorded_finish_reason(&response.raw)),
+        Some(recorded_chat_finish_reason(&response.raw)),
         "and the normalized reason is that same spelling, mapped"
     );
-    assert_eq!(provider_text(typed_choice), text_of(&response.choice));
+    assert_eq!(
+        provider_text(typed_choice),
+        assistant_text(&response.choice)
+    );
     let typed_usage = typed.usage.as_ref().expect("Mistral reports usage");
     assert_eq!(
         Some(typed_usage.prompt_tokens as u64),
@@ -341,7 +301,7 @@ async fn normalized_fields_match_raw_renormalized() {
 async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
     const SCENARIO: &str =
         "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_capture_matrix/tool_call_raw_round_trips_and_exposes_wire_tool_call",
@@ -351,19 +311,15 @@ async fn tool_call_raw_round_trips_and_exposes_wire_tool_call() {
             let typed = mistral::CompletionResponse::deserialize(&response.raw)
                 .expect("raw is Mistral's own CompletionResponse");
             assert_eq!(Some(typed.id.as_str()), response.response_id.as_deref());
-            *sink.lock().expect("observation lock") = Some(response);
+            sink.put(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("tool_call_raw_round_trips_and_exposes_wire_tool_call should replay from its cassette");
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
-    let (request_body, body) = recorded_json(SCENARIO);
+    let response = observed.take();
+    let (request_body, body) = recorded_json_turn(PROVIDER, SCENARIO);
     // Premise, from the bytes: the call was forced and the recorded turn is
     // one tool call to `lookup_city`, finishing on the wire's `tool_calls`.
     assert_eq!(request_body["tool_choice"], json!("any"));

@@ -35,14 +35,15 @@
 //! pinned as such. Perplexity's models search the web on every turn, so the
 //! prompt is deliberately trivial.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
-use rig::message::AssistantContent;
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
 use rig::providers::perplexity;
 use serde_json::{Value, json};
 
 use super::super::support::{
     BoundPerplexity, assert_matches_recorded_token, with_perplexity_cassette,
 };
+use crate::cassettes::recorded_json_turn;
+use crate::support::{Observed, assistant_text, recorded_chat_finish_reason};
 
 const PROVIDER: &str = "perplexity";
 const MODEL: &str = perplexity::SONAR;
@@ -50,39 +51,6 @@ const PROMPT: &str = "Reply with the single word: pong";
 
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
-}
-
-/// The single recorded interaction of `scenario` as `(request, response)` JSON.
-fn recorded_json(scenario: &str) -> (Value, Value) {
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
-    assert_eq!(
-        interactions.len(),
-        1,
-        "every cell here is a single completion turn"
-    );
-    let (request, response) = &interactions[0];
-    (
-        serde_json::from_str(request).expect("recorded request should be JSON"),
-        serde_json::from_str(response).expect("recorded response should be JSON"),
-    )
-}
-
-fn recorded_finish_reason(body: &Value) -> FinishReason {
-    match body["choices"][0]["finish_reason"].as_str() {
-        Some("stop") => FinishReason::Stop,
-        Some("length") => FinishReason::Length,
-        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
-    }
-}
-
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The normalized fields, checked against the wire bytes that produced them.
@@ -96,7 +64,7 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
     assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
     assert_eq!(
         response.finish_reason(),
-        Some(recorded_finish_reason(body)),
+        Some(recorded_chat_finish_reason(body)),
         "finish reason"
     );
     assert_eq!(
@@ -115,7 +83,7 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
         "total tokens"
     );
     assert_eq!(
-        text_of(&response.choice),
+        assistant_text(&response.choice),
         body["choices"][0]["message"]["content"]
             .as_str()
             .expect("recorded content"),
@@ -134,23 +102,15 @@ fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
 /// folding the three near-identical cells into one `observe(scenario)` helper
 /// hands the scan a variable and orphans the fixtures. These two helpers share
 /// everything except that call.
-type Observed = std::sync::Arc<std::sync::Mutex<Option<CompletionResponse>>>;
-
+///
 /// The body every cell runs: one recorded turn, parked in `sink`.
-async fn run(client: BoundPerplexity, sink: Observed) {
+async fn run(client: BoundPerplexity, sink: Observed<CompletionResponse>) {
     let model = client.completion(MODEL);
     let response = model
         .completion(request(&model))
         .await
         .expect("the turn should succeed");
-    *sink.lock().expect("observation lock") = Some(response);
-}
-
-fn observed(sink: &Observed) -> CompletionResponse {
-    sink.lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response")
+    sink.put(response);
 }
 
 // ================================================================
@@ -165,9 +125,9 @@ async fn raw_is_the_verbatim_response_body() {
         run(client, sink.clone())
     })
     .await;
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert!(
         body["choices"][0]["message"]["content"].is_string(),
         "the recorded turn should be a plain text answer"
@@ -214,9 +174,9 @@ async fn raw_exposes_object_and_citations() {
         |client| run(client, sink.clone()),
     )
     .await;
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let recorded_object = body["object"]
         .as_str()
         .expect("Perplexity tags every completion with an object");
@@ -259,9 +219,9 @@ async fn normalized_fields_match_raw_renormalized() {
         |client| run(client, sink.clone()),
     )
     .await;
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json(SCENARIO);
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert_reproduces_fixture(&response, &body);
 
     // One seam, two views: the normalized fields hold against the response's

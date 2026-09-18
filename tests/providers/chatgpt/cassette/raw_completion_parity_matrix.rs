@@ -56,6 +56,7 @@ use serde_json::{Value, json};
 
 use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
+use crate::support::Observed;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
@@ -205,8 +206,8 @@ fn assert_matches_own_wire(response: &RigCompletionResponse, terminal: &Value) {
 #[ignore = "unrecorded (no CHATGPT credentials in this environment)"]
 async fn raw_normalize_reproduces_completion() {
     let scenario = "raw_completion_parity_matrix/raw_normalize_reproduces_completion";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion",
         |client| async move {
@@ -237,16 +238,12 @@ async fn raw_normalize_reproduces_completion() {
                 "the text turn must fold to assistant text"
             );
 
-            *sink.lock().expect("capture mutex") = Some(response);
+            sink.put(response);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
+    let response = captured.take();
     let terminals = recorded_terminal_responses(scenario);
     assert_eq!(terminals.len(), 1, "{scenario}: expected one turn");
     assert_matches_own_wire(&response, &terminals[0]);
@@ -261,8 +258,8 @@ async fn raw_normalize_reproduces_completion() {
 async fn raw_normalize_reproduces_completion_with_tool_call() {
     let scenario =
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_chatgpt_cassette(
         "raw_completion_parity_matrix/raw_normalize_reproduces_completion_with_tool_call",
         |client| async move {
@@ -296,16 +293,12 @@ async fn raw_normalize_reproduces_completion_with_tool_call() {
                 "the captured envelope must carry the provider's own function_call item"
             );
 
-            *sink.lock().expect("capture mutex") = Some(response);
+            sink.put(response);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
+    let response = captured.take();
     let terminals = recorded_terminal_responses(scenario);
     assert_eq!(terminals.len(), 1, "{scenario}: expected one turn");
     assert!(

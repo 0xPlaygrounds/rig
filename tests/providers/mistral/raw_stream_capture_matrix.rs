@@ -39,10 +39,9 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::DEFAULT_MODEL;
-use super::support::{
-    assert_matches_recorded_token, recorded_response_headers, with_mistral_cassette_result,
-};
-use crate::support::collect_text_and_terminal;
+use super::support::{assert_matches_recorded_token, with_mistral_cassette_result};
+use crate::cassettes::recorded_response_header;
+use crate::support::{Observed, collect_required_terminal, collect_text_and_terminal};
 
 /// The terminal record as the wire assembled it, over the accounting that
 /// keeps a dialect's own usage fields beside the OpenAI-compatible ones.
@@ -50,6 +49,7 @@ type MistralTerminal = StreamingCompletionResponse<ChatUsage>;
 
 const PROVIDER: &str = "mistral";
 const PROMPT: &str = "Reply with the single word: pong";
+const REQUEST_ID_HEADER: &str = "mistral-correlation-id";
 /// The forced-call request shape the tool-lifecycle matrix uses: a preamble
 /// that forbids prose, `tool_choice: any`, and a prompt naming the one call.
 const TOOL_PREAMBLE: &str =
@@ -179,11 +179,9 @@ fn recorded_terminal_frame(scenario: &str) -> Value {
     terminal.clone()
 }
 
+/// The `mistral-correlation-id` the recorded SSE response carried.
 fn recorded_request_id(scenario: &str) -> Option<String> {
-    recorded_response_headers(scenario)[0]
-        .iter()
-        .find(|(name, _)| name == "mistral-correlation-id")
-        .map(|(_, value)| value.clone())
+    recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
 }
 
 fn assert_terminal_reproduces_frame(
@@ -231,7 +229,7 @@ fn assert_terminal_reproduces_frame(
 #[tokio::test]
 async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
@@ -263,18 +261,14 @@ async fn stream_raw_round_trips_terminal_type() {
                 typed.provider_request_id, None,
                 "the transport id is stamped on the normalized terminal, not the native record"
             );
-            *sink.lock().expect("observation lock") = Some(terminal);
+            sink.put(terminal);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("stream_raw_round_trips_terminal_type should replay from its cassette");
 
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
+    let terminal = observed.take();
     let frame = recorded_terminal_frame(SCENARIO);
     assert_terminal_reproduces_frame(&terminal, &frame, recorded_request_id(SCENARIO).as_deref());
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
@@ -288,27 +282,20 @@ async fn stream_raw_round_trips_terminal_type() {
 #[tokio::test]
 async fn stream_raw_exposes_terminal_service_tier() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_service_tier",
         |client| async move {
             let model = client.completion(DEFAULT_MODEL);
-            let stream = model.stream(request(&model)).await?;
-            let (_, terminal) = collect_text_and_terminal(stream).await;
-            *sink.lock().expect("observation lock") =
-                Some(terminal.expect("stream should end with a terminal record"));
+            sink.put(collect_required_terminal(model.stream(request(&model)).await?).await);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("stream_raw_exposes_terminal_service_tier should replay from its cassette");
 
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
+    let terminal = observed.take();
     let frame = recorded_terminal_frame(SCENARIO);
     let recorded_tier = frame["usage"]["service_tier"]
         .as_str()
@@ -336,7 +323,7 @@ async fn stream_raw_exposes_terminal_service_tier() {
 async fn stream_tool_call_raw_round_trips_terminal_type() {
     const SCENARIO: &str =
         "raw_stream_capture_matrix/stream_tool_call_raw_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_mistral_cassette_result(
         "raw_stream_capture_matrix/stream_tool_call_raw_round_trips_terminal_type",
@@ -367,18 +354,14 @@ async fn stream_tool_call_raw_round_trips_terminal_type() {
                 typed.provider_request_id, None,
                 "the transport id is stamped on the normalized terminal, not the native record"
             );
-            *sink.lock().expect("observation lock") = Some(observation);
+            sink.put(observation);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("stream_tool_call_raw_round_trips_terminal_type should replay from its cassette");
 
-    let observation = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe the stream");
+    let observation = observed.take();
     let terminal = observation
         .terminal
         .as_ref()

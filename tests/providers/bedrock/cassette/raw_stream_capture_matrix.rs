@@ -35,18 +35,17 @@
 //! streaming bodies are base64 — decode before scanning).
 
 use base64::{Engine, prelude::BASE64_STANDARD};
-use futures::StreamExt;
 use rig::bedrock;
 use rig::bedrock::streaming::BedrockStreamingResponse;
 use rig::bedrock::types::converse_output::StopReason;
 use rig::completion::CompletionModel as _;
 use rig::prelude::*;
-use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_bedrock_cassette;
 use crate::cassettes::recorded_interaction_bodies;
+use crate::support::{Observed, collect_sole_terminal};
 
 const BEDROCK_PROVIDER: &str = "bedrock";
 const MODEL: &str = bedrock::completion::AMAZON_NOVA_LITE;
@@ -58,21 +57,6 @@ fn request(model: &bedrock::completion::CompletionModel) -> rig::completion::Com
         .temperature(0.0)
         .max_tokens(16)
         .build()
-}
-
-async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
-    let mut finals = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
-            finals.push(record);
-        }
-    }
-    assert_eq!(
-        finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
-    finals.remove(0)
 }
 
 /// The recorded event-stream bytes of the scenario's single interaction,
@@ -137,13 +121,13 @@ fn recorded_terminal_events(scenario: &str) -> (String, Value) {
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion(MODEL);
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -170,17 +154,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
                 terminal.usage.output_tokens
             );
             assert_eq!(typed.provider_request_id, terminal.provider_request_id);
-            *sink.lock().expect("capture mutex") = Some(raw.clone());
+            sink.put(raw.clone());
         },
     )
     .await;
 
     let (_, usage) = recorded_terminal_events(scenario);
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     assert_eq!(raw["usage"]["total_tokens"], usage["totalTokens"]);
 }
 
@@ -192,13 +172,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 #[ignore = "unrecorded (no valid AWS credentials in this environment)"]
 async fn stream_raw_exposes_bedrock_stop_reason() {
     let scenario = "raw_stream_capture_matrix/stream_raw_exposes_bedrock_stop_reason";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_bedrock_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_bedrock_stop_reason",
         |client| async move {
             let model = client.completion(MODEL);
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -219,16 +199,12 @@ async fn stream_raw_exposes_bedrock_stop_reason() {
             );
 
             let raw = terminal.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     let (stop_reason, usage) = recorded_terminal_events(scenario);
     assert_eq!(
         stop_reason, "end_turn",

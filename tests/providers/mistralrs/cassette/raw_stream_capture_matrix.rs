@@ -32,15 +32,14 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test mistralrs mistralrs::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/mistralrs/raw_stream_capture_matrix/`.
 
-use futures::StreamExt;
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse};
-use rig::streaming::{StreamEvent, StreamFinal};
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{model_name, with_mistralrs_completions_cassette};
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
+use crate::support::{Observed, collect_sole_terminal};
 
 const MISTRALRS_PROVIDER: &str = "mistralrs";
 /// The plain OpenAI dialect names itself `openai`, and a terminal record is
@@ -55,21 +54,6 @@ type MistralRsTerminal = StreamingCompletionResponse<ChatUsage>;
 
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
-}
-
-async fn terminal_of(mut stream: rig::streaming::StreamingCompletionResponse) -> StreamFinal {
-    let mut finals = Vec::new();
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
-            finals.push(record);
-        }
-    }
-    assert_eq!(
-        finals.len(),
-        1,
-        "stream should yield exactly one terminal record"
-    );
-    finals.remove(0)
 }
 
 /// The premise every streaming cell rests on: the scenario recorded exactly
@@ -115,13 +99,13 @@ fn recorded_envelope_field(frames: &[Value], key: &str, scenario: &str) -> Value
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.chat(model_name());
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -156,17 +140,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
             assert_eq!(typed.response_id, terminal.response_id);
             assert_eq!(typed.model, terminal.model);
             assert_eq!(terminal.provider, NORMALIZED_PROVIDER);
-            *sink.lock().expect("capture mutex") = Some(raw.clone());
+            sink.put(raw.clone());
         },
     )
     .await;
 
     let (_, terminal_frame) = recorded_frames_with_terminal(scenario);
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     assert_eq!(
         raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
@@ -185,13 +165,13 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 #[ignore = "unrecorded (no mistral.rs server in this environment)"]
 async fn stream_raw_exposes_envelope_fields() {
     let scenario = "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_mistralrs_completions_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
         |client| async move {
             let model = client.chat(model_name());
-            let terminal = terminal_of(
+            let terminal = collect_sole_terminal(
                 model
                     .stream(request(&model))
                     .await
@@ -214,16 +194,12 @@ async fn stream_raw_exposes_envelope_fields() {
                 );
             }
             let raw = terminal.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
+    let raw = captured.take();
     let (frames, terminal_frame) = recorded_frames_with_terminal(scenario);
     let params = raw
         .get("additional_params")

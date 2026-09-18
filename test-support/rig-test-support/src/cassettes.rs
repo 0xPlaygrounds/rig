@@ -38,6 +38,48 @@ pub fn recorded_request_header_pairs(provider: &str, scenario: &str) -> Vec<Vec<
     rig_cassette::recorded_request_header_pairs(&cassette_root(), provider, scenario)
 }
 
+/// Read recorded lowercase response-header pairs in wire order.
+pub fn recorded_response_header_pairs(
+    provider: &str,
+    scenario: &str,
+) -> Vec<Vec<(String, String)>> {
+    rig_cassette::recorded_response_header_pairs(&cassette_root(), provider, scenario)
+}
+
+/// The recorded value of one response header of one interaction, if it was
+/// recorded at all. `name` must be lowercase.
+pub fn recorded_response_header(
+    provider: &str,
+    scenario: &str,
+    interaction: usize,
+    name: &str,
+) -> Option<String> {
+    recorded_response_header_pairs(provider, scenario)
+        .get(interaction)
+        .unwrap_or_else(|| {
+            panic!("cassette {provider}/{scenario} should record interaction {interaction}")
+        })
+        .iter()
+        .find(|(recorded, _)| recorded == name)
+        .map(|(_, value)| value.clone())
+}
+
+/// Parse every recorded request/response body pair as JSON, in wire order.
+pub fn recorded_json_turns(
+    provider: &str,
+    scenario: &str,
+) -> Vec<(serde_json::Value, serde_json::Value)> {
+    rig_cassette::recorded_json_turns(&cassette_root(), provider, scenario)
+}
+
+/// Parse the single recorded turn of a single-turn scenario as JSON.
+pub fn recorded_json_turn(
+    provider: &str,
+    scenario: &str,
+) -> (serde_json::Value, serde_json::Value) {
+    rig_cassette::recorded_json_turn(&cassette_root(), provider, scenario)
+}
+
 /// Read recorded request paths in wire order.
 pub fn recorded_request_paths(provider: &str, scenario: &str) -> Vec<String> {
     rig_cassette::recorded_request_paths(&cassette_root(), provider, scenario)

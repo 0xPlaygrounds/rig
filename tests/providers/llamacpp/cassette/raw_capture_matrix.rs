@@ -61,13 +61,13 @@
 use rig::completion::{
     CompletionModel, CompletionRequest, CompletionResponse as RigCompletionResponse, FinishReason,
 };
-use rig::message::AssistantContent;
 use rig::providers::{llamacpp, openai};
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::cassette_support::*;
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
+use crate::cassettes::{CassetteMode, recorded_json_turn};
+use crate::support::{Observed, assert_wire_value_matches, assistant_text};
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
@@ -104,50 +104,6 @@ fn assert_recorded_envelope(body: &Value, scenario: &str) {
     );
 }
 
-/// The single recorded interaction of a scenario, request and response parsed
-/// as JSON.
-fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
-    let bodies = recorded_interaction_bodies(LLAMACPP_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        1,
-        "{scenario}: the scenario must record exactly one interaction"
-    );
-    let (request, response) = &bodies[0];
-    let request: Value = serde_json::from_str(request)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
-    let response: Value = serde_json::from_str(response)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded response should be JSON: {err}"));
-    (request, response)
-}
-
-/// Compares a value rig read live against the fixture's copy of it.
-///
-/// Replay reads the scrubbed fixture back, so the two are byte-equal. Record
-/// mode sees the provider's live value while the fixture holds the scrubber's
-/// placeholder for volatile fields (`created` → 0, `id` → `..._REDACTED_n`),
-/// so there the assertion is that both sides carry the field with the same
-/// JSON type — the strongest claim a live recording can make.
-fn assert_wire_value_matches(live: &Value, recorded: &Value, field: &str) {
-    let (live_value, recorded_value) = (live.get(field), recorded.get(field));
-    match CassetteMode::current() {
-        CassetteMode::Replay => assert_eq!(
-            live_value, recorded_value,
-            "{field}: replayed value must equal the recorded wire value"
-        ),
-        CassetteMode::Record => {
-            let (Some(live_value), Some(recorded_value)) = (live_value, recorded_value) else {
-                panic!("{field}: both the live value and the recording must carry it");
-            };
-            assert_eq!(
-                std::mem::discriminant(live_value),
-                std::mem::discriminant(recorded_value),
-                "{field}: live and recorded values must share a JSON type"
-            );
-        }
-    }
-}
-
 /// The normalized finish reason a recorded `finish_reason` string maps to.
 fn finish_reason_of(native: &str) -> FinishReason {
     match native {
@@ -157,39 +113,21 @@ fn finish_reason_of(native: &str) -> FinishReason {
     }
 }
 
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
 /// Where a cell parks the response its recorded turn produced.
 ///
 /// The body is shared but the wrapper call is not: `cassette_safety` reads
 /// every scenario out of the AST and accepts only a literal at the call site,
 /// so a helper that took the scenario as a parameter would register nothing
 /// and orphan four fixtures.
-type Observed = std::sync::Arc<std::sync::Mutex<Option<RigCompletionResponse>>>;
-
+///
 /// The one turn every cell here runs.
-async fn run(client: BoundLlamacpp, sink: Observed) {
+async fn run(client: BoundLlamacpp, sink: Observed<RigCompletionResponse>) {
     let model = client.completion(CASSETTE_MODEL);
     let response = model
         .completion(request(&model))
         .await
         .expect("completion should succeed");
-    *sink.lock().expect("observation lock") = Some(response);
-}
-
-fn observed(sink: &Observed) -> RigCompletionResponse {
-    sink.lock()
-        .expect("observation lock")
-        .take()
-        .expect("the test body must have captured the response")
+    sink.put(response);
 }
 
 // ---------------------------------------------------------------------------
@@ -205,9 +143,9 @@ async fn raw_reads_back_as_the_provider_type() {
         |client| run(client, sink.clone()),
     )
     .await;
-    let response = observed(&sink);
+    let response = sink.take();
 
-    let (_, body) = recorded_json_interaction(scenario);
+    let (_, body) = recorded_json_turn(LLAMACPP_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
 
     // `raw` is the reply document. On replay the harness serves the scrubbed
@@ -255,7 +193,7 @@ async fn raw_exposes_envelope_fields() {
         run(client, sink.clone())
     })
     .await;
-    let response = observed(&sink);
+    let response = sink.take();
 
     let mut normalized = response.clone();
     normalized.raw = Value::Null;
@@ -269,7 +207,7 @@ async fn raw_exposes_envelope_fields() {
     }
 
     let raw = response.raw;
-    let (_, body) = recorded_json_interaction(scenario);
+    let (_, body) = recorded_json_turn(LLAMACPP_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     for field in ["object", "system_fingerprint"] {
         assert_eq!(
@@ -315,7 +253,7 @@ async fn normalized_fields_match_the_typed_raw() {
         |client| run(client, sink.clone()),
     )
     .await;
-    let response = observed(&sink);
+    let response = sink.take();
 
     let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
         .expect("raw must deserialize into llamacpp::CompletionResponse");
@@ -352,10 +290,10 @@ async fn normalized_fields_match_the_typed_raw() {
     // And the same fields against the fixture bytes, so a recording that
     // stopped carrying them fails here rather than silently agreeing with an
     // empty document.
-    let (_, body) = recorded_json_interaction(scenario);
+    let (_, body) = recorded_json_turn(LLAMACPP_PROVIDER, scenario);
     assert_recorded_envelope(&body, scenario);
     assert_eq!(
-        text_of(&response.choice),
+        assistant_text(&response.choice),
         body["choices"][0]["message"]["content"]
             .as_str()
             .expect("the recorded turn must carry assistant text")
@@ -400,7 +338,7 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
         run(client, sink.clone())
     })
     .await;
-    let response = observed(&sink);
+    let response = sink.take();
 
     let typed = llamacpp::CompletionResponse::deserialize(&response.raw)
         .expect("raw must deserialize into llamacpp::CompletionResponse");
@@ -425,7 +363,7 @@ async fn raw_preserves_the_timings_the_openai_type_drops() {
          describe the same thing"
     );
 
-    let (_, body) = recorded_json_interaction(scenario);
+    let (_, body) = recorded_json_turn(LLAMACPP_PROVIDER, scenario);
     assert_eq!(
         response.raw.get("timings"),
         body.get("timings"),

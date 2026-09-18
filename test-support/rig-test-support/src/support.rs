@@ -950,6 +950,193 @@ pub async fn collect_text_and_terminal(
     (text, terminal)
 }
 
+/// Drive a raw provider stream to exhaustion and return the terminal record
+/// it must have ended with, discarding the visible text.
+///
+/// Providers that repeat their accounting across closing frames emit more
+/// than one terminal event; this keeps the last, exactly as
+/// [`collect_text_and_terminal`] reports it.
+pub async fn collect_required_terminal(
+    stream: StreamingCompletionResponse,
+) -> rig_core::streaming::StreamFinal {
+    let (_, terminal) = collect_text_and_terminal(stream).await;
+    terminal.expect("stream should end with a terminal record")
+}
+
+/// Drive a raw provider stream to exhaustion and return its one terminal
+/// record.
+///
+/// Exactly one terminal record per stream is the contract, so a stream that
+/// emitted none — or more than one — fails here instead of silently handing
+/// back the last.
+pub async fn collect_sole_terminal(
+    mut stream: StreamingCompletionResponse,
+) -> rig_core::streaming::StreamFinal {
+    let mut finals = Vec::new();
+
+    while let Some(item) = stream.next().await {
+        if let StreamEvent::Final(record) = item.expect("stream item should be ok") {
+            finals.push(record);
+        }
+    }
+
+    assert_eq!(
+        finals.len(),
+        1,
+        "stream should yield exactly one terminal record"
+    );
+    finals.remove(0)
+}
+
+/// Where a matrix cell parks the observation its recorded turn produced.
+///
+/// The cassette wrappers take the turn as a closure and return the closure's
+/// `Result`, so anything else the turn observed has to leave through shared
+/// state. The wrapper call itself stays inline in every cell with its own
+/// scenario literal — the fixture scan reads that literal out of the AST — so
+/// what is shared here is the parking, never the call, the request or the
+/// expectations.
+#[derive(Debug)]
+pub struct Observed<T>(std::sync::Arc<std::sync::Mutex<Option<T>>>);
+
+impl<T> Observed<T> {
+    /// A sink that has observed nothing yet.
+    pub fn new() -> Self {
+        Self(std::sync::Arc::new(std::sync::Mutex::new(None)))
+    }
+
+    /// Park what the turn produced, replacing any earlier observation.
+    pub fn put(&self, observation: T) {
+        *self.0.lock().expect("observation lock") = Some(observation);
+    }
+
+    /// Take what the turn parked, requiring that the turn actually ran.
+    pub fn take(&self) -> T {
+        self.0
+            .lock()
+            .expect("observation lock")
+            .take()
+            .expect("the cell should observe a value")
+    }
+}
+
+impl<T> Clone for Observed<T> {
+    fn clone(&self) -> Self {
+        Self(std::sync::Arc::clone(&self.0))
+    }
+}
+
+impl<T> Default for Observed<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Concatenate the assistant text blocks of a completion choice.
+///
+/// Unlike [`assistant_text_response`] this joins with nothing and always
+/// returns a string: a matrix comparing against a recorded `content` field
+/// wants the text exactly as the wire carried it, empty included.
+pub fn assistant_text(choice: &[AssistantContent]) -> String {
+    choice
+        .iter()
+        .filter_map(|content| match content {
+            AssistantContent::Text(text) => Some(text.text.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The normalized completion response serialized with its raw capture
+/// cleared, so an assertion about the normalized surface cannot be satisfied
+/// by something `raw` happens to carry.
+pub fn normalized_without_raw(
+    mut response: rig_core::completion::CompletionResponse,
+) -> serde_json::Value {
+    response.raw = serde_json::Value::Null;
+    serde_json::to_value(&response).expect("normalized response should serialize")
+}
+
+/// Whether any object anywhere inside a JSON value carries the named key.
+pub fn json_contains_key(value: &serde_json::Value, needle: &str) -> bool {
+    match value {
+        serde_json::Value::Object(map) => map
+            .iter()
+            .any(|(key, value)| key == needle || json_contains_key(value, needle)),
+        serde_json::Value::Array(items) => items.iter().any(|item| json_contains_key(item, needle)),
+        _ => false,
+    }
+}
+
+/// Compare one field of a live reply against the recording at the strength
+/// the current mode supports.
+///
+/// Replay serves the fixture back, so the values must be equal. A recording
+/// pass sees a value the provider just minted while the fixture holds the
+/// scrubbed one, so the claim there is that both carry the field and agree on
+/// its JSON type.
+pub fn assert_wire_value_matches(
+    live: &serde_json::Value,
+    recorded: &serde_json::Value,
+    field: &str,
+) {
+    let (live_value, recorded_value) = (live.get(field), recorded.get(field));
+    match crate::cassettes::CassetteMode::current() {
+        crate::cassettes::CassetteMode::Replay => assert_eq!(
+            live_value, recorded_value,
+            "{field}: replayed value must equal the recorded wire value"
+        ),
+        crate::cassettes::CassetteMode::Record => {
+            let (Some(live_value), Some(recorded_value)) = (live_value, recorded_value) else {
+                panic!("{field}: both the live value and the recording must carry it");
+            };
+            assert_eq!(
+                std::mem::discriminant(live_value),
+                std::mem::discriminant(recorded_value),
+                "{field}: live and recorded values must share a JSON type"
+            );
+        }
+    }
+}
+
+/// The finish reason a recorded chat-completions body reports.
+///
+/// Mapped by hand from the wire word, so the expectation is independent of
+/// the decoder that produced the normalized reason it is compared against.
+pub fn recorded_chat_finish_reason(body: &serde_json::Value) -> rig_core::completion::FinishReason {
+    match body["choices"][0]["finish_reason"].as_str() {
+        Some("stop") => rig_core::completion::FinishReason::Stop,
+        Some("length") => rig_core::completion::FinishReason::Length,
+        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
+    }
+}
+
+/// The one usage-bearing SSE frame of a recorded chat-completions stream.
+///
+/// The premise of a terminal-record matrix is that the wire reported its
+/// accounting exactly once, on the stream's last data frame; both halves are
+/// asserted here rather than assumed.
+pub fn recorded_sole_usage_frame(provider: &str, scenario: &str) -> serde_json::Value {
+    let frames = crate::cassettes::recorded_sse_json_frames(provider, scenario);
+    let mut with_usage = frames
+        .iter()
+        .enumerate()
+        .filter(|(_, frame)| !frame["usage"].is_null());
+    let (index, terminal) = with_usage
+        .next()
+        .expect("the recorded stream must carry usage on its terminal frame");
+    assert!(
+        with_usage.next().is_none(),
+        "usage must be reported on exactly one (terminal) frame"
+    );
+    assert_eq!(
+        index + 1,
+        frames.len(),
+        "the usage-bearing frame must be the stream's last data frame"
+    );
+    terminal.clone()
+}
+
 /// Drain a raw provider stream into text, tool, error, and final-event observations.
 pub async fn collect_raw_stream_observation(
     mut stream: StreamingCompletionResponse,

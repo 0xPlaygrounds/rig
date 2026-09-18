@@ -47,11 +47,8 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test copilot copilot::raw_capture_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/copilot/raw_capture_matrix/`.
 
-use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-};
+use rig::completion::{CompletionModel as _, FinishReason};
 use rig::driver::Bound;
-use rig::message::AssistantContent;
 use rig::providers::copilot;
 use rig::providers::copilot::wire::CopilotWire;
 use rig::providers::openai;
@@ -60,8 +57,9 @@ use rig::providers::openai::wire::OpenAiWire;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies};
+use crate::cassettes::{CassetteMode, recorded_json_turn};
 use crate::copilot::with_copilot_cassette;
+use crate::support::{Observed, assert_wire_value_matches, assistant_text, normalized_without_raw};
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
@@ -70,23 +68,6 @@ const PROMPT: &str = "Reply with exactly the single word: pong";
 
 fn request(model: &Bound<CopilotWire>) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
-}
-
-/// The single recorded interaction of a scenario, request and response parsed
-/// as JSON.
-fn recorded_json_interaction(scenario: &str) -> (Value, Value) {
-    let bodies = recorded_interaction_bodies(COPILOT_PROVIDER, scenario);
-    assert_eq!(
-        bodies.len(),
-        1,
-        "{scenario}: the scenario must record exactly one interaction"
-    );
-    let (request, response) = &bodies[0];
-    let request: Value = serde_json::from_str(request)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded request should be JSON: {err}"));
-    let response: Value = serde_json::from_str(response)
-        .unwrap_or_else(|err| panic!("{scenario}: recorded response should be JSON: {err}"));
-    (request, response)
 }
 
 /// Chat-route premise: the recorded body is a chat-completions response with
@@ -128,30 +109,6 @@ fn assert_recorded_responses_body(body: &Value, scenario: &str) {
     );
 }
 
-/// Replay reads the scrubbed fixture back, so volatile fields (`created` → 0,
-/// `fp_…`/`chatcmpl-…`/`resp_…` → placeholders) compare exactly; a live
-/// recording proves only that both sides carry the field with the same JSON
-/// type.
-fn assert_wire_value_matches(live: &Value, recorded: &Value, field: &str) {
-    let (live_value, recorded_value) = (live.get(field), recorded.get(field));
-    match CassetteMode::current() {
-        CassetteMode::Replay => assert_eq!(
-            live_value, recorded_value,
-            "{field}: replayed value must equal the recorded wire value"
-        ),
-        CassetteMode::Record => {
-            let (Some(live_value), Some(recorded_value)) = (live_value, recorded_value) else {
-                panic!("{field}: both the live value and the recording must carry it");
-            };
-            assert_eq!(
-                std::mem::discriminant(live_value),
-                std::mem::discriminant(recorded_value),
-                "{field}: live and recorded values must share a JSON type"
-            );
-        }
-    }
-}
-
 /// The scrubber placeholders generated ids, so a replay compares them exactly
 /// while a live recording can only require that both sides carry one.
 fn assert_id_matches(live: Option<&str>, recorded: Option<&str>, what: &str) {
@@ -189,11 +146,6 @@ fn assert_is_reply_document(raw: &Value, body: &Value, scenario: &str) {
     );
 }
 
-fn normalized_without_raw(mut response: RigCompletionResponse) -> Value {
-    response.raw = Value::Null;
-    serde_json::to_value(&response).expect("normalized response should serialize")
-}
-
 /// The normalized finish reason the chat route's `finish_reason` maps to.
 fn finish_reason_of(reason: &str) -> FinishReason {
     match reason {
@@ -204,16 +156,6 @@ fn finish_reason_of(reason: &str) -> FinishReason {
     }
 }
 
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
 // ===========================================================================
 // Chat-completions route
 // ===========================================================================
@@ -222,8 +164,8 @@ fn text_of(choice: &[AssistantContent]) -> String {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_raw_round_trips_provider_type() {
     let scenario = "raw_capture_matrix/chat_raw_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_capture_matrix/chat_raw_round_trips_provider_type",
         |client| async move {
@@ -252,17 +194,13 @@ async fn chat_raw_round_trips_provider_type() {
             );
             assert_eq!(response.provider, COPILOT_PROVIDER);
             assert!(!response.choice.is_empty());
-            *sink.lock().expect("capture mutex") = Some(response.raw);
+            sink.put(response.raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interaction(scenario);
+    let raw = captured.take();
+    let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_chat_body(&body, scenario);
     openai::CompletionResponse::deserialize(&body)
         .expect("recorded body must be a chat-completions response");
@@ -278,8 +216,8 @@ async fn chat_raw_round_trips_provider_type() {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_raw_exposes_system_fingerprint() {
     let scenario = "raw_capture_matrix/chat_raw_exposes_system_fingerprint";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_capture_matrix/chat_raw_exposes_system_fingerprint",
         |client| async move {
@@ -294,17 +232,13 @@ async fn chat_raw_exposes_system_fingerprint() {
                 "normalized CompletionResponse must not grow a `system_fingerprint` field"
             );
             let raw = response.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interaction(scenario);
+    let raw = captured.take();
+    let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_chat_body(&body, scenario);
     // `fp_…` fingerprints are placeholdered on disk like generated ids.
     assert_wire_value_matches(&raw, &body, "system_fingerprint");
@@ -325,8 +259,8 @@ async fn chat_raw_exposes_system_fingerprint() {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn chat_normalized_fields_equal_raw_renormalized() {
     let scenario = "raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_capture_matrix/chat_normalized_fields_equal_raw_renormalized",
         |client| async move {
@@ -377,17 +311,13 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
             );
             assert!(!response.choice.is_empty());
 
-            *sink.lock().expect("capture mutex") = Some(response);
+            sink.put(response);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
-    let (_, body) = recorded_json_interaction(scenario);
+    let response = captured.take();
+    let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_chat_body(&body, scenario);
     assert_id_matches(
         response.response_id.as_deref(),
@@ -411,7 +341,7 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
         "total tokens"
     );
     assert_eq!(
-        text_of(&response.choice),
+        assistant_text(&response.choice),
         body["choices"][0]["message"]["content"]
             .as_str()
             .expect("the recorded choice must carry text"),
@@ -436,8 +366,8 @@ async fn chat_normalized_fields_equal_raw_renormalized() {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_raw_round_trips_provider_type() {
     let scenario = "raw_capture_matrix/responses_raw_round_trips_provider_type";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_capture_matrix/responses_raw_round_trips_provider_type",
         |client| async move {
@@ -464,17 +394,13 @@ async fn responses_raw_round_trips_provider_type() {
             );
             assert_eq!(response.provider, COPILOT_PROVIDER);
             assert!(!response.choice.is_empty());
-            *sink.lock().expect("capture mutex") = Some(response.raw);
+            sink.put(response.raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interaction(scenario);
+    let raw = captured.take();
+    let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_responses_body(&body, scenario);
     responses_api::CompletionResponse::deserialize(&body)
         .expect("recorded body must be a Responses envelope");
@@ -485,8 +411,8 @@ async fn responses_raw_round_trips_provider_type() {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_raw_exposes_envelope() {
     let scenario = "raw_capture_matrix/responses_raw_exposes_envelope";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_capture_matrix/responses_raw_exposes_envelope",
         |client| async move {
@@ -503,17 +429,13 @@ async fn responses_raw_exposes_envelope() {
                 );
             }
             let raw = response.raw;
-            *sink.lock().expect("capture mutex") = Some(raw);
+            sink.put(raw);
         },
     )
     .await;
 
-    let raw = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured raw");
-    let (_, body) = recorded_json_interaction(scenario);
+    let raw = captured.take();
+    let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_responses_body(&body, scenario);
     for field in ["object", "status", "model"] {
         assert_eq!(
@@ -533,8 +455,8 @@ async fn responses_raw_exposes_envelope() {
 #[ignore = "unrecorded (no COPILOT credentials in this environment)"]
 async fn responses_normalized_fields_equal_raw_renormalized() {
     let scenario = "raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized";
-    let captured = std::sync::Arc::new(std::sync::Mutex::new(None));
-    let sink = std::sync::Arc::clone(&captured);
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_copilot_cassette(
         "raw_capture_matrix/responses_normalized_fields_equal_raw_renormalized",
         |client| async move {
@@ -586,17 +508,13 @@ async fn responses_normalized_fields_equal_raw_renormalized() {
             );
             assert!(!response.choice.is_empty());
 
-            *sink.lock().expect("capture mutex") = Some(response);
+            sink.put(response);
         },
     )
     .await;
 
-    let response = captured
-        .lock()
-        .expect("capture mutex")
-        .take()
-        .expect("the test body must have captured the response");
-    let (_, body) = recorded_json_interaction(scenario);
+    let response = captured.take();
+    let (_, body) = recorded_json_turn(COPILOT_PROVIDER, scenario);
     assert_recorded_responses_body(&body, scenario);
     assert_id_matches(
         response.response_id.as_deref(),

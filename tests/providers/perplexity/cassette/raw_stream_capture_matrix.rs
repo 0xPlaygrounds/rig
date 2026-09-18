@@ -39,7 +39,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::{assert_matches_recorded_token, with_perplexity_cassette};
-use crate::support::collect_text_and_terminal;
+use crate::support::{Observed, collect_text_and_terminal};
 
 /// The terminal record as the decoder serialized it, accounting included.
 type PerplexityTerminal = StreamingCompletionResponse<ChatUsage>;
@@ -108,7 +108,7 @@ fn assert_terminal_reproduces_frame(terminal: &StreamFinal, frame: &Value) {
 #[tokio::test]
 async fn stream_raw_round_trips_terminal_type() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_perplexity_cassette(
         "raw_stream_capture_matrix/stream_raw_round_trips_terminal_type",
@@ -146,16 +146,12 @@ async fn stream_raw_round_trips_terminal_type() {
                 .as_ref()
                 .expect("the terminal carries the dialect's accounting");
             assert_eq!(usage.to_normalized(), terminal.usage);
-            *sink.lock().expect("observation lock") = Some(terminal);
+            sink.put(terminal);
         },
     )
     .await;
 
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
+    let terminal = observed.take();
     let frame = recorded_terminal_frame(SCENARIO);
     assert_terminal_reproduces_frame(&terminal, &frame);
     let request_body = crate::cassettes::recorded_json_request(PROVIDER, SCENARIO);
@@ -169,7 +165,7 @@ async fn stream_raw_round_trips_terminal_type() {
 #[tokio::test]
 async fn stream_raw_exposes_terminal_usage_and_object() {
     const SCENARIO: &str = "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_perplexity_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_usage_and_object",
@@ -180,17 +176,12 @@ async fn stream_raw_exposes_terminal_usage_and_object() {
                 .await
                 .expect("the stream should open");
             let (_, terminal) = collect_text_and_terminal(stream).await;
-            *sink.lock().expect("observation lock") =
-                Some(terminal.expect("stream should end with a terminal record"));
+            sink.put(terminal.expect("stream should end with a terminal record"));
         },
     )
     .await;
 
-    let terminal = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a terminal record");
+    let terminal = observed.take();
     let frame = recorded_terminal_frame(SCENARIO);
     let recorded_object = frame["object"]
         .as_str()

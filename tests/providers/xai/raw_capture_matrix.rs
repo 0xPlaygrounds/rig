@@ -31,46 +31,28 @@
 
 use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
 use rig::driver::Bound;
-use rig::message::AssistantContent;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
 use rig::providers::xai;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::support::{
-    assert_matches_recorded_token, recorded_response_headers, with_xai_cassette_result,
-};
+use super::support::{assert_matches_recorded_token, with_xai_cassette_result};
+use crate::cassettes::{recorded_json_turn, recorded_response_header};
+use crate::support::{Observed, assistant_text};
 
 const PROVIDER: &str = "xai";
 const MODEL: &str = xai::GROK_3_MINI;
 const PROMPT: &str = "Reply with the single word: pong";
+const REQUEST_ID_HEADER: &str = "x-request-id";
 
 fn request(model: &Bound<OpenAiWire>) -> CompletionRequest {
     model.completion_request(PROMPT).build()
 }
 
-/// The single recorded interaction of `scenario` as `(request, response)` JSON.
-fn recorded_json(scenario: &str) -> (Value, Value) {
-    let interactions = crate::cassettes::recorded_interaction_bodies(PROVIDER, scenario);
-    assert_eq!(
-        interactions.len(),
-        1,
-        "every cell here is a single completion turn"
-    );
-    let (request, response) = &interactions[0];
-    (
-        serde_json::from_str(request).expect("recorded request should be JSON"),
-        serde_json::from_str(response).expect("recorded response should be JSON"),
-    )
-}
-
 /// The `x-request-id` the single recorded interaction carried.
 fn recorded_request_id(scenario: &str) -> Option<String> {
-    recorded_response_headers(scenario)[0]
-        .iter()
-        .find(|(name, _)| name == "x-request-id")
-        .map(|(_, value)| value.clone())
+    recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
 }
 
 /// The recorded `output` message item: its id and its output text.
@@ -96,16 +78,6 @@ fn recorded_finish_reason(body: &Value) -> FinishReason {
         Some("completed") => FinishReason::Stop,
         other => panic!("recorded turn should have completed, got {other:?}"),
     }
-}
-
-fn text_of(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// The normalized fields, checked against the wire bytes that produced them.
@@ -145,7 +117,7 @@ fn assert_reproduces_fixture(
         ),
         "usage"
     );
-    assert_eq!(text_of(&response.choice), text, "choice text");
+    assert_eq!(assistant_text(&response.choice), text, "choice text");
     // xAI contracts `x-request-id`; the recorded header is the premise.
     assert!(
         request_id.is_some(),
@@ -192,7 +164,7 @@ async fn raw_round_trips_responses_type() {
     .await
     .expect("raw_round_trips_responses_type should replay from its cassette");
 
-    let (_, response_body) = recorded_json(SCENARIO);
+    let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert_eq!(response_body["object"], json!("response"));
 }
 
@@ -203,26 +175,22 @@ async fn raw_round_trips_responses_type() {
 #[tokio::test]
 async fn raw_exposes_status_and_service_tier() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_status_and_service_tier";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_xai_cassette_result(
         "raw_capture_matrix/raw_exposes_status_and_service_tier",
         |client| async move {
             let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
+            sink.put(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("raw_exposes_status_and_service_tier should replay from its cassette");
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
-    let (_, body) = recorded_json(SCENARIO);
+    let response = observed.take();
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let recorded_status = body["status"]
         .as_str()
         .expect("a Responses body carries a status");
@@ -256,26 +224,22 @@ async fn raw_exposes_status_and_service_tier() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let observed = Observed::default();
     let sink = observed.clone();
     with_xai_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         |client| async move {
             let model = client.completion(MODEL);
             let response = model.completion(request(&model)).await?;
-            *sink.lock().expect("observation lock") = Some(response);
+            sink.put(response);
             Ok::<(), anyhow::Error>(())
         },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
 
-    let response = observed
-        .lock()
-        .expect("observation lock")
-        .take()
-        .expect("the cell should observe a response");
-    let (_, body) = recorded_json(SCENARIO);
+    let response = observed.take();
+    let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert_reproduces_fixture(&response, &body, recorded_request_id(SCENARIO).as_deref());
 
     // The normalized fields are the mapping of the provider-native fields in
