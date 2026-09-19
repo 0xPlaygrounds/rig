@@ -15,9 +15,11 @@
 //! ```console
 //! cargo xtask check-test-layout   # fail on inline `mod tests { }`
 //! cargo xtask check-wires         # fail if a provider is not a wire
+//! cargo xtask cassettes list      # what every committed cassette is
 //! ```
 
 mod bevy;
+mod cassettes;
 mod test_layout;
 mod verify;
 mod wires;
@@ -32,6 +34,8 @@ fn main() -> ExitCode {
     let result = match task.as_deref() {
         Some("verify") => verify::run(&workspace_root(), args.collect()).map_err(|e| e.to_string()),
         Some("check-test-layout") => test_layout::check(&workspace_root()),
+        Some("cassettes") => cassettes::run(&workspace_root(), args.collect()),
+        Some("check-cassette-provenance") => cassettes::check(&workspace_root()),
         Some("check-wires") => wires::check(&workspace_root()),
         Some(other) => Err(format!("unknown task {other:?}\n{USAGE}")),
         None => Err(format!("no task given\n{USAGE}")),
@@ -57,6 +61,11 @@ tasks:
   check-wires                 fail if anything under rig-core's providers/ is
                               not a wire: `.await`, `async`, a transport type
                               parameter, or a consumer-trait impl
+  cassettes list|plan|record  inspect the cassette provenance ledger, preview
+                              a recording, or run one (see `cassettes` usage)
+  check-cassette-provenance   fail if any committed cassette is undeclared, any
+                              declaration is unbacked, or any test records
+                              around the declared entry points
 ";
 
 fn workspace_root() -> PathBuf {

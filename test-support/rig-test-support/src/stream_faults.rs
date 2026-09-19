@@ -3,13 +3,17 @@
 //! A fault cell serves a real provider adapter a stream that ends badly and
 //! asserts what each runtime does with it: the error it surfaces, the record
 //! it keeps, the history it commits, the tools it runs. The bodies are cut
-//! from committed recordings ([`recorded_sse_frames`]) or, where a wire only
-//! records single terminal frames, assembled from frames a real capture or
-//! the adapter's own unit tests pin; every synthetic frame is a labelled
-//! constant beside its cell. The scripted transport replaces the cassette
-//! proxy for those cells, so their request boundary is pinned by the
-//! recording's owning test, not here. Setup failures replay the committed
-//! error recordings through the ordinary cassette wrappers.
+//! from committed recordings or, where a wire only records single terminal
+//! frames, assembled from frames a real capture or the adapter's own unit
+//! tests pin; every synthetic frame is a labelled constant beside its cell.
+//! A borrowed recording is reached only through the scripted family the
+//! borrowing module declares in `crates/rig-cassette/fixtures/scenarios.json`
+//! ([`crate::provenance::ScriptedFamily`]): the helpers that read committed
+//! bytes are crate-private, so a test module cannot read a fixture nobody
+//! declared. The scripted transport replaces the cassette proxy for those
+//! cells, so their request boundary is pinned by the recording's owning
+//! test, not here. Setup failures replay the committed error recordings
+//! through the ordinary cassette wrappers.
 #![allow(dead_code)]
 
 use std::sync::{
@@ -68,8 +72,14 @@ use crate::{
 };
 
 /// The recorded SSE frames of one interaction of a scenario: the response
-/// body split at its blank-line delimiters, in wire order.
-pub fn recorded_sse_frames(provider: &str, scenario: &str, interaction: usize) -> Vec<String> {
+/// body split at its blank-line delimiters, in wire order. Reached through
+/// [`crate::provenance::ScriptedFamily`], which checks the borrow against
+/// the declaration.
+pub(crate) fn recorded_sse_frames(
+    provider: &str,
+    scenario: &str,
+    interaction: usize,
+) -> Vec<String> {
     let recorded = crate::cassettes::recorded_statuses_and_bodies(provider, scenario);
     let (status, body) = recorded
         .get(interaction)
@@ -453,8 +463,10 @@ fn responses_filtered(frames: &[String], with_text: bool) -> Vec<String> {
 
 /// The recorded setup failure of `scenario` under `status`, as the bundled
 /// transport reports a rejection: a status error carrying the reply's
-/// headers (`Retry-After: 1` when `retry_after`).
-pub fn status_reply(
+/// headers (`Retry-After: 1` when `retry_after`). Reached through
+/// [`crate::provenance::ScriptedFamily`], which checks the borrow against
+/// the declaration.
+pub(crate) fn status_reply(
     provider: &str,
     scenario: &str,
     status: u16,

@@ -12,6 +12,7 @@ use rig::completion::CompletionModel;
 use rig::prelude::*;
 use rig::providers::openai::wire::{DEEPSEEK, OpenAI};
 use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
+use rig_test_support::provenance::ScriptedFamily;
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::DeepSeek;
 
@@ -46,8 +47,15 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
 /// retryable status (the failure rows' `SETUP_REPLY`).
 const SETUP_REPLY: &str = "corpus_faults/setup_unary";
 
+/// The scripted family declared for this module in
+/// `crates/rig-cassette/fixtures/scenarios.json`: the recordings this
+/// module is allowed to borrow bytes from.
+fn script() -> ScriptedFamily {
+    ScriptedFamily::new("deepseek", "ecs_matrix_long_loop")
+}
+
 fn fault_reply() -> MockHttpResponse {
-    crate::stream_faults::status_reply("deepseek", SETUP_REPLY, 503, false)
+    script().status_reply(SETUP_REPLY, 503, false)
 }
 
 crate::matrix::resume_matrix! {

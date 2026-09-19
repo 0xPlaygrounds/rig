@@ -32,13 +32,7 @@ fn venice_config(cassette: &ProviderCassette) -> OpenAI {
 }
 
 async fn venice_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundVenice) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "venice",
-        spec,
-        VENICE_BASE_URL,
-    )
-    .await;
+    let cassette = crate::cassettes::start_provider_cassette("venice", spec, VENICE_BASE_URL).await;
     let venice = venice_config(&cassette)
         .bound()
         .expect("transport should build");
@@ -63,9 +57,8 @@ where
     F: FnOnce(DirectVenice) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start_via(
+    let cassette = crate::cassettes::start_provider_cassette_via(
         rig_cassette::http::Transport::Direct,
-        &crate::cassettes::cassette_root(),
         "venice",
         spec,
         VENICE_BASE_URL,

@@ -32,6 +32,11 @@ Every selected check executes, every time; nothing is reused or recorded
 between runs. A failed step stops the run and prints which checks did not run.
 Verification always replays cassettes (`RIG_PROVIDER_TEST_MODE=replay`), never
 records, and never regenerates goldens.
+`source-guards` also runs `cargo xtask check-cassette-provenance`, which is
+available standalone under that name: the ownership guard over
+`crates/rig-cassette/fixtures/scenarios.json`, requiring every committed
+cassette to be declared, every declaration to be backed by a fixture or the
+scripted module it names, and no test to reach a raw recording entry point.
 
 ## Choosing a focused check
 

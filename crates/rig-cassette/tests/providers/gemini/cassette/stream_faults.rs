@@ -18,6 +18,14 @@ use super::super::support::with_gemini_cassette;
 use crate::stream_faults::{
     assert_setup_failure, drain, recorded_stream_errors, scripted, sole_failed_completion,
 };
+use rig_test_support::provenance::ScriptedFamily;
+
+/// The scripted family declared for this module in
+/// `crates/rig-cassette/fixtures/scenarios.json`: the recordings this
+/// module is allowed to borrow bytes from.
+fn script() -> ScriptedFamily {
+    ScriptedFamily::new("gemini", "stream_faults")
+}
 
 /// The recorded stream-setup failure, `error_envelope/nonexistent_model_streaming_error_preserves_status_and_body`,
 /// carries this model, prompt and budget.
@@ -249,8 +257,7 @@ async fn multi_frame_stream_recording() {
 #[ignore = "derives from `stream_faults/multi_frame_stream`; see multi_frame_stream_recording"]
 #[tokio::test]
 async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
-    let frames =
-        crate::stream_faults::recorded_sse_frames("gemini", "stream_faults/multi_frame_stream", 0);
+    let frames = script().recorded_sse_frames("stream_faults/multi_frame_stream", 0);
     let prefix =
         crate::stream_faults::frames_before(&frames, |frame| frame.contains("finishReason"));
     let expected: String = prefix

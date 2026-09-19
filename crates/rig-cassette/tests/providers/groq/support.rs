@@ -14,13 +14,7 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 pub(super) type BoundGroq = Bound<OpenAI, BoxedHttpClient>;
 
 async fn groq_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundGroq) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "groq",
-        spec,
-        GROQ.base_url,
-    )
-    .await;
+    let cassette = crate::cassettes::start_provider_cassette("groq", spec, GROQ.base_url).await;
     let groq = OpenAI::with_key(&GROQ, cassette.api_key("GROQ_API_KEY"))
         .with_base_url(cassette.base_url())
         .bound()
@@ -51,13 +45,7 @@ where
     F: FnOnce(BoundGroq) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "groq",
-        spec,
-        GROQ.base_url,
-    )
-    .await;
+    let cassette = crate::cassettes::start_provider_cassette("groq", spec, GROQ.base_url).await;
     let groq = OpenAI::with_key(&GROQ, "gsk-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url())
         .bound()

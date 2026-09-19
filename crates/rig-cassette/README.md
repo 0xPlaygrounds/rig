@@ -142,10 +142,14 @@ remain placeholdered.
 `fixtures/cassettes/<provider>/` holds the recorded HTTP interactions the
 provider suites in this package replay. `fixtures/effects/` holds the
 effect-log goldens the verification suite replays. Both are data: they are
-re-recorded by their producer, never edited by hand, and never regenerated to
-make a check pass. `.gitattributes` exempts the cassettes from the
-blank-at-eof whitespace check because SSE bodies legitimately end in a blank
-line.
+re-recorded by their producer and never regenerated to make a check pass. The
+one exception is the handful of `derived` cassettes, each declared in
+`fixtures/scenarios.json` — the registry of where every scenario's bytes came
+from — with the live recording it was built from and the exact hand edit that
+rebuilds it. `cargo xtask check-cassette-provenance` fails an undeclared
+fixture or a declaration with nothing behind it. `.gitattributes` exempts the
+cassettes from the blank-at-eof whitespace check because SSE bodies
+legitimately end in a blank line.
 
 Neither corpus is embedded with `include_*!`; the binaries read them at runtime
 from `CARGO_MANIFEST_DIR`, which is why `exclude` can keep them out of the

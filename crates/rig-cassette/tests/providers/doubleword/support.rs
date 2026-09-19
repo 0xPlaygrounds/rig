@@ -16,13 +16,8 @@ const DOUBLEWORD_BASE_URL: &str = "https://api.doubleword.ai/v1";
 pub(super) type BoundDoubleword = Bound<OpenAI, BoxedHttpClient>;
 
 async fn doubleword_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundDoubleword) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "doubleword",
-        spec,
-        DOUBLEWORD_BASE_URL,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("doubleword", spec, DOUBLEWORD_BASE_URL).await;
     let doubleword = OpenAI::with_key(&DOUBLEWORD, cassette.api_key("DOUBLEWORD_API_KEY"))
         .with_base_url(cassette.base_url())
         .bound()
@@ -48,13 +43,8 @@ pub(super) async fn with_doubleword_bogus_key_cassette<F, Fut>(
     F: FnOnce(BoundDoubleword) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "doubleword",
-        spec,
-        DOUBLEWORD_BASE_URL,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("doubleword", spec, DOUBLEWORD_BASE_URL).await;
     let client = OpenAI::with_key(&DOUBLEWORD, "rig-deliberately-invalid-doubleword-key")
         .with_base_url(cassette.base_url())
         .bound()

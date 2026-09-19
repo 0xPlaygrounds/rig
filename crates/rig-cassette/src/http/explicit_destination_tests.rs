@@ -37,7 +37,7 @@ async fn recording_to_an_explicit_path_keeps_partial_snapshots_before_finalizing
     let cassette = ProviderCassette::start_at(
         Transport::Proxy,
         "example",
-        CassetteSpec::new("explicit-destination"),
+        CassetteSpec::new("explicit-destination").with_provenance(Provenance::Live),
         &format!("{}/v1", upstream.base_url()),
         CassetteMode::Record,
         path.clone(),

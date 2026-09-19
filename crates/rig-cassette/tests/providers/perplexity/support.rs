@@ -14,13 +14,9 @@ use crate::cassettes::{CassetteSpec, ProviderCassette};
 pub(super) type BoundPerplexity = Bound<OpenAI, BoxedHttpClient>;
 
 async fn perplexity_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundPerplexity) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "perplexity",
-        spec,
-        "https://api.perplexity.ai",
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("perplexity", spec, "https://api.perplexity.ai")
+            .await;
     let perplexity = OpenAI::with_key(&PERPLEXITY, cassette.api_key("PERPLEXITY_API_KEY"))
         .with_base_url(cassette.base_url())
         .bound()

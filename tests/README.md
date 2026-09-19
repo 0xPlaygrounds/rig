@@ -171,6 +171,75 @@ cargo test -p rig-cassette --all-features --test gemini \
   -- --nocapture --test-threads=1
 ```
 
+### Scenario provenance
+
+`crates/rig-cassette/fixtures/scenarios.json` is the single registry of where
+every cassette scenario's bytes came from. Per provider it carries the suite's
+`source_dir`, the names of its cassette wrapper functions, and four lists.
+Scenario ids inside them are relative to the provider; a `sources` entry is a
+fully qualified `provider/scenario`.
+
+- `live` — captured from the real provider and committed. Only a `live`
+  scenario may be re-recorded.
+- `derived` — a committed fixture hand-built from named live `sources`, with a
+  `reason` and a `rebuild` recipe.
+- `scripted` — a fault family that owns no fixture: the named test module
+  injects the behaviour in code, borrowing bytes from its declared `sources`.
+- `unrecorded` — live by intent with no committed capture yet, because the
+  producing cell is `#[ignore]`d; nothing on disk corresponds to it.
+
+Provenance is about how the bytes were obtained, not about whether the call
+succeeded. A provider error the provider really returned is an ordinary live
+recording — the `http_errors/*` scenarios are real 4xx/5xx responses — while
+the many synthetic fault cells exist only in code and own no fixture at all.
+
+`test-support/rig-test-support/src/provenance.rs` resolves the declaration at
+test time. Every provider wrapper goes through `start_provider_cassette{,_via}`
+in `test-support/rig-test-support/src/cassettes.rs`, which calls
+`declared_spec`, so a scenario with no entry panics on the spot in replay as
+well as in record mode. The engine underneath states the weaker rule:
+`ProviderCassette::start_at` replays a `CassetteSpec` carrying no declared
+provenance and refuses to record it. `cargo xtask check-cassette-provenance`
+is the cross-check for drift rather than the first line of defence — it pairs
+every committed fixture with a declaration and every declaration with a
+fixture, resolves `sources`, compares the declaration against the scenarios
+discovered in the test sources, and fails any use of the raw entry points
+(`start`, `start_via`, `start_at`) outside the engine and that one helper.
+
+To declare a new scenario, add its id to the owning provider's `live` list (or
+to `derived`/`scripted`/`unrecorded` with the justification that category
+requires), write the cell through that provider's declared wrapper, then run
+the guard:
+
+```bash
+cargo xtask cassettes list [--provider P] [--provenance live|derived|scripted] [--json]
+cargo xtask cassettes plan [--provider P] [--scenario provider/scenario]
+cargo xtask cassettes record [--provider P] [--scenario provider/scenario]
+cargo xtask check-cassette-provenance
+```
+
+`list` prints one row per declared scenario — provenance, id, and the fixture
+path or `-`/`- (unrecorded)` where there is none — with indented `sources:`
+and `reason:` continuation lines and a closing count. A scripted family has no
+scenario path, so it is listed as `provider:family`. `plan` is the
+non-recording half of `record`: it resolves the same selection and prints
+`SELECT <id>` with the exact `cargo test` invocation that would record it,
+then `EXCLUDE <id> (derived|scripted): <reason>` for everything the recorder
+must not touch. It contacts nothing and writes nothing. An `unrecorded`
+scenario is selected too, with `--ignored` appended so its `#[ignore]`d
+producer actually runs. `record` runs exactly those invocations with
+`RIG_PROVIDER_TEST_MODE=record`. `--scenario` takes a fully qualified
+`provider/scenario`, and selecting a derived or scripted one is refused
+before any command is built, printing that scenario's `rebuild` recipe.
+
+A derived case is never refreshed by a live capture. Regenerating one is the
+manual edit written in that scenario's `rebuild` field: copy the named source
+fixture and reapply the documented change, leaving every request byte
+identical so replay still matches — each derived cell re-asserts its own edit
+from the fixture's bytes. Re-recording a source does **not** rewrite its
+dependents; `cargo xtask cassettes list` shows the dependency, and the derived
+cells must be re-derived by hand afterwards.
+
 ### Cassette Safety
 
 Record mode scrubs and safety-checks cassette contents before writing fixtures,
@@ -425,18 +494,22 @@ RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --test anthrop
 
 ### Stream-fault cells
 
-`tests/providers/{gemini,openai}/cassette/stream_faults.rs` and their
-`ecs_stream_faults.rs` twins drive the runner and the native runtime through
-the real adapter into a stream that ends badly: the committed error
+`crates/rig-cassette/tests/providers/{gemini,openai}/cassette/stream_faults.rs`
+and their `ecs_stream_faults.rs` twins drive the runner and the native runtime
+through the real adapter into a stream that ends badly: the committed error
 recordings for a setup failure, the committed text stream dropped by its
 consumer, and scripted faults served by `rig::test_utils`'s sequenced
-transport — a recording cut before its terminal (`test-support/rig-test-support/src/stream_faults.rs`),
-a Gemini refusal, an in-band error after content. Every scripted frame is a
-labelled constant with its provenance beside the cell; no cassette is
-hand-edited and no new fixture is committed. A scripted cell pins what the
-runtime does with the fault (the failure kind, the record, the committed
-history, the tools that never ran, the witness's facts); the request shape it
-would have sent is pinned by the recording's owning test, not by the cell.
+transport (`test-support/rig-test-support/src/stream_faults.rs`) — a recording
+cut before its terminal, a Gemini refusal, an in-band error after content.
+Each of those four modules is a declared `scripted` family in
+`crates/rig-cassette/fixtures/scenarios.json`, naming the recordings it borrows
+bytes from, the behaviour it injects and its cases; `ScriptedFamily` in
+`test-support/rig-test-support/src/provenance.rs` refuses a family or a source
+recording the declaration does not list. No cassette is hand-edited and no new
+fixture is committed. A scripted cell pins what the runtime does with the
+fault (the failure kind, the record, the committed history, the tools that
+never ran, the witness's facts); the request shape it would have sent is
+pinned by the recording's owning test, not by the cell.
 Every HTTP wire threads the witness's `AdapterContext` through its request,
 so a native cell reads the adapter's boundary facts (the request, the
 status, the provider's verdict, usage and error envelope, the closure) for

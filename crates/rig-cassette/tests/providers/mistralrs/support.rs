@@ -43,13 +43,8 @@ fn server() -> (String, String) {
 
 async fn mistralrs_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundResponses) {
     let (real_base_url, api_key) = server();
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "mistralrs",
-        spec,
-        &real_base_url,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("mistralrs", spec, &real_base_url).await;
     let responses = OpenAI::new(api_key)
         .with_base_url(cassette.base_url())
         .bound()
@@ -62,13 +57,8 @@ async fn mistralrs_completions_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, BoundCompletions) {
     let (real_base_url, api_key) = server();
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "mistralrs",
-        spec,
-        &real_base_url,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("mistralrs", spec, &real_base_url).await;
     let completions = OpenAI::new(api_key)
         .with_base_url(cassette.base_url())
         .with_route(Route::Chat)
@@ -81,13 +71,8 @@ async fn mistralrs_completions_cassette(
 async fn mistralrs_raw_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, String) {
     let real_base_url =
         std::env::var("MISTRALRS_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "mistralrs",
-        spec,
-        &real_base_url,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("mistralrs", spec, &real_base_url).await;
     let base_url = cassette.base_url();
     (cassette, base_url)
 }

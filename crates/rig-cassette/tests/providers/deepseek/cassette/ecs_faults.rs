@@ -24,7 +24,8 @@ use crate::ecs_matrix::{
     faults::{self, Fault},
     world::{run_scripted, run_world},
 };
-use crate::stream_faults::{SseShape, recorded_sse_frames, scripted, sse_bytes, status_reply};
+use crate::stream_faults::{SseShape, scripted, sse_bytes};
+use rig_test_support::provenance::ScriptedFamily;
 
 /// The recorded DeepSeek setup failure asked the wire not to think.
 fn thinking_disabled() -> serde_json::Value {
@@ -91,12 +92,19 @@ const TOOL_STREAM: &str = "corpus_matrix/hooks_patch_tool_args_streamed";
 /// The recorded setup failure the status rows rewrite.
 const SETUP_REPLY: &str = "corpus_faults/setup_unary";
 
+/// The scripted family declared for this module in
+/// `crates/rig-cassette/fixtures/scenarios.json`: the recordings this
+/// module is allowed to borrow bytes from.
+fn script() -> ScriptedFamily {
+    ScriptedFamily::new("deepseek", "ecs_faults")
+}
+
 fn recorded(scenario: &str) -> Vec<String> {
-    recorded_sse_frames("deepseek", scenario, 0)
+    script().recorded_sse_frames(scenario, 0)
 }
 
 fn reply(status: u16, retry_after: bool) -> MockHttpResponse {
-    status_reply("deepseek", SETUP_REPLY, status, retry_after)
+    script().status_reply(SETUP_REPLY, status, retry_after)
 }
 
 /// The wire over a transport that answers one streaming request with

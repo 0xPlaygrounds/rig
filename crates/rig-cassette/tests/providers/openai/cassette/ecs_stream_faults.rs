@@ -5,6 +5,11 @@
 //! observation is a side channel, so the failure, the record and the
 //! history must not change with it, and the trace carries the bus's facts
 //! beside the Responses adapter's own boundary facts.
+//!
+//! `crates/rig-cassette/fixtures/scenarios.json` declares this module as the
+//! scripted family `ecs_stream_faults` on `openai`. Its frames come from the
+//! funnels of `stream_faults.rs`, so a recording is only ever reached
+//! through that module's own declared family.
 
 use bevy_ecs::prelude::*;
 use bytes::Bytes;

@@ -295,8 +295,7 @@ pub(super) fn assert_recorded_stream_finishes_early(scenario: &str, expected: bo
 pub(super) type BoundGemini = Bound<Gemini, BoxedHttpClient>;
 
 async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundGemini) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = crate::cassettes::start_provider_cassette(
         "gemini",
         spec,
         "https://generativelanguage.googleapis.com",
@@ -324,8 +323,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     F: FnOnce(BoundGemini) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = crate::cassettes::start_provider_cassette(
         "gemini",
         spec,
         "https://generativelanguage.googleapis.com",
@@ -417,7 +415,7 @@ pub(super) async fn with_gemini_interactions_cassette<F, Fut>(
 /// Code-execution edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/code_execution_matrix/`).
 ///
 /// A separate registered wrapper so one bug's matrix stays auditable as a
-/// unit: `cassette_files_match_registered_scenarios` pairs the fixtures under
+/// unit: `cargo xtask check-cassette-provenance` pairs the fixtures under
 /// that directory with the calls made through this name and nothing else.
 pub(super) async fn with_gemini_code_execution_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
@@ -462,8 +460,7 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
     F: FnOnce(BoundGemini) -> Fut,
     Fut: Future<Output = ()>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = crate::cassettes::start_provider_cassette(
         "gemini",
         spec,
         "https://generativelanguage.googleapis.com",

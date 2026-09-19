@@ -23,7 +23,7 @@ use super::super::support::with_openai_cassette;
 use crate::{
     goldens::families,
     stream_faults::{
-        CountedSubtract, Invocations, SseShape, assert_setup_failure, drain, recorded_sse_frames,
+        CountedSubtract, Invocations, SseShape, assert_setup_failure, drain,
         recorded_stream_errors, scripted, sole_failed_completion, sse_bytes,
     },
     support::{
@@ -31,6 +31,14 @@ use crate::{
         STREAMING_TOOLS_PROMPT,
     },
 };
+use rig_test_support::provenance::ScriptedFamily;
+
+/// The scripted family declared for this module in
+/// `crates/rig-cassette/fixtures/scenarios.json`: the recordings this
+/// module is allowed to borrow bytes from.
+fn script() -> ScriptedFamily {
+    ScriptedFamily::new("openai", "stream_faults")
+}
 
 /// The recorded stream-setup failure, `error_envelope/nonexistent_model_streaming_error_preserves_status_and_body`,
 /// carries this model, prompt and budget.
@@ -54,7 +62,7 @@ pub(super) const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 /// The frames of the recorded text stream up to, not including, the text
 /// item's completion: content deltas, then nothing.
 pub(super) fn text_prefix_frames() -> Vec<String> {
-    SseShape::Responses.text_prefix(&recorded_sse_frames("openai", TEXT_STREAM, 0))
+    SseShape::Responses.text_prefix(&script().recorded_sse_frames(TEXT_STREAM, 0))
 }
 
 /// The text the deltas of `frames` carry.
@@ -65,7 +73,7 @@ pub(super) fn delta_text(frames: &[String]) -> String {
 /// The frames of the recorded tool-call turn up to, not including, the
 /// response's completion: the whole `subtract` call, then nothing.
 pub(super) fn tool_call_prefix_frames() -> Vec<String> {
-    SseShape::Responses.tool_prefix(&recorded_sse_frames("openai", TOOL_STREAM, 0))
+    SseShape::Responses.tool_prefix(&script().recorded_sse_frames(TOOL_STREAM, 0))
 }
 
 /// A client over a transport that answers one streaming request with

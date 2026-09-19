@@ -4,13 +4,42 @@
 pub use rig_cassette::http::*;
 use std::path::PathBuf;
 
-/// Locate this workspace's provider cassette directory from the crate manifest.
-pub fn cassette_root() -> PathBuf {
+/// Locate this workspace's root from the crate manifest.
+pub fn workspace_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .and_then(std::path::Path::parent)
         .expect("test-support crate is two directories below the repository")
-        .join("crates/rig-cassette/fixtures/cassettes")
+        .to_path_buf()
+}
+
+/// Locate this workspace's provider cassette directory from the crate manifest.
+pub fn cassette_root() -> PathBuf {
+    workspace_root().join("crates/rig-cassette/fixtures/cassettes")
+}
+
+/// Start a cassette session for a declared scenario, proxying its recording
+/// ([`Transport::Proxy`]). This is the repository's only route to the
+/// recording engine: the scenario's declared provenance rides along, so a
+/// derived or scripted scenario is refused before the session contacts a
+/// provider or writes a fixture.
+pub async fn start_provider_cassette(
+    provider: &'static str,
+    spec: impl Into<CassetteSpec>,
+    real_base_url: &str,
+) -> ProviderCassette {
+    start_provider_cassette_via(Transport::Proxy, provider, spec, real_base_url).await
+}
+
+/// Start a declared scenario's session over `transport`.
+pub async fn start_provider_cassette_via(
+    transport: Transport,
+    provider: &'static str,
+    spec: impl Into<CassetteSpec>,
+    real_base_url: &str,
+) -> ProviderCassette {
+    let spec = crate::provenance::declared_spec(provider, spec);
+    ProviderCassette::start_via(transport, &cassette_root(), provider, spec, real_base_url).await
 }
 
 /// Resolve a provider scenario's YAML path under the workspace cassette directory.

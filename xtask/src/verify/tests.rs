@@ -848,6 +848,49 @@ fn the_two_corpora_are_classified_apart() {
     assert!(!effects.iter().any(|id| id.starts_with("provider-")));
 }
 
+/// The ledger is one file for eighteen suites: narrowing it to a provider
+/// would be a guess, and falling through as an unmodeled package asset would
+/// make its reason unreadable. Both give the full plan; only the reason says
+/// which rule claimed it.
+#[test]
+fn the_provenance_ledger_selects_every_suite() {
+    let path = "crates/rig-cassette/fixtures/scenarios.json";
+    assert_eq!(ids("--changed", &[path]), ids("--full", &[]));
+    let plan = selection::plan(
+        Path::new("/repo"),
+        &metadata(),
+        &opts("--changed"),
+        &[path.to_owned()].into_iter().collect(),
+        &checks::all(),
+    )
+    .unwrap();
+    assert!(
+        plan.iter()
+            .all(|check| check.reason.contains("provenance ledger")),
+        "{:?}",
+        plan.first().map(|check| check.reason.clone())
+    );
+    assert!(plan.iter().any(|check| check.id == "source-guards"));
+}
+
+/// The guard runs inside an existing check rather than as a lane of its own:
+/// a step nobody schedules is a guard nobody has.
+#[test]
+fn the_cassette_provenance_guard_is_scheduled() {
+    let guards = checks::all()
+        .into_iter()
+        .find(|check| check.id == "source-guards")
+        .expect("source-guards check");
+    assert!(
+        guards
+            .steps
+            .iter()
+            .any(|step| step.program == "@cassette-provenance"),
+        "{:?}",
+        guards.steps
+    );
+}
+
 /// The fixture metadata declares `rig-ecs` (a runtime crate) and
 /// `rig-sqlite` (a store): an edit to the first selects the parity lane on
 /// its own account, an edit to the second does not.

@@ -145,13 +145,8 @@ pub(crate) async fn live_client() -> Bound<Copilot> {
 
 async fn copilot_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bound<Copilot>) {
     let cassette_base_url = cassette_base_url();
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "copilot",
-        spec,
-        &cassette_base_url,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("copilot", spec, &cassette_base_url).await;
     let bound = Copilot::new(cassette.api_key("GITHUB_COPILOT_API_KEY"))
         .with_base_url(cassette.base_url())
         .bind(transport());
@@ -163,13 +158,8 @@ async fn copilot_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, Bound<Copilot>, TempDir) {
     let cassette_base_url = cassette_base_url();
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "copilot",
-        spec,
-        &cassette_base_url,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("copilot", spec, &cassette_base_url).await;
     let temp = TempDir::new().expect("temp token directory should be created");
     let api_key_record = serde_json::json!({
         "token": cassette.api_key("GITHUB_COPILOT_API_KEY"),

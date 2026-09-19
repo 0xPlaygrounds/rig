@@ -2139,13 +2139,9 @@ pub(crate) async fn assert_request_body_rejected(provider: &'static str, scenari
     );
     serde_json::from_str::<serde_json::Value>(&changed).expect("mutation preserves JSON syntax");
 
-    let cassette = crate::cassettes::ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        provider,
-        scenario,
-        "https://long-loop.invalid",
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette(provider, scenario, "https://long-loop.invalid")
+            .await;
     let client = reqwest::Client::builder()
         .no_proxy()
         .build()

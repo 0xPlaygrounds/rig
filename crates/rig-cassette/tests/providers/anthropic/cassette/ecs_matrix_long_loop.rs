@@ -5,6 +5,12 @@
 //! recording through the sequenced transport (`long_loop::scripted_replies`),
 //! no cassette and no golden; the negative probe mutates the streamed
 //! recording's last tool result and proves the strict matcher refuses it.
+//!
+//! `crates/rig-cassette/fixtures/scenarios.json` declares this module as the
+//! scripted family `ecs_matrix_long_loop` on `anthropic`. It borrows no
+//! recorded bytes of its own: the scripted provider fault answers the
+//! Anthropic error envelope below, and the sequenced replies are the row-1
+//! recording read by `long_loop::scripted_replies`.
 
 use rig::completion::CompletionModel;
 use rig::driver::{Bind, Bound};

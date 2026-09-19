@@ -135,19 +135,52 @@ enum ReplayMatching {
     Unordered,
 }
 
-/// The fixture scenario and its ordered or unordered replay matching policy.
+/// How a scenario's served bytes were produced. Recording is a claim about
+/// the provider's wire, so only [`Provenance::Live`] scenarios may be
+/// re-recorded; everything else is fabricated on purpose and a live capture
+/// would silently destroy the fabrication.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Provenance {
+    /// Captured from the real provider, including provider errors it really
+    /// returned.
+    Live,
+    /// A committed recording deliberately modified from one or more live
+    /// captures to exercise an edge the provider will not produce on demand.
+    Derived,
+    /// Responses or transport behaviour constructed in code, sometimes from
+    /// bytes borrowed from a live capture.
+    Scripted,
+}
+
+impl Provenance {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Live => "live",
+            Self::Derived => "derived",
+            Self::Scripted => "scripted",
+        }
+    }
+}
+
+/// The fixture scenario, its ordered or unordered replay matching policy, and
+/// its declared provenance. Provenance is unset until a consumer attaches the
+/// declaration it resolved, and an unset scenario can be replayed but never
+/// recorded.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CassetteSpec {
     scenario: &'static str,
     replay_matching: ReplayMatching,
+    provenance: Option<Provenance>,
 }
 
 impl CassetteSpec {
-    /// Select a scenario with strict wire-order matching.
+    /// Select a scenario with strict wire-order matching and no declared
+    /// provenance.
     pub const fn new(scenario: &'static str) -> Self {
         Self {
             scenario,
             replay_matching: ReplayMatching::Ordered,
+            provenance: None,
         }
     }
 
@@ -160,6 +193,36 @@ impl CassetteSpec {
     pub const fn unordered(mut self) -> Self {
         self.replay_matching = ReplayMatching::Unordered;
         self
+    }
+
+    /// Attach the provenance a consumer resolved from its own declaration.
+    pub const fn with_provenance(mut self, provenance: Provenance) -> Self {
+        self.provenance = Some(provenance);
+        self
+    }
+
+    /// The declared provenance, if the consumer attached one.
+    pub const fn provenance(self) -> Option<Provenance> {
+        self.provenance
+    }
+}
+
+/// Refuse a live capture for anything but a declared live scenario, before
+/// the session opens a socket, reads a credential, or touches a fixture.
+fn assert_recordable(provider: &'static str, spec: CassetteSpec) {
+    let scenario = spec.scenario;
+    match spec.provenance {
+        Some(Provenance::Live) => {}
+        Some(other) => panic!(
+            "refusing to live-record {provider}/{scenario}: it is declared {}, so a capture \
+             would overwrite deliberately fabricated bytes; regenerate it from its declared \
+             sources instead",
+            other.label()
+        ),
+        None => panic!(
+            "refusing to live-record {provider}/{scenario}: no provenance is declared for it; \
+             declare the scenario before recording"
+        ),
     }
 }
 
@@ -487,6 +550,9 @@ impl ProviderCassette {
         cassette_path: PathBuf,
     ) -> Self {
         let scenario = spec.scenario;
+        if mode.records() {
+            assert_recordable(provider, spec);
+        }
         let policy = CassettePolicy::for_scenario(provider, scenario, spec.replay_matching);
         let upstream = UpstreamBase::parse(real_base_url);
         let server = if !mode.records() {
@@ -3493,3 +3559,6 @@ mod pagination_cursor_scrub_tests;
 
 #[cfg(test)]
 mod local_path_scrub_tests;
+
+#[cfg(test)]
+mod provenance_tests;

@@ -57,6 +57,7 @@ pub(super) fn all() -> Vec<Check> {
                         "examples/candle_wasm_chat/www/worker-runtime.test.mjs",
                     ],
                 ),
+                Step::new("@cassette-provenance", &[]),
             ],
         ),
         check(

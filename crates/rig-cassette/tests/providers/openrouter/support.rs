@@ -24,13 +24,8 @@ pub(super) type BoundOpenRouter = Bound<OpenAI, BoxedHttpClient>;
 pub(super) type BoundOpenRouterResponses = Bound<OpenAI, BoxedHttpClient>;
 
 async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, BoundOpenRouter) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openrouter",
-        spec,
-        OPENROUTER_BASE_URL,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("openrouter", spec, OPENROUTER_BASE_URL).await;
     let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
         .with_base_url(cassette.base_url())
         .bound()
@@ -42,13 +37,8 @@ async fn openrouter_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette
 async fn openrouter_openai_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, BoundOpenRouterResponses) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openrouter",
-        spec,
-        OPENROUTER_BASE_URL,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("openrouter", spec, OPENROUTER_BASE_URL).await;
     let bound = OpenAI::with_key(&OPENROUTER, cassette.api_key("OPENROUTER_API_KEY"))
         .with_base_url(cassette.base_url())
         .with_route(Route::Responses)
@@ -104,13 +94,8 @@ where
     F: FnOnce(BoundOpenRouter) -> Fut,
     Fut: Future<Output = Result<(), E>>,
 {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openrouter",
-        spec,
-        OPENROUTER_BASE_URL,
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("openrouter", spec, OPENROUTER_BASE_URL).await;
     let bound = OpenAI::with_key(&OPENROUTER, "sk-invalid-edge-matrix-key")
         .with_base_url(cassette.base_url())
         .bound()

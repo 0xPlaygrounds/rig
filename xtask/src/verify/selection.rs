@@ -349,6 +349,17 @@ pub(super) fn plan(
             )?;
             continue;
         }
+        // The provenance ledger declares every provider's cassettes in one
+        // file, so an edit to it can retire, add or reclassify a fixture in
+        // any suite. Narrowing to one provider would be a guess; it is also
+        // the input to a source guard, which the broad plan already runs.
+        if path == "crates/rig-cassette/fixtures/scenarios.json" {
+            return Ok(broad(
+                all,
+                "cassette provenance ledger changed: it owns every provider suite",
+                Lanes::ALL,
+            ));
+        }
         // Both corpora live under `crates/rig-cassette/fixtures/`; the effect
         // goldens are classified before the provider cassettes beside them,
         // and both before the owning package's generic asset rule.

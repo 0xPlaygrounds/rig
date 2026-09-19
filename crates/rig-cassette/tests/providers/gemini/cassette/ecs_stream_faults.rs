@@ -4,6 +4,11 @@
 //! without a witness: observation is a side channel, so the failure, the
 //! record and the history must not change with it, and the trace must name
 //! the fault without carrying the request or its credential.
+//!
+//! `crates/rig-cassette/fixtures/scenarios.json` declares this module as the
+//! scripted family `ecs_stream_faults` on `gemini`. Its frames are the
+//! labelled constants of `stream_faults.rs`; a recording is only ever
+//! reached through that module's own declared family.
 
 use bytes::Bytes;
 use rig::driver::Bound;

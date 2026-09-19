@@ -14,8 +14,7 @@ async fn chatgpt_cassette_with_default_instructions(
     spec: impl Into<CassetteSpec>,
     default_instructions: impl Into<String>,
 ) -> (ProviderCassette, Bound<OpenAI>) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = crate::cassettes::start_provider_cassette(
         "chatgpt",
         spec,
         "https://chatgpt.com/backend-api/codex",
@@ -38,8 +37,7 @@ async fn chatgpt_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, B
 async fn chatgpt_noninteractive_oauth_cassette(
     spec: impl Into<CassetteSpec>,
 ) -> (ProviderCassette, Bound<OpenAI>, TempDir) {
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
+    let cassette = crate::cassettes::start_provider_cassette(
         "chatgpt",
         spec,
         "https://chatgpt.com/backend-api/codex",

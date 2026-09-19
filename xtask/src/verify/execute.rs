@@ -51,6 +51,7 @@ fn internal(root: &Path, target: &Path, step: &Step) -> Result<()> {
         }
         "@layout" => crate::test_layout::check(root).map_err(invalid),
         "@wires" => crate::wires::check(root).map_err(invalid),
+        "@cassette-provenance" => crate::cassettes::check(root).map_err(invalid),
         "@fixture-paths" => {
             // `cargo test` runs from the crate root and nextest from the
             // workspace root, so a CWD-relative fixture path passes under one

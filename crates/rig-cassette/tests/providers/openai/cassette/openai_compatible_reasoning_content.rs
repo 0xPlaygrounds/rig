@@ -24,7 +24,7 @@ use tokio::net::TcpListener;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
-use crate::cassettes::{self, ProviderCassette};
+use crate::cassettes;
 use crate::reasoning::{self, WeatherTool};
 
 const SCENARIO: &str = "openai_compatible/reasoning_content_tool_roundtrip";
@@ -67,13 +67,8 @@ where
     Fut: Future<Output = ()>,
 {
     let server = LocalReasoningContentServer::start().await;
-    let cassette = ProviderCassette::start(
-        &crate::cassettes::cassette_root(),
-        "openai",
-        scenario,
-        &server.base_url(),
-    )
-    .await;
+    let cassette =
+        crate::cassettes::start_provider_cassette("openai", scenario, &server.base_url()).await;
     let client = OpenAI::new("dummy-openai-compatible-key")
         .with_base_url(cassette.base_url())
         .bound()
