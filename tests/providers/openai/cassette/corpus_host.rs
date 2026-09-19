@@ -1,7 +1,7 @@
 //! Matrix I of the effect corpus, the embedding cells: a hook embeds the
 //! prompt through the host's `EmbedAdapter` (`text-embedding-3-small`)
 //! before the completion (`gpt-4o`, temperature 0). Both are on the wire;
-//! each cell is a new recording under `tests/cassettes/openai/corpus_host/`.
+//! each cell is a new recording under `crates/rig-cassette/fixtures/cassettes/openai/corpus_host/`.
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};

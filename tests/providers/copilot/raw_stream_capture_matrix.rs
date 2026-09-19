@@ -46,7 +46,7 @@
 //! never fabricated. To record: export `GITHUB_COPILOT_API_KEY`, remove the
 //! `#[ignore]` attributes, flip the table to `recorded`, then run
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test copilot copilot::raw_stream_capture_matrix -- --nocapture --test-threads=1`
-//! and review `tests/cassettes/copilot/raw_stream_capture_matrix/`.
+//! and review `crates/rig-cassette/fixtures/cassettes/copilot/raw_stream_capture_matrix/`.
 
 use rig::completion::CompletionModel as _;
 use rig::driver::Bound;

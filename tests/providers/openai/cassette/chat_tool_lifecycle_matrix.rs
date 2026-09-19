@@ -22,7 +22,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and every cell is
 //! recorded; none is unit-only. Each explicit test maps to
-//! `tests/cassettes/openai/chat_tool_lifecycle_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_lifecycle_matrix/<test-name>.yaml`.
 //! The two low-cost mini models are stable, tool-capable controls from distinct
 //! model families. Assertions span request schemas, provider-native blocking
 //! and streaming assembly, normalized ids/names/arguments/order, and agent
@@ -31,7 +31,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openai/chat_tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

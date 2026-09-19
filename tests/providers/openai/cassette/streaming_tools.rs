@@ -30,7 +30,7 @@ struct CassetteResponse {
 fn streaming_tools_smoke_cassette_sse_events_parse() {
     let contents = std::fs::read_to_string(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/tests/cassettes/openai/streaming_tools/streaming_tools_smoke.yaml"
+        "/crates/rig-cassette/fixtures/cassettes/openai/streaming_tools/streaming_tools_smoke.yaml"
     ))
     .expect("streaming tools cassette should be readable");
 

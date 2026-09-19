@@ -48,7 +48,7 @@
 //!
 //! Every cell is recorded on the real Anthropic wire (`CLAUDE_SONNET_4_6`,
 //! temperature 0 except the thinking cells, where Anthropic allows only 1
-//! or unset) into `tests/cassettes/anthropic/corpus_request_shape/`.
+//! or unset) into `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_request_shape/`.
 //!
 //! # What the matrix found
 //!
@@ -64,12 +64,13 @@
 //!   cell pins that.
 //! - The header's `run_spec` hash was over the raw serialization of the
 //!   spec, and the root `rig` package's all-features build enables
-//!   `serde_json/preserve_order` through a dependency while `rig-verify`
-//!   does not: a spec holding a multi-key `serde_json::Value`
-//!   (`additional_params`, `output_schema`) hashed differently in the
-//!   producer and the replay, and every such golden was refused by the
-//!   very program that recorded it. The corpus prompt's anchor table had
-//!   ruled key order stable; it is stable per build, not per workspace.
+//!   `serde_json/preserve_order` through a dependency while the standalone
+//!   verification package this suite came from did not: a spec holding a
+//!   multi-key `serde_json::Value` (`additional_params`, `output_schema`)
+//!   hashed differently in the producer and the replay, and every such
+//!   golden was refused by the very program that recorded it. The corpus
+//!   prompt's anchor table had ruled key order stable; it is stable per
+//!   build, not per workspace.
 //!   Fixed in `rig-effect-log`: the hash is over canonical (sorted-key)
 //!   JSON. The thinking and output-schema cells are the ones that found it.
 //! - In `adaptive` thinking mode the model chose not to think about a

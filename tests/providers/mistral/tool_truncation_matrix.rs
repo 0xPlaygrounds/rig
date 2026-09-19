@@ -25,7 +25,7 @@
 //! models × 5 caps × 2 surfaces = 40. The 16 cap-1/cap-2 cells were pruned
 //! because their fixtures contain no tool call and never enter the changed
 //! paths; all remaining 24 cells are recorded. Each explicit test maps to
-//! `tests/cassettes/mistral/tool_truncation_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/mistral/tool_truncation_matrix/<test-name>.yaml`.
 //! The two cheap served model families share a stable boundary. Assertions
 //! cover exact wire bytes/reasons, the normalized model surface, raw
 //! stream assembly, non-invocation of incomplete calls, and exact-once agent
@@ -33,7 +33,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 retained cells | `tests/cassettes/mistral/tool_truncation_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{low,mid,complete}_{model,agent}.yaml` |
+//! | all 24 retained cells | `crates/rig-cassette/fixtures/cassettes/mistral/tool_truncation_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{low,mid,complete}_{model,agent}.yaml` |
 
 use std::sync::{
     Arc, Mutex,

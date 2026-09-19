@@ -233,7 +233,7 @@ pub(crate) fn is_long_loop(cell: &Cell) -> bool {
 }
 
 /// The provider directory and cassette scenario a long-loop cell's live
-/// recording lives under on `thinking`'s wire (`tests/cassettes/<provider>/
+/// recording lives under on `thinking`'s wire (`crates/rig-cassette/fixtures/cassettes/<provider>/
 /// long_loop_matrix[_chat|_responses]/<cell>.yaml`). The per-wire file
 /// spells the same literal at its wrapper call site for the census.
 pub(crate) fn scenario(thinking: ThinkingWire, cell: &Cell) -> (&'static str, String) {

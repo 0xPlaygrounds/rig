@@ -1174,10 +1174,10 @@ use crate::test_utils::{MockStreamingClient, RecordingHttpClient};
 use crate::wire::{Mode, Wire};
 use futures::StreamExt;
 
-/// `tests/cassettes/gemini/interactions_api/basic_interaction_returns_id.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/gemini/interactions_api/basic_interaction_returns_id.yaml`
 const UNARY_INTERACTION: &str = r#"{"created":"1970-01-01T00:00:00Z","id":"v1_REDACTED_1","model":"gemini-3-flash-preview","object":"interaction","service_tier":"standard","status":"completed","steps":[{"signature":"signature_REDACTED_1","type":"thought"},{"content":[{"text":"1. Hummingbirds are the only birds capable of flying **backwards**.\n2. Their hearts can beat up to **1,260 times per minute**.","type":"text"}],"type":"model_output"}],"updated":"1970-01-01T00:00:00Z","usage":{"input_tokens_by_modality":[{"modality":"text","tokens":14}],"raw_prompt_token":39,"total_cached_tokens":0,"total_input_tokens":14,"total_output_tokens":34,"total_thought_tokens":222,"total_tokens":270,"total_tool_use_tokens":0}}"#;
 
-/// `tests/cassettes/gemini/interactions_api/streaming_interaction.yaml` —
+/// `crates/rig-cassette/fixtures/cassettes/gemini/interactions_api/streaming_interaction.yaml` —
 /// a different turn, streamed: the same two steps (a signature-only
 /// thought, then text) delivered as events.
 const STREAMED_INTERACTION: &str = concat!(

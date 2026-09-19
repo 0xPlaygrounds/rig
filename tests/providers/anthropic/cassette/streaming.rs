@@ -42,7 +42,7 @@ async fn streaming_smoke() {
 /// Recorded against OpenRouter's Anthropic Messages endpoint rather than
 /// `api.anthropic.com`, because the *disagreement* is what Anthropic proper does
 /// not produce: it reports the count on both frames and they always match (see
-/// every streaming cassette under `tests/cassettes/anthropic/`), so a recording
+/// every streaming cassette under `crates/rig-cassette/fixtures/cassettes/anthropic/`), so a recording
 /// from Anthropic passes whether or not the bug is present and cannot witness
 /// it. `max_tokens` is capped low so one recording carries both signals.
 ///

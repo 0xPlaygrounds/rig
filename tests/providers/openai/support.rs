@@ -104,7 +104,7 @@ where
 /// through a [`BoxedHttpClient`] carrying the supplied [`HttpMiddleware`], so
 /// the same recorded exchange exercises the transport middleware seam and the
 /// run lifecycle hooks together (see
-/// `tests/cassettes/openai/lifecycle_matrix/`).
+/// `crates/rig-cassette/fixtures/cassettes/openai/lifecycle_matrix/`).
 pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
     spec: impl Into<CassetteSpec>,
     middleware: M,
@@ -131,7 +131,7 @@ pub(super) async fn with_openai_lifecycle_cassette<M, F, Fut>(
 }
 
 /// The effect corpus's retrieval matrix (Matrix A):
-/// `tests/cassettes/openai/corpus_retrieval/`.
+/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_retrieval/`.
 pub(super) async fn with_openai_corpus_retrieval_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -143,7 +143,7 @@ pub(super) async fn with_openai_corpus_retrieval_cassette<F, Fut>(
 }
 
 /// The effect corpus's provider-breadth matrix (Matrix N):
-/// `tests/cassettes/openai/corpus_breadth/`.
+/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_breadth/`.
 pub(super) async fn with_openai_corpus_breadth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -155,7 +155,7 @@ pub(super) async fn with_openai_corpus_breadth_cassette<F, Fut>(
 }
 
 /// The effect corpus's delta-wire matrix (Matrix K):
-/// `tests/cassettes/openai/corpus_delta/`.
+/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_delta/`.
 pub(super) async fn with_openai_corpus_delta_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -167,7 +167,7 @@ pub(super) async fn with_openai_corpus_delta_cassette<F, Fut>(
 }
 
 /// The effect corpus's host-families matrix (Matrix I):
-/// `tests/cassettes/openai/corpus_host/`.
+/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_host/`.
 pub(super) async fn with_openai_corpus_host_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -179,7 +179,7 @@ pub(super) async fn with_openai_corpus_host_cassette<F, Fut>(
 }
 
 /// The effect corpus's output-mode matrix (Matrix H):
-/// `tests/cassettes/openai/corpus_output/`.
+/// `crates/rig-cassette/fixtures/cassettes/openai/corpus_output/`.
 pub(super) async fn with_openai_corpus_output_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -203,7 +203,7 @@ where
 }
 
 /// Per-bug wrapper for the model-turn termination-metadata matrix
-/// (`tests/cassettes/openai/turn_termination_matrix/`), rig#2184.
+/// (`crates/rig-cassette/fixtures/cassettes/openai/turn_termination_matrix/`), rig#2184.
 pub(super) async fn with_openai_turn_metadata_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -253,7 +253,7 @@ where
 }
 
 /// Per-bug wrapper for the Chat Completions refusal matrix
-/// (`tests/cassettes/openai/refusal_matrix/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openai/refusal_matrix/`).
 ///
 /// Yields both routes; cells that drive Chat Completions take
 /// [`OpenAiCassette::chat`], so one wrapper covers both surfaces of a bug
@@ -269,7 +269,7 @@ pub(super) async fn with_openai_refusal_cassette<F, Fut>(
 }
 
 /// Per-bug wrapper for the output-token-cap spelling matrix
-/// (`tests/cassettes/openai/max_completion_tokens_matrix/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openai/max_completion_tokens_matrix/`).
 pub(super) async fn with_openai_max_tokens_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -281,7 +281,7 @@ pub(super) async fn with_openai_max_tokens_cassette<F, Fut>(
 }
 
 /// Per-bug wrapper for the truncated-turn matrix
-/// (`tests/cassettes/openai/truncated_turn_matrix/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openai/truncated_turn_matrix/`).
 pub(super) async fn with_openai_truncation_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -354,7 +354,7 @@ where
 }
 
 /// Per-bug wrapper for the image-generation `additional_params` matrix
-/// (`tests/cassettes/openai/image_params_matrix/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openai/image_params_matrix/`).
 #[cfg(feature = "image")]
 pub(super) async fn with_openai_image_params_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
@@ -367,7 +367,7 @@ pub(super) async fn with_openai_image_params_cassette<F, Fut>(
 }
 
 /// Per-bug wrapper for the transcription-usage matrix
-/// (`tests/cassettes/openai/transcription_usage_matrix/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openai/transcription_usage_matrix/`).
 pub(super) async fn with_openai_transcription_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -379,7 +379,7 @@ pub(super) async fn with_openai_transcription_cassette<F, Fut>(
 }
 
 /// Per-bug wrapper for the audio-generation `additional_params` matrix
-/// (`tests/cassettes/openai/audio_params_matrix/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openai/audio_params_matrix/`).
 ///
 /// Records through the direct recorder rather than the httpmock proxy: this
 /// endpoint answers with raw audio, and the proxy exports bodies as strings,
@@ -410,7 +410,7 @@ where
 }
 
 /// Per-bug wrapper for the websocket error-identity matrix
-/// (`tests/cassettes/openai/websocket_error_identity_matrix/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openai/websocket_error_identity_matrix/`).
 ///
 /// Uses a deliberately invalid key in **both** modes, like
 /// [`with_openai_cassette_bogus_key`]: the only websocket failure the provider
@@ -527,7 +527,7 @@ pub(super) fn sse_json_frames(body: &str) -> Vec<serde_json::Value> {
 }
 
 /// Cassette wrapper for the OpenAI Responses prompt-caching matrix
-/// (`tests/cassettes/openai/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openai/prompt_caching/`).
 ///
 /// Delegates to [`with_openai_cassette`] — the behavior is identical, and
 /// deliberately shared so the two cannot drift apart when the base wrapper gains

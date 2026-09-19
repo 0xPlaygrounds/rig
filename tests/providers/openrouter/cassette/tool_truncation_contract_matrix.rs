@@ -24,7 +24,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and all 24 cells
 //! are recorded; none is unit-only. Each explicit test maps to
-//! `tests/cassettes/openrouter/tool_truncation_contract_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openrouter/tool_truncation_contract_matrix/<test-name>.yaml`.
 //! The inexpensive mini routes are pinned to the same OpenAI upstream so the
 //! gateway contract, not routing variance, is under test. Assertions cover
 //! exact wire arguments and reasons, native/normalized model surfaces, raw
@@ -33,7 +33,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openrouter/tool_truncation_contract_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/tool_truncation_contract_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
 
 use std::sync::{
     Arc, Mutex,

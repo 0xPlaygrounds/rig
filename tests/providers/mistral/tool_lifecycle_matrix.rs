@@ -22,7 +22,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and every cell is
 //! recorded; none is unit-only. Each explicit test maps to
-//! `tests/cassettes/mistral/tool_lifecycle_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/mistral/tool_lifecycle_matrix/<test-name>.yaml`.
 //! The small and 3B aliases are inexpensive, currently served, tool-capable
 //! model families. Assertions span request schemas, native blocking/streaming
 //! assembly, normalized ids/names/arguments/order, and exact-once agent
@@ -31,7 +31,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/mistral/tool_lifecycle_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{zero,nested,parallel}_{model,agent}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/tool_lifecycle_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{zero,nested,parallel}_{model,agent}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

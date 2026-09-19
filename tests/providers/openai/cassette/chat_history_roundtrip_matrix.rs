@@ -19,7 +19,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
 //! pruned or assigned to unit-only coverage. Each explicit test maps to
-//! `tests/cassettes/openai/chat_history_roundtrip_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/<test-name>.yaml`.
 //! The two inexpensive mini models are stable history/tool-call controls from
 //! separate families. Assertions cover provider-native and normalized blocking
 //! responses, raw and normalized streams, Unicode text, exact tool ids and
@@ -27,7 +27,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openai/chat_history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

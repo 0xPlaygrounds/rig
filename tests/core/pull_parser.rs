@@ -98,7 +98,7 @@ impl HttpClientExt for Replay {
 }
 fn body(path: &str) -> Bytes {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/cassettes")
+        .join("crates/rig-cassette/fixtures/cassettes")
         .join(path);
     let yaml = std::fs::read_to_string(path).unwrap();
     let doc: serde_yaml::Value = serde_yaml::from_str(&yaml).unwrap();

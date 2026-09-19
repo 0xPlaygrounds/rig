@@ -19,7 +19,7 @@
 //! attachment/serialization is independent of tool count, while raw cells
 //! already pin parallel order and exact cardinality on both transports. No
 //! other cells are pruned or unit-only. Each test maps one-to-one to
-//! `tests/cassettes/openrouter/reasoning_tool_order_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openrouter/reasoning_tool_order_matrix/<test-name>.yaml`.
 //!
 //! | dimension | values |
 //! |---|---|

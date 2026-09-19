@@ -23,7 +23,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and all 24 cells
 //! are recorded; none is unit-only. Each explicit test maps to
-//! `tests/cassettes/openrouter/terminal_metadata_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openrouter/terminal_metadata_matrix/<test-name>.yaml`.
 //! The two inexpensive mini routes are pinned to OpenAI with fallbacks disabled
 //! for stable provider attribution. Every cell asserts the routed request and
 //! native terminal; together they cover provider, tier, ids, model, finish
@@ -32,7 +32,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openrouter/terminal_metadata_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/terminal_metadata_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

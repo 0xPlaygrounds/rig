@@ -42,7 +42,7 @@
 //! credentials exist: remove the `#[ignore]` attributes, flip the table to
 //! `recorded`, then run
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test bedrock bedrock::cassette::raw_stream_capture_matrix -- --nocapture --test-threads=1`
-//! and review `tests/cassettes/bedrock/raw_stream_capture_matrix/` (the
+//! and review `crates/rig-cassette/fixtures/cassettes/bedrock/raw_stream_capture_matrix/` (the
 //! streaming bodies are base64 — decode before scanning).
 
 use base64::{Engine, prelude::BASE64_STANDARD};

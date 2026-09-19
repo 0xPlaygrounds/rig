@@ -7,7 +7,10 @@ use std::path::PathBuf;
 
 use syn::{Expr, ExprLit, Lit};
 
-const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cassettes");
+const CASSETTE_ROOT: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/crates/rig-cassette/fixtures/cassettes"
+);
 
 struct ProviderCassetteSuite {
     provider: &'static str,
@@ -275,7 +278,7 @@ fn cassettes_do_not_contain_obvious_secrets() {
         return;
     }
 
-    // Each provider binary scans only its own `tests/cassettes/<provider>`
+    // Each provider binary scans only its own `crates/rig-cassette/fixtures/cassettes/<provider>`
     // directory. This module compiles into every provider test binary, and
     // the scan (YAML parse + scrub + re-serialize + base64 decode + several
     // regex families per file) is expensive — when every binary scanned the
@@ -286,7 +289,7 @@ fn cassettes_do_not_contain_obvious_secrets() {
     // Scoping is safe because the partition below is asserted, in every
     // binary, before anything is skipped:
     //
-    //   * every top-level entry under `tests/cassettes` must be a directory
+    //   * every top-level entry under `crates/rig-cassette/fixtures/cassettes` must be a directory
     //     named after a suite registered in `PROVIDER_CASSETTE_SUITES` — a
     //     stray file or an unregistered provider directory fails everywhere
     //     rather than silently escaping the scan;
@@ -310,12 +313,12 @@ fn cassettes_do_not_contain_obvious_secrets() {
         let name = name.to_string_lossy().into_owned();
         if !entry.path().is_dir() {
             failures.push(format!(
-                "tests/cassettes/{name} is not a provider directory; loose files under the \
+                "crates/rig-cassette/fixtures/cassettes/{name} is not a provider directory; loose files under the \
                  cassette root are scanned by no binary"
             ));
         } else if !registered.contains(name.as_str()) {
             failures.push(format!(
-                "tests/cassettes/{name} has no PROVIDER_CASSETTE_SUITES entry, so no test \
+                "crates/rig-cassette/fixtures/cassettes/{name} has no PROVIDER_CASSETTE_SUITES entry, so no test \
                  binary scans it for secrets — register it in \
                  tests/common/cassette_safety.rs"
             ));
@@ -338,7 +341,7 @@ fn cassettes_do_not_contain_obvious_secrets() {
         if !binary_compiles_cassette_scan(&binary_source) {
             failures.push(format!(
                 "tests/{}.rs does not include common/cassette_safety.rs as an unconditional \
-                 `mod`, so tests/cassettes/{} is scanned for secrets by no binary",
+                 `mod`, so crates/rig-cassette/fixtures/cassettes/{} is scanned for secrets by no binary",
                 suite.provider, suite.provider
             ));
         }

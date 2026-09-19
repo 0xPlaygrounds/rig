@@ -33,7 +33,7 @@ use run_support::{GUARD, NeverAnswers};
 
 fn golden(name: &str) -> EffectLog {
     let path = format!(
-        "{}/../rig-verify/fixtures/{name}.effects.json",
+        "{}/../rig-cassette/fixtures/effects/{name}.effects.json",
         env!("CARGO_MANIFEST_DIR")
     );
     serde_json::from_str(&std::fs::read_to_string(path).expect("the golden is committed"))

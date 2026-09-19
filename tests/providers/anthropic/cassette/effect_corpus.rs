@@ -1,5 +1,5 @@
 //! The effect corpus's Anthropic recordings: producers of the golden effect
-//! logs rig-verify replays (`crates/rig-verify/tests/golden_replay.rs`).
+//! logs rig-cassette replays (`crates/rig-cassette/tests/golden_replay.rs`).
 //! Each records once against the cassette transport and writes its golden
 //! under `RIG_REGENERATE_GOLDEN=1`, else asserts equality with it.
 

@@ -38,7 +38,7 @@ async fn mistral_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, B
 }
 
 /// Unit-body wrapper for the recorded embedding matrix
-/// (`tests/cassettes/mistral/embedding_matrix/`).
+/// (`crates/rig-cassette/fixtures/cassettes/mistral/embedding_matrix/`).
 pub(super) async fn with_mistral_embedding_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -218,7 +218,7 @@ where
 }
 
 /// Cassette wrapper for the mistral prompt-caching matrix
-/// (`tests/cassettes/mistral/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/mistral/prompt_caching/`).
 ///
 /// Builds the cassette directly rather than delegating to [`with_mistral_cassette_result`]: this
 /// provider's cassette-safety `source_dir` covers `support.rs` itself, and the

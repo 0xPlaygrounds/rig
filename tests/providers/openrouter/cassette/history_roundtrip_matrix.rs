@@ -19,7 +19,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
 //! pruned or assigned to unit-only coverage. Each explicit test maps to
-//! `tests/cassettes/openrouter/history_roundtrip_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openrouter/history_roundtrip_matrix/<test-name>.yaml`.
 //! The two inexpensive mini routes are pinned to OpenAI with fallbacks disabled
 //! and provide stable controls from separate model families. There is one
 //! decoder now, so the native surface is the gateway's reply document on
@@ -31,7 +31,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openrouter/history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/history_roundtrip_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

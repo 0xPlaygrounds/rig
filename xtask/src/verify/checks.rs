@@ -128,13 +128,15 @@ pub(super) fn all() -> Vec<Check> {
                 "--retries",
                 "2",
                 "-E",
-                "not binary(macro_hygiene) and not package(rig-verify) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))",
+                "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay))) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))",
             ])],
         ),
         // Root parity cells have one lane owner; default-tests excludes them.
-        // world_replay stays a separate target so bus-verification can exclude
-        // that replay without excluding other rig-verify coverage. Distinct
-        // feature/target runs (core-all, wasm, loom) remain separate coverage.
+        // The absorbed verification suite keeps two targets so bus-verification
+        // can exclude the world replay without excluding the rest, and so
+        // default-tests can exclude both without losing the cassette engine's
+        // own unit tests. Distinct feature/target runs (core-all, wasm, loom)
+        // remain separate coverage.
         check(
             "ecs-parity",
             vec![
@@ -165,10 +167,10 @@ pub(super) fn all() -> Vec<Check> {
                     "run",
                     "--locked",
                     "-p",
-                    "rig-verify",
+                    "rig-cassette",
                     "--all-features",
                     "-E",
-                    "binary(world_replay)",
+                    "package(rig-cassette) and binary(world_replay)",
                     "--retries",
                     "0",
                 ]),
@@ -184,7 +186,7 @@ pub(super) fn all() -> Vec<Check> {
                     "--retries",
                     "2",
                     "-E",
-                    "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-verify) and binary(world_replay))",
+                    "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-cassette) and binary(world_replay))",
                 ]),
             ],
         ),
@@ -219,16 +221,19 @@ pub(super) fn all() -> Vec<Check> {
                     "run",
                     "--locked",
                     "-p",
-                    "rig-verify",
+                    "rig-cassette",
                     "--all-features",
                     "--retries",
                     "0",
                     "-E",
-                    "not binary(world_replay)",
+                    "package(rig-cassette) and binary(verify)",
                 ]),
                 // Preserve the former default sweep's dependency graph and
-                // retry policy. It is not equivalent to standalone rig-verify:
-                // serde_json ordering and float parsing use different code.
+                // retry policy. It is not equivalent to the standalone
+                // rig-cassette graph: serde_json ordering and float parsing
+                // use different code. Both executions name the absorbed
+                // `verify` binary explicitly, so the cassette engine's own
+                // unit tests keep their default-tests owner.
                 cargo(&[
                     "nextest",
                     "run",
@@ -238,7 +243,7 @@ pub(super) fn all() -> Vec<Check> {
                     "--retries",
                     "2",
                     "-E",
-                    "package(rig-verify) and not binary(world_replay)",
+                    "package(rig-cassette) and binary(verify)",
                 ]),
             ],
         ),

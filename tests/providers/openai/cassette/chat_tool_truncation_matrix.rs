@@ -27,7 +27,7 @@
 //! because OpenAI rejects those requests before generation; the shared unit
 //! suite supplies the otherwise-unproducible empty/no-call `length` shapes.
 //! Each explicit test maps to
-//! `tests/cassettes/openai/chat_tool_truncation_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_truncation_matrix/<test-name>.yaml`.
 //! The two inexpensive mini models were selected because both expose a stable
 //! truncation boundary. Assertions cover exact wire arguments and reason,
 //! blocking normalization, raw streaming assembly, agent rejection of
@@ -35,7 +35,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openai/chat_tool_truncation_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_tool_truncation_matrix/{blocking,streaming}_{gpt4o,gpt41}_{low,mid,complete}_{model,agent}.yaml` |
 
 use std::sync::{
     Arc, Mutex,

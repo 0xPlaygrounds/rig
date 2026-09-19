@@ -1,9 +1,9 @@
 //! Matrix A of the effect corpus, the OpenAI cells: retrieval effects over
 //! an index embedded by `text-embedding-3-small` and a `gpt-4o` agent on
 //! the Responses wire (dual-id tool calls). Producers of the goldens
-//! `crates/rig-verify/tests/corpus_retrieval.rs` replays; the enumeration
+//! `crates/rig-cassette/tests/corpus_retrieval.rs` replays; the enumeration
 //! lives there. Every cell is a new recording under
-//! `tests/cassettes/openai/corpus_retrieval/`.
+//! `crates/rig-cassette/fixtures/cassettes/openai/corpus_retrieval/`.
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;

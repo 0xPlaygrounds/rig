@@ -6,6 +6,23 @@ license = "MIT"
 readme = "README.md"
 description = "Reusable provider cassette recording, replay, scrubbing and safety checks."
 repository = "https://github.com/0xPlaygrounds/rig"
+# `tests/` is the repository's behavioural verification suite: it is written
+# against the agent runtimes and replays the committed corpora, so it is
+# meaningless outside this workspace and its dev-dependencies are path-only.
+# The corpora themselves are replay fixtures the binaries read at runtime,
+# never embedded with `include_*!`: 2,841 provider cassettes (50 MiB) and 842
+# effect goldens (17 MiB). Sweeping either into the tarball would put the
+# upload over the crates.io 10 MiB limit, which is enforced server-side and so
+# never surfaces in `cargo publish --dry-run`. Cargo drops the two `[[test]]`
+# targets below from the normalized manifest because their sources are
+# excluded; the engine's own unit tests live in `src/` and stay published.
+exclude = [
+    "fixtures/**",
+    "tests/**",
+]
+# The suite's modules are compiled by the `verify` entrypoint, not discovered
+# as targets of their own.
+autotests = false
 
 [package.metadata.docs.rs]
 all-features = true
@@ -34,6 +51,27 @@ serde_yaml = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs"] }
 url = { workspace = true }
 
+# Repository-only. The agent runtimes and the effect log are what the absorbed
+# verification suite exercises; every one of them is a version-less path entry,
+# so Cargo omits them from the published manifest and the engine's normal
+# graph stays free of them (`src/paths.rs` pins that for a downstream).
 [dev-dependencies]
+rig-core = { path = "../rig-core", features = ["test-utils"] }
+rig-agent = { path = "../rig-agent" }
+rig-ecs = { path = "../rig-ecs" }
+rig-effect-log = { path = "../rig-effect-log" }
+# The world interpreter (`tests/world_replay.rs`) builds its own App.
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_tasks = { workspace = true }
 assert_fs = { workspace = true }
+proptest = "1"
 reqwest = { workspace = true, features = ["json", "stream"] }
+tokio = { workspace = true, features = ["full"] }
+
+[[test]]
+name = "verify"
+path = "tests/verify/main.rs"
+
+[[test]]
+name = "world_replay"

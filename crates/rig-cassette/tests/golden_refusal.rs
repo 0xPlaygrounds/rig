@@ -25,7 +25,7 @@ const CONVERSATION: &str = "golden-conversation";
 
 fn golden(fixture: &str) -> EffectLog {
     let path = format!(
-        "{}/fixtures/{fixture}.effects.json",
+        "{}/fixtures/effects/{fixture}.effects.json",
         env!("CARGO_MANIFEST_DIR")
     );
     let text = std::fs::read_to_string(&path).expect("the golden fixture is committed");

@@ -314,7 +314,7 @@ async fn gemini_cassette(spec: impl Into<CassetteSpec>) -> (ProviderCassette, Bo
 /// through a [`rig::http_client::BoxedHttpClient`] carrying the supplied
 /// [`rig::http_client::HttpMiddleware`], so the same recorded exchange
 /// exercises the transport middleware seam and the run lifecycle hooks
-/// together (see `tests/cassettes/gemini/lifecycle_matrix/`).
+/// together (see `crates/rig-cassette/fixtures/cassettes/gemini/lifecycle_matrix/`).
 pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
     spec: impl Into<CassetteSpec>,
     middleware: M,
@@ -343,7 +343,7 @@ pub(super) async fn with_gemini_lifecycle_cassette<M, F, Fut>(
 }
 
 /// The effect corpus's provider-breadth matrix (Matrix N):
-/// `tests/cassettes/gemini/corpus_breadth/`.
+/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_breadth/`.
 pub(super) async fn with_gemini_corpus_breadth_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -355,7 +355,7 @@ pub(super) async fn with_gemini_corpus_breadth_cassette<F, Fut>(
 }
 
 /// The effect corpus's delta-wire matrix (Matrix K):
-/// `tests/cassettes/gemini/corpus_delta/`.
+/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_delta/`.
 pub(super) async fn with_gemini_corpus_delta_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -367,7 +367,7 @@ pub(super) async fn with_gemini_corpus_delta_cassette<F, Fut>(
 }
 
 /// The effect corpus's retrieval matrix (Matrix A):
-/// `tests/cassettes/gemini/corpus_retrieval/`.
+/// `crates/rig-cassette/fixtures/cassettes/gemini/corpus_retrieval/`.
 pub(super) async fn with_gemini_corpus_retrieval_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -391,7 +391,7 @@ where
 }
 
 /// Per-bug wrapper for the model-turn termination-metadata matrix
-/// (`tests/cassettes/gemini/turn_termination_matrix/`), rig#2184.
+/// (`crates/rig-cassette/fixtures/cassettes/gemini/turn_termination_matrix/`), rig#2184.
 pub(super) async fn with_gemini_turn_metadata_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -414,7 +414,7 @@ pub(super) async fn with_gemini_interactions_cassette<F, Fut>(
     cassette.finish_after_test(result).await;
 }
 
-/// Code-execution edge matrix (`tests/cassettes/gemini/code_execution_matrix/`).
+/// Code-execution edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/code_execution_matrix/`).
 ///
 /// A separate registered wrapper so one bug's matrix stays auditable as a
 /// unit: `cassette_files_match_registered_scenarios` pairs the fixtures under
@@ -429,7 +429,7 @@ pub(super) async fn with_gemini_code_execution_cassette<F, Fut>(
     with_gemini_cassette(spec, test_body).await;
 }
 
-/// Stream-terminal edge matrix (`tests/cassettes/gemini/stream_terminal_matrix/`).
+/// Stream-terminal edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/stream_terminal_matrix/`).
 pub(super) async fn with_gemini_stream_terminal_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -440,7 +440,7 @@ pub(super) async fn with_gemini_stream_terminal_cassette<F, Fut>(
     with_gemini_cassette(spec, test_body).await;
 }
 
-/// Thought-text edge matrix (`tests/cassettes/gemini/thought_text_matrix/`).
+/// Thought-text edge matrix (`crates/rig-cassette/fixtures/cassettes/gemini/thought_text_matrix/`).
 ///
 /// Separate from [`with_gemini_code_execution_cassette`] for the same reason:
 /// one registered wrapper per bug keeps each matrix's fixture set closed.
@@ -478,7 +478,7 @@ pub(super) async fn with_gemini_cassette_bogus_key<F, Fut>(
 }
 
 /// Cassette wrapper for the gemini prompt-caching matrix
-/// (`tests/cassettes/gemini/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/gemini/prompt_caching/`).
 ///
 /// Delegates to [`with_gemini_cassette`] — the behavior is identical, and deliberately
 /// shared so the two cannot drift apart when the base wrapper gains policy. What

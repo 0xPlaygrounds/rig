@@ -1,8 +1,8 @@
 //! Matrix K of the effect corpus, the live chat-completions wire: a tool call
 //! streamed as a name delta and argument deltas (the chat wire), dispatched,
-//! answered. Producer of the golden `crates/rig-verify/tests/corpus_delta.rs`
+//! answered. Producer of the golden `crates/rig-cassette/tests/corpus_delta.rs`
 //! replays by both interpreters. A new recording under
-//! `tests/cassettes/openai/corpus_delta/`.
+//! `crates/rig-cassette/fixtures/cassettes/openai/corpus_delta/`.
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;

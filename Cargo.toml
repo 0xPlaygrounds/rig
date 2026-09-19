@@ -9,18 +9,9 @@ repository = "https://github.com/0xPlaygrounds/rig"
 # Examples now live in their own packages under `examples/*`; don't auto-discover
 # them as examples of this crate.
 autoexamples = false
-# This package's own `src/` is ~12 KiB of re-exports, but the manifest sits at the
-# repo root, so every sibling path is swept into the published tarball, including
-# the 1,100+ provider cassettes. They grew the crate from 6.66 MiB at 0.39.0 to
-# 9.51 MiB today, against a crates.io upload limit of 10 MiB: the next release was
-# on track to be rejected outright. That limit is enforced server-side, so no
-# amount of `cargo publish --dry-run` surfaces it. Excluding the cassettes drops
-# the tarball to 3.33 MiB. They are replay fixtures the test binaries read at
-# runtime from `CARGO_MANIFEST_DIR`, never embedded with `include_*!`, so nothing
-# in the package needs them to compile.
-exclude = [
-    "tests/cassettes/**",
-]
+# The published tarball no longer sweeps the provider cassettes: they live with
+# the engine that reads them (`crates/rig-cassette/fixtures/cassettes`), which
+# Cargo skips here because it is its own package.
 
 [package.metadata.docs.rs]
 all-features = true
@@ -64,7 +55,6 @@ default-members = [
     "crates/rig-bedrock",
     "crates/rig-candle",
     "crates/rig-gemini-grpc",
-    "crates/rig-verify",
     "test-support/service-tests",
     "test-support/rig-test-support",
 ]
@@ -326,7 +316,7 @@ rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", features = ["
 rig-ecs = { path = "crates/rig-ecs" }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
-# The ECS contract matrix (`tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as rig-verify's world interpreter does.
+# The ECS contract matrix (`tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as the cassette crate's world interpreter does.
 bevy_tasks = { workspace = true }
 anyhow = { workspace = true }
 assert_fs = { workspace = true }

@@ -12,7 +12,7 @@
 //! additional reachable state once `logprobs: true` is rejected before
 //! generation, so every cell fixes it at `2` and asserts the same typed error.
 //! Each explicit test maps to
-//! `tests/cassettes/mistral/logprobs_rejection_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/<test-name>.yaml`.
 //!
 //! | dimension | values |
 //! |---|---|
@@ -22,7 +22,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 4 | `tests/cassettes/mistral/logprobs_rejection_matrix/{blocking,streaming}_{mistral_small,ministral_3b}.yaml` |
+//! | all 4 | `crates/rig-cassette/fixtures/cassettes/mistral/logprobs_rejection_matrix/{blocking,streaming}_{mistral_small,ministral_3b}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

@@ -13,7 +13,7 @@ fn root() -> &'static Path {
 }
 
 fn fixtures() -> Vec<String> {
-    let mut names: Vec<_> = std::fs::read_dir(root().join("crates/rig-verify/fixtures"))
+    let mut names: Vec<_> = std::fs::read_dir(root().join("crates/rig-cassette/fixtures/effects"))
         .expect("the corpus directory")
         .map(|entry| {
             entry

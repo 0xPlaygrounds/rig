@@ -351,7 +351,7 @@ pub(super) async fn collect_raw_stream_outcome(
 }
 
 /// Cassette wrapper for the deepseek prompt-caching matrix
-/// (`tests/cassettes/deepseek/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/deepseek/prompt_caching/`).
 ///
 /// Builds the cassette directly rather than delegating to [`with_deepseek_cassette`]: this
 /// provider's cassette-safety `source_dir` covers `support.rs` itself, and the

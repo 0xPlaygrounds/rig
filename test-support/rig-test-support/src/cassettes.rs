@@ -10,7 +10,7 @@ pub fn cassette_root() -> PathBuf {
         .parent()
         .and_then(std::path::Path::parent)
         .expect("test-support crate is two directories below the repository")
-        .join("tests/cassettes")
+        .join("crates/rig-cassette/fixtures/cassettes")
 }
 
 /// Resolve a provider scenario's YAML path under the workspace cassette directory.

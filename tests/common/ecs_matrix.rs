@@ -3,7 +3,7 @@
 //! Every Anthropic `ecs_*` family (`tests/providers/anthropic/cassette/`)
 //! pins one section of `crates/rig-ecs/CONTRACT.md` on real provider bytes.
 //! This module writes those cells once, wire-neutrally, as data
-//! ([`cells`]: the rig-verify corpus's `Program` table plus what a live
+//! ([`cells`]: the rig-cassette corpus's `Program` table plus what a live
 //! cell needs beside it — the tools it grants, the store it remembers in,
 //! the bus it is served over) and two drivers over them:
 //!
@@ -30,7 +30,7 @@
 //! reasons.
 // The corpus is every test target's different subset; its own inner
 // `#![allow(dead_code)]` covers it.
-#[path = "../../crates/rig-verify/tests/corpus/mod.rs"]
+#[path = "../../crates/rig-cassette/tests/corpus/mod.rs"]
 pub(crate) mod corpus;
 
 #[path = "ecs_matrix/agent.rs"]

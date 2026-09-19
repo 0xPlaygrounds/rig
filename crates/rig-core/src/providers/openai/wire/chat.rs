@@ -1780,7 +1780,7 @@ fn detail_reasoning(
 /// token per chunk — so it can lift only a self-contained entry out of one
 /// ([`detail_reasoning`]). A unary body states every entry COMPLETE, and the
 /// gateway requires the array back entry for entry on the next turn:
-/// `tests/cassettes/openrouter/reasoning_roundtrip/nonstreaming.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/openrouter/reasoning_roundtrip/nonstreaming.yaml`
 /// record 2 replays the summary AND the encrypted blob, in the order the
 /// reply sent them and nothing besides.
 ///

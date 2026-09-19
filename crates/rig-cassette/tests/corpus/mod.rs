@@ -1,6 +1,6 @@
 //! The effect corpus's two interpreters and the program table they share.
 //!
-//! Every golden effect log under `fixtures/*.effects.json` is one row of
+//! Every golden effect log under `fixtures/effects/*.effects.json` is one row of
 //! one matrix: a [`Program`] the producing root test built verbatim,
 //! replayed here by the bus-driven engine and by a hand driver of
 //! `AgentRun` with **no provider, no tool, no memory and no index behind
@@ -2197,7 +2197,7 @@ pub fn fixtures_dir() -> std::path::PathBuf {
     // This corpus is compiled by both the facade and verification packages.
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
-        .map(|root| root.join("crates/rig-verify/fixtures"))
+        .map(|root| root.join("crates/rig-cassette/fixtures/effects"))
         .find(|fixtures| fixtures.is_dir())
         .expect("the package belongs to the Rig workspace")
 }

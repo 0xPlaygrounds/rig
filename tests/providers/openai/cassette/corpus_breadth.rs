@@ -1,8 +1,8 @@
 //! Matrix N of the effect corpus, the openai rows: the pass-2 shapes on
 //! this wire where the wire changes the record. Producers of the goldens
-//! `crates/rig-verify/tests/corpus_breadth.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_breadth.rs` replays by both
 //! interpreters; the enumeration lives there. Every cell is a new
-//! recording under `tests/cassettes/openai/corpus_breadth/`.
+//! recording under `crates/rig-cassette/fixtures/cassettes/openai/corpus_breadth/`.
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};

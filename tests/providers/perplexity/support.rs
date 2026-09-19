@@ -40,7 +40,7 @@ where
 }
 
 /// Cassette wrapper for the perplexity prompt-caching matrix
-/// (`tests/cassettes/perplexity/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/perplexity/prompt_caching/`).
 ///
 /// Delegates to [`with_perplexity_cassette`] — the behavior is identical, and deliberately shared
 /// so the two cannot drift apart when the base wrapper gains policy. What the

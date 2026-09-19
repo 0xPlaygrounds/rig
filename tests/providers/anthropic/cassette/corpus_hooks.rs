@@ -3,13 +3,13 @@
 //! cell pins where a decision lands — in the record (a patched call, a
 //! hook's own dispatch), in the transcript only (a replaced result, a
 //! denied call), or in the request (an overridden preamble). Producers of
-//! the goldens `crates/rig-verify/tests/corpus_hooks.rs` replays by both
+//! the goldens `crates/rig-cassette/tests/corpus_hooks.rs` replays by both
 //! interpreters; the enumeration lives there. The hooks themselves are in
 //! `test-support/rig-test-support/src/goldens.rs`.
 //!
 //! Every cell is recorded once against the real Anthropic wire
 //! (`CLAUDE_SONNET_4_6`, temperature 0) under
-//! `tests/cassettes/anthropic/corpus_hooks/`.
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_hooks/`.
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;

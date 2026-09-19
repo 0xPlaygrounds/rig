@@ -219,7 +219,7 @@ where
 }
 
 /// Cassette wrapper for the openrouter prompt-caching matrix
-/// (`tests/cassettes/openrouter/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/openrouter/prompt_caching/`).
 ///
 /// Delegates to [`with_openrouter_cassette`] — the behavior is identical, and deliberately shared
 /// so the two cannot drift apart when the base wrapper gains policy. What the

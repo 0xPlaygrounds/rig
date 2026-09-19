@@ -3,8 +3,8 @@
 //! The property the whole model exists for is that a unary reply and a
 //! streamed reply of the *same turn* fold to the same response. These tests
 //! assert it against real recorded bodies: the pairs under
-//! `tests/cassettes/openai/raw_capture_matrix/**` and
-//! `tests/cassettes/openai/raw_stream_capture_matrix/**` are the same prompt
+//! `crates/rig-cassette/fixtures/cassettes/openai/raw_capture_matrix/**` and
+//! `crates/rig-cassette/fixtures/cassettes/openai/raw_stream_capture_matrix/**` are the same prompt
 //! answered both ways, so there is nothing hand-written for the two paths to
 //! agree about by accident.
 

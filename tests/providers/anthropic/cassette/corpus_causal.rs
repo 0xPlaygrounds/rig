@@ -4,8 +4,8 @@
 //! registers the model under the agent's key and records; the `lookup`
 //! tool is the agent's, registered through its tool server; the agent
 //! stamps the log. The enumeration and the replays live in
-//! `crates/rig-verify/tests/corpus_causal.rs`. Every cell is a new
-//! recording under `tests/cassettes/anthropic/corpus_causal/`.
+//! `crates/rig-cassette/tests/corpus_causal.rs`. Every cell is a new
+//! recording under `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_causal/`.
 
 use futures::StreamExt;
 use rig::agent::tool::server::ToolServer;

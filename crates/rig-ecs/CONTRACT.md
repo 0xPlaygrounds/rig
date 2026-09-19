@@ -289,7 +289,7 @@ A tool served by a system (a world-served handler) answers by submitting `WorldO
 
 ## 9. Steering: every hook is a system
 
-No hook trait: a user system writes a component at a set boundary and a library system reads it later. The cases in `crates/rig-verify/tests/corpus/world_hooks.rs` exercise the boundaries below. The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
+No hook trait: a user system writes a component at a set boundary and a library system reads it later. The cases in `crates/rig-cassette/tests/corpus/world_hooks.rs` exercise the boundaries below. The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
 
 ### 9.1 Stopping: `Cancelled(reason)` on the run
 

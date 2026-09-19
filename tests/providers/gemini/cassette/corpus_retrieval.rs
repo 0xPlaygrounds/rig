@@ -2,11 +2,11 @@
 //! `dynamic_context` index and a `retrieved_tools` index, both embedded by
 //! Gemini (`gemini-embedding-001`) and queried by the agent over the bus,
 //! so every `Retrieve` dispatch is a record. Producers of the goldens
-//! `crates/rig-verify/tests/corpus_retrieval.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_retrieval.rs` replays by both
 //! interpreters; the enumeration lives there.
 //!
 //! Every cell is a new recording under
-//! `tests/cassettes/gemini/corpus_retrieval/`: the document and tool-schema
+//! `crates/rig-cassette/fixtures/cassettes/gemini/corpus_retrieval/`: the document and tool-schema
 //! embeddings at build time, the query embedding at prompt time, and the
 //! completion turns.
 

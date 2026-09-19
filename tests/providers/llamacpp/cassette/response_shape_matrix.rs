@@ -429,7 +429,8 @@ async fn logprobs_survive_into_the_raw_response() {
 fn the_finish_reason_vocabulary_is_covered_end_to_end() {
     use std::collections::BTreeSet;
 
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/cassettes/llamacpp");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("crates/rig-cassette/fixtures/cassettes/llamacpp");
     let mut seen: BTreeSet<String> = BTreeSet::new();
 
     fn walk(dir: &std::path::Path, seen: &mut BTreeSet<String>) {

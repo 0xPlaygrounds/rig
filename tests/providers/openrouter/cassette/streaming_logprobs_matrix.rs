@@ -25,7 +25,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
 //! pruned or replaced by a unit test. Each explicit test maps to
-//! `tests/cassettes/openrouter/streaming_logprobs_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openrouter/streaming_logprobs_matrix/<test-name>.yaml`.
 //! Synthetic `logprobs` values (`null`, `{}`, and a non-object) remain shared
 //! deserializer units because they are not controllable model outputs. The two
 //! cheap mini routes are stable Chat Completions controls; every cell asserts
@@ -34,7 +34,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openrouter/streaming_logprobs_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{stop,length}_top_{absent,zero,two}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/streaming_logprobs_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{stop,length}_top_{absent,zero,two}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

@@ -8,7 +8,7 @@
 //! under five thousand kept events on one key beside two hundred other
 //! records (L2). Mock-scripted: the decision, the wire form and the
 //! recorder are the cells, not the provider. The enumeration and the
-//! replays live in `crates/rig-verify/tests/corpus_leftovers.rs`.
+//! replays live in `crates/rig-cassette/tests/corpus_leftovers.rs`.
 
 use rig::agent::AgentBuilder;
 use rig::bus::Bus;

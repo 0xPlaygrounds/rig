@@ -25,7 +25,7 @@
 //! after both models rejected live blocking and streaming probes with code
 //! 3051; it was replaced, not counted, by this unpruned 24-cell terminal
 //! product. Each explicit test maps to
-//! `tests/cassettes/mistral/terminal_metadata_matrix/<test-name>.yaml`; none of
+//! `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/<test-name>.yaml`; none of
 //! these cells is unit-only. `mistral-small-latest` and
 //! `ministral-3b-latest` are the two inexpensive, currently served chat/tool
 //! families. Assertions cover requests, native terminals, ids, models, finish
@@ -34,7 +34,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 replacement cells | `tests/cassettes/mistral/terminal_metadata_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
+//! | all 24 replacement cells | `crates/rig-cassette/fixtures/cassettes/mistral/terminal_metadata_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

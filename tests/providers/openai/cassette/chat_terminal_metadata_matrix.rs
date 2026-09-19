@@ -23,7 +23,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and all 24 cells
 //! are recorded; none is unit-only. Each explicit test maps to
-//! `tests/cassettes/openai/chat_terminal_metadata_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openai/chat_terminal_metadata_matrix/<test-name>.yaml`.
 //! The inexpensive mini models provide stable text, multi-choice, and tool
 //! controls across two model families. Every cell asserts the request and
 //! provider-native terminal; together they cover ids, model, finish reason,
@@ -32,7 +32,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openai/chat_terminal_metadata_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_terminal_metadata_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{roomy,tiny}_{plain_one,plain_two,tool}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

@@ -21,7 +21,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and every cell is
 //! recorded; none is unit-only. Each explicit test maps to
-//! `tests/cassettes/openrouter/tool_lifecycle_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/<test-name>.yaml`.
 //! Both cheap mini routes are pinned to OpenAI with fallbacks disabled, making
 //! the gateway wire stable across model families. Assertions span request
 //! schemas, native blocking/streaming assembly, normalized ids, names,
@@ -30,7 +30,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openrouter/tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openrouter/tool_lifecycle_matrix/{blocking,streaming}_{gpt4o,gpt41}_{zero,nested,parallel}_{model,agent}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

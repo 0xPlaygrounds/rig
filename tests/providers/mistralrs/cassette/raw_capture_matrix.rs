@@ -40,7 +40,7 @@
 //! `Qwen/Qwen3-4B` (or export `MISTRALRS_BASE_URL`/`MISTRALRS_MODEL`), remove
 //! the `#[ignore]` attributes, flip the table to `recorded`, then run
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test mistralrs mistralrs::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
-//! and review `tests/cassettes/mistralrs/raw_capture_matrix/`.
+//! and review `crates/rig-cassette/fixtures/cassettes/mistralrs/raw_capture_matrix/`.
 
 use rig::completion::{CompletionModel, CompletionRequest};
 use rig::providers::openai;

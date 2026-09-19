@@ -69,7 +69,7 @@ where
 }
 
 /// Cassette wrapper for the xai prompt-caching matrix
-/// (`tests/cassettes/xai/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/xai/prompt_caching/`).
 ///
 /// Builds the cassette directly rather than delegating to [`with_xai_cassette`]: this
 /// provider's cassette-safety `source_dir` covers `support.rs` itself, and the

@@ -1,6 +1,6 @@
 //! The grid's cells as data: every cell the Anthropic families pin, with
-//! the rig-verify corpus's `Program` for the run and what a live cell needs
-//! beside it. The programs are the corpus's own tables (`crates/rig-verify/
+//! the rig-cassette corpus's `Program` for the run and what a live cell needs
+//! beside it. The programs are the corpus's own tables (`crates/rig-cassette/
 //! tests/corpus_*.rs`), verbatim, so the same cell means the same thing on
 //! every wire and in every interpreter.
 

@@ -3,9 +3,9 @@
 //! 0). The host registers the model under the agent's key and its own
 //! `NoteTaker` under `host/note`, drives the bus and records; the agent
 //! stamps the log. Producers of the goldens
-//! `crates/rig-verify/tests/corpus_host.rs` replays by both interpreters;
+//! `crates/rig-cassette/tests/corpus_host.rs` replays by both interpreters;
 //! the enumeration lives there. Every cell is a new recording under
-//! `tests/cassettes/anthropic/corpus_host/`.
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_host/`.
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};

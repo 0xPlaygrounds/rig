@@ -59,7 +59,7 @@ pub(super) async fn with_anthropic_boxed_cassette<F, Fut>(
 /// through a [`BoxedHttpClient`] carrying the supplied [`HttpMiddleware`], so
 /// the same recorded exchange exercises the transport middleware seam and the
 /// run lifecycle hooks together (see
-/// `tests/cassettes/anthropic/lifecycle_matrix/`).
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/lifecycle_matrix/`).
 pub(super) async fn with_anthropic_lifecycle_cassette<M, F, Fut>(
     spec: impl Into<CassetteSpec>,
     middleware: M,
@@ -96,7 +96,7 @@ where
 }
 
 /// Per-bug wrapper for the model-turn termination-metadata matrix
-/// (`tests/cassettes/anthropic/turn_termination_matrix/`), rig#2184.
+/// (`crates/rig-cassette/fixtures/cassettes/anthropic/turn_termination_matrix/`), rig#2184.
 pub(super) async fn with_anthropic_turn_metadata_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -118,7 +118,7 @@ pub(super) async fn with_anthropic_turn_metadata_cassette<F, Fut>(
 /// endpoint and records with `OPENROUTER_API_KEY`. Replay needs no key, like
 /// every other cassette.
 ///
-/// Cassettes recorded through here live under `tests/cassettes/anthropic/` with
+/// Cassettes recorded through here live under `crates/rig-cassette/fixtures/cassettes/anthropic/` with
 /// the rest of the provider's scenarios; the gateway is an implementation
 /// detail of how the fixture was obtained, not a separate provider suite.
 pub(super) async fn with_anthropic_gateway_cassette<F, Fut>(
@@ -257,7 +257,7 @@ pub(super) fn recorded_response_body(scenario: &str) -> serde_json::Value {
 /// Delegates to [`with_anthropic_cassette`] — the behavior is identical, and
 /// deliberately shared so the three cannot drift apart when the base wrapper
 /// gains policy. What the separate name buys is a per-bug entry in the
-/// cassette-safety registry, so `tests/cassettes/anthropic/stop_sequence_terminal_matrix/`
+/// cassette-safety registry, so `crates/rig-cassette/fixtures/cassettes/anthropic/stop_sequence_terminal_matrix/`
 /// is auditable as one bug's evidence. (The fixture *path* comes from the
 /// scenario string, not from the wrapper.)
 pub(super) async fn with_anthropic_stop_sequence_cassette<F, Fut>(
@@ -274,7 +274,7 @@ pub(super) async fn with_anthropic_stop_sequence_cassette<F, Fut>(
 ///
 /// Delegates to [`with_anthropic_cassette`], separate for the same per-bug
 /// registry reason as [`with_anthropic_stop_sequence_cassette`] (see
-/// `tests/cassettes/anthropic/empty_stop_sequence_matrix/`).
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/empty_stop_sequence_matrix/`).
 pub(super) async fn with_anthropic_empty_stop_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -315,7 +315,7 @@ pub(super) async fn with_anthropic_cassette_bogus_key<F, Fut>(
 ///
 /// Delegates to [`with_anthropic_cassette`], separate for the same per-bug
 /// registry reason as [`with_anthropic_stop_sequence_cassette`] (see
-/// `tests/cassettes/anthropic/reasoning_usage_matrix/`).
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/reasoning_usage_matrix/`).
 pub(super) async fn with_anthropic_reasoning_usage_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -328,7 +328,7 @@ pub(super) async fn with_anthropic_reasoning_usage_cassette<F, Fut>(
 
 /// The effect corpus's request-shape matrix (Matrix E), one wrapper per
 /// matrix so its cassettes are one suite directory
-/// (`tests/cassettes/anthropic/corpus_request_shape/`).
+/// (`crates/rig-cassette/fixtures/cassettes/anthropic/corpus_request_shape/`).
 pub(super) async fn with_anthropic_corpus_request_shape_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -340,7 +340,7 @@ pub(super) async fn with_anthropic_corpus_request_shape_cassette<F, Fut>(
 }
 
 /// The effect corpus's hook matrix (Matrix B):
-/// `tests/cassettes/anthropic/corpus_hooks/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_hooks/`.
 pub(super) async fn with_anthropic_corpus_hooks_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -352,7 +352,7 @@ pub(super) async fn with_anthropic_corpus_hooks_cassette<F, Fut>(
 }
 
 /// The effect corpus's serving matrix (Matrix C):
-/// `tests/cassettes/anthropic/corpus_serving/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_serving/`.
 pub(super) async fn with_anthropic_corpus_serving_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -364,7 +364,7 @@ pub(super) async fn with_anthropic_corpus_serving_cassette<F, Fut>(
 }
 
 /// The effect corpus's outcome matrix (Matrix D):
-/// `tests/cassettes/anthropic/corpus_outcome/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_outcome/`.
 pub(super) async fn with_anthropic_corpus_outcome_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -376,7 +376,7 @@ pub(super) async fn with_anthropic_corpus_outcome_cassette<F, Fut>(
 }
 
 /// The effect corpus's endings matrix (Matrix F):
-/// `tests/cassettes/anthropic/corpus_endings/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_endings/`.
 pub(super) async fn with_anthropic_corpus_endings_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -388,7 +388,7 @@ pub(super) async fn with_anthropic_corpus_endings_cassette<F, Fut>(
 }
 
 /// The effect corpus's oracle matrix (Matrix O):
-/// `tests/cassettes/anthropic/corpus_oracle/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_oracle/`.
 pub(super) async fn with_anthropic_corpus_oracle_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -400,7 +400,7 @@ pub(super) async fn with_anthropic_corpus_oracle_cassette<F, Fut>(
 }
 
 /// The effect corpus's per-turn shaping matrix (Matrix M):
-/// `tests/cassettes/anthropic/corpus_shaping/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_shaping/`.
 pub(super) async fn with_anthropic_corpus_shaping_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -412,7 +412,7 @@ pub(super) async fn with_anthropic_corpus_shaping_cassette<F, Fut>(
 }
 
 /// The effect corpus's memory matrix (Matrix J):
-/// `tests/cassettes/anthropic/corpus_memory/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_memory/`.
 pub(super) async fn with_anthropic_corpus_memory_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -424,7 +424,7 @@ pub(super) async fn with_anthropic_corpus_memory_cassette<F, Fut>(
 }
 
 /// The effect corpus's layers matrix (Matrix P):
-/// `tests/cassettes/anthropic/corpus_layers/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_layers/`.
 pub(super) async fn with_anthropic_corpus_layers_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -436,7 +436,7 @@ pub(super) async fn with_anthropic_corpus_layers_cassette<F, Fut>(
 }
 
 /// The effect corpus's causal-dispatch matrix (Matrix Q):
-/// `tests/cassettes/anthropic/corpus_causal/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_causal/`.
 pub(super) async fn with_anthropic_corpus_causal_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -448,7 +448,7 @@ pub(super) async fn with_anthropic_corpus_causal_cassette<F, Fut>(
 }
 
 /// The effect corpus's host-families matrix (Matrix I):
-/// `tests/cassettes/anthropic/corpus_host/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_host/`.
 pub(super) async fn with_anthropic_corpus_host_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,
@@ -460,7 +460,7 @@ pub(super) async fn with_anthropic_corpus_host_cassette<F, Fut>(
 }
 
 /// The effect corpus's output-mode matrix (Matrix H):
-/// `tests/cassettes/anthropic/corpus_output/`.
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_output/`.
 pub(super) async fn with_anthropic_corpus_output_cassette<F, Fut>(
     spec: impl Into<CassetteSpec>,
     test_body: F,

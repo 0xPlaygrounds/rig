@@ -41,7 +41,7 @@
 //! To record cells 1–2: export `CHATGPT_ACCESS_TOKEN` and `CHATGPT_ACCOUNT_ID`,
 //! remove the `#[ignore]` attributes, flip the table to `recorded`, then run
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_completion_parity_matrix -- --nocapture --test-threads=1`
-//! and review `tests/cassettes/chatgpt/raw_completion_parity_matrix/`.
+//! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_completion_parity_matrix/`.
 
 use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition,

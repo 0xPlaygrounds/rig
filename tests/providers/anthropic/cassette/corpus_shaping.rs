@@ -2,9 +2,9 @@
 //! temperature 0, the route `CLAUDE_HAIKU_4_5`). A request patch from
 //! `on_completion_call` shapes one turn's request and not the program; a
 //! model-selection hook picks the turn's model. Producers of the goldens
-//! `crates/rig-verify/tests/corpus_shaping.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_shaping.rs` replays by both
 //! interpreters; the enumeration lives there. Every cell is a new
-//! recording under `tests/cassettes/anthropic/corpus_shaping/`.
+//! recording under `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_shaping/`.
 
 use futures::StreamExt;
 use rig::agent::{Agent, MultiTurnStreamItem};

@@ -115,7 +115,7 @@ impl Tool for IntegerSubtract {
 }
 
 /// Cassette wrapper for the cohere prompt-caching matrix
-/// (`tests/cassettes/cohere/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/cohere/prompt_caching/`).
 ///
 /// Delegates to [`with_cohere_cassette`] — the behavior is identical, and deliberately shared
 /// so the two cannot drift apart when the base wrapper gains policy. What the

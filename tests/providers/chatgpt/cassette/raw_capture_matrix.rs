@@ -34,7 +34,7 @@
 //! `CHATGPT_ACCOUNT_ID` (the harness placeholders both on disk), remove the
 //! `#[ignore]` attributes, flip the table to `recorded`, then run
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test chatgpt chatgpt::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
-//! and review `tests/cassettes/chatgpt/raw_capture_matrix/`.
+//! and review `crates/rig-cassette/fixtures/cassettes/chatgpt/raw_capture_matrix/`.
 
 use rig::completion::CompletionModel as _;
 use rig::driver::Bound;

@@ -344,7 +344,7 @@ pub(super) async fn with_llamacpp_missing_api_key_cassette<F, Fut>(
 pub(super) const CASSETTE_API_KEY: &str = "llamacpp-local-test-key";
 
 /// Cassette wrapper for the llama.cpp prompt-caching matrix
-/// (`tests/cassettes/llamacpp/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/llamacpp/prompt_caching/`).
 ///
 /// Delegates to [`with_llamacpp_cassette`] — the behaviour is identical, and
 /// deliberately shared so the two cannot drift when the base wrapper gains

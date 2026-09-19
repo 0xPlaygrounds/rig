@@ -1,10 +1,10 @@
 //! Matrix D of the effect corpus: cancellation and failure outcomes, and
 //! the run beyond a single answer. Producers of the goldens
-//! `crates/rig-verify/tests/corpus_outcome.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_outcome.rs` replays by both
 //! interpreters; the enumeration lives there.
 //!
 //! The cancel and tool-error cells are new recordings under
-//! `tests/cassettes/anthropic/corpus_outcome/`; the model-error cells
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_outcome/`; the model-error cells
 //! record the wire's own 401 under an invalid key; the turn-budget cells
 //! reuse the tool-call-turn cassette, since a budget changes when the run
 //! stops, not what it asks.

@@ -3,7 +3,7 @@
 //! real adapters over the same cassette as the producer, and asserted in
 //! this order: (1) the log the world wrote equals the producer's golden
 //! (`crate::ecs_goldens::golden_effects`: kinds, outcomes, events, parent
-//! chain — the rig-verify oracle), (2) the run's graph after settle has
+//! chain — the rig-cassette oracle), (2) the run's graph after settle has
 //! the shape the section states, (3) where the cell names a cut, a scene
 //! saved there loads in a fresh world served by replayers over the log's
 //! tail and finishes to the same answer. Every settled run is then
@@ -102,7 +102,7 @@ use crate::support::{ALPHA_SIGNAL_OUTPUT, AlphaSignal, BetaSignal};
 
 const GUARD: Duration = Duration::from_secs(180);
 
-/// Pin the bus's task pool to one thread, as rig-verify's world
+/// Pin the bus's task pool to one thread, as rig-cassette's world
 /// interpreter does: a replayer answers same-key dispatches by position,
 /// which holds when handler tasks are first polled in spawn order.
 /// Process-wide: nextest runs each cell in its own process.

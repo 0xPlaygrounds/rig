@@ -2,9 +2,9 @@
 //! (`CLAUDE_SONNET_4_6`, temperature 0). The event schema of Matrix E
 //! under `Tool` and `Prompted`, beside a real tool, under each tool
 //! choice, and under extended thinking. Producers of the goldens
-//! `crates/rig-verify/tests/corpus_output.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_output.rs` replays by both
 //! interpreters; the enumeration lives there. Every cell is a new
-//! recording under `tests/cassettes/anthropic/corpus_output/`.
+//! recording under `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_output/`.
 
 use futures::StreamExt;
 use rig::agent::MultiTurnStreamItem;

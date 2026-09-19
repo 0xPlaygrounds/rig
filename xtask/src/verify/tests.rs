@@ -47,7 +47,7 @@ fn gated_provider_changes_enable_every_capability() {
     for path in [
         "tests/providers/openai/cassette/audio_params_matrix.rs",
         "tests/providers/openai/cassette/image_params_matrix.rs",
-        "tests/cassettes/openai/websocket/example.yaml",
+        "crates/rig-cassette/fixtures/cassettes/openai/websocket/example.yaml",
     ] {
         let plan = selection::plan(
             Path::new("/repo"),
@@ -135,14 +135,23 @@ fn full_and_floor_lanes_select_independently() {
 
 #[test]
 fn fixture_selects_complete_provider_target() {
-    let plan = ids("--changed", &["tests/cassettes/anthropic/a.yaml"]);
+    let plan = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"],
+    );
     assert!(plan.contains("provider-anthropic"));
     assert!(!plan.contains("full-tests"));
 }
 
 #[test]
 fn unknown_fixture_provider_falls_back() {
-    assert!(ids("--changed", &["tests/cassettes/unknown/a.yaml"]).contains("full-tests"));
+    assert!(
+        ids(
+            "--changed",
+            &["crates/rig-cassette/fixtures/cassettes/unknown/a.yaml"]
+        )
+        .contains("full-tests")
+    );
 }
 
 #[test]
@@ -743,9 +752,33 @@ fn workflows_carry_no_toolchain_copy() {
 
 #[test]
 fn a_golden_change_selects_the_parity_lane() {
-    let p = ids("--changed", &["crates/rig-verify/fixtures/x.effects.json"]);
-    assert!(p.contains("ecs-parity"), "{p:?}");
-    assert!(p.contains("default-tests"), "{p:?}");
+    let p = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/effects/x.effects.json"],
+    );
+    for check in ["bus-verification", "default-tests", "ecs-parity"] {
+        assert!(p.contains(check), "{p:?}");
+    }
+}
+
+/// The two corpora share a parent directory inside one package. A provider
+/// cassette must still reach its provider target instead of falling through
+/// to the owning package's generic asset rule, and neither corpus may be
+/// classified as the other.
+#[test]
+fn the_two_corpora_are_classified_apart() {
+    let cassette = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"],
+    );
+    assert!(cassette.contains("provider-anthropic"), "{cassette:?}");
+    assert!(!cassette.contains("bus-verification"), "{cassette:?}");
+    assert!(!cassette.contains("package-rig-cassette"), "{cassette:?}");
+    let effects = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/effects/x.effects.json"],
+    );
+    assert!(!effects.iter().any(|id| id.starts_with("provider-")));
 }
 
 /// The fixture metadata declares `rig-ecs` (a runtime crate) and
@@ -781,7 +814,7 @@ fn parity_and_verification_have_explicit_execution_owners() {
     let all = checks::all();
     let args = |id: &str| &all.iter().find(|check| check.id == id).unwrap().steps[0].args;
     let default = args("default-tests");
-    assert!(default.iter().any(|arg| arg == "not binary(macro_hygiene) and not package(rig-verify) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))"));
+    assert!(default.iter().any(|arg| arg == "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay))) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))"));
     for id in ["default-tests", "ecs-parity"] {
         assert!(
             args(id)
@@ -798,7 +831,7 @@ fn parity_and_verification_have_explicit_execution_owners() {
     assert!(
         args("bus-verification")
             .iter()
-            .any(|arg| arg == "not binary(world_replay)")
+            .any(|arg| arg == "package(rig-cassette) and binary(verify)")
     );
     let world = &all
         .iter()
@@ -806,29 +839,40 @@ fn parity_and_verification_have_explicit_execution_owners() {
         .unwrap()
         .steps[1]
         .args;
-    assert!(world.iter().any(|arg| arg == "binary(world_replay)"));
+    assert!(
+        world
+            .iter()
+            .any(|arg| arg == "package(rig-cassette) and binary(world_replay)")
+    );
     assert!(world.windows(2).any(|pair| pair == ["--retries", "0"]));
-    for (owner, filter) in [
+    // Each absorbed target keeps two executions: a standalone package graph
+    // with zero retries and a default-member graph with two. The absorbed
+    // filters are now identical strings in both, so the graphs are told apart
+    // by package selection, never by the filter.
+    for (owner, filter, standalone) in [
         (
             "ecs-parity",
-            "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-verify) and binary(world_replay))",
+            "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-cassette) and binary(world_replay))",
+            "package(rig-cassette) and binary(world_replay)",
         ),
         (
             "bus-verification",
-            "package(rig-verify) and not binary(world_replay)",
+            "package(rig-cassette) and binary(verify)",
+            "package(rig-cassette) and binary(verify)",
         ),
     ] {
         let steps = &all.iter().find(|check| check.id == owner).unwrap().steps;
+        let selects = |step: &&Step| step.args.windows(2).any(|p| p == ["-p", "rig-cassette"]);
         let unified = steps
             .iter()
+            .filter(|step| {
+                !step
+                    .args
+                    .iter()
+                    .any(|arg| arg == "-p" || arg == "--package")
+            })
             .find(|step| step.args.iter().any(|arg| arg == filter))
             .expect("default-member configuration has an execution owner");
-        assert!(
-            !unified
-                .args
-                .iter()
-                .any(|arg| arg == "-p" || arg == "--package")
-        );
         assert!(
             unified
                 .args
@@ -841,6 +885,39 @@ fn parity_and_verification_have_explicit_execution_owners() {
                 .windows(2)
                 .any(|pair| pair == ["--retries", "2"])
         );
+        let alone = steps
+            .iter()
+            .filter(selects)
+            .find(|step| step.args.iter().any(|arg| arg == standalone))
+            .expect("standalone configuration has an execution owner");
+        assert!(alone.args.windows(2).any(|pair| pair == ["--retries", "0"]));
+        assert!(alone.args.iter().any(|arg| arg == "--all-features"));
+    }
+}
+
+/// The absorbed suite shares a package with the cassette engine. Only the two
+/// absorbed binaries may be excluded from the default sweep: an exclusion of
+/// the whole package would leave the engine's unit tests with no owner, and a
+/// bare `binary(verify)` in a multi-package selection could be satisfied by an
+/// identically named binary elsewhere.
+#[test]
+fn the_cassette_engine_keeps_its_default_owner() {
+    let all = checks::all();
+    for check in &all {
+        for step in &check.steps {
+            for arg in &step.args {
+                assert!(
+                    !arg.contains("not package(rig-cassette)"),
+                    "{}: {arg}",
+                    check.id
+                );
+                for binary in ["binary(verify)", "binary(world_replay)"] {
+                    if arg.contains(binary) {
+                        assert!(arg.contains("package(rig-cassette)"), "{}: {arg}", check.id);
+                    }
+                }
+            }
+        }
     }
 }
 

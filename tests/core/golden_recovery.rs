@@ -7,7 +7,7 @@
 //! No existing cassette has an engine-driven invalid call, so this golden
 //! is scripted from the mock model rather than a cassette — the only one in
 //! the corpus that is. It still holds the corpus contract: recorded once by
-//! this producer, replayed by rig-verify with nothing behind the keys.
+//! this producer, replayed by rig-cassette with nothing behind the keys.
 
 use rig::agent::AgentBuilder;
 use rig::test_utils::{MockCompletionModel, MockTurn};

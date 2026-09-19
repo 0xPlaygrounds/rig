@@ -73,7 +73,7 @@ const BASE_URL_ENV: &[&str] = &["GITHUB_COPILOT_API_BASE", "COPILOT_BASE_URL"];
 /// Responses wire verbatim, header included — except where the Responses
 /// system preamble goes: this backend takes `system` messages inside
 /// `input` rather than top-level `instructions`, which is what
-/// `tests/cassettes/copilot/routing/codex_models_route_through_responses.yaml`
+/// `crates/rig-cassette/fixtures/cassettes/copilot/routing/codex_models_route_through_responses.yaml`
 /// records. Copilot verifies through its token exchange, not a path, and
 /// its editor headers and session-token exchange live in this module.
 pub const DIALECT: Dialect = Dialect {

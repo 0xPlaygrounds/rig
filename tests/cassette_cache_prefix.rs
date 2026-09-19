@@ -223,7 +223,8 @@ fn recorded_requests(contents: &str) -> Vec<(String, Value)> {
 }
 
 fn cassette_root() -> PathBuf {
-    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/cassettes");
+    let root =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("crates/rig-cassette/fixtures/cassettes");
     assert!(
         root.is_dir(),
         "cassette root moved or vanished: {}",
@@ -1025,7 +1026,7 @@ const NO_CACHE_SUITE: &[(&str, &str)] = &[
 
 /// Every provider suite must have a cache suite, or say why not.
 ///
-/// Walks `tests/providers`, **not** `tests/cassettes`. Walking the cassette root
+/// Walks `tests/providers`, **not** `crates/rig-cassette/fixtures/cassettes`. Walking the cassette root
 /// would let a provider with no recorded fixtures at all escape entirely — which
 /// is the loudest possible form of "nobody has ever checked whether its prompt
 /// cache works", and exactly the silent gap this check exists to remove. Eleven
@@ -1085,7 +1086,7 @@ fn every_provider_suite_has_a_cache_suite() {
             (true, None) => {}
             (false, None) => missing.push(format!(
                 "  {provider}: has a provider test suite but no \
-                 tests/cassettes/{provider}/prompt_caching/ scenarios, so nothing has ever \
+                 crates/rig-cassette/fixtures/cassettes/{provider}/prompt_caching/ scenarios, so nothing has ever \
                  observed whether its prompt cache works"
             )),
         }

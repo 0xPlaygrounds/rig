@@ -103,7 +103,7 @@ coverage distinct in the report.
 ## Cassette Provider Tests
 
 Cassette tests replay committed HTTP interactions by default and do not require
-provider API keys. Fixtures live under `tests/cassettes/<provider>/...`.
+provider API keys. Fixtures live under `crates/rig-cassette/fixtures/cassettes/<provider>/...`.
 
 Replay one migrated provider suite (`openai`, `anthropic`, `gemini`, `chatgpt`,
 `bedrock`, `cohere`, `doubleword`, `venice`) with:
@@ -206,7 +206,7 @@ Growth is asserted as a ratio, not a monotonic token count: providers cache in c
 the absolute figure drifts a few tokens as block boundaries re-align (Gemini was measured going
 3,765 -> 3,760 across a 21-token append) while a genuine prefix move collapses it to zero.
 
-### Layer 2 — per-provider cassettes (`tests/cassettes/<provider>/prompt_caching/`)
+### Layer 2 — per-provider cassettes (`crates/rig-cassette/fixtures/cassettes/<provider>/prompt_caching/`)
 
 Recorded live, replayed key-free. Replay is not a tautology: the harness matches request bodies,
 so a rig change that perturbs the outbound prefix fails as a replay miss in CI with no API key.

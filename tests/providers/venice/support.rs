@@ -95,7 +95,7 @@ where
 }
 
 /// Cassette wrapper for the venice prompt-caching matrix
-/// (`tests/cassettes/venice/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/venice/prompt_caching/`).
 ///
 /// Delegates to [`with_venice_cassette`] — the behavior is identical, and deliberately shared
 /// so the two cannot drift apart when the base wrapper gains policy. What the

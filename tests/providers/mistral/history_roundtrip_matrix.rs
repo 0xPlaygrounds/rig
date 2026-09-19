@@ -19,7 +19,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
 //! pruned or assigned to unit-only coverage. Each explicit test maps to
-//! `tests/cassettes/mistral/history_roundtrip_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/<test-name>.yaml`.
 //! The inexpensive small and 3B aliases are stable served families with tool
 //! history support. Assertions cover native and normalized blocking/streaming
 //! surfaces, Unicode, exact tool ids and arguments, ordered tool results, the
@@ -27,7 +27,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/history_roundtrip_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{raw,normalized}_{text,single_tool,parallel_tool}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

@@ -80,7 +80,10 @@ fn add(out: &mut Vec<Check>, all: &[Check], id: &str, reason: &str) -> Result<()
     Ok(())
 }
 fn provider(path: &str) -> Option<&str> {
-    for prefix in ["tests/cassettes/", "tests/providers/"] {
+    for prefix in [
+        "crates/rig-cassette/fixtures/cassettes/",
+        "tests/providers/",
+    ] {
         if let Some(rest) = path.strip_prefix(prefix) {
             return rest.split('/').next();
         }
@@ -316,7 +319,10 @@ pub(super) fn plan(
             )?;
             continue;
         }
-        if path.starts_with("crates/rig-verify/fixtures/") {
+        // Both corpora live under `crates/rig-cassette/fixtures/`; the effect
+        // goldens are classified before the provider cassettes beside them,
+        // and both before the owning package's generic asset rule.
+        if path.starts_with("crates/rig-cassette/fixtures/effects/") {
             add(&mut out, all, "bus-verification", "consumed golden changed")?;
             add(
                 &mut out,

@@ -262,7 +262,7 @@ fn recorded_embedding_calls(scenario: &str) -> Vec<RecordedEmbeddingCall> {
 }
 
 /// Cassette wrapper for the doubleword prompt-caching matrix
-/// (`tests/cassettes/doubleword/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/doubleword/prompt_caching/`).
 ///
 /// Delegates to [`with_doubleword_cassette`] — the behavior is identical, and deliberately shared
 /// so the two cannot drift apart when the base wrapper gains policy. What the

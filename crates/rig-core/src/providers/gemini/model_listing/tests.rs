@@ -152,7 +152,7 @@ fn parse_models_page_returns_parse_error_when_entry_has_no_usable_id() {
 }
 
 /// The path and query are what the recorded cassette
-/// `tests/cassettes/gemini/models/list_models_smoke.yaml` matches on —
+/// `crates/rig-cassette/fixtures/cassettes/gemini/models/list_models_smoke.yaml` matches on —
 /// `pageSize=1000` then `key` — so their exact shape is load-bearing, the
 /// same reason `list_models_path` is pinned above.
 #[test]
@@ -193,7 +193,7 @@ fn interactions_models_sends_the_credential_as_a_header_only() {
 
 /// Two pages fold in arrival order and the cursor page one named is what
 /// the next request asks for. The entries are verbatim from
-/// `tests/cassettes/gemini/models/list_models_smoke.yaml`; the recorded
+/// `crates/rig-cassette/fixtures/cassettes/gemini/models/list_models_smoke.yaml`; the recorded
 /// catalog fits in one page, so the `nextPageToken` is what this adds.
 #[test]
 fn a_paged_listing_folds_in_order_and_follows_the_cursor() {

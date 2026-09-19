@@ -1,9 +1,9 @@
 //! Matrix J of the effect corpus: memory operations (`CLAUDE_SONNET_4_6`,
 //! temperature 0, `InMemoryConversationMemory` under
 //! `golden-conversation`). Producers of the goldens
-//! `crates/rig-verify/tests/corpus_memory.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_memory.rs` replays by both
 //! interpreters; the enumeration lives there. Every cell is a new
-//! recording under `tests/cassettes/anthropic/corpus_memory/`.
+//! recording under `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_memory/`.
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};

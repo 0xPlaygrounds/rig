@@ -19,7 +19,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and all 24 cells
 //! are recorded; none is unit-only. Each explicit test maps to
-//! `tests/cassettes/mistral/request_shape_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/<test-name>.yaml`.
 //! The small and 3B aliases are inexpensive current models spanning Mistral's
 //! served chat families. Assertions cover finalized blocking/streaming request
 //! fields, `tool_choice` translation, structured-output compatibility, exact
@@ -28,7 +28,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/mistral/request_shape_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{plain,json}_{auto,any,none}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/mistral/request_shape_matrix/{blocking,streaming}_{mistral_small,ministral_3b}_{plain,json}_{auto,any,none}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

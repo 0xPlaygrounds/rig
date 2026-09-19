@@ -67,7 +67,7 @@ where
 }
 
 /// Cassette wrapper for the groq prompt-caching matrix
-/// (`tests/cassettes/groq/prompt_caching/`).
+/// (`crates/rig-cassette/fixtures/cassettes/groq/prompt_caching/`).
 ///
 /// Builds the cassette directly rather than delegating to [`with_groq_cassette_result`]: this
 /// provider's cassette-safety `source_dir` covers `support.rs` itself, and the

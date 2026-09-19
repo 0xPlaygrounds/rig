@@ -23,7 +23,7 @@
 //!
 //! Coverage ledger: the pre-pruning Cartesian product is 24 and no cell was
 //! pruned or replaced by a unit test. Each explicit test below maps to
-//! `tests/cassettes/openai/chat_streaming_logprobs_matrix/<test-name>.yaml`.
+//! `crates/rig-cassette/fixtures/cassettes/openai/chat_streaming_logprobs_matrix/<test-name>.yaml`.
 //! Synthetic `logprobs` values (`null`, `{}`, and a non-object) stay in the
 //! shared deserializer's unit tests because a live model cannot be instructed
 //! to emit them. The two inexpensive mini models are stable Chat Completions
@@ -33,7 +33,7 @@
 //!
 //! | recorded cells | exact fixture set |
 //! |---|---|
-//! | all 24 | `tests/cassettes/openai/chat_streaming_logprobs_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{stop,length}_top_{absent,zero,two}.yaml` |
+//! | all 24 | `crates/rig-cassette/fixtures/cassettes/openai/chat_streaming_logprobs_matrix/{blocking,streaming}_{gpt_4o_mini,gpt_4_1_mini}_{stop,length}_top_{absent,zero,two}.yaml` |
 
 use std::sync::{Arc, Mutex};
 

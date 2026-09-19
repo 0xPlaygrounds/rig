@@ -2,9 +2,9 @@
 //! temperature 0): two tool calls served concurrently with a host note
 //! inside each dispatch (the cross-key order the golden pins), and a
 //! stateful stop whose header name carries its state. Producers of the
-//! goldens `crates/rig-verify/tests/corpus_oracle.rs` replays by both
+//! goldens `crates/rig-cassette/tests/corpus_oracle.rs` replays by both
 //! interpreters. Every cell is a new recording under
-//! `tests/cassettes/anthropic/corpus_oracle/`.
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_oracle/`.
 
 use rig::agent::AgentBuilder;
 use rig::bus::Bus;

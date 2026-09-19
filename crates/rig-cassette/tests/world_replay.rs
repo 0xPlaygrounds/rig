@@ -39,7 +39,7 @@ const EXPECTED_GOLDENS: usize = 842;
 const GUARD: Duration = Duration::from_secs(30);
 
 fn goldens() -> Vec<(String, EffectLog)> {
-    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("fixtures/effects");
     let mut names: Vec<String> = std::fs::read_dir(&dir)
         .expect("the fixtures directory")
         .flatten()

@@ -52,7 +52,7 @@
 //! | `mock_hooks_retry_twice` | `tests/core/golden_hooks.rs` `hooks_retry_twice_…` | `[Completion, Completion, Completion, Tool, Completion]` | the run's shape: two retries (mock-scripted: no live model calls an unadvertised tool) |
 //!
 //! Every Anthropic cell is recorded on the wire (`CLAUDE_SONNET_4_6`,
-//! temperature 0) into `tests/cassettes/anthropic/corpus_hooks/`.
+//! temperature 0) into `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_hooks/`.
 
 use crate::corpus;
 

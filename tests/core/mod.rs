@@ -1,6 +1,6 @@
 //! The root package's own tests: guards that scan the source tree and the
 //! fixture runners, which need the repository root. Behaviour of the bus and
-//! the agent over it is verified in `crates/rig-verify`; provider behaviour
+//! the agent over it is verified in `crates/rig-cassette`; provider behaviour
 //! in `tests/providers`; anything needing crate-private types stays a unit
 //! test in its crate.
 

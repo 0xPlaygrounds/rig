@@ -52,7 +52,7 @@
 //! `AWS_SECRET_ACCESS_KEY`[/`AWS_SESSION_TOKEN`] — with region `us-east-1`):
 //! remove the `#[ignore]` attributes, flip the table to `recorded`, then run
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test bedrock bedrock::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
-//! and review the new fixtures under `tests/cassettes/bedrock/raw_capture_matrix/`
+//! and review the new fixtures under `crates/rig-cassette/fixtures/cassettes/bedrock/raw_capture_matrix/`
 //! (the scrubber placeholders `x-amzn-requestid`; nothing else in a Converse
 //! body is account state).
 

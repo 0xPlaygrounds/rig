@@ -26,8 +26,8 @@ async fn completion_smoke() {
 }
 
 /// The golden effect log: `completion_smoke` recorded as effects. The
-/// committed file (`crates/rig-verify/fixtures/anthropic_completion_smoke.effects.json`)
-/// is what `rig-verify`'s two interpreters must both reproduce, kind for
+/// committed file (`crates/rig-cassette/fixtures/effects/anthropic_completion_smoke.effects.json`)
+/// is what `rig-cassette`'s two interpreters must both reproduce, kind for
 /// kind, from a replayer. Regenerate with `RIG_REGENERATE_GOLDEN=1` after a
 /// deliberate change to the request the agent builds (never by hand); the
 /// cassette itself is untouched either way.

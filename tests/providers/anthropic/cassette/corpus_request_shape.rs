@@ -1,12 +1,12 @@
 //! Matrix E of the effect corpus: the request-shape axes that change the
 //! run spec, and so the header hash every golden carries and every
 //! record's `CompletionRequest`. Producers of the goldens
-//! `crates/rig-verify/tests/corpus_request_shape.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_request_shape.rs` replays by both
 //! interpreters; the matrix's enumeration lives there.
 //!
 //! Every cell is recorded once against the real Anthropic wire
 //! (`CLAUDE_SONNET_4_6`, temperature 0) under
-//! `tests/cassettes/anthropic/corpus_request_shape/`, and its golden is
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_request_shape/`, and its golden is
 //! generated from the replayed cassette under `RIG_REGENERATE_GOLDEN=1`.
 
 use futures::StreamExt;

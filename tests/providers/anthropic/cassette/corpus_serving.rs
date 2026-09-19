@@ -1,13 +1,13 @@
 //! Matrix C of the effect corpus: serving policy, routing and bus
 //! ownership. Producers of the goldens
-//! `crates/rig-verify/tests/corpus_serving.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_serving.rs` replays by both
 //! interpreters; the enumeration lives there.
 //!
 //! The serving cells re-record nothing: the bus policy changes how a
 //! program is served, not what it asks, so the same cassette serves every
 //! policy and the record is the proof that the trace is the same. The
 //! routing and host-bus cells are new recordings under
-//! `tests/cassettes/anthropic/corpus_serving/`.
+//! `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_serving/`.
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};

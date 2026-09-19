@@ -1,7 +1,7 @@
 //! Matrix H of the effect corpus, the OpenAI cells: `Tool` and `Prompted`
 //! output modes on the Responses wire (`gpt-4o`, temperature 0), where the
 //! output tool's call carries a dual id. Every cell is a new recording
-//! under `tests/cassettes/openai/corpus_output/`.
+//! under `crates/rig-cassette/fixtures/cassettes/openai/corpus_output/`.
 
 use rig::effect::{EffectFamily, EffectKind};
 use rig::prelude::*;

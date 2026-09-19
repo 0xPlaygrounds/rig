@@ -4,7 +4,7 @@
 //! `PromptCancelled` with the hook's reason. The cells that stop before
 //! any dispatch are mock-scripted in `tests/core/golden_endings.rs` (no
 //! wire, no cassette). Producers of the goldens
-//! `crates/rig-verify/tests/corpus_endings.rs` replays by both
+//! `crates/rig-cassette/tests/corpus_endings.rs` replays by both
 //! interpreters; the enumeration lives there.
 
 use futures::StreamExt;
