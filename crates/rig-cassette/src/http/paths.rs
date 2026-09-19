@@ -8,12 +8,12 @@ fn independent_downstream_graph_excludes_smithy_and_agent_runtimes() {
     fs::create_dir(scratch.path().join("src")).expect("create source directory");
     fs::write(
         scratch.path().join("src/lib.rs"),
-        "pub use rig_cassette::CassetteSpec;\n",
+        "pub use rig_cassette::http::CassetteSpec;\n",
     )
     .expect("write downstream source");
     let path = serde_json::to_string(env!("CARGO_MANIFEST_DIR")).expect("manifest path string");
     fs::write(scratch.path().join("Cargo.toml"), format!(
-        "[package]\nname = \"cassette-downstream-probe\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nrig-cassette = {{ path = {path}, default-features = false }}\n"
+        "[package]\nname = \"cassette-downstream-probe\"\nversion = \"0.0.0\"\nedition = \"2024\"\n[workspace]\n[dependencies]\nrig-cassette = {{ path = {path}, default-features = false, features = [\"http\"] }}\n"
     )).expect("write downstream manifest");
     // Reuse the repository's resolved versions, including any subsequently
     // yanked release already locked by the build. The separate manifest still

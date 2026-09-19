@@ -69,6 +69,9 @@ use rig_core::tool::Tool;
 
 use rig_core::tool::ToolContext;
 
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::identity::{stamp_legacy_builder_header, stamp_run};
+use rig_cassette::effect_log::{Checkpoint, EffectLog, EffectLogRecorder, RequestCheck};
 use rig_ecs::{
     agent::{
         AdditionalParams, Cancelled, Conversation, Cursor, DefaultMaxTurns, Failed, Failure, Grant,
@@ -78,14 +81,12 @@ use rig_ecs::{
         UsesModel, Utterance,
     },
     bus::{
-        BusSet, CredentialRef, EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight,
-        Materializer, PendingEffect, Policy, RigSchedule, Secret, Streamed, materialize_bindings,
+        BusSet, CredentialRef, EffectOutcome, Handlers, IdCounter, InFlight, Materializer,
+        PendingEffect, Policy, RigSchedule, Secret, Streamed, materialize_bindings,
     },
     checkpoint::{load_world, save_world},
-    replay::{stamp_legacy_builder_header, stamp_run},
     systems::{Fresh, RigSet, RunBusy, RunCommands},
 };
-use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, RequestCheck};
 use tokio::sync::Semaphore;
 
 use super::cells::{Cell, Memory, ToolKind};
@@ -1827,7 +1828,7 @@ pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
         if std::env::var("RIG_SPEC_DUMP").is_ok() {
             eprintln!(
                 "SPECDUMP {}",
-                serde_json::to_string(&rig_ecs::replay::spec_json(world, run)).unwrap()
+                serde_json::to_string(&rig_cassette::ecs::identity::spec_json(world, run)).unwrap()
             );
         }
         let cut_after = (n == last).then_some(cell.resume_after).flatten();

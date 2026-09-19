@@ -11,6 +11,7 @@
 use rig::agent::AgentBuilder;
 use rig::effect::EffectFamily;
 use rig::test_utils::{MockCompletionModel, MockTurn};
+use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use super::golden_recovery::Add;
@@ -27,12 +28,13 @@ pub(crate) fn script() -> MockCompletionModel {
 
 #[tokio::test]
 async fn hooks_retry_twice_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(script())
         .name("golden")
         .preamble("Use the add tool.")
         .tool(Add)
         .add_hook(crate::goldens::RetryUnknownTool)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let response = agent
         .prompt("What is 2 + 3?")
@@ -41,7 +43,7 @@ async fn hooks_retry_twice_effect_log_is_the_golden_fixture() {
         .await
         .expect("the second retry recovers");
     assert_eq!(response.output, "2 + 3 = 5");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [

@@ -22,6 +22,10 @@ use std::{
 };
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::ecs::identity::stamp_run;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::{
     completion::{CompletionRequest, CompletionResponse, ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
@@ -36,15 +40,10 @@ use rig_ecs::{
         Cancelled, Cursor, Failed, Failure, Grant, MaxTurns, ProviderRetried, ProviderRetries,
         RunResult, Settled,
     },
-    bus::{
-        Bound, BusSet, EffectLogResource, Handlers, Held, PendingEffect, Replay, RigSchedule,
-        Witnessing,
-    },
+    bus::{Bound, BusSet, Held, PendingEffect, RigSchedule, Witnessing},
     checkpoint::{Checkpoint, load_world, save_world},
-    replay::stamp_run,
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -225,8 +224,8 @@ fn a_retryable_failure_after_tool_work_is_reissued_and_the_tool_runs_once() {
     // The log replays: the same program over by-id replayers sees the
     // failed attempt answered from its record, retries, and settles.
     let mut replay = run_support::app();
-    Handlers::with(replay.world_mut(), |h| Replay::default().register(h, &log))
-        .unwrap()
+    Replay::default()
+        .register(replay.world_mut(), &log)
         .unwrap();
     let model = bound_entity(replay.world_mut(), MODEL);
     let tool = bound_entity(replay.world_mut(), ADD);

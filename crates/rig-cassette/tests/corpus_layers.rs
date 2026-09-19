@@ -65,6 +65,7 @@
 //!   from the hook goldens' in that field only.
 
 use crate::corpus;
+use rig_cassette::agent::AgentReplayExt;
 
 use corpus::{Answer, Ending, Hook, LayerAt, LayerKind, LayerSpec, Program};
 use rig_core::effect::EffectFamily;
@@ -218,15 +219,16 @@ fn hand_written_layers_reproduce_the_hook_goldens_byte_for_byte() {
     for (cell, hook_golden, names) in pairs {
         let layered = corpus::golden(cell.fixture);
         let hooked = corpus::golden(hook_golden);
-        let records =
-            |log: &rig_effect_log::EffectLog| log.iter().map(corpus::as_data).collect::<Vec<_>>();
+        let records = |log: &rig_cassette::effect_log::EffectLog| {
+            log.iter().map(corpus::as_data).collect::<Vec<_>>()
+        };
         assert_eq!(records(&layered), records(&hooked), "{}", cell.fixture);
         assert_eq!(layered.header.hooks, names, "{}", cell.fixture);
         assert_eq!(layered.header.run_spec, hooked.header.run_spec);
         assert_eq!(layered.header.required, hooked.header.required);
         assert_eq!(layered.header.signature, hooked.header.signature);
         assert_eq!(layered.header.bus, hooked.header.bus);
-        let without_layers = |log: &rig_effect_log::EffectLog| {
+        let without_layers = |log: &rig_cassette::effect_log::EffectLog| {
             let mut handlers = log.header.handlers.clone();
             for handler in &mut handlers {
                 handler.layers.clear();

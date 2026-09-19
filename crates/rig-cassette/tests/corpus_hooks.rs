@@ -55,6 +55,7 @@
 //! temperature 0) into `crates/rig-cassette/fixtures/cassettes/anthropic/corpus_hooks/`.
 
 use crate::corpus;
+use rig_cassette::agent::AgentReplayExt;
 
 use corpus::{Hook, Program, REPLACED_ANSWER};
 

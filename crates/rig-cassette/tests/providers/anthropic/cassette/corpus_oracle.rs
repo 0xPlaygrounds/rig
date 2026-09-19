@@ -12,6 +12,7 @@ use rig::completion::PromptError;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_corpus_oracle_cassette;
 use crate::goldens::{
@@ -47,7 +48,7 @@ async fn concurrent_notes_effect_log_is_the_golden_fixture() {
                 rig::serve::ErasedHandler::new(NoteTaker),
             )
             .expect("a fresh key");
-        let recorder = rig::effect_log::EffectLogRecorder::new();
+        let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
         driver.record_to(recorder.clone());
         let driver = tokio::spawn(driver);
         let agent =
@@ -93,15 +94,14 @@ async fn stop_after_turn_two_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_oracle_cassette(
         "corpus_oracle/stop_after_turn_two",
         |client| async move {
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(CLAUDE_SONNET_4_6)
                 .name("golden")
                 .preamble(TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .tool(Adder)
-                .add_hook(StopAfterTurnN(2))
-                .record_effects()
-                .build();
+                .add_hook(StopAfterTurnN(2)).record_to(recorder.clone()).build();
             let error = agent
                 .prompt(ADD_PROMPT)
                 .max_turns(3)
@@ -111,7 +111,7 @@ async fn stop_after_turn_two_effect_log_is_the_golden_fixture() {
                 matches!(&error, PromptError::PromptCancelled { reason, .. } if *reason == stop_after_turn_reason(2)),
                 "{error:?}"
             );
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [

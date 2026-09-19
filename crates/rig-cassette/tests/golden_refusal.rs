@@ -7,15 +7,16 @@
 //! that record, naming the JSON pointer of the difference, and the run
 //! never reaches the record after it.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use rig_agent::bus::Bus;
 use rig_agent::{AgentBuilder, run::PromptError};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{
     effect::{EffectFamily, EffectKind, HandlerKey},
     error::ErrorKind,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 
 use crate::corpus::golden;
 

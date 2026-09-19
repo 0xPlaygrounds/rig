@@ -14,6 +14,7 @@ use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ErasedHandler;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{
     with_anthropic_corpus_hooks_cassette, with_anthropic_corpus_layers_cassette,
@@ -29,7 +30,7 @@ pub(super) const ADD_PROMPT: &str =
     "Use the add tool to add 17 and 25, then reply with just the number.";
 pub(super) const NAME_PROMPT: &str = "What is my name? Reply with just the name.";
 
-pub(super) fn tool_record_args(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(super) fn tool_record_args(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .filter_map(|record| match &record.kind {
@@ -39,7 +40,7 @@ pub(super) fn tool_record_args(log: &rig::effect_log::EffectLog) -> Vec<String> 
         .collect()
 }
 
-pub(super) fn tool_record_outputs(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(super) fn tool_record_outputs(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
@@ -57,7 +58,7 @@ async fn own_bus(
     hooks: impl FnOnce(
         AgentBuilder<rig::agent::WithToolServerHandle>,
     ) -> AgentBuilder<rig::agent::WithToolServerHandle>,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let server = add_tool_under(layers);
     let builder = client
         .agent(CLAUDE_SONNET_4_6)
@@ -65,14 +66,15 @@ async fn own_bus(
         .preamble(TOOLS_PREAMBLE)
         .temperature(0.0)
         .tool_server_handle(server);
-    let agent = hooks(builder).record_effects().build();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
+    let agent = hooks(builder).record_to(recorder.clone()).build();
     let response = agent
         .prompt(ADD_PROMPT)
         .max_turns(3)
         .await
         .expect("the agent answers");
     assert!(!response.output.is_empty());
-    agent.take_effect_log().expect("recording")
+    agent.stamp(recorder.take())
 }
 
 #[tokio::test]
@@ -156,7 +158,7 @@ async fn host_deny_over_host_bus_effect_log_is_the_golden_fixture() {
                 )),
             )
             .expect("a fresh key");
-        let recorder = rig::effect_log::EffectLogRecorder::new();
+        let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
         driver.record_to(recorder.clone());
         let driver = tokio::spawn(driver);
         let server = add_tool_under(|adder| adder.layered(DenyAddLayer));
@@ -216,6 +218,7 @@ async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
                 rig::memory::InMemoryConversationMemory::new(),
             ))
             .layered(ReplaceLoadLayer);
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(CLAUDE_SONNET_4_6)
                 .name("golden")
@@ -223,12 +226,10 @@ async fn memory_load_replaced_effect_log_is_the_golden_fixture() {
                 .temperature(0.0)
                 .memory_handler(memory)
                 .conversation(CONVERSATION)
-                .add_hook(HistoryIsReplaced)
-                .record_effects()
-                .build();
+                .add_hook(HistoryIsReplaced).record_to(recorder.clone()).build();
             let response = agent.prompt(NAME_PROMPT).await.expect("the agent answers");
             assert!(response.output.contains("Ada"), "{}", response.output);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [

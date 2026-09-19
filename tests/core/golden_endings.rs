@@ -7,6 +7,7 @@
 use rig::agent::AgentBuilder;
 use rig::completion::PromptError;
 use rig::test_utils::MockCompletionModel;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::golden_recovery::Add;
 use crate::goldens::{
@@ -25,15 +26,16 @@ async fn stops_before_any_dispatch(
     hook: impl rig::agent::AgentHook + 'static,
     reason: &str,
     golden: &str,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::text("never asked"))
         .name("golden")
         .preamble("Use the add tool.")
         .tool(Add)
         .add_hook(hook)
         .add_hook(settled.clone())
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let error = agent
         .prompt("What is 2 + 3?")
@@ -47,7 +49,7 @@ async fn stops_before_any_dispatch(
             .is_some_and(|seen| seen.starts_with("error:")),
         "on_run_settled saw the error: {seen:?}"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert!(log.records.is_empty(), "nothing was dispatched: {golden}");
     log
 }

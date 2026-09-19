@@ -83,7 +83,7 @@ async fn two_tools(
     bus: rig::serve::ServingPolicy,
     concurrency: usize,
     events: bool,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
         client.completion(CLAUDE_SONNET_4_6),
         TWO_TOOL_STREAM_PREAMBLE,
@@ -341,7 +341,7 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
 async fn over_host_bus(
     client: rig::driver::Bound<Anthropic>,
     streamed: bool,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = EcsAgent::for_golden(
         client.completion(CLAUDE_SONNET_4_6),
         TOOLS_PREAMBLE,

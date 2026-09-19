@@ -12,6 +12,7 @@
 //! mid-flight today); the resumption goes through `Agent::resume(run)`
 //! — the bus-driven engine — so the property crosses the two interpreters.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -23,13 +24,15 @@ use rig_agent::{
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_cassette::effect_log::{
+    Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
+};
 use rig_core::{
     completion::CompletionRequestBuilder,
     effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
     transcript,
 };
-use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -142,13 +145,13 @@ impl Scenario {
             })
             .owner(OWNER)
             .tool(Tag::default())
-            .record_effects()
     }
 }
 
 /// The reference: the agent runs uninterrupted, recording every dispatch.
 async fn reference_run(scenario: Scenario) -> (String, EffectLog) {
-    let agent = scenario.builder().build();
+    let recorder = EffectLogRecorder::new();
+    let agent = scenario.builder().record_to(recorder.clone()).build();
     let response = within(
         agent
             .prompt("go")
@@ -158,14 +161,15 @@ async fn reference_run(scenario: Scenario) -> (String, EffectLog) {
     )
     .await
     .expect("the reference run");
-    let log = agent.take_effect_log().expect("recording was enabled");
+    let log = agent.stamp(recorder.take());
     (response.output, log)
 }
 
 /// The interruption: the same program driven by hand over the same keys,
 /// stopped after `tools_before_stop` tool calls, with its state and its log.
 async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (AgentRun, EffectLog) {
-    let agent = scenario.builder().build();
+    let recorder = EffectLogRecorder::new();
+    let agent = scenario.builder().record_to(recorder.clone()).build();
     let model_key = agent.model_key().clone();
     let parts = agent
         .into_parts()
@@ -253,7 +257,7 @@ async fn drive_until_tool(scenario: Scenario, tools_before_stop: usize) -> (Agen
             AgentRunStep::Done(_) => panic!("the run finished before the interruption"),
         }
     }
-    let log = agent.take_effect_log().expect("recording was enabled");
+    let log = agent.stamp(recorder.take());
     drop((model, tool, dispatcher, agent));
     within(driver_task).await.expect("driver task");
     (run, log)
@@ -290,7 +294,7 @@ async fn resumes_identically(scenario: Scenario, tools_before_stop: usize) {
         serial_per_handler: scenario.serial_per_handler,
         ..rig_core::serve::ServingPolicy::default()
     });
-    rig_agent::bus::replay::register_all(&continuation, &mut driver).expect("fresh keys");
+    rig_cassette::agent::replay::register_all(&continuation, &mut driver).expect("fresh keys");
     let recorder = EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     let replay_task = tokio::spawn(driver);
@@ -428,11 +432,16 @@ async fn a_hooks_decision_is_program_not_record() {
         serial_per_handler: false,
     };
     // Reference under the patching hook: the record holds the patched call.
-    let agent = scenario.builder().add_hook(PatchesTag).build();
+    let recorder = EffectLogRecorder::new();
+    let agent = scenario
+        .builder()
+        .add_hook(PatchesTag)
+        .record_to(recorder.clone())
+        .build();
     let reference = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("the reference run");
-    let reference_log = agent.take_effect_log().expect("recording");
+    let reference_log = agent.stamp(recorder.take());
     let recorded_args = reference_log
         .iter()
         .find_map(|record| match &record.kind {
@@ -460,7 +469,8 @@ async fn a_hooks_decision_is_program_not_record() {
         let tool_key = tool_key.clone();
         async move {
             let (dispatcher, registrar, mut driver) = Bus::channel();
-            rig_agent::bus::replay::register_all(&continuation, &mut driver).expect("fresh keys");
+            rig_cassette::agent::replay::register_all(&continuation, &mut driver)
+                .expect("fresh keys");
             let replay_task = tokio::spawn(driver);
             let tool_replayer =
                 EffectLogReplayer::for_key(&continuation, &tool_key).expect("records");
@@ -514,15 +524,15 @@ async fn a_resumed_run_loads_nothing_from_memory() {
             .tool(Tag::default())
             .memory(InMemoryConversationMemory::new())
             .conversation("durable-memory")
-            .record_effects()
     }
     // The reference program with memory: a load first, a save last.
-    let agent = builder().build();
+    let recorder = EffectLogRecorder::new();
+    let agent = builder().record_to(recorder.clone()).build();
     let response = within(agent.prompt("go").max_turns(3).run())
         .await
         .expect("the reference run");
     assert_eq!(response.output, "done");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     let families: Vec<EffectFamily> = log.iter().map(|record| record.kind.family()).collect();
     assert_eq!(
         families.first(),
@@ -533,7 +543,8 @@ async fn a_resumed_run_loads_nothing_from_memory() {
 
     // Resumed from a fresh state through an agent that has the same
     // memory configured: no memory dispatch at either end.
-    let agent = builder().build();
+    let recorder = EffectLogRecorder::new();
+    let agent = builder().record_to(recorder.clone()).build();
     let spec = RunSpec {
         max_turns: Some(3),
         ..RunSpec::new()
@@ -543,7 +554,7 @@ async fn a_resumed_run_loads_nothing_from_memory() {
         .await
         .expect("the resumed run");
     assert_eq!(response.output, "done");
-    let resumed = agent.take_effect_log().expect("recording");
+    let resumed = agent.stamp(recorder.take());
     let families: Vec<EffectFamily> = resumed.iter().map(|record| record.kind.family()).collect();
     assert!(
         !families.contains(&EffectFamily::Memory),
@@ -603,7 +614,7 @@ async fn resumes_from_a_checkpoint(
         serial_per_handler: scenario.serial_per_handler,
         ..rig_core::serve::ServingPolicy::default()
     });
-    rig_agent::bus::replay::register_all_checking(&continuation, &mut driver, check)
+    rig_cassette::agent::replay::register_all_checking(&continuation, &mut driver, check)
         .expect("fresh keys");
     let recorder = EffectLogRecorder::new();
     driver.record_to(recorder.clone());

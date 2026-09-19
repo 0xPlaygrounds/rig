@@ -10,6 +10,7 @@ use rig::{
     },
     tool::Tool,
 };
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_ecs::{
     agent::{
         DefaultMaxTurns, Failed, Grant, MaxTurns, Owner, Preamble, RunResult, Settled, Temperature,
@@ -18,7 +19,6 @@ use rig_ecs::{
     bus::{Handlers, Recording},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use std::{sync::Arc, time::Duration};
 
 fn tool<T: Tool + 'static>(app: &mut App, agent: Entity, tool: T, order: u64) {
@@ -46,7 +46,7 @@ pub(super) async fn run(
     app.add_plugins(rig_ecs::RigPlugin::with_policy(ServingPolicy::default()));
     app.finish();
     app.cleanup();
-    // Original record_effects() does not retain stream events.
+    // The original golden folds streams instead of retaining their events.
     let recorder = EffectLogRecorder::new();
     Recording::install(app.world_mut(), recorder.clone());
     let model = Handlers::with(app.world_mut(), |handlers| {
@@ -75,14 +75,14 @@ pub(super) async fn run(
     tool(&mut app, agent, subtract, 1);
     let run = app.world_mut().spawn_run(agent, &[], prompt, true, Some(6));
     let bus = app.world().resource::<rig_ecs::bus::Policy>().0;
-    rig_ecs::replay::stamp_legacy_builder_header(
+    rig_cassette::ecs::identity::stamp_legacy_builder_header(
         app.world_mut(),
         agent,
         &recorder,
         Some(bus),
         vec![],
     );
-    rig_ecs::replay::stamp_run(app.world_mut(), run, &recorder)
+    rig_cassette::ecs::identity::stamp_run(app.world_mut(), run, &recorder)
         .expect("the run stamps its program identity");
     let saw_final = tokio::time::timeout(Duration::from_secs(30), async {
         loop {

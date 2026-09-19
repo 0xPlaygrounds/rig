@@ -12,6 +12,7 @@
 //! calls from a fixed set of two tools, always ending in text; 256 cases by
 //! default, under a second.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use proptest::prelude::*;
@@ -21,6 +22,7 @@ use rig_agent::{
     run::{AgentRun, AgentRunStep, ModelTurn, RunSpec, prepare_request},
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::serve::ServingPolicy;
 use rig_core::{
     completion::CompletionRequestBuilder,
@@ -28,7 +30,6 @@ use rig_core::{
     test_utils::{MockCompletionModel, MockTurn},
     transcript,
 };
-use rig_effect_log::EffectLogRecorder;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -144,6 +145,7 @@ fn trace_of<'a>(records: impl IntoIterator<Item = &'a EffectRecord>) -> Trace {
 }
 
 async fn bus_interpreter(case: &Case) -> (String, Trace) {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::named_model("default", model_for(case))
         .configure_bus(ServingPolicy {
             serial_per_handler: case.serial_per_handler,
@@ -151,7 +153,7 @@ async fn bus_interpreter(case: &Case) -> (String, Trace) {
         })
         .tool(Alpha)
         .tool(Beta)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let response = tokio::time::timeout(
         Duration::from_secs(5),
@@ -164,7 +166,7 @@ async fn bus_interpreter(case: &Case) -> (String, Trace) {
     .await
     .expect("never hangs")
     .expect("the bus-driven run");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert!(
         log.iter().all(|record| matches!(
             record.kind,

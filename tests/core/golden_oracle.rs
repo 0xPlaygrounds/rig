@@ -8,6 +8,7 @@ use rig::bus::Bus;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::run::OutputMode;
 use rig::test_utils::MockCompletionModel;
+use rig_cassette::agent::AgentReplayExt;
 
 use crate::goldens::{MockRerank, RERANK_KEY, RerankDocs, event_schema, families};
 
@@ -37,7 +38,7 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
             )),
         )
         .expect("a fresh key");
-    let recorder = rig::effect_log::EffectLogRecorder::new();
+    let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
     driver.record_to(recorder.clone());
     let driver = tokio::spawn(driver);
     let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)
@@ -72,12 +73,13 @@ async fn oracle_rerank_effect_log_is_the_golden_fixture() {
 /// run does not.
 #[tokio::test]
 async fn oracle_prompted_unvalidated_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::text("not an object"))
         .name("golden")
         .preamble(PREAMBLE)
         .output_schema_raw(event_schema())
         .output_mode(OutputMode::Prompted)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let output = agent
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
@@ -85,7 +87,7 @@ async fn oracle_prompted_unvalidated_effect_log_is_the_golden_fixture() {
         .expect("the run does not validate a prompted answer")
         .output;
     assert_eq!(output, "not an object");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_oracle_prompted_unvalidated", &log);
 }

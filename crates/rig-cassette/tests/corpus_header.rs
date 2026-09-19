@@ -44,12 +44,13 @@
 //! | `a_policy_round_trips_through_the_header` | bus · none · replayer and driver |
 
 use crate::corpus;
+use rig_cassette::agent::AgentReplayExt;
 
 use corpus::Program;
 use rig_agent::AgentBuilder;
+use rig_cassette::effect_log::{EffectLog, EffectLogReplayer};
 use rig_core::effect::{EffectFamily, EffectRow, FamilyDescriptor, HandlerKey};
 use rig_core::serve::ServingPolicy;
-use rig_effect_log::{EffectLog, EffectLogReplayer};
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
@@ -288,7 +289,7 @@ async fn a_log_header_needs_no_global_format_number() {
     let log = serde_json::from_value(json).expect("legacy header field is ignored");
     EffectLogReplayer::check_header(&log).expect("compatible structure");
     let (_dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
-    rig_agent::bus::replay::register_all(&log, &mut driver)
+    rig_cassette::agent::replay::register_all(&log, &mut driver)
         .expect("registers without a version gate");
 }
 
@@ -393,7 +394,8 @@ async fn a_policy_round_trips_through_the_header() {
             "serial_per_handler": policy.serial_per_handler
         })
     );
-    let restored: rig_effect_log::LogHeader = serde_json::from_value(json).expect("restores");
+    let restored: rig_cassette::effect_log::LogHeader =
+        serde_json::from_value(json).expect("restores");
     assert_eq!(restored.bus, Some(policy));
     // And back into a bus: the driver a host builds under it runs it.
     let (_dispatcher, _registrar, driver) = rig_agent::bus::Bus::channel_with(policy);

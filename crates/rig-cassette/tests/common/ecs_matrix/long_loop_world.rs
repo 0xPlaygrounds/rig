@@ -10,7 +10,7 @@ use super::{Wire, cells::Cell, long_loop};
 
 use rig_agent::completion::CompletionModel;
 
-use rig_effect_log::EffectLog;
+use rig_cassette::effect_log::EffectLog;
 
 pub(crate) async fn run_world<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,

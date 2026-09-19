@@ -3,6 +3,7 @@
 //! process, and an agent refuses a log it cannot replay before the first
 //! dispatch.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use rig_agent::AgentBuilder;
@@ -42,12 +43,13 @@ fn a_named_agent_mints_the_same_keys_every_time() {
 
 #[tokio::test]
 async fn an_agents_log_carries_its_spec_and_the_agent_checks_it() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(MockCompletionModel::text("hi"))
         .name("planner")
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     within(agent.prompt("go").run()).await.expect("run");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(log.header.run_spec, Some(agent.run_spec_hash()));
     assert!(
         log.header.signature.contains_key(agent.model_key().raw()),
@@ -119,13 +121,14 @@ async fn the_header_names_the_program_and_the_agent_refuses_another() {
         }
     }
 
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let recorded = AgentBuilder::new(MockCompletionModel::text("hi"))
         .name("planner")
         .add_hook(Tagger)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     within(recorded.prompt("go").run()).await.expect("run");
-    let log = recorded.take_effect_log().expect("recording");
+    let log = recorded.stamp(recorder.take());
     assert_eq!(log.header.hooks.len(), 1);
     assert!(
         log.header.hooks[0].ends_with("Tagger"),

@@ -94,6 +94,7 @@
 //!   continue.
 
 use crate::corpus;
+use rig_cassette::agent::AgentReplayExt;
 
 use corpus::{Ending, Hook, Output, Program, ROUTE, STOP_AT_ANSWER, Unhandled};
 
@@ -263,7 +264,7 @@ macro_rules! resumed {
                     crate::corpus::world_resume::world_resume_reproduces(
                         &super::$program,
                         1,
-                        rig_effect_log::RequestCheck::Payload,
+                        rig_cassette::effect_log::RequestCheck::Payload,
                         crate::corpus::Against::Tail,
                     );
                 }

@@ -110,31 +110,31 @@ crate::matrix::case_matrix! {
     provider_fault_midway: provider_fault_midway_14;
 }
 
-fn golden_deepseek_long_loop_long_unary(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_long_loop_long_unary(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_long_loop_long_unary", log);
 }
 
-fn golden_deepseek_long_loop_long_streamed(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_long_loop_long_streamed(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_long_loop_long_streamed", log);
 }
 
-fn golden_deepseek_long_loop_parallel_calls(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_long_loop_parallel_calls(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_long_loop_parallel_calls", log);
 }
 
-fn golden_deepseek_long_loop_big_result(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_long_loop_big_result(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_long_loop_big_result", log);
 }
 
-fn golden_deepseek_long_loop_tool_error_midway(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_long_loop_tool_error_midway(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_long_loop_tool_error_midway", log);
 }
 
-fn golden_deepseek_long_loop_max_turns_midway(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_long_loop_max_turns_midway(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_long_loop_max_turns_midway", log);
 }
 
-fn golden_deepseek_long_loop_output_cap_midway(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_long_loop_output_cap_midway(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_long_loop_output_cap_midway", log);
 }
 

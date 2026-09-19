@@ -1,11 +1,11 @@
 //! The header from components: a run's program identity as the log names
 //! it, computed from the agent entity — never from a spec struct.
 
+use crate::effect_log::{EffectLogRecorder, stable_hash};
 use bevy_ecs::prelude::*;
 use rig_core::effect::{EffectFamily, EffectRow};
-use rig_effect_log::{EffectLogRecorder, stable_hash};
 
-use crate::{
+use rig_ecs::{
     agent::{
         AdditionalParams, Context, Conversation, DefaultMaxTurns, DocumentId, DocumentProps,
         DocumentText, Grant, InvalidCalls, MaxTokens, MaxTurns, Output, OutputKind,
@@ -102,7 +102,7 @@ fn effective<T: Component>(world: &World, subject: Entity) -> Option<&T> {
 /// Ambient tool inputs are not serialized or automatically fingerprinted.
 pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
     let agent = world.get::<RunOf>(subject).map_or(subject, |run| run.0);
-    let access = effective::<crate::agent::ToolAccess>(world, subject).cloned();
+    let access = effective::<rig_ecs::agent::ToolAccess>(world, subject).cloned();
     let mut spec = builder_spec_json(world, agent);
     if let Some(fields) = spec.as_object_mut() {
         fields.insert(
@@ -136,8 +136,8 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
         fields.insert(
             "provider_retries".into(),
             serde_json::json!(
-                effective::<crate::agent::ProviderRetries>(world, subject)
-                    .map_or(crate::agent::DEFAULT_PROVIDER_RETRIES, |v| v.0)
+                effective::<rig_ecs::agent::ProviderRetries>(world, subject)
+                    .map_or(rig_ecs::agent::DEFAULT_PROVIDER_RETRIES, |v| v.0)
             ),
         );
         let invalid = effective::<InvalidCalls>(world, subject)
@@ -210,7 +210,8 @@ pub fn spec_json(world: &mut World, subject: Entity) -> serde_json::Value {
             } else { None }
         }).collect();
         fields.insert("dependencies".into(), serde_json::json!(dependencies));
-        if let Some(access) = access.filter(|access| access != &crate::agent::ToolAccess::default())
+        if let Some(access) =
+            access.filter(|access| access != &rig_ecs::agent::ToolAccess::default())
         {
             let executable_dependencies: Vec<_> = access
                 .executable
@@ -247,7 +248,7 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     let subject = agent;
     let agent = world.get::<RunOf>(subject).map_or(subject, |run| run.0);
     let mut row = EffectRow::new();
-    if let Some(executable) = effective::<crate::agent::ToolAccess>(world, subject)
+    if let Some(executable) = effective::<rig_ecs::agent::ToolAccess>(world, subject)
         .and_then(|access| access.executable.as_ref())
     {
         for key in executable.values() {
@@ -257,7 +258,7 @@ pub fn required_row(world: &mut World, agent: Entity) -> EffectRow {
     // Persisted turn snapshots can still dispatch bindings from before a run
     // policy change. They remain dependencies of a resumed run.
     for (parent, access) in world
-        .query_filtered::<(&ChildOf, &crate::agent::ToolAccess), With<crate::agent::Turn>>()
+        .query_filtered::<(&ChildOf, &rig_ecs::agent::ToolAccess), With<rig_ecs::agent::Turn>>()
         .iter(world)
     {
         let run = parent.parent();
@@ -337,7 +338,7 @@ pub fn stamp_legacy_builder_header(
 }
 
 /// Stamp `run`'s program identity under its scope
-/// ([`rig_effect_log::LogHeader::programs`]): the effective run's required row
+/// ([`crate::effect_log::LogHeader::programs`]): the effective run's required row
 /// and policy hash, keyed by the run's `Scope`. A world running several
 /// programs into one log names each this way.
 ///
@@ -370,7 +371,10 @@ pub fn stamp_run(
     let policy = spec_hash(world, run)
         .ok_or_else(|| ErrorReport::new(ErrorKind::Internal, "the agent's policy does not hash"))?;
     let required = required_row(world, run);
-    recorder.set_program_identity(scope, rig_effect_log::ProgramIdentity { required, policy });
+    recorder.set_program_identity(
+        scope,
+        crate::effect_log::ProgramIdentity { required, policy },
+    );
     Ok(())
 }
 
@@ -383,10 +387,10 @@ pub fn stamp_run(
 pub fn check_replayable(
     world: &mut World,
     run: Entity,
-    log: &rig_effect_log::EffectLog,
+    log: &crate::effect_log::EffectLog,
 ) -> Result<(), rig_core::error::ErrorReport> {
     use rig_core::error::{ErrorKind, ErrorReport};
-    rig_effect_log::EffectLogReplayer::check_header(log)?;
+    crate::effect_log::EffectLogReplayer::check_header(log)?;
     if world.get::<RunOf>(run).is_none() {
         return Err(ErrorReport::new(
             ErrorKind::Request,

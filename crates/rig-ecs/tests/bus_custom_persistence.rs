@@ -2,12 +2,14 @@
 
 use crate::bus_support;
 
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::effect::CustomEffect;
 use rig_ecs::{
-    bus::{Answer, Asked, EffectLogResource, EffectOutcome, Handlers, PendingEffect, Replay},
+    bus::{Answer, Asked, EffectOutcome, Handlers, PendingEffect},
     checkpoint::load_world,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use serde_json::{Value, json};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -86,11 +88,9 @@ where
     let saved = bus_support::checkpoint(&mut live);
 
     let mut replay = bus_support::app();
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::default().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
+    Replay::default()
+        .register(replay.world_mut(), &log)
+        .unwrap();
     let replayed = Replay::load(replay.world_mut(), &log)[0];
     bus_support::tick_until(&mut replay, "replayed answer", |world| {
         world.get::<EffectOutcome>(replayed).is_some()

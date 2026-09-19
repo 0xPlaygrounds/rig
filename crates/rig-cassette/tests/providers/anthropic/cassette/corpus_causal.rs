@@ -17,6 +17,7 @@ use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
 use rig::tool::RegisteredTool;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_corpus_causal_cassette;
 use crate::goldens::{Lookup, NestedChild, Nesting, families, parent_positions};
@@ -40,7 +41,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::effect_log::EffectLog {
+async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::cassette::effect_log::EffectLog {
     let config = ServingPolicy {
         serial_per_handler: host.serial,
         ..ServingPolicy::default()
@@ -57,9 +58,9 @@ async fn over_host(client: Bound<Anthropic>, host: Host) -> rig::effect_log::Eff
         )
         .expect("a fresh key");
     let recorder = if host.streamed {
-        rig::effect_log::EffectLogRecorder::keeping_stream_events()
+        rig::cassette::effect_log::EffectLogRecorder::keeping_stream_events()
     } else {
-        rig::effect_log::EffectLogRecorder::new()
+        rig::cassette::effect_log::EffectLogRecorder::new()
     };
     driver.record_to(recorder.clone());
     let driver = tokio::spawn(driver);

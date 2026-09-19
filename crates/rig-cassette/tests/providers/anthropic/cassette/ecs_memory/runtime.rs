@@ -201,7 +201,7 @@ pub(super) async fn remembers(
     clears: Clears,
     prompts: &[&str],
     streamed: bool,
-) -> rig_effect_log::EffectLog {
+) -> rig_cassette::effect_log::EffectLog {
     let mut ecs = agent(
         &client,
         rig_core::memory::InMemoryConversationMemory::new(),

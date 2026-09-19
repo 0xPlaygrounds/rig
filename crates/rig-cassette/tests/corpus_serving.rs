@@ -62,15 +62,16 @@
 //! - A required key of the completion, memory or retrieval family that the
 //!   record never dispatched to could not be replayed at all
 //!   (`describe_required` knew tools only), so the unselected-route golden
-//!   was unreplayable. Fixed in `rig-effect-log`.
-//! - An agent over a host's bus had no way to stamp the log its host
-//!   recorded: `Agent::stamp` was private. It is public now.
+//!   was unreplayable. The log replayer now describes every required family.
+//! - An agent over a host's bus stamps the host's recording through
+//!   `rig_cassette::agent::AgentReplayExt::stamp`.
 //! - The bus-policy check is one-sided by design: a host-bus golden names
 //!   no policy and is accepted by any program, an own-bus golden is
 //!   accepted by a host-bus program. `the_policy_check_is_one_sided` pins
 //!   that contract.
 
 use crate::corpus;
+use rig_cassette::agent::AgentReplayExt;
 
 use corpus::{Hook, Program, ROUTE};
 use rig_agent::AgentBuilder;
@@ -231,7 +232,7 @@ fn the_trace_is_independent_of_the_serving_policy() {
         &CAPACITY_ONE,
     ];
     let reference = corpus::golden("anthropic_concurrent_tools_serial");
-    let shape = |log: &rig_effect_log::EffectLog| {
+    let shape = |log: &rig_cassette::effect_log::EffectLog| {
         log.iter()
             .map(|record| {
                 (

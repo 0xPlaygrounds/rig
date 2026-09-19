@@ -9,16 +9,17 @@
 
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{effect::HandlerKey, serve::ServingPolicy};
 use rig_ecs::{
     agent::{
         AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
         OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{EffectLogResource, Handlers, IdCounter},
+    bus::{Handlers, IdCounter},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use wasm_bindgen_test::wasm_bindgen_test;
 
 const SMOKE: &str =

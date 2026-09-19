@@ -54,7 +54,7 @@ fn layered_agent(
     ecs.app.world_mut().spawn((Grant(tool), ChildOf(ecs.agent)));
     ecs
 }
-async fn run_tool(ecs: &mut EcsAgent) -> rig::effect_log::EffectLog {
+async fn run_tool(ecs: &mut EcsAgent) -> rig::cassette::effect_log::EffectLog {
     let response = ecs.prompt_with_max_turns(ADD_PROMPT, false, Some(3)).await;
     assert!(!response.is_empty());
     ecs.effect_log()
@@ -63,7 +63,7 @@ async fn own_bus(
     client: Bound<Anthropic>,
     layers: impl FnOnce(ErasedHandler) -> ErasedHandler,
     configure: impl FnOnce(&mut EcsAgent),
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = layered_agent(client, layers);
     configure(&mut ecs);
     run_tool(&mut ecs).await

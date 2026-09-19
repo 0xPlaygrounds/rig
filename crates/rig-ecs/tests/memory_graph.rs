@@ -17,6 +17,7 @@ use rig_core::serve::Dispatch;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::identity::required_row;
 use rig_core::{
     effect::{
         EffectFamily, EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, MemoryOp,
@@ -33,7 +34,6 @@ use rig_ecs::{
         Settled,
     },
     bus::{EffectOutcome, PendingEffect},
-    replay::required_row,
     systems::RunCommands,
 };
 use run_support::*;

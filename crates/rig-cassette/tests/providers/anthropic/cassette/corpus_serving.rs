@@ -16,6 +16,7 @@ use rig::effect::{EffectFamily, HandlerKey};
 use rig::prelude::*;
 use rig::providers::anthropic::completion::{CLAUDE_HAIKU_4_5, CLAUDE_SONNET_4_6};
 use rig::providers::anthropic::wire::Anthropic;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_serving_cassette};
 use crate::goldens::{RouteAfterFirstTurn, families};
@@ -50,20 +51,20 @@ async fn two_tools(
     bus: rig::serve::ServingPolicy,
     concurrency: usize,
     events: bool,
-) -> rig::effect_log::EffectLog {
-    let mut builder = client
+) -> rig::cassette::effect_log::EffectLog {
+    let builder = client
         .agent(CLAUDE_SONNET_4_6)
         .name("golden")
         .configure_bus(bus)
         .preamble(TWO_TOOL_STREAM_PREAMBLE)
         .tool(AlphaSignal)
         .tool(BetaSignal);
-    builder = if events {
-        builder.record_effects_with_events()
+    let recorder = if events {
+        rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events()
     } else {
-        builder.record_effects()
+        rig_cassette::effect_log::EffectLogRecorder::new()
     };
-    let agent = builder.build();
+    let agent = builder.record_to(recorder.clone()).build();
     let mut stream = agent
         .prompt(TWO_TOOL_STREAM_PROMPT)
         .max_turns(8)
@@ -74,7 +75,7 @@ async fn two_tools(
         .expect("two tools never wait on each other");
     drop(stream);
     assert!(!output.is_empty());
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), TWO_TOOLS);
     assert_eq!(
         log.header.bus,
@@ -178,6 +179,7 @@ async fn capacity_one_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("corpus_hooks/observe_everything", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .agent(CLAUDE_SONNET_4_6)
             .name("golden")
@@ -190,7 +192,7 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
             .tool(Adder)
             .memory(rig::memory::InMemoryConversationMemory::new())
             .conversation("golden-conversation")
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let response = agent
             .prompt(ADD_PROMPT)
@@ -198,7 +200,7 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
             .await
             .expect("the agent answers");
         assert!(response.output.contains("42"), "{}", response.output);
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
             [
@@ -222,6 +224,7 @@ async fn serial_memory_tools_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn model_route_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_serving_cassette("corpus_serving/model_route", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .agent(CLAUDE_SONNET_4_6)
             .name("golden")
@@ -230,7 +233,7 @@ async fn model_route_effect_log_is_the_golden_fixture() {
             .model_route("fast", client.completion(CLAUDE_HAIKU_4_5))
             .tool(Adder)
             .add_hook(RouteAfterFirstTurn)
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let response = agent
             .prompt(ADD_PROMPT)
@@ -238,7 +241,7 @@ async fn model_route_effect_log_is_the_golden_fixture() {
             .await
             .expect("the agent answers");
         assert!(response.output.contains("42"), "{}", response.output);
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
             [
@@ -267,6 +270,7 @@ async fn model_route_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn model_route_unselected_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("effect_corpus/tool_call_turn", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .agent(CLAUDE_SONNET_4_6)
             .name("golden")
@@ -274,7 +278,7 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
             .temperature(0.0)
             .model_route("fast", client.completion(CLAUDE_HAIKU_4_5))
             .tool(Adder)
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let response = agent
             .prompt(ADD_PROMPT)
@@ -282,7 +286,7 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
             .await
             .expect("the agent answers");
         assert!(response.output.contains("42"), "{}", response.output);
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
             [
@@ -312,7 +316,10 @@ async fn model_route_unselected_effect_log_is_the_golden_fixture() {
 /// The same tool-call program over a host's bus: the host registers the
 /// model under the agent's key, drives the bus and records; the agent
 /// stamps the log, whose header names no bus policy (the host's).
-async fn over_host_bus(client: Bound<Anthropic>, streamed: bool) -> rig::effect_log::EffectLog {
+async fn over_host_bus(
+    client: Bound<Anthropic>,
+    streamed: bool,
+) -> rig::cassette::effect_log::EffectLog {
     let (dispatcher, registrar, mut driver) = rig::bus::Bus::channel();
     let model_key = HandlerKey::from("golden/model:default");
     driver
@@ -325,9 +332,9 @@ async fn over_host_bus(client: Bound<Anthropic>, streamed: bool) -> rig::effect_
         )
         .expect("a fresh key");
     let recorder = if streamed {
-        rig::effect_log::EffectLogRecorder::keeping_stream_events()
+        rig::cassette::effect_log::EffectLogRecorder::keeping_stream_events()
     } else {
-        rig::effect_log::EffectLogRecorder::new()
+        rig::cassette::effect_log::EffectLogRecorder::new()
     };
     driver.record_to(recorder.clone());
     let driver = tokio::spawn(driver);

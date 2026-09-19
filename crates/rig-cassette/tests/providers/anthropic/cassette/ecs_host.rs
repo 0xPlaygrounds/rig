@@ -174,7 +174,7 @@ async fn over_host(
     client: Bound<Anthropic>,
     host: Host,
     hooks: Hooks,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = agent(client.completion(CLAUDE_SONNET_4_6), &host, hooks);
     let output = run_prompt(&mut ecs, &host).await;
     if host.with_tool {

@@ -1,15 +1,3 @@
-#![cfg_attr(docsrs, feature(doc_cfg))]
-#![deny(missing_docs)]
-#![cfg_attr(
-    test,
-    allow(
-        clippy::expect_used,
-        clippy::indexing_slicing,
-        clippy::panic,
-        clippy::unwrap_used,
-        clippy::unreachable
-    )
-)]
 //! Record and replay for the effect bus.
 //!
 //! An [`EffectLog`] is a recorded run: a [`LogHeader`] — the
@@ -20,7 +8,7 @@
 //! writes to (its `record_to`); the
 //! [`EffectLogReplayer`] is a handler that answers the same dispatches from
 //! the record instead of a provider, one per key (a runtime registers
-//! them: `rig_agent::bus::replay::register_all`, rig-ecs's `Replay`). A
+//! them through this crate's `agent` or `ecs` integration). A
 //! log is checked by its data, not a global format number in its header.
 //!
 //! Records hold explicitly published tool result values separately from

@@ -12,7 +12,7 @@ use rig_core::effect::EffectKind;
 
 use rig_core::effect::Outcome;
 
-use rig_effect_log::EffectLog;
+use rig_cassette::effect_log::EffectLog;
 
 use rig_core::message::AssistantContent;
 

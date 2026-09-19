@@ -50,6 +50,7 @@
 
 pub mod fixtures;
 
+use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -74,6 +75,9 @@ use rig_agent::{
     },
     tool::{RegisteredTool, server::ToolServer},
 };
+use rig_cassette::effect_log::{
+    Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck,
+};
 use rig_core::{
     completion::{CompletionRequestBuilder, Document},
     effect::{EffectFamily, EffectRecord, HandlerKey, MemoryOutcome},
@@ -84,7 +88,6 @@ use rig_core::{
     tool::{ToolContext, ToolOutput},
     transcript::tool_result_output,
 };
-use rig_effect_log::{Checkpoint, EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 
 /// A hook the producer added, by type: the header names hooks by their
 /// type's last path segment, so the replay's hook is a type of the same
@@ -3056,7 +3059,7 @@ pub fn assert_header_names_the_program(replay: &Replay, program: &Program) {
     };
     assert_eq!(
         header.run_spec,
-        rig_effect_log::stable_hash(&builder_spec).ok(),
+        rig_cassette::effect_log::stable_hash(&builder_spec).ok(),
         "the header's spec hash is this program's"
     );
     // `dynamic_context` is a hook of the builder's own (`DynamicContext`),

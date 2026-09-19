@@ -12,6 +12,7 @@ use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::gemini::{Gemini, completion::GEMINI_2_5_FLASH};
 use rig::test_utils::SequencedStreamingHttpClient;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_gemini_cassette;
 use crate::stream_faults::{
@@ -65,10 +66,11 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
     with_gemini_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .agent(MISSING_MODEL)
                 .max_tokens(SETUP_MAX_TOKENS)
-                .record_effects_with_events()
+                .record_to(recorder.clone())
                 .build();
             let mut stream = agent.prompt(SETUP_PROMPT).stream();
             let drained = drain(&mut stream).await;
@@ -80,7 +82,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             assert_eq!(drained.errors.len(), 1, "one error item: {drained:?}");
             assert_setup_failure(&drained.errors[0], ErrorKind::ProviderResponse, 404);
 
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_setup_failure(
                 sole_failed_completion(&log),
                 ErrorKind::ProviderResponse,
@@ -100,9 +102,10 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 #[tokio::test]
 async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
     let client = scripted_client(vec![gemini_sse(&[BLOCKED_FRAME])]);
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
         .agent(GEMINI_2_5_FLASH)
-        .record_effects_with_events()
+        .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
@@ -124,7 +127,7 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
         "the block reason is named: {report:?}"
     );
 
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     let recorded = sole_failed_completion(&log);
     assert_eq!(recorded.kind, ErrorKind::ProviderResponse, "{recorded:?}");
     assert!(recorded.refusal, "{recorded:?}");
@@ -140,9 +143,10 @@ async fn blocked_prompt_is_a_provider_refusal_not_a_truncation() {
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
     let client = scripted_client(vec![gemini_sse(&[CONTENT_FRAME])]);
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
         .agent(GEMINI_2_5_FLASH)
-        .record_effects_with_events()
+        .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
@@ -160,7 +164,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
         );
     }
 
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     let recorded = sole_failed_completion(&log);
     assert_eq!(recorded.kind, ErrorKind::Response, "{recorded:?}");
     assert_eq!(recorded.message, rig::serve::stream_truncated().message);
@@ -172,9 +176,10 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 #[tokio::test]
 async fn in_band_error_after_content_fails_with_the_envelope() {
     let client = scripted_client(vec![gemini_sse(&[CONTENT_FRAME, IN_BAND_ERROR_FRAME])]);
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
         .agent(GEMINI_2_5_FLASH)
-        .record_effects_with_events()
+        .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
@@ -196,7 +201,7 @@ async fn in_band_error_after_content_fails_with_the_envelope() {
         "the envelope is preserved: {report:?}"
     );
 
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     let recorded = sole_failed_completion(&log);
     assert_eq!(recorded.kind, ErrorKind::ProviderResponse, "{recorded:?}");
     assert_eq!(recorded.http_status, Some(503), "{recorded:?}");
@@ -257,9 +262,10 @@ async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
         })
         .collect();
     let client = scripted_client(vec![crate::stream_faults::sse_bytes(&prefix)]);
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
         .agent(GEMINI_2_5_FLASH)
-        .record_effects_with_events()
+        .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt("pong?").stream();
     let drained = drain(&mut stream).await;
@@ -267,7 +273,7 @@ async fn multi_frame_stream_cut_before_its_terminal_is_a_truncation() {
 
     assert_eq!(drained.text, expected, "{drained:?}");
     assert_eq!(drained.finals, 0, "{drained:?}");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         sole_failed_completion(&log).message,
         rig::serve::stream_truncated().message

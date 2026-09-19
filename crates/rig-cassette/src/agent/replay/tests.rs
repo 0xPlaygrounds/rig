@@ -1,6 +1,6 @@
 //! Record and replay over a live bus: the recorder captures what the
-//! driver serves, the replayer answers it back. Written in rig-effect-log
-//! when the bus was its own crate; moved here with `register_all`.
+//! driver serves, the replayer answers it back. Also compiled by the minimal
+//! verification runner without the native HTTP engine.
 
 use rig_core::serve::Dispatch;
 use std::{
@@ -15,9 +15,9 @@ use futures::{StreamExt, channel::oneshot};
 
 use serde_json::json;
 
-use crate::bus::{Bus, BusDriver, DispatchOptions};
+use rig_agent::bus::{Bus, BusDriver, DispatchOptions};
 
-use rig_effect_log::{EffectLog, EffectLogRecorder};
+use crate::effect_log::{EffectLog, EffectLogRecorder};
 
 use rig_core::serve::{
     Reply, Serve,
@@ -128,7 +128,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
     driver.register("model", Composing).unwrap();
     let recorder = EffectLogRecorder::new();
     driver.record_to(recorder.clone());
-    let live_model: crate::bus::ModelHandle =
+    let live_model: rig_agent::bus::ModelHandle =
         dispatcher.handle(&HandlerKey::from("model")).unwrap();
     let _live = spawn(driver);
     within(dispatcher.dispatch(&HandlerKey::from("model"), completion_kind(false)))
@@ -138,7 +138,7 @@ async fn replayed_model_handle_retains_live_capabilities_and_model_identity() {
         serde_json::from_str(&serde_json::to_string(&recorder.log()).unwrap()).unwrap();
     let (dispatcher, _, mut driver) = Bus::channel();
     super::register_all(&log, &mut driver).unwrap();
-    let replay_model: crate::bus::ModelHandle =
+    let replay_model: rig_agent::bus::ModelHandle =
         dispatcher.handle(&HandlerKey::from("model")).unwrap();
     assert_eq!(replay_model.capabilities(), live_model.capabilities());
     assert_eq!(replay_model.model_ref(), live_model.model_ref());
@@ -909,11 +909,11 @@ async fn a_dispatch_cancelled_in_flight_is_recorded_as_cancelled_and_replays_as_
 /// replayer answers it.
 #[tokio::test]
 async fn a_tool_call_under_a_different_context_is_the_same_record() {
+    use crate::effect_log::LogHeader;
     use rig_core::{
         effect::{EffectId, EffectRecord},
         tool::{ContextValue, ToolOutput, ToolResult},
     };
-    use rig_effect_log::LogHeader;
     #[derive(serde::Serialize, serde::Deserialize)]
     struct Tag(String);
     impl ContextValue for Tag {
@@ -1073,7 +1073,7 @@ impl Serve for Nesting {
 
     async fn serve(&self, _kind: EffectKind, dispatch: Dispatch) -> rig_core::serve::Reply {
         let dispatcher =
-            crate::bus::DispatchScope::dispatcher(&dispatch).expect("served by a bus driver");
+            rig_agent::bus::DispatchScope::dispatcher(&dispatch).expect("served by a bus driver");
         let child = dispatcher
             .dispatch(&HandlerKey::from("echo"), custom(json!({"who": "child"})))
             .await;

@@ -10,6 +10,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::effect::{EffectFamily, Outcome, RetrievedDocuments};
 use rig::prelude::*;
 use rig::providers::openai;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_corpus_retrieval_cassette;
 use crate::goldens::{
@@ -21,7 +22,7 @@ use crate::support::BASIC_PREAMBLE;
 const EMBEDDING: &str = openai::TEXT_EMBEDDING_3_SMALL;
 const MODEL: &str = openai::GPT_4O;
 
-fn first_retrieved_ids(log: &rig::effect_log::EffectLog) -> Vec<String> {
+fn first_retrieved_ids(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .find_map(|record| match &record.outcome {
@@ -52,6 +53,7 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/dynamic_context_one",
         |client| async move {
             let index = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .openai
                 .agent(MODEL)
@@ -59,11 +61,11 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
                 .dynamic_context(1, index)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent.prompt(FACT_PROMPT).await.expect("the agent answers");
             assert!(!response.output.is_empty());
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [EffectFamily::Retrieve, EffectFamily::Completion]
@@ -81,6 +83,7 @@ async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/dynamic_context_one_streamed",
         |client| async move {
             let index = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .openai
                 .agent(MODEL)
@@ -88,13 +91,13 @@ async fn dynamic_context_one_streamed_effect_log_is_the_golden_fixture() {
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
                 .dynamic_context(1, index)
-                .record_effects_with_events()
+                .record_to(recorder.clone())
                 .build();
             let mut stream = agent.prompt(FACT_PROMPT).stream();
             let output = final_output(&mut stream).await;
             drop(stream);
             assert!(!output.is_empty());
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [EffectFamily::Retrieve, EffectFamily::Completion]
@@ -113,6 +116,7 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
         |client| async move {
             let toolset = retrievable_toolset();
             let index = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .openai
                 .agent(MODEL)
@@ -120,7 +124,7 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .retrieved_tools(1, index, toolset)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent
                 .prompt(SUBTRACT_PROMPT)
@@ -128,7 +132,7 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
                 .await
                 .expect("the agent answers");
             assert!(response.output.contains("42"), "{}", response.output);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [
@@ -153,6 +157,7 @@ async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
         |client| async move {
             let toolset = retrievable_toolset();
             let index = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .openai
                 .agent(MODEL)
@@ -160,13 +165,13 @@ async fn retrieved_tools_one_streamed_effect_log_is_the_golden_fixture() {
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .retrieved_tools(1, index, toolset)
-                .record_effects_with_events()
+                .record_to(recorder.clone())
                 .build();
             let mut stream = agent.prompt(SUBTRACT_PROMPT).max_turns(3).stream();
             let output = final_output(&mut stream).await;
             drop(stream);
             assert!(output.contains("42"), "{output}");
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [
@@ -192,6 +197,7 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
             let facts = facts_index(client.openai.embedding(EMBEDDING, None), &FACTS).await;
             let toolset = retrievable_toolset();
             let tools = tool_index(client.openai.embedding(EMBEDDING, None), &toolset).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .openai
                 .agent(MODEL)
@@ -200,7 +206,7 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
                 .temperature(0.0)
                 .dynamic_context(1, facts)
                 .retrieved_tools(1, tools, toolset)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent
                 .prompt(SUBTRACT_PROMPT)
@@ -208,7 +214,7 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
                 .await
                 .expect("the agent answers");
             assert!(response.output.contains("42"), "{}", response.output);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [

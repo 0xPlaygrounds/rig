@@ -10,14 +10,17 @@
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::identity::{
+    check_replayable, required_row, spec_hash, stamp_legacy_builder_header, stamp_run,
+};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::effect::{EffectFamily, HandlerKey};
 use rig_ecs::{
     agent::{Grant, PolicyVersion, Preamble},
-    bus::{EffectLogResource, Scope},
-    replay::{check_replayable, required_row, spec_hash, stamp_legacy_builder_header, stamp_run},
+    bus::Scope,
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -132,7 +135,7 @@ fn check_replayable_refuses_a_foreign_log_by_name() {
     foreign.header.programs.clear();
     foreign.header.programs.insert(
         "other/run#0".to_owned(),
-        rig_effect_log::ProgramIdentity {
+        rig_cassette::effect_log::ProgramIdentity {
             required: foreign.header.required.clone(),
             policy: 1,
         },

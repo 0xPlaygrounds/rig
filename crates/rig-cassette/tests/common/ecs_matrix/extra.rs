@@ -26,6 +26,7 @@ use rig_core::streaming::Delta;
 
 use rig_core::streaming::StreamEvent;
 
+use rig_cassette::effect_log::RequestCheck;
 use rig_ecs::{
     agent::{
         AdditionalParams, Cancelled, Failed, Failure, MaxTokens, MessageParts, Preamble, Settled,
@@ -35,7 +36,6 @@ use rig_ecs::{
     checkpoint::{load_world, save_world},
     systems::{BatchHeld, RigSet, RunBusy, RunCommands},
 };
-use rig_effect_log::RequestCheck;
 
 use super::cells::{self, Cell};
 use super::world::{one_pass, open, open_gated, tool_outputs};

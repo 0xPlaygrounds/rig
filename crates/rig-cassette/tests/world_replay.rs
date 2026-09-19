@@ -28,11 +28,11 @@ use std::time::{Duration, Instant};
 
 use bevy_app::App;
 use bevy_ecs::schedule::LogLevel;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::serve::ServingPolicy;
-use rig_ecs::bus::{
-    BusPlugin, EffectLogResource, EffectOutcome, Handlers, Issued, Replay, Streamed,
-};
-use rig_effect_log::{EffectLog, EffectLogRecorder};
+use rig_ecs::bus::{BusPlugin, EffectOutcome, Issued, Streamed};
 
 /// The goldens the two agent interpreters replay: the same files, the whole
 /// corpus (the contract matrix on five more wires grew it past the original
@@ -73,6 +73,7 @@ fn world(log: &EffectLog) -> App {
         ..log.header.bus.unwrap_or_default()
     };
     app.add_plugins(BusPlugin::with_policy(policy).ambiguity_detection(LogLevel::Error));
+    app.add_plugins(rig_cassette::ecs::ReplayPlugin);
     app.finish();
     app.cleanup();
     app
@@ -82,11 +83,9 @@ fn world(log: &EffectLog) -> App {
 /// number of records replayed.
 fn replay_through_a_world(name: &str, log: &EffectLog) -> usize {
     let mut app = world(log);
-    Handlers::with(app.world_mut(), |handlers| {
-        Replay::default().register(handlers, log)
-    })
-    .expect("a bus")
-    .unwrap_or_else(|report| panic!("{name}: the golden registers: {report}"));
+    Replay::default()
+        .register(app.world_mut(), log)
+        .unwrap_or_else(|report| panic!("{name}: the golden registers: {report}"));
     // The golden's recorder kept events, or it did not: the world's does
     // the same, so the log it writes is comparable field for field.
     let recorder = if log.records.iter().any(|record| record.events.is_some()) {

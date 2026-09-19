@@ -15,6 +15,7 @@ use rig::agent::MultiTurnStreamItem;
 use rig::effect::{EffectFamily, EffectKind, Outcome, RetrieveQuery, RetrievedDocuments};
 use rig::prelude::*;
 use rig::providers::gemini;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_gemini_corpus_retrieval_cassette;
 use crate::goldens::{
@@ -27,7 +28,7 @@ const EMBEDDING: &str = gemini::embedding::EMBEDDING_001;
 const MODEL: &str = gemini::completion::GEMINI_2_5_FLASH;
 
 /// The ids each `Retrieve` record answered with, per record.
-fn retrieved_ids(log: &rig::effect_log::EffectLog) -> Vec<Vec<String>> {
+fn retrieved_ids(log: &rig::cassette::effect_log::EffectLog) -> Vec<Vec<String>> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
@@ -43,7 +44,7 @@ fn retrieved_ids(log: &rig::effect_log::EffectLog) -> Vec<Vec<String>> {
 }
 
 /// The documents each `TopN` record answered with, rendered.
-fn retrieved_texts(log: &rig::effect_log::EffectLog) -> Vec<String> {
+fn retrieved_texts(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
@@ -58,7 +59,7 @@ fn retrieved_texts(log: &rig::effect_log::EffectLog) -> Vec<String> {
         .collect()
 }
 
-fn retrieve_kinds(log: &rig::effect_log::EffectLog) -> Vec<&'static str> {
+fn retrieve_kinds(log: &rig::cassette::effect_log::EffectLog) -> Vec<&'static str> {
     log.records
         .iter()
         .filter_map(|record| match &record.kind {
@@ -91,17 +92,18 @@ async fn dynamic_context_one_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/dynamic_context_one",
         |client| async move {
             let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(MODEL)
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
                 .dynamic_context(1, index)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent.prompt(FACT_PROMPT).await.expect("the agent answers");
             assert!(!response.output.is_empty());
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [EffectFamily::Retrieve, EffectFamily::Completion]
@@ -132,19 +134,20 @@ async fn dynamic_context_two_streamed_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/dynamic_context_two_streamed",
         |client| async move {
             let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .agent(MODEL)
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
                 .dynamic_context(2, index)
-                .record_effects_with_events()
+                .record_to(recorder.clone())
                 .build();
             let mut stream = agent.prompt(FACT_PROMPT).stream();
             let output = final_output(&mut stream).await;
             drop(stream);
             assert!(!output.is_empty());
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [EffectFamily::Retrieve, EffectFamily::Completion]
@@ -165,17 +168,18 @@ async fn dynamic_context_over_sampled_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/dynamic_context_over_sampled",
         |client| async move {
             let index = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(MODEL)
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
                 .dynamic_context(5, index)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent.prompt(FACT_PROMPT).await.expect("the agent answers");
             assert!(!response.output.is_empty());
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [EffectFamily::Retrieve, EffectFamily::Completion]
@@ -195,17 +199,18 @@ async fn dynamic_context_empty_index_effect_log_is_the_golden_fixture() {
         "corpus_retrieval/dynamic_context_empty_index",
         |client| async move {
             let index = facts_index(client.embedding(EMBEDDING, None), &[]).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(MODEL)
                 .name("golden")
                 .preamble(BASIC_PREAMBLE)
                 .temperature(0.0)
                 .dynamic_context(1, index)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent.prompt(FACT_PROMPT).await.expect("the agent answers");
             assert!(!response.output.is_empty());
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [EffectFamily::Retrieve, EffectFamily::Completion]
@@ -231,13 +236,14 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
         |client| async move {
             let toolset = retrievable_toolset();
             let index = tool_index(client.embedding(EMBEDDING, None), &toolset).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(MODEL)
                 .name("golden")
                 .preamble(RETRIEVED_TOOLS_PREAMBLE)
                 .temperature(0.0)
                 .retrieved_tools(1, index, toolset)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent
                 .prompt(SUBTRACT_PROMPT)
@@ -245,7 +251,7 @@ async fn retrieved_tools_one_effect_log_is_the_golden_fixture() {
                 .await
                 .expect("the agent answers");
             assert!(response.output.contains("42"), "{}", response.output);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [
@@ -282,6 +288,7 @@ async fn retrieved_tools_with_static_effect_log_is_the_golden_fixture() {
                 .add_retrieved_tool(EmbedSubtract)
                 .expect("the tool context serializes");
             let index = tool_index(client.embedding(EMBEDDING, None), &toolset).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(MODEL)
                 .name("golden")
@@ -289,7 +296,7 @@ async fn retrieved_tools_with_static_effect_log_is_the_golden_fixture() {
                 .temperature(0.0)
                 .tool(Adder)
                 .retrieved_tools(1, index, toolset)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent
                 .prompt(ADD_THEN_SUBTRACT_PROMPT)
@@ -297,7 +304,7 @@ async fn retrieved_tools_with_static_effect_log_is_the_golden_fixture() {
                 .await
                 .expect("the agent answers");
             assert!(response.output.contains("21"), "{}", response.output);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [
@@ -327,6 +334,7 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
             let facts = facts_index(client.embedding(EMBEDDING, None), &FACTS).await;
             let toolset = retrievable_toolset();
             let tools = tool_index(client.embedding(EMBEDDING, None), &toolset).await;
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(MODEL)
                 .name("golden")
@@ -334,7 +342,7 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
                 .temperature(0.0)
                 .dynamic_context(1, facts)
                 .retrieved_tools(1, tools, toolset)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let response = agent
                 .prompt(SUBTRACT_PROMPT)
@@ -342,7 +350,7 @@ async fn context_and_tools_effect_log_is_the_golden_fixture() {
                 .await
                 .expect("the agent answers");
             assert!(response.output.contains("42"), "{}", response.output);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 families(&log),
                 [

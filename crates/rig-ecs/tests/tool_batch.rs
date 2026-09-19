@@ -18,6 +18,8 @@ use crate::run_support;
 use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectKind, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -29,10 +31,9 @@ use rig_ecs::{
         Failed, Failure, Grant, InvalidCall, InvalidCalls, Resolution, RunResult, Settled,
         ToolPolicy,
     },
-    bus::{BusSet, EffectLogResource, EffectOutcome, Issued, PendingEffect, RigSchedule},
+    bus::{BusSet, EffectOutcome, Issued, PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
-use rig_effect_log::EffectLogRecorder;
 use run_support::*;
 
 const MODEL: &str = "t/model:default";

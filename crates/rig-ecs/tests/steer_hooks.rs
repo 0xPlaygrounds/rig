@@ -19,6 +19,9 @@ use crate::run_support;
 use std::sync::{Arc, Mutex};
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::identity::required_row;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
     error::ErrorKind,
@@ -29,12 +32,10 @@ use rig_ecs::{
         Cancelled, Cursor, DocumentId, DocumentText, Failed, Failure, InvalidCall, RequestPatch,
         Resolution, Retry, Route, RunResult, Settled, UsesModel,
     },
-    bus::{EffectLogResource, Handlers, PendingEffect, RigSchedule},
+    bus::{Handlers, PendingEffect, RigSchedule},
     checkpoint::{Checkpoint, load_world, save_world},
-    replay::required_row,
     systems::{Fresh, RigSet, RunCommands},
 };
-use rig_effect_log::EffectLogRecorder;
 use run_support::*;
 
 const MODEL: &str = "t/model:default";

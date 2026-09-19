@@ -2,16 +2,16 @@
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
+use crate::effect_log::EffectLog;
 use bevy_ecs::{prelude::*, world::CommandQueue};
 use rig_core::{
     effect::{Delivery, DeliveryKind, EffectId, Outcome},
     error::{ErrorKind, ErrorReport},
     streaming::{Delta, StreamEvent},
 };
-use rig_effect_log::EffectLog;
 use std::task::Poll;
 
-use super::{
+use rig_ecs::bus::{
     effect::{
         EffectOutcome, IdCounter, InFlight, Issued, PendingEffect, Publishing, Reserved, Serving,
         Streamed, Streaming, Tasks, ToolOutputs,
@@ -36,7 +36,7 @@ pub struct ReplayDelivery {
     cancelled_items: BTreeMap<EffectId, usize>,
     policy_visible: bool,
     waiting_for: Option<(EffectId, u64)>,
-    refusals: rig_effect_log::ReplayRefusals,
+    refusals: crate::effect_log::ReplayRefusals,
     /// The wake generation the last diagnosis saw: a pass that raised it
     /// was busy, and a busy pass is never diagnosed.
     seen: u64,
@@ -48,7 +48,7 @@ fn invalid(message: impl Into<String>) -> ErrorReport {
 
 impl ReplayDelivery {
     /// Shared refusal signal for the replayers serving this delivery plan.
-    pub fn refusals(&self) -> rig_effect_log::ReplayRefusals {
+    pub fn refusals(&self) -> crate::effect_log::ReplayRefusals {
         self.refusals.clone()
     }
 
@@ -243,7 +243,7 @@ impl ReplayDelivery {
                 .collect(),
             policy_visible: required,
             waiting_for: None,
-            refusals: rig_effect_log::ReplayRefusals::default(),
+            refusals: crate::effect_log::ReplayRefusals::default(),
             seen: 0,
         }))
     }
@@ -274,7 +274,7 @@ impl Buffered {
         tasks: &mut Tasks<'_>,
         remaining: Option<&mut usize>,
         capacity: usize,
-        wake: super::plugin::Wake,
+        wake: rig_ecs::bus::plugin::Wake,
     ) {
         if let Self::Waiting { streamed } = self {
             let Some(reply) = tasks.poll(entity) else {
@@ -394,8 +394,8 @@ pub fn collect_replayed(world: &mut World) {
                 });
             }
             if let Some(mut buffered) = world.entity_mut(*entity).take::<Buffered>() {
-                let capacity = world.resource::<super::plugin::Policy>().0.stream_capacity;
-                let wake = world.resource::<super::plugin::Wake>().clone();
+                let capacity = world.resource::<rig_ecs::bus::plugin::Policy>().0.stream_capacity;
+                let wake = world.resource::<rig_ecs::bus::plugin::Wake>().clone();
                 let remaining = replay.cancelled_items.get_mut(id);
                 Tasks::with(world, |tasks| {
                     buffered.poll(*entity, tasks, remaining, capacity, wake);
@@ -468,7 +468,7 @@ pub fn collect_replayed(world: &mut World) {
         let mut needed = BTreeMap::<EffectId, usize>::new();
         for step in &steps {
             let unissued = by_id.get(&step.id).is_none_or(|entity| world.get::<Issued>(*entity).is_none());
-            if unissued && world.resource::<super::plugin::Policy>().0.serial_per_handler {
+            if unissued && world.resource::<rig_ecs::bus::plugin::Policy>().0.serial_per_handler {
                 let blocked = replay.keys.get(&step.id).is_some_and(|key| {
                     steps.iter().filter(|other| other.id != step.id).any(|other| {
                         by_id.get(&other.id).and_then(|entity| world.get::<InFlight>(*entity)).is_some_and(|flight| &flight.key == key)
@@ -544,7 +544,7 @@ pub fn collect_replayed(world: &mut World) {
                         deliveries.push(move |world: &mut World| {
                             if let Ok(mut effect) = world.get_entity_mut(entity) {
                                 effect.remove::<Buffered>()
-                                    .insert(super::collect::CollectedOutcome)
+                                    .insert(rig_ecs::bus::collect::CollectedOutcome)
                                     .insert(EffectOutcome(Err(rig_core::serve::cancelled())));
                             }
                         });
@@ -575,14 +575,14 @@ pub fn collect_replayed(world: &mut World) {
 }
 
 /// Diagnose absent requests and unreproduced cancellations, after the pass
-/// ([`RigEnd`](super::RigEnd)), and only when the pass was idle: a pass in which something raised [`Wake`](super::Wake) — a task
+/// ([`RigEnd`](rig_ecs::bus::RigEnd)), and only when the pass was idle: a pass in which something raised [`Wake`](rig_ecs::bus::Wake) — a task
 /// landed, a delivery arrived, a policy said it is still deliberating — is
 /// given its follow-up pass first.
 pub fn diagnose_idle_replay(world: &mut World) {
     if world.contains_resource::<ReplayFailure>() {
         return;
     }
-    let generation = world.resource::<super::Wake>().generation();
+    let generation = world.resource::<rig_ecs::bus::Wake>().generation();
     let mut effects = world.query::<(Option<&Issued>, Option<&Reserved>, Option<&EffectOutcome>)>();
     let Some(mut replay) = world.get_resource_mut::<ReplayDelivery>() else {
         return;
@@ -705,7 +705,7 @@ fn deliver_stream(
             }
         }
         if !delivered.is_empty() {
-            delivery = Some(super::StreamItemsDelivered {
+            delivery = Some(rig_ecs::bus::StreamItemsDelivered {
                 effect: entity,
                 id,
                 start,
@@ -755,7 +755,7 @@ fn deliver_outcome(world: &mut World, entity: Entity) {
     }
     world
         .entity_mut(entity)
-        .insert(super::collect::CollectedOutcome)
+        .insert(rig_ecs::bus::collect::CollectedOutcome)
         .insert(EffectOutcome(outcome));
 }
 

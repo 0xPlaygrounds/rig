@@ -4,6 +4,9 @@ use crate::bus_support;
 
 use bevy_ecs::prelude::*;
 use futures::channel::oneshot;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::{
     completion::{ModelRef, ProviderCapabilities, Usage},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
@@ -11,10 +14,8 @@ use rig_core::{
     streaming::StreamFinal,
 };
 use rig_ecs::bus::{
-    BusSet, EffectLogResource, EffectOutcome, Handlers, InFlight, PendingEffect, Replay,
-    RigSchedule, Streamed,
+    BusSet, EffectOutcome, Handlers, InFlight, PendingEffect, RigSchedule, Streamed,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use std::{
     collections::VecDeque,
     sync::{
@@ -26,9 +27,7 @@ use std::{
 
 /// Register `log` for replay on `app` under `mode`.
 fn replaying_with(app: &mut bevy_app::App, mode: Replay, log: &EffectLog) {
-    Handlers::with(app.world_mut(), |handlers| mode.register(handlers, log))
-        .unwrap()
-        .unwrap();
+    mode.register(app.world_mut(), log).unwrap();
 }
 
 /// [`replaying_with`] under policy-visible replay.
@@ -91,7 +90,7 @@ fn replay_allows_a_continuation_after_collect_to_mint_its_first_effect() {
     bus_support::tick_until(&mut app, "continued replay", |world| {
         assert!(
             world
-                .get_resource::<rig_ecs::bus::ReplayFailure>()
+                .get_resource::<rig_cassette::ecs::ReplayFailure>()
                 .is_none(),
             "later policy sets must run before diagnosing an absent future effect"
         );
@@ -107,7 +106,7 @@ fn replay_failure_stays_terminal_for_effects_created_after_the_refusal() {
     app.update();
     assert!(
         app.world()
-            .get_resource::<rig_ecs::bus::ReplayFailure>()
+            .get_resource::<rig_cassette::ecs::ReplayFailure>()
             .is_some(),
         "a missing program must fail finitely"
     );
@@ -254,7 +253,7 @@ fn a_recorded_divergence_is_delivered_without_overwriting_other_results() {
         assert!(
             replay
                 .world()
-                .get_resource::<rig_ecs::bus::ReplayFailure>()
+                .get_resource::<rig_cassette::ecs::ReplayFailure>()
                 .is_none()
         );
         assert_eq!(replay.world().resource::<First>().0.as_ref(), Some(&first));
@@ -301,7 +300,7 @@ fn bounded_intake_preserves_deliveries_for_reserved_and_new_effects() {
         );
         assert!(
             !app.world()
-                .contains_resource::<rig_ecs::bus::ReplayFailure>()
+                .contains_resource::<rig_cassette::ecs::ReplayFailure>()
         );
         assert!(
             effects.iter().all(|entity| app
@@ -353,7 +352,7 @@ fn serial_serving_replays_two_streams_on_the_same_key() {
     assert!(
         !replay
             .world()
-            .contains_resource::<rig_ecs::bus::ReplayFailure>()
+            .contains_resource::<rig_cassette::ecs::ReplayFailure>()
     );
     for (before, after) in effects.into_iter().zip(loaded) {
         assert_eq!(
@@ -380,12 +379,12 @@ fn serial_serving_replays_two_streams_on_the_same_key() {
     bus_support::tick_until(
         &mut replay,
         "impossible serial batch is diagnosed",
-        |world| world.contains_resource::<rig_ecs::bus::ReplayFailure>(),
+        |world| world.contains_resource::<rig_cassette::ecs::ReplayFailure>(),
     );
     assert!(
         replay
             .world()
-            .resource::<rig_ecs::bus::ReplayFailure>()
+            .resource::<rig_cassette::ecs::ReplayFailure>()
             .0
             .message
             .contains("serial key")
@@ -525,11 +524,9 @@ fn direct_in_flight_outcomes_refuse_policy_delivery_claims() {
     live.update();
     let log = recorder.log();
     let mut replay = bus_support::app();
-    let error = Handlers::with(replay.world_mut(), |handlers| {
-        Replay::policy_visible().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap_err();
+    let error = Replay::policy_visible()
+        .register(replay.world_mut(), &log)
+        .unwrap_err();
     assert!(error.message.contains("WorldOutcome"));
     replaying_with(&mut replay, Replay::default(), &log);
 }
@@ -736,11 +733,9 @@ fn folded_stream_refuses_policy_mode_but_replays_a_final_answer() {
     let (log, live) = live_stream(vec![vec!["a"], vec!["b"], vec!["c"]], false);
     assert_eq!(live.last().map(String::as_str), Some("abc"));
     let mut app = observing_app();
-    let error = Handlers::with(app.world_mut(), |handlers| {
-        Replay::policy_visible().register(handlers, &log)
-    })
-    .unwrap()
-    .expect_err("the recording omitted event bytes");
+    let error = Replay::policy_visible()
+        .register(app.world_mut(), &log)
+        .expect_err("the recording omitted event bytes");
     assert!(error.message.contains("kept stream events"));
     replaying_with(&mut app, Replay::default(), &log);
     let effect = Replay::load(app.world_mut(), &log)[0];
@@ -800,10 +795,7 @@ fn malformed_delivery_metadata_is_refused_before_handlers_are_registered() {
             _ => deliveries.clear(),
         }
         let mut app = bus_support::app();
-        let result = Handlers::with(app.world_mut(), |handlers| {
-            Replay::policy_visible().register(handlers, &malformed)
-        })
-        .unwrap();
+        let result = Replay::policy_visible().register(app.world_mut(), &malformed);
         assert!(result.is_err());
         assert_eq!(
             app.world_mut()
@@ -953,7 +945,7 @@ fn policy_replay_does_not_insert_an_outcome_for_the_cancelled_loser() {
     assert!(
         !replay
             .world()
-            .contains_resource::<rig_ecs::bus::ReplayFailure>()
+            .contains_resource::<rig_cassette::ecs::ReplayFailure>()
     );
 }
 
@@ -1006,14 +998,16 @@ fn policy_replay_allows_cancellation_after_multiple_judge_passes() {
         let loaded = Replay::load(replay.world_mut(), &log);
         bus_support::tick_until(&mut replay, "delayed cancellation", |world| {
             world.get_entity(loaded[0]).is_err()
-                || world.contains_resource::<rig_ecs::bus::ReplayFailure>()
+                || world.contains_resource::<rig_cassette::ecs::ReplayFailure>()
         });
         assert!(
             !replay
                 .world()
-                .contains_resource::<rig_ecs::bus::ReplayFailure>(),
+                .contains_resource::<rig_cassette::ecs::ReplayFailure>(),
             "replay refused before the delayed cancellation: {:?}",
-            replay.world().get_resource::<rig_ecs::bus::ReplayFailure>()
+            replay
+                .world()
+                .get_resource::<rig_cassette::ecs::ReplayFailure>()
         );
         assert!(replay.world().get_entity(loaded[0]).is_err());
         replay.update();
@@ -1029,7 +1023,7 @@ fn policy_replay_allows_cancellation_after_multiple_judge_passes() {
         assert!(
             !replay
                 .world()
-                .contains_resource::<rig_ecs::bus::ReplayFailure>()
+                .contains_resource::<rig_cassette::ecs::ReplayFailure>()
         );
     }
 }
@@ -1042,9 +1036,12 @@ fn policy_replay_refuses_when_quiescent_policy_never_cancels() {
     // The loaded effects are found by query below; their handles are not needed.
     let _ = Replay::load(replay.world_mut(), &log);
     bus_support::tick_until(&mut replay, "missing policy cancellation", |world| {
-        world.contains_resource::<rig_ecs::bus::ReplayFailure>()
+        world.contains_resource::<rig_cassette::ecs::ReplayFailure>()
     });
-    let error = &replay.world().resource::<rig_ecs::bus::ReplayFailure>().0;
+    let error = &replay
+        .world()
+        .resource::<rig_cassette::ecs::ReplayFailure>()
+        .0;
     assert_eq!(error.kind, rig_core::error::ErrorKind::Divergence);
     assert!(error.to_string().contains("did not reproduce cancellation"));
 }
@@ -1110,7 +1107,7 @@ fn policy_cancels_at_the_same_partial_stream_state() {
     assert!(
         !replay
             .world()
-            .contains_resource::<rig_ecs::bus::ReplayFailure>()
+            .contains_resource::<rig_cassette::ecs::ReplayFailure>()
     );
 }
 
@@ -1329,7 +1326,7 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
             })
             .unwrap();
         deliveries.remove(position);
-        let error = rig_ecs::bus::delivery::ReplayDelivery::new(&short, true)
+        let error = rig_cassette::ecs::ReplayDelivery::new(&short, true)
             .err()
             .expect("all error items must be represented");
         assert!(error.message.contains("counts disagree"));
@@ -1352,7 +1349,7 @@ fn errors_before_and_after_final_keep_their_positions_and_first_outcome() {
                     },
                 },
             );
-            let error = rig_ecs::bus::delivery::ReplayDelivery::new(&missing, true)
+            let error = rig_cassette::ecs::ReplayDelivery::new(&missing, true)
                 .err()
                 .expect("first outcome is not reconstructible");
             assert!(error.message.contains("first stream outcome"));
@@ -1520,7 +1517,7 @@ fn cancellation_after_an_original_answer_has_a_replayable_visibility_trace() {
                 .any(|delivery| matches!(delivery.kind, rig_core::effect::DeliveryKind::Outcome)),
             "no outcome reached the consumer"
         );
-        rig_ecs::bus::delivery::ReplayDelivery::new(&log, true)
+        rig_cassette::ecs::ReplayDelivery::new(&log, true)
             .expect("a library-generated cancellation trace must remain replayable");
         assert!(matches!(
             log.header.deliveries.as_ref().unwrap().last().unwrap().kind,
@@ -1581,7 +1578,7 @@ fn cancellation_after_an_original_answer_has_a_replayable_visibility_trace() {
         assert!(
             !reproduced
                 .world()
-                .contains_resource::<rig_ecs::bus::ReplayFailure>()
+                .contains_resource::<rig_cassette::ecs::ReplayFailure>()
         );
         let rerecorded = rerecorder.log();
         assert_eq!(
@@ -1604,7 +1601,7 @@ fn cancellation_after_an_original_answer_has_a_replayable_visibility_trace() {
                 .kind,
             rig_core::effect::DeliveryKind::Cancelled
         ));
-        rig_ecs::bus::delivery::ReplayDelivery::new(&rerecorded, true)
+        rig_cassette::ecs::ReplayDelivery::new(&rerecorded, true)
             .expect("reproduced cancellation remains replayable");
 
         let mut invalid = log.clone();
@@ -1626,7 +1623,7 @@ fn cancellation_after_an_original_answer_has_a_replayable_visibility_trace() {
                 kind: rig_core::effect::DeliveryKind::Outcome,
             });
         assert!(
-            rig_ecs::bus::delivery::ReplayDelivery::new(&invalid, true).is_err(),
+            rig_cassette::ecs::ReplayDelivery::new(&invalid, true).is_err(),
             "cancellation closes the delivery trace"
         );
     }
@@ -1783,7 +1780,7 @@ fn cancelled_record_is_immutable_when_an_active_worker_poll_returns() {
         cancelled,
         "a poll returning after cancellation must not mutate the closed recording"
     );
-    rig_effect_log::EffectLogReplayer::check_header(&recorder.log()).unwrap();
+    rig_cassette::effect_log::EffectLogReplayer::check_header(&recorder.log()).unwrap();
 }
 
 #[test]
@@ -1850,7 +1847,7 @@ fn implicit_cancelled_prefix_rerecord_does_not_invent_an_error_item() {
     });
     assert!(
         !app.world()
-            .contains_resource::<rig_ecs::bus::ReplayFailure>()
+            .contains_resource::<rig_cassette::ecs::ReplayFailure>()
     );
     let rerecorded = rerecorder.log();
     assert_eq!(
@@ -1861,5 +1858,5 @@ fn implicit_cancelled_prefix_rerecord_does_not_invent_an_error_item() {
         serde_json::to_value(&rerecorded.records).unwrap(),
         serde_json::to_value(&log.records).unwrap()
     );
-    rig_ecs::bus::delivery::ReplayDelivery::new(&rerecorded, true).unwrap();
+    rig_cassette::ecs::ReplayDelivery::new(&rerecorded, true).unwrap();
 }

@@ -395,7 +395,14 @@ pub(super) fn plan(
         }
         // These modules are shared by path, not a Cargo dependency edge, so
         // reverse-dependency discovery cannot find the minimal runner.
-        if path.starts_with("crates/rig-cassette/tests/") {
+        if [
+            "crates/rig-cassette/tests/",
+            "crates/rig-cassette/src/effect_log/",
+            "crates/rig-cassette/src/agent/replay",
+        ]
+        .iter()
+        .any(|prefix| path.starts_with(prefix))
+        {
             affected.insert("rig-cassette-minimal".to_owned());
         }
         if ["README.md", "CONTRIBUTING.md", "AGENTS.md", "DEVELOPING.md"].contains(&path.as_str())

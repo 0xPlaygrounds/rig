@@ -149,7 +149,7 @@ async fn unary_tool_run(
     reason: &str,
     shape: &[EffectFamily],
     thinking: bool,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let mut ecs = agent(&client, ending, TOOLS_PREAMBLE, false);
     ecs.tool(Adder);
     if thinking {
@@ -174,7 +174,7 @@ async fn streamed_run(
     ending: Ending,
     reason: &str,
     program: Streamed,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let (preamble, prompt) = match program {
         Streamed::Tools => (TOOLS_PREAMBLE, ADD_PROMPT),
         Streamed::Essay => (BASIC_PREAMBLE, ESSAY_PROMPT),

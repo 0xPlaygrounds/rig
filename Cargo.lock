@@ -10366,9 +10366,9 @@ dependencies = [
  "rig-agent",
  "rig-bedrock",
  "rig-candle",
+ "rig-cassette",
  "rig-core",
  "rig-derive",
- "rig-effect-log",
  "rig-fastembed",
  "rig-gemini-grpc",
  "rig-helixdb",
@@ -10413,9 +10413,9 @@ dependencies = [
  "http 1.4.2",
  "indexmap 2.14.0",
  "loom",
+ "rig-cassette",
  "rig-core",
  "rig-derive",
- "rig-effect-log",
  "rig-reqwest",
  "schemars 1.2.1",
  "serde",
@@ -10501,7 +10501,6 @@ dependencies = [
  "rig-agent",
  "rig-core",
  "rig-ecs",
- "rig-effect-log",
  "rig-reqwest",
  "rig-test-support",
  "rmcp",
@@ -10529,9 +10528,9 @@ dependencies = [
  "futures",
  "proptest",
  "rig-agent",
+ "rig-cassette",
  "rig-core",
  "rig-ecs",
- "rig-effect-log",
  "serde",
  "serde_json",
  "tokio",
@@ -10618,24 +10617,13 @@ dependencies = [
  "bevy_time",
  "futures",
  "log",
+ "rig-cassette",
  "rig-core",
- "rig-effect-log",
  "serde",
  "serde_json",
  "sha2 0.10.9",
  "thiserror 2.0.18",
  "wasm-bindgen-test",
-]
-
-[[package]]
-name = "rig-effect-log"
-version = "0.42.0"
-dependencies = [
- "futures",
- "rig-core",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -10962,7 +10950,6 @@ dependencies = [
  "rig-cassette",
  "rig-core",
  "rig-ecs",
- "rig-effect-log",
  "rig-reqwest",
  "schemars 1.2.1",
  "serde",

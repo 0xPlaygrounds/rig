@@ -5,6 +5,7 @@
 //! `test-support/rig-test-support/src/goldens.rs`. The enumeration and the replays live in
 //! `crates/rig-cassette/tests/corpus_layers.rs`.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -12,7 +13,7 @@ use rig::agent::{AgentBuilder, MultiTurnStreamItem, StreamingError};
 use rig::effect::EffectFamily;
 use rig::serve::ErasedHandler;
 use rig::test_utils::{MockCompletionModel, MockStreamEvent, MockTurn};
-use rig_effect_log::EffectLog;
+use rig_cassette::effect_log::EffectLog;
 use serde_json::json;
 
 use crate::goldens::{
@@ -67,12 +68,13 @@ async fn suspended(answer: Answer) -> EffectLog {
     let reached = std::sync::Arc::new(tokio::sync::Notify::new());
     let asks = spawn_world(answer, std::sync::Arc::clone(&reached));
     let server = add_tool_under(|adder| adder.layered(ApprovalLayer { asks }));
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(calls_add_then_answers())
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
         .temperature(0.0)
         .tool_server_handle(server)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     if answer == Answer::Never {
         let run = agent.prompt(ADD_PROMPT).max_turns(3);
@@ -97,7 +99,7 @@ async fn suspended(answer: Answer) -> EffectLog {
         .expect("the agent answers");
         assert_eq!(response.output, "42");
     }
-    agent.take_effect_log().expect("recording")
+    agent.stamp(recorder.take())
 }
 
 #[tokio::test]
@@ -147,12 +149,13 @@ async fn suspend_cancelled_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn wrong_family_patch_effect_log_is_the_golden_fixture() {
     let server = add_tool_under(|adder| adder.layered(WrongFamilyLayer));
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let agent = AgentBuilder::new(calls_add_then_answers())
         .name("golden")
         .preamble(TOOLS_PREAMBLE)
         .temperature(0.0)
         .tool_server_handle(server)
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let response = agent
         .prompt(ADD_PROMPT)
@@ -160,7 +163,7 @@ async fn wrong_family_patch_effect_log_is_the_golden_fixture() {
         .await
         .expect("the run goes on: the tool failed, the model answered");
     assert_eq!(response.output, "42");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     // `Internal`, no record: the engine turns the tool's failure into a
     // failed result the model sees, and the run goes on.
     assert_eq!(
@@ -199,7 +202,7 @@ async fn replace_streamed_cancelled_effect_log_is_the_golden_fixture() {
             .layered(CancelStreamLayer),
         )
         .expect("a fresh key");
-    let recorder = rig_effect_log::EffectLogRecorder::keeping_stream_events();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     driver.record_to(recorder.clone());
     let driver = tokio::spawn(driver);
     let agent = AgentBuilder::over_bus(dispatcher.clone(), registrar.clone(), "golden", model_key)

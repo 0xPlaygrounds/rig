@@ -1,6 +1,7 @@
 //! Anthropic streaming tools smoke test.
 
 use rig::message::AssistantContent;
+use rig_cassette::agent::AgentReplayExt;
 
 use futures::StreamExt;
 use rig::agent::{MultiTurnStreamItem, StreamingError, StreamingResult};
@@ -650,6 +651,7 @@ async fn streaming_tools_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette(
         "streaming_tools/streaming_tools_smoke",
         |client| async move {
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .name("golden")
@@ -657,14 +659,14 @@ async fn streaming_tools_effect_log_is_the_golden_fixture() {
                 .tool(Adder)
                 .tool(Subtract)
                 .default_max_turns(2)
-                .record_effects_with_events()
+                .record_to(recorder.clone())
                 .build();
             let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).stream();
             let response = collect_stream_final_response(&mut stream)
                 .await
                 .expect("streaming tool prompt should succeed");
             assert_mentions_expected_number(&response, -3);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert!(
                 log.records.iter().any(|record| record
                     .events
@@ -687,6 +689,7 @@ async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
         "streaming_tools/streaming_tool_concurrency_emits_results_as_completed_but_persists_call_order",
         |client| async move {
             let order = OutOfOrderSignalOrder::default();
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(anthropic::completion::CLAUDE_SONNET_4_6)
                 .name("golden")
@@ -696,9 +699,7 @@ async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
                 })
                 .preamble(TWO_TOOL_STREAM_PREAMBLE)
                 .tool(OutOfOrderAlphaSignal(order.clone()))
-                .tool(OutOfOrderBetaSignal(order))
-                .record_effects()
-                .build();
+                .tool(OutOfOrderBetaSignal(order)).record_to(recorder.clone()).build();
             let mut stream = agent
                 .prompt(TWO_TOOL_STREAM_PROMPT)
                 .max_turns(8)
@@ -712,7 +713,7 @@ async fn concurrent_tools_serial_effect_log_is_the_golden_fixture() {
             .expect("serial serving is per key; two tools never wait on each other");
             assert!(observation.errors.is_empty(), "{:?}", observation.errors);
             assert!(observation.got_final_response);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(
                 log.header.bus.map(|bus| bus.serial_per_handler),
                 Some(true),

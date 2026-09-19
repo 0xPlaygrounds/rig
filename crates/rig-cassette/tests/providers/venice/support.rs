@@ -64,7 +64,7 @@ where
     Fut: Future<Output = ()>,
 {
     let cassette = ProviderCassette::start_via(
-        rig_cassette::Transport::Direct,
+        rig_cassette::http::Transport::Direct,
         &crate::cassettes::cassette_root(),
         "venice",
         spec,

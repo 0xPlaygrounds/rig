@@ -66,8 +66,8 @@ impl ReplayRefusals {
 /// with the record of the dispatch's own id, whatever order the dispatches
 /// arrive in — the mode for a world that re-issues effects under their
 /// recorded ids, where the replayer is then a pure function of the log and
-/// the id. A runtime registers one per key (`rig_agent::bus::replay::register_all`;
-/// rig-ecs's `Replay`).
+/// the id. The optional runtime adapters register one per key
+/// (`rig_cassette::agent::replay::register_all`; `rig_cassette::ecs::Replay`).
 pub struct EffectLogReplayer {
     key: HandlerKey,
     family: EffectFamily,

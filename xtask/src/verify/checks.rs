@@ -210,11 +210,15 @@ pub(super) fn all() -> Vec<Check> {
                 "rig-agent",
                 "-p",
                 "rig-rmcp",
+                // Keep relocated bus regressions in this feature graph,
+                // rather than enabling cassette's HTTP dev-dependencies.
+                "-p",
+                "rig-cassette-minimal",
                 "--all-features",
                 "--profile",
                 "guards",
                 "-E",
-                "not binary(macro_hygiene)",
+                "not binary(macro_hygiene) and (not package(rig-cassette-minimal) or (binary(effect_log) and test(/^agent_replay::/)))",
             ])],
         ),
         check(
@@ -230,7 +234,7 @@ pub(super) fn all() -> Vec<Check> {
                     "--retries",
                     "0",
                     "-E",
-                    "package(rig-cassette-minimal) and binary(verify)",
+                    "package(rig-cassette-minimal) and (binary(verify) or binary(effect_log))",
                 ]),
                 // Preserve the former default sweep's dependency graph and
                 // retry policy. The nested runner above preserves the former
@@ -368,7 +372,7 @@ pub(super) fn all() -> Vec<Check> {
     ];
     for package in [
         "rig-core",
-        "rig-effect-log",
+        "rig-cassette",
         "rig-ecs",
         "rig-reqwest",
         "rig-agent",
@@ -403,6 +407,22 @@ pub(super) fn all() -> Vec<Check> {
                 "--target",
                 "wasm32-unknown-unknown",
             ]));
+        }
+        if package == "rig-cassette" {
+            for features in ["agent", "ecs", "agent,ecs"] {
+                steps.push(cargo(&[
+                    "check",
+                    "--locked",
+                    "-p",
+                    package,
+                    "--no-default-features",
+                    "--features",
+                    features,
+                    "--lib",
+                    "--target",
+                    "wasm32-unknown-unknown",
+                ]));
+            }
         }
         if ["rig-core", "rig-ecs"].contains(&package) {
             steps.push(cargo(&[

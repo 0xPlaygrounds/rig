@@ -260,14 +260,6 @@ impl BusPlugin {
         );
         schedule.add_systems(dispatch.in_set(BusSet::Dispatch));
         schedule.add_systems(begin_delivery_pass.before(BusSet::Gate));
-        // Replay is a mode the world is in while a delivery plan is
-        // installed: its systems run under that condition alone.
-        schedule.add_systems(
-            super::delivery::collect_replayed
-                .run_if(resource_exists::<super::delivery::ReplayDelivery>)
-                .in_set(BusSet::Collect)
-                .before(collect_tasks),
-        );
         schedule.add_systems(
             (
                 collect_tasks,
@@ -280,12 +272,9 @@ impl BusPlugin {
         );
         world.init_resource::<Schedules>();
         world.resource_mut::<Schedules>().insert(schedule);
-        let mut end = Schedule::new(RigEnd);
-        end.add_systems(
-            super::delivery::diagnose_idle_replay
-                .run_if(resource_exists::<super::delivery::ReplayDelivery>),
-        );
-        world.resource_mut::<Schedules>().insert(end);
+        world
+            .resource_mut::<Schedules>()
+            .insert(Schedule::new(RigEnd));
     }
 }
 

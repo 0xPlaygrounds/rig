@@ -12,7 +12,7 @@ fn metadata() -> Value {
     serde_json::json!({"packages":[
         {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
         {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]}]},
-        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]}]},
+        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
         {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},
         {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
         {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
@@ -198,6 +198,8 @@ fn shared_replay_sources_keep_the_minimal_execution() {
     for path in [
         "crates/rig-cassette/tests/corpus_hooks.rs",
         "crates/rig-cassette/tests/world_replay.rs",
+        "crates/rig-cassette/src/effect_log/tests.rs",
+        "crates/rig-cassette/src/agent/replay/tests.rs",
     ] {
         let plan = ids("--changed", &[path]);
         assert!(

@@ -71,7 +71,7 @@
 //!   golden was refused by the very program that recorded it. The corpus
 //!   prompt's anchor table had ruled key order stable; it is stable per
 //!   build, not per workspace.
-//!   Fixed in `rig-effect-log`: the hash is over canonical (sorted-key)
+//!   The effect-log hash is over canonical (sorted-key)
 //!   JSON. The thinking and output-schema cells are the ones that found it.
 //! - In `adaptive` thinking mode the model chose not to think about a
 //!   one-line arithmetic prompt; the thinking cells enable thinking with a

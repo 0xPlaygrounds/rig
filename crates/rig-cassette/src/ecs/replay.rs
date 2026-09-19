@@ -1,11 +1,11 @@
 //! Record a world's effects into an [`EffectLog`]; replay a log through a
 //! world, by id.
 
+use crate::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use bevy_ecs::prelude::*;
 use rig_core::error::ErrorReport;
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer, RequestCheck};
 
-use super::{
+use rig_ecs::bus::{
     effect::{PendingEffect, Reserved},
     handlers::Handlers,
     record::Recording,
@@ -59,7 +59,7 @@ impl Replay {
     /// Observe `On<Add, EffectOutcome>` or run policy after the entire
     /// `BusSet::Collect`, with the same relevant ordering live and on replay.
     /// Intermediate collector state and handler inboxes are not covered.
-    /// World handlers submit [`super::WorldOutcome`] or typed [`super::Answer`];
+    /// World handlers submit [`rig_ecs::bus::WorldOutcome`] or typed [`rig_ecs::bus::Answer`];
     /// direct in-flight outcome insertions make this mode refuse the recording.
     ///
     /// Default replay honors available batches but supplies recorded
@@ -79,26 +79,42 @@ impl Replay {
     /// including all scoped required rows. Refuses conflicting families,
     /// descriptors and inconsistent delivery metadata. Recorded semantic
     /// descriptors are preserved; reapply executable middleware separately.
-    pub fn register(
-        &self,
-        handlers: &mut Handlers<'_, '_>,
-        log: &EffectLog,
-    ) -> Result<(), ErrorReport> {
+    ///
+    /// The world must have [`super::ReplayPlugin`] installed after its runtime.
+    pub fn register(&self, world: &mut World, log: &EffectLog) -> Result<(), ErrorReport> {
         EffectLogReplayer::check_header(log)?;
-        let delivery = super::delivery::ReplayDelivery::new(log, self.require_delivery)?;
-        for replayer in EffectLogReplayer::for_log_by_id(log)? {
-            let key = replayer.key().clone();
-            let replayer = if let Some(delivery) = &delivery {
-                replayer.reporting_refusals(delivery.refusals())
-            } else {
-                replayer
-            };
-            handlers.register_erased(
-                key,
-                rig_core::serve::ErasedHandler::new(replayer.checking(self.check)),
-            )?;
+        if !world.contains_resource::<super::ReplayInstalled>() {
+            return Err(ErrorReport::new(
+                rig_core::error::ErrorKind::Request,
+                "install rig_cassette::ecs::ReplayPlugin after the runtime before registering replay",
+            ));
         }
-        handlers.replay_delivery(delivery);
+        let delivery = super::delivery::ReplayDelivery::new(log, self.require_delivery)?;
+        let replayers = EffectLogReplayer::for_log_by_id(log)?;
+        Handlers::with(world, |handlers| {
+            for replayer in replayers {
+                let key = replayer.key().clone();
+                let replayer = if let Some(delivery) = &delivery {
+                    replayer.reporting_refusals(delivery.refusals())
+                } else {
+                    replayer
+                };
+                handlers.register_erased(
+                    key,
+                    rig_core::serve::ErasedHandler::new(replayer.checking(self.check)),
+                )?;
+            }
+            Ok::<_, ErrorReport>(())
+        })??;
+        world.remove_resource::<super::ReplayFailure>();
+        match delivery {
+            Some(delivery) => {
+                world.insert_resource(delivery);
+            }
+            None => {
+                world.remove_resource::<super::ReplayDelivery>();
+            }
+        }
         Ok(())
     }
 
@@ -124,7 +140,7 @@ impl Replay {
                 Reserved(record.id),
             ));
             if let Some(scope) = &record.scope {
-                entity.insert(super::effect::Scope(scope.to_string()));
+                entity.insert(rig_ecs::bus::Scope(scope.to_string()));
             }
             if let Some(parent) = record
                 .parent

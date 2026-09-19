@@ -7,10 +7,11 @@
 //! turns, as entities and relationships), [`policy`] (the verbatim strings
 //! and the one fold from the graph to the wire `CompletionRequest`),
 //! [`systems`] (one system per named set, in the bus's schedule),
-//! [`checkpoint`] (the world as reflected data: save, load) and [`replay`]
-//! (the log header from components). Nothing in this crate awaits, blocks,
-//! or holds a future for a host to probe; nothing is copied from
-//! `rig-agent`, and a guard refuses its name.
+//! and [`checkpoint`] (the world as reflected data: save, load).
+//! Concrete log recording, replay delivery and log-derived identity live in
+//! `rig_cassette::ecs` with cassette's `ecs` feature. Install its `ReplayPlugin`
+//! after this runtime before registering a replay. Neither cassette nor
+//! `rig-agent` is a normal dependency of this runtime.
 //!
 //! The request is a graph in the world and a struct on the wire, with
 //! [`policy::fold_request`] as the one function between them. What the
@@ -57,7 +58,6 @@ pub mod checkpoint;
 pub mod policy;
 pub mod prelude;
 pub mod reflect;
-pub mod replay;
 pub mod systems;
 
 /// The whole runtime as one plugin: the bus ([`bus::BusPlugin`]) and the

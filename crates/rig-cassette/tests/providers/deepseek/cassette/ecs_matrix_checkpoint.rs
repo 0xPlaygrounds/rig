@@ -47,19 +47,19 @@ crate::matrix::resume_matrix! {
     large_result_cut_final: ("checkpoint_matrix/large_result", checkpoint::LARGE_RESULT, Some(usize::MAX), golden_deepseek_checkpoint_large_result);
 }
 
-fn golden_deepseek_checkpoint_multi_turn_unary(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_checkpoint_multi_turn_unary(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_checkpoint_multi_turn_unary", log);
 }
 
-fn golden_deepseek_checkpoint_multi_turn_streamed(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_checkpoint_multi_turn_streamed(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_checkpoint_multi_turn_streamed", log);
 }
 
-fn golden_deepseek_checkpoint_parallel_batch(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_checkpoint_parallel_batch(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_checkpoint_parallel_batch", log);
 }
 
-fn golden_deepseek_checkpoint_large_result(log: &rig::effect_log::EffectLog) {
+fn golden_deepseek_checkpoint_large_result(log: &rig::cassette::effect_log::EffectLog) {
     crate::ecs_goldens::golden_effects("deepseek_checkpoint_large_result", log);
 }
 

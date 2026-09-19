@@ -11,6 +11,7 @@
 //! a tool with `leaf` semantics no prompt can promise, and none of them
 //! asks anything of a provider.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use rig::agent::AgentBuilder;
@@ -20,7 +21,7 @@ use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::serve::ServingPolicy;
 use rig::test_utils::{MockCompletionModel, MockTurn};
 use rig::tool::RegisteredTool;
-use rig_effect_log::{EffectLog, EffectLogRecorder};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use serde_json::json;
 
 use crate::goldens::{

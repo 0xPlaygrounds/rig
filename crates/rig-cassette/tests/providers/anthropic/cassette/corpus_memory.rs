@@ -15,6 +15,7 @@ use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_corpus_memory_cassette;
 use crate::goldens::{CONVERSATION, ClearAtSettled, ClearAtStart, FailingMemory, families};
@@ -44,7 +45,7 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
 }
 
 /// The memory ops of `log`, in order.
-pub(super) fn memory_ops(log: &rig::effect_log::EffectLog) -> Vec<&'static str> {
+pub(super) fn memory_ops(log: &rig::cassette::effect_log::EffectLog) -> Vec<&'static str> {
     log.iter()
         .filter_map(|record| match &record.kind {
             EffectKind::Memory { op } => Some(match op {
@@ -58,7 +59,7 @@ pub(super) fn memory_ops(log: &rig::effect_log::EffectLog) -> Vec<&'static str> 
 }
 
 /// The messages each `Load` answered with, in order.
-pub(super) fn loaded_lengths(log: &rig::effect_log::EffectLog) -> Vec<usize> {
+pub(super) fn loaded_lengths(log: &rig::cassette::effect_log::EffectLog) -> Vec<usize> {
     log.iter()
         .filter_map(|record| match (&record.kind, &record.outcome) {
             (
@@ -107,7 +108,7 @@ async fn remembers(
     clears: Clears,
     prompts: &[&str],
     streamed: bool,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let builder = client
         .agent(CLAUDE_SONNET_4_6)
         .name("golden")
@@ -120,16 +121,17 @@ async fn remembers(
         Clears::AtStart => builder.add_hook(ClearAtStart),
         Clears::AtSettled => builder.add_hook(ClearAtSettled),
     };
-    let agent = if streamed {
-        builder.record_effects_with_events().build()
+    let recorder = if streamed {
+        rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events()
     } else {
-        builder.record_effects().build()
+        rig_cassette::effect_log::EffectLogRecorder::new()
     };
+    let agent = builder.record_to(recorder.clone()).build();
     let outputs = run_prompts(&agent, prompts, streamed).await;
     for output in &outputs {
         assert!(!output.is_empty());
     }
-    agent.take_effect_log().expect("recording")
+    agent.stamp(recorder.take())
 }
 
 #[tokio::test]
@@ -232,6 +234,7 @@ async fn clear_at_start_two_runs_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn history_bypass_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/history_bypass", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .agent(CLAUDE_SONNET_4_6)
             .name("golden")
@@ -239,7 +242,7 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
             .temperature(0.0)
             .memory(rig::memory::InMemoryConversationMemory::new())
             .conversation(CONVERSATION)
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let response = agent
             .prompt(NAME_PROMPT)
@@ -247,7 +250,7 @@ async fn history_bypass_effect_log_is_the_golden_fixture() {
             .await
             .expect("the agent answers");
         assert!(response.output.contains("Ada"), "{}", response.output);
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(families(&log), [EffectFamily::Completion]);
         assert!(
             log.header
@@ -278,7 +281,7 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
                 )),
             )
             .expect("a fresh key");
-        let recorder = rig::effect_log::EffectLogRecorder::new();
+        let recorder = rig::cassette::effect_log::EffectLogRecorder::new();
         driver.record_to(recorder.clone());
         let driver = tokio::spawn(driver);
         let agent =
@@ -310,6 +313,7 @@ async fn host_bus_memory_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn serial_two_tools_effect_log_is_the_golden_fixture() {
     with_anthropic_corpus_memory_cassette("corpus_memory/serial_two_tools", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
             .agent(CLAUDE_SONNET_4_6)
             .name("golden")
@@ -323,11 +327,11 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
             .tool(BetaSignal)
             .memory(rig::memory::InMemoryConversationMemory::new())
             .conversation(CONVERSATION)
-            .record_effects_with_events()
+            .record_to(recorder.clone())
             .build();
         let outputs = run_prompts(&agent, &[TWO_TOOL_STREAM_PROMPT], true).await;
         assert!(!outputs[0].is_empty());
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
             [
@@ -353,7 +357,10 @@ async fn serial_two_tools_effect_log_is_the_golden_fixture() {
 
 /// An `Append` that fails: the record holds the error and the run ends
 /// in its answer regardless.
-async fn append_fails(client: Bound<Anthropic>, streamed: bool) -> rig::effect_log::EffectLog {
+async fn append_fails(
+    client: Bound<Anthropic>,
+    streamed: bool,
+) -> rig::cassette::effect_log::EffectLog {
     let builder = client
         .agent(CLAUDE_SONNET_4_6)
         .name("golden")
@@ -361,14 +368,15 @@ async fn append_fails(client: Bound<Anthropic>, streamed: bool) -> rig::effect_l
         .temperature(0.0)
         .memory(FailingMemory::append_fails())
         .conversation(CONVERSATION);
-    let agent = if streamed {
-        builder.record_effects_with_events().build()
+    let recorder = if streamed {
+        rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events()
     } else {
-        builder.record_effects().build()
+        rig_cassette::effect_log::EffectLogRecorder::new()
     };
+    let agent = builder.record_to(recorder.clone()).build();
     let outputs = run_prompts(&agent, &[PROMPT], streamed).await;
     assert!(!outputs[0].is_empty());
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(memory_ops(&log), ["load", "append"]);
     assert!(
         matches!(&log.records[2].outcome, Err(report) if report.kind == rig::error::ErrorKind::MemoryBackend),

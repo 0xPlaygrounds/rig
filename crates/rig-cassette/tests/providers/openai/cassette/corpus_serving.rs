@@ -6,6 +6,7 @@
 use rig::effect::EffectFamily;
 use rig::prelude::*;
 use rig::providers::openai;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_cassette;
 use crate::goldens::families;
@@ -21,6 +22,7 @@ const CHAIN_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 
 #[tokio::test]
 async fn two_turns_concurrency_two_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/tool_call_turns", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .openai
             .agent(openai::GPT_4O)
@@ -29,7 +31,7 @@ async fn two_turns_concurrency_two_effect_log_is_the_golden_fixture() {
             .temperature(0.0)
             .tool(Adder)
             .tool(Subtract)
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let response = agent
             .prompt(CHAIN_PROMPT)
@@ -38,7 +40,7 @@ async fn two_turns_concurrency_two_effect_log_is_the_golden_fixture() {
             .await
             .expect("the agent answers");
         assert!(response.output.contains("21"), "{}", response.output);
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
             [

@@ -3,6 +3,7 @@
 //! compared to (`crate::goldens::golden_effects`).
 
 use futures::StreamExt;
+use rig_cassette::agent::AgentReplayExt;
 
 use rig_agent::agent::AgentBuilder;
 
@@ -40,7 +41,7 @@ use crate::goldens::{
 use crate::support::{AlphaSignal, BetaSignal};
 
 /// Each record's kind in a line, for a failed shape assertion.
-pub(crate) fn record_summary(log: &rig_effect_log::EffectLog) -> Vec<String> {
+pub(crate) fn record_summary(log: &rig_cassette::effect_log::EffectLog) -> Vec<String> {
     log.records
         .iter()
         .map(|record| match &record.kind {
@@ -182,8 +183,7 @@ impl Buildable for AgentBuilder<WithToolServerHandle> {
     }
 }
 
-/// The cell's memory and route on the builder, the recorder, and the
-/// build.
+/// Apply the cell's memory and route, then build.
 fn finish<S, M: CompletionModel + Clone + 'static>(
     mut builder: AgentBuilder<S>,
     wire: &Wire<M>,
@@ -214,13 +214,6 @@ where
     }
     if let Some(label) = program.route {
         builder = builder.model_route(label, wire.route());
-    }
-    if cell.bus.declared() {
-        builder = if cell.events {
-            builder.record_effects_with_events()
-        } else {
-            builder.record_effects()
-        };
     }
     builder.build_agent()
 }
@@ -386,24 +379,29 @@ async fn run_prompts(
 pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
     wire: &Wire<M>,
     cell: &Cell,
-    golden: impl FnOnce(&rig_effect_log::EffectLog),
-) -> rig_effect_log::EffectLog {
+    golden: impl FnOnce(&rig_cassette::effect_log::EffectLog),
+) -> rig_cassette::effect_log::EffectLog {
     let program = wire.program(cell);
     let policy = cell.bus.policy();
     let settlement: Option<super::reasoning::SettlementCapture> =
         (cell.reasoning == Some(super::cells::ReasoningCase::Capped)).then(Default::default);
+    let recorder = if cell.events {
+        rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events()
+    } else {
+        rig_cassette::effect_log::EffectLogRecorder::new()
+    };
     let (log, responses) = if cell.bus.declared() {
         let mut builder = AgentBuilder::new(wire.model.clone());
         if cell.bus != Bus::Own {
             builder = builder.configure_bus(policy);
         }
-        let builder = configure(builder, &program, settlement.as_ref());
+        let builder = configure(builder, &program, settlement.as_ref()).record_to(recorder.clone());
         let agent = grant(builder, wire, cell, &program);
         if let Some(label) = program.late_route {
             agent.register_model(label, wire.route());
         }
         let responses = run_prompts(&agent, cell, &program).await;
-        (agent.take_effect_log().expect("recording"), responses)
+        (agent.stamp(recorder.take()), responses)
     } else {
         // A host's bus: the host registers the model under the agent's key
         // and its note taker, drives the bus and records; the agent stamps
@@ -424,11 +422,6 @@ pub(crate) async fn run_agent<M: CompletionModel + Clone + 'static>(
                 )
                 .expect("a fresh key");
         }
-        let recorder = if cell.events {
-            rig_effect_log::EffectLogRecorder::keeping_stream_events()
-        } else {
-            rig_effect_log::EffectLogRecorder::new()
-        };
         driver.record_to(recorder.clone());
         let driver = tokio::spawn(driver);
         let builder =

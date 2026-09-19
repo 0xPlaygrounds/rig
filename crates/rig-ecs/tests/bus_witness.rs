@@ -22,6 +22,8 @@ use std::sync::Arc;
 
 use bevy_ecs::prelude::*;
 use bus_support::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::test_utils::observations::{Comparison, compare};
 use rig_core::{
     effect::{EffectFamily, EffectId, EffectKind, Outcome},
@@ -33,10 +35,9 @@ use rig_core::{
     serve::{Decision, Dispatch, ErasedHandler, Intercept, Reply, Serve, ServingPolicy, Verdict},
 };
 use rig_ecs::bus::{
-    BusSet, EffectLogResource, EffectOutcome, Handlers, Held, InFlight, Issued, PendingEffect,
-    RigSchedule, Scope, Witnessing, WorldOutcome,
+    BusSet, EffectOutcome, Handlers, Held, InFlight, Issued, PendingEffect, RigSchedule, Scope,
+    Witnessing, WorldOutcome,
 };
-use rig_effect_log::EffectLogRecorder;
 
 fn witnessed(app: &mut bevy_app::App) -> Arc<ObservationLog> {
     let log = Arc::new(ObservationLog::default());
@@ -1210,7 +1211,7 @@ fn answer_open(
 fn program(
     with_witness: bool,
 ) -> (
-    rig_effect_log::EffectLog,
+    rig_cassette::effect_log::EffectLog,
     Vec<String>,
     Option<ObservationTrace>,
 ) {

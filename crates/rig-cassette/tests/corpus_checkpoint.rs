@@ -73,9 +73,9 @@ use crate::corpus;
 use corpus::{
     Hook, LayerAt, LayerKind, LayerSpec, NESTING, NestedChild, Nesting, Output, Program, ROUTE,
 };
+use rig_cassette::effect_log::{Checkpoint, EffectLog, RequestCheck};
 use rig_core::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig_core::error::ErrorKind;
-use rig_effect_log::{Checkpoint, EffectLog, RequestCheck};
 
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";
 const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with just the number.";
@@ -220,7 +220,7 @@ macro_rules! checkpointed {
                     $crate::corpus::checkpoint_reproduces(
                         &super::$program,
                         $turns,
-                        rig_effect_log::RequestCheck::Payload,
+                        rig_cassette::effect_log::RequestCheck::Payload,
                         $crate::corpus::Against::Tail,
                     )
                     .await;
@@ -234,7 +234,7 @@ macro_rules! checkpointed {
                     $crate::corpus::checkpoint_reproduces(
                         &super::$program,
                         $turns,
-                        rig_effect_log::RequestCheck::Hash,
+                        rig_cassette::effect_log::RequestCheck::Hash,
                         $crate::corpus::Against::Tail,
                     )
                     .await;
@@ -248,7 +248,7 @@ macro_rules! checkpointed {
                     $crate::corpus::checkpoint_reproduces(
                         &super::$program,
                         $turns,
-                        rig_effect_log::RequestCheck::Payload,
+                        rig_cassette::effect_log::RequestCheck::Payload,
                         $crate::corpus::Against::FullLog,
                     )
                     .await;
@@ -265,7 +265,7 @@ macro_rules! checkpointed {
                     $crate::corpus::world_resume::world_resume_reproduces(
                         &super::$program,
                         $turns,
-                        rig_effect_log::RequestCheck::Payload,
+                        rig_cassette::effect_log::RequestCheck::Payload,
                         $crate::corpus::Against::Tail,
                     );
                 }
@@ -278,7 +278,7 @@ macro_rules! checkpointed {
                     $crate::corpus::world_resume::world_resume_reproduces(
                         &super::$program,
                         $turns,
-                        rig_effect_log::RequestCheck::Hash,
+                        rig_cassette::effect_log::RequestCheck::Hash,
                         $crate::corpus::Against::Tail,
                     );
                 }
@@ -291,7 +291,7 @@ macro_rules! checkpointed {
                     $crate::corpus::world_resume::world_resume_reproduces(
                         &super::$program,
                         $turns,
-                        rig_effect_log::RequestCheck::Payload,
+                        rig_cassette::effect_log::RequestCheck::Payload,
                         $crate::corpus::Against::FullLog,
                     );
                 }
@@ -335,7 +335,7 @@ async fn hash_mode_accepts_every_golden() {
     for fixture in &fixtures {
         let log = corpus::golden(fixture);
         let (dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
-        rig_agent::bus::replay::register_all_checking(&log, &mut driver, RequestCheck::Hash)
+        rig_cassette::agent::replay::register_all_checking(&log, &mut driver, RequestCheck::Hash)
             .unwrap_or_else(|report| panic!("{fixture}: {report}"));
         let driver = tokio::spawn(driver);
         for record in log.iter() {
@@ -393,7 +393,7 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
     };
     for check in [RequestCheck::Payload, RequestCheck::Hash] {
         let (dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
-        rig_agent::bus::replay::register_all_checking(&log, &mut driver, check)
+        rig_cassette::agent::replay::register_all_checking(&log, &mut driver, check)
             .expect("fresh keys");
         let driver = tokio::spawn(driver);
         let report = corpus::within(dispatcher.dispatch(&model, changed.clone()))
@@ -410,8 +410,8 @@ async fn a_one_byte_change_is_refused_by_hash_or_by_pointer() {
                 report.message
             ),
             RequestCheck::Hash => {
-                let recorded = rig_effect_log::stable_hash(&log[0].kind).expect("hashes");
-                let arrived = rig_effect_log::stable_hash(&changed).expect("hashes");
+                let recorded = rig_cassette::effect_log::stable_hash(&log[0].kind).expect("hashes");
+                let arrived = rig_cassette::effect_log::stable_hash(&changed).expect("hashes");
                 assert_ne!(recorded, arrived);
                 assert!(
                     report.message.ends_with(&format!(

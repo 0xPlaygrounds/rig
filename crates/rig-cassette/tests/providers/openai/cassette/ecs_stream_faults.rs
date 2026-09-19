@@ -14,12 +14,12 @@ use rig::prelude::*;
 use rig::providers::openai::{self, GPT_4O};
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
+use rig_cassette::effect_log::EffectLog;
 use rig_ecs::{
     agent::{Failure, MaxTokens, Preamble, Role},
     bus::{BusSet, EffectOutcome, RigSchedule, Streamed},
     systems::RigSet,
 };
-use rig_effect_log::EffectLog;
 
 use super::super::support::with_openai_cassette;
 use super::stream_faults::{

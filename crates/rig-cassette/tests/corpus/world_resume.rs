@@ -13,14 +13,15 @@
 use std::time::Instant;
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::identity::{stamp_legacy_builder_header, stamp_run};
+use rig_cassette::effect_log::{Checkpoint, EffectLog, RequestCheck};
 use rig_ecs::{
     agent::{Cursor, Failed, MessageParts, Run, RunOf, RunPhase, Settled},
-    bus::{EffectLogResource, EffectOutcome, IdCounter, RigSchedule},
+    bus::{EffectOutcome, IdCounter, RigSchedule},
     checkpoint::{load_world, save_world},
-    replay::{stamp_legacy_builder_header, stamp_run},
     systems::{Fresh, RunCommands},
 };
-use rig_effect_log::{Checkpoint, EffectLog, RequestCheck};
 
 use super::{
     Against, Program, assert_same_records, golden, program_hooks,

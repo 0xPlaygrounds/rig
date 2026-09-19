@@ -16,6 +16,7 @@ use rig::error::ErrorKind;
 use rig::prelude::*;
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{with_anthropic_cassette, with_anthropic_corpus_endings_cassette};
 use crate::goldens::{
@@ -78,8 +79,9 @@ async fn unary_tool_run(
     reason: &str,
     shape: &[EffectFamily],
     thinking: bool,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let mut builder = client
         .agent(CLAUDE_SONNET_4_6)
         .name("golden")
@@ -87,7 +89,7 @@ async fn unary_tool_run(
         .tool(Adder)
         .add_hook(hook)
         .add_hook(settled.clone())
-        .record_effects();
+        .record_to(recorder.clone());
     builder = if thinking {
         builder.additional_params(
             serde_json::json!({ "thinking": { "type": "enabled", "budget_tokens": 1024 } }),
@@ -103,7 +105,7 @@ async fn unary_tool_run(
         .expect_err("the hook stops the run");
     assert_eq!(cancelled_reason(&error), reason);
     assert_settled_error(&settled);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), shape);
     log
 }
@@ -130,8 +132,9 @@ async fn streamed_run(
     hook: impl AgentHook + 'static,
     reason: &str,
     program: Streamed,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let settled = RecordSettled::default();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let mut base = client.agent(CLAUDE_SONNET_4_6).name("golden");
     base = base.temperature(0.0);
     let agent = match program {
@@ -140,20 +143,20 @@ async fn streamed_run(
             .tool(Adder)
             .add_hook(hook)
             .add_hook(settled.clone())
-            .record_effects_with_events()
+            .record_to(recorder.clone())
             .build(),
         Streamed::Note => base
             .preamble(NOTE_PREAMBLE)
             .tool(WriteNote)
             .add_hook(hook)
             .add_hook(settled.clone())
-            .record_effects_with_events()
+            .record_to(recorder.clone())
             .build(),
         Streamed::Essay => base
             .preamble(BASIC_PREAMBLE)
             .add_hook(hook)
             .add_hook(settled.clone())
-            .record_effects_with_events()
+            .record_to(recorder.clone())
             .build(),
     };
     let prompt = match program {
@@ -169,10 +172,10 @@ async fn streamed_run(
         tokio::task::yield_now().await;
     }
     assert_settled_error(&settled);
-    agent.take_effect_log().expect("recording")
+    agent.stamp(recorder.take())
 }
 
-pub(super) fn last_outcome_kind(log: &rig::effect_log::EffectLog) -> Option<ErrorKind> {
+pub(super) fn last_outcome_kind(log: &rig::cassette::effect_log::EffectLog) -> Option<ErrorKind> {
     log.records
         .last()
         .and_then(|record| record.outcome.as_ref().err().map(|report| report.kind))
@@ -233,6 +236,7 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
         "corpus_endings/answer_outcome_cancelled",
         |client| async move {
             let settled = RecordSettled::default();
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(CLAUDE_SONNET_4_6)
                 .name("golden")
@@ -240,7 +244,7 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
                 .temperature(0.0)
                 .add_hook(CancelAnswer)
                 .add_hook(settled.clone())
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let error = agent
                 .prompt(BASIC_PROMPT)
@@ -248,7 +252,7 @@ async fn answer_outcome_cancelled_effect_log_is_the_golden_fixture() {
                 .expect_err("the hook stops the run");
             assert_eq!(cancelled_reason(&error), CANCEL_ANSWER);
             assert_settled_error(&settled);
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_eq!(families(&log), [EffectFamily::Completion]);
             assert!(
                 log.records[0].outcome.is_ok(),

@@ -2,6 +2,7 @@
 
 use rig::prelude::*;
 use rig::providers::anthropic;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_cassette;
 use crate::support::{BASIC_PREAMBLE, BASIC_PROMPT, assert_nonempty_response};
@@ -34,11 +35,12 @@ async fn completion_smoke() {
 #[tokio::test]
 async fn completion_smoke_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .agent(anthropic::completion::CLAUDE_SONNET_4_6)
             .name("golden")
             .preamble(BASIC_PREAMBLE)
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let response = agent
             .prompt(BASIC_PROMPT)
@@ -46,7 +48,7 @@ async fn completion_smoke_effect_log_is_the_golden_fixture() {
             .expect("completion should succeed")
             .output;
         assert_nonempty_response(&response);
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         crate::goldens::golden_effects("anthropic_completion_smoke", &log);
     })
     .await;
@@ -59,13 +61,14 @@ async fn completion_smoke_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn memory_conversation_effect_log_is_the_golden_fixture() {
     with_anthropic_cassette("agent/completion_smoke", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .agent(anthropic::completion::CLAUDE_SONNET_4_6)
             .name("golden")
             .preamble(BASIC_PREAMBLE)
             .memory(rig::memory::InMemoryConversationMemory::new())
             .conversation("golden-conversation")
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let response = agent
             .prompt(BASIC_PROMPT)
@@ -73,7 +76,7 @@ async fn memory_conversation_effect_log_is_the_golden_fixture() {
             .expect("completion should succeed")
             .output;
         assert_nonempty_response(&response);
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             log.records
                 .iter()

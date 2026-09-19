@@ -191,7 +191,7 @@ both_interpreters! {
     failing_load: FAILING_LOAD,
 }
 
-fn loaded_lengths(log: &rig_effect_log::EffectLog) -> Vec<usize> {
+fn loaded_lengths(log: &rig_cassette::effect_log::EffectLog) -> Vec<usize> {
     log.iter()
         .filter_map(|record| match (&record.kind, &record.outcome) {
             (

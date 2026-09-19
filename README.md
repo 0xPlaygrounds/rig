@@ -148,6 +148,19 @@ or just `full` to enable all features (`cargo add tokio --features macros,rt-mul
 
 More examples live in [`examples`](./examples) and each crate's `examples` directory; provider test coverage and cassette commands are described in [`tests/README.md`](./tests/README.md). Detailed walkthroughs are published on our [Dev.to Blog](https://dev.to/0thtachi) and at [rig.rs/docs](https://rig.rs/docs).
 
+## Recording and replay
+
+`rig::cassette::effect_log` provides logs, recorders, replay handlers and
+checkpoints. Keep an `EffectLogRecorder` handle and attach its clone with
+`AgentBuilder::record_to`; import `rig::cassette::agent::AgentReplayExt` to stamp
+the resulting log or check replay compatibility.
+
+For transport-free consumers, depend directly on `rig-cassette` with default
+features disabled. Its optional `agent` and `ecs` adapters are independent of
+each other and of the native `http` engine. Neither runtime depends on the
+concrete logging crate. See the [cassette README](crates/rig-cassette/README.md)
+for dependency guarantees, ECS replay installation and migration paths.
+
 ## Supported Integrations
 
 The root `rig` facade exposes companion crates behind one feature per integration:

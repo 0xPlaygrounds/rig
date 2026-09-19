@@ -1,7 +1,12 @@
 use super::*;
 
-fn recorded_pair(name: &str) -> (rig_effect_log::EffectLog, rig_effect_log::EffectLog) {
-    let original: rig_effect_log::EffectLog = serde_json::from_str(
+fn recorded_pair(
+    name: &str,
+) -> (
+    rig_cassette::effect_log::EffectLog,
+    rig_cassette::effect_log::EffectLog,
+) {
+    let original: rig_cassette::effect_log::EffectLog = serde_json::from_str(
         &std::fs::read_to_string(crate::goldens::golden_path(name)).expect("original golden"),
     )
     .expect("effect log");
@@ -13,7 +18,7 @@ fn recorded_pair(name: &str) -> (rig_effect_log::EffectLog, rig_effect_log::Effe
         .map(|(scope, policy)| {
             (
                 scope.clone(),
-                rig_effect_log::ProgramIdentity {
+                rig_cassette::effect_log::ProgramIdentity {
                     required: original.header.required.clone(),
                     policy: *policy,
                 },

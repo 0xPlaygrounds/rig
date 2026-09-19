@@ -15,6 +15,7 @@ use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::providers::anthropic::completion::CLAUDE_SONNET_4_6;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::serve::ServingPolicy;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_anthropic_corpus_host_cassette;
 use crate::goldens::{
@@ -85,7 +86,7 @@ async fn over_host(
     client: Bound<Anthropic>,
     host: Host,
     hooks: Hooks,
-) -> rig::effect_log::EffectLog {
+) -> rig::cassette::effect_log::EffectLog {
     let config = ServingPolicy {
         serial_per_handler: host.serial,
         ..ServingPolicy::default()
@@ -110,9 +111,9 @@ async fn over_host(
             .expect("a fresh key");
     }
     let recorder = if host.streamed {
-        rig::effect_log::EffectLogRecorder::keeping_stream_events()
+        rig::cassette::effect_log::EffectLogRecorder::keeping_stream_events()
     } else {
-        rig::effect_log::EffectLogRecorder::new()
+        rig::cassette::effect_log::EffectLogRecorder::new()
     };
     driver.record_to(recorder.clone());
     let driver = tokio::spawn(driver);
@@ -149,7 +150,7 @@ async fn over_host(
     log
 }
 
-pub(super) fn note_ats(log: &rig::effect_log::EffectLog) -> Vec<String> {
+pub(super) fn note_ats(log: &rig::cassette::effect_log::EffectLog) -> Vec<String> {
     log.iter()
         .filter(|record| record.key.as_str() == NOTE_KEY)
         .map(|record| match &record.kind {

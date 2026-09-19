@@ -10,6 +10,7 @@ use rig::effect::EffectFamily;
 use rig::prelude::*;
 use rig::providers::openai;
 use rig::streaming::{Delta, StreamEvent};
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_corpus_delta_cassette;
 use crate::goldens::families;
@@ -20,6 +21,7 @@ const ADD_PROMPT: &str = "Use the add tool to add 17 and 25, then reply with jus
 #[tokio::test]
 async fn chat_baseline_effect_log_is_the_golden_fixture() {
     with_openai_corpus_delta_cassette("corpus_delta/chat_baseline", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
             .chat
             .agent(openai::GPT_4O)
@@ -27,7 +29,7 @@ async fn chat_baseline_effect_log_is_the_golden_fixture() {
             .preamble(TOOLS_PREAMBLE)
             .temperature(0.0)
             .tool(Adder)
-            .record_effects_with_events()
+            .record_to(recorder.clone())
             .build();
         let mut stream = agent.prompt(ADD_PROMPT).max_turns(3).stream();
         let mut output = None;
@@ -39,7 +41,7 @@ async fn chat_baseline_effect_log_is_the_golden_fixture() {
         drop(stream);
         let output = output.expect("a final response");
         assert!(output.contains("42"), "{output}");
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
             [

@@ -123,7 +123,7 @@ both_interpreters! {
     prompted_unvalidated: PROMPTED_UNVALIDATED,
 }
 
-fn every_golden() -> Vec<(String, rig_effect_log::EffectLog)> {
+fn every_golden() -> Vec<(String, rig_cassette::effect_log::EffectLog)> {
     let dir = corpus::fixtures::effects_dir();
     let mut goldens: Vec<_> = std::fs::read_dir(dir)
         .expect("the fixtures directory")

@@ -14,6 +14,9 @@ use std::time::{Duration, Instant};
 
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::identity::stamp_legacy_builder_header;
+use rig_cassette::effect_log::{EffectLogRecorder, EffectLogReplayer, RequestCheck};
 use rig_core::{
     effect::{EffectFamily, HandlerKey},
     error::ErrorKind,
@@ -26,11 +29,9 @@ use rig_ecs::{
         Preamble, Remembers, Retrievable, Retrieval, RetrievalKind, Retrieves, RunResult, Settled,
         Temperature, ToolChoiceSpec, ToolPolicy, Unhandled as WorldUnhandled, UsesModel,
     },
-    bus::{EffectLogResource, EffectOutcome, Handlers, IdCounter, PendingEffect},
-    replay::stamp_legacy_builder_header,
+    bus::{EffectOutcome, Handlers, IdCounter, PendingEffect},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLogRecorder, EffectLogReplayer, RequestCheck};
 
 use super::{
     Ending, Output as CorpusOutput, Program, Unhandled, assert_same_records, golden, golden_answer,
@@ -51,7 +52,11 @@ pub struct Opened {
     pub reached: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
-pub fn open(program: &Program, log: &rig_effect_log::EffectLog, check: RequestCheck) -> Opened {
+pub fn open(
+    program: &Program,
+    log: &rig_cassette::effect_log::EffectLog,
+    check: RequestCheck,
+) -> Opened {
     EffectLogReplayer::check_header(log).expect("a current format");
     // A host-bus golden names no policy: the replay's host runs the
     // producer's where the program names it, as `Replay::open` does.
@@ -207,8 +212,12 @@ pub fn world_agent_reproduces(program: &Program) {
         if let Some(concurrency) = program.tool_concurrency {
             world.entity_mut(run).insert(ToolPolicy { concurrency });
         }
-        rig_ecs::replay::stamp_run(world, run, &world.resource::<EffectLogResource>().0.clone())
-            .expect("the run stamps its program identity");
+        rig_cassette::ecs::identity::stamp_run(
+            world,
+            run,
+            &world.resource::<EffectLogResource>().0.clone(),
+        )
+        .expect("the run stamps its program identity");
         if !drive(&mut app, program, run, start, &log, &reached) {
             return;
         }
@@ -243,7 +252,7 @@ pub fn drive(
     program: &Program,
     run: Entity,
     start: Instant,
-    log: &rig_effect_log::EffectLog,
+    log: &rig_cassette::effect_log::EffectLog,
     reached: &std::sync::Arc<std::sync::atomic::AtomicBool>,
 ) -> bool {
     loop {
@@ -297,7 +306,12 @@ pub fn drive(
 }
 
 /// The run ended as the program says.
-pub fn assert_ending(app: &App, program: &Program, run: Entity, log: &rig_effect_log::EffectLog) {
+pub fn assert_ending(
+    app: &App,
+    program: &Program,
+    run: Entity,
+    log: &rig_cassette::effect_log::EffectLog,
+) {
     let world = app.world();
     let ending = (
         world.get::<RunResult>(run).cloned(),
@@ -340,8 +354,8 @@ pub fn assert_ending(app: &App, program: &Program, run: Entity, log: &rig_effect
 /// The replayed header is the golden's: spec hash, hooks, required row,
 /// signature; and the world's identity computation agrees with the harness.
 pub fn assert_header(
-    replayed: &rig_effect_log::EffectLog,
-    log: &rig_effect_log::EffectLog,
+    replayed: &rig_cassette::effect_log::EffectLog,
+    log: &rig_cassette::effect_log::EffectLog,
     program: &Program,
 ) {
     assert_eq!(
@@ -368,7 +382,7 @@ pub fn assert_header(
         program.fixture
     );
     // The world's own identity computation agrees with the harness's.
-    let expected = rig_effect_log::stable_hash(&rig_agent::run::RunSpec {
+    let expected = rig_cassette::effect_log::stable_hash(&rig_agent::run::RunSpec {
         max_turns: Some(program.default_max_turns.unwrap_or(1)),
         max_invalid_tool_call_retries: 0,
         unhandled_invalid_tool_call: rig_agent::run::UnhandledInvalidToolCall::Fail,

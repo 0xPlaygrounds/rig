@@ -26,7 +26,9 @@ Cassette suites require a checkout of this repository: `rig-cassette` excludes
 its fixtures and integration tests from the published package. The unpublished
 `rig-cassette-minimal` runner at
 `crates/rig-cassette/tests/minimal/Cargo.toml` executes the same `verify` and
-`world_replay` sources without the engine's JSON features:
+`world_replay` sources, plus the shared effect-log/classic-replay regressions.
+It selects only cassette's `agent,ecs` features: no native HTTP engine,
+`serde_json/preserve_order` or `serde_json/float_roundtrip`.
 
 ```sh
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --all-features --retries 0
@@ -34,6 +36,13 @@ RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal
 
 Keep `RIG_REGENERATE_GOLDEN` unset. This execution complements, rather than
 replaces, the unified verification runs through `rig-cassette`.
+The default/all-features cassette library still owns the unified library
+regressions; `core-all` also retains the migrated classic replay cases.
+Minimal verification runs with zero retries; unified verification and both
+standalone/default-member parity configurations retain their existing two.
+The standalone parity lane explicitly includes the `rig-test-support` ECS
+helper regressions. Source ownership includes the library tests shared by
+the minimal runner, not only its two verification entrypoints.
 
 ## Testing Doctrine
 

@@ -17,6 +17,7 @@ use rig::providers::openai::GPT_4O;
 use rig::providers::openai::OpenAI;
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_cassette;
 use crate::{
@@ -82,11 +83,12 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
     with_openai_cassette(
         "error_envelope/nonexistent_model_streaming_error_preserves_status_and_body",
         |client| async move {
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
             let agent = client
                 .openai
                 .agent(MISSING_MODEL)
                 .max_tokens(SETUP_MAX_TOKENS)
-                .record_effects_with_events()
+                .record_to(recorder.clone())
                 .build();
             let mut stream = agent.prompt(SETUP_PROMPT).stream();
             let drained = drain(&mut stream).await;
@@ -98,7 +100,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
             assert_eq!(drained.errors.len(), 1, "one error item: {drained:?}");
             assert_setup_failure(&drained.errors[0], SETUP_KIND, 400);
 
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             assert_setup_failure(sole_failed_completion(&log), SETUP_KIND, 400);
             let errors = recorded_stream_errors(&log);
             assert_eq!(errors.len(), 1, "one recorded error item: {errors:?}");
@@ -120,10 +122,11 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
         "the recording streams text before its end"
     );
     let client = scripted_client(vec![sse_bytes(&frames)]);
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
         .agent(GPT_4O)
         .preamble(STREAMING_PREAMBLE)
-        .record_effects_with_events()
+        .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt(STREAMING_PROMPT).stream();
     let drained = drain(&mut stream).await;
@@ -141,7 +144,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
         );
     }
 
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     let recorded = sole_failed_completion(&log);
     assert_eq!(recorded.kind, ErrorKind::Response, "{recorded:?}");
     assert_eq!(recorded.message, rig::serve::stream_truncated().message);
@@ -155,12 +158,13 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
     let frames = tool_call_prefix_frames();
     let invocations = Invocations::default();
     let client = scripted_client(vec![sse_bytes(&frames)]);
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
         .agent(GPT_4O)
         .preamble(STREAMING_TOOLS_PREAMBLE)
         .tool(Adder)
         .tool(CountedSubtract(invocations.clone()))
-        .record_effects_with_events()
+        .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(2).stream();
     let drained = drain(&mut stream).await;
@@ -175,7 +179,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
     }
     assert_eq!(invocations.count(), 0, "the tool never ran");
 
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [EffectFamily::Completion],
@@ -194,10 +198,11 @@ async fn error_event_after_content_fails_with_the_provider_error() {
     let prefix = delta_text(&frames);
     frames.push(ERROR_EVENT.to_owned());
     let client = scripted_client(vec![sse_bytes(&frames)]);
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = client
         .agent(GPT_4O)
         .preamble(STREAMING_PREAMBLE)
-        .record_effects_with_events()
+        .record_to(recorder.clone())
         .build();
     let mut stream = agent.prompt(STREAMING_PROMPT).stream();
     let drained = drain(&mut stream).await;
@@ -216,7 +221,7 @@ async fn error_event_after_content_fails_with_the_provider_error() {
         "the event's payload is preserved: {report:?}"
     );
 
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     let recorded = sole_failed_completion(&log);
     assert_eq!(recorded.kind, ErrorKind::ProviderResponse, "{recorded:?}");
     let errors = recorded_stream_errors(&log);
@@ -240,11 +245,12 @@ async fn error_event_after_content_fails_with_the_provider_error() {
 #[tokio::test]
 async fn dropping_the_stream_at_the_first_delta_records_a_cancel() {
     with_openai_cassette("streaming/streaming_smoke", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
             .openai
             .agent(GPT_4O)
             .preamble(STREAMING_PREAMBLE)
-            .record_effects_with_events()
+            .record_to(recorder.clone())
             .build();
         {
             let mut stream = agent.prompt(STREAMING_PROMPT).stream();
@@ -266,7 +272,7 @@ async fn dropping_the_stream_at_the_first_delta_records_a_cancel() {
         for _ in 0..64 {
             tokio::task::yield_now().await;
         }
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         let recorded = sole_failed_completion(&log);
         assert_eq!(recorded.kind, ErrorKind::Cancelled, "{recorded:?}");
     })

@@ -181,7 +181,7 @@ fn recording_over_a_host_bus_is_refused_at_build() {
         "host",
         rig_core::effect::HandlerKey::from("model"),
     )
-    .record_effects()
+    .record_to(rig_cassette::effect_log::EffectLogRecorder::new())
     .build();
 }
 

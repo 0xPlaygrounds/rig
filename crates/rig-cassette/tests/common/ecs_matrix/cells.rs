@@ -273,7 +273,7 @@ pub(crate) struct Cell {
     pub(crate) bus: Bus,
     /// The host serves `host/note`.
     pub(crate) notes: bool,
-    /// The recorder keeps stream events (`record_effects_with_events`).
+    /// The recorder keeps stream events (`EffectLogRecorder::keeping_stream_events`).
     pub(crate) events: bool,
     /// The record's families, in order.
     pub(crate) families: &'static [EffectFamily],

@@ -8,6 +8,7 @@ use rig::effect::EffectFamily;
 use rig::message::AssistantContent;
 use rig::prelude::*;
 use rig::providers::openai;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::with_openai_cassette;
 use crate::support::{Adder, STREAMING_TOOLS_PREAMBLE, STREAMING_TOOLS_PROMPT, Subtract};
@@ -19,7 +20,7 @@ pub(crate) const CHAIN_PREAMBLE: &str = "You are a calculator assistant. You MUS
 pub(crate) const CHAIN_PROMPT: &str = "First add 20 and 5 with the add tool. Then subtract 4 from that sum with the \
      subtract tool. Report the final number.";
 
-fn families(log: &rig::effect_log::EffectLog) -> Vec<EffectFamily> {
+fn families(log: &rig::cassette::effect_log::EffectLog) -> Vec<EffectFamily> {
     log.records
         .iter()
         .map(|record| record.kind.family())
@@ -27,7 +28,7 @@ fn families(log: &rig::effect_log::EffectLog) -> Vec<EffectFamily> {
 }
 
 /// Every tool call in the log's completion outcomes, with its provider id.
-fn tool_calls(log: &rig::effect_log::EffectLog) -> Vec<rig::message::ToolCall> {
+fn tool_calls(log: &rig::cassette::effect_log::EffectLog) -> Vec<rig::message::ToolCall> {
     log.records
         .iter()
         .filter_map(|record| match &record.outcome {
@@ -60,6 +61,7 @@ fn assert_dual_ids(calls: &[rig::message::ToolCall]) {
 #[tokio::test]
 async fn streaming_with_events_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/streaming_with_events", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let agent = client
             .openai
             .agent(openai::GPT_4O)
@@ -68,7 +70,7 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
             .temperature(0.0)
             .tool(Adder)
             .tool(Subtract)
-            .record_effects_with_events()
+            .record_to(recorder.clone())
             .build();
         let mut stream = agent.prompt(STREAMING_TOOLS_PROMPT).max_turns(3).stream();
         let mut saw_final = false;
@@ -78,7 +80,7 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
             }
         }
         assert!(saw_final, "the stream yields a final response");
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
             [
@@ -108,6 +110,7 @@ async fn streaming_with_events_effect_log_is_the_golden_fixture() {
 #[tokio::test]
 async fn tool_call_turns_effect_log_is_the_golden_fixture() {
     with_openai_cassette("effect_corpus/tool_call_turns", |client| async move {
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
         let agent = client
             .openai
             .agent(openai::GPT_4O)
@@ -116,7 +119,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
             .temperature(0.0)
             .tool(Adder)
             .tool(Subtract)
-            .record_effects()
+            .record_to(recorder.clone())
             .build();
         let response = agent
             .prompt(CHAIN_PROMPT)
@@ -124,7 +127,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
             .await
             .expect("the agent answers");
         assert!(response.output.contains("21"), "{}", response.output);
-        let log = agent.take_effect_log().expect("recording");
+        let log = agent.stamp(recorder.take());
         assert_eq!(
             families(&log),
             [

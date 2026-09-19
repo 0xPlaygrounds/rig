@@ -19,19 +19,18 @@ use std::sync::{Arc, atomic::Ordering};
 
 use bevy_ecs::prelude::*;
 use bus_support::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::{
     completion::CompletionRequest,
     effect::{EffectFamily, EffectKind, HandlerKey, Key, Outcome, family},
     serve::Serve,
 };
 use rig_ecs::{
-    bus::{
-        EffectLogResource, EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Replay,
-        Reserved, Streamed, Typed,
-    },
+    bus::{EffectOutcome, Handlers, InFlight, Issued, PendingEffect, Reserved, Streamed, Typed},
     checkpoint::{Checkpoint, Counters as SavedCounters, load_world},
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 /// A golden log from the corpus.
 fn golden(name: &str) -> EffectLog {
@@ -212,12 +211,9 @@ fn three_goldens_replay_through_a_world_by_id() {
     ] {
         let log = golden(name);
         let mut app = serial_app();
-        Handlers::with(app.world_mut(), |handlers| {
-            Replay::default()
-                .register(handlers, &log)
-                .expect("the golden registers")
-        })
-        .expect("a bus");
+        Replay::default()
+            .register(app.world_mut(), &log)
+            .expect("the golden registers");
         EffectLogResource::install(app.world_mut(), EffectLogRecorder::keeping_stream_events());
         let entities = Replay::load(app.world_mut(), &log);
         assert_eq!(entities.len(), log.records.len(), "{name}");
@@ -289,12 +285,9 @@ fn a_checkpoint_and_the_logs_tail_resume_in_a_fresh_world() {
     );
 
     let mut app = serial_app();
-    Handlers::with(app.world_mut(), |handlers| {
-        Replay::default()
-            .register(handlers, &resumed)
-            .expect("registers")
-    })
-    .expect("a bus");
+    Replay::default()
+        .register(app.world_mut(), &resumed)
+        .expect("registers");
     // Only the tail is re-issued: the head is spawned answered, as a scene
     // would spawn it.
     let head = app

@@ -12,6 +12,8 @@ use crate::run_support;
 use std::{any::type_name, collections::BTreeMap, sync::Mutex};
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
     error::{ErrorKind, ErrorReport},
@@ -24,11 +26,10 @@ use rig_ecs::{
         Grant, InvalidCall, InvalidCalls, Resolution, Run, RunSeq, Settled,
         content::parts::{TextPart, ToolResultPart, ToolResultStatus, read_message},
     },
-    bus::{EffectLogResource, RigSchedule},
+    bus::RigSchedule,
     checkpoint::{Checkpoint, load_world, save_world},
     systems::{RigSet, RunCommands},
 };
-use rig_effect_log::EffectLogRecorder;
 use run_support::*;
 
 const MODEL: &str = "t/model:default";

@@ -2,6 +2,7 @@
 //! order, and a fresh bus with no model and no tool behind the keys replays
 //! the run to the same answer from the log alone.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::{
     sync::{Arc, Mutex},
     time::Duration,
@@ -12,11 +13,11 @@ use rig_agent::{
     AgentBuilder,
     tool::{Tool, ToolContext, ToolExecutionError},
 };
+use rig_cassette::effect_log::EffectLogReplayer;
 use rig_core::{
     effect::EffectFamily,
     test_utils::{MockCompletionModel, MockTurn},
 };
-use rig_effect_log::EffectLogReplayer;
 use serde::Deserialize;
 use serde_json::json;
 
@@ -88,15 +89,16 @@ fn two_tool_calls_then_done() -> MockCompletionModel {
 
 #[tokio::test]
 async fn a_run_records_every_dispatch_and_replays_from_the_log() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let recorded = AgentBuilder::new(two_tool_calls_then_done())
         .tool(Slow::default())
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     let response = within(recorded.prompt("go").max_turns(3).run())
         .await
         .expect("recorded run");
     assert_eq!(response.output, "done");
-    let log = recorded.take_effect_log().expect("recording was enabled");
+    let log = recorded.stamp(recorder.take());
     assert_eq!(log.len(), 4, "two completions and two tool calls");
     assert_eq!(log[0].kind.family(), EffectFamily::Completion);
     assert_eq!(log[1].kind.family(), EffectFamily::Tool);
@@ -107,9 +109,10 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
     // The examples-doc flow: save the session, restore it, replay it with
     // no model and no tool behind the keys.
     let saved = serde_json::to_string(&log).expect("log serializes");
-    let restored: rig_effect_log::EffectLog = serde_json::from_str(&saved).expect("restores");
+    let restored: rig_cassette::effect_log::EffectLog =
+        serde_json::from_str(&saved).expect("restores");
     let (dispatcher, registrar, mut driver) = Bus::channel();
-    rig_agent::bus::replay::register_all(&restored, &mut driver).expect("fresh keys");
+    rig_cassette::agent::replay::register_all(&restored, &mut driver).expect("fresh keys");
     let replay_task = tokio::spawn(driver);
 
     // The replayed agent advertises the same tool (its handler is the
@@ -150,14 +153,15 @@ async fn a_run_records_every_dispatch_and_replays_from_the_log() {
 /// `Divergence`, never a tool failure the model would have seen.
 #[tokio::test]
 async fn a_tool_divergence_fails_the_run_at_the_tool_record() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     let recorded = AgentBuilder::new(two_tool_calls_then_done())
         .tool(Slow::default())
-        .record_effects()
+        .record_to(recorder.clone())
         .build();
     within(recorded.prompt("go").max_turns(3).run())
         .await
         .expect("recorded run");
-    let mut log = recorded.take_effect_log().expect("recording was enabled");
+    let mut log = recorded.stamp(recorder.take());
     let tool_key = log[1].key.clone();
     // Corrupt the record the program's first tool call must match.
     if let rig_core::effect::EffectKind::ToolCall { args, .. } = &mut log.records[1].kind {
@@ -165,7 +169,7 @@ async fn a_tool_divergence_fails_the_run_at_the_tool_record() {
     }
 
     let (dispatcher, registrar, mut driver) = Bus::channel();
-    rig_agent::bus::replay::register_all(&log, &mut driver).expect("fresh keys");
+    rig_cassette::agent::replay::register_all(&log, &mut driver).expect("fresh keys");
     let replay_task = tokio::spawn(driver);
     let tool_replayer =
         EffectLogReplayer::for_key(&log, &tool_key).expect("the log has the tool's records");

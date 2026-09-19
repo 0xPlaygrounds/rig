@@ -18,6 +18,7 @@
 //! cassettes survive re-recording. Deterministic hooks (no clocks/RNG) keep the
 //! outbound requests byte-identical for replay.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::sync::Mutex;
@@ -795,6 +796,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
     with_gemini_cassette(
         "hook_stress/streaming_lifecycle_ordering_and_context_streaming_flag",
         |client| async move {
+            let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
             let agent = client
                 .agent(gemini::completion::GEMINI_2_5_FLASH)
                 .name("stress-agent")
@@ -802,7 +804,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
                 .temperature(0.0)
                 .tool(add)
                 .tool(subtract)
-                .record_effects()
+                .record_to(recorder.clone())
                 .build();
             let mut stream = agent
                 .prompt(
@@ -818,7 +820,7 @@ async fn tool_call_turns_effect_log_is_the_golden_fixture() {
                 }
             }
             assert!(saw_final, "the stream must yield a FinalResponse");
-            let log = agent.take_effect_log().expect("recording");
+            let log = agent.stamp(recorder.take());
             let tool_ids: Vec<&rig::message::ToolCallId> = log
                 .records
                 .iter()

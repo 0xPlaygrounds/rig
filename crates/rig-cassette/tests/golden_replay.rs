@@ -1,6 +1,6 @@
 //! The original effect corpus: ten golden effect logs, each recorded once by one
 //! root-suite test against a cassette transport (a real provider's bytes,
-//! replayed over HTTP) with `record_effects()`, committed under
+//! replayed over HTTP) with an explicit `EffectLogRecorder`, committed under
 //! `fixtures/effects/*.effects.json`, and replayed here with **no provider, no
 //! tool and no memory behind any key** — a replayer answers every dispatch
 //! from the record.

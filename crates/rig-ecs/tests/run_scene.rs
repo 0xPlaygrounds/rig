@@ -14,6 +14,9 @@ use std::{any::type_name, time::Instant};
 
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{effect::HandlerKey, serve::ServingPolicy};
 use rig_ecs::{
     agent::{
@@ -22,13 +25,11 @@ use rig_ecs::{
         UsesModel, Utterance,
     },
     bus::{
-        EffectLogResource, EffectOutcome, Handlers, IdCounter, InFlight, Issued, PendingEffect,
-        Replay, Reserved, RigSchedule,
+        EffectOutcome, Handlers, IdCounter, InFlight, Issued, PendingEffect, Reserved, RigSchedule,
     },
     checkpoint::{Checkpoint, load_world, save_world},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use run_support::{GUARD, NeverAnswers};
 
 fn golden(name: &str) -> EffectLog {
@@ -46,6 +47,7 @@ fn world_with(log: &EffectLog) -> (App, Entity) {
         rig_ecs::RigPlugin::with_policy(ServingPolicy::default())
             .ambiguity_detection(LogLevel::Error),
     );
+    app.add_plugins(rig_cassette::ecs::ReplayPlugin);
     app.finish();
     app.cleanup();
     let key = HandlerKey::from("golden/model:default");
@@ -289,12 +291,9 @@ fn a_run_saved_with_its_effect_in_flight_resumes_and_the_effect_is_answered_ther
     // from the record, and the run settles on the golden's answer.
     let saved = Checkpoint::from_json(&json).expect("serde");
     let mut app = run_support::app();
-    Handlers::with(app.world_mut(), |handlers| {
-        Replay::default()
-            .register(handlers, &log)
-            .expect("the golden's replayers")
-    })
-    .expect("a bus");
+    Replay::default()
+        .register(app.world_mut(), &log)
+        .expect("the golden's replayers");
     EffectLogResource::install(app.world_mut(), EffectLogRecorder::new());
     let loaded = load_world(&saved, app.world_mut()).expect("the model is bound");
     let run = loaded.with::<Run>(app.world())[0];

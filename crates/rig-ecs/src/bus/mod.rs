@@ -55,9 +55,9 @@
 //! - **The log is a fold over entities.** With a [`Recording`] resource
 //!   installed ([`Recording::install`]), `Dispatch` opens a record as it
 //!   takes an effect and `Collect` closes it as the outcome lands; a
-//!   despawn before that closes it as cancelled. A [`Replay`] loads a
-//!   log's records as effect entities with their recorded ids and
-//!   registers a replayer that answers each by id. An ECS recording also
+//!   despawn before that closes it as cancelled. `rig_cassette::ecs::Replay`
+//!   loads records as effect entities with their recorded ids and registers
+//!   a replayer that answers each by id. An ECS recording also
 //!   keeps consumer delivery batches. Policy-visible replay requires these
 //!   boundaries and, for streams, kept events and error items; it does not
 //!   reconstruct arbitrary resources or elapsed time.
@@ -94,10 +94,10 @@
 //! system that needs another pass raises it too, and the plugin's default
 //! runner ([`woken_runner`]) updates on that signal, so nothing spins.
 //! Intake bounds apply per update; async readiness can require later
-//! updates. `RigEnd` holds the replay diagnosis
-//! ([`delivery::diagnose_idle_replay`]), which runs only after a pass that
-//! raised nothing. [`BusPlugin::install`] is the world half, for a test
-//! that drives `RigSchedule` itself.
+//! updates. Cassette's `rig_cassette::ecs::ReplayPlugin` installs replay
+//! diagnosis in `RigEnd`, running only after a pass that raised nothing.
+//! [`BusPlugin::install`] is the runtime's world half, for a test that drives
+//! `RigSchedule` itself.
 //!
 //! # What it deliberately does not have
 //!
@@ -111,7 +111,6 @@
 
 pub mod binding;
 pub mod collect;
-pub mod delivery;
 pub mod diagnostics;
 pub mod dispatch;
 pub mod effect;
@@ -120,7 +119,6 @@ pub mod hold;
 pub mod plugin;
 pub mod record;
 pub mod reflect;
-pub mod replay;
 pub mod stream_delivery;
 pub mod witness;
 
@@ -129,7 +127,6 @@ pub use binding::{
     ProviderBinding, Secret, materialize, materialize_bindings,
 };
 pub use collect::{Landed, Landing, StreamingView, collect_streams, collect_tasks, settle};
-pub use delivery::{ReplayDelivery, ReplayFailure};
 pub use diagnostics::{
     BindingReport, CredentialGuidance, ProviderDiagnostics, RegisteredProvider,
     provider_diagnostics,
@@ -149,7 +146,6 @@ pub use plugin::{BusPlugin, BusSet, Policy, RigEnd, RigSchedule, Wake, woken_run
 pub use record::{
     Observed, ObservedState, Recording, WorldObserver, record_bound, record_cancelled,
 };
-pub use replay::{EffectLogResource, Replay};
 pub use stream_delivery::StreamItemsDelivered;
 pub use witness::{
     AdapterOperation, BUS_EMITTER, Despawning, SubjectWalk, Subjects, Witnessing, bus_emitter,

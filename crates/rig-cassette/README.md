@@ -1,36 +1,97 @@
 # rig-cassette
 
-Rig's record/replay home: the cassette engine, both committed fixture corpora,
-and the effect bus's behavioural verification suite.
+Rig's record/replay home: effect logs and runtime replay adapters, the native
+HTTP cassette engine, both committed fixture corpora, and their verification suites.
 
 | part | path | published |
 |---|---|---|
-| engine | `src/` | yes |
+| effect logs and checkpoints | `src/effect_log/` | yes, always |
+| classic-agent replay adapter | `src/agent/` | yes, `agent` feature |
+| ECS replay adapter | `src/ecs/` | yes, `ecs` feature |
+| native HTTP engine | `src/http/` | yes, `http` feature |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
 | effect-log goldens | `fixtures/effects/<name>.effects.json` | no (`exclude`) |
 | cassette provider suites | `tests/<provider>.rs`, `tests/providers/`, `tests/common/` | no (`exclude`) |
 | effect-bus verification | `tests/verify/`, `tests/world_replay.rs` | no (`exclude`) |
 | minimal verification runner | `tests/minimal/Cargo.toml` (shared test sources) | no (`publish = false`, `exclude`) |
 
-Everything here shares a subject — a recording and the program that replays it
-— not a dependency graph. The engine's normal dependencies are `rig-core` and
-`rig-reqwest`: no agent runtime, no facade, no consumer registry, no fixture
-inventory. Everything the suites need on top of that (the `rig` facade,
-`rig-test-support`, `rig-agent`, `rig-ecs`, `rig-effect-log`, the Bevy crates,
-`proptest`) is a version-less path **dev-dependency**, so Cargo omits it from
-the published manifest and it never reaches a downstream's normal graph;
-`src/paths.rs` pins that with a `cargo tree -e normal` probe over an
-independent downstream package, and the repository's
-`tests/core/dependency_graph.rs` pins it from the other side. Dev-dependencies
-do not qualify the engine's runtime independence.
+## Features and dependency direction
 
-The edge runs one way at the package level: the facade no longer depends on
-this crate at all. The dev-dependency on the facade enables its capability
-features (`audio`, `image`, `derive`, `websocket`, `bedrock`, …)
-unconditionally, so a provider target enumerates the same tests in every lane
-instead of shrinking silently when a lane omits `--all-features`.
+Defaults are empty. An effect-log-only consumer uses:
+
+```toml
+rig-cassette = { version = "0.42.0", default-features = false }
+```
+
+| features | public modules | additional normal dependencies |
+|---|---|---|
+| none | `effect_log` | core contracts, futures and serialization only |
+| `agent` | `effect_log`, `agent` | `rig-agent`, without its default features |
+| `ecs` | `effect_log`, `ecs` | `rig-ecs` and Bevy |
+| `http` | `effect_log`, `http` | the native HTTP server/client engine, Tokio, ordered/round-trip JSON |
+| `bedrock` | `effect_log`, `http` | `http` plus Smithy event-stream decoding |
+
+Effect logs alone acquire neither runtime, Bevy, HTTP clients/servers, Tokio
+nor AWS dependencies. Agent and ECS integration are independently selectable:
+neither enables HTTP or `serde_json/preserve_order` / `float_roundtrip`, and
+neither acquires the other runtime. These guarantees concern the selected
+normal dependency graph; Cargo can still unify features requested by other
+dependencies in the same build.
+
+The dependency direction is cassette → runtime → core. Neither runtime depends
+on cassette, including through optional features. The `rig` facade re-exports
+this crate as `rig::cassette`; its `agent` feature enables the cassette agent
+adapter. Direct minimal consumers should depend on `rig-cassette`, rather than
+the facade's default transport configuration.
+
+The facade and provider helpers needed by this package's tests remain
+version-less path dev-dependencies, omitted from its published manifest.
+The facade dev-dependency explicitly enables its capability features so provider
+targets retain the same test inventory without relying on workspace defaults.
+Independent downstream graph guards live in `src/http/paths.rs` and
+`tests/core/dependency_graph.rs`; they distinguish native-engine isolation from
+the minimal and independently enabled runtime adapters.
+
+## Effect logs and runtime integration
+
+`rig_cassette::effect_log` owns `EffectLog`, `EffectLogRecorder`,
+`EffectLogReplayer`, `Checkpoint`, `RequestCheck`, header validation and stable
+hashing. The log/checkpoint wire formats and fingerprint inputs are unchanged.
+The recorder implements `rig_core::serve::Recorder`; the replayer implements
+the ordinary core handler interface.
+
+For a classic agent, enable `agent`, retain an `EffectLogRecorder`, and pass a
+clone to `AgentBuilder::record_to`. Use `keeping_stream_events()` instead of
+`new()` when original stream item boundaries are required. After driving the
+agent, import `rig_cassette::agent::AgentReplayExt` and call
+`agent.stamp(recorder.take())` (or stamp `recorder.log()` for a snapshot).
+The extension trait also supplies `run_spec_hash` and `check_replayable`.
+For a host-owned bus, attach the recorder with `BusDriver::record_to`; an agent
+over that bus cannot install its own recorder. Replay registration is
+`rig_cassette::agent::replay::register_all` (or `register_all_checking`).
+
+For ECS, enable `ecs`. Install any recorder through
+`rig_ecs::bus::Recording::install`, or use
+`rig_cassette::ecs::EffectLogResource::install` to retain the concrete handle as
+a resource too. Add `rig_cassette::ecs::ReplayPlugin` after `RigPlugin` or
+`BusPlugin`, then call `Replay::register(&mut World, &EffectLog)` before issuing
+replayed effects. `Replay::load` restores recorded effect ids;
+`Replay::policy_visible()` additionally requires the recorded delivery contract.
+`ReplayDelivery`, `ReplayFailure` and program identity helpers live in
+`rig_cassette::ecs` / `rig_cassette::ecs::identity`. World checkpoint state and
+generic execution/observation mechanisms remain in `rig-ecs`.
+
+Migration: replace the removed `rig-effect-log` dependency with `rig-cassette`
+and its `effect_log` module. Replace implicit agent recording/log getters with
+an explicit recorder and the agent extension trait. Move runtime replay imports
+to the cassette adapters; native cassette imports now start with
+`rig_cassette::http` and require `http` (or `bedrock`). No old package or API
+aliases remain.
 
 ## The engine
+Enable `http` and import engine APIs from `rig_cassette::http`. This feature is
+native-only and intentionally opts into both JSON features listed above.
+
 
 Pass a fixture root containing provider directories to `ProviderCassette::start`,
 `start_via(Transport::Direct, ..)`, `cassette_path` and every `recorded_*` reader:
@@ -63,8 +124,8 @@ scrubbed exchanges to a partial path without finalizing the recording.
 
 `DirectRecorder`, its request/response types and `DirectRecordingHttpClient`
 preserve binary bodies that a text proxy cannot record. SSE and ordinary binary
-responses work with no default features. Enable `bedrock` for Smithy event-stream
-decoding and scrubbing; its Smithy dependencies are absent otherwise.
+responses require only `http`. Enable `bedrock` for Smithy event-stream decoding
+and scrubbing; its Smithy dependencies are absent otherwise.
 
 The engine retains secret and generated-identifier scrubbing, strict request
 matching, and safety validation. Repository-specific source scans and fixture
@@ -79,7 +140,7 @@ remain placeholdered.
 ## The corpora
 
 `fixtures/cassettes/<provider>/` holds the recorded HTTP interactions the
-provider suites in the root package replay. `fixtures/effects/` holds the
+provider suites in this package replay. `fixtures/effects/` holds the
 effect-log goldens the verification suite replays. Both are data: they are
 re-recorded by their producer, never edited by hand, and never regenerated to
 make a check pass. `.gitattributes` exempts the cassettes from the
@@ -129,14 +190,20 @@ separate target, so a lane can select or exclude the world interpreter without
 touching the rest.
 
 The unpublished `rig-cassette-minimal` package in `tests/minimal/Cargo.toml`
-points at these same two entrypoints. It deliberately has no dependency on the
-cassette engine, facade or provider helpers, preserving replay without
-`serde_json/preserve_order` and `serde_json/float_roundtrip`. Selecting
-`rig-cassette` alone cannot provide that configuration: its engine enables both
-features unconditionally. CI runs the nested package separately with zero
-retries, and the shared targets through the default-member graph with two.
-The all-features workspace run excludes the nested package to avoid repeating
-the same sources with unified features.
+points at these same two entrypoints and reuses the effect-log and classic
+replay unit-test sources through its `effect_log` target. It depends on
+`rig-cassette` with only `agent,ecs`, without the native HTTP engine, facade or
+provider helpers. Its standalone graph lacks `serde_json/preserve_order` and
+`serde_json/float_roundtrip`. Testing the main cassette package does not prove
+this isolation: its dev-dependencies enable the native engine.
+
+CI runs the minimal targets separately with zero retries, and the shared
+verification targets through the default-member graph with two. The all-features
+workspace run excludes the nested package to avoid repeating the same sources
+with unified features. `core-all` separately retains the migrated classic replay
+unit tests; the default/all-features cassette library executes all migrated
+library regressions. The planner tracks both the shared test entrypoints and
+the shared library regression sources.
 
 | matrix | module | subject |
 |---|---|---|
@@ -177,8 +244,9 @@ replayer answers the record as the cancel it was, after the events it kept.
 
 ## What lives where
 
-- here: the cassette engine, both corpora, every cassette-backed provider
-  suite with its golden producers, and the behaviour of the bus and the agent
+- here: effect logs, concrete replay adapters, the cassette engine, both
+  corpora, every cassette-backed provider suite with its golden producers,
+  and the behaviour of the bus and the agent
   over it (record and replay, durable execution, the three interpreters
   agreeing);
 - the root package's `tests/core`: guards that scan the source tree and the
@@ -192,7 +260,7 @@ replayer answers the record as the cancel it was, after the events it kept.
 ## Running
 
 ```sh
-RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --lib --no-default-features
+RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --test effect_log --retries 0
 RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --lib --all-features
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'binary(verify)'
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'binary(world_replay)'

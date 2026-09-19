@@ -40,9 +40,9 @@
 use crate::corpus;
 
 use corpus::{Ending, Hook, LayerAt, LayerKind, LayerSpec, Program};
+use rig_cassette::effect_log::EffectLogReplayer;
 use rig_core::effect::{EffectKind, HandlerKey};
 use rig_core::error::ErrorKind;
-use rig_effect_log::EffectLogReplayer;
 
 const BASIC_PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 const TOOLS_PREAMBLE: &str = "You are a calculator here to help the user perform arithmetic operations. Use the tools provided to answer the user's question.";

@@ -12,9 +12,8 @@ use crate::{
     tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
 };
 use rig_core::completion::ModelRef;
-use rig_core::effect::{HandlerDescriptor, Key, family};
+use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
 use rig_core::id::ConversationId;
-use rig_effect_log::EffectLog;
 
 use super::drive::AgentBus;
 use rig_core::{message::ToolChoice, wasm_compat::WasmCompatSend};
@@ -483,38 +482,6 @@ impl Agent {
         self
     }
 
-    /// The effect log recorded so far, when the agent was built with
-    /// [`AgentBuilder::record_effects`](super::AgentBuilder::record_effects).
-    pub fn effect_log(&self) -> Option<EffectLog> {
-        self.config.bus.effect_log().map(|log| self.stamp(log))
-    }
-
-    /// Take the recorded effect log, leaving the recorder empty.
-    pub fn take_effect_log(&self) -> Option<EffectLog> {
-        self.config.bus.take_effect_log().map(|log| self.stamp(log))
-    }
-
-    /// A stable hash of this agent's run spec, what a log it records
-    /// carries in its header and what [`check_replayable`](Self::check_replayable)
-    /// compares.
-    pub fn run_spec_hash(&self) -> u64 {
-        rig_effect_log::stable_hash(&self.config.run_spec()).unwrap_or_default()
-    }
-
-    /// `log` with this agent's program identity in its header: the run-spec
-    /// hash, the hook stack, the required row and, for an agent that owns
-    /// its bus, the bus policy. What [`take_effect_log`](Self::take_effect_log)
-    /// does to a log the agent's own driver recorded; an agent over a
-    /// host's bus does not record, so the host taps its driver and stamps
-    /// the log here before committing it as a golden.
-    pub fn stamp(&self, mut log: EffectLog) -> EffectLog {
-        log.header.run_spec = Some(self.run_spec_hash());
-        log.header.hooks = self.program_names();
-        log.header.required = self.required_row();
-        log.header.bus = self.config.bus.config();
-        log
-    }
-
     /// The effect row this program can dispatch to: its model, every tool
     /// the registry serves, its memory backend and its retrieval indexes,
     /// each with the family it needs — from the registry, not from what a
@@ -544,94 +511,6 @@ impl Agent {
         row
     }
 
-    /// Whether `log` can be replayed by this agent: the log's format is this
-    /// rig's, its run spec hash is this agent's, and every key its
-    /// signature names is served on this agent's bus by a handler of the
-    /// recorded family. Refused up front, with both sides in the message,
-    /// rather than at the record where the run would have diverged.
-    pub fn check_replayable(&self, log: &EffectLog) -> Result<(), rig_core::error::ErrorReport> {
-        rig_effect_log::EffectLogReplayer::check_header(log)?;
-        if let Some(recorded) = log.header.run_spec {
-            let mine = self.run_spec_hash();
-            if recorded != mine {
-                return Err(rig_core::error::ErrorReport::new(
-                    rig_core::error::ErrorKind::Internal,
-                    format!(
-                        "replay refused: the log was recorded under run spec {recorded:#018x}, this agent runs under {mine:#018x}"
-                    ),
-                ));
-            }
-        }
-        // Hooks are program: a different stack re-makes different decisions.
-        // So are the layers on the bus's keys.
-        let mine = self.program_names();
-        if log.header.hooks != mine {
-            return Err(rig_core::error::ErrorReport::new(
-                rig_core::error::ErrorKind::Internal,
-                format!(
-                    "replay refused: the log was recorded under the hook stack {:?}, this agent runs under {mine:?}",
-                    log.header.hooks
-                ),
-            ));
-        }
-        // The serving policy: dispatch order is the same under either, but
-        // a log states the one it ran under and the agent must match it.
-        if let (Some(recorded), Some(mine)) = (log.header.bus, self.config.bus.config())
-            && recorded != mine
-        {
-            return Err(rig_core::error::ErrorReport::new(
-                rig_core::error::ErrorKind::Internal,
-                format!(
-                    "replay refused: the log was recorded under bus policy {recorded:?}, this agent runs under {mine:?}"
-                ),
-            ));
-        }
-        for (key, family) in &log.header.signature {
-            match self.config.bus.dispatcher().descriptor(key) {
-                Some(descriptor) if descriptor.family.family() == *family => {}
-                Some(descriptor) => {
-                    return Err(rig_core::error::ErrorReport::new(
-                        rig_core::error::ErrorKind::HandlerUnavailable,
-                        format!(
-                            "replay refused: `{key}` serves {} on this bus, the log needs {family}",
-                            descriptor.family.family()
-                        ),
-                    ));
-                }
-                None => {
-                    return Err(rig_core::error::ErrorReport::new(
-                        rig_core::error::ErrorKind::HandlerUnavailable,
-                        format!("replay refused: nothing serves `{key}`, which the log needs"),
-                    ));
-                }
-            }
-        }
-        // The program's required row must be served by the log's handlers.
-        if let Err(gap) = self.required_row().is_subset_of(&log.header.handlers) {
-            return Err(rig_core::error::ErrorReport::new(
-                rig_core::error::ErrorKind::HandlerUnavailable,
-                format!(
-                    "replay refused: this agent needs `{}` ({}), which the log never served: {gap}",
-                    gap.key, gap.needed
-                ),
-            ));
-        }
-        let mine = self.required_row();
-        let diffs = log.header.required.diff(&mine);
-        if !diffs.is_empty() {
-            let diffs: Vec<String> = diffs.iter().map(ToString::to_string).collect();
-            return Err(rig_core::error::ErrorReport::new(
-                rig_core::error::ErrorKind::HandlerUnavailable,
-                format!(
-                    "replay refused: the log was recorded by a program requiring {:?}, this agent requires {mine:?}: {}",
-                    log.header.required,
-                    diffs.join("; ")
-                ),
-            ));
-        }
-        Ok(())
-    }
-
     /// What decides on this agent's behalf: its hook stack's names, then
     /// every layer on the bus's handlers (the handler table's order,
     /// outermost in). The log's `hooks`; a replay under another stack of
@@ -647,6 +526,11 @@ impl Agent {
     /// The policy this agent's own bus runs under; `None` over a host's bus.
     pub fn bus_config(&self) -> Option<rig_core::serve::ServingPolicy> {
         self.config.bus.config()
+    }
+
+    /// The descriptor currently registered under `key`, without access to dispatch.
+    pub fn handler_descriptor(&self, key: &HandlerKey) -> Option<HandlerDescriptor> {
+        self.config.bus.dispatcher().descriptor(key)
     }
 
     /// Whether this agent owns and drives its own bus driver.

@@ -8,6 +8,7 @@ use rig::agent::{AgentBuilder, MultiTurnStreamItem};
 use rig::bus::Bus;
 use rig::effect::{EffectFamily, HandlerKey};
 use rig::providers::openai;
+use rig_cassette::agent::AgentReplayExt;
 
 use super::super::support::{OpenAiCassette, with_openai_corpus_host_cassette};
 use crate::goldens::{EMBED_KEY, EmbedPrompt, families};
@@ -25,7 +26,10 @@ async fn final_output(stream: &mut rig::agent::StreamingResult) -> String {
     output.expect("a final response")
 }
 
-async fn embeds_over_host(client: OpenAiCassette, streamed: bool) -> rig::effect_log::EffectLog {
+async fn embeds_over_host(
+    client: OpenAiCassette,
+    streamed: bool,
+) -> rig::cassette::effect_log::EffectLog {
     let (dispatcher, registrar, mut driver) = Bus::channel();
     let model_key = HandlerKey::from("golden/model:default");
     driver
@@ -49,9 +53,9 @@ async fn embeds_over_host(client: OpenAiCassette, streamed: bool) -> rig::effect
         )
         .expect("a fresh key");
     let recorder = if streamed {
-        rig::effect_log::EffectLogRecorder::keeping_stream_events()
+        rig::cassette::effect_log::EffectLogRecorder::keeping_stream_events()
     } else {
-        rig::effect_log::EffectLogRecorder::new()
+        rig::cassette::effect_log::EffectLogRecorder::new()
     };
     driver.record_to(recorder.clone());
     let driver = tokio::spawn(driver);

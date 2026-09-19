@@ -8,7 +8,7 @@ use std::collections::BTreeMap;
 use bevy_app::App;
 use bevy_ecs::prelude::*;
 
-use rig_effect_log::EffectLog;
+use rig_cassette::effect_log::EffectLog;
 
 use rig_core::error::ErrorReport;
 

@@ -56,6 +56,7 @@
 //!   output`), failed or not.
 
 use crate::corpus;
+use rig_cassette::agent::AgentReplayExt;
 
 use corpus::{Ending, Program};
 use rig_agent::AgentBuilder;
@@ -219,8 +220,9 @@ mod resumed {
 async fn the_default_budget_is_program_and_the_runner_budget_is_not() {
     let by_default = corpus::golden(DEFAULT_MAX_TURNS.fixture);
     let by_runner = corpus::golden(RESUME_ANTHROPIC.fixture);
-    let records =
-        |log: &rig_effect_log::EffectLog| log.iter().map(corpus::as_data).collect::<Vec<_>>();
+    let records = |log: &rig_cassette::effect_log::EffectLog| {
+        log.iter().map(corpus::as_data).collect::<Vec<_>>()
+    };
     assert_eq!(records(&by_default), records(&by_runner), "the same run");
     assert_ne!(by_default.header.run_spec, by_runner.header.run_spec);
 

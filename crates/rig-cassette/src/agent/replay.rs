@@ -1,13 +1,11 @@
-//! Registering a log's replayers on this bus's driver. The log, the
-//! recorder and the replayer itself are rig-effect-log's and need rig-core
-//! alone; putting a replayer behind every key of a log on a [`BusDriver`]
-//! is this runtime's, so it lives here (a second runtime registers the same
-//! replayer through its own registry).
+//! Register a recorded log's replayers on a classic-agent bus driver.
+//! The shared replayer requires only rig-core; this adapter supplies the
+//! independently enabled rig-agent integration.
 
+use crate::effect_log::{EffectLog, EffectLogReplayer, RequestCheck};
 use rig_core::error::ErrorReport;
-use rig_effect_log::{EffectLog, EffectLogReplayer, RequestCheck};
 
-use super::BusDriver;
+use rig_agent::bus::BusDriver;
 
 /// Register a replayer for every key in `log` on `driver`. Refuses a log of
 /// another format, and a log whose signature names a family its records do
@@ -34,5 +32,5 @@ pub fn register_all_checking(
     Ok(())
 }
 
-#[cfg(all(test, not(rig_loom)))]
+#[cfg(test)]
 mod tests;

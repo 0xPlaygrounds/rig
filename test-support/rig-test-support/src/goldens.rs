@@ -1,7 +1,7 @@
 //! Golden effect logs: the effect-bus cassette corpus.
 //!
 //! A producing test runs an agent program against the cassette transport
-//! with `record_effects()` and either writes the log to
+//! with an explicit `EffectLogRecorder` and either writes the log to
 //! `crates/rig-cassette/fixtures/effects/<name>.effects.json` (under
 //! `RIG_REGENERATE_GOLDEN=1`) or asserts the run's log equals the committed
 //! one as data — so the root suite itself detects drift between a cassette
@@ -12,7 +12,7 @@ use rig_core::effect::EffectFamily;
 
 use rig_core::message::Message;
 
-use rig_effect_log::EffectLog;
+use rig_cassette::effect_log::EffectLog;
 
 /// The families of a log's records, in order: the shape a producer asserts.
 #[allow(dead_code)] // not every target records
