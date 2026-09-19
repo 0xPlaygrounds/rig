@@ -18,13 +18,13 @@ fn root() -> &'static Path {
     Path::new(env!("CARGO_MANIFEST_DIR"))
 }
 
-/// Every `.yaml` under `tests/cassettes` and every `.effects.json` under
-/// `crates/rig-verify/fixtures`.
+/// Every `.yaml` under `crates/rig-cassette/fixtures/cassettes` and every `.effects.json` under
+/// `crates/rig-cassette/fixtures/effects`.
 fn fixtures() -> Vec<PathBuf> {
     let mut files = Vec::new();
     let mut pending = vec![
-        root().join("tests/cassettes"),
-        root().join("crates/rig-verify/fixtures"),
+        root().join("crates/rig-cassette/fixtures/cassettes"),
+        root().join("crates/rig-cassette/fixtures/effects"),
     ];
     while let Some(dir) = pending.pop() {
         for entry in std::fs::read_dir(&dir).expect("a fixture directory") {

@@ -36,7 +36,7 @@ use rig_effect_log::{EffectLog, EffectLogRecorder};
 /// A golden log from the corpus.
 fn golden(name: &str) -> EffectLog {
     let path = format!(
-        "{}/../rig-verify/fixtures/{name}.effects.json",
+        "{}/../rig-cassette/fixtures/effects/{name}.effects.json",
         env!("CARGO_MANIFEST_DIR")
     );
     let text = std::fs::read_to_string(&path).expect("the golden is committed");

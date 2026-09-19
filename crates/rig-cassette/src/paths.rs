@@ -87,7 +87,10 @@ fn write_fixture(root: &Path, scenario: &str, response: &str) {
 #[test]
 fn every_reader_uses_the_supplied_repository_or_downstream_root() {
     let scratch = assert_fs::TempDir::new().expect("temporary fixtures");
-    for layout in ["rig/tests/cassettes", "downstream/fixtures/cassettes"] {
+    for layout in [
+        "rig/crates/rig-cassette/fixtures/cassettes",
+        "downstream/fixtures/cassettes",
+    ] {
         let root = scratch.path().join(layout);
         write_fixture(&root, "nested/unary", r#"{"answer":"ok"}"#);
         write_fixture(

@@ -25,7 +25,7 @@ use futures::StreamExt;
 /// dependency, and never written.
 fn cassette_body(path: &str) -> String {
     let file = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tests/cassettes")
+        .join("../rig-cassette/fixtures/cassettes")
         .join(path);
     let text = std::fs::read_to_string(&file)
         .unwrap_or_else(|error| panic!("{} should be readable: {error}", file.display()));

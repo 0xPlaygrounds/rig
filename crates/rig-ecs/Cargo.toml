@@ -6,7 +6,7 @@ edition = { workspace = true }
 license = "MIT"
 description = "rig inside a Bevy World: effects as entities, handlers as entities, the driver as a system."
 repository = "https://github.com/0xPlaygrounds/rig"
-# Not published yet; rig-verify is the precedent.
+# Not published yet; the repository's test-support crates are the precedent.
 publish = false
 
 [lints]

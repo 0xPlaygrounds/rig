@@ -3,7 +3,7 @@
 //! replacing a streamed answer. Scripted because the world's timing and a
 //! stream's cancellation are the cell, not the wire; the layers are in
 //! `test-support/rig-test-support/src/goldens.rs`. The enumeration and the replays live in
-//! `crates/rig-verify/tests/corpus_layers.rs`.
+//! `crates/rig-cassette/tests/corpus_layers.rs`.
 
 use std::time::Duration;
 

@@ -5,7 +5,7 @@
 //! an unknown call in a stream, an unknown call beside a valid one, a
 //! repair, a skip, the runner's `Ignore` policy — are the mock's. The
 //! contract is the corpus's all the same: recorded once here, replayed by
-//! rig-verify with nothing behind the keys, both interpreters.
+//! rig-cassette with nothing behind the keys, both interpreters.
 
 use futures::StreamExt;
 use rig::agent::{AgentBuilder, MultiTurnStreamItem};

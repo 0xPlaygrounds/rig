@@ -10355,13 +10355,6 @@ version = "0.42.0"
 dependencies = [
  "anyhow",
  "assert_fs",
- "async-stream",
- "aws-config",
- "aws-sdk-bedrockruntime",
- "aws-smithy-eventstream",
- "aws-smithy-runtime-api",
- "aws-smithy-types",
- "axum 0.8.9",
  "base64 0.22.1",
  "bevy_app",
  "bevy_ecs",
@@ -10369,20 +10362,12 @@ dependencies = [
  "bytes",
  "futures",
  "httpmock",
- "hyper-util",
- "opentelemetry",
- "opentelemetry-otlp",
- "opentelemetry_sdk",
  "reqwest 0.13.4",
- "reqwest-middleware",
- "reqwest-retry",
  "rig-agent",
  "rig-bedrock",
  "rig-candle",
- "rig-cassette",
  "rig-core",
  "rig-derive",
- "rig-ecs",
  "rig-effect-log",
  "rig-fastembed",
  "rig-gemini-grpc",
@@ -10409,17 +10394,12 @@ dependencies = [
  "schemars 1.2.1",
  "serde",
  "serde_json",
- "serde_path_to_error",
  "serde_yaml",
- "sha2 0.10.9",
  "syn 2.0.117",
- "thiserror 2.0.18",
  "tokio",
- "tokio-test",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
- "url",
 ]
 
 [[package]]
@@ -10498,22 +10478,63 @@ dependencies = [
 name = "rig-cassette"
 version = "0.42.0"
 dependencies = [
+ "anyhow",
  "assert_fs",
+ "async-stream",
+ "aws-config",
+ "aws-sdk-bedrockruntime",
  "aws-smithy-eventstream",
+ "aws-smithy-runtime-api",
  "aws-smithy-types",
  "axum 0.8.9",
  "base64 0.22.1",
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_tasks",
+ "bytes",
  "futures",
  "httpdate",
  "httpmock",
+ "proptest",
  "reqwest 0.13.4",
+ "rig",
+ "rig-agent",
  "rig-core",
+ "rig-ecs",
+ "rig-effect-log",
  "rig-reqwest",
+ "rig-test-support",
+ "rmcp",
+ "schemars 1.2.1",
  "serde",
  "serde_json",
+ "serde_path_to_error",
  "serde_yaml",
+ "sha2 0.10.9",
+ "syn 2.0.117",
+ "thiserror 2.0.18",
  "tokio",
+ "tokio-test",
+ "tracing-subscriber",
  "url",
+]
+
+[[package]]
+name = "rig-cassette-minimal"
+version = "0.0.0"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_tasks",
+ "futures",
+ "proptest",
+ "rig-agent",
+ "rig-core",
+ "rig-ecs",
+ "rig-effect-log",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -10997,24 +11018,6 @@ dependencies = [
  "tokio",
  "tracing",
  "uuid",
-]
-
-[[package]]
-name = "rig-verify"
-version = "0.0.0"
-dependencies = [
- "bevy_app",
- "bevy_ecs",
- "bevy_tasks",
- "futures",
- "proptest",
- "rig-agent",
- "rig-core",
- "rig-ecs",
- "rig-effect-log",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

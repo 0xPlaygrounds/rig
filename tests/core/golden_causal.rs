@@ -4,7 +4,7 @@
 //! the host's never-answering handler — over a host bus whose model is a
 //! scripted mock (the wire does not change what the chain records; the
 //! completion child is recorded live in `tests/providers/anthropic`). The
-//! enumeration and the replays live in `crates/rig-verify/tests/corpus_causal.rs`.
+//! enumeration and the replays live in `crates/rig-cassette/tests/corpus_causal.rs`.
 //!
 //! Scripted, not live: the cancelled cells need the run dropped at the
 //! moment the child is reached, the same-key cells need a model that calls

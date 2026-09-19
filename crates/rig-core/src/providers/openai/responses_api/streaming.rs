@@ -330,7 +330,7 @@ pub struct RawChoiceAccumulator {
     /// a FRESH `item_id` on every delta and a different one again on the
     /// terminal's message item, so id equality reports "never delivered"
     /// for text the deltas streamed in full and the turn's answer lands
-    /// twice (`tests/cassettes/copilot/reasoning_roundtrip/streaming.yaml`
+    /// twice (`crates/rig-cassette/fixtures/cassettes/copilot/reasoning_roundtrip/streaming.yaml`
     /// record 2 replays it once). `output_index` is the wire's positional
     /// correlator for output items — it is what the terminal's `output[]`
     /// array is indexed by, and what `tool_slots`/`reasoning_slots`
@@ -812,7 +812,7 @@ impl RawChoiceAccumulator {
                 // id is the durable handle the next turn has to replay.
                 // Copilot's Responses route answers a tool-calling turn
                 // with `{"id":…,"summary":[]}` and then requires it back —
-                // `tests/cassettes/copilot/typed_prompt_tools/
+                // `crates/rig-cassette/fixtures/cassettes/copilot/typed_prompt_tools/
                 // prompt_typed_with_tool_call_roundtrip.yaml` — and without
                 // it turn two's `input` is missing an element the provider
                 // sent. An item with no id at all still says nothing at the

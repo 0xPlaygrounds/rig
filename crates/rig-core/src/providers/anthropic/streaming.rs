@@ -80,7 +80,7 @@ pub enum StreamingEvent {
     ///
     /// The nested `error` object is required, and that requirement is the
     /// whole of the wire's shape check: every Anthropic error body recorded
-    /// under `tests/cassettes/anthropic/` nests it, and the flattened
+    /// under `crates/rig-cassette/fixtures/cassettes/anthropic/` nests it, and the flattened
     /// `{"type":"error","message":"…"}` form appears in no recorded traffic.
     Error {
         /// Decoding it is the whole point — it proves the body is the
@@ -736,7 +736,7 @@ impl Decoder<Completion> for MessagesDecoder {
                 //
                 // Anthropic proper sends the count on *both* frames and they
                 // agree (every recorded cassette under
-                // `tests/cassettes/anthropic/` reporting it on the delta reports
+                // `crates/rig-cassette/fixtures/cassettes/anthropic/` reporting it on the delta reports
                 // the same value on the start), so the preference is what runs
                 // there and the fallback is inert. The fallback covers the
                 // reverse split — a delta that omits the count, leaving the one

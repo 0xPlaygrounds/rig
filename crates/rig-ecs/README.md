@@ -54,7 +54,7 @@ binding reports its key and wrong family. An outstanding tool can finish
 before the next assembly detects the missing model. This differs from
 cancelling an in-flight operation.
 
-The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that `fold_turn` calls at `RigSet::Assemble` over what `gather_turn` walked, writing the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-verify/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
+The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that `fold_turn` calls at `RigSet::Assemble` over what `gather_turn` walked, writing the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-cassette/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
 
 | Entity | Components |
 |---|---|
@@ -207,7 +207,7 @@ The tests under [tests](tests) exercise dispatch, cancellation, bounded intake,
 streaming, registry replacement, world-served handlers, checkpoints, replay and WASM.
 `bus_scale` covers large pending sets; `bus_world` covers Gate/Judge and nesting;
 `bus_scene` covers save/load; `run_identity` covers scoped replay checks.
-The producer-owned corpus in `rig-verify` separately exercises the interpreters.
+The producer-owned corpus in `rig-cassette` separately exercises the interpreters.
 Passing those tests establishes their specific assertions, not arbitrary
 application scheduling or whole-program equivalence.
 
