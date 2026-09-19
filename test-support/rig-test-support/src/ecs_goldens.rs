@@ -6,7 +6,7 @@
 mod tests;
 
 /// Assert full original-log parity and the committed native run-identity expectations.
-pub fn golden_effects(name: &str, log: &rig_effect_log::EffectLog) {
+pub fn golden_effects(name: &str, log: &rig_cassette::effect_log::EffectLog) {
     if std::env::var("RIG_PROVIDER_TEST_MODE").is_ok_and(|mode| mode.eq_ignore_ascii_case("record"))
     {
         // The original helper rejects simultaneous regeneration and otherwise
@@ -14,7 +14,7 @@ pub fn golden_effects(name: &str, log: &rig_effect_log::EffectLog) {
         crate::goldens::golden_effects(name, log);
         return;
     }
-    let original: rig_effect_log::EffectLog = serde_json::from_str(
+    let original: rig_cassette::effect_log::EffectLog = serde_json::from_str(
         &std::fs::read_to_string(crate::goldens::golden_path(name)).expect("original golden"),
     )
     .expect("original effect log");
@@ -27,8 +27,8 @@ pub fn golden_effects(name: &str, log: &rig_effect_log::EffectLog) {
 /// recording and golden (the pairing guard allows one producer per
 /// golden, and that cell is it).
 #[allow(dead_code)] // the failure rows' targets alone read it
-pub fn compare_to_original(original_name: &str, log: &rig_effect_log::EffectLog) {
-    let original: rig_effect_log::EffectLog = serde_json::from_str(
+pub fn compare_to_original(original_name: &str, log: &rig_cassette::effect_log::EffectLog) {
+    let original: rig_cassette::effect_log::EffectLog = serde_json::from_str(
         &std::fs::read_to_string(crate::goldens::golden_path(original_name))
             .expect("original golden"),
     )
@@ -43,8 +43,8 @@ pub fn compare_to_original(original_name: &str, log: &rig_effect_log::EffectLog)
 #[allow(dead_code)] // the failure rows' targets alone read it
 pub fn assert_parity(
     name: &str,
-    native: &rig_effect_log::EffectLog,
-    original: &rig_effect_log::EffectLog,
+    native: &rig_cassette::effect_log::EffectLog,
+    original: &rig_cassette::effect_log::EffectLog,
 ) {
     let mut original = original.clone();
     original.header.deliveries = None;
@@ -53,8 +53,8 @@ pub fn assert_parity(
 
 fn compare_original(
     name: &str,
-    log: &rig_effect_log::EffectLog,
-    original: &rig_effect_log::EffectLog,
+    log: &rig_cassette::effect_log::EffectLog,
+    original: &rig_cassette::effect_log::EffectLog,
 ) {
     let mut comparable = log.clone();
     assert!(
@@ -170,8 +170,8 @@ fn identities() -> &'static std::collections::BTreeMap<String, NativeIdentity> {
 
 fn compare_identity(
     name: &str,
-    log: &rig_effect_log::EffectLog,
-    original: &rig_effect_log::EffectLog,
+    log: &rig_cassette::effect_log::EffectLog,
+    original: &rig_cassette::effect_log::EffectLog,
 ) {
     let expected = identities()
         .get(name)

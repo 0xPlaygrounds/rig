@@ -5,7 +5,7 @@ use rig_core::serve::Observe;
 #[test]
 fn cancellation_and_terminal_observation_have_one_recording_boundary() {
     for terminal_first in [false, true] {
-        let recorder = rig_effect_log::EffectLogRecorder::keeping_stream_events();
+        let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
         let recording = Recording::new(recorder.clone());
         let id = EffectId::from_raw(0);
         let kind = EffectKind::Custom {
@@ -60,7 +60,7 @@ fn a_despawn_from_the_outcome_observer_still_closes_the_record() {
 
     let mut world = World::new();
     crate::bus::BusPlugin::with_policy(Default::default()).install(&mut world);
-    let recorder = rig_effect_log::EffectLogRecorder::new();
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::new();
     Recording::install(&mut world, recorder.clone());
     Handlers::with(&mut world, |handlers| {
         handlers.register_open(

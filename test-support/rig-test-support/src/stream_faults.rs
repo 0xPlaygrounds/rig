@@ -54,12 +54,12 @@ use rig_core::tool::Tool;
 
 use rig_core::tool::ToolContext;
 
+use rig_cassette::effect_log::EffectLog;
 use rig_ecs::{
     agent::{Failure, Role, Utterance},
     bus::{Streamed, Witnessing},
     systems::RunCommands,
 };
-use rig_effect_log::EffectLog;
 
 use crate::{
     ecs_agent::EcsAgent,

@@ -9,22 +9,23 @@
 
 use bevy_app::App;
 use bevy_ecs::{prelude::*, schedule::LogLevel};
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use rig_core::{effect::HandlerKey, serve::ServingPolicy};
 use rig_ecs::{
     agent::{
         AdditionalParams, DefaultMaxTurns, Failed, InvalidCalls, MaxTokens, MaxTurns, Output,
         OutputKind, Owner, Preamble, RunResult, Settled, Temperature, ToolChoiceSpec, UsesModel,
     },
-    bus::{EffectLogResource, Handlers, IdCounter},
+    bus::{Handlers, IdCounter},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 use wasm_bindgen_test::wasm_bindgen_test;
 
 const SMOKE: &str =
-    include_str!("../../rig-verify/fixtures/anthropic_completion_smoke.effects.json");
+    include_str!("../../rig-cassette/fixtures/effects/anthropic_completion_smoke.effects.json");
 const REPROMPT: &str =
-    include_str!("../../rig-verify/fixtures/mock_output_tool_text_reprompt.effects.json");
+    include_str!("../../rig-cassette/fixtures/effects/mock_output_tool_text_reprompt.effects.json");
 
 fn app(log: &EffectLog) -> (App, Entity) {
     bevy_tasks::ComputeTaskPool::get_or_init(bevy_tasks::TaskPool::default);

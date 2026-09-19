@@ -31,6 +31,9 @@ use std::sync::{
 };
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     driver::Bind,
     effect::{HandlerDescriptor, HandlerKey},
@@ -47,13 +50,12 @@ use rig_core::{
 };
 use rig_ecs::{
     bus::{
-        Bound, CredentialRef, EffectLogResource, EffectOutcome, Handler, Handlers,
-        MaterializeError, MaterializeFailed, MaterializeReport, Materializer, PendingEffect,
-        ProviderBinding, Replay, Secret, provider_diagnostics,
+        Bound, CredentialRef, EffectOutcome, Handler, Handlers, MaterializeError,
+        MaterializeFailed, MaterializeReport, Materializer, PendingEffect, ProviderBinding, Secret,
+        provider_diagnostics,
     },
     checkpoint::{Checkpoint, load_world, save_world},
 };
-use rig_effect_log::EffectLogRecorder;
 
 const KEY: &str = "t/model:default";
 const BASE: &str = "http://cassette.invalid/v1";
@@ -478,11 +480,9 @@ fn a_replayer_wins_and_no_transport_is_built() {
     // carries the same binding: the replayer wins, and the materializer's
     // resolver and transport are never called.
     let mut replay = bus_support::app();
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::default().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
+    Replay::default()
+        .register(replay.world_mut(), &log)
+        .unwrap();
     replay.world_mut().flush();
     let replayer = replay
         .world_mut()
@@ -935,11 +935,9 @@ fn a_binding_beside_its_own_bound_keeps_the_key_served_elsewhere() {
         .unwrap()
         .clone();
     let mut replay = bus_support::app();
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::default().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
+    Replay::default()
+        .register(replay.world_mut(), &log)
+        .unwrap();
     replay.world_mut().flush();
     let replayer = replay
         .world_mut()

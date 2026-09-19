@@ -3,8 +3,8 @@
 //! The property the whole model exists for is that a unary reply and a
 //! streamed reply of the *same turn* fold to the same response. These tests
 //! assert it against real recorded bodies: the pairs under
-//! `tests/cassettes/openai/raw_capture_matrix/**` and
-//! `tests/cassettes/openai/raw_stream_capture_matrix/**` are the same prompt
+//! `crates/rig-cassette/fixtures/cassettes/openai/raw_capture_matrix/**` and
+//! `crates/rig-cassette/fixtures/cassettes/openai/raw_stream_capture_matrix/**` are the same prompt
 //! answered both ways, so there is nothing hand-written for the two paths to
 //! agree about by accident.
 
@@ -774,7 +774,7 @@ fn empty_turn_body(finish_reason: Option<&str>) -> String {
 /// restating which reasons are legally empty. Live traffic cannot enumerate
 /// the vocabulary — no prompt reliably produces an empty `content_filter`
 /// turn — so the boundary is asserted here and the recorded matrices
-/// (`tests/providers/openai/cassette/truncated_turn_matrix.rs`) confirm the
+/// (`crates/rig-cassette/tests/providers/openai/cassette/truncated_turn_matrix.rs`) confirm the
 /// `length` half against real bytes.
 #[tokio::test]
 async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
@@ -811,7 +811,7 @@ async fn an_empty_turn_the_provider_cut_short_keeps_its_reason_and_usage() {
 /// naming twice: a provider that says the model finished and hands back
 /// nothing has misbehaved, so `stop` must stay out of the legal set even
 /// though a stop sequence can consume a whole answer — which is exactly
-/// what `tests/providers/llamacpp/cassette/content_matrix.rs`'s
+/// what `crates/rig-cassette/tests/providers/llamacpp/cassette/content_matrix.rs`'s
 /// stop-sequence cell records.
 #[tokio::test]
 async fn an_empty_turn_that_ran_to_completion_is_a_provider_defect() {

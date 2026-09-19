@@ -207,7 +207,7 @@ pub fn cache_padding(repetitions: usize) -> String {
 }
 
 /// Default padding repetitions, matching
-/// `tests/providers/anthropic/cassette/prompt_caching.rs`.
+/// `crates/rig-cassette/tests/providers/anthropic/cassette/prompt_caching.rs`.
 pub const CACHE_PADDING_REPETITIONS: usize = 180;
 
 /// The deterministic three-turn probe.

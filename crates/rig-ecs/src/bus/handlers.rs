@@ -299,21 +299,6 @@ pub struct Handlers<'w, 's> {
 pub struct WorldKinds(HashSet<TypeId>);
 
 impl Handlers<'_, '_> {
-    /// Install or clear the world's validated replay delivery plan.
-    pub fn replay_delivery(&mut self, delivery: Option<super::delivery::ReplayDelivery>) {
-        self.commands
-            .remove_resource::<super::delivery::ReplayFailure>();
-        match delivery {
-            Some(delivery) => {
-                self.commands.insert_resource(delivery);
-            }
-            None => {
-                self.commands
-                    .remove_resource::<super::delivery::ReplayDelivery>();
-            }
-        }
-    }
-
     /// Run `f` with a `Handlers` over `world` and apply what it did: for a
     /// host that registers from outside a system (a test, a scene load).
     pub fn with<T>(

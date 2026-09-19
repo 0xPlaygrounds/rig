@@ -320,7 +320,7 @@ fn replay_identity_includes_each_effective_output_tool_setting() {
     let run = app
         .world_mut()
         .spawn_run(agent, &[], "extract", false, None);
-    let inherited = rig_ecs::replay::spec_hash(app.world_mut(), run).unwrap();
+    let inherited = rig_cassette::ecs::identity::spec_hash(app.world_mut(), run).unwrap();
     for changed in [
         OutputToolConfig {
             name: Some("different".into()),
@@ -337,13 +337,13 @@ fn replay_identity_includes_each_effective_output_tool_setting() {
     ] {
         app.world_mut().entity_mut(run).insert(changed);
         assert_ne!(
-            rig_ecs::replay::spec_hash(app.world_mut(), run).unwrap(),
+            rig_cassette::ecs::identity::spec_hash(app.world_mut(), run).unwrap(),
             inherited
         );
     }
     app.world_mut().entity_mut(run).insert(config());
     assert_eq!(
-        rig_ecs::replay::spec_hash(app.world_mut(), run).unwrap(),
+        rig_cassette::ecs::identity::spec_hash(app.world_mut(), run).unwrap(),
         inherited
     );
 }

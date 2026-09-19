@@ -121,6 +121,7 @@ pub fn app() -> App {
         rig_ecs::RigPlugin::with_policy(ServingPolicy::default())
             .ambiguity_detection(LogLevel::Error),
     );
+    app.add_plugins(rig_cassette::ecs::ReplayPlugin);
     app.finish();
     app.cleanup();
     app

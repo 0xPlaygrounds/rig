@@ -270,7 +270,7 @@ async fn pagination_percent_encodes_the_cursor() {
 // `Bound<Gemini, H>::cached_contents()`. These two cells are the in-tree
 // proof that it moved *without moving the bytes*: they pin the paths the
 // recorded traffic and the axum-stub harness cells
-// (`tests/providers/gemini/support.rs`, which asserts the literal
+// (`crates/rig-cassette/tests/providers/gemini/support.rs`, which asserts the literal
 // `DELETE /v1beta/cachedContents/leaky`) match on.
 
 fn bound_caches(

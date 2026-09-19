@@ -4,14 +4,17 @@ use super::*;
 use crate::wire::secret::tests::a_config_reloads_without_its_credential;
 
 /// A recorded request (`"when"`) or reply (`"then"`) body from a cassette
-/// under `tests/cassettes/openai/`.
+/// under `crates/rig-cassette/fixtures/cassettes/openai/`.
 ///
 /// Hand-rolled rather than YAML-parsed because `serde_yaml` is not a
 /// dev-dependency of this crate, and a cassette is never edited: the two
 /// scalar forms the recorder emits — a single-quoted one-liner for a JSON
 /// body, a `|+` literal block for an SSE body — are the whole grammar.
 pub(super) fn recorded(section: &str, relative: &str) -> String {
-    let root = concat!(env!("CARGO_MANIFEST_DIR"), "/../../tests/cassettes/openai/");
+    let root = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../rig-cassette/fixtures/cassettes/openai/"
+    );
     let text = std::fs::read_to_string(format!("{root}{relative}"))
         .unwrap_or_else(|error| panic!("cassette {relative} is readable: {error}"));
     let (when, then) = text
@@ -391,7 +394,7 @@ fn only_a_dialect_with_a_rerank_path_reranks() {
 }
 
 /// Every dialect's listing and credential-check URL, against the paths the
-/// recorded fixtures under `tests/cassettes/<provider>/**` actually show.
+/// recorded fixtures under `crates/rig-cassette/fixtures/cassettes/<provider>/**` actually show.
 ///
 /// This is the audit in executable form. The deleted client did things to a
 /// request that each wire's `encode` must now state — `llama-server`'s

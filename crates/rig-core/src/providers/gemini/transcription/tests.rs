@@ -13,7 +13,7 @@ fn transcription_request() -> transcription::TranscriptionRequest {
 }
 
 /// The bytes one transcription puts on the wire, pinned by
-/// `tests/cassettes/gemini/transcription/transcription_smoke.yaml`: the path,
+/// `crates/rig-cassette/fixtures/cassettes/gemini/transcription/transcription_smoke.yaml`: the path,
 /// the `key` query parameter and the whole JSON document, down to the `null`
 /// fields Gemini's request shape keeps. The cassette's `inlineData.data` is a
 /// 32 KB mp3; this request's audio is [`transcription_request`]'s, so only

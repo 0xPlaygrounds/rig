@@ -1,5 +1,5 @@
 //! The strings and the fold against the goldens that pin them. Each test
-//! names its CONTRACT row; the goldens are read from `rig-verify`'s
+//! names its CONTRACT row; the goldens are read from `rig-cassette`'s
 //! fixtures, never restated.
 
 #![allow(clippy::expect_used, clippy::unwrap_used, clippy::indexing_slicing)]
@@ -14,7 +14,7 @@ use crate::agent::OutputKind;
 
 fn golden(name: &str) -> serde_json::Value {
     let path = format!(
-        "{}/../rig-verify/fixtures/{name}.effects.json",
+        "{}/../rig-cassette/fixtures/effects/{name}.effects.json",
         env!("CARGO_MANIFEST_DIR")
     );
     serde_json::from_str(&std::fs::read_to_string(path).expect("the golden is committed"))

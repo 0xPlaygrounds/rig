@@ -15,6 +15,7 @@ use rig::effect::EffectFamily;
 use rig::error::ErrorKind;
 use rig::run::{OutputMode, UnhandledInvalidToolCall};
 use rig::test_utils::{MockCompletionModel, MockStreamEvent};
+use rig_cassette::agent::AgentReplayExt;
 use serde_json::json;
 
 use super::golden_recovery::Add;
@@ -97,6 +98,7 @@ fn cancelled_reason(error: &rig::agent::StreamingError) -> &str {
 /// The medium's baseline: a valid call streamed as deltas, dispatched, answered.
 #[tokio::test]
 async fn delta_baseline_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(delta_call("call-1", "add")),
         stream_turn(vec![MockStreamEvent::text(ANSWER)]),
@@ -104,13 +106,13 @@ async fn delta_baseline_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble(PREAMBLE)
     .tool(Add)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let output = streamed(&agent, 3, UnhandledInvalidToolCall::Fail, 0)
         .await
         .expect("the run answers");
     assert_eq!(output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -126,6 +128,7 @@ async fn delta_baseline_effect_log_is_the_golden_fixture() {
 /// An unknown name delta, retried once with feedback.
 #[tokio::test]
 async fn delta_retry_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(delta_call("call-1", "multiply")),
         stream_turn(delta_call("call-2", "add")),
@@ -135,13 +138,13 @@ async fn delta_retry_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(RetryUnknownTool)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let output = streamed(&agent, 4, UnhandledInvalidToolCall::Fail, 1)
         .await
         .expect("the retry recovers");
     assert_eq!(output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -158,6 +161,7 @@ async fn delta_retry_effect_log_is_the_golden_fixture() {
 /// surfaced with the name, then retried.
 #[tokio::test]
 async fn delta_retry_arguments_first_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(delta_call_arguments_first("call-1", "multiply")),
         stream_turn(delta_call_arguments_first("call-2", "add")),
@@ -167,13 +171,13 @@ async fn delta_retry_arguments_first_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(RetryUnknownTool)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let output = streamed(&agent, 4, UnhandledInvalidToolCall::Fail, 1)
         .await
         .expect("the retry recovers");
     assert_eq!(output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -190,6 +194,7 @@ async fn delta_retry_arguments_first_effect_log_is_the_golden_fixture() {
 /// stream under the repaired name and the call runs.
 #[tokio::test]
 async fn delta_repair_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(delta_call("call-1", "multiply")),
         stream_turn(vec![MockStreamEvent::text(ANSWER)]),
@@ -198,13 +203,13 @@ async fn delta_repair_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(RepairToAdd)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let output = streamed(&agent, 3, UnhandledInvalidToolCall::Fail, 0)
         .await
         .expect("the repair recovers");
     assert_eq!(output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -220,6 +225,7 @@ async fn delta_repair_effect_log_is_the_golden_fixture() {
 /// the reason is in the transcript, the next turn answers.
 #[tokio::test]
 async fn delta_skip_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(delta_call("call-1", "multiply")),
         stream_turn(vec![MockStreamEvent::text(ANSWER)]),
@@ -228,13 +234,13 @@ async fn delta_skip_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(SkipUnknown)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let output = streamed(&agent, 3, UnhandledInvalidToolCall::Fail, 0)
         .await
         .expect("the skip recovers");
     assert_eq!(output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [EffectFamily::Completion, EffectFamily::Completion]
@@ -246,6 +252,7 @@ async fn delta_skip_effect_log_is_the_golden_fixture() {
 /// following: swallowed; the ignored-only turn is the empty answer.
 #[tokio::test]
 async fn delta_ignore_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(delta_call("call-1", "multiply")),
         stream_turn(vec![MockStreamEvent::text(ANSWER)]),
@@ -253,13 +260,13 @@ async fn delta_ignore_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble(PREAMBLE)
     .tool(Add)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let output = streamed(&agent, 3, UnhandledInvalidToolCall::Ignore, 0)
         .await
         .expect("the ignored call does not fail the run");
     assert_eq!(output, "", "an ignored-only turn is an empty answer");
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_delta_ignore", &log);
 }
@@ -270,6 +277,7 @@ async fn delta_ignore_effect_log_is_the_golden_fixture() {
 async fn delta_ignore_beside_valid_effect_log_is_the_golden_fixture() {
     let mut turn = delta_call("call-1", "multiply");
     turn.extend(delta_call("call-2", "add"));
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(turn),
         stream_turn(vec![MockStreamEvent::text(ANSWER)]),
@@ -277,13 +285,13 @@ async fn delta_ignore_beside_valid_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble(PREAMBLE)
     .tool(Add)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let output = streamed(&agent, 3, UnhandledInvalidToolCall::Ignore, 0)
         .await
         .expect("the ignored call does not fail the run");
     assert_eq!(output, ANSWER);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(
         families(&log),
         [
@@ -299,6 +307,7 @@ async fn delta_ignore_beside_valid_effect_log_is_the_golden_fixture() {
 /// completion record.
 #[tokio::test]
 async fn delta_fail_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([
         stream_turn(delta_call("call-1", "multiply")),
         stream_turn(vec![MockStreamEvent::text(ANSWER)]),
@@ -306,7 +315,7 @@ async fn delta_fail_effect_log_is_the_golden_fixture() {
     .name("golden")
     .preamble(PREAMBLE)
     .tool(Add)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let error = streamed(&agent, 3, UnhandledInvalidToolCall::Fail, 0)
         .await
@@ -315,7 +324,7 @@ async fn delta_fail_effect_log_is_the_golden_fixture() {
         matches!(&error, rig::agent::StreamingError::Prompt(error) if matches!(error, PromptError::UnknownToolCall { .. })),
         "{error:?}"
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_delta_fail", &log);
 }
@@ -324,6 +333,7 @@ async fn delta_fail_effect_log_is_the_golden_fixture() {
 /// stream, the run finalizes on the assembled call without a dispatch.
 #[tokio::test]
 async fn delta_output_tool_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([stream_turn(vec![
         MockStreamEvent::tool_call_name_delta("call-1", "final_result"),
         MockStreamEvent::tool_call_arguments_delta(
@@ -337,7 +347,7 @@ async fn delta_output_tool_effect_log_is_the_golden_fixture() {
     .preamble("You are a concise assistant. Answer directly.")
     .output_schema_raw(event_schema())
     .output_mode(OutputMode::Tool)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let mut stream = agent
         .prompt("Return a concise event object for a local Rust meetup in Seattle.")
@@ -355,7 +365,7 @@ async fn delta_output_tool_effect_log_is_the_golden_fixture() {
         json!({"title": "Seattle Rust Meetup", "category": "Technology", "summary": "A meetup."})
             .to_string()
     );
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_delta_output_tool", &log);
 }
@@ -363,6 +373,7 @@ async fn delta_output_tool_effect_log_is_the_golden_fixture() {
 /// A stop on the delta that names the tool.
 #[tokio::test]
 async fn delta_stop_on_name_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([stream_turn(
         delta_call("call-1", "add"),
     )]))
@@ -370,13 +381,13 @@ async fn delta_stop_on_name_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(StopOnToolNameDelta)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let error = streamed(&agent, 3, UnhandledInvalidToolCall::Fail, 0)
         .await
         .expect_err("the hook stops the run");
     assert_eq!(cancelled_reason(&error), STOP_ON_TOOL_NAME_DELTA);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     assert!(
         log.records[0].outcome.is_ok()
@@ -390,6 +401,7 @@ async fn delta_stop_on_name_effect_log_is_the_golden_fixture() {
 /// A stop on the first arguments delta, after the name validated.
 #[tokio::test]
 async fn delta_stop_on_arguments_effect_log_is_the_golden_fixture() {
+    let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
     let agent = AgentBuilder::new(MockCompletionModel::from_stream_turns([stream_turn(
         delta_call("call-1", "add"),
     )]))
@@ -397,13 +409,13 @@ async fn delta_stop_on_arguments_effect_log_is_the_golden_fixture() {
     .preamble(PREAMBLE)
     .tool(Add)
     .add_hook(StopOnToolArgumentsDelta)
-    .record_effects_with_events()
+    .record_to(recorder.clone())
     .build();
     let error = streamed(&agent, 3, UnhandledInvalidToolCall::Fail, 0)
         .await
         .expect_err("the hook stops the run");
     assert_eq!(cancelled_reason(&error), STOP_ON_TOOL_ARGUMENTS_DELTA);
-    let log = agent.take_effect_log().expect("recording");
+    let log = agent.stamp(recorder.take());
     assert_eq!(families(&log), [EffectFamily::Completion]);
     crate::goldens::golden_effects("mock_delta_stop_on_arguments", &log);
 }

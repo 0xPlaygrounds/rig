@@ -19,11 +19,10 @@ use std::{
 
 use bevy_ecs::prelude::*;
 use bus_support::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::serve::ServingPolicy;
-use rig_ecs::bus::{
-    BusSet, EffectLogResource, EffectOutcome, InFlight, PendingEffect, RigSchedule, Seq,
-};
-use rig_effect_log::EffectLogRecorder;
+use rig_ecs::bus::{BusSet, EffectOutcome, InFlight, PendingEffect, RigSchedule, Seq};
 
 #[derive(Resource, Default)]
 struct Spawned(std::sync::Mutex<Vec<Entity>>);

@@ -4,8 +4,27 @@ version.workspace = true
 edition.workspace = true
 license = "MIT"
 readme = "README.md"
-description = "Reusable provider cassette recording, replay, scrubbing and safety checks."
+description = "Effect-log and provider HTTP recording, replay, scrubbing and verification for Rig."
 repository = "https://github.com/0xPlaygrounds/rig"
+# `tests/` is the repository's own record/replay suite: the cassette-backed
+# provider targets, the effect bus's verification targets and the shared
+# helpers they include. It is written against the facade and the agent
+# runtimes, replays the committed corpora, and is meaningless outside this
+# workspace, so every dev-dependency below is a version-less path entry.
+# The corpora are replay fixtures the binaries read at runtime, never embedded
+# with `include_*!`: 2,841 provider cassettes (50 MiB) and 842 effect goldens
+# (17 MiB). Sweeping either into the tarball would put the upload over the
+# crates.io 10 MiB limit, which is enforced server-side and so never surfaces
+# in `cargo publish --dry-run`. Cargo drops every `[[test]]` target below from
+# the normalized manifest because their sources are excluded; the engine's own
+# unit tests live in `src/` and stay published.
+exclude = [
+    "fixtures/**",
+    "tests/**",
+]
+# Each target below names its entrypoint; the rest of `tests/` are modules
+# those entrypoints include, never targets of their own.
+autotests = false
 
 [package.metadata.docs.rs]
 all-features = true
@@ -16,24 +35,176 @@ workspace = true
 
 [features]
 default = []
-bedrock = ["dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
+agent = ["dep:rig-agent"]
+ecs = ["dep:rig-ecs", "dep:bevy_app", "dep:bevy_ecs"]
+http = [
+    "dep:rig-reqwest",
+    "dep:axum",
+    "dep:base64",
+    "dep:httpdate",
+    "dep:httpmock",
+    "dep:serde_yaml",
+    "dep:tokio",
+    "dep:url",
+    "serde_json/float_roundtrip",
+    "serde_json/preserve_order",
+]
+bedrock = ["http", "dep:aws-smithy-eventstream", "dep:aws-smithy-types"]
 
 [dependencies]
 rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
-rig-reqwest = { path = "../rig-reqwest", version = "0.42.0", default-features = false, features = ["rustls"] }
+rig-agent = { path = "../rig-agent", version = "0.42.0", default-features = false, optional = true }
+rig-ecs = { path = "../rig-ecs", version = "0.42.0", optional = true }
+rig-reqwest = { path = "../rig-reqwest", version = "0.42.0", default-features = false, features = ["rustls"], optional = true }
+bevy_app = { workspace = true, optional = true }
+bevy_ecs = { workspace = true, optional = true }
 aws-smithy-eventstream = { workspace = true, optional = true }
 aws-smithy-types = { workspace = true, optional = true }
-axum = { workspace = true }
-base64 = { workspace = true }
+axum = { workspace = true, optional = true }
+base64 = { workspace = true, optional = true }
 futures = { workspace = true }
-httpdate = { workspace = true }
-httpmock = { workspace = true, features = ["record", "proxy"] }
+httpdate = { workspace = true, optional = true }
+httpmock = { workspace = true, features = ["record", "proxy"], optional = true }
 serde = { workspace = true, features = ["derive"] }
-serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
-serde_yaml = { workspace = true }
-tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs"] }
-url = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true, optional = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "net", "sync", "io-util", "fs"], optional = true }
+url = { workspace = true, optional = true }
 
+# Repository-only provider and verification dependencies. Downstream users select
+# the independent runtime integrations and native engine through features above.
 [dev-dependencies]
+rig = { path = "../..", default-features = false, features = [
+  "agent",
+  "audio",
+  "bedrock",
+  "derive",
+  "image",
+  "reqwest",
+  "rustls",
+  "test-utils",
+  "websocket",
+] }
+rig-test-support = { path = "../../test-support/rig-test-support" }
+rig-core = { path = "../rig-core", features = ["test-utils"] }
+rig-agent = { path = "../rig-agent", features = ["test-utils"] }
+rig-ecs = { path = "../rig-ecs" }
+anyhow = { workspace = true }
 assert_fs = { workspace = true }
+async-stream = { workspace = true }
+aws-config = { workspace = true }
+aws-sdk-bedrockruntime = { workspace = true }
+aws-smithy-eventstream = { workspace = true }
+aws-smithy-runtime-api = { workspace = true }
+aws-smithy-types = { workspace = true }
+# The world interpreter (`tests/world_replay.rs`) builds its own App; the ECS
+# contract matrix pins the bus task pool to one thread the same way.
+bevy_app = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_tasks = { workspace = true }
+bytes = { workspace = true }
+proptest = "1"
 reqwest = { workspace = true, features = ["json", "stream"] }
+schemars = { workspace = true }
+serde_path_to_error = { workspace = true }
+rmcp = { workspace = true, features = [
+  "client",
+  "macros",
+  "reqwest",
+  "transport-streamable-http-client",
+  "transport-streamable-http-client-reqwest",
+  "transport-streamable-http-server-session",
+  "transport-streamable-http-server",
+  "transport-worker",
+] }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+syn = { workspace = true, features = ["full", "visit"] }
+tokio = { workspace = true, features = ["full"] }
+tokio-test = { workspace = true }
+tracing-subscriber = { workspace = true, features = ["env-filter"] }
+
+[[test]]
+name = "verify"
+path = "tests/verify/main.rs"
+required-features = ["agent", "ecs"]
+
+[[test]]
+name = "world_replay"
+required-features = ["agent", "ecs"]
+
+[[test]]
+name = "anthropic"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "bedrock"
+required-features = ["bedrock", "agent", "ecs"]
+
+[[test]]
+name = "chatgpt"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "cohere"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "copilot"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "deepseek"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "doubleword"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "gemini"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "groq"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "llamacpp"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "mistral"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "mistralrs"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "ollama"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "openai"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "openrouter"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "perplexity"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "venice"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "xai"
+required-features = ["http", "agent", "ecs"]
+
+[[test]]
+name = "cassette_cache_prefix"
+required-features = ["http"]

@@ -9,9 +9,19 @@ retain their own execution costs; bounded collection does not make arbitrary
 user work nonblocking.
 
 The bus uses `bevy_ecs` and `bevy_tasks`. Agent components, request assembly,
-steering and replay build on that bus. See [CONTRACT.md](CONTRACT.md) for detailed
+steering and cassette-owned replay build on that bus. See [CONTRACT.md](CONTRACT.md) for detailed
 behavior and [the provider comparison guide](../../tests/ecs_parity/README.md)
 for the scope of cross-runtime regression tests.
+
+Concrete logs and replay adapters live in `rig-cassette` with its `ecs` feature;
+this runtime never depends on that crate. The adapter does not require
+`rig-agent` or native HTTP. Attach any `rig_core::serve::Recorder` with
+`bus::Recording::install`, or retain an `EffectLogRecorder` through
+`rig_cassette::ecs::EffectLogResource::install`.
+For replay, add `rig_cassette::ecs::ReplayPlugin` **after** `RigPlugin` or
+`BusPlugin`, then register with `rig_cassette::ecs::Replay::register(&mut World, &EffectLog)`.
+The plugin installs the recorded-delivery collector and idle-refusal diagnosis;
+the runtime retains generic scheduling, delivery and observation mechanisms.
 
 ## The run as a graph
 
@@ -28,8 +38,9 @@ handlers before loading (a checkpoint handler bound to a key the world serves
 merges into the world's, which wins); install application insertion observers
 afterward to avoid reacting to partially restored state.
 
-`replay::stamp_run` captures supported effective configuration, including
-run-over-agent overrides. `check_replayable` checks the requested run's exact
+`rig_cassette::ecs::identity::stamp_run` captures supported effective
+configuration, including run-over-agent overrides. That module's
+`check_replayable` checks the requested run's exact
 `Scope`; it does not search for another matching policy hash. Applications
 must declare a nonempty `agent::PolicyVersion` for their custom systems,
 ordering and otherwise-unhashed configuration. A missing declaration is
@@ -54,7 +65,7 @@ binding reports its key and wrong family. An outstanding tool can finish
 before the next assembly detects the missing model. This differs from
 cancelling an in-flight operation.
 
-The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that `fold_turn` calls at `RigSet::Assemble` over what `gather_turn` walked, writing the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-verify/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
+The request the model sees is derived, never authored: a run entity, utterances `ChildOf` it in sibling (`Children`) order, documents as their own entities attached to a turn by link entities, tools as the handler entities the bus already has (granted by link entities), the model as a relationship, every setting a component — and one function, `policy::fold_request`, that `fold_turn` calls at `RigSet::Assemble` over what `gather_turn` walked, writing the wire `CompletionRequest` into the turn's `PendingEffect`. `CONTRACT.md` names the walk field by field with the golden that pins each; the world interpreter (`crates/rig-cassette/tests/corpus/world.rs`) exercises request assembly through the maintained corpus, including tools, memory and steering.
 
 | Entity | Components |
 |---|---|
@@ -175,14 +186,25 @@ still publish tool output before reaching `EffectOutcome` and shared settlement.
 | what a build can serve, and what this world holds | `provider_diagnostics(&World)` → `ProviderDiagnostics { registered, bindings, refusal }`: read-only, resolves nothing, and agrees with materialization about which keys are served elsewhere. No `Secret` and no whole configuration in it |
 | a typed view | `Typed<F>(Key<F>)`, wherever a system wants it |
 | the driver | `dispatch` in `BusSet::Dispatch`; `collect_tasks`, `collect_streams`, `settle` in `BusSet::Collect` |
-| the record | `Recording` (any `rig_core::serve::Recorder`); `EffectLogResource` (an `EffectLogRecorder` installed as both); for every task-served handler, `Dispatch` installs a recording observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
+| the record | `Recording` (any `rig_core::serve::Recorder`); `rig_cassette::ecs::EffectLogResource` (an `EffectLogRecorder` installed as both); for every task-served handler, `Dispatch` installs a recording observer (`WorldObserver`, its slots in `Observed`) so a layer's `discard` and `patch` reach the record and the record keeps the innermost handler's answer |
 | a checkpoint | `rig_ecs::checkpoint::{save_world, load_world}` |
-| replay | `Replay::{register, load}`, by id |
+| replay | `rig_cassette::ecs::Replay::{register, load}`, by id; requires its `ReplayPlugin` |
 | the policy | `Policy(ServingPolicy)`: intake per tick and serial keys; `stream_capacity` bounds driver delivery queues |
 
 ## The schedule
 
-`bus::BusPlugin` adds `RigSchedule` with four sets in order, places it after `Update` (`MainScheduleOrder::insert_after`) and `RigEnd` after it, and sets `woken_runner(idle)` as the app's runner: the schedule runs **once per `app.update()`**, and the runner updates when `Wake` is raised or every `idle` at most. Every task the bus spawns raises `Wake` as it finishes or delivers; a host system that needs another pass (a policy still deliberating) raises `wake.signal()`. `RigEnd` holds only `diagnose_idle_replay`, which runs when the pass raised nothing (`Wake::generation` unchanged). The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue; `BusPlugin::install(&mut World)` is the world half, for a test that drives `RigSchedule` itself with `world.run_schedule(RigSchedule)`. Users add their systems to `RigSchedule`, ordered against the sets, never beside the runner.
+`bus::BusPlugin` adds `RigSchedule` with four ordered sets after `Update`
+(`MainScheduleOrder::insert_after`), then the generic `RigEnd` schedule.
+It sets `woken_runner(idle)` as the app's runner: the schedule runs
+**once per `app.update()`**, and the runner updates when `Wake` is raised or
+every `idle` at most. Tasks raise `Wake` as they finish or deliver; a host
+system that needs another pass raises `wake.signal()`.
+Cassette's `ReplayPlugin` installs idle replay diagnosis in `RigEnd`, running
+when the pass raised nothing (`Wake::generation` unchanged).
+The base bus uses `bevy_ecs`, `bevy_tasks` and a private `futures` delivery queue.
+`BusPlugin::install(&mut World)` installs the runtime in a bare world driven by
+`world.run_schedule(RigSchedule)`. User systems belong in `RigSchedule`,
+ordered against its sets, never beside the runner.
 
 | set | true before | written during |
 |---|---|---|
@@ -207,7 +229,7 @@ The tests under [tests](tests) exercise dispatch, cancellation, bounded intake,
 streaming, registry replacement, world-served handlers, checkpoints, replay and WASM.
 `bus_scale` covers large pending sets; `bus_world` covers Gate/Judge and nesting;
 `bus_scene` covers save/load; `run_identity` covers scoped replay checks.
-The producer-owned corpus in `rig-verify` separately exercises the interpreters.
+The producer-owned corpus in `rig-cassette` separately exercises the interpreters.
 Passing those tests establishes their specific assertions, not arbitrary
 application scheduling or whole-program equivalence.
 

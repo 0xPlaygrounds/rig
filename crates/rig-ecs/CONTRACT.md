@@ -6,6 +6,13 @@ tests; they do not establish equivalence for arbitrary application systems.
 The provider comparison harness and its narrower observation boundaries are
 explained in [the test guide](../../tests/ecs_parity/README.md).
 
+Concrete log interpretation lives in `rig-cassette` with its `ecs` feature:
+`rig_cassette::ecs::{Replay, ReplayDelivery, ReplayFailure, EffectLogResource}`
+and `rig_cassette::ecs::identity`. Add its `ReplayPlugin` after the runtime,
+then call `Replay::register(&mut World, &EffectLog)` before replaying effects.
+The runtime owns scheduling, observation and reflected world checkpoints;
+it has no normal dependency on cassette or the classic agent runtime.
+
 ## 1. The request: a walk over the graph
 
 `CompletionRequest` fields are serialized in the effect request (`record_telemetry_content` never appears in a recorded request). Each is derived by `policy::fold_request` from one source in the graph, in one order. Source entities and components are `rig_ecs::agent`'s.
@@ -184,7 +191,7 @@ on to the next run in the same pass
 
 ## 6. The header
 
-`replay::stamp_legacy_builder_header` records the builder configuration in the header’s `run_spec` hash (`rig_effect_log::stable_hash`, keys canonicalised). This is builder/corpus interoperability metadata. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity (§10).
+`rig_cassette::ecs::identity::stamp_legacy_builder_header` records the builder configuration in the header’s `run_spec` hash (`rig_cassette::effect_log::stable_hash`, keys canonicalised). This is builder/corpus interoperability metadata. Effective run compatibility uses `spec_json(world, run)`, `stamp_run` and scoped program identity (§10).
 
 ```json
 {"preamble": <Preamble>, "static_context": [{"id","text",…props}], "additional_params": <AdditionalParams>,
@@ -200,7 +207,7 @@ The builder `/header/run_spec` is checked by the world interpreter (`anthropic_c
 
 ## 7. Keys
 
-`<owner>/model:<label>` (`golden/model:default`), `<owner>/tool:<name>#<n>` (`golden/tool:add#0`), `<owner>/memory`. `replay::{model_key, tool_key}`; `HandlerKey::parts()` reads them.
+`<owner>/model:<label>` (`golden/model:default`), `<owner>/tool:<name>#<n>` (`golden/tool:add#0`), `<owner>/memory`. `rig_cassette::ecs::identity::{model_key, tool_key}`; `HandlerKey::parts()` reads them.
 
 ## 8. Tools and batches
 
@@ -289,7 +296,7 @@ A tool served by a system (a world-served handler) answers by submitting `WorldO
 
 ## 9. Steering: every hook is a system
 
-No hook trait: a user system writes a component at a set boundary and a library system reads it later. The cases in `crates/rig-verify/tests/corpus/world_hooks.rs` exercise the boundaries below. The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
+No hook trait: a user system writes a component at a set boundary and a library system reads it later. The cases in `crates/rig-cassette/tests/corpus/world_hooks.rs` exercise the boundaries below. The moments, in schedule order: `On<Add, Run>` (run start) · a system after `RigSet::Advance` and before `RigSet::Select` (model selection) · before `RigSet::Assemble` (the completion call: `RequestPatch`, a hook's own dispatch) · `RigSet::Patch` (the folded effect) · the bus's `Gate` (a dispatch: deny, patch, hold) · the bus's `Judge` (an outcome: replace) · after `RigSet::Fold` (deltas) · `RigSet::Judge` (the model turn: retry, replace, stop) · before `RigSet::Materialise` (an invalid call) · `On<Add, Settled>` / `On<Add, Failed>` (run settled).
 
 ### 9.1 Stopping: `Cancelled(reason)` on the run
 
@@ -364,7 +371,7 @@ A `PendingEffect` the system spawns `ChildOf` the run at the hook's moment (its 
 
 ### 9.6 Layers
 
-A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a recording observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for every task-served handler — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
+A layer is the handler's: the world registers the layered `ErasedHandler` (`handler.layered(intercept)`) exactly as the corpus runner's `Replay::open` does, under the key the header names. A decision the layer makes before the handler is served leaves no record, and a verdict after leaves the handler's answer in the record: the world's `Dispatch` installs a recording observer (`bus::WorldObserver`, its slots on the entity as `bus::Observed`) for every task-served handler — the one way a layer's `discard` and `patch` reach any recorder, and the innermost handler's outcome the observer is told is what `settle` records (`bus_world::a_layers_decisions_reach_the_record_through_the_sinks_observer`). The suspending layer (`ApprovalLayer`) is answered by a thread the interpreter spawns as the program says.
 
 | cell | records | pinned by |
 |---|---|---|
@@ -381,9 +388,9 @@ A layer is the handler's: the world registers the layered `ErasedHandler` (`hand
 
 | what | where | pinned by |
 |---|---|---|
-| `LogHeader::hooks` | the program's declaration — the corpus's `hook_name` list, then `layer_names` — passed to `replay::stamp_legacy_builder_header(world, agent, recorder, bus, hooks)`; the world has no hook stack to name | every golden's `/header/hooks`, asserted by the interpreter |
+| `LogHeader::hooks` | the program's declaration — the corpus's `hook_name` list, then `layer_names` — passed to `rig_cassette::ecs::identity::stamp_legacy_builder_header(world, agent, recorder, bus, hooks)`; the world has no hook stack to name | every golden's `/header/hooks`, asserted by the interpreter |
 | `LogHeader::programs: BTreeMap<String, ProgramIdentity { required: EffectRow, policy: u64 }>` | written per run scope by `stamp_run` (`policy` = `stable_hash(spec_json(world, run))`), using supported effective run-over-agent settings; rig-agent's builder-only goldens carry none | `run_identity.rs`, `run_replay_policy.rs` |
-| `replay::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
+| `rig_cassette::ecs::identity::check_replayable(world, run, &log)` | selects the run's exact `Scope`; rejects policy/row differences and missing handlers. Missing scoped identity or nonempty `PolicyVersion` declaration is unverified, with no builder-header fallback. Custom systems, ordering and otherwise-unhashed settings are the application's version declaration, not automatically fingerprinted code | `run_identity.rs`, `run_replay_policy.rs` |
 | `required` with a route | the agent's `Route` links' keys as `completion` | `anthropic_serving_model_route{,_unselected}` `/header/required` |
 
 `ToolResultLimit` (§8.1) is request shaping, like `RequestPatch`: it is
@@ -426,8 +433,8 @@ pass. Later continuation systems can advance through multiple passes, raising
 `Wake`, before minting that effect. Queued intake and held requests can await
 another update or host input. A refusal installs `ReplayFailure`; subsequent
 recorded effects also fail instead of falling through to ordinary collection
-and exposing unpaced successful answers. `BusPlugin` runs
-`bus::delivery::diagnose_idle_replay` in `RigEnd` (after `RigSchedule` in
+and exposing unpaced successful answers. Cassette's `ReplayPlugin` installs
+idle replay diagnosis in the runtime's `RigEnd` (after `RigSchedule` in
 `MainScheduleOrder`) while a `ReplayDelivery` plan is installed; a host
 driving `RigSchedule` by hand runs `RigEnd` after it. The two host systems in
 `tests/bus_delivery.rs` show a policy signalling `Wake` while it deliberates.
@@ -545,7 +552,7 @@ A selection this build does not register, an ambiguous shorthand, an unknown
 dialect or a misspelled typed option is refused by the *reader*, before
 anything is spawned — which is why there is no materialization variant for
 any of them. Pinned by `run_binding.rs`; the harness
-(`tests/common/ecs_matrix/world.rs`) binds `golden/model:default` this way
+(`crates/rig-cassette/tests/common/ecs_matrix/world.rs`) binds `golden/model:default` this way
 on every ungated cassette wire, with a resolver that maps the reference
 `cassette` to the cassette's key and a factory that hands out the cassette
 transport, and every cell's request is the byte-identical one a
@@ -678,7 +685,7 @@ external deduplication or reconciliation is the host's responsibility.
 | what | how | pinned by |
 |---|---|---|
 | a run saved after its first tool turn's results (the head), resumed in a fresh world over the log's tail | `checkpoint::save_world` the pass after `land_batch` put the run back in `Assembling` (one schedule pass per `update`); a fresh world binds the tail's replayers (positional per key, as the corpus's resumed engine does), `load_world`s the checkpoint, installs its hooks after the load (no run-start observer fires), ticks to the ending: the head's records are the golden's to the cut, the tail's from it, the answer the golden's | every `corpus_resume.rs` row (18) as `world_resumed`; every `corpus_checkpoint.rs` program (14) as `world_payload`, `world_hash`, `world_full_log_refused` |
-| the log's `Checkpoint::state` | the world's `Checkpoint` itself: `rig_effect_log::Checkpoint<S>` is generic over the driver's state and a world cuts a `Checkpoint<rig_ecs::checkpoint::Checkpoint>` (the classic engine stores its serialized state in `Checkpoint<serde_json::Value>`); it is a cut of the log beside the world, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs`, `corpus/world_resume.rs` |
+| the log's `Checkpoint::state` | the world's `Checkpoint` itself: `rig_cassette::effect_log::Checkpoint<S>` is generic over the driver's state and a world cuts a `Checkpoint<rig_ecs::checkpoint::Checkpoint>` (the classic engine stores its serialized state in `Checkpoint<serde_json::Value>`); it is a cut of the log beside the world, `EffectLog::from_checkpoint(&checkpoint, tail)` the continuation; a full log in the tail's place is refused by its first id | `corpus_checkpoint.rs`, `corpus/world_resume.rs` |
 | a resumed run loads nothing and appends | the loaded utterances are `Remembered` in the checkpoint; the append is the resumed run's (the world keeps its state, the agent driver restores its serialized state) | `anthropic_serving_serial_memory_tools` resumed: `[Load, C, Tool, C, Append]` with the append in the tail |
 | durable execution | the same property as `durable_execution.rs`: nothing of the first world survives but two JSON strings — the head's log and the checkpoint (the world as its `state`) — and the second world resumes to the same answer and the same tail | every world resume cell round-trips both |
 | an effect in flight at the cut | saved as intent, re-issued in the second world under its saved id, answered by the tail's replayer there: a note an outcome hook dispatched just before the cut is the tail's first record | `anthropic_host_custom_at_outcome{,_streamed}` resumed |

@@ -640,7 +640,7 @@ pub struct Quirks {
     /// schema arrives beside the tools, so the schema waits for the first
     /// tool result. OpenRouter's own client never deferred it and the
     /// gateway honours both at once —
-    /// `tests/cassettes/openrouter/typed_prompt_tools/
+    /// `crates/rig-cassette/fixtures/cassettes/openrouter/typed_prompt_tools/
     /// prompt_typed_with_tool_call_roundtrip.yaml` record 1 carries
     /// `tools` and `response_format` together, then calls the tool.
     pub response_format_with_tools: bool,

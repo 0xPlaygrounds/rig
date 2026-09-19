@@ -4,7 +4,7 @@
 //!
 //! The resume tests here continue a pristine run (turn 0, nothing pending):
 //! they pin the entry point, not mid-flight resumption, which
-//! `rig-verify`'s `durable_execution` suite covers.
+//! `rig-cassette`'s `durable_execution` suite covers.
 
 use std::sync::{
     Arc,

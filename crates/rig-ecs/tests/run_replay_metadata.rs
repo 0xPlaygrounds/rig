@@ -3,6 +3,10 @@
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
+use rig_cassette::ecs::identity::{check_replayable, stamp_run};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use rig_core::{
     completion::{ModelRef, ProviderCapabilities},
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey},
@@ -10,12 +14,10 @@ use rig_core::{
 };
 use rig_ecs::{
     agent::{Failed, Grant, Output, OutputKind, PolicyVersion, Settled, Temperature},
-    bus::{Bound, EffectLogResource, EffectOutcome, Handlers, PendingEffect, Replay},
+    bus::{Bound, EffectOutcome, Handlers, PendingEffect},
     checkpoint::{Checkpoint, load_world, save_world},
-    replay::{check_replayable, stamp_run},
     systems::RunCommands,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 use run_support::*;
 
 const MODEL: &str = "t/model:default";
@@ -95,11 +97,9 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     );
 
     let mut replay = app();
-    Handlers::with(replay.world_mut(), |handlers| {
-        Replay::default().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
+    Replay::default()
+        .register(replay.world_mut(), &log)
+        .unwrap();
     let model = bound(replay.world_mut(), MODEL);
     let tool = bound(replay.world_mut(), TOOL);
     let agent = program(replay.world_mut(), model, tool);
@@ -174,11 +174,9 @@ fn serialized_log_reconstructs_capabilities_identity_and_uncalled_grants() {
     let checkpoint = save_world(live.world_mut()).unwrap();
     let checkpoint = Checkpoint::from_json(&checkpoint.to_json().unwrap()).unwrap();
     let mut restored = app();
-    Handlers::with(restored.world_mut(), |handlers| {
-        Replay::default().register(handlers, &log)
-    })
-    .unwrap()
-    .unwrap();
+    Replay::default()
+        .register(restored.world_mut(), &log)
+        .unwrap();
     load_world(&checkpoint, restored.world_mut())
         .expect("all scope dependencies were reconstructed");
     let unexpected = restored
@@ -270,7 +268,9 @@ fn a_layered_program_replays_under_the_same_layer_and_refuses_another() {
     for (layer, accepted) in [(Some("audit"), true), (Some("other"), false), (None, false)] {
         let mut replay = app();
         Handlers::with(replay.world_mut(), |handlers| {
-            for replayer in rig_effect_log::EffectLogReplayer::for_log_by_id(&log).unwrap() {
+            for replayer in
+                rig_cassette::effect_log::EffectLogReplayer::for_log_by_id(&log).unwrap()
+            {
                 let key = replayer.key().clone();
                 let handler = match layer {
                     Some(name) if key == HandlerKey::from(MODEL) => {

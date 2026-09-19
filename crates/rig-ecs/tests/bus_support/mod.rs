@@ -242,6 +242,7 @@ pub fn streaming() -> EffectKind {
 pub fn app_with(policy: ServingPolicy) -> App {
     let mut app = App::new();
     app.add_plugins(BusPlugin::with_policy(policy).ambiguity_detection(LogLevel::Error));
+    app.add_plugins(rig_cassette::ecs::ReplayPlugin);
     rig_ecs::checkpoint::register_types(app.world_mut());
     app.finish();
     app.cleanup();

@@ -4,6 +4,8 @@ use crate::bus_support;
 use bevy_app::App;
 use bevy_ecs::prelude::*;
 use bus_support::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::ecs::Replay;
 use rig_core::serve::Dispatch;
 use rig_core::{
     effect::{EffectKind, FamilyDescriptor, HandlerDescriptor, HandlerKey, Outcome},
@@ -11,9 +13,7 @@ use rig_core::{
     serve::Serve,
     tool::{ContextValue, PublishedContext, ToolContext, ToolOutput, ToolResult},
 };
-use rig_ecs::bus::{
-    EffectLogResource, EffectOutcome, Handlers, PendingEffect, Replay, ToolInputs, ToolOutputs,
-};
+use rig_ecs::bus::{EffectOutcome, Handlers, PendingEffect, ToolInputs, ToolOutputs};
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 struct Artifact(String);
@@ -99,11 +99,9 @@ fn dispatch(world: &mut World, secret: &str) -> Entity {
         .id()
 }
 
-fn replay_app(log: &rig_effect_log::EffectLog) -> App {
+fn replay_app(log: &rig_cassette::effect_log::EffectLog) -> App {
     let mut replay = app();
-    Handlers::with(replay.world_mut(), |h| Replay::default().register(h, log))
-        .unwrap()
-        .unwrap();
+    Replay::default().register(replay.world_mut(), log).unwrap();
     replay
 }
 
@@ -119,7 +117,10 @@ fn serialized_replay_preserves_results_on_success_and_error_without_recording_cr
         let mut live = app();
         live.init_resource::<AtOutcome>()
             .add_observer(observe_publication);
-        EffectLogResource::install(live.world_mut(), rig_effect_log::EffectLogRecorder::new());
+        EffectLogResource::install(
+            live.world_mut(),
+            rig_cassette::effect_log::EffectLogRecorder::new(),
+        );
         register(&mut live, "tool:publish", Publish { fail });
         let effect = served_effect(&mut live, "recording-secret-do-not-log", "live publication");
         let answer = live.world().get::<EffectOutcome>(effect).unwrap().0.clone();
@@ -202,7 +203,10 @@ impl rig_core::serve::Intercept for ReplaceAnswer {
 #[test]
 fn layered_verdict_keeps_nonempty_inner_output_in_the_record_and_replay() {
     let mut live = app();
-    EffectLogResource::install(live.world_mut(), rig_effect_log::EffectLogRecorder::new());
+    EffectLogResource::install(
+        live.world_mut(),
+        rig_cassette::effect_log::EffectLogRecorder::new(),
+    );
     Handlers::with(live.world_mut(), |handlers| {
         handlers.register_erased(
             "tool:publish",
@@ -232,7 +236,7 @@ fn layered_verdict_keeps_nonempty_inner_output_in_the_record_and_replay() {
         Some(Artifact("artifact-123".into()))
     );
     let json = serde_json::to_string(&live.world().resource::<EffectLogResource>().log()).unwrap();
-    let log: rig_effect_log::EffectLog = serde_json::from_str(&json).unwrap();
+    let log: rig_cassette::effect_log::EffectLog = serde_json::from_str(&json).unwrap();
     assert!(
         log.records[0].outcome.is_ok(),
         "record is the inner handler, not the verdict"
@@ -247,9 +251,11 @@ fn layered_verdict_keeps_nonempty_inner_output_in_the_record_and_replay() {
         Some(Artifact("artifact-123".into()))
     );
     let mut replay = app();
-    let replayer =
-        rig_effect_log::EffectLogReplayer::for_key(&log, &HandlerKey::from("tool:publish"))
-            .unwrap();
+    let replayer = rig_cassette::effect_log::EffectLogReplayer::for_key(
+        &log,
+        &HandlerKey::from("tool:publish"),
+    )
+    .unwrap();
     Handlers::with(replay.world_mut(), |handlers| {
         handlers.register_erased(
             "tool:publish",
@@ -304,7 +310,10 @@ impl Serve for PublishThenWait {
 #[test]
 fn cancellation_records_already_published_output() {
     let mut live = app();
-    EffectLogResource::install(live.world_mut(), rig_effect_log::EffectLogRecorder::new());
+    EffectLogResource::install(
+        live.world_mut(),
+        rig_cassette::effect_log::EffectLogRecorder::new(),
+    );
     register(&mut live, "tool:publish", PublishThenWait);
     let effect = dispatch(live.world_mut(), "private");
     tick_until(&mut live, "published before cancellation", |world| {
@@ -356,7 +365,10 @@ fn cancellation_records_already_published_output() {
 #[test]
 fn world_native_cancellation_records_output_without_a_publishing_slot() {
     let mut live = app();
-    EffectLogResource::install(live.world_mut(), rig_effect_log::EffectLogRecorder::new());
+    EffectLogResource::install(
+        live.world_mut(),
+        rig_cassette::effect_log::EffectLogRecorder::new(),
+    );
     Handlers::with(live.world_mut(), |handlers| {
         handlers.register_open("tool:publish", Publish { fail: false }.descriptor().family)
     })
@@ -399,7 +411,10 @@ fn world_native_cancellation_records_output_without_a_publishing_slot() {
 #[test]
 fn world_native_published_output_is_recorded_and_mismatched_replay_does_not_publish() {
     let mut live = app();
-    EffectLogResource::install(live.world_mut(), rig_effect_log::EffectLogRecorder::new());
+    EffectLogResource::install(
+        live.world_mut(),
+        rig_cassette::effect_log::EffectLogRecorder::new(),
+    );
     Handlers::with(live.world_mut(), |handlers| {
         handlers.register_open("tool:publish", Publish { fail: false }.descriptor().family)
     })

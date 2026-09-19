@@ -34,23 +34,18 @@ use rig_core::serve::ServingPolicy;
 type InFlight = WasmBoxedFuture<'static, (HandlerKey, EffectId)>;
 type InFlightServing = Pin<Box<Serving>>;
 
-/// The driver's hold on a recorder: closures, so the driver names no
-/// recorder type, and one observer per dispatch — the driver is not on the
-/// reply path (the consumer holds the reply channel), so the dispatch tells it.
-struct Recording {
-    handlers: Box<dyn Fn(Vec<HandlerDescriptor>) + Send + Sync>,
-    begin: Box<dyn Fn(EffectId, HandlerKey, EffectKind, Origin) + Send + Sync>,
-    observe: Box<dyn Fn(Dispatch, EffectId) -> Dispatch + Send + Sync>,
-}
+/// Shared observer state: the driver and each outstanding dispatch retain the
+/// same recorder, independently of the agent value that installed it.
+pub(crate) struct Recording(Arc<dyn Recorder + Send + Sync>);
 
 /// The record's view of one dispatch: the recorder, told by id.
-struct Recorded<R> {
+struct Recorded {
     published: Option<Arc<rig_core::tool::PublishedContext>>,
-    recorder: R,
+    recorder: Arc<dyn Recorder + Send + Sync>,
     id: EffectId,
 }
 
-impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
+impl Observe for Recorded {
     fn adapter_context(&self) -> Option<rig_core::observe::AdapterContext> {
         self.recorder.adapter_context(self.id)
     }
@@ -87,24 +82,17 @@ impl<R: Recorder + Send + Sync> Observe for Recorded<R> {
 }
 
 impl Recording {
-    fn new<R: Recorder + Clone + Send + Sync>(recorder: R) -> Self {
-        let for_handlers = recorder.clone();
-        let handlers = Box::new(move |described| for_handlers.handlers(described));
-        let for_begin = recorder.clone();
-        let begin = Box::new(move |id, key, kind, origin| for_begin.begin(id, key, kind, origin));
-        let observe = Box::new(move |dispatch: Dispatch, id: EffectId| {
-            let published = dispatch.scope::<rig_core::tool::PublishedContext>();
-            dispatch.with_observer(Box::new(Recorded {
-                published,
-                recorder: recorder.clone(),
-                id,
-            }))
-        });
-        Self {
-            handlers,
-            begin,
-            observe,
-        }
+    pub(crate) fn new(recorder: impl Recorder + Send + Sync) -> Self {
+        Self(Arc::new(recorder))
+    }
+
+    fn observe(&self, dispatch: Dispatch, id: EffectId) -> Dispatch {
+        let published = dispatch.scope::<rig_core::tool::PublishedContext>();
+        dispatch.with_observer(Box::new(Recorded {
+            published,
+            recorder: Arc::clone(&self.0),
+            id,
+        }))
     }
 }
 
@@ -231,7 +219,7 @@ impl BusDriver {
     fn install(&mut self, key: HandlerKey, handler: ErasedHandler) {
         if let Some(recording) = &self.recorder {
             let described = handler.descriptor();
-            (recording.handlers)(vec![HandlerDescriptor {
+            recording.0.handlers(vec![HandlerDescriptor {
                 key: key.clone(),
                 family: described.family,
                 layers: described.layers,
@@ -262,8 +250,12 @@ impl BusDriver {
     /// [`rig_core::serve::Recorder`]); the handlers registered now are
     /// handed to it first ([`Recorder::handlers`]), and each one installed
     /// later as it is installed.
-    pub fn record_to<R: Recorder + Clone + Send + Sync>(&mut self, recorder: R) {
-        recorder.handlers(
+    pub fn record_to(&mut self, recorder: impl Recorder + Send + Sync) {
+        self.record_with(Recording::new(recorder));
+    }
+
+    pub(crate) fn record_with(&mut self, recorder: Recording) {
+        recorder.0.handlers(
             self.handlers
                 .iter()
                 .map(|(key, handler)| {
@@ -276,7 +268,7 @@ impl BusDriver {
                 })
                 .collect(),
         );
-        self.recorder = Some(Recording::new(recorder));
+        self.recorder = Some(recorder);
     }
 
     /// The serving policy.
@@ -353,8 +345,10 @@ impl BusDriver {
         }
         let dispatch = match &self.recorder {
             Some(recorder) => {
-                (recorder.begin)(id, key.clone(), kind.clone(), Origin { parent, scope });
-                (recorder.observe)(dispatch, id)
+                recorder
+                    .0
+                    .begin(id, key.clone(), kind.clone(), Origin { parent, scope });
+                recorder.observe(dispatch, id)
             }
             None => dispatch,
         };

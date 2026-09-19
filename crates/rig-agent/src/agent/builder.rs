@@ -16,10 +16,10 @@
 
 use std::sync::{Arc, OnceLock};
 
-use crate::bus::{Bus, Dispatcher, Registrar};
-use rig_core::serve::ErasedHandler;
+use crate::bus::{Bus, Dispatcher, Recording, Registrar};
 use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::{CompletionAdapter, MemoryAdapter, RetrieveAdapter};
+use rig_core::serve::{ErasedHandler, Recorder};
 use rig_core::{
     completion::{CompletionModel, Document, ModelRef},
     effect::{HandlerKey, Key, family},
@@ -151,8 +151,7 @@ pub struct AgentBuilder<ToolState = NoToolConfig> {
     /// The dynamic-context hooks' key slots, by key suffix.
     dynamic_contexts: Vec<(String, Arc<OnceLock<Key<family::Retrieve>>>)>,
     memory: bool,
-    record_effects: bool,
-    record_events: bool,
+    recorder: Option<Recording>,
     retrieval_indexes: usize,
     /// The labels `model_route` registered, in order.
     routes: Vec<String>,
@@ -389,21 +388,18 @@ impl<ToolState> AgentBuilder<ToolState> {
         self
     }
 
-    /// Record every dispatch into the agent's effect log
-    /// ([`Agent::effect_log`]). For an agent that owns its bus; over a
-    /// host's bus ([`AgentBuilder::over_bus`]) the host records through its
-    /// driver, and asking here fails at build, at the `over_bus` line.
-    pub fn record_effects(mut self) -> Self {
-        self.record_effects = true;
-        self
-    }
-
-    /// Record every dispatch *and* keep a streamed completion's events
-    /// verbatim on its record, so a golden pins the event sequence and a
-    /// replay re-emits the original delta boundaries.
-    pub fn record_effects_with_events(mut self) -> Self {
-        self.record_effects = true;
-        self.record_events = true;
+    /// Observe every dispatch with a caller-owned recorder.
+    ///
+    /// Keep a clone of a shared recorder to inspect its observations. The
+    /// driver retains the installed instance even after [`Agent::into_parts`].
+    /// Like [`BusDriver::record_to`](crate::bus::BusDriver::record_to), this
+    /// requires a thread-safe recorder on every target because reply observers
+    /// cross the bus's thread-safe channels, including on browser WASM.
+    ///
+    /// An agent over a host's bus cannot install a recorder; the host owns
+    /// that driver's recording policy. Asking here fails at build.
+    pub fn record_to(mut self, recorder: impl Recorder + Send + Sync) -> Self {
+        self.recorder = Some(Recording::new(recorder));
         self
     }
 
@@ -426,8 +422,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             pending: self.pending,
             dynamic_contexts: self.dynamic_contexts,
             memory: self.memory,
-            record_effects: self.record_effects,
-            record_events: self.record_events,
+            recorder: self.recorder,
             retrieval_indexes: self.retrieval_indexes,
             routes: self.routes,
         }
@@ -473,8 +468,7 @@ impl<ToolState> AgentBuilder<ToolState> {
             mut pending,
             dynamic_contexts,
             memory,
-            record_effects,
-            record_events,
+            recorder,
             retrieval_indexes: _,
             routes,
         } = self;
@@ -545,8 +539,8 @@ impl<ToolState> AgentBuilder<ToolState> {
                 "AgentBuilder::conversation set without memory(..) or memory_handler(..): nothing is loaded or saved"
             );
         }
-        if record_effects {
-            match (host, config.bus.enable_recording(record_events)) {
+        if let Some(recorder) = recorder {
+            match (host, config.bus.record_to(recorder)) {
                 (Some(caller), Err(_)) => recording_over_a_hosts_bus(caller),
                 (None, registered) => crate::agent::drive::register_generated(registered),
                 (Some(_), Ok(())) => {}
@@ -591,7 +585,7 @@ impl AgentBuilder<NoToolConfig> {
     /// and the host drives it. Everything else the builder registers
     /// (memory, routes, tools) goes through `registrar`, keyed under
     /// `owner`. The host records too, through its driver: an agent built
-    /// here holds no driver to tap, and [`record_effects`](Self::record_effects)
+    /// here holds no driver to tap, and [`record_to`](Self::record_to)
     /// on it fails at build, at this call site.
     #[track_caller]
     pub fn over_bus(
@@ -628,8 +622,7 @@ impl AgentBuilder<NoToolConfig> {
             pending: Vec::new(),
             dynamic_contexts: Vec::new(),
             memory: false,
-            record_effects: false,
-            record_events: false,
+            recorder: None,
             retrieval_indexes: 0,
             routes: Vec::new(),
         }
@@ -727,8 +720,7 @@ impl AgentBuilder<WithBuilderTools> {
             pending,
             dynamic_contexts,
             memory,
-            record_effects,
-            record_events,
+            recorder,
             retrieval_indexes,
             routes,
         } = self;
@@ -741,8 +733,7 @@ impl AgentBuilder<WithBuilderTools> {
             pending,
             dynamic_contexts,
             memory,
-            record_effects,
-            record_events,
+            recorder,
             retrieval_indexes,
             routes,
         }

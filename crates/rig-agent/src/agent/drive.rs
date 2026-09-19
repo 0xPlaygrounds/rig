@@ -29,7 +29,7 @@ use crate::sync::Mutex;
 mod loom_models;
 #[cfg(all(test, not(rig_loom)))]
 mod tests;
-use crate::bus::{BusDriver, Dispatcher, Registrar};
+use crate::bus::{BusDriver, Dispatcher, Recording, Registrar};
 use rig_core::serve::ErasedHandler;
 use rig_core::serve::ServingPolicy;
 use rig_core::serve::adapters::CompletionAdapter;
@@ -38,7 +38,6 @@ use rig_core::{
     effect::{HandlerKey, Key, family},
     error::ErrorReport,
 };
-use rig_effect_log::{EffectLog, EffectLogRecorder};
 
 /// The per-process counter behind an agent's default owner label.
 static NEXT_AGENT: AtomicU64 = AtomicU64::new(0);
@@ -85,7 +84,6 @@ pub(crate) struct AgentBus {
     driver: Option<Arc<Mutex<BusDriver>>>,
     /// The wakers of every live run; see [`Driven`].
     wakers: Arc<WakerSet>,
-    recorder: Option<EffectLogRecorder>,
     anonymous_models: Arc<AtomicUsize>,
     /// The policy the owned bus was created with; `None` over a host's bus.
     config: Option<ServingPolicy>,
@@ -96,7 +94,6 @@ impl std::fmt::Debug for AgentBus {
         f.debug_struct("AgentBus")
             .field("owner", &self.owner)
             .field("owns_driver", &self.driver.is_some())
-            .field("recording", &self.recorder.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -115,7 +112,6 @@ impl AgentBus {
             owner: Arc::from(owner),
             driver: Some(Arc::new(Mutex::new(driver))),
             wakers: Arc::new(WakerSet::default()),
-            recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
             config: Some(config),
         }
@@ -130,7 +126,7 @@ impl AgentBus {
     /// builder is the driver's only holder; a bus this agent does not own
     /// (or one another agent value already shares) cannot record, and says
     /// so.
-    pub(crate) fn enable_recording(&mut self, keep_events: bool) -> Result<(), ErrorReport> {
+    pub(crate) fn record_to(&mut self, recorder: Recording) -> Result<(), ErrorReport> {
         let Some(driver) = self.driver.as_mut() else {
             return Err(ErrorReport::new(
                 rig_core::error::ErrorKind::Internal,
@@ -143,16 +139,10 @@ impl AgentBus {
                 "recording is enabled at build, before a clone shares the driver",
             ));
         };
-        let recorder = if keep_events {
-            EffectLogRecorder::keeping_stream_events()
-        } else {
-            EffectLogRecorder::new()
-        };
         driver
             .get_mut()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .record_to(recorder.clone());
-        self.recorder = Some(recorder);
+            .record_with(recorder);
         Ok(())
     }
 
@@ -163,7 +153,6 @@ impl AgentBus {
             owner: Arc::from(owner),
             driver: None,
             wakers: Arc::new(WakerSet::default()),
-            recorder: None,
             anonymous_models: Arc::new(AtomicUsize::new(0)),
             config: None,
         }
@@ -171,8 +160,7 @@ impl AgentBus {
 
     /// This bus without its driver: what an agent keeps when
     /// [`Agent::into_parts`](super::Agent::into_parts) moves the driver
-    /// out. The recorder stays, so the moved driver keeps recording into
-    /// the agent's log.
+    /// out. Recording belongs to that driver and remains active after the move.
     pub(crate) fn detached(&self) -> Self {
         Self {
             dispatcher: self.dispatcher.clone(),
@@ -180,7 +168,6 @@ impl AgentBus {
             owner: self.owner.clone(),
             driver: None,
             wakers: Arc::new(WakerSet::default()),
-            recorder: self.recorder.clone(),
             anonymous_models: self.anonymous_models.clone(),
             config: self.config,
         }
@@ -243,16 +230,6 @@ impl AgentBus {
 
     pub(crate) fn owns_driver(&self) -> bool {
         self.driver.is_some()
-    }
-
-    /// The recorded log so far, when the agent records.
-    pub(crate) fn effect_log(&self) -> Option<EffectLog> {
-        self.recorder.as_ref().map(EffectLogRecorder::log)
-    }
-
-    /// Take the recorded log, when the agent records.
-    pub(crate) fn take_effect_log(&self) -> Option<EffectLog> {
-        self.recorder.as_ref().map(EffectLogRecorder::take)
     }
 
     /// Register `model` under `label` (replacing any model under it) and

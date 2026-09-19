@@ -39,7 +39,8 @@ signatures, module paths, and feature flags.
 - Verification planner and source-tree checks: `xtask/`
 - Workspace example packages: `examples/*`; per-crate examples: `crates/<crate>/examples/`
 - Root integration test targets: `tests/*.rs`
-- Provider test modules: `tests/providers/<provider>/`; cassette fixtures: `tests/cassettes/<provider>/`
+- Record/replay home: `crates/rig-cassette` — the engine (`src/`), the provider cassette corpus (`fixtures/cassettes/<provider>/`), the effect-log golden corpus (`fixtures/effects/`), every cassette-backed provider target (`tests/<provider>.rs` with `tests/providers/<provider>/` and the shared drivers in `tests/common/`), the cache-prefix guard, and the effect-bus verification targets `verify` and `world_replay`. Corpora and `tests/` are excluded from the published package.
+- Live-only provider test modules stay in the facade: `tests/providers/<provider>/`, driven by `tests/<provider>.rs`
 - External-service integration tests: `tests/integrations/`
 - Unpublished vector-store test runner: `test-support/service-tests`
 

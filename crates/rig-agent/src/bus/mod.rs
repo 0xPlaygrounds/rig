@@ -206,7 +206,7 @@
 //! Provider and tool authors keep implementing the impl-side traits exactly
 //! as before; the adapters ([`rig_core::serve::adapters`]) wrap them. Implement [`Serve`](rig_core::serve::Serve) (an `async fn`) for
 //! an out-of-tree kind ([`EffectKind::Custom`](rig_core::effect::EffectKind::Custom))
-//! or for a replayer (`rig_effect_log::EffectLogReplayer`).
+//! or for a replayer (`rig_cassette::effect_log::EffectLogReplayer`).
 //!
 //! # Record and replay
 //!
@@ -215,10 +215,11 @@
 //! witness context through the dispatch observer to completion adapters, without
 //! a World. A request's explicit context takes precedence; adapter facts remain
 //! outside the effect log. Contexts must distinguish concurrent logical calls.
-//! The recorder is a handler-side seam and needs no runtime crate; `rig_effect_log`'s
-//! `EffectLogRecorder` is the one that folds every served dispatch into an
-//! effect log as it resolves, and its `EffectLogReplayer` is the handler
-//! that answers the same dispatches from the record instead of a provider.
+//! The recorder is a handler-side seam and needs no runtime crate.
+//! `rig_cassette::effect_log::EffectLogRecorder` folds served dispatches into
+//! a log; its `EffectLogReplayer` answers from that record instead of a provider.
+//! Enable cassette's `agent` feature for `rig_cassette::agent::replay`
+//! registration helpers. This runtime never depends on the concrete log crate.
 
 mod dispatcher;
 mod driver;
@@ -227,6 +228,7 @@ mod registrar;
 
 pub use dispatcher::{BusId, DispatchOptions, Dispatcher, EffectStream, Pending};
 pub use driver::BusDriver;
+pub(crate) use driver::Recording;
 pub(crate) use handle::wrap_stream;
 pub use handle::{
     Completion, DispatchScope, EmbedHandle, Handle, IndexHandle, MemoryHandle, ModelHandle,
@@ -286,8 +288,6 @@ impl Bus {
         (dispatcher, registrar)
     }
 }
-
-pub mod replay;
 
 #[cfg(all(test, rig_loom))]
 mod loom_models;

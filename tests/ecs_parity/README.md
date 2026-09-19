@@ -15,7 +15,7 @@ Each program's required row is compared to the original header's required row.
 Consecutive IDs starting at zero are implicit. The compact data preserves empty
 programs and repeated scope blocks without duplicating requests and responses.
 
-Policy hashes cover `rig_ecs::replay::spec_json`, including budgets and bound
+Policy hashes cover `rig_cassette::ecs::identity::spec_json`, including budgets and bound
 descriptors. A deliberate policy change requires reviewing and updating its
 fixed expectations. Identity checks compare independently committed values;
 they do not derive the expected policy from the actual program under test.

@@ -7,7 +7,16 @@ fn opts(mode: &str) -> Options {
 }
 
 fn metadata() -> Value {
-    serde_json::json!({"packages":[{"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"anthropic","kind":["test"]}]},{"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},{"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},{"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}]})
+    // `rig` keeps the live-only provider targets; the cassette-backed ones
+    // are targets of `rig-cassette`.
+    serde_json::json!({"packages":[
+        {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
+        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]}]},
+        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]},{"name":"effect_log","kind":["test"]}]},
+        {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},
+        {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
+        {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
+    ]})
 }
 
 fn ids(mode: &str, paths: &[&str]) -> BTreeSet<String> {
@@ -42,12 +51,11 @@ fn unknown_changes_select_full_coverage() {
 
 #[test]
 fn gated_provider_changes_enable_every_capability() {
-    let mut metadata = metadata();
-    metadata["packages"][0]["targets"] = serde_json::json!([{"name":"openai","kind":["test"]}]);
+    let metadata = metadata();
     for path in [
-        "tests/providers/openai/cassette/audio_params_matrix.rs",
-        "tests/providers/openai/cassette/image_params_matrix.rs",
-        "tests/cassettes/openai/websocket/example.yaml",
+        "crates/rig-cassette/tests/providers/openai/cassette/audio_params_matrix.rs",
+        "crates/rig-cassette/tests/providers/openai/cassette/image_params_matrix.rs",
+        "crates/rig-cassette/fixtures/cassettes/openai/websocket/example.yaml",
     ] {
         let plan = selection::plan(
             Path::new("/repo"),
@@ -84,7 +92,7 @@ fn planner_and_dependency_edits_cannot_skip_checks() {
     for p in [
         ".config/nextest.toml",
         "src/lib.rs",
-        "tests/common/mod.rs",
+        "crates/rig-cassette/tests/common/mod.rs",
         "test-support/service-tests/src/lib.rs",
     ] {
         assert_eq!(ids("--changed", &[p]), without_floors, "{p}");
@@ -135,14 +143,82 @@ fn full_and_floor_lanes_select_independently() {
 
 #[test]
 fn fixture_selects_complete_provider_target() {
-    let plan = ids("--changed", &["tests/cassettes/anthropic/a.yaml"]);
+    let plan = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"],
+    );
     assert!(plan.contains("provider-anthropic"));
     assert!(!plan.contains("full-tests"));
 }
 
+/// Provider targets have two owners now. A moved cassette suite must be run
+/// out of `rig-cassette` and a live-only suite out of the facade; picking the
+/// wrong `-p` compiles a package that does not declare the target at all.
+#[test]
+fn a_provider_target_is_run_by_the_package_that_declares_it() {
+    let args = |paths: &[&str], id: &str| {
+        selection::plan(
+            Path::new("/repo"),
+            &metadata(),
+            &opts("--changed"),
+            &paths.iter().map(|s| (*s).into()).collect(),
+            &checks::all(),
+        )
+        .unwrap()
+        .into_iter()
+        .find(|check| check.id == id)
+        .unwrap()
+        .steps[0]
+            .args
+            .clone()
+    };
+    let moved = args(
+        &["crates/rig-cassette/tests/providers/openai/cassette/x.rs"],
+        "provider-openai",
+    );
+    assert!(
+        moved.windows(2).any(|p| p == ["-p", "rig-cassette"]),
+        "{moved:?}"
+    );
+    assert!(
+        moved.windows(2).any(|p| p == ["--test", "openai"]),
+        "{moved:?}"
+    );
+    let stayed = args(&["tests/providers/azure/live.rs"], "provider-azure");
+    assert!(stayed.windows(2).any(|p| p == ["-p", "rig"]), "{stayed:?}");
+    // A cassette-package file that names no target is package source, not an
+    // unknown provider: it must not broaden the whole plan.
+    let corpus = ids("--changed", &["crates/rig-cassette/tests/corpus_hooks.rs"]);
+    assert!(corpus.contains("package-rig-cassette"), "{corpus:?}");
+    assert!(!corpus.contains("full-tests"), "{corpus:?}");
+}
+
+#[test]
+fn shared_replay_sources_keep_the_minimal_execution() {
+    for path in [
+        "crates/rig-cassette/tests/corpus_hooks.rs",
+        "crates/rig-cassette/tests/world_replay.rs",
+        "crates/rig-cassette/src/effect_log/tests.rs",
+        "crates/rig-cassette/src/agent/replay/tests.rs",
+    ] {
+        let plan = ids("--changed", &[path]);
+        assert!(
+            plan.contains("package-rig-cassette-minimal"),
+            "{path}: {plan:?}"
+        );
+        assert!(!plan.contains("full-tests"), "{path}: {plan:?}");
+    }
+}
+
 #[test]
 fn unknown_fixture_provider_falls_back() {
-    assert!(ids("--changed", &["tests/cassettes/unknown/a.yaml"]).contains("full-tests"));
+    assert!(
+        ids(
+            "--changed",
+            &["crates/rig-cassette/fixtures/cassettes/unknown/a.yaml"]
+        )
+        .contains("full-tests")
+    );
 }
 
 #[test]
@@ -743,9 +819,33 @@ fn workflows_carry_no_toolchain_copy() {
 
 #[test]
 fn a_golden_change_selects_the_parity_lane() {
-    let p = ids("--changed", &["crates/rig-verify/fixtures/x.effects.json"]);
-    assert!(p.contains("ecs-parity"), "{p:?}");
-    assert!(p.contains("default-tests"), "{p:?}");
+    let p = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/effects/x.effects.json"],
+    );
+    for check in ["bus-verification", "default-tests", "ecs-parity"] {
+        assert!(p.contains(check), "{p:?}");
+    }
+}
+
+/// The two corpora share a parent directory inside one package. A provider
+/// cassette must still reach its provider target instead of falling through
+/// to the owning package's generic asset rule, and neither corpus may be
+/// classified as the other.
+#[test]
+fn the_two_corpora_are_classified_apart() {
+    let cassette = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/cassettes/anthropic/a.yaml"],
+    );
+    assert!(cassette.contains("provider-anthropic"), "{cassette:?}");
+    assert!(!cassette.contains("bus-verification"), "{cassette:?}");
+    assert!(!cassette.contains("package-rig-cassette"), "{cassette:?}");
+    let effects = ids(
+        "--changed",
+        &["crates/rig-cassette/fixtures/effects/x.effects.json"],
+    );
+    assert!(!effects.iter().any(|id| id.starts_with("provider-")));
 }
 
 /// The fixture metadata declares `rig-ecs` (a runtime crate) and
@@ -773,74 +873,6 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     assert!(args.iter().any(|arg| arg == "--tests"));
     for flag in ["--features", "--all-features", "--no-default-features"] {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
-    }
-}
-
-#[test]
-fn parity_and_verification_have_explicit_execution_owners() {
-    let all = checks::all();
-    let args = |id: &str| &all.iter().find(|check| check.id == id).unwrap().steps[0].args;
-    let default = args("default-tests");
-    assert!(default.iter().any(|arg| arg == "not binary(macro_hygiene) and not package(rig-verify) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))"));
-    for id in ["default-tests", "ecs-parity"] {
-        assert!(
-            args(id)
-                .windows(2)
-                .any(|pair| pair == ["--features", "bedrock"])
-        );
-        assert!(args(id).windows(2).any(|pair| pair == ["--retries", "2"]));
-    }
-    assert!(
-        args("ecs-parity")
-            .windows(2)
-            .any(|pair| pair == ["-p", "rig-test-support"])
-    );
-    assert!(
-        args("bus-verification")
-            .iter()
-            .any(|arg| arg == "not binary(world_replay)")
-    );
-    let world = &all
-        .iter()
-        .find(|check| check.id == "ecs-parity")
-        .unwrap()
-        .steps[1]
-        .args;
-    assert!(world.iter().any(|arg| arg == "binary(world_replay)"));
-    assert!(world.windows(2).any(|pair| pair == ["--retries", "0"]));
-    for (owner, filter) in [
-        (
-            "ecs-parity",
-            "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-verify) and binary(world_replay))",
-        ),
-        (
-            "bus-verification",
-            "package(rig-verify) and not binary(world_replay)",
-        ),
-    ] {
-        let steps = &all.iter().find(|check| check.id == owner).unwrap().steps;
-        let unified = steps
-            .iter()
-            .find(|step| step.args.iter().any(|arg| arg == filter))
-            .expect("default-member configuration has an execution owner");
-        assert!(
-            !unified
-                .args
-                .iter()
-                .any(|arg| arg == "-p" || arg == "--package")
-        );
-        assert!(
-            unified
-                .args
-                .windows(2)
-                .any(|pair| pair == ["--features", "bedrock"])
-        );
-        assert!(
-            unified
-                .args
-                .windows(2)
-                .any(|pair| pair == ["--retries", "2"])
-        );
     }
 }
 

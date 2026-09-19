@@ -13,6 +13,8 @@
 use crate::run_support;
 
 use bevy_ecs::prelude::*;
+use rig_cassette::ecs::EffectLogResource;
+use rig_cassette::effect_log::EffectLogRecorder;
 use rig_core::{
     effect::EffectKind,
     message::{Message, UserContent},
@@ -22,10 +24,9 @@ use rig_ecs::{
         Context, DocumentId, DocumentText, Grant, MessageParts, RunResult, Settled, UsesModel,
         Utterance,
     },
-    bus::{EffectLogResource, PendingEffect, RigSchedule},
+    bus::{PendingEffect, RigSchedule},
     systems::{RigSet, RunCommands},
 };
-use rig_effect_log::EffectLogRecorder;
 use run_support::*;
 
 const MODEL: &str = "t/model:default";

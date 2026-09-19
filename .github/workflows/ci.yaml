@@ -227,7 +227,7 @@ jobs:
           save-if: ${{ github.repository == '0xPlaygrounds/rig' && github.event_name == 'push' }}
       - run: cargo xtask verify --check wasm-rig-core
       - if: ${{ !cancelled() }}
-        run: cargo xtask verify --check wasm-rig-effect-log
+        run: cargo xtask verify --check wasm-rig-cassette
       - if: ${{ !cancelled() }}
         run: cargo xtask verify --check wasm-rig-ecs
       - if: ${{ !cancelled() }}

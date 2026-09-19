@@ -4,13 +4,14 @@
 //! the host's never-answering handler — over a host bus whose model is a
 //! scripted mock (the wire does not change what the chain records; the
 //! completion child is recorded live in `tests/providers/anthropic`). The
-//! enumeration and the replays live in `crates/rig-verify/tests/corpus_causal.rs`.
+//! enumeration and the replays live in `crates/rig-cassette/tests/corpus_causal.rs`.
 //!
 //! Scripted, not live: the cancelled cells need the run dropped at the
 //! moment the child is reached, the same-key cells need a model that calls
 //! a tool with `leaf` semantics no prompt can promise, and none of them
 //! asks anything of a provider.
 
+use rig_cassette::agent::AgentReplayExt;
 use std::time::Duration;
 
 use rig::agent::AgentBuilder;
@@ -20,7 +21,7 @@ use rig::effect::{EffectFamily, EffectKind, HandlerKey};
 use rig::serve::ServingPolicy;
 use rig::test_utils::{MockCompletionModel, MockTurn};
 use rig::tool::RegisteredTool;
-use rig_effect_log::{EffectLog, EffectLogRecorder};
+use rig_cassette::effect_log::{EffectLog, EffectLogRecorder};
 use serde_json::json;
 
 use crate::goldens::{

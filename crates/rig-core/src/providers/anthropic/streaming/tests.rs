@@ -579,7 +579,7 @@ fn test_handle_redacted_thinking_content_block_start_event() {
 }
 
 /// The adaptive-thinking wire shape, exactly as recorded in
-/// `tests/cassettes/anthropic/opus_4_7/messages_adaptive_thinking_streaming_smoke.yaml`:
+/// `crates/rig-cassette/fixtures/cassettes/anthropic/opus_4_7/messages_adaptive_thinking_streaming_smoke.yaml`:
 /// `content_block_start` opens the block with an EMPTY `thinking` and an
 /// EMPTY `signature`, a `signature_delta` carries the whole signature, and
 /// no `thinking_delta` ever arrives. The block's only content is its
