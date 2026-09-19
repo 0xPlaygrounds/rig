@@ -545,7 +545,7 @@ A selection this build does not register, an ambiguous shorthand, an unknown
 dialect or a misspelled typed option is refused by the *reader*, before
 anything is spawned — which is why there is no materialization variant for
 any of them. Pinned by `run_binding.rs`; the harness
-(`tests/common/ecs_matrix/world.rs`) binds `golden/model:default` this way
+(`crates/rig-cassette/tests/common/ecs_matrix/world.rs`) binds `golden/model:default` this way
 on every ungated cassette wire, with a resolver that maps the reference
 `cassette` to the cassette's key and a factory that hands out the cassette
 transport, and every cell's request is the byte-identical one a

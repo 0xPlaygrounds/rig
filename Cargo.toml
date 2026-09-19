@@ -311,21 +311,12 @@ rig-tungstenite = { path = "crates/rig-tungstenite", version = "0.42.0", optiona
 
 [dev-dependencies]
 rig-test-support = { path = "test-support/rig-test-support" }
-# The repository census checks Bedrock binary fixtures even in default suites.
-rig-cassette = { path = "crates/rig-cassette", version = "0.42.0", features = ["bedrock"] }
-rig-ecs = { path = "crates/rig-ecs" }
 bevy_app = { workspace = true }
 bevy_ecs = { workspace = true }
-# The ECS contract matrix (`tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as the cassette crate's world interpreter does.
+# The ECS contract matrix (`crates/rig-cassette/tests/common/ecs_matrix.rs`) pins the bus's task pool to one thread, as the cassette crate's world interpreter does.
 bevy_tasks = { workspace = true }
 anyhow = { workspace = true }
 assert_fs = { workspace = true }
-async-stream = { workspace = true }
-aws-config = { workspace = true }
-aws-sdk-bedrockruntime = { workspace = true }
-aws-smithy-eventstream = { workspace = true }
-aws-smithy-runtime-api = { workspace = true }
-aws-smithy-types = { workspace = true }
 rig-core = { path = "crates/rig-core", version = "0.42.0", default-features = false, features = [
   "test-utils",
 ] }
@@ -334,24 +325,13 @@ rig-agent = { path = "crates/rig-agent", version = "0.42.0", default-features = 
 ] }
 tokio = { workspace = true, features = ["full"] }
 tracing-subscriber = { workspace = true, features = ["env-filter"] }
-tokio-test = { workspace = true }
-serde_path_to_error = { workspace = true }
 base64 = { workspace = true }
 bytes = { workspace = true }
 futures = { workspace = true }
 httpmock = { workspace = true, features = ["record", "proxy"] }
-reqwest-retry = { workspace = true }
 reqwest = { workspace = true, features = ["json", "stream"] }
-reqwest-middleware = { workspace = true, features = [
-  "json",
-  "multipart",
-  "charset",
-  "http2",
-  "rustls",
-] }
 schemars = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
-sha2 = { workspace = true }
 # float_roundtrip keeps cassette scrubbing idempotent on float-heavy bodies
 # (e.g. embedding vectors): without it, parse→print can oscillate between two
 # representations of the same decimal and the recorded YAML never stabilizes.
@@ -360,8 +340,6 @@ sha2 = { workspace = true }
 serde_json = { workspace = true, features = ["float_roundtrip", "preserve_order"] }
 serde_yaml = { workspace = true }
 syn = { workspace = true, features = ["full", "visit"] }
-thiserror = { workspace = true }
-hyper-util = { workspace = true, features = ["service", "server"] }
 rmcp = { workspace = true, features = [
   "client",
   "macros",
@@ -372,13 +350,8 @@ rmcp = { workspace = true, features = [
   "transport-streamable-http-server",
   "transport-worker",
 ] }
-axum = { workspace = true }
-opentelemetry = { workspace = true }
-opentelemetry_sdk = { workspace = true, features = ["rt-tokio"] }
-opentelemetry-otlp = { workspace = true }
 tracing = { workspace = true }
 tracing-opentelemetry = { workspace = true }
-url = { workspace = true }
 [features]
 typesafeai = ["dep:rig-typesafeai"]
 default = ["rig-core/default", "reqwest", "agent", "derive", "rustls"]

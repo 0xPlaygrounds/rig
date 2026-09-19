@@ -139,7 +139,13 @@ impl<'ast> Visit<'ast> for Sites {
 
 fn sites() -> Sites {
     let mut sites = Sites::default();
-    let mut pending = vec![root().join("tests/providers"), root().join("tests/core")];
+    // Producers live in two packages now: the cassette-backed provider suites
+    // moved to `rig-cassette`, the scripted ones stayed in `tests/core`.
+    let mut pending = vec![
+        root().join("crates/rig-cassette/tests/providers"),
+        root().join("tests/providers"),
+        root().join("tests/core"),
+    ];
     while let Some(dir) = pending.pop() {
         for entry in std::fs::read_dir(&dir).expect("a tests directory") {
             let path = entry.expect("entry").path();

@@ -79,18 +79,48 @@ fn add(out: &mut Vec<Check>, all: &[Check], id: &str, reason: &str) -> Result<()
     out.push(c);
     Ok(())
 }
+/// The provider a path belongs to, whichever package now owns its target:
+/// the cassette-backed suites and both corpora live in `rig-cassette`, the
+/// remaining live-only suites in the facade.
 fn provider(path: &str) -> Option<&str> {
     for prefix in [
         "crates/rig-cassette/fixtures/cassettes/",
+        "crates/rig-cassette/tests/providers/",
         "tests/providers/",
     ] {
         if let Some(rest) = path.strip_prefix(prefix) {
             return rest.split('/').next();
         }
     }
-    path.strip_prefix("tests/")
-        .filter(|s| !s.contains('/'))
-        .and_then(|s| s.strip_suffix(".rs"))
+    for prefix in ["crates/rig-cassette/tests/", "tests/"] {
+        if let Some(name) = path
+            .strip_prefix(prefix)
+            .filter(|s| !s.contains('/'))
+            .and_then(|s| s.strip_suffix(".rs"))
+        {
+            return Some(name);
+        }
+    }
+    None
+}
+/// The package whose test target is named `name`, searching the cassette
+/// package before the facade so a moved suite is never attributed to its old
+/// owner.
+fn provider_owner<'a>(packages: &'a [Value], name: &str) -> Option<&'a str> {
+    ["rig-cassette", "rig"].into_iter().find(|owner| {
+        packages
+            .iter()
+            .find(|p| p["name"] == *owner)
+            .and_then(|p| p["targets"].as_array())
+            .is_some_and(|ts| {
+                ts.iter().any(|t| {
+                    t["name"] == name
+                        && t["kind"]
+                            .as_array()
+                            .is_some_and(|k| k.iter().any(|x| x == "test"))
+                })
+            })
+    })
 }
 fn package<'a>(root: &Path, packages: &'a [Value], path: &str) -> Option<&'a Value> {
     let absolute = root.join(path);
@@ -135,7 +165,7 @@ fn dynamic(id: String, args: Vec<String>, reason: &str) -> Check {
         reason: reason.into(),
     }
 }
-fn provider_check(name: &str, reason: &str) -> Check {
+fn provider_check(owner: &str, name: &str, reason: &str) -> Check {
     dynamic(
         format!("provider-{name}"),
         [
@@ -143,7 +173,7 @@ fn provider_check(name: &str, reason: &str) -> Check {
             "run",
             "--locked",
             "-p",
-            "rig",
+            owner,
             "--all-features",
             "--test",
             name,
@@ -283,7 +313,7 @@ pub(super) fn plan(
                 "scripts/",
                 "test-support/",
                 "src/",
-                "tests/common/",
+                "crates/rig-cassette/tests/common/",
                 "tests/integrations/",
             ]
             .iter()
@@ -339,32 +369,26 @@ pub(super) fn plan(
             continue;
         }
         if let Some(name) = provider(path) {
-            let root_package = packages
-                .iter()
-                .find(|p| p["name"] == "rig")
-                .ok_or_else(|| invalid("missing rig package"))?;
-            let target = root_package["targets"].as_array().and_then(|ts| {
-                ts.iter().find(|t| {
-                    t["name"] == name
-                        && t["kind"]
-                            .as_array()
-                            .is_some_and(|k| k.iter().any(|x| x == "test"))
-                })
-            });
-            if target.is_none() {
+            if let Some(owner) = provider_owner(packages, name) {
+                let id = format!("provider-{name}");
+                if !out.iter().any(|c| c.id == id) {
+                    out.push(provider_check(owner, name,
+                        "provider source or cassette: execute complete target with all capabilities, including feature-gated tests and shared safety assertions",
+                    ));
+                }
+                continue;
+            }
+            // Inside a package, a file that is not a provider target is
+            // ordinary package source (the corpus matrices beside the moved
+            // suites): let the owning package's rule claim it. At the
+            // repository root there is no such owner, so broaden.
+            if !path.starts_with("crates/") {
                 return Ok(broad(
                     all,
                     &format!("unknown provider/target for {path}"),
                     Lanes::ALL,
                 ));
             }
-            let id = format!("provider-{name}");
-            if !out.iter().any(|c| c.id == id) {
-                out.push(provider_check(name,
-                    "provider source or cassette: execute complete target with all capabilities, including feature-gated tests and shared safety assertions",
-                ));
-            }
-            continue;
         }
         if ["README.md", "CONTRIBUTING.md", "AGENTS.md", "DEVELOPING.md"].contains(&path.as_str())
             || path.starts_with("docs/")

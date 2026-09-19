@@ -128,15 +128,17 @@ pub(super) fn all() -> Vec<Check> {
                 "--retries",
                 "2",
                 "-E",
-                "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay))) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))",
+                "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay) or test(/(^|::)(ecs|corpus)_/))) and not (package(rig) and test(golden_pairing))",
             ])],
         ),
-        // Root parity cells have one lane owner; default-tests excludes them.
-        // The absorbed verification suite keeps two targets so bus-verification
-        // can exclude the world replay without excluding the rest, and so
-        // default-tests can exclude both without losing the cassette engine's
-        // own unit tests. Distinct feature/target runs (core-all, wasm, loom)
-        // remain separate coverage.
+        // Parity cells have one lane owner; default-tests excludes them. They
+        // moved with the cassette-backed provider suites, so the predicate is
+        // `package(rig-cassette)` now, qualified away from the two absorbed
+        // verification binaries whose `corpus_` module names would otherwise
+        // match it. The golden-pairing guard stays in the facade's `core`
+        // target. Excluding them never costs the cassette engine's own unit
+        // tests their default owner. Distinct feature/target runs (core-all,
+        // wasm, loom) remain separate coverage.
         check(
             "ecs-parity",
             vec![
@@ -146,6 +148,8 @@ pub(super) fn all() -> Vec<Check> {
                     "--locked",
                     "-p",
                     "rig",
+                    "-p",
+                    "rig-cassette",
                     // Extracted ECS helper regressions retain this graph too.
                     "-p",
                     "rig-test-support",
@@ -160,7 +164,7 @@ pub(super) fn all() -> Vec<Check> {
                     "--retries",
                     "2",
                     "-E",
-                    "test(/(^|::)(ecs|corpus)_/) | test(golden_pairing)",
+                    "(package(rig-cassette) and test(/(^|::)(ecs|corpus)_/) and not binary(verify) and not binary(world_replay)) or (package(rig) and test(golden_pairing))",
                 ]),
                 cargo(&[
                     "nextest",
@@ -186,7 +190,7 @@ pub(super) fn all() -> Vec<Check> {
                     "--retries",
                     "2",
                     "-E",
-                    "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-cassette) and binary(world_replay))",
+                    "(package(rig-cassette) and test(/(^|::)(ecs|corpus)_/) and not binary(verify) and not binary(world_replay)) or (package(rig) and test(golden_pairing)) or (package(rig-cassette) and binary(world_replay))",
                 ]),
             ],
         ),

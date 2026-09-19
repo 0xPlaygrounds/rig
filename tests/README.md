@@ -4,11 +4,18 @@ Run the smallest useful local check for changed behavior and leave comprehensive
 execution to CI; see [DEVELOPING.md](../DEVELOPING.md) for check selection,
 `cargo xtask verify` modes, review, and publication.
 
-Rig's root crate uses integration test targets under `tests/`:
+Provider test targets have two owners:
 
-- `tests/<provider>.rs` are provider-specific test targets.
-- `tests/providers/<provider>/cassette/` contains provider tests backed by committed HTTP cassettes; `tests/providers/<provider>/live/` contains tests that still require a real service. Most provider tests are ignored live tests unless they have been migrated to cassettes.
-- `tests/core.rs` contains provider-agnostic core behavior tests.
+- Cassette-backed suites are targets of `rig-cassette`, beside the corpus they
+  replay: `crates/rig-cassette/tests/<provider>.rs` with its modules under
+  `crates/rig-cassette/tests/providers/<provider>/cassette/` (and `/live/`
+  for the ignored live cells those suites still carry). The shared drivers they
+  include live in `crates/rig-cassette/tests/common/`.
+- Providers with no recorded corpus keep their live-only suites in the facade:
+  `tests/<provider>.rs` with `tests/providers/<provider>/`. These are ignored
+  tests that require a real service.
+- `tests/core.rs` contains provider-agnostic core behavior tests and the guards
+  that scan the source tree, which need the repository root.
 - `test-support/service-tests/integrations.rs` runs the vector-store suites from `tests/integrations/` as the unpublished `rig-service-tests` package. `tests/integrations.rs` retains the root Bedrock integrations.
 - The [ECS consumer harness](https://github.com/gold-silver-copper/rigcoder/tree/main/crates/rigcoder-verify)
   is owned by rigcoder. Run `cargo run --locked -p rigcoder-verify -- verify`
@@ -105,11 +112,13 @@ coverage distinct in the report.
 Cassette tests replay committed HTTP interactions by default and do not require
 provider API keys. Fixtures live under `crates/rig-cassette/fixtures/cassettes/<provider>/...`.
 
-Replay one migrated provider suite (`openai`, `anthropic`, `gemini`, `chatgpt`,
-`bedrock`, `cohere`, `doubleword`, `venice`) with:
+Replay one migrated provider suite (`anthropic`, `bedrock`, `chatgpt`, `cohere`,
+`copilot`, `deepseek`, `doubleword`, `gemini`, `groq`, `llamacpp`, `mistral`,
+`mistralrs`, `ollama`, `openai`, `openrouter`, `perplexity`, `venice`, `xai`)
+with:
 
 ```bash
-cargo test -p rig --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
+cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
 ```
 
 Record mode requires the relevant provider credentials in the environment and
@@ -117,7 +126,7 @@ overwrites existing cassette files:
 
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
-cargo test -p rig --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
+cargo test -p rig-cassette --all-features --test <provider> <provider>::cassette -- --nocapture --test-threads=1
 ```
 
 ChatGPT record mode additionally needs `CHATGPT_ACCESS_TOKEN=... CHATGPT_ACCOUNT_ID=...`.
@@ -141,7 +150,7 @@ the filter is a substring match, so use the full module path only when the
 shorter name is ambiguous:
 
 ```bash
-cargo test -p rig --all-features --test gemini \
+cargo test -p rig-cassette --all-features --test gemini \
   streaming_tools_smoke \
   -- --nocapture --test-threads=1
 ```
@@ -214,7 +223,7 @@ Record one scenario at a time:
 
 ```bash
 RIG_PROVIDER_TEST_MODE=record \
-cargo test -p rig --all-features --test openai openai::cassette::prompt_caching \
+cargo test -p rig-cassette --all-features --test openai openai::cassette::prompt_caching \
   -- --exact --nocapture --test-threads=1
 ```
 
@@ -225,7 +234,7 @@ its cache semantics under us. Each cell prints a `LIVE-CACHE-ECONOMICS` row, so 
 table can be regenerated rather than trusted as a transcription:
 
 ```bash
-cargo test -p rig --all-features --test openai live_cache_economics \
+cargo test -p rig-cassette --all-features --test openai live_cache_economics \
   -- --exact --ignored --nocapture --test-threads=1
 ```
 
@@ -290,9 +299,9 @@ ignored by default unless a test file says otherwise.
 
 ```bash
 # all ignored tests for one provider target
-cargo test -p rig --all-features --test openrouter -- --ignored --nocapture --test-threads=1
+cargo test -p rig-cassette --all-features --test openrouter -- --ignored --nocapture --test-threads=1
 # one ignored provider test
-cargo test -p rig --all-features --test openai \
+cargo test -p rig-cassette --all-features --test openai \
   responses_document_file_id_roundtrip_live \
   -- --ignored --nocapture --test-threads=1
 ```
@@ -366,7 +375,7 @@ cargo test -p rig-service-tests --features vectorize --test integrations vectori
 `test-support/rig-test-support` compiles neutral tools, cassette paths, cache and
 stream assertions, golden comparison, and the ECS harness once. Provider binaries
 import these modules; their cassette-safety tests remain registered in each binary.
-Generic ECS matrix drivers remain under `tests/common/ecs_matrix`: a cell edit
+Generic ECS matrix drivers live under `crates/rig-cassette/tests/common/ecs_matrix`: a cell edit
 then rebuilds its provider binaries without invalidating unrelated providers.
 Their long-loop regression tests stay with those modules. Other shared helper
 regressions run in the support crate; its ECS regressions also retain the
@@ -395,7 +404,7 @@ List registrations or run a native family, for example:
 
 ```sh
 cargo nextest list --locked -p rig --features bedrock
-RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig --test anthropic ecs_outcome -- --nocapture
+RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --test anthropic ecs_outcome -- --nocapture
 ```
 
 ### Stream-fault cells

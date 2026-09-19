@@ -7,7 +7,15 @@ fn opts(mode: &str) -> Options {
 }
 
 fn metadata() -> Value {
-    serde_json::json!({"packages":[{"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"anthropic","kind":["test"]}]},{"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},{"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},{"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}]})
+    // `rig` keeps the live-only provider targets; the cassette-backed ones
+    // are targets of `rig-cassette`.
+    serde_json::json!({"packages":[
+        {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
+        {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]}]},
+        {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},
+        {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
+        {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
+    ]})
 }
 
 fn ids(mode: &str, paths: &[&str]) -> BTreeSet<String> {
@@ -42,11 +50,10 @@ fn unknown_changes_select_full_coverage() {
 
 #[test]
 fn gated_provider_changes_enable_every_capability() {
-    let mut metadata = metadata();
-    metadata["packages"][0]["targets"] = serde_json::json!([{"name":"openai","kind":["test"]}]);
+    let metadata = metadata();
     for path in [
-        "tests/providers/openai/cassette/audio_params_matrix.rs",
-        "tests/providers/openai/cassette/image_params_matrix.rs",
+        "crates/rig-cassette/tests/providers/openai/cassette/audio_params_matrix.rs",
+        "crates/rig-cassette/tests/providers/openai/cassette/image_params_matrix.rs",
         "crates/rig-cassette/fixtures/cassettes/openai/websocket/example.yaml",
     ] {
         let plan = selection::plan(
@@ -84,7 +91,7 @@ fn planner_and_dependency_edits_cannot_skip_checks() {
     for p in [
         ".config/nextest.toml",
         "src/lib.rs",
-        "tests/common/mod.rs",
+        "crates/rig-cassette/tests/common/mod.rs",
         "test-support/service-tests/src/lib.rs",
     ] {
         assert_eq!(ids("--changed", &[p]), without_floors, "{p}");
@@ -141,6 +148,48 @@ fn fixture_selects_complete_provider_target() {
     );
     assert!(plan.contains("provider-anthropic"));
     assert!(!plan.contains("full-tests"));
+}
+
+/// Provider targets have two owners now. A moved cassette suite must be run
+/// out of `rig-cassette` and a live-only suite out of the facade; picking the
+/// wrong `-p` compiles a package that does not declare the target at all.
+#[test]
+fn a_provider_target_is_run_by_the_package_that_declares_it() {
+    let args = |paths: &[&str], id: &str| {
+        selection::plan(
+            Path::new("/repo"),
+            &metadata(),
+            &opts("--changed"),
+            &paths.iter().map(|s| (*s).into()).collect(),
+            &checks::all(),
+        )
+        .unwrap()
+        .into_iter()
+        .find(|check| check.id == id)
+        .unwrap()
+        .steps[0]
+            .args
+            .clone()
+    };
+    let moved = args(
+        &["crates/rig-cassette/tests/providers/openai/cassette/x.rs"],
+        "provider-openai",
+    );
+    assert!(
+        moved.windows(2).any(|p| p == ["-p", "rig-cassette"]),
+        "{moved:?}"
+    );
+    assert!(
+        moved.windows(2).any(|p| p == ["--test", "openai"]),
+        "{moved:?}"
+    );
+    let stayed = args(&["tests/providers/azure/live.rs"], "provider-azure");
+    assert!(stayed.windows(2).any(|p| p == ["-p", "rig"]), "{stayed:?}");
+    // A cassette-package file that names no target is package source, not an
+    // unknown provider: it must not broaden the whole plan.
+    let corpus = ids("--changed", &["crates/rig-cassette/tests/corpus_hooks.rs"]);
+    assert!(corpus.contains("package-rig-cassette"), "{corpus:?}");
+    assert!(!corpus.contains("full-tests"), "{corpus:?}");
 }
 
 #[test]
@@ -814,7 +863,7 @@ fn parity_and_verification_have_explicit_execution_owners() {
     let all = checks::all();
     let args = |id: &str| &all.iter().find(|check| check.id == id).unwrap().steps[0].args;
     let default = args("default-tests");
-    assert!(default.iter().any(|arg| arg == "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay))) and not (package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing)))"));
+    assert!(default.iter().any(|arg| arg == "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay) or test(/(^|::)(ecs|corpus)_/))) and not (package(rig) and test(golden_pairing))"));
     for id in ["default-tests", "ecs-parity"] {
         assert!(
             args(id)
@@ -852,7 +901,7 @@ fn parity_and_verification_have_explicit_execution_owners() {
     for (owner, filter, standalone) in [
         (
             "ecs-parity",
-            "(package(rig) and (test(/(^|::)(ecs|corpus)_/) or test(golden_pairing))) or (package(rig-cassette) and binary(world_replay))",
+            "(package(rig-cassette) and test(/(^|::)(ecs|corpus)_/) and not binary(verify) and not binary(world_replay)) or (package(rig) and test(golden_pairing)) or (package(rig-cassette) and binary(world_replay))",
             "package(rig-cassette) and binary(world_replay)",
         ),
         (

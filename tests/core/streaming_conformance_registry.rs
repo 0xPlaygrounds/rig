@@ -86,19 +86,24 @@ const OUT_OF_BINARY_FAMILIES: &[OutOfBinaryFamily] = &[
     },
     OutOfBinaryFamily {
         family: "bedrock",
-        suite_file: "tests/providers/bedrock/streaming_conformance.rs",
+        suite_file: "crates/rig-cassette/tests/providers/bedrock/streaming_conformance.rs",
         ci_check: FACADE_CHECK,
-        // The PR gate's sweep runs `--features bedrock`, not `--all-features`,
-        // so this suite's existence depends on that one flag: without it the
-        // `#[cfg(feature = "bedrock")] mod bedrock` in `tests/bedrock.rs` is
-        // cfg-ed out and all 11 conformance tests silently stop compiling.
+        // The suite's existence still depends on one flag: without
+        // `rig-cassette`'s own `bedrock` feature the
+        // `#[cfg(feature = "bedrock")] mod bedrock` in
+        // `crates/rig-cassette/tests/bedrock.rs` is cfg-ed out and all 11
+        // conformance tests silently stop compiling. The default sweep runs
+        // `--features bedrock`, which the cassette package also declares.
         // (Do not gate the whole file: its cassette-safety scan is
         // deliberately ungated.)
         ci_selector: Some("--features bedrock"),
+        // `rig-cassette` is a workspace default member, so the sweep compiles
+        // it without naming `-p`; the flag is what decides the suite exists.
         ci_package: None,
-        reason: "lives in the `rig` facade but behind the `bedrock` feature, so it compiles into \
-                 the `bedrock` test binary rather than `core`; the workspace sweep enables \
-                 `--features bedrock` specifically so that check keeps executing it",
+        reason: "lives in the `rig-cassette` package behind its `bedrock` feature, so it compiles \
+                 into that package's `bedrock` test binary rather than the facade's `core`; the \
+                 default-member sweep enables `--features bedrock` specifically so that check \
+                 keeps executing it",
     },
 ];
 

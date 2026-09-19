@@ -113,7 +113,7 @@ impl rig_agent::agent::AgentHook for RetryUnknownTool {
 }
 
 // ---------------------------------------------------------------------------
-// The hook matrix's hooks (Matrix B, `tests/providers/anthropic/cassette/
+// The hook matrix's hooks (Matrix B, `crates/rig-cassette/tests/providers/anthropic/cassette/
 // corpus_hooks.rs`, `crates/rig-cassette/tests/corpus_hooks.rs`). Hooks are
 // program: the header names each by type, and the rig-cassette replay
 // defines a type of the same name making the same decision. Every hook is

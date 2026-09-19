@@ -8,18 +8,26 @@ and the effect bus's behavioural verification suite.
 | engine | `src/` | yes |
 | provider cassettes | `fixtures/cassettes/<provider>/...yaml` | no (`exclude`) |
 | effect-log goldens | `fixtures/effects/<name>.effects.json` | no (`exclude`) |
-| verification suite | `tests/` (targets `verify`, `world_replay`) | no (`exclude`) |
+| cassette provider suites | `tests/<provider>.rs`, `tests/providers/`, `tests/common/` | no (`exclude`) |
+| effect-bus verification | `tests/verify/`, `tests/world_replay.rs` | no (`exclude`) |
 
-The three parts share a package because they share a subject — a recording and
-the program that replays it — not a dependency graph. The engine's normal
-dependencies are `rig-core` and `rig-reqwest`: no agent runtime, no facade, no
-consumer registry, no fixture inventory. The suite's runtimes (`rig-agent`,
-`rig-ecs`, `rig-effect-log`, the Bevy crates, `proptest`) are version-less path
-**dev-dependencies**, so Cargo omits them from the published manifest and they
-never reach a downstream's normal graph; `src/paths.rs` pins that with a
-`cargo tree -e normal` probe over an independent downstream package, and the
-repository's `tests/core/dependency_graph.rs` pins it from the other side.
-Dev-dependencies do not qualify the engine's runtime independence.
+Everything here shares a subject — a recording and the program that replays it
+— not a dependency graph. The engine's normal dependencies are `rig-core` and
+`rig-reqwest`: no agent runtime, no facade, no consumer registry, no fixture
+inventory. Everything the suites need on top of that (the `rig` facade,
+`rig-test-support`, `rig-agent`, `rig-ecs`, `rig-effect-log`, the Bevy crates,
+`proptest`) is a version-less path **dev-dependency**, so Cargo omits it from
+the published manifest and it never reaches a downstream's normal graph;
+`src/paths.rs` pins that with a `cargo tree -e normal` probe over an
+independent downstream package, and the repository's
+`tests/core/dependency_graph.rs` pins it from the other side. Dev-dependencies
+do not qualify the engine's runtime independence.
+
+The edge runs one way at the package level: the facade no longer depends on
+this crate at all. The dev-dependency on the facade enables its capability
+features (`audio`, `image`, `derive`, `websocket`, `bedrock`, …)
+unconditionally, so a provider target enumerates the same tests in every lane
+instead of shrinking silently when a lane omits `--all-features`.
 
 ## The engine
 
@@ -158,13 +166,15 @@ replayer answers the record as the cancel it was, after the events it kept.
 
 ## What lives where
 
-- here: the cassette engine, both corpora, and the behaviour of the bus and the
-  agent over it (record and replay, durable execution, the three interpreters
+- here: the cassette engine, both corpora, every cassette-backed provider
+  suite with its golden producers, and the behaviour of the bus and the agent
+  over it (record and replay, durable execution, the three interpreters
   agreeing);
 - the root package's `tests/core`: guards that scan the source tree and the
-  fixture runners (they need the repository root);
-- the root package's `tests/providers`: cassette-backed provider suites and the
-  golden producers;
+  fixture runners (they need the repository root), plus the one-producer-per-
+  golden pairing guard;
+- the root package's `tests/providers`: the live-only provider suites of
+  providers with no recorded corpus;
 - `rig-core`/`rig-agent` unit tests: anything that needs crate-private types
   (the loom models among them).
 
@@ -175,6 +185,7 @@ RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --lib --no-def
 RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --lib --all-features
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'binary(verify)'
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'binary(world_replay)'
+RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features --test <provider>
 ```
 
 `RIG_REGENERATE_GOLDEN` must be unset for all of them. The lane owners of these

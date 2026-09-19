@@ -132,21 +132,30 @@ compiling anything; a missing tool is a failed run.
   everywhere so a failed or cancelled job saves nothing, and warms are never
   cancelled mid-build.
 
-The default sweep excludes root ECS/corpus parity tests and the two absorbed
-verification targets of `rig-cassette` (`verify`, `world_replay`); the cassette
-engine's own unit tests stay in it. `ecs-parity` owns those root tests (both
-root parity configurations, including the extracted ECS helper regressions in
-`rig-test-support`), the golden pairing guard, and the separate `world_replay`
-target; `bus-verification` owns the `verify` target, which is the rest of the
-absorbed suite. Both name `package(rig-cassette)` beside the binary, so an
-identically named binary in another package cannot change owner. Default-member
-and standalone package graphs remain separate executions: JSON ordering/float
-parsing and allocator features differ between them. Default-member executions
-and standalone root parity retain two retries; the standalone verification
-executions retain zero. The all-feature, wasm, and loom checks retain their
-distinct configuration coverage even when test names overlap. The standalone
-default-feature type check selects both the facade and `rig-test-support`, so
-extracted helper regression bodies still compile there.
+Every cassette-backed test now lives in `rig-cassette`: the provider targets,
+the ECS/corpus parity cells inside them, the cache-prefix guard, and the two
+verification targets `verify` and `world_replay`. The facade keeps the
+live-only provider suites, `core`, the facade-feature guards and the
+integrations. `rig` no longer depends on `rig-cassette` in any form.
+
+The default sweep excludes the parity cells and the two verification targets;
+the cassette engine's own unit tests and every provider target stay in it.
+`ecs-parity` owns the parity cells (both configurations, including the
+extracted ECS helper regressions in `rig-test-support`), the golden pairing
+guard that stayed in the facade's `core` target, and the separate
+`world_replay` target; `bus-verification` owns `verify`. Every predicate names
+`package(rig-cassette)` beside the binary or test pattern — and excludes the
+two verification binaries from the `corpus_`/`ecs_` pattern, whose module
+names would otherwise match — so no test has two owners in one configuration
+and none has none. Default-member and standalone package graphs remain
+separate executions: JSON ordering/float parsing and allocator features differ
+between them. Default-member executions and standalone parity retain two
+retries; the standalone verification executions retain zero. The all-feature,
+wasm, and loom checks retain their distinct configuration coverage even when
+test names overlap. The standalone default-feature type check selects both the
+facade and `rig-test-support`, so extracted helper regression bodies still
+compile there. A `provider-<name>` check is planned against whichever package
+declares that target.
 
 Tokens are read-only except release-plz. No job receives provider secrets:
 cassettes replay with a dummy key and live tests are `#[ignore]`.

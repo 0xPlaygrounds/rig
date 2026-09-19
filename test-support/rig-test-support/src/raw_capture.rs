@@ -14,7 +14,7 @@
 //! Two things deliberately do **not** move here.
 //!
 //! The cassette wrapper call stays at each `#[tokio::test]` site with its
-//! scenario as a string literal: `tests/common/cassette_safety.rs` discovers
+//! scenario as a string literal: `crates/rig-cassette/tests/common/cassette_safety.rs` discovers
 //! fixtures by parsing that literal out of the wrapper call's first argument,
 //! so a hoisted or variable scenario would orphan the cassette. The execution
 //! helpers below are therefore written to be the *body* passed to that
