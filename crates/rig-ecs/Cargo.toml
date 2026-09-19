@@ -23,8 +23,8 @@ base64 = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 futures = { workspace = true }
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false }
-rig-effect-log = { path = "../rig-effect-log", version = "0.42.0" }
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false }
+rig-effect-log = { path = "../rig-effect-log", version = "0.43.0" }
 # The crate is a `bevy_app` plugin over `bevy_ecs` and `bevy_tasks`. Each
 # Bevy crate with default features off and exactly what the module needs:
 # `std` for the executor-backed task pools; `multi_threaded` so handler
@@ -48,7 +48,7 @@ bevy_platform = { workspace = true, features = ["web"] }
 bevy_app = { workspace = true, features = ["web", "bevy_reflect"] }
 
 [dev-dependencies]
-rig-core = { path = "../rig-core", version = "0.42.0", features = ["test-utils"] }
+rig-core = { path = "../rig-core", version = "0.43.0", features = ["test-utils"] }
 
 # The module executed on `wasm32-unknown-unknown` (`tests/bus_wasm.rs`),
 # under `wasm-bindgen-test-runner`, as rig-agent's `tests/bus_wasm.rs` is.

@@ -8,6 +8,105 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Sections are generated on the release PR from the merged pull requests; do not
 edit this file in an ordinary PR (CI fails). Put notes under `## Changelog` in
 your PR description.
+## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/v0.42.0...v0.43.0) - 2026-09-19
+
+### Added
+
+- initial typesafeai provider (jev) ([#2550](https://github.com/0xPlaygrounds/rig/pull/2550)) (by [0xMochan](https://github.com/0xMochan)) - #2550
+- feat!(core, ecs): one provider vocabulary, lossless configuration ([#2548](https://github.com/0xPlaygrounds/rig/pull/2548)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2548
+- feat!(core): Usage counters are Option<u64> — an absent counter is representable ([#2535](https://github.com/0xPlaygrounds/rig/pull/2535)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2535
+- *(rig-ecs)* [**breaking**] the ECS contract under a long tool loop on five wires, with tool results as data, cached utterance views, bindings as data and runs as commands ([#2516](https://github.com/0xPlaygrounds/rig/pull/2516)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-ecs)* explicit stream delivery — StreamItemsDelivered, two consumers, five-wire matrix ([#2515](https://github.com/0xPlaygrounds/rig/pull/2515)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* add durable tool-turn checkpoint boundaries ([#2514](https://github.com/0xPlaygrounds/rig/pull/2514)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* expose typed content parts and shared binary assets ([#2513](https://github.com/0xPlaygrounds/rig/pull/2513)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] the effect-bus critical path — one protocol, one channel, typed views ([#2443](https://github.com/0xPlaygrounds/rig/pull/2443)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2443
+- [**breaking**] finish the data layer — blessed ModelTurn conversion, counter/newtype ids, owned dispatch, serde across the protocol surface ([#2419](https://github.com/0xPlaygrounds/rig/pull/2419)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2419
+- [**breaking**] event-sourced hook state — RunEntry log on AgentRun replaces the durable Scratchpad snapshot ([#2408](https://github.com/0xPlaygrounds/rig/pull/2408)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2408
+- [**breaking**] transport middleware + run lifecycle hooks (on_run_start/on_run_settled, durable Scratchpad) ([#2407](https://github.com/0xPlaygrounds/rig/pull/2407)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2407
+- [**breaking**] lower ModelHandle and the erased tool set into rig-core; pure rig_run::prepare_request ([#2405](https://github.com/0xPlaygrounds/rig/pull/2405)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2405
+- [**breaking**] rig-run — extract the sans-IO run protocol out of rig-agent (RunSpec, TurnTools, transcript validator, counter RunId) ([#2403](https://github.com/0xPlaygrounds/rig/pull/2403)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2403
+- [**breaking**] BoxedHttpClient — an erased HTTP transport; Client<Ext> defaults to it ([#2401](https://github.com/0xPlaygrounds/rig/pull/2401)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2401
+- *(agent)* sync, retrieval-free registry reads — ToolServerHandle::{snapshot, static_tool_defs, toolset}, public ToolRegistrySnapshot, ToolSet: Clone ([#2400](https://github.com/0xPlaygrounds/rig/pull/2400)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(agent)* run_channel/RunEvents, static Send+Sync pins, bevy_tasks example, dependency-graph guard ([#2399](https://github.com/0xPlaygrounds/rig/pull/2399)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] rig-rmcp — move MCP tool support out of rig-agent into its own crate ([#2398](https://github.com/0xPlaygrounds/rig/pull/2398)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2398
+- [**breaking**] rig-reqwest — cut the bundled transport into its own crate; rig-core has no default transport and no reqwest/tokio ([#2397](https://github.com/0xPlaygrounds/rig/pull/2397)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2397
+- *(telemetry)* gen_ai spans for every non-completion modality, plus a recorded embedding matrix for all seven keyed providers ([#2390](https://github.com/0xPlaygrounds/rig/pull/2390)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] type-erasure sweep part 2 — normalize embedding/rerank responses, erase rerank and image-embedding models, move ModelLister construction to a hook ([#2389](https://github.com/0xPlaygrounds/rig/pull/2389)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2389
+- [**breaking**] finish the type-erasure sweep — normalize transcription/image/audio responses, move construction off every model trait, erase the embedding model in vector stores ([#2385](https://github.com/0xPlaygrounds/rig/pull/2385)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2385
+- *(llamacpp)* [**breaking**] replace the llamafile provider, merge its two suites, and exhaust the matrix ([#2382](https://github.com/0xPlaygrounds/rig/pull/2382)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* explicit context caching, and three usage-mapping bugs the cache audit found ([#2375](https://github.com/0xPlaygrounds/rig/pull/2375)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Fixed
+
+- *(core)* [**breaking**] redact resolved credentials and encoded request diagnostics ([#2546](https://github.com/0xPlaygrounds/rig/pull/2546)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- honour the WASM bounds in every vector store ([#2545](https://github.com/0xPlaygrounds/rig/pull/2545)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2545
+- recover from malformed streamed tool arguments, preserve Responses compaction/phase, drop the tool_macro alias ([#2532](https://github.com/0xPlaygrounds/rig/pull/2532)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2532
+- lenient Responses metadata decode (top_p) and valid rig-postgres search SQL ([#2531](https://github.com/0xPlaygrounds/rig/pull/2531)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2531
+- Responses strict:false, Anthropic 128k/Claude 5, and stale Groq/Moonshot/Ollama constants ([#2530](https://github.com/0xPlaygrounds/rig/pull/2530)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2530
+- the parity gaps the ECS matrices found, closed — Gemini's block is a refusal, a truncated reasoning-only turn commits nothing, images ride the regrouped stream ([#2509](https://github.com/0xPlaygrounds/rig/pull/2509)) ([#2510](https://github.com/0xPlaygrounds/rig/pull/2510)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2510
+- *(rig-ecs)* a Retry written on an empty turn asks again instead of settling ([#2504](https://github.com/0xPlaygrounds/rig/pull/2504)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(core)* restore the observe scrub helpers; a truncated stream is retryable ([#2502](https://github.com/0xPlaygrounds/rig/pull/2502)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini, rig-ecs)* retry transient provider failures inside the run; block_reason=OTHER is not a refusal ([#2500](https://github.com/0xPlaygrounds/rig/pull/2500)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] the merge review's defects on main, each pinned by a matrix ([#2499](https://github.com/0xPlaygrounds/rig/pull/2499)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2499
+- *(rig-cassette)* restore start_at and checkpoint_recording for consumers that stage candidates ([#2498](https://github.com/0xPlaygrounds/rig/pull/2498)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(rig-reqwest)* default-transport constructors return an error instead of panicking when the client cannot be built ([#2471](https://github.com/0xPlaygrounds/rig/pull/2471)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(openai-compatible)* let llama.cpp receive an image in a tool result, plus two cassette-hygiene bugs ([#2380](https://github.com/0xPlaygrounds/rig/pull/2380)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(gemini)* six cachedContents defects the follow-up audit found ([#2379](https://github.com/0xPlaygrounds/rig/pull/2379)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Other
+
+- *(tests)* one raw-capture execution layer, one contract per wire format ([#2551](https://github.com/0xPlaygrounds/rig/pull/2551)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(tests)* one cassette response-header reader, one raw-capture harness ([#2549](https://github.com/0xPlaygrounds/rig/pull/2549)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- reduce agent context churn and verification retries ([#2547](https://github.com/0xPlaygrounds/rig/pull/2547)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2547
+- Unify every provider onto one wire model ([#2538](https://github.com/0xPlaygrounds/rig/pull/2538)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2538
+- [**breaking**] retire five clippy heuristics and unbox everything they made us write ([#2536](https://github.com/0xPlaygrounds/rig/pull/2536)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2536
+- refactor!(ecs, providers): delete the ECS message cache, the second task/handler storage, and test-only wire→core conversions ([#2534](https://github.com/0xPlaygrounds/rig/pull/2534)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2534
+- Revise agent guidelines and error handling rules ([#2533](https://github.com/0xPlaygrounds/rig/pull/2533)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2533
+- shorten and de-duplicate agent-facing documentation ([#2527](https://github.com/0xPlaygrounds/rig/pull/2527)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2527
+- a Bevy app — one pass per update, tasks and handlers as components, one RunPhase, split systems, reflected checkpoint ([#2529](https://github.com/0xPlaygrounds/rig/pull/2529)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2529
+- delete the reflect and replay features and the source-shape guards ([#2523](https://github.com/0xPlaygrounds/rig/pull/2523)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2523
+- *(rig-ecs)* delete duplicated scaffolding, lists and wrappers ([#2522](https://github.com/0xPlaygrounds/rig/pull/2522)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* give cassette harness IO an independent runtime ([#2520](https://github.com/0xPlaygrounds/rig/pull/2520)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- use minimal local checks and CI-first PR verification ([#2519](https://github.com/0xPlaygrounds/rig/pull/2519)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2519
+- Reduce test-suite compilation and duplicated fixtures ([#2518](https://github.com/0xPlaygrounds/rig/pull/2518)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2518
+- *(ecs)* images through record, history, tool loop, memory and scene resume on four wires ([#2512](https://github.com/0xPlaygrounds/rig/pull/2512)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* pin reasoning across six provider wires ([#2511](https://github.com/0xPlaygrounds/rig/pull/2511)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- the slow lanes run off the queue and on main; the ECS parity goldens as a named lane ([#2508](https://github.com/0xPlaygrounds/rig/pull/2508)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2508
+- *(ecs)* the ECS contract under faults on six wires — setup, retryable statuses, truncated and error-bearing streams, refusals, failing tools, stops, scenes ([#2503](https://github.com/0xPlaygrounds/rig/pull/2503)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(ecs)* the ECS contract on five more wires — OpenAI Chat, OpenAI Responses, Gemini, DeepSeek, Doubleword, Venice ([#2501](https://github.com/0xPlaygrounds/rig/pull/2501)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(cassette)* make rig-cassette publishable ([#2497](https://github.com/0xPlaygrounds/rig/pull/2497)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- [**breaking**] collapse the client machinery to Provider + Has* ([#2441](https://github.com/0xPlaygrounds/rig/pull/2441)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2441
+- [**breaking**] provider types default to the erased transport; delete the alias tree ([#2440](https://github.com/0xPlaygrounds/rig/pull/2440)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2440
+- [**breaking**] one run type in rig-agent ([#2438](https://github.com/0xPlaygrounds/rig/pull/2438)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2438
+- [**breaking**] one response hook and one post-turn body in rig-agent ([#2436](https://github.com/0xPlaygrounds/rig/pull/2436)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2436
+- freeze CHANGELOG.md and MIGRATING.md outside release PRs ([#2435](https://github.com/0xPlaygrounds/rig/pull/2435)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2435
+- forbid inline test modules via cargo xtask check-test-layout ([#2434](https://github.com/0xPlaygrounds/rig/pull/2434)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2434
+- move every inline test module to a sibling file ([#2433](https://github.com/0xPlaygrounds/rig/pull/2433)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2433
+- [**breaking**] dissolve rig-run — the run vocabulary is rig-core's, AgentRun is rig_agent::run ([#2432](https://github.com/0xPlaygrounds/rig/pull/2432)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2432
+- ownership audit themes 2–7 — 'static precision and clone hygiene; themes 3/5/6/7 dispositioned ([#2431](https://github.com/0xPlaygrounds/rig/pull/2431)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2431
+- bound hygiene — raw Send/Sync in wasm-built code becomes precise ([#2430](https://github.com/0xPlaygrounds/rig/pull/2430)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2430
+- [**breaking**] remove every backwards-compatibility shim ([#2429](https://github.com/0xPlaygrounds/rig/pull/2429)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2429
+- [**breaking**] rig-reqwest API and hygiene cleanups ([#2428](https://github.com/0xPlaygrounds/rig/pull/2428)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2428
+- generate the provider alias tree from rig-core's rustdoc output ([#2427](https://github.com/0xPlaygrounds/rig/pull/2427)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2427
+- [**breaking**] make websockets transport-agnostic — protocol to rig-core, socket to rig-tungstenite ([#2426](https://github.com/0xPlaygrounds/rig/pull/2426)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2426
+- [**breaking**] move the Discord integration out of the workspace ([#2418](https://github.com/0xPlaygrounds/rig/pull/2418)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2418
+- ownership sweep round 4 — avoidable clones, dead public items, is_false dedup ([#2416](https://github.com/0xPlaygrounds/rig/pull/2416)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2416
+- idiomatic Rust sweep, round 3 ([#2411](https://github.com/0xPlaygrounds/rig/pull/2411)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2411
+- idiomatic Rust sweep, round 2 ([#2410](https://github.com/0xPlaygrounds/rig/pull/2410)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2410
+- idiomatic Rust sweep across the workspace ([#2409](https://github.com/0xPlaygrounds/rig/pull/2409)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2409
+- [**breaking**] confine reqwest to one transport module; auth flows go through HttpClientExt ([#2396](https://github.com/0xPlaygrounds/rig/pull/2396)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2396
+- [**breaking**] purge reqwest types from rig-core's public error surface ([#2395](https://github.com/0xPlaygrounds/rig/pull/2395)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2395
+- [**breaking**] kill direct tokio sync coupling in hot paths ([#2394](https://github.com/0xPlaygrounds/rig/pull/2394)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2394
+- [**breaking**] ownership audit round 2 — borrow-shaped telemetry getters, slice-shaped embed seams, Copy usage types, dead Default/Debug transport bounds ([#2392](https://github.com/0xPlaygrounds/rig/pull/2392)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2392
+- [**breaking**] ownership audit — borrow-shaped signatures, dead clones, clone_from in accumulators, minimal bounds ([#2391](https://github.com/0xPlaygrounds/rig/pull/2391)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2391
+- *(llamacpp, llamafile)* bring all 53 ignored llama.cpp tests under recorded coverage ([#2381](https://github.com/0xPlaygrounds/rig/pull/2381)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(cache)* a prompt-cache verification harness, and the two cache bugs it found ([#2374](https://github.com/0xPlaygrounds/rig/pull/2374)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+- *(release)* set release_always back to false ([#2372](https://github.com/0xPlaygrounds/rig/pull/2372)) (by [gold-silver-copper](https://github.com/gold-silver-copper))
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
+* [0xMochan](https://github.com/0xMochan)
 
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/v0.41.0...v0.42.0) - 2026-08-17
 

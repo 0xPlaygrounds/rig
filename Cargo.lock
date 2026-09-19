@@ -47,7 +47,7 @@ dependencies = [
 
 [[package]]
 name = "agent"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -56,7 +56,7 @@ dependencies = [
 
 [[package]]
 name = "agent_autonomous"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -67,7 +67,7 @@ dependencies = [
 
 [[package]]
 name = "agent_evaluator_optimizer"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -78,7 +78,7 @@ dependencies = [
 
 [[package]]
 name = "agent_no_tokio"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "bevy_tasks",
@@ -88,7 +88,7 @@ dependencies = [
 
 [[package]]
 name = "agent_orchestrator"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -100,7 +100,7 @@ dependencies = [
 
 [[package]]
 name = "agent_parallelization"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -112,7 +112,7 @@ dependencies = [
 
 [[package]]
 name = "agent_prompt_chaining"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "agent_routing"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -130,7 +130,7 @@ dependencies = [
 
 [[package]]
 name = "agent_run_stepping"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -142,7 +142,7 @@ dependencies = [
 
 [[package]]
 name = "agent_stream_chat"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -152,7 +152,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_agent_tool"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -166,7 +166,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_approval_policy"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -178,7 +178,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_context"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -187,7 +187,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_default_max_turns"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -199,7 +199,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_durable_approval"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -211,7 +211,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_echochambers"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "reqwest 0.13.4",
@@ -224,7 +224,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_human_in_the_loop"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -236,7 +236,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_loaders"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -245,7 +245,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_memory"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -254,7 +254,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_memory_streaming"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -264,7 +264,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_retry_hook"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -273,7 +273,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_tools"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -285,7 +285,7 @@ dependencies = [
 
 [[package]]
 name = "agent_with_tools_otel"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "opentelemetry",
@@ -2349,7 +2349,7 @@ dependencies = [
 
 [[package]]
 name = "calculator_chatbot"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -2422,7 +2422,7 @@ dependencies = [
 
 [[package]]
 name = "candle_local"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -2433,7 +2433,7 @@ dependencies = [
 
 [[package]]
 name = "candle_wasm_chat"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "rig",
  "serde_json",
@@ -2513,7 +2513,7 @@ dependencies = [
 
 [[package]]
 name = "chain"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -2631,7 +2631,7 @@ checksum = "0c9ea0ac24bc397ab3c98583a3c9ba74fa56b09a4449bbe172b9b1ddb016027a"
 
 [[package]]
 name = "cohere_image_embeddings"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -2686,7 +2686,7 @@ dependencies = [
 
 [[package]]
 name = "complex_agentic_loop_claude"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -3052,7 +3052,7 @@ dependencies = [
 
 [[package]]
 name = "custom_vector_store"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "redis",
@@ -3802,7 +3802,7 @@ checksum = "092966b41edc516079bdf31ec78a2e0588d1d0c08f78b91d8307215928642b2b"
 
 [[package]]
 name = "debate"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -4295,7 +4295,7 @@ dependencies = [
 
 [[package]]
 name = "enum_dispatch"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "extractor"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -4654,7 +4654,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "force_tool_first_turn"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -4852,7 +4852,7 @@ dependencies = [
 
 [[package]]
 name = "gemini_deep_research"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -4864,7 +4864,7 @@ dependencies = [
 
 [[package]]
 name = "gemini_default_api_recovery"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -4878,7 +4878,7 @@ dependencies = [
 
 [[package]]
 name = "gemini_extractor_with_rag"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -4891,7 +4891,7 @@ dependencies = [
 
 [[package]]
 name = "gemini_nanobanana_image_generation"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -4900,7 +4900,7 @@ dependencies = [
 
 [[package]]
 name = "gemini_stream_kill_token_count"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -4912,7 +4912,7 @@ dependencies = [
 
 [[package]]
 name = "gemini_video_understanding"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -5893,7 +5893,7 @@ dependencies = [
 
 [[package]]
 name = "http_middleware"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -7625,7 +7625,7 @@ checksum = "670fdfda89751bc4a84ac13eaa63e205cf0fd22b4c9a5fbfa085b63c1f1d3a30"
 
 [[package]]
 name = "manual_tool_calls"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -7915,7 +7915,7 @@ dependencies = [
 
 [[package]]
 name = "multi_agent"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -7926,7 +7926,7 @@ dependencies = [
 
 [[package]]
 name = "multi_extract"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -7938,7 +7938,7 @@ dependencies = [
 
 [[package]]
 name = "multi_turn_agent"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -7952,7 +7952,7 @@ dependencies = [
 
 [[package]]
 name = "multi_turn_agent_extended"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -8460,7 +8460,7 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "openai_agent_completions_api_otel"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "opentelemetry",
@@ -8475,7 +8475,7 @@ dependencies = [
 
 [[package]]
 name = "openai_streaming_per_call_usage"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -8488,7 +8488,7 @@ dependencies = [
 
 [[package]]
 name = "openai_streaming_with_tools_otel"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "opentelemetry",
@@ -8843,7 +8843,7 @@ dependencies = [
 
 [[package]]
 name = "pdf_agent"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -9673,7 +9673,7 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "rag"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -9685,7 +9685,7 @@ dependencies = [
 
 [[package]]
 name = "rag_dynamic_tools"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -9699,7 +9699,7 @@ dependencies = [
 
 [[package]]
 name = "rag_dynamic_tools_multi_turn"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -9713,7 +9713,7 @@ dependencies = [
 
 [[package]]
 name = "rag_ollama"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -9977,7 +9977,7 @@ dependencies = [
 
 [[package]]
 name = "reasoning_loop"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -10133,7 +10133,7 @@ dependencies = [
 
 [[package]]
 name = "request_hook"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -10276,7 +10276,7 @@ dependencies = [
 
 [[package]]
 name = "reqwest_middleware"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "reqwest-middleware",
@@ -10351,7 +10351,7 @@ checksum = "47b34b781b31e5d73e9fbc8689c70551fd1ade9a19e3e28cfec8580a79290cc4"
 
 [[package]]
 name = "rig"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "assert_fs",
@@ -10424,7 +10424,7 @@ dependencies = [
 
 [[package]]
 name = "rig-agent"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -10452,7 +10452,7 @@ dependencies = [
 
 [[package]]
 name = "rig-bedrock"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -10477,7 +10477,7 @@ dependencies = [
 
 [[package]]
 name = "rig-candle"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "candle-core",
  "candle-nn",
@@ -10496,7 +10496,7 @@ dependencies = [
 
 [[package]]
 name = "rig-cassette"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "assert_fs",
  "aws-smithy-eventstream",
@@ -10518,7 +10518,7 @@ dependencies = [
 
 [[package]]
 name = "rig-core"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "as-any",
@@ -10563,7 +10563,7 @@ dependencies = [
 
 [[package]]
 name = "rig-derive"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "convert_case 0.11.0",
@@ -10584,7 +10584,7 @@ dependencies = [
 
 [[package]]
 name = "rig-ecs"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "base64 0.22.1",
  "bevy_app",
@@ -10608,7 +10608,7 @@ dependencies = [
 
 [[package]]
 name = "rig-effect-log"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "futures",
  "rig-core",
@@ -10619,7 +10619,7 @@ dependencies = [
 
 [[package]]
 name = "rig-fastembed"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "fastembed",
@@ -10633,7 +10633,7 @@ dependencies = [
 
 [[package]]
 name = "rig-gemini-grpc"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -10657,7 +10657,7 @@ dependencies = [
 
 [[package]]
 name = "rig-helixdb"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "reqwest 0.13.4",
@@ -10671,7 +10671,7 @@ dependencies = [
 
 [[package]]
 name = "rig-lancedb"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "arrow-array",
@@ -10688,7 +10688,7 @@ dependencies = [
 
 [[package]]
 name = "rig-memory"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig-agent",
@@ -10701,7 +10701,7 @@ dependencies = [
 
 [[package]]
 name = "rig-milvus"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "reqwest 0.13.4",
@@ -10716,7 +10716,7 @@ dependencies = [
 
 [[package]]
 name = "rig-mongodb"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -10734,7 +10734,7 @@ dependencies = [
 
 [[package]]
 name = "rig-neo4j"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "futures",
@@ -10754,7 +10754,7 @@ dependencies = [
 
 [[package]]
 name = "rig-postgres"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "dotenvy",
@@ -10776,7 +10776,7 @@ dependencies = [
 
 [[package]]
 name = "rig-qdrant"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "httpmock",
@@ -10792,7 +10792,7 @@ dependencies = [
 
 [[package]]
 name = "rig-reqwest"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -10813,7 +10813,7 @@ dependencies = [
 
 [[package]]
 name = "rig-rmcp"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "futures",
  "rig-agent",
@@ -10828,7 +10828,7 @@ dependencies = [
 
 [[package]]
 name = "rig-s3vectors"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "aws-config",
@@ -10846,7 +10846,7 @@ dependencies = [
 
 [[package]]
 name = "rig-scylladb"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -10866,7 +10866,7 @@ dependencies = [
 
 [[package]]
 name = "rig-service-tests"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "arrow-array",
  "assert_fs",
@@ -10889,7 +10889,7 @@ dependencies = [
 
 [[package]]
 name = "rig-sqlite"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -10909,7 +10909,7 @@ dependencies = [
 
 [[package]]
 name = "rig-surrealdb"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig-core",
@@ -10955,7 +10955,7 @@ dependencies = [
 
 [[package]]
 name = "rig-tungstenite"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "bytes",
@@ -10970,7 +10970,7 @@ dependencies = [
 
 [[package]]
 name = "rig-typesafeai"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "http 1.4.2",
@@ -10985,7 +10985,7 @@ dependencies = [
 
 [[package]]
 name = "rig-vectorize"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "reqwest 0.13.4",
@@ -11019,7 +11019,7 @@ dependencies = [
 
 [[package]]
 name = "rig-vertexai"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -11157,7 +11157,7 @@ dependencies = [
 
 [[package]]
 name = "rmcp_example"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "axum 0.8.9",
@@ -11764,7 +11764,7 @@ checksum = "cd0b0ec5f1c1ca621c432a25813d8d60c88abe6d3e08a3eb9cf37d97a0fe3d73"
 
 [[package]]
 name = "sentiment_classifier"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -13664,7 +13664,7 @@ dependencies = [
 
 [[package]]
 name = "tool_result_outcomes"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -13840,7 +13840,7 @@ dependencies = [
 
 [[package]]
 name = "transcription"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -13967,7 +13967,7 @@ checksum = "40ce102ab67701b8526c123c1bab5cbe42d7040ccfd0f64af1a385808d2f43de"
 
 [[package]]
 name = "typesafeai_chat"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -13977,7 +13977,7 @@ dependencies = [
 
 [[package]]
 name = "typesafeai_triage"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -14254,7 +14254,7 @@ checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
 name = "vector_search"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -14264,7 +14264,7 @@ dependencies = [
 
 [[package]]
 name = "vector_search_cohere"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -14274,7 +14274,7 @@ dependencies = [
 
 [[package]]
 name = "vector_search_ollama"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "anyhow",
  "rig",
@@ -15124,7 +15124,7 @@ checksum = "66fee0b777b0f5ac1c69bb06d361268faafa61cd4682ae064a171c16c433e9e4"
 
 [[package]]
 name = "xtask"
-version = "0.42.0"
+version = "0.43.0"
 dependencies = [
  "proc-macro2",
  "quote",
