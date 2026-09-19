@@ -587,6 +587,15 @@ async fn three_turn_tool_session_replays_rs_ids_across_turns() {
                 id: second.message_id.clone(),
                 content: second.choice.clone(),
             };
+            // The recorded second response labels its message final_answer.
+            // The third request fixture deliberately retains that recorded
+            // phase now that streaming no longer drops snapshot metadata.
+            assert!(second.choice.iter().any(|content| matches!(content,
+                AssistantContent::Text(text) if text.additional_params.as_ref()
+                    .and_then(|params| params.get("openai_responses"))
+                    .and_then(|extras| extras.get("phase"))
+                    == Some(&json!("final_answer"))
+            )));
             let third_request = model
                 .completion_request(
                     "Repeat the exact tool output one more time, alone on a single line.",

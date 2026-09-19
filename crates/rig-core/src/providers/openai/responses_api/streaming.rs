@@ -211,6 +211,7 @@ fn is_known_responses_event_type(kind: &str) -> bool {
             | "response.content_part.done"
             | "response.output_text.delta"
             | "response.output_text.done"
+            | "response.output_text.annotation.added"
             | "response.refusal.delta"
             | "response.refusal.done"
             | "response.function_call_arguments.delta"
@@ -311,32 +312,10 @@ pub struct RawChoiceAccumulator {
     /// terminal drain (its `output_item.done` frame was lost) still
     /// finalizes with the dual-wire identity Responses replay pairs on.
     pending_call_ids: std::collections::HashMap<u64, String>,
-    /// The message item whose text block is currently open. A text or
-    /// refusal delta carrying a different `item_id` opens a new text block
-    /// (a text `BlockStart` keyed by that item id), so two `message` output
-    /// items aggregate as two distinct text parts instead of concatenating.
-    /// Deltas without an `item_id` (ChatGPT's envelope-less replays) extend
-    /// the open block, or open a boundary-minted one in the output helper.
-    current_text_item: Option<String>,
-    /// The message items whose visible text a delta already delivered, and
-    /// whether any fragment arrived that could not be attributed to one.
-    /// The terminal restates the whole turn's output, so its message text
-    /// is published only where no delta delivered it: this trio is the fact
-    /// `merge_terminal_body_text` reads to decide that.
-    delta_text_items: std::collections::HashSet<String>,
-    /// The output slots whose visible text a delta already delivered.
-    ///
-    /// Item ids cannot decide this alone: Copilot's Responses route stamps
-    /// a FRESH `item_id` on every delta and a different one again on the
-    /// terminal's message item, so id equality reports "never delivered"
-    /// for text the deltas streamed in full and the turn's answer lands
-    /// twice (`tests/cassettes/copilot/reasoning_roundtrip/streaming.yaml`
-    /// record 2 replays it once). `output_index` is the wire's positional
-    /// correlator for output items — it is what the terminal's `output[]`
-    /// array is indexed by, and what `tool_slots`/`reasoning_slots`
-    /// already key their assemblies on for the same reason.
-    delta_text_slots: std::collections::HashSet<u64>,
-    unattributed_text_delta: bool,
+    /// Reattach late citations to the block that actually delivered this slot,
+    /// even when a gateway changes the message id in its terminal snapshot.
+    text_parts: text::TextParts,
+    text_failed: bool,
 }
 
 /// The assistant message ID (`msg_...`) a terminal response object carries,
@@ -371,81 +350,65 @@ impl RawChoiceAccumulator {
                     crate::streaming::SyntheticIds::output(),
                 ),
             pending_call_ids: std::collections::HashMap::new(),
-            current_text_item: None,
-            delta_text_items: std::collections::HashSet::new(),
-            delta_text_slots: std::collections::HashSet::new(),
-            unattributed_text_delta: false,
+            text_parts: text::TextParts::default(),
+            text_failed: false,
         }
     }
 
-    /// Open the text block for the message item a text/refusal delta belongs
-    /// to, when the wire identifies it and it differs from the open one.
-    fn start_text_item(&mut self, item_id: Option<&str>, out: &mut AdapterOutput) {
-        if let Some(item_id) = item_id.filter(|id| !id.is_empty())
-            && self.current_text_item.as_deref() != Some(item_id)
-        {
-            self.current_text_item = Some(item_id.to_string());
-            out.text_start(BlockId::wire(item_id.to_string()), None);
-        }
+    fn publish_annotation(
+        &mut self,
+        output_index: u64,
+        item_id: Option<&str>,
+        content_index: u64,
+        annotation_index: u64,
+        annotation: serde_json::Value,
+        out: &mut AdapterOutput,
+    ) {
+        let result = self.text_parts.annotation(
+            output_index,
+            item_id,
+            content_index,
+            annotation_index,
+            annotation,
+            out,
+        );
+        self.check_text_result(result, out);
     }
 
-    /// Record that a delta delivered the visible text of a message item.
-    ///
-    /// The output slot is always recorded; the item id is recorded on top
-    /// of it, because a delta the wire did not attribute extends whichever
-    /// text block is open and is credited to that item, and with no block
-    /// open there is nothing to attribute it to at all.
-    fn note_text_delta(&mut self, output_index: u64, item_id: Option<&str>) {
-        self.delta_text_slots.insert(output_index);
-        match item_id
-            .filter(|id| !id.is_empty())
-            .map(str::to_owned)
-            .or_else(|| self.current_text_item.clone())
-        {
-            Some(id) => {
-                self.delta_text_items.insert(id);
-            }
-            None => self.unattributed_text_delta = true,
-        }
+    fn publish_message_metadata(
+        &mut self,
+        output_index: u64,
+        message: &super::OutputMessage,
+        out: &mut AdapterOutput,
+    ) {
+        let result = self.text_parts.message(output_index, message, false, out);
+        self.check_text_result(result, out);
     }
 
-    /// Whether a delta already delivered the visible text of the message
-    /// item at `output_index` carrying `item_id`.
-    ///
-    /// An unattributable fragment counts for every item: its text is
-    /// already in the choice and nothing on the wire says which item the
-    /// terminal restates, so the merge withholds rather than risk stating
-    /// one turn's text twice.
-    fn delta_delivered_text(&self, output_index: u64, item_id: &str) -> bool {
-        self.unattributed_text_delta
-            || self.delta_text_slots.contains(&output_index)
-            || self.delta_text_items.contains(item_id)
-    }
-
-    /// Publish one message item's visible text as the deltas that built it,
-    /// recording what it delivered so a terminal restating the same item
-    /// merges nothing.
+    /// Publish missing content-part text and metadata not already delivered.
     fn publish_message_text(
         &mut self,
         output_index: u64,
         message: &super::OutputMessage,
         out: &mut AdapterOutput,
     ) {
-        // The stream opens the item's text block on its first delta and
-        // sends one delta per content part; a part's own-wire extras ride
-        // the block's metadata, where the accumulator merges them into the
-        // one block the item published.
-        self.start_text_item(Some(&message.id), out);
-        if !message.content.is_empty() {
-            self.note_text_delta(output_index, Some(&message.id));
+        let result = self.text_parts.message(output_index, message, true, out);
+        self.check_text_result(result, out);
+    }
+
+    fn check_text_result(&mut self, result: Result<(), CompletionError>, out: &mut AdapterOutput) {
+        if let Err(error) = result {
+            self.text_failed = true;
+            self.saw_terminal = false;
+            self.flush_tool_calls(out);
+            out.error(error);
         }
-        for content in message.content.iter().cloned() {
-            let mut text = super::text_block(content);
-            super::stamp_phase(&mut text, message.phase.as_deref());
-            out.text(text.text);
-            if let Some(additional_params) = text.additional_params {
-                out.text_meta(additional_params);
-            }
+    }
+
+    fn flush_text(&mut self, out: &mut AdapterOutput) {
+        if !self.text_failed {
+            let result = self.text_parts.flush(out);
+            self.check_text_result(result, out);
         }
     }
 
@@ -458,8 +421,8 @@ impl RawChoiceAccumulator {
     /// event stream can state a message's text *only* here (no
     /// `output_text.delta`, no `output_item.done` for it), and that text is
     /// the turn's answer; a gateway that streamed the text first restates
-    /// it, and the restatement must add nothing. An empty restatement says
-    /// nothing at the boundary either.
+    /// it, and the restatement must not add text again. Annotations merge
+    /// independently because they can arrive only in the restatement.
     ///
     /// Dialect-independent on purpose: a body-only terminal is a shape any
     /// Responses dialect can send, and every dialect's conformance suite
@@ -473,10 +436,13 @@ impl RawChoiceAccumulator {
             let Output::Message(message) = item else {
                 continue;
             };
-            if message.content.is_empty() || self.delta_delivered_text(output_index, &message.id) {
+            if message.content.is_empty() {
                 continue;
             }
             self.publish_message_text(output_index, message, out);
+            if self.text_failed {
+                return;
+            }
         }
     }
 
@@ -518,6 +484,9 @@ impl RawChoiceAccumulator {
         options: ResponsesStreamOptions,
         out: &mut AdapterOutput,
     ) {
+        if self.text_failed {
+            return;
+        }
         let ItemChunk {
             item_id: outer_item_id,
             output_index,
@@ -525,15 +494,21 @@ impl RawChoiceAccumulator {
         } = chunk;
 
         match item {
+            ItemChunkKind::OutputTextAnnotationAdded(annotation) => {
+                self.publish_annotation(
+                    output_index,
+                    outer_item_id.as_deref(),
+                    annotation.content_index,
+                    annotation.annotation_index,
+                    annotation.annotation,
+                    out,
+                );
+            }
             ItemChunkKind::OutputItemAdded(StreamingItemDoneOutput {
                 item: Output::FunctionCall(func),
                 ..
             }) => {
-                // A function-call item interleaving a message item closes the
-                // open text block; forget it so a later delta for that message
-                // re-emits its text `BlockStart` and reactivates its block
-                // downstream.
-                self.current_text_item = None;
+                self.text_parts.interrupt();
                 // Slot identity is established here once (wire `fc_*` id,
                 // else a minted `output-{index}`) and reused for every later
                 // event on this slot — gateways and ChatGPT's envelope-less
@@ -559,9 +534,9 @@ impl RawChoiceAccumulator {
                 out.tool_name(&key, func.name);
             }
             ItemChunkKind::OutputItemDone(message) => {
-                // Any completed item ends the block it carried; a text delta
-                // arriving afterwards belongs to a (re)opened block.
-                self.current_text_item = None;
+                if !matches!(&message.item, Output::Message(_)) {
+                    self.text_parts.interrupt();
+                }
                 self.push_output_item_done(
                     message.item,
                     output_index,
@@ -572,24 +547,31 @@ impl RawChoiceAccumulator {
             // Text and refusal deltas are the same visible-text stream: a
             // refusal is the assistant's message for that turn, and both
             // (re)open the item's text block before their fragment.
-            ItemChunkKind::OutputTextDelta(DeltaTextChunk { delta, .. })
-            | ItemChunkKind::RefusalDelta(DeltaTextChunk { delta, .. }) => {
-                self.start_text_item(outer_item_id.as_deref(), out);
-                self.note_text_delta(output_index, outer_item_id.as_deref());
-                out.text(delta);
+            ItemChunkKind::OutputTextDelta(DeltaTextChunk {
+                delta,
+                content_index,
+                ..
+            })
+            | ItemChunkKind::RefusalDelta(DeltaTextChunk {
+                delta,
+                content_index,
+                ..
+            }) => {
+                let result = self.text_parts.delta(
+                    output_index,
+                    outer_item_id.as_deref(),
+                    content_index,
+                    delta,
+                    out,
+                );
+                self.check_text_result(result, out);
             }
             // Summary and raw-reasoning deltas differ only in which wire
             // event carries them; both are fragments of the output item's
             // reasoning block and accumulate under its slot identity.
             ItemChunkKind::ReasoningSummaryTextDelta(SummaryTextChunk { delta, .. })
             | ItemChunkKind::ReasoningTextDelta(DeltaTextChunkWithItemId { delta, .. }) => {
-                // Reasoning interleaving text closes the open text block
-                // downstream (a non-text block event is a boundary for
-                // anonymous text); forget the open message item so a later
-                // delta for the *same* item re-emits its text `BlockStart`
-                // and reactivates its block instead of silently opening a
-                // boundary-minted sibling (#2258 P2).
-                self.current_text_item = None;
+                self.text_parts.interrupt();
                 let id = self.reasoning_slot_key(output_index, outer_item_id.as_deref());
                 out.reasoning_delta(
                     &id,
@@ -600,8 +582,7 @@ impl RawChoiceAccumulator {
                 );
             }
             ItemChunkKind::FunctionCallArgsDelta(delta) => {
-                // Tool output interleaving text is a block boundary too.
-                self.current_text_item = None;
+                self.text_parts.interrupt();
                 // The slot's established identity keys the fragment; an
                 // id-less delta on a never-opened slot mints it here so the
                 // fragments survive truncation before the authoritative
@@ -626,19 +607,25 @@ impl RawChoiceAccumulator {
         raw_event_data: &str,
         out: &mut AdapterOutput,
     ) -> Result<(), CompletionError> {
+        if self.text_failed {
+            return Ok(());
+        }
         match kind {
             // `response.incomplete` is a genuine terminal (e.g. hitting
             // `max_output_tokens`): the partial output and usage are kept, and
             // the recorded status/incomplete_details map to the finish reason
             // downstream, matching the unary path's `map_finish_reason`.
             ResponseChunkKind::ResponseCompleted | ResponseChunkKind::ResponseIncomplete => {
-                self.saw_terminal = true;
                 // The terminal restates the whole turn, so the message text
                 // no delta delivered is published here: a gateway that
                 // states its answer only in the terminal body still lands
                 // it in the choice, and one that streamed the text first
                 // does not state it twice.
                 self.merge_terminal_body_text(&response, out);
+                if self.text_failed {
+                    return Ok(());
+                }
+                self.saw_terminal = true;
                 // The provider proved the turn ended, so a slot still open
                 // here lost only its `output_item.done` frame — the same
                 // terminal-drain the sibling adapters ship (Interactions at
@@ -830,6 +817,10 @@ impl RawChoiceAccumulator {
                 }
             }
             Output::Message(message) => {
+                self.publish_message_metadata(output_index, &message, out);
+                if self.text_failed {
+                    return;
+                }
                 // A message item with no id starts no block: there is
                 // nothing to key it on.
                 if let Some(id) = crate::streaming::non_empty_id(message.id) {
@@ -900,6 +891,9 @@ impl RawChoiceAccumulator {
             let output_index = output_index as u64;
             if let Output::Message(message) = &item {
                 self.publish_message_text(output_index, message, out);
+                if self.text_failed {
+                    return;
+                }
             }
             // Published where the item appears rather than buffered to the
             // terminal: the body states every item in order, and the
@@ -907,6 +901,9 @@ impl RawChoiceAccumulator {
             // streamed call registers too (its `output_item.added`) — so
             // both paths order the choice identically.
             self.push_output_item_done(item, output_index, out, true);
+            if self.text_failed {
+                return;
+            }
         }
 
         // `response.completed` and `response.incomplete` are the wire's two
@@ -939,6 +936,7 @@ impl RawChoiceAccumulator {
     /// genuine terminal event arrived.
     #[doc(hidden)]
     pub fn finish(mut self, out: &mut AdapterOutput) {
+        self.flush_text(out);
         self.flush_tool_calls(out);
         // Only a genuine terminal event (`response.completed` or
         // `response.incomplete`) counts as the provider ending the turn; a
@@ -972,11 +970,9 @@ impl RawChoiceAccumulator {
 ///
 /// ChatGPT's replayed (unary) SSE bodies omit envelope bookkeeping fields
 /// (`sequence_number`, `output_index`, `content_index`, `summary_index`)
-/// that the typed frame decode requires. Those fields are bookkeeping only —
-/// no semantic decision reads them beyond the reasoning-identity fallback,
-/// which treats a missing `output_index` as `0` anyway — so injecting
-/// neutral zeros where they are absent turns salvage into a preprocessing
-/// step in front of the ONE event interpreter instead of a second one.
+/// that the typed frame decode requires. Text output and annotation positions
+/// use an unknown-position marker; inventing zero would conflate distinct
+/// citations or messages. Other bookkeeping retains the existing zero repair.
 /// Data-level fields (`delta`, `item`, `response`, …) are never touched, so
 /// a frame that is defective in its content still fails the re-decode.
 ///
@@ -1017,6 +1013,32 @@ impl RawChoiceAccumulator {
 fn repair_envelope_less_frame(data: &str) -> Option<String> {
     let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?;
     let object = value.as_object_mut()?;
+    let kind = object
+        .get("type")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or_default();
+    let text_event = kind.starts_with("response.output_text.")
+        || kind.starts_with("response.refusal.")
+        || kind.starts_with("response.content_part.")
+        || (kind.starts_with("response.output_item.")
+            && object
+                .get("item")
+                .and_then(|item| item.get("type"))
+                .and_then(serde_json::Value::as_str)
+                == Some("message"));
+    let annotation_event = kind == "response.output_text.annotation.added";
+    if text_event {
+        object
+            .entry("output_index")
+            .or_insert_with(|| text::MISSING_INDEX.into());
+    }
+    if annotation_event {
+        // Buffer unknown positions until a snapshot supplies them;
+        // fabricating zero would conflate different citations.
+        object
+            .entry("annotation_index")
+            .or_insert_with(|| text::MISSING_INDEX.into());
+    }
     for field in [
         "sequence_number",
         "output_index",
@@ -1208,6 +1230,34 @@ impl ResponsesDecoder {
     ) {
         match chunk {
             StreamingCompletionChunk::Delta(chunk) => {
+                // The public content-part type intentionally stays unchanged.
+                // Decode its own-wire extras privately before the typed event
+                // (which only carries text) discards them.
+                if let ItemChunkKind::ContentPartDone(ContentPartChunk {
+                    content_index,
+                    part: ContentPartChunkPart::OutputText { .. },
+                    ..
+                }) = &chunk.data
+                {
+                    #[derive(Deserialize)]
+                    struct CompletedPart {
+                        part: super::AssistantContent,
+                    }
+                    let result = serde_json::from_str::<CompletedPart>(&raw)
+                        .map_err(CompletionError::from)
+                        .and_then(|part| {
+                            self.accumulator.text_parts.content(
+                                chunk.output_index,
+                                chunk.item_id.as_deref(),
+                                *content_index,
+                                part.part,
+                                None,
+                                false,
+                                out,
+                            )
+                        });
+                    self.accumulator.check_text_result(result, out);
+                }
                 self.accumulator.decode_item_chunk(chunk, self.options, out);
             }
             StreamingCompletionChunk::Response(chunk) => {
@@ -1235,12 +1285,16 @@ impl ResponsesDecoder {
                     // `response.failed`: fully-delivered tool calls flush
                     // before the terminal error, which ends the reply with
                     // no terminal record, preserving the failure signal.
+                    self.accumulator.flush_text(out);
                     self.accumulator.flush_tool_calls(out);
-                    out.error(error);
+                    if !self.accumulator.text_failed {
+                        out.error(error);
+                    }
                     self.finished = true;
                 }
             }
         }
+        self.finished |= self.accumulator.text_failed;
     }
 
     /// Flush what the accumulator still holds: the buffered tool calls, then
@@ -1305,11 +1359,15 @@ impl Decoder<Completion> for ResponsesDecoder {
             ResponsesEvent::Whole(response) => {
                 self.document = serde_json::to_value(&*response).ok();
                 self.accumulator.replay_whole_response(*response, out);
+                self.finished |= self.accumulator.text_failed;
                 self.flush(out);
             }
             ResponsesEvent::Failure(raw) => {
+                self.accumulator.flush_text(out);
                 self.accumulator.flush_tool_calls(out);
-                out.error(crate::provider_response::completion_error_from_body(&raw));
+                if !self.accumulator.text_failed {
+                    out.error(crate::provider_response::completion_error_from_body(&raw));
+                }
                 self.finished = true;
             }
             // Nothing to interpret: the terminal record comes from
@@ -1325,6 +1383,7 @@ impl Decoder<Completion> for ResponsesDecoder {
     fn flush_before_terminal_error(&mut self, out: &mut AdapterOutput) {
         // Tool calls the provider fully delivered are content: they flush
         // before the terminal error reaches the consumer.
+        self.accumulator.flush_text(out);
         self.accumulator.flush_tool_calls(out);
     }
 
@@ -1370,6 +1429,9 @@ pub enum ItemChunkKind {
     OutputTextDelta(DeltaTextChunk),
     #[serde(rename = "response.output_text.done")]
     OutputTextDone(OutputTextChunk),
+    /// An annotation attached to a streamed output-text content part.
+    #[serde(rename = "response.output_text.annotation.added")]
+    OutputTextAnnotationAdded(OutputTextAnnotationChunk),
     #[serde(rename = "response.refusal.delta")]
     RefusalDelta(DeltaTextChunk),
     #[serde(rename = "response.refusal.done")]
@@ -1415,6 +1477,15 @@ pub enum ItemChunkKind {
 pub struct StreamingItemDoneOutput {
     pub sequence_number: u64,
     pub item: Output,
+}
+
+/// An annotation's position and provider-native payload.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OutputTextAnnotationChunk {
+    pub content_index: u64,
+    pub annotation_index: u64,
+    pub sequence_number: u64,
+    pub annotation: serde_json::Value,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -1558,3 +1629,5 @@ pub enum SummaryPartChunkPart {
 
 #[cfg(test)]
 mod tests;
+
+mod text;

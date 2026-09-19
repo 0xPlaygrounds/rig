@@ -14,6 +14,7 @@ providers/anthropic/streaming.rs | citation: serde_json::from_value(citation) | 
 providers/anthropic/streaming.rs | serde_json::from_str(&server_tool_use.input_json) | Assembles the accumulated server_tool_use partial_json fragments into the raw-content value; malformed input surfaces as a CompletionError, no frame is triaged here.
 
 # --- openai Responses SSE: classifier-adjacent helpers ---------------------
+providers/openai/responses_api/streaming.rs | let result = serde_json::from_str::<CompletedPart>(&raw) | CompletedPart extracts extras from an already-classified, typed ContentPartDone(OutputText) frame without changing tag triage or introducing a fallback; decoding errors terminate the reply. The public content-part type intentionally remains unchanged.
 providers/openai/responses_api/streaming.rs | let mut value = serde_json::from_str::<serde_json::Value>(data).ok()?; | repair_envelope_less_frame: buffered-body envelope repair feeding the ONE classifier (classify_with_repair); documented F8 policy note at the fn doc.
 providers/openai/responses_api/streaming.rs | let kind = serde_json::from_str::<serde_json::Value>(&data) | Reads the `type` tag only to word the buffered-path Corrupt error message; the classification itself came from classify_with_repair.
 # Single-file providers: unary/non-stream parses sharing a file with streaming code.

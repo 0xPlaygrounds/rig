@@ -2376,10 +2376,9 @@ fn assistant_text_replay_message(
 /// Key under which an `output_text` block's wire extras (`annotations`,
 /// `logprobs`, future keys) ride on the generic
 /// [`Text::additional_params`](crate::message::Text) — captured on the
-/// **blocking** response path, replayed only by this wire's serializer. The
-/// streaming adapter does not yet route annotation events into params, so a
-/// streamed turn's history carries no extras under this key (follow-up
-/// work, not a silent drop at replay: nothing was captured).
+/// blocking response path, replayed only by this wire's serializer.
+/// Streaming emits incremental annotations and reconciles completed content-part
+/// extras, including message phase, without appending repeated snapshot arrays.
 pub(crate) const OPENAI_RESPONSES_EXTRAS_KEY: &str = "openai_responses";
 
 /// Key inside the [`OPENAI_RESPONSES_EXTRAS_KEY`] object that carries the

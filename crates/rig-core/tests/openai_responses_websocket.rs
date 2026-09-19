@@ -105,6 +105,46 @@ fn assert_response_create(payload: &str) {
     );
 }
 
+/// Synthetic citation frames exercise the session's shared Responses decoder.
+#[tokio::test]
+async fn citations_survive_websocket_deltas_and_repeated_snapshot() {
+    let citation = json!({"type":"url_citation", "url":"https://example.com",
+        "title":"Source", "start_index":0, "end_index":5});
+    let mut response = sample_response(ResponseStatus::Completed);
+    response.output = vec![
+        serde_json::from_value(json!({
+            "type":"message", "id":"msg_1", "status":"completed", "role":"assistant",
+            "content":[{"type":"output_text", "text":"hello!", "annotations":[citation]}]
+        }))
+        .expect("message"),
+    ];
+    let script = Script::turn([
+        text_delta("msg_1", "hello", 1),
+        json!({"type":"response.output_text.annotation.added", "item_id":"msg_1",
+            "output_index":0, "content_index":0, "sequence_number":2,
+            "annotation_index":0, "annotation":citation})
+        .to_string(),
+        text_delta("msg_1", "!", 3),
+        response_event("response.completed", response, 4),
+    ]);
+    let client = test_client();
+    let mut session = session(&client, &script);
+    let normalized = session
+        .completion(client.completion_request("hello").build())
+        .await
+        .expect("citation turn");
+    let Some(AssistantContent::Text(text)) = normalized.choice.first() else {
+        panic!("expected text");
+    };
+    assert_eq!(text.text, "hello!");
+    assert_eq!(
+        text.additional_params
+            .as_ref()
+            .and_then(|p| p.get("openai_responses")),
+        Some(&json!({"annotations":[citation]}))
+    );
+}
+
 #[tokio::test]
 async fn incomplete_turn_keeps_streamed_partial_output() {
     // The content exists ONLY in the delta events; the terminal

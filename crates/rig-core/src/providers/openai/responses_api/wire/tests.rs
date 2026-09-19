@@ -219,6 +219,40 @@ fn text_of(response: &completion::CompletionResponse) -> Option<String> {
     })
 }
 
+/// Synthetic replay envelopes intentionally omit annotation_index and the
+/// other bookkeeping fields. This goes through the actual ChatGPT dialect.
+#[tokio::test]
+async fn chatgpt_unary_and_streamed_annotations_use_snapshot_positions() {
+    let citation = serde_json::json!({"type":"url_citation", "url":"https://example.com",
+        "title":"Source", "start_index":0, "end_index":2});
+    let frames = [
+        serde_json::json!({"type":"response.output_text.delta", "item_id":"msg_1", "delta":"hi"}),
+        serde_json::json!({"type":"response.output_text.annotation.added", "item_id":"msg_1", "annotation":citation}),
+        serde_json::json!({"type":"response.completed", "response":{
+            "id":"resp_1", "object":"response", "created_at":1, "status":"completed",
+            "model":"gpt-5.4", "tools":[], "output":[{"type":"message", "id":"msg_1",
+                "role":"assistant", "status":"completed", "content":[{"type":"output_text",
+                    "text":"hi", "annotations":[citation]}]}]}}),
+    ];
+    let body = frames
+        .iter()
+        .map(|frame| format!("data: {frame}\n\n"))
+        .collect::<String>();
+    let unary = folded_unary(chatgpt(), &body).await;
+    let streamed = folded_stream(chatgpt(), &body).await;
+    assert_eq!(unary.choice, streamed.choice);
+    let Some(message::AssistantContent::Text(text)) = unary.choice.first() else {
+        panic!("expected text");
+    };
+    assert_eq!(text.text, "hi");
+    assert_eq!(
+        text.additional_params
+            .as_ref()
+            .and_then(|p| p.get("openai_responses")),
+        Some(&serde_json::json!({"annotations":[citation]}))
+    );
+}
+
 // ── what each dialect sends ─────────────────────────────────────────────
 
 fn encoded_body(wire: &Responses, mode: Mode) -> serde_json::Value {
