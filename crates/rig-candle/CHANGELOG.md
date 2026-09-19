@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [0.43.0](https://github.com/0xPlaygrounds/rig/compare/rig-candle-v0.42.0...rig-candle-v0.43.0) - 2026-09-19
+
+### Added
+
+- feat!(core): Usage counters are Option<u64> — an absent counter is representable ([#2535](https://github.com/0xPlaygrounds/rig/pull/2535)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2535
+- [**breaking**] the effect-bus critical path — one protocol, one channel, typed views ([#2443](https://github.com/0xPlaygrounds/rig/pull/2443)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2443
+
+### Fixed
+
+- [**breaking**] the merge review's defects on main, each pinned by a matrix ([#2499](https://github.com/0xPlaygrounds/rig/pull/2499)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2499
+
+### Other
+
+- Unify every provider onto one wire model ([#2538](https://github.com/0xPlaygrounds/rig/pull/2538)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2538
+- [**breaking**] one run type in rig-agent ([#2438](https://github.com/0xPlaygrounds/rig/pull/2438)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2438
+- move every inline test module to a sibling file ([#2433](https://github.com/0xPlaygrounds/rig/pull/2433)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2433
+- [**breaking**] remove every backwards-compatibility shim ([#2429](https://github.com/0xPlaygrounds/rig/pull/2429)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2429
+- ownership sweep round 4 — avoidable clones, dead public items, is_false dedup ([#2416](https://github.com/0xPlaygrounds/rig/pull/2416)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2416
+- idiomatic Rust sweep, round 2 ([#2410](https://github.com/0xPlaygrounds/rig/pull/2410)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2410
+- idiomatic Rust sweep across the workspace ([#2409](https://github.com/0xPlaygrounds/rig/pull/2409)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2409
+- [**breaking**] ownership audit — borrow-shaped signatures, dead clones, clone_from in accumulators, minimal bounds ([#2391](https://github.com/0xPlaygrounds/rig/pull/2391)) (by [gold-silver-copper](https://github.com/gold-silver-copper)) - #2391
+
+### Contributors
+
+* [gold-silver-copper](https://github.com/gold-silver-copper)
 ## [0.42.0](https://github.com/0xPlaygrounds/rig/compare/rig-candle-v0.41.0...rig-candle-v0.42.0) - 2026-08-16
 
 ### Other

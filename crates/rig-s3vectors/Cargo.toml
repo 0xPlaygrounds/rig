@@ -18,7 +18,7 @@ aws-smithy-types = { workspace = true, features = [
   "serde-deserialize",
   "serde-serialize",
 ] }
-rig-core = { path = "../rig-core", version = "0.42.0", default-features = false, features = [
+rig-core = { path = "../rig-core", version = "0.43.0", default-features = false, features = [
   "derive",
 ] }
 serde = { workspace = true, features = ["derive"] }
@@ -27,7 +27,7 @@ tracing = { workspace = true }
 uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
-rig-reqwest = { path = "../rig-reqwest", version = "0.42.0" }
+rig-reqwest = { path = "../rig-reqwest", version = "0.43.0" }
 anyhow = { workspace = true }
 aws-config = { workspace = true, features = ["behavior-version-latest"] }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
