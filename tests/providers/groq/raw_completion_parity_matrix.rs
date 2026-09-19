@@ -47,9 +47,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::RAW_CAPTURE_MODEL;
-use super::support::{assert_matches_recorded_token, with_groq_cassette_result};
+use super::support::with_groq_cassette_result;
 use crate::cassettes::{recorded_json_turns, recorded_response_header};
-use crate::support::{Observed, recorded_chat_finish_reason};
+use crate::raw_capture::{capture_completion, capture_completion_pair, chat};
+use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -69,50 +70,26 @@ fn recorded_request_id(scenario: &str, index: usize) -> String {
     })
 }
 
+/// One turn's normalized view against its own interaction's recorded bytes:
+/// the shared chat-completions contract, plus the two identity claims that
+/// are Groq's own — a chat reply names no assistant message, and the
+/// transport id came from the header this cell already read.
 fn assert_reproduces_fixture(
     response: &rig::completion::CompletionResponse,
     body: &Value,
     request_id: &str,
     context: &str,
 ) {
-    assert_eq!(response.provider, PROVIDER, "{context}: provider");
+    chat::assert_reproduces_body(response, PROVIDER, body, context);
     let identity = response.identity();
     assert_eq!(
         identity.message_id, None,
         "{context}: chat has no message id"
     );
     assert_matches_recorded_token(
-        identity.response_id.as_deref(),
-        body["id"].as_str(),
-        &format!("{context}: response id"),
-    );
-    assert_matches_recorded_token(
         identity.provider_request_id.as_deref(),
         Some(request_id),
         &format!("{context}: request id"),
-    );
-    assert_eq!(
-        response.finish_reason(),
-        Some(recorded_chat_finish_reason(body)),
-        "{context}: finish reason"
-    );
-    assert_eq!(
-        response.model.as_deref(),
-        body["model"].as_str(),
-        "{context}: model"
-    );
-    assert_eq!(
-        (
-            response.usage.input_tokens,
-            response.usage.output_tokens,
-            response.usage.total_tokens
-        ),
-        (
-            body["usage"]["prompt_tokens"].as_u64(),
-            body["usage"]["completion_tokens"].as_u64(),
-            body["usage"]["total_tokens"].as_u64(),
-        ),
-        "{context}: usage"
     );
 }
 
@@ -154,22 +131,17 @@ fn assert_raw_is_the_reply_document(
 #[tokio::test]
 async fn encode_is_deterministic_and_raw_is_faithful() {
     const SCENARIO: &str = "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_groq_cassette_result(
         "raw_completion_parity_matrix/raw_with_request_id_reproduces_completion",
-        |client| async move {
-            let model = client.completion(RAW_CAPTURE_MODEL);
-            let first = model.completion(request(&model)).await?;
-            let second = model.completion(request(&model)).await?;
-            sink.put((first, second));
-            Ok::<(), anyhow::Error>(())
+        |client| {
+            capture_completion_pair(client.completion(RAW_CAPTURE_MODEL), request, sink.clone())
         },
     )
     .await
     .expect("raw_with_request_id_reproduces_completion should replay from its cassette");
 
-    let (first, second) = observed.take();
+    let (first, second) = sink.take();
     let interactions = recorded_json_turns(PROVIDER, SCENARIO);
     assert_eq!(
         interactions.len(),
@@ -213,21 +185,15 @@ async fn encode_is_deterministic_and_raw_is_faithful() {
 #[tokio::test]
 async fn the_transport_id_comes_from_the_header_not_the_body() {
     const SCENARIO: &str = "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_groq_cassette_result(
         "raw_completion_parity_matrix/plain_raw_completion_lacks_request_id",
-        |client| async move {
-            let model = client.completion(RAW_CAPTURE_MODEL);
-            let response = model.completion(request(&model)).await?;
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(RAW_CAPTURE_MODEL), request, sink.clone()),
     )
     .await
     .expect("plain_raw_completion_lacks_request_id should replay from its cassette");
 
-    let response = observed.take();
+    let response = sink.take();
 
     // The premise: the header was there to read.
     let request_id = recorded_request_id(SCENARIO, 0);

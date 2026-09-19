@@ -59,8 +59,11 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
-use crate::copilot::with_copilot_cassette;
-use crate::support::{Observed, collect_sole_terminal};
+use crate::copilot::with_copilot_cassette_result;
+use crate::raw_capture::{
+    assert_normalized_lacks, capture_sole_terminal, chat, responses, stream_normalized_without_raw,
+};
+use crate::support::Observed;
 
 const COPILOT_PROVIDER: &str = "copilot";
 const CHAT_MODEL: &str = copilot::GPT_4O;
@@ -83,6 +86,12 @@ fn assert_single_interaction(scenario: &str) {
 
 /// Chat-route premise: the recorded SSE stream's last frame carries `usage`
 /// (and Copilot's `copilot_usage`). Returns `(all frames, terminal frame)`.
+///
+/// Neither shared premise reader fits: `chat::recorded_sole_usage_frame`
+/// requires the usage frame to be the stream's last data frame and
+/// `chat::recorded_agreeing_usage_frames` requires every usage-bearing frame
+/// to agree, while the rule here is "the last usage-bearing frame, which must
+/// also carry `copilot_usage`".
 fn recorded_chat_frames(scenario: &str) -> (Vec<Value>, Value) {
     assert_single_interaction(scenario);
     let frames = recorded_sse_json_frames(COPILOT_PROVIDER, scenario);
@@ -132,7 +141,7 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type";
     let captured = Observed::default();
     let sink = captured.clone();
-    with_copilot_cassette(
+    with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion(CHAT_MODEL);
@@ -140,44 +149,27 @@ async fn chat_stream_raw_terminal_round_trips_provider_type() {
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-            let raw = &terminal.raw;
-            // The record carries the wire's own accounting, which flattens
-            // both the OpenAI-compatible counters and whatever else the
-            // dialect added — so the round trip below is exact, and the
-            // accounting's own normalization is what the terminal must carry.
-            let chat = StreamingCompletionResponse::<ChatUsage>::deserialize(raw)
-                .expect("chat-route raw must read back as the chat terminal record");
-            assert_eq!(
-                serde_json::to_value(&chat).expect("terminal type should serialize"),
-                *raw,
-                "the chat record must round-trip through its own serde"
-            );
-            let usage = chat
-                .usage
-                .as_ref()
-                .expect("the chat terminal carries usage");
-            assert_eq!(
-                usage.to_normalized(),
-                terminal.usage,
-                "the terminal record's usage must be the accounting's own normalization"
-            );
-            assert_eq!(chat.provider_request_id, terminal.provider_request_id);
-            sink.put(raw.clone());
+            capture_sole_terminal(model, request, sink).await
         },
     )
-    .await;
+    .await
+    .expect("chat_stream_raw_terminal_round_trips_provider_type should replay from its cassette");
+
+    let terminal = captured.take();
+    // The record carries the wire's own accounting, which flattens both the
+    // OpenAI-compatible counters and whatever else the dialect added — so the
+    // round trip is exact, and the accounting's own normalization is what the
+    // terminal must carry. The transport id is the header's, so the native
+    // record has no slot filled for it.
+    let typed = chat::assert_terminal_round_trips(&terminal);
+    // Copilot's recorded chat stream reports no transport id, so the native
+    // record and the normalized terminal agree on its absence — the claim
+    // this cell made before the round trip became shared.
+    assert_eq!(typed.provider_request_id, terminal.provider_request_id);
 
     let (_, terminal_frame) = recorded_chat_frames(scenario);
-    let raw = captured.take();
     assert_eq!(
-        raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
+        terminal.raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
     );
 }
@@ -188,34 +180,23 @@ async fn chat_stream_raw_exposes_copilot_usage() {
     let scenario = "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage";
     let captured = Observed::default();
     let sink = captured.clone();
-    with_copilot_cassette(
+    with_copilot_cassette_result(
         "raw_stream_capture_matrix/chat_stream_raw_exposes_copilot_usage",
         |client| async move {
-            let model = client.completion(CHAT_MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-            let mut without_raw = terminal.clone();
-            without_raw.raw = Value::Null;
-            let normalized =
-                serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
-            for field in ["copilot_usage", "system_fingerprint", "additional_params"] {
-                assert!(
-                    normalized.get(field).is_none(),
-                    "normalized StreamFinal must not grow a `{field}` field"
-                );
-            }
-            let raw = terminal.raw;
-            sink.put(raw);
+            capture_sole_terminal(client.completion(CHAT_MODEL), request, sink).await
         },
     )
-    .await;
+    .await
+    .expect("chat_stream_raw_exposes_copilot_usage should replay from its cassette");
 
-    let raw = captured.take();
+    let terminal = captured.take();
+    let normalized = stream_normalized_without_raw(&terminal);
+    assert_normalized_lacks(
+        &normalized,
+        &["copilot_usage", "system_fingerprint", "additional_params"],
+    );
+
+    let raw = &terminal.raw;
     let (frames, terminal_frame) = recorded_chat_frames(scenario);
     let params = raw
         .get("additional_params")
@@ -247,7 +228,7 @@ async fn chat_stream_raw_exposes_copilot_usage() {
             "raw.additional_params.system_fingerprint must carry the chunk fingerprint"
         ),
     }
-    let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(&raw)
+    let typed = StreamingCompletionResponse::<ChatUsage>::deserialize(raw)
         .expect("chat-route raw must read back as the chat terminal record");
     let typed_params = typed
         .additional_params
@@ -271,7 +252,7 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
         "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type";
     let captured = Observed::default();
     let sink = captured.clone();
-    with_copilot_cassette(
+    with_copilot_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_terminal_round_trips_provider_type",
         |client| async move {
             let model = client.completion(RESPONSES_MODEL);
@@ -279,39 +260,26 @@ async fn responses_stream_raw_terminal_round_trips_provider_type() {
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: the codex model routes through the Responses API"
             );
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-            let raw = &terminal.raw;
-            let responses: responses_api::streaming::StreamingCompletionResponse =
-                serde_json::from_value(raw.clone())
-                    .expect("responses-route raw must read back as the Responses record");
-            assert_eq!(
-                serde_json::to_value(&responses).expect("terminal type should serialize"),
-                *raw,
-                "the Responses record must round-trip through its own serde"
-            );
-            assert_eq!(
-                responses.usage.as_ref().map(|usage| usage.total_tokens),
-                terminal.usage.total_tokens
-            );
-            assert_eq!(responses.response_id, terminal.response_id);
-            assert_eq!(responses.message_id, terminal.message_id);
-            assert_eq!(responses.provider_request_id, terminal.provider_request_id);
-            sink.put(raw.clone());
+            capture_sole_terminal(model, request, sink).await
         },
     )
-    .await;
+    .await
+    .expect(
+        "responses_stream_raw_terminal_round_trips_provider_type should replay from its cassette",
+    );
 
-    let terminal = recorded_responses_terminal(scenario);
-    let raw = captured.take();
+    let terminal = captured.take();
+    let raw = &terminal.raw;
+    let typed = responses::assert_terminal_round_trips(&terminal);
+    // Copilot's recorded Responses stream reports no transport id either, so
+    // the native record and the normalized terminal agree on its absence —
+    // the claim this cell made before the round trip became shared.
+    assert_eq!(typed.provider_request_id, terminal.provider_request_id);
+
+    let recorded_terminal = recorded_responses_terminal(scenario);
     assert_eq!(
         raw["usage"]["total_tokens"],
-        terminal["usage"]["total_tokens"]
+        recorded_terminal["usage"]["total_tokens"]
     );
 }
 
@@ -321,33 +289,27 @@ async fn responses_stream_raw_exposes_terminal_status() {
     let scenario = "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status";
     let captured = Observed::default();
     let sink = captured.clone();
-    with_copilot_cassette(
+    with_copilot_cassette_result(
         "raw_stream_capture_matrix/responses_stream_raw_exposes_terminal_status",
         |client| async move {
-            let model = client.completion(RESPONSES_MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-            let mut without_raw = terminal.clone();
-            without_raw.raw = Value::Null;
-            let normalized =
-                serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
-            assert!(normalized.get("status").is_none());
-            let raw = terminal.raw;
-            sink.put(raw);
+            capture_sole_terminal(client.completion(RESPONSES_MODEL), request, sink).await
         },
     )
-    .await;
+    .await
+    .expect("responses_stream_raw_exposes_terminal_status should replay from its cassette");
 
-    let raw = captured.take();
-    let terminal = recorded_responses_terminal(scenario);
-    assert_eq!(terminal["status"], Value::String("completed".to_string()));
-    assert_eq!(raw["status"], terminal["status"]);
-    assert_eq!(raw["usage"], terminal["usage"]);
+    let terminal = captured.take();
+    let normalized = stream_normalized_without_raw(&terminal);
+    assert_normalized_lacks(&normalized, &["status"]);
+
+    let raw = &terminal.raw;
+    let recorded_terminal = recorded_responses_terminal(scenario);
+    assert_eq!(
+        recorded_terminal["status"],
+        Value::String("completed".to_string())
+    );
+    assert_eq!(raw["status"], recorded_terminal["status"]);
+    assert_eq!(raw["usage"], recorded_terminal["usage"]);
     let typed: responses_api::streaming::StreamingCompletionResponse =
         serde_json::from_value(raw.clone()).expect("raw must deserialize");
     assert_eq!(typed.status, Some(responses_api::ResponseStatus::Completed));

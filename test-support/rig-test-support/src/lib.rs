@@ -16,6 +16,7 @@ pub mod ecs_goldens;
 pub mod goldens;
 pub mod matrix;
 pub mod matrix_registry;
+pub mod raw_capture;
 pub mod reasoning;
 pub mod scenario_registry;
 pub mod stream_faults;

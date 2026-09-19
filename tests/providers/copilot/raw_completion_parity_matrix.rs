@@ -43,9 +43,7 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test copilot copilot::raw_completion_parity_matrix -- --nocapture --test-threads=1`
 //! and review `tests/cassettes/copilot/raw_completion_parity_matrix/`.
 
-use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-};
+use rig::completion::{CompletionModel as _, FinishReason};
 use rig::driver::Bound;
 use rig::providers::copilot;
 use rig::providers::copilot::wire::CopilotWire;
@@ -55,8 +53,9 @@ use rig::providers::openai::wire::OpenAiWire;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_response_header};
-use crate::copilot::with_copilot_cassette;
+use crate::cassettes::{recorded_interaction_bodies, recorded_response_header};
+use crate::copilot::with_copilot_cassette_result;
+use crate::raw_capture::{assert_contracted_request_id, capture_completion, chat, responses};
 use crate::support::Observed;
 
 const COPILOT_PROVIDER: &str = "copilot";
@@ -69,35 +68,12 @@ fn request(model: &Bound<CopilotWire>) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(64).build()
 }
 
-/// The premise: interaction `index` of the scenario recorded an
-/// `x-request-id` response header. Returns its (scrubbed, on replay) value.
-/// The transport id is a header, so this reads the fixture's header side.
-fn recorded_request_id(scenario: &str, index: usize) -> String {
-    recorded_response_header(COPILOT_PROVIDER, scenario, index, REQUEST_ID_HEADER).unwrap_or_else(
-        || {
-            panic!(
-                "{scenario}: interaction {index} must have recorded an `{REQUEST_ID_HEADER}` \
-                 response header — without it this cell proves nothing about the transport id"
-            )
-        },
-    )
-}
-
-/// Replay reads the placeholdered header back, so the id compares exactly; a
-/// live recording sees Copilot's real id while the fixture holds the
-/// placeholder, so the claim there is presence and non-emptiness.
-fn assert_request_id_matches_recording(live: Option<&str>, recorded: &str, context: &str) {
-    match CassetteMode::current() {
-        CassetteMode::Replay => assert_eq!(
-            live,
-            Some(recorded),
-            "{context}: provider_request_id must be the recorded x-request-id"
-        ),
-        CassetteMode::Record => assert!(
-            live.is_some_and(|id| !id.trim().is_empty()),
-            "{context}: provider_request_id must be populated from x-request-id"
-        ),
-    }
+/// The `x-request-id` interaction `index` of the scenario recorded. The
+/// transport id is a header, so this reads the fixture's header side; that a
+/// recording carries one at all is the premise
+/// [`assert_contracted_request_id`] states.
+fn recorded_request_id(scenario: &str, index: usize) -> Option<String> {
+    recorded_response_header(COPILOT_PROVIDER, scenario, index, REQUEST_ID_HEADER)
 }
 
 fn recorded_json_bodies(scenario: &str) -> Vec<Value> {
@@ -110,62 +86,6 @@ fn recorded_json_bodies(scenario: &str) -> Vec<Value> {
         .collect()
 }
 
-/// Parity between the two views of one reply: what the normalized response
-/// reports, and what `raw` reports once it is read back into the route's own
-/// type and converted forward.
-/// The chat route's own body agrees with the folded response on every field
-/// the body models. The old cell re-normalized `raw` and compared the two
-/// results, which only ever proved that two copies of one mapping agreed;
-/// with one mapping left, the honest assertion is that the document the
-/// provider sent says what the fold reported.
-fn assert_chat_parity(typed: &openai::CompletionResponse, folded: &RigCompletionResponse) {
-    assert_eq!(Some(typed.model.as_str()), folded.model.as_deref());
-    assert_eq!(
-        Some(typed.id.as_str()),
-        folded.identity().response_id.as_deref()
-    );
-    assert_eq!(folded.provider, COPILOT_PROVIDER);
-    assert_eq!(folded.finish_reason(), Some(FinishReason::Stop));
-    let usage = typed.usage.as_ref().expect("the reply reports usage");
-    assert_eq!(
-        usage.prompt_tokens as u64,
-        folded.usage.input_tokens.expect("input tokens")
-    );
-    assert_eq!(
-        usage.total_tokens as u64,
-        folded.usage.total_tokens.expect("total tokens")
-    );
-}
-
-/// The Responses route's own body, same property.
-fn assert_responses_parity(
-    typed: &responses_api::CompletionResponse,
-    folded: &RigCompletionResponse,
-) {
-    assert_eq!(Some(typed.model.as_str()), folded.model.as_deref());
-    assert_eq!(
-        Some(typed.id.as_str()),
-        folded.identity().response_id.as_deref()
-    );
-    assert_eq!(folded.provider, COPILOT_PROVIDER);
-    assert_eq!(folded.finish_reason(), Some(FinishReason::Stop));
-}
-
-#[allow(dead_code)]
-fn assert_route_parity(via_raw: &RigCompletionResponse, via_completion: &RigCompletionResponse) {
-    assert_eq!(via_raw.finish_reason(), via_completion.finish_reason());
-    assert_eq!(via_raw.finish_reason(), Some(FinishReason::Stop));
-    assert_eq!(via_raw.model, via_completion.model);
-    assert_eq!(via_raw.provider, via_completion.provider);
-    assert_eq!(via_raw.usage, via_completion.usage);
-    let (raw_identity, completion_identity) = (via_raw.identity(), via_completion.identity());
-    assert_eq!(
-        raw_identity.response_id, completion_identity.response_id,
-        "the normalized view is a projection of this exact body"
-    );
-    assert_eq!(raw_identity.message_id, completion_identity.message_id);
-}
-
 // ---------------------------------------------------------------------------
 // 1: chat route — raw and normalized are two views of one reply
 // ---------------------------------------------------------------------------
@@ -176,7 +96,7 @@ async fn chat_raw_with_request_id_reproduces_completion() {
     let scenario = "raw_completion_parity_matrix/chat_raw_with_request_id_reproduces_completion";
     let captured = Observed::default();
     let sink = captured.clone();
-    with_copilot_cassette(
+    with_copilot_cassette_result(
         "raw_completion_parity_matrix/chat_raw_with_request_id_reproduces_completion",
         |client| async move {
             let model = client.completion(CHAT_MODEL);
@@ -184,36 +104,37 @@ async fn chat_raw_with_request_id_reproduces_completion() {
                 matches!(model.wire.wire, OpenAiWire::Chat(_)),
                 "premise: gpt-4o routes through chat completions"
             );
-
-            let via_completion = model
-                .completion(request(&model))
-                .await
-                .expect("completion should succeed");
-            assert!(
-                via_completion.identity().provider_request_id.is_some(),
-                "the driver stamps x-request-id on the chat route too"
-            );
-
-            // The other view of the same reply: the route's own body. There
-            // is one mapping now, so the typed parse is compared field by
-            // field against the folded response rather than re-derived
-            // through a second implementation of it.
-            let typed = openai::CompletionResponse::deserialize(&via_completion.raw)
-                .expect("`raw` is the chat route's own reply body");
-            assert_chat_parity(&typed, &via_completion);
-
-            sink.put(via_completion);
+            capture_completion(model, request, sink).await
         },
     )
-    .await;
+    .await
+    .expect("chat_raw_with_request_id_reproduces_completion should replay from its cassette");
 
     let response = captured.take();
+    // The other view of the same reply: the route's own body. There is one
+    // mapping now, so the typed parse is compared field by field against the
+    // folded response rather than re-derived through a second implementation
+    // of it.
+    let typed = openai::CompletionResponse::deserialize(&response.raw)
+        .expect("`raw` is the chat route's own reply body");
+    chat::assert_native_matches_normalized(&response, &typed, "the chat route's own body");
+    assert_eq!(response.provider, COPILOT_PROVIDER);
+    // The native comparison pins the reason to the body's word; this cell
+    // also pins which word a plain answer carries.
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    // Both ids come from the same live reply, so this compares exactly in
+    // either cassette mode.
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.identity().response_id.as_deref()
+    );
+
     let bodies = recorded_json_bodies(scenario);
     assert_eq!(bodies.len(), 1, "{scenario}: expected one recorded turn");
-    assert_request_id_matches_recording(
+    assert_contracted_request_id(
         response.identity().provider_request_id.as_deref(),
-        &recorded_request_id(scenario, 0),
-        "completion",
+        recorded_request_id(scenario, 0).as_deref(),
+        REQUEST_ID_HEADER,
     );
     assert_eq!(
         response.raw, bodies[0],
@@ -231,7 +152,7 @@ async fn responses_raw_completion_carries_request_id() {
     let scenario = "raw_completion_parity_matrix/responses_raw_completion_carries_request_id";
     let captured = Observed::default();
     let sink = captured.clone();
-    with_copilot_cassette(
+    with_copilot_cassette_result(
         "raw_completion_parity_matrix/responses_raw_completion_carries_request_id",
         |client| async move {
             let model = client.completion(RESPONSES_MODEL);
@@ -239,29 +160,32 @@ async fn responses_raw_completion_carries_request_id() {
                 matches!(model.wire.wire, OpenAiWire::Responses(_)),
                 "premise: a codex model routes through /responses"
             );
-
-            let via_completion = model
-                .completion(request(&model))
-                .await
-                .expect("completion should succeed");
-            assert!(via_completion.identity().provider_request_id.is_some());
-
-            let typed = responses_api::CompletionResponse::deserialize(&via_completion.raw)
-                .expect("`raw` is the Responses route's own reply body");
-            assert_responses_parity(&typed, &via_completion);
-
-            sink.put(via_completion);
+            capture_completion(model, request, sink).await
         },
     )
-    .await;
+    .await
+    .expect("responses_raw_completion_carries_request_id should replay from its cassette");
 
     let response = captured.take();
+    let typed = responses_api::CompletionResponse::deserialize(&response.raw)
+        .expect("`raw` is the Responses route's own reply body");
+    responses::assert_native_matches_normalized(
+        &response,
+        &typed,
+        "the Responses route's own body",
+    );
+    assert_eq!(response.provider, COPILOT_PROVIDER);
+    assert_eq!(
+        Some(typed.id.as_str()),
+        response.identity().response_id.as_deref()
+    );
+
     let bodies = recorded_json_bodies(scenario);
     assert_eq!(bodies.len(), 1, "{scenario}: expected one recorded turn");
-    assert_request_id_matches_recording(
+    assert_contracted_request_id(
         response.identity().provider_request_id.as_deref(),
-        &recorded_request_id(scenario, 0),
-        "completion",
+        recorded_request_id(scenario, 0).as_deref(),
+        REQUEST_ID_HEADER,
     );
     assert_eq!(
         response.raw, bodies[0],

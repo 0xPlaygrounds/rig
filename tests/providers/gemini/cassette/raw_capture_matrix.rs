@@ -63,8 +63,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::{recorded_request_generation_configs, with_gemini_cassette};
+use crate::raw_capture::capture_completion;
 use crate::support::{
-    Adder, Observed, STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, json_contains_key,
+    Adder, Observed, STRUCTURED_OUTPUT_PROMPT, SmokeStructuredOutput, assistant_text,
+    json_contains_key, normalized_without_raw,
 };
 
 const PROVIDER: &str = "gemini";
@@ -186,18 +188,6 @@ fn assert_recorded_structured_output_turn(scenario: &str) -> Value {
     body
 }
 
-/// Serialize the normalized response with `raw` removed, so a cell can prove a
-/// field is *not* reachable through the normalized surface (as opposed to
-/// merely re-reading it out of `raw`).
-fn normalized_without_raw(response: &RigCompletionResponse) -> Value {
-    let mut value = serde_json::to_value(response).expect("normalized response serializes");
-    value
-        .as_object_mut()
-        .expect("normalized response is an object")
-        .remove("raw");
-    value
-}
-
 /// The `(name, arguments)` of every tool call in a choice — the part of a
 /// Gemini `functionCall` the wire actually carries (Gemini assigns no call
 /// id; rig mints one per normalization).
@@ -229,17 +219,6 @@ fn visible_text(candidate: &ContentCandidate) -> String {
         .collect()
 }
 
-/// The text of a normalized choice, as one string.
-fn choice_text(choice: &[AssistantContent]) -> String {
-    choice
-        .iter()
-        .filter_map(|content| match content {
-            AssistantContent::Text(text) => Some(text.text.as_str()),
-            _ => None,
-        })
-        .collect()
-}
-
 // ---------------------------------------------------------------------------
 // 1: typed access is recoverable, and tells the same story
 // ---------------------------------------------------------------------------
@@ -247,67 +226,67 @@ fn choice_text(choice: &[AssistantContent]) -> String {
 #[tokio::test]
 async fn raw_roundtrips_generate_content_response() {
     const SCENARIO: &str = "raw_capture_matrix/raw_roundtrips_generate_content_response";
+    let observed: Observed<RigCompletionResponse> = Observed::default();
+    let sink = observed.clone();
     with_gemini_cassette(
         "raw_capture_matrix/raw_roundtrips_generate_content_response",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-
-            // `raw` is Gemini's reply document as it arrived: its own type
-            // reads it back, so the escape hatch is typed rather than
-            // stringly.
-            let typed = GenerateContentResponse::deserialize(raw)
-                .expect("raw must deserialize into Gemini's GenerateContentResponse");
-
-            // One decoder folded the normalized response out of these very
-            // bytes, so every field it kept must be the one the document
-            // carries — `raw` is additive, never a divergent second view.
-            assert_eq!(typed.model_version.as_deref(), response.model.as_deref());
-            assert_eq!(
-                Some(typed.response_id.as_str()),
-                response.response_id.as_deref()
-            );
-            assert_eq!(
-                typed
-                    .usage_metadata
-                    .as_ref()
-                    .map(|usage| usage.prompt_token_count as u64),
-                response.usage.input_tokens
-            );
-            assert_eq!(
-                typed
-                    .usage_metadata
-                    .as_ref()
-                    .map(|usage| usage.total_token_count as u64),
-                response.usage.total_tokens
-            );
-            let candidate = typed
-                .candidates
-                .first()
-                .expect("the recorded turn carries a candidate");
-            assert_eq!(
-                raw.pointer("/candidates/0/finishReason"),
-                Some(&Value::String("STOP".to_string())),
-                "Gemini's own finish spelling stays on the document"
-            );
-            assert_eq!(
-                response.finish_reason(),
-                Some(FinishReason::Stop),
-                "and the normalized response reports rig's vocabulary for it"
-            );
-            assert_eq!(
-                visible_text(candidate),
-                choice_text(&response.choice),
-                "the normalized text is exactly the document's visible text parts"
-            );
         },
     )
     .await;
+
+    let response = observed.take();
+    let raw = &response.raw;
+
+    // `raw` is Gemini's reply document as it arrived: its own type reads it
+    // back, so the escape hatch is typed rather than stringly.
+    let typed = GenerateContentResponse::deserialize(raw)
+        .expect("raw must deserialize into Gemini's GenerateContentResponse");
+
+    // One decoder folded the normalized response out of these very bytes, so
+    // every field it kept must be the one the document carries — `raw` is
+    // additive, never a divergent second view.
+    assert_eq!(typed.model_version.as_deref(), response.model.as_deref());
+    assert_eq!(
+        Some(typed.response_id.as_str()),
+        response.response_id.as_deref()
+    );
+    assert_eq!(
+        typed
+            .usage_metadata
+            .as_ref()
+            .map(|usage| usage.prompt_token_count as u64),
+        response.usage.input_tokens
+    );
+    assert_eq!(
+        typed
+            .usage_metadata
+            .as_ref()
+            .map(|usage| usage.total_token_count as u64),
+        response.usage.total_tokens
+    );
+    let candidate = typed
+        .candidates
+        .first()
+        .expect("the recorded turn carries a candidate");
+    assert_eq!(
+        raw.pointer("/candidates/0/finishReason"),
+        Some(&Value::String("STOP".to_string())),
+        "Gemini's own finish spelling stays on the document"
+    );
+    assert_eq!(
+        response.finish_reason(),
+        Some(FinishReason::Stop),
+        "and the normalized response reports rig's vocabulary for it"
+    );
+    assert_eq!(
+        visible_text(candidate),
+        assistant_text(&response.choice),
+        "the normalized text is exactly the document's visible text parts"
+    );
 
     assert_recorded_generate_content_body(SCENARIO);
 }
@@ -319,34 +298,34 @@ async fn raw_roundtrips_generate_content_response() {
 #[tokio::test]
 async fn raw_exposes_prompt_tokens_details() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_prompt_tokens_details";
-    // The observed `raw` is compared against the fixture bytes only after the
-    // wrapper returns, so it is carried out of the test body.
-    let observed: Observed<Value> = Observed::default();
+    // The observed response is compared against the fixture bytes only after
+    // the wrapper returns, so it is carried out of the test body.
+    let observed: Observed<RigCompletionResponse> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_prompt_tokens_details",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-            sink.put(raw.clone());
-
-            // The normalized response provably lacks the field: it is only
-            // reachable through `raw`.
-            assert!(
-                !json_contains_key(&normalized_without_raw(&response), "promptTokensDetails"),
-                "promptTokensDetails is not part of rig's normalized response — it is exactly \
-             the kind of provider detail `raw` exists to expose"
-            );
         },
     )
     .await;
 
-    let raw = observed.take();
+    let response = observed.take();
+
+    // The normalized response provably lacks the field: it is only reachable
+    // through `raw`.
+    assert!(
+        !json_contains_key(
+            &normalized_without_raw(response.clone()),
+            "promptTokensDetails"
+        ),
+        "promptTokensDetails is not part of rig's normalized response — it is exactly \
+         the kind of provider detail `raw` exists to expose"
+    );
+
+    let raw = &response.raw;
     let body = assert_recorded_generate_content_body(SCENARIO);
     assert_eq!(
         raw.pointer("/usageMetadata/promptTokensDetails"),
@@ -372,86 +351,84 @@ async fn raw_exposes_prompt_tokens_details() {
 #[tokio::test]
 async fn raw_exposes_forced_function_call() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_forced_function_call";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<RigCompletionResponse> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_forced_function_call",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(forced_tool_request(&model))
+            capture_completion(client.completion(MODEL), forced_tool_request, sink)
                 .await
                 .expect("forced tool completion should succeed");
-
-            let raw = &response.raw;
-            sink.put(raw.clone());
-
-            // The typed read-back holds for a functionCall turn too.
-            let typed = GenerateContentResponse::deserialize(raw)
-                .expect("raw must deserialize into Gemini's GenerateContentResponse");
-            let candidate = typed
-                .candidates
-                .first()
-                .expect("the recorded turn carries a candidate");
-            // Gemini `functionCall` parts carry no id, so the decoder mints
-            // one: the document's call is compared by what the wire carried
-            // (name + arguments), not by the minted id.
-            let wire_calls: Vec<(String, Value)> = candidate
-                .content
-                .as_ref()
-                .into_iter()
-                .flat_map(|content| content.parts.iter())
-                .filter_map(|part| match &part.part {
-                    PartKind::FunctionCall(call) => Some((call.name.clone(), call.args.clone())),
-                    _ => None,
-                })
-                .collect();
-            assert_eq!(wire_calls, tool_functions(&response.choice));
-            assert_eq!(
-                typed
-                    .usage_metadata
-                    .as_ref()
-                    .map(|usage| usage.total_token_count as u64),
-                response.usage.total_tokens
-            );
-
-            // The normalized response says ToolCalls and carries the call as
-            // a typed ToolCall …
-            assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
-            let call = response
-                .choice
-                .iter()
-                .find_map(|content| match content {
-                    AssistantContent::ToolCall(call) => Some(call),
-                    _ => None,
-                })
-                .expect("the normalized choice carries the forced tool call");
-            assert_eq!(call.function.name, Adder::NAME);
-            assert_eq!(
-                call.function.arguments,
-                serde_json::json!({ "x": 2, "y": 3 })
-            );
-
-            // … while raw keeps Gemini's own spelling of both.
-            assert_eq!(
-                raw.pointer("/candidates/0/finishReason"),
-                Some(&Value::String("STOP".to_string())),
-                "raw keeps Gemini's finishReason spelling on a call-only turn"
-            );
-            assert_ne!(
-                normalized_without_raw(&response).get("finish_reason"),
-                Some(&Value::String("STOP".to_string())),
-                "the normalized finish reason is rig's vocabulary, not Gemini's"
-            );
-            assert!(
-                !json_contains_key(&normalized_without_raw(&response), "functionCall"),
-                "functionCall is Gemini's wire spelling; the normalized choice carries a ToolCall"
-            );
         },
     )
     .await;
 
-    let raw = observed.take();
+    let response = observed.take();
+    let raw = &response.raw;
+
+    // The typed read-back holds for a functionCall turn too.
+    let typed = GenerateContentResponse::deserialize(raw)
+        .expect("raw must deserialize into Gemini's GenerateContentResponse");
+    let candidate = typed
+        .candidates
+        .first()
+        .expect("the recorded turn carries a candidate");
+    // Gemini `functionCall` parts carry no id, so the decoder mints one: the
+    // document's call is compared by what the wire carried (name +
+    // arguments), not by the minted id.
+    let wire_calls: Vec<(String, Value)> = candidate
+        .content
+        .as_ref()
+        .into_iter()
+        .flat_map(|content| content.parts.iter())
+        .filter_map(|part| match &part.part {
+            PartKind::FunctionCall(call) => Some((call.name.clone(), call.args.clone())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(wire_calls, tool_functions(&response.choice));
+    assert_eq!(
+        typed
+            .usage_metadata
+            .as_ref()
+            .map(|usage| usage.total_token_count as u64),
+        response.usage.total_tokens
+    );
+
+    // The normalized response says ToolCalls and carries the call as a typed
+    // ToolCall …
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
+    let call = response
+        .choice
+        .iter()
+        .find_map(|content| match content {
+            AssistantContent::ToolCall(call) => Some(call),
+            _ => None,
+        })
+        .expect("the normalized choice carries the forced tool call");
+    assert_eq!(call.function.name, Adder::NAME);
+    assert_eq!(
+        call.function.arguments,
+        serde_json::json!({ "x": 2, "y": 3 })
+    );
+
+    // … while raw keeps Gemini's own spelling of both.
+    assert_eq!(
+        raw.pointer("/candidates/0/finishReason"),
+        Some(&Value::String("STOP".to_string())),
+        "raw keeps Gemini's finishReason spelling on a call-only turn"
+    );
+    let normalized = normalized_without_raw(response.clone());
+    assert_ne!(
+        normalized.get("finish_reason"),
+        Some(&Value::String("STOP".to_string())),
+        "the normalized finish reason is rig's vocabulary, not Gemini's"
+    );
+    assert!(
+        !json_contains_key(&normalized, "functionCall"),
+        "functionCall is Gemini's wire spelling; the normalized choice carries a ToolCall"
+    );
+
     let body = assert_recorded_function_call_body(SCENARIO);
     assert_eq!(
         raw.pointer("/candidates/0/content/parts"),
@@ -485,61 +462,58 @@ async fn raw_exposes_forced_function_call() {
 #[tokio::test]
 async fn raw_exposes_structured_output_turn() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_structured_output_turn";
-    let observed: Observed<Value> = Observed::default();
+    let observed: Observed<RigCompletionResponse> = Observed::default();
     let sink = observed.clone();
     with_gemini_cassette(
         "raw_capture_matrix/raw_exposes_structured_output_turn",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(structured_output_request(&model))
+            capture_completion(client.completion(MODEL), structured_output_request, sink)
                 .await
                 .expect("structured output completion should succeed");
-
-            let raw = &response.raw;
-            sink.put(raw.clone());
-
-            let typed = GenerateContentResponse::deserialize(raw)
-                .expect("raw must deserialize into Gemini's GenerateContentResponse");
-            let candidate = typed
-                .candidates
-                .first()
-                .expect("the recorded turn carries a candidate");
-            assert_eq!(
-                visible_text(candidate),
-                choice_text(&response.choice),
-                "the schema JSON reaches the caller as the turn's visible text"
-            );
-            assert_eq!(
-                typed
-                    .usage_metadata
-                    .as_ref()
-                    .map(|usage| usage.total_token_count as u64),
-                response.usage.total_tokens
-            );
-
-            // The normalized choice is the schema JSON as text …
-            assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-            let text = match response.choice.first() {
-                Some(AssistantContent::Text(text)) => text.text.clone(),
-                other => panic!("structured output should arrive as text, got {other:?}"),
-            };
-            serde_json::from_str::<SmokeStructuredOutput>(&text)
-                .expect("the normalized text should be schema JSON");
-
-            // … and provably carries neither Gemini's finishReason spelling nor
-            // the per-modality breakdown: both are only reachable through raw.
-            let normalized = normalized_without_raw(&response);
-            assert!(!json_contains_key(&normalized, "promptTokensDetails"));
-            assert_ne!(
-                normalized.get("finish_reason"),
-                Some(&Value::String("STOP".to_string()))
-            );
         },
     )
     .await;
 
-    let raw = observed.take();
+    let response = observed.take();
+    let raw = &response.raw;
+
+    let typed = GenerateContentResponse::deserialize(raw)
+        .expect("raw must deserialize into Gemini's GenerateContentResponse");
+    let candidate = typed
+        .candidates
+        .first()
+        .expect("the recorded turn carries a candidate");
+    assert_eq!(
+        visible_text(candidate),
+        assistant_text(&response.choice),
+        "the schema JSON reaches the caller as the turn's visible text"
+    );
+    assert_eq!(
+        typed
+            .usage_metadata
+            .as_ref()
+            .map(|usage| usage.total_token_count as u64),
+        response.usage.total_tokens
+    );
+
+    // The normalized choice is the schema JSON as text …
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    let text = match response.choice.first() {
+        Some(AssistantContent::Text(text)) => text.text.clone(),
+        other => panic!("structured output should arrive as text, got {other:?}"),
+    };
+    serde_json::from_str::<SmokeStructuredOutput>(&text)
+        .expect("the normalized text should be schema JSON");
+
+    // … and provably carries neither Gemini's finishReason spelling nor the
+    // per-modality breakdown: both are only reachable through raw.
+    let normalized = normalized_without_raw(response.clone());
+    assert!(!json_contains_key(&normalized, "promptTokensDetails"));
+    assert_ne!(
+        normalized.get("finish_reason"),
+        Some(&Value::String("STOP".to_string()))
+    );
+
     let body = assert_recorded_structured_output_turn(SCENARIO);
     assert_eq!(
         raw.pointer("/candidates/0/finishReason"),

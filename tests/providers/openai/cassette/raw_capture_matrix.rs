@@ -57,23 +57,19 @@
 //! `response_format.type == "json_schema"` and a body with a string
 //! `system_fingerprint`.
 
-use std::future::Future;
-use std::pin::Pin;
-
 use rig::completion::{
     AssistantContent, CompletionModel, CompletionRequest, CompletionResponse, FinishReason,
     ToolDefinition,
 };
-use rig::driver::Bound;
 use rig::message::ToolChoice;
 use rig::providers::openai;
-use rig::providers::openai::wire::{Chat, OpenAiWire};
 use schemars::JsonSchema;
 use serde::Deserialize as _;
 use serde_json::{Value, json};
 
-use super::super::support::{OpenAiCassette, assert_matches_recorded_token, with_openai_cassette};
-use crate::support::Observed;
+use super::super::support::with_openai_cassette_result;
+use crate::raw_capture::{assert_normalized_lacks, capture_completion, chat, responses};
+use crate::support::{Observed, assert_matches_recorded_token, normalized_without_raw};
 
 const PROVIDER: &str = "openai";
 const MODEL: &str = openai::GPT_4_1_NANO;
@@ -147,55 +143,6 @@ fn structured_request(model: &(impl CompletionModel + Clone)) -> CompletionReque
         .build()
 }
 
-/// A cassette test body: boxed so the cell can build it in a helper while the
-/// wrapper call — and its string-literal scenario, which the cassette safety
-/// scan reads — stays in the test itself.
-type Body = Box<dyn FnOnce(OpenAiCassette) -> Pin<Box<dyn Future<Output = ()>>>>;
-
-/// One `completion()` on the chat route with the request `build` makes for
-/// the model, saved onto `sink`.
-fn chat_body_with(
-    sink: Observed<CompletionResponse>,
-    build: impl FnOnce(&Bound<Chat>) -> CompletionRequest + 'static,
-) -> Body {
-    Box::new(move |client| {
-        Box::pin(async move {
-            let model = client.openai.chat(MODEL);
-            let response = model
-                .completion(build(&model))
-                .await
-                .expect("chat completion should succeed");
-            sink.put(response);
-        })
-    })
-}
-
-/// The text turn every original chat cell records.
-fn chat_body(sink: Observed<CompletionResponse>) -> Body {
-    chat_body_with(sink, request)
-}
-
-fn responses_body_with(
-    sink: Observed<CompletionResponse>,
-    model_name: &'static str,
-    build: impl FnOnce(&Bound<OpenAiWire>) -> CompletionRequest + 'static,
-) -> Body {
-    Box::new(move |client| {
-        Box::pin(async move {
-            let model = client.openai.completion(model_name);
-            let response = model
-                .completion(build(&model))
-                .await
-                .expect("responses completion should succeed");
-            sink.put(response);
-        })
-    })
-}
-
-fn responses_body(sink: Observed<CompletionResponse>) -> Body {
-    responses_body_with(sink, MODEL, request)
-}
-
 /// The premise shared by every chat cell: the recorded turn completed the way
 /// the cell expects — `wire_finish` is OpenAI's own spelling in the fixture,
 /// `finish` the normalized reading of it — and the normalized response
@@ -228,19 +175,15 @@ fn assert_chat_fixture_premise(
     );
 }
 
+/// The premise shared by every Responses cell: the recorded turn is a
+/// completed Responses envelope, and the normalized response reproduces it.
+///
+/// The field comparison is the shared Responses contract, which reads the
+/// finish reason off `status` and so carries the "this turn completed"
+/// premise itself; `object` is the one claim left here.
 fn assert_responses_fixture_premise(scenario: &str, response: &CompletionResponse, body: &Value) {
     assert_eq!(body["object"], "response", "{scenario}: responses body");
-    assert_eq!(body["status"], "completed", "{scenario}: completed turn");
-    assert_matches_recorded_token(
-        response.response_id.as_deref(),
-        body["id"].as_str(),
-        &format!("{scenario}: response_id"),
-    );
-    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
-    assert_eq!(
-        response.usage.input_tokens,
-        body["usage"]["input_tokens"].as_u64()
-    );
+    responses::assert_reproduces_body(response, PROVIDER, body, scenario);
 }
 
 /// The `raw` a wire response must carry — `Value::Null` is reserved for
@@ -254,16 +197,18 @@ fn captured_raw<'a>(scenario: &str, response: &'a CompletionResponse) -> &'a Val
     &response.raw
 }
 
-/// `raw` and the normalized response are two views of one reply: the field
-/// the provider named is the field rig reports, under rig's name. The
-/// transport id is the one exception by construction — it lives in a
-/// response header, not the body `raw` holds — so the body-derived view has
-/// none while the response does.
+/// `raw` and the normalized response are two views of one reply — for the
+/// forced tool-call turn: the field the provider named is the field rig
+/// reports, under rig's name. The transport id is the one exception by
+/// construction — it lives in a response header, not the body `raw` holds —
+/// so the body-derived view has none while the response does.
 ///
-/// This replaces a comparison against `raw.normalize(..)`: there is one
-/// mapping now (the decoder's), so re-running it here would compare it to a
-/// copy of itself. Asserting against the provider's own field names pins
-/// that mapping instead.
+/// The text turns make this claim with
+/// [`chat::assert_native_matches_normalized`], whose hand-written
+/// finish-reason mapping spells `stop` and `length` only. A turn finishing
+/// on `tool_calls` needs the rest of the claim without that one, which is
+/// why this stays here rather than passing a word the shared mapping would
+/// reject.
 fn assert_chat_raw_agrees(
     scenario: &str,
     typed: &openai::CompletionResponse,
@@ -296,50 +241,6 @@ fn assert_chat_raw_agrees(
     assert_transport_id_is_header_only(scenario, response);
 }
 
-/// [`assert_chat_raw_agrees`] for the Responses route, whose body names its
-/// usage counters differently and whose own `provider_request_id` field is
-/// never part of the document.
-fn assert_responses_raw_agrees(
-    scenario: &str,
-    typed: &openai::responses_api::CompletionResponse,
-    response: &CompletionResponse,
-) {
-    assert_eq!(
-        response.response_id.as_deref(),
-        Some(typed.id.as_str()),
-        "{scenario}: the response id is the provider's `id`"
-    );
-    assert_eq!(
-        response.model.as_deref(),
-        Some(typed.model.as_str()),
-        "{scenario}: model"
-    );
-    let usage = typed
-        .usage
-        .as_ref()
-        .unwrap_or_else(|| panic!("{scenario}: the recorded Responses body reports usage"));
-    assert_eq!(
-        response.usage.input_tokens,
-        Some(usage.input_tokens),
-        "{scenario}: input tokens"
-    );
-    assert_eq!(
-        response.usage.output_tokens,
-        Some(usage.output_tokens),
-        "{scenario}: output tokens"
-    );
-    assert_eq!(
-        response.usage.total_tokens,
-        Some(usage.total_tokens),
-        "{scenario}: total tokens"
-    );
-    assert_eq!(
-        typed.provider_request_id, None,
-        "{scenario}: wire deserialization never fills the transport id"
-    );
-    assert_transport_id_is_header_only(scenario, response);
-}
-
 /// The transport id reaches the caller and is not in the document `raw`
 /// holds — it is an `x-request-id` response header.
 fn assert_transport_id_is_header_only(scenario: &str, response: &CompletionResponse) {
@@ -353,17 +254,6 @@ fn assert_transport_id_is_header_only(scenario: &str, response: &CompletionRespo
     );
 }
 
-/// The normalized response's own serialization has no key by that name — the
-/// field is reachable through `raw` alone.
-fn assert_normalized_lacks_key(scenario: &str, response: &CompletionResponse, key: &str) {
-    let normalized = serde_json::to_value(response).expect("normalized response serializes");
-    assert!(
-        normalized.get(key).is_none(),
-        "{scenario}: the normalized response must not model `{key}` — that is what \
-         makes it a provider-only field"
-    );
-}
-
 // ---------------------------------------------------------------------------
 // Chat Completions
 // ---------------------------------------------------------------------------
@@ -372,11 +262,11 @@ fn assert_normalized_lacks_key(scenario: &str, response: &CompletionResponse, ke
 async fn chat_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_capture_matrix/chat_raw_round_trips_typed";
     let observed = Observed::default();
-    with_openai_cassette(
-        "raw_capture_matrix/chat_raw_round_trips_typed",
-        chat_body(observed.clone()),
-    )
-    .await;
+    with_openai_cassette_result("raw_capture_matrix/chat_raw_round_trips_typed", |client| {
+        capture_completion(client.openai.chat(MODEL), request, observed.clone())
+    })
+    .await
+    .expect("chat_raw_round_trips_typed should replay from its cassette");
     let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
@@ -410,18 +300,20 @@ async fn chat_raw_round_trips_typed() {
         body["usage"]["completion_tokens"]
     );
     // Two views of one reply: the provider's field names, then rig's.
-    assert_chat_raw_agrees(SCENARIO, &typed, &response);
+    chat::assert_native_matches_normalized(&response, &typed, SCENARIO);
+    assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
 #[tokio::test]
 async fn chat_raw_exposes_service_tier() {
     const SCENARIO: &str = "raw_capture_matrix/chat_raw_exposes_service_tier";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_capture_matrix/chat_raw_exposes_service_tier",
-        chat_body(observed.clone()),
+        |client| capture_completion(client.openai.chat(MODEL), request, observed.clone()),
     )
-    .await;
+    .await
+    .expect("chat_raw_exposes_service_tier should replay from its cassette");
     let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
@@ -441,8 +333,10 @@ async fn chat_raw_exposes_service_tier() {
         body["system_fingerprint"].as_str(),
         &format!("{SCENARIO}: `system_fingerprint` off raw vs the fixture"),
     );
-    assert_normalized_lacks_key(SCENARIO, &response, "service_tier");
-    assert_normalized_lacks_key(SCENARIO, &response, "system_fingerprint");
+    assert_normalized_lacks(
+        &normalized_without_raw(response.clone()),
+        &["service_tier", "system_fingerprint"],
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -457,11 +351,12 @@ async fn chat_raw_exposes_service_tier() {
 async fn responses_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_capture_matrix/responses_raw_round_trips_typed";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_capture_matrix/responses_raw_round_trips_typed",
-        responses_body(observed.clone()),
+        |client| capture_completion(client.openai.completion(MODEL), request, observed.clone()),
     )
-    .await;
+    .await
+    .expect("responses_raw_round_trips_typed should replay from its cassette");
     let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_responses_fixture_premise(SCENARIO, &response, &body);
@@ -493,18 +388,20 @@ async fn responses_raw_round_trips_typed() {
         "{SCENARIO}: the normalized response still reports the transport id"
     );
     // Two views of one reply: the provider's field names, then rig's.
-    assert_responses_raw_agrees(SCENARIO, &typed, &response);
+    responses::assert_native_matches_normalized(&response, &typed, SCENARIO);
+    assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
 #[tokio::test]
 async fn responses_raw_exposes_service_tier_and_store() {
     const SCENARIO: &str = "raw_capture_matrix/responses_raw_exposes_service_tier_and_store";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_capture_matrix/responses_raw_exposes_service_tier_and_store",
-        responses_body(observed.clone()),
+        |client| capture_completion(client.openai.completion(MODEL), request, observed.clone()),
     )
-    .await;
+    .await
+    .expect("responses_raw_exposes_service_tier_and_store should replay from its cassette");
     let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_responses_fixture_premise(SCENARIO, &response, &body);
@@ -526,8 +423,10 @@ async fn responses_raw_exposes_service_tier_and_store() {
         Some(recorded_store),
         "{SCENARIO}: `store` is readable off raw and equals the fixture"
     );
-    assert_normalized_lacks_key(SCENARIO, &response, "service_tier");
-    assert_normalized_lacks_key(SCENARIO, &response, "store");
+    assert_normalized_lacks(
+        &normalized_without_raw(response.clone()),
+        &["service_tier", "store"],
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -567,11 +466,18 @@ fn reasoning_output_item<'a>(scenario: &str, body: &'a Value, what: &str) -> &'a
 async fn responses_reasoning_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_capture_matrix/responses_reasoning_raw_round_trips_typed";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_capture_matrix/responses_reasoning_raw_round_trips_typed",
-        responses_body_with(observed.clone(), REASONING_MODEL, reasoning_request),
+        |client| {
+            capture_completion(
+                client.openai.completion(REASONING_MODEL),
+                reasoning_request,
+                observed.clone(),
+            )
+        },
     )
-    .await;
+    .await
+    .expect("responses_reasoning_raw_round_trips_typed should replay from its cassette");
     let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_responses_fixture_premise(SCENARIO, &response, &body);
@@ -625,7 +531,7 @@ async fn responses_reasoning_raw_round_trips_typed() {
     );
     // The normalized response has no `output` array; its reasoning is a
     // content block carrying the same encrypted payload.
-    assert_normalized_lacks_key(SCENARIO, &response, "output");
+    assert_normalized_lacks(&normalized_without_raw(response.clone()), &["output"]);
     let encrypted_blocks: Vec<&str> = response
         .choice
         .iter()
@@ -649,7 +555,8 @@ async fn responses_reasoning_raw_round_trips_typed() {
         "{SCENARIO}: the normalized reasoning block carries raw's encrypted content"
     );
     // Two views of one reply: the provider's field names, then rig's.
-    assert_responses_raw_agrees(SCENARIO, &typed, &response);
+    responses::assert_native_matches_normalized(&response, &typed, SCENARIO);
+    assert_transport_id_is_header_only(SCENARIO, &response);
 }
 
 /// A forced Chat tool call: `raw` keeps the wire's representation — a
@@ -660,11 +567,12 @@ async fn responses_reasoning_raw_round_trips_typed() {
 async fn chat_tool_call_raw_round_trips_typed() {
     const SCENARIO: &str = "raw_capture_matrix/chat_tool_call_raw_round_trips_typed";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_capture_matrix/chat_tool_call_raw_round_trips_typed",
-        chat_body_with(observed.clone(), tool_request),
+        |client| capture_completion(client.openai.chat(MODEL), tool_request, observed.clone()),
     )
-    .await;
+    .await
+    .expect("chat_tool_call_raw_round_trips_typed should replay from its cassette");
     let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_chat_fixture_premise(
@@ -764,11 +672,18 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
     const SCENARIO: &str =
         "raw_capture_matrix/chat_structured_output_raw_exposes_system_fingerprint";
     let observed = Observed::default();
-    with_openai_cassette(
+    with_openai_cassette_result(
         "raw_capture_matrix/chat_structured_output_raw_exposes_system_fingerprint",
-        chat_body_with(observed.clone(), structured_request),
+        |client| {
+            capture_completion(
+                client.openai.chat(MODEL),
+                structured_request,
+                observed.clone(),
+            )
+        },
     )
-    .await;
+    .await
+    .expect("chat_structured_output_raw_exposes_system_fingerprint should replay from cassette");
     let response = observed.take();
     let body = crate::cassettes::recorded_json_response(PROVIDER, SCENARIO);
     assert_chat_fixture_premise(SCENARIO, &response, &body, "stop", FinishReason::Stop);
@@ -818,7 +733,10 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
         Some(recorded_fingerprint),
         &format!("{SCENARIO}: `system_fingerprint` is readable off raw and equals the fixture"),
     );
-    assert_normalized_lacks_key(SCENARIO, &response, "system_fingerprint");
+    assert_normalized_lacks(
+        &normalized_without_raw(response.clone()),
+        &["system_fingerprint"],
+    );
     // `raw` is the reply document, so the structured content is the wire's
     // own JSON string.
     let raw_text = raw["choices"][0]["message"]["content"]
@@ -836,5 +754,6 @@ async fn chat_structured_output_raw_exposes_system_fingerprint() {
         "{SCENARIO}: the schema's `word` field is filled"
     );
     // Two views of one reply: the provider's field names, then rig's.
-    assert_chat_raw_agrees(SCENARIO, &typed, &response);
+    chat::assert_native_matches_normalized(&response, &typed, SCENARIO);
+    assert_transport_id_is_header_only(SCENARIO, &response);
 }

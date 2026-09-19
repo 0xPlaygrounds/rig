@@ -35,83 +35,22 @@
 //! OpenRouter contracts no request-id header, so `provider_request_id` is
 //! `None` on every turn here — a documented outcome, pinned as such.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::providers::openrouter;
 use serde::Deserialize as _;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::super::DEFAULT_MODEL;
-use super::super::support::{
-    BoundOpenRouter, assert_matches_recorded_token, with_openrouter_cassette_result,
-};
+use super::super::support::with_openrouter_cassette_result;
 use crate::cassettes::recorded_json_turn;
-use crate::support::{Observed, assistant_text, recorded_chat_finish_reason};
+use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
+use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "openrouter";
 const PROMPT: &str = "Reply with the single word: pong";
 
 fn request(model: &(impl CompletionModel + Clone)) -> CompletionRequest {
     model.completion_request(PROMPT).max_tokens(16).build()
-}
-
-/// The normalized fields, checked against the wire bytes that produced them.
-fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
-    assert_eq!(response.provider, PROVIDER, "provider");
-    assert_matches_recorded_token(
-        response.response_id.as_deref(),
-        body["id"].as_str(),
-        "response id",
-    );
-    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
-    assert_eq!(
-        response.finish_reason(),
-        Some(recorded_chat_finish_reason(body)),
-        "finish reason"
-    );
-    assert_eq!(
-        response.usage.input_tokens,
-        body["usage"]["prompt_tokens"].as_u64(),
-        "input tokens"
-    );
-    assert_eq!(
-        response.usage.output_tokens,
-        body["usage"]["completion_tokens"].as_u64(),
-        "output tokens"
-    );
-    assert_eq!(
-        response.usage.total_tokens,
-        body["usage"]["total_tokens"].as_u64(),
-        "total tokens"
-    );
-    assert_eq!(
-        assistant_text(&response.choice),
-        body["choices"][0]["message"]["content"]
-            .as_str()
-            .expect("recorded content"),
-        "choice text"
-    );
-    // OpenRouter contracts no request-id header, so `None` is the documented
-    // outcome.
-    assert_eq!(response.provider_request_id, None, "request id");
-}
-
-/// Where a cell parks the response its recorded turn produced.
-///
-/// The wrapper call itself stays inline in every cell with its own scenario
-/// literal: `cassette_safety` reads the registered scenarios out of the AST
-/// and accepts only a literal, so a shared helper that took the scenario as a
-/// parameter would register nothing and orphan the fixture.
-///
-/// The body every cell here shares: one turn, parked for the assertions that
-/// run after the wrapper returns.
-async fn run(
-    client: BoundOpenRouter,
-    sink: Observed<CompletionResponse>,
-) -> Result<(), anyhow::Error> {
-    let model = client.completion(DEFAULT_MODEL);
-    let response = model.completion(request(&model)).await?;
-    sink.put(response);
-    Ok(())
 }
 
 // ================================================================
@@ -124,7 +63,7 @@ async fn raw_reads_back_as_openrouter_type() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_capture_matrix/raw_round_trips_openrouter_type",
-        |client| run(client, sink.clone()),
+        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
     )
     .await
     .expect("raw_round_trips_openrouter_type should replay from its cassette");
@@ -181,7 +120,7 @@ async fn raw_exposes_routed_provider() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_routed_provider";
     let sink = Observed::default();
     with_openrouter_cassette_result("raw_capture_matrix/raw_exposes_routed_provider", |client| {
-        run(client, sink.clone())
+        capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone())
     })
     .await
     .expect("raw_exposes_routed_provider should replay from its cassette");
@@ -222,18 +161,22 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_openrouter_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| run(client, sink.clone()),
+        |client| capture_completion(client.completion(DEFAULT_MODEL), request, sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
     let response = sink.take();
 
     let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
-    assert_reproduces_fixture(&response, &body);
+    chat::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
+    // OpenRouter contracts no request-id header, so `None` is the documented
+    // outcome. That is a claim about the dialect rather than about these
+    // bytes, so it is stated once rather than once per view.
+    assert_no_request_id(response.provider_request_id.as_deref(), "OpenRouter");
 
     // One seam, two views: the normalized fields hold against the response's
     // own `raw` exactly as they hold against the fixture bytes, because `raw`
     // *is* those bytes. Capture adds a view; it never changes the mapping.
     let raw = response.raw.clone();
-    assert_reproduces_fixture(&response, &raw);
+    chat::assert_reproduces_body(&response, PROVIDER, &raw, "the response's own raw");
 }

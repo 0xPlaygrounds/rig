@@ -36,12 +36,14 @@ use rig::driver::Bound;
 use rig::providers::chatgpt;
 use rig::providers::openai::responses_api;
 use rig::providers::openai::wire::OpenAiWire;
-use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::support::with_chatgpt_cassette;
 use crate::cassettes::{recorded_interaction_bodies, recorded_sse_json_frames};
-use crate::support::{Observed, collect_sole_terminal};
+use crate::raw_capture::{
+    assert_normalized_lacks, capture_sole_terminal, responses, stream_normalized_without_raw,
+};
+use crate::support::Observed;
 
 const CHATGPT_PROVIDER: &str = "chatgpt";
 const MODEL: &str = chatgpt::GPT_5_4;
@@ -56,6 +58,12 @@ fn request(model: &ChatGptModel) -> rig::completion::CompletionRequest {
 /// The premise every streaming cell rests on: the scenario recorded exactly
 /// one interaction whose SSE stream ends with a `response.completed` frame
 /// carrying usage. Returns its `response`.
+///
+/// Stays local: the usage a Responses stream reports hangs under a typed
+/// event's `response` envelope, not on the frame itself, so neither
+/// [`crate::raw_capture::chat::recorded_sole_usage_frame`]'s rule nor
+/// [`crate::raw_capture::chat::recorded_agreeing_usage_frames`]' describes
+/// this wire.
 fn recorded_terminal_response(scenario: &str) -> Value {
     assert_eq!(
         recorded_interaction_bodies(CHATGPT_PROVIDER, scenario).len(),
@@ -92,46 +100,30 @@ async fn stream_raw_terminal_round_trips_provider_type() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-
-            let raw = &terminal.raw;
-            let typed = responses_api::streaming::StreamingCompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into the Responses terminal type");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("terminal type should serialize"),
-                *raw,
-                "responses_api::streaming::StreamingCompletionResponse must round-trip"
-            );
-
-            let typed_usage = typed
-                .usage
-                .as_ref()
-                .expect("the Responses terminal carries usage");
-            assert_eq!(Some(typed_usage.total_tokens), terminal.usage.total_tokens);
-            assert_eq!(Some(typed_usage.input_tokens), terminal.usage.input_tokens);
-            assert_eq!(
-                Some(typed_usage.output_tokens),
-                terminal.usage.output_tokens
-            );
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(typed.message_id, terminal.message_id);
-            assert_eq!(typed.model, terminal.model);
-            sink.put(raw.clone());
+            capture_sole_terminal(client.completion(MODEL), request, sink)
+                .await
+                .expect("stream should start");
         },
     )
     .await;
 
-    let terminal = recorded_terminal_response(scenario);
-    let raw = captured.take();
+    let terminal = captured.take();
+    let raw = &terminal.raw;
+    // The Responses stream's terminal record is its own type, so this is the
+    // Responses contract's round trip, not `chat::assert_terminal_round_trips`,
+    // which speaks the chat-completions terminal.
+    let typed = responses::assert_terminal_round_trips(&terminal);
+    // The shared round trip compares the whole normalized accounting, which a
+    // terminal carrying no usage at all would satisfy by both sides being
+    // empty; this cell's premise is that the record has usage.
+    assert!(
+        typed.usage.is_some(),
+        "the Responses terminal carries usage"
+    );
+
+    let recorded = recorded_terminal_response(scenario);
     assert_eq!(
-        raw["usage"]["total_tokens"], terminal["usage"]["total_tokens"],
+        raw["usage"]["total_tokens"], recorded["usage"]["total_tokens"],
         "raw usage must be the terminal frame's usage"
     );
 }
@@ -149,40 +141,25 @@ async fn stream_raw_exposes_terminal_status() {
     with_chatgpt_cassette(
         "raw_stream_capture_matrix/stream_raw_exposes_terminal_status",
         |client| async move {
-            let model = client.completion(MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-
-            let mut without_raw = terminal.clone();
-            without_raw.raw = Value::Null;
-            let normalized =
-                serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
-            assert!(
-                normalized.get("status").is_none(),
-                "normalized StreamFinal must not grow a `status` field"
-            );
-
-            let raw = terminal.raw;
-            sink.put(raw);
+            capture_sole_terminal(client.completion(MODEL), request, sink)
+                .await
+                .expect("stream should start");
         },
     )
     .await;
 
-    let raw = captured.take();
-    let terminal = recorded_terminal_response(scenario);
+    let terminal = captured.take();
+    assert_normalized_lacks(&stream_normalized_without_raw(&terminal), &["status"]);
+
+    let raw = &terminal.raw;
+    let recorded = recorded_terminal_response(scenario);
     assert_eq!(
-        terminal["status"],
+        recorded["status"],
         Value::String("completed".to_string()),
         "{scenario}: premise — the recorded terminal frame is completed"
     );
-    assert_eq!(raw["status"], terminal["status"]);
-    assert_eq!(raw["usage"], terminal["usage"]);
-    let typed = responses_api::streaming::StreamingCompletionResponse::deserialize(&raw)
-        .expect("raw must deserialize");
+    assert_eq!(raw["status"], recorded["status"]);
+    assert_eq!(raw["usage"], recorded["usage"]);
+    let typed = responses::assert_terminal_round_trips(&terminal);
     assert_eq!(typed.status, Some(responses_api::ResponseStatus::Completed));
 }

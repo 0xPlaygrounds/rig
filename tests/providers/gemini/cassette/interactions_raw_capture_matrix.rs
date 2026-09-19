@@ -38,7 +38,7 @@
 //! the interaction `id` is normalized into `response_id` *and* scrubbed into
 //! the fixture, so it cannot prove anything against the recorded bytes.
 
-use rig::completion::{CompletionModel, CompletionResponse as RigCompletionResponse, FinishReason};
+use rig::completion::{CompletionModel, FinishReason};
 use rig::driver::Bound;
 use rig::http_client::BoxedHttpClient;
 use rig::providers::gemini::interactions_api::{Interaction, InteractionStatus, Interactions};
@@ -47,6 +47,7 @@ use serde_json::Value;
 use std::sync::{Arc, Mutex};
 
 use super::super::support::with_gemini_interactions_cassette;
+use crate::support::{json_contains_key, normalized_without_raw};
 
 const PROVIDER: &str = "gemini";
 
@@ -86,25 +87,6 @@ fn assert_recorded_completed_interaction(scenario: &str) -> Value {
         "{scenario}: the recorded interaction should carry its steps log"
     );
     body
-}
-
-fn normalized_without_raw(response: &RigCompletionResponse) -> Value {
-    let mut value = serde_json::to_value(response).expect("normalized response serializes");
-    value
-        .as_object_mut()
-        .expect("normalized response is an object")
-        .remove("raw");
-    value
-}
-
-fn contains_key(value: &Value, needle: &str) -> bool {
-    match value {
-        Value::Object(map) => map
-            .iter()
-            .any(|(key, value)| key == needle || contains_key(value, needle)),
-        Value::Array(items) => items.iter().any(|item| contains_key(item, needle)),
-        _ => false,
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -185,10 +167,10 @@ async fn raw_exposes_lifecycle_fields() {
             // The normalized response provably lacks these: `object` and `steps`
             // have no normalized home, and `status` reaches it only as rig's
             // finish-reason vocabulary.
-            let normalized = normalized_without_raw(&response);
-            assert!(!contains_key(&normalized, "object"));
-            assert!(!contains_key(&normalized, "steps"));
-            assert!(!contains_key(&normalized, "status"));
+            let normalized = normalized_without_raw(response.clone());
+            assert!(!json_contains_key(&normalized, "object"));
+            assert!(!json_contains_key(&normalized, "steps"));
+            assert!(!json_contains_key(&normalized, "status"));
             assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
         },
     )

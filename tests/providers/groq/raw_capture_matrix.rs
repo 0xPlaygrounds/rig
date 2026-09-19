@@ -36,15 +36,16 @@
 //! finish reason, or the request-id header fails loudly instead of covering
 //! nothing.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
+use rig::completion::{CompletionModel, CompletionRequest};
 use rig::providers::openai;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
 use super::RAW_CAPTURE_MATRIX_MODEL;
-use super::support::{BoundGroq, assert_matches_recorded_token, with_groq_cassette_result};
+use super::support::with_groq_cassette_result;
 use crate::cassettes::{recorded_json_turn, recorded_response_header};
-use crate::support::{Observed, assistant_text, recorded_chat_finish_reason};
+use crate::raw_capture::{assert_contracted_request_id, capture_completion, chat};
+use crate::support::{Observed, assert_matches_recorded_token};
 
 const PROVIDER: &str = "groq";
 const PROMPT: &str = "Reply with the single word: pong";
@@ -59,65 +60,6 @@ fn recorded_request_id(scenario: &str) -> Option<String> {
     recorded_response_header(PROVIDER, scenario, 0, REQUEST_ID_HEADER)
 }
 
-/// The normalized fields, checked against the wire bytes that produced them.
-fn assert_reproduces_fixture(
-    response: &CompletionResponse,
-    body: &Value,
-    request_id: Option<&str>,
-) {
-    assert_eq!(response.provider, PROVIDER, "provider");
-    assert_matches_recorded_token(
-        response.response_id.as_deref(),
-        body["id"].as_str(),
-        "response id",
-    );
-    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
-    assert_eq!(
-        response.finish_reason(),
-        Some(recorded_chat_finish_reason(body)),
-        "finish reason"
-    );
-    assert_eq!(
-        response.usage.input_tokens,
-        body["usage"]["prompt_tokens"].as_u64(),
-        "input tokens"
-    );
-    assert_eq!(
-        response.usage.output_tokens,
-        body["usage"]["completion_tokens"].as_u64(),
-        "output tokens"
-    );
-    assert_eq!(
-        response.usage.total_tokens,
-        body["usage"]["total_tokens"].as_u64(),
-        "total tokens"
-    );
-    assert_eq!(
-        assistant_text(&response.choice),
-        body["choices"][0]["message"]["content"]
-            .as_str()
-            .expect("recorded content"),
-        "choice text"
-    );
-    // Groq contracts `x-request-id`; the recorded header is the premise.
-    assert!(
-        request_id.is_some(),
-        "the recorded response must carry x-request-id"
-    );
-    assert_matches_recorded_token(
-        response.provider_request_id.as_deref(),
-        request_id,
-        "request id",
-    );
-}
-
-/// Run one recorded turn and park the response it produced.
-async fn run(client: BoundGroq, sink: Observed<CompletionResponse>) -> Result<(), anyhow::Error> {
-    let model = client.completion(RAW_CAPTURE_MATRIX_MODEL);
-    sink.put(model.completion(request(&model)).await?);
-    Ok(())
-}
-
 // ================================================================
 // 1. raw is the reply document
 // ================================================================
@@ -127,7 +69,11 @@ async fn raw_is_the_verbatim_response_body() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_openai_type";
     let sink = Observed::default();
     with_groq_cassette_result("raw_capture_matrix/raw_round_trips_openai_type", |client| {
-        run(client, sink.clone())
+        capture_completion(
+            client.completion(RAW_CAPTURE_MATRIX_MODEL),
+            request,
+            sink.clone(),
+        )
     })
     .await
     .expect("raw_round_trips_openai_type should replay from its cassette");
@@ -198,7 +144,11 @@ async fn raw_exposes_queue_time() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_queue_time";
     let sink = Observed::default();
     with_groq_cassette_result("raw_capture_matrix/raw_exposes_queue_time", |client| {
-        run(client, sink.clone())
+        capture_completion(
+            client.completion(RAW_CAPTURE_MATRIX_MODEL),
+            request,
+            sink.clone(),
+        )
     })
     .await
     .expect("raw_exposes_queue_time should replay from its cassette");
@@ -251,43 +201,47 @@ async fn normalized_fields_match_raw_renormalized() {
     let sink = Observed::default();
     with_groq_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| run(client, sink.clone()),
+        |client| {
+            capture_completion(
+                client.completion(RAW_CAPTURE_MATRIX_MODEL),
+                request,
+                sink.clone(),
+            )
+        },
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
     let response = sink.take();
 
     let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
-    let request_id = recorded_request_id(SCENARIO);
-    assert_reproduces_fixture(&response, &body, request_id.as_deref());
+    chat::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
+    // Groq contracts `x-request-id`; the recorded header is the premise.
+    assert_contracted_request_id(
+        response.provider_request_id.as_deref(),
+        recorded_request_id(SCENARIO).as_deref(),
+        REQUEST_ID_HEADER,
+    );
 
     // One seam, two views: the normalized fields hold against the response's
     // own `raw` exactly as they hold against the fixture bytes, because `raw`
     // *is* those bytes. Capture adds a view; it never changes the mapping.
     let raw = response.raw.clone();
-    assert_reproduces_fixture(&response, &raw, request_id.as_deref());
+    chat::assert_reproduces_body(&response, PROVIDER, &raw, "the response's own raw");
 
     // The provider-native view of the same reply, through the typed escape
     // hatch: its own fields are what the decoder mapped from.
     let typed = openai::CompletionResponse::deserialize(&raw).expect("raw reads back typed");
-    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-    let choice = typed.choices.first().expect("the reply carries a choice");
+    chat::assert_native_matches_normalized(&response, &typed, "the typed view of raw");
     assert_eq!(
-        choice.finish_reason.as_str(),
+        typed
+            .choices
+            .first()
+            .expect("the reply carries a choice")
+            .finish_reason
+            .as_str(),
         body["choices"][0]["finish_reason"]
             .as_str()
             .expect("recorded finish reason"),
-        "the native finish reason is what the normalized one was mapped from"
-    );
-    let usage = typed.usage.expect("the recorded turn reports usage");
-    assert_eq!(
-        Some(usage.prompt_tokens as u64),
-        response.usage.input_tokens,
-        "the native prompt count is what the normalized input count was mapped from"
-    );
-    assert_eq!(
-        Some(usage.total_tokens as u64),
-        response.usage.total_tokens,
-        "and so is the total"
+        "the native finish reason is the recorded one"
     );
 }

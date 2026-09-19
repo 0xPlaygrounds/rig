@@ -25,6 +25,16 @@
 //! the cassette wrapper returns: the recorded SSE stream must end with a frame
 //! carrying `usage`, or the cell fails loudly.
 //!
+//! Every cell streams its one turn through
+//! [`capture_sole_terminal`](crate::raw_capture::capture_sole_terminal) — the
+//! stream must yield exactly one terminal record — and keeps its cassette
+//! wrapper call, scenario literal included, at the test site, which is where
+//! `cassette_safety` reads a scenario from. The fixture premises stay local:
+//! "the last data frame carries the usage" and "every chunk agrees on an
+//! envelope key" are this dialect's rules, and neither is the shared
+//! chat-completions contract of one usage-bearing frame
+//! ([`chat::recorded_sole_usage_frame`](crate::raw_capture::chat::recorded_sole_usage_frame)).
+//!
 //! | # | Cell | Dimension | expected | Status |
 //! |---|------|-----------|----------|--------|
 //! | 1 | `stream_raw_terminal_round_trips_provider_type` | typed access | `openai::wire::StreamingCompletionResponse::deserialize(&raw)` re-serializes equal | recorded |
@@ -47,62 +57,21 @@
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test llamacpp raw_stream_capture_matrix -- --test-threads=1`
 
 use rig::completion::CompletionModel;
-use rig::providers::openai::wire::{ChatUsage, StreamingCompletionResponse as WireTerminal};
 use serde::Deserialize;
 use serde_json::Value;
 
 use super::super::cassette_support::*;
-use crate::cassettes::{CassetteMode, recorded_interaction_bodies, recorded_sse_json_frames};
-use crate::support::{Observed, collect_sole_terminal};
+use crate::cassettes::CassetteMode;
+use crate::raw_capture::{
+    assert_normalized_lacks, capture_sole_terminal, chat, stream_normalized_without_raw,
+};
+use crate::support::Observed;
 
 const LLAMACPP_PROVIDER: &str = "llamacpp";
 const PROMPT: &str = "Reply with exactly the single word: pong";
 
-/// The terminal record as the decoder serialized it, accounting included.
-///
-/// [`ChatUsage`](rig::providers::openai::wire::ChatUsage) in the `U` slot
-/// reads the OpenAI-compatible counters *and* the dialect's extras — which is
-/// how llama.cpp's `timings` reach the caller on this path without any
-/// provider-specific type.
-type LlamacppTerminal = WireTerminal<ChatUsage>;
-
 fn request(model: &(impl CompletionModel + Clone)) -> rig::completion::CompletionRequest {
     model.completion_request(PROMPT).max_tokens(1024).build()
-}
-
-/// The premise every streaming cell rests on: the scenario recorded exactly
-/// one interaction whose SSE body's last JSON frame carries `usage`. Returns
-/// `(all frames, terminal frame)`.
-fn recorded_frames_with_terminal(scenario: &str) -> (Vec<Value>, Value) {
-    assert_eq!(
-        recorded_interaction_bodies(LLAMACPP_PROVIDER, scenario).len(),
-        1,
-        "{scenario}: the scenario must record exactly one interaction"
-    );
-    let frames = recorded_sse_json_frames(LLAMACPP_PROVIDER, scenario);
-    let terminal = frames
-        .last()
-        .cloned()
-        .unwrap_or_else(|| panic!("{scenario}: the recorded stream should carry frames"));
-    assert!(
-        terminal.get("usage").is_some_and(Value::is_object),
-        "{scenario}: the recorded stream must end with a usage-bearing frame — \
-         without it the terminal record carries no usage and this cell proves nothing"
-    );
-    (frames, terminal)
-}
-
-/// Every recorded chunk stamps the same envelope value for `key`; returns it.
-fn recorded_envelope_field(frames: &[Value], key: &str, scenario: &str) -> Value {
-    let mut values = frames.iter().filter_map(|frame| frame.get(key)).cloned();
-    let first = values
-        .next()
-        .unwrap_or_else(|| panic!("{scenario}: recorded chunks must carry `{key}`"));
-    assert!(
-        values.all(|value| value == first),
-        "{scenario}: every recorded chunk must agree on `{key}`"
-    );
-    first
 }
 
 // ---------------------------------------------------------------------------
@@ -112,46 +81,23 @@ fn recorded_envelope_field(frames: &[Value], key: &str, scenario: &str) -> Value
 #[tokio::test]
 async fn stream_raw_terminal_round_trips_provider_type() {
     let scenario = "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type";
-    let captured = Observed::default();
-    let sink = captured.clone();
-    with_llamacpp_cassette(
+    let sink = Observed::default();
+    with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_terminal_round_trips_provider_type",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-
-            let raw = &terminal.raw;
-            let typed = LlamacppTerminal::deserialize(raw)
-                .expect("raw must deserialize into the wire's terminal record");
-            assert_eq!(
-                serde_json::to_value(&typed).expect("terminal type should serialize"),
-                *raw,
-                "the terminal record must round-trip through its own serde — on \
-                 this path `raw` is that record's serialization, not the reply \
-                 document"
-            );
-
-            // The typed terminal agrees with the normalized one on usage and
-            // identity: raw is the record the decoder emitted, and
-            // `ChatUsage::to_normalized` is the mapping the decoder applied,
-            // pinned directly rather than compared to a copy of itself.
-            let usage = typed.usage.as_ref().expect("terminal carries usage");
-            assert_eq!(usage.to_normalized(), terminal.usage);
-            assert_eq!(typed.response_id, terminal.response_id);
-            assert_eq!(typed.model, terminal.model);
-            sink.put(raw.clone());
-        },
+        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request, sink.clone()),
     )
-    .await;
+    .await
+    .expect("stream_raw_terminal_round_trips_provider_type should replay from its cassette");
+    let terminal = sink.take();
 
-    let (_, terminal_frame) = recorded_frames_with_terminal(scenario);
-    let raw = captured.take();
+    // `raw` is the record the decoder emitted, serialized, so the typed round
+    // trip is exact; and the typed record's own identity and accounting are
+    // the normalized ones — `ChatUsage::to_normalized` pinned directly rather
+    // than compared to a copy of itself.
+    chat::assert_terminal_round_trips(&terminal);
+
+    let (_, terminal_frame) = chat::recorded_frames_with_terminal(LLAMACPP_PROVIDER, scenario);
+    let raw = &terminal.raw;
     assert_eq!(
         raw["usage"]["prompt_tokens"], terminal_frame["usage"]["prompt_tokens"],
         "raw usage must be the terminal frame's usage"
@@ -169,59 +115,43 @@ async fn stream_raw_terminal_round_trips_provider_type() {
 #[tokio::test]
 async fn stream_raw_exposes_envelope_fields() {
     let scenario = "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields";
-    let captured = Observed::default();
-    let sink = captured.clone();
-    with_llamacpp_cassette(
+    let sink = Observed::default();
+    with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_exposes_envelope_fields",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-
-            // The normalized terminal record provably lacks the envelope.
-            let mut without_raw = terminal.clone();
-            without_raw.raw = Value::Null;
-            let normalized =
-                serde_json::to_value(&without_raw).expect("StreamFinal should serialize");
-            for field in [
-                "system_fingerprint",
-                "object",
-                "created",
-                "additional_params",
-            ] {
-                assert!(
-                    normalized.get(field).is_none(),
-                    "normalized StreamFinal must not grow a `{field}` field"
-                );
-            }
-
-            let raw = terminal.raw;
-            sink.put(raw);
-        },
+        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request, sink.clone()),
     )
-    .await;
+    .await
+    .expect("stream_raw_exposes_envelope_fields should replay from its cassette");
+    let terminal = sink.take();
 
-    let raw = captured.take();
-    let (frames, terminal_frame) = recorded_frames_with_terminal(scenario);
+    // The normalized terminal record provably lacks the envelope.
+    let normalized = stream_normalized_without_raw(&terminal);
+    assert_normalized_lacks(
+        &normalized,
+        &[
+            "system_fingerprint",
+            "object",
+            "created",
+            "additional_params",
+        ],
+    );
+
+    let raw = terminal.raw;
+    let (frames, terminal_frame) = chat::recorded_frames_with_terminal(LLAMACPP_PROVIDER, scenario);
     let params = raw
         .get("additional_params")
         .expect("raw terminal must carry the accumulated envelope under additional_params");
     for key in ["system_fingerprint", "object"] {
         assert_eq!(
             params.get(key),
-            Some(&recorded_envelope_field(&frames, key, scenario)),
+            Some(&chat::recorded_envelope_field(&frames, key, scenario)),
             "raw.additional_params.{key} must equal the recorded chunk envelope"
         );
     }
     // `created` is volatile: the scrubber placeholders it on disk, so only a
     // replay compares it exactly; a live recording proves raw carries it with
     // the wire's type.
-    let created = recorded_envelope_field(&frames, "created", scenario);
+    let created = chat::recorded_envelope_field(&frames, "created", scenario);
     match CassetteMode::current() {
         CassetteMode::Replay => assert_eq!(params.get("created"), Some(&created)),
         CassetteMode::Record => assert!(
@@ -230,7 +160,11 @@ async fn stream_raw_exposes_envelope_fields() {
         ),
     }
     assert_eq!(raw["usage"], terminal_frame["usage"]);
-    let typed = LlamacppTerminal::deserialize(&raw)
+    // [`ChatUsage`](rig::providers::openai::wire::ChatUsage) in the terminal
+    // record's `U` slot reads the OpenAI-compatible counters *and* the
+    // dialect's extras, which is how llama.cpp's accounting reaches the
+    // caller on this path without any provider-specific type.
+    let typed = chat::Terminal::deserialize(&raw)
         .expect("raw must deserialize into the wire's terminal record");
     let typed_params = typed
         .additional_params
@@ -256,27 +190,17 @@ async fn stream_raw_exposes_envelope_fields() {
 #[tokio::test]
 async fn stream_raw_preserves_llamacpp_timings() {
     let scenario = "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings";
-    let captured = Observed::default();
-    let sink = captured.clone();
+    let sink = Observed::default();
 
-    with_llamacpp_cassette(
+    with_llamacpp_cassette_result(
         "raw_stream_capture_matrix/stream_raw_preserves_llamacpp_timings",
-        |client| async move {
-            let model = client.completion(CASSETTE_MODEL);
-            let terminal = collect_sole_terminal(
-                model
-                    .stream(request(&model))
-                    .await
-                    .expect("stream should start"),
-            )
-            .await;
-            sink.put(terminal.raw);
-        },
+        |client| capture_sole_terminal(client.completion(CASSETTE_MODEL), request, sink.clone()),
     )
-    .await;
+    .await
+    .expect("stream_raw_preserves_llamacpp_timings should replay from its cassette");
 
-    let raw = captured.take();
-    let (_, terminal_frame) = recorded_frames_with_terminal(scenario);
+    let raw = sink.take().raw;
+    let (_, terminal_frame) = chat::recorded_frames_with_terminal(LLAMACPP_PROVIDER, scenario);
 
     let recorded_timings = terminal_frame
         .get("timings")

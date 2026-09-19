@@ -41,7 +41,6 @@
 //! and that the recorded stop reason is the one the cell is about — a
 //! recording that lost either would make the parity claim vacuous.
 
-use futures::StreamExt;
 use rig::completion::{
     CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
     ResponseIdentity, Usage,
@@ -51,7 +50,7 @@ use rig::message::ToolChoice;
 use rig::providers::anthropic;
 use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
-use rig::streaming::{StreamEvent, StreamFinal};
+use rig::streaming::StreamFinal;
 use rig::tool::Tool;
 use serde::Deserialize;
 
@@ -59,7 +58,8 @@ use super::super::support::{
     assert_ids_match_recording, recorded_request_id_headers, sse_json_frames,
     with_anthropic_cassette,
 };
-use crate::support::{Adder, TOOLS_PREAMBLE};
+use crate::raw_capture::capture_completion_pair;
+use crate::support::{Adder, Observed, TOOLS_PREAMBLE, collect_required_terminal};
 
 const ANTHROPIC_PROVIDER: &str = "anthropic";
 const TEXT_PROMPT: &str = "Reply with exactly: parity probe";
@@ -259,51 +259,30 @@ fn recorded_streamed_premise(
     (ids, output_tokens, stop_reasons)
 }
 
-async fn drain_normalized_terminal(
-    mut stream: rig::streaming::StreamingCompletionResponse,
-) -> StreamFinal {
-    let mut terminal = None;
-    while let Some(item) = stream.next().await {
-        if let StreamEvent::Final(final_record) =
-            item.expect("normalized stream item should succeed")
-        {
-            terminal = Some(final_record);
-        }
-    }
-    terminal.expect("normalized stream should yield a terminal record")
-}
-
-type ReportedSink = std::sync::Arc<std::sync::Mutex<Vec<Reported>>>;
-
-/// Body of a blocking cell: two requests, the provider-native view of each
-/// asserted against the normalized response delivered with it; what each
-/// response reported is kept for the fixture-pinning that runs after the
-/// wrapper has written the fixture.
-async fn blocking_body(
-    client: Bound<Anthropic>,
-    build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
+/// Both recorded exchanges of a blocking cell, after the wrapper has written
+/// the fixture: the two views of each reply agree, the pair agrees where the
+/// wire makes it equal, and each identity is its own interaction's.
+fn assert_blocking_parity(
+    scenario: &str,
+    (first_response, second_response): (RigCompletionResponse, RigCompletionResponse),
     expected: FinishReason,
-    sink: ReportedSink,
+    stop_reason: &str,
 ) {
-    let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-
-    let first_response = model
-        .completion(build(&model))
-        .await
-        .expect("`completion` should succeed");
-    // The same request again, so the fixture holds two interactions and each
-    // identity is pinned against its own exchange below.
-    let second_response = model
-        .completion(build(&model))
-        .await
-        .expect("second `completion` should succeed");
-
     let first = Reported::from_completion(&first_response);
     let second = Reported::from_completion(&second_response);
     assert_route_parity(&first, &second, expected);
     assert_raw_view_agrees(&first_response, &first);
     assert_raw_view_agrees(&second_response, &second);
-    *sink.lock().expect("sink") = vec![first, second];
+
+    let (ids, output_tokens, stop_reasons) = recorded_blocking_premise(scenario);
+    assert_identity_matches_fixture(
+        scenario,
+        &[first, second],
+        ids,
+        output_tokens,
+        &[stop_reason, stop_reason],
+        stop_reasons,
+    );
 }
 
 /// The two views of one reply agree: `raw` is Anthropic's own reply document,
@@ -335,16 +314,20 @@ fn assert_raw_view_agrees(response: &RigCompletionResponse, reported: &Reported)
     );
 }
 
-/// Streamed twin of [`blocking_body`].
-async fn streamed_body(
+/// Body of a streamed cell: the same request opened twice, each stream
+/// drained to the terminal record it must have ended with.
+///
+/// The blocking pair is [`capture_completion_pair`]; a streamed pair has no
+/// shared counterpart, so the two drains stay here — each through the shared
+/// [`collect_required_terminal`].
+async fn capture_terminal_pair(
     client: Bound<Anthropic>,
     build: fn(&AnthropicModel) -> rig::completion::CompletionRequest,
-    expected: FinishReason,
-    sink: ReportedSink,
+    sink: Observed<(StreamFinal, StreamFinal)>,
 ) {
     let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
 
-    let normalized = drain_normalized_terminal(
+    let normalized = collect_required_terminal(
         model
             .stream(build(&model))
             .await
@@ -353,13 +336,23 @@ async fn streamed_body(
     .await;
     // The second route: the same request opened again, read through the
     // terminal record's `raw` — the provider's own record, serialized.
-    let second_record = drain_normalized_terminal(
+    let second_record = collect_required_terminal(
         model
             .stream(build(&model))
             .await
             .expect("second `stream` should open"),
     )
     .await;
+    sink.put((normalized, second_record));
+}
+
+/// Streamed twin of [`assert_blocking_parity`].
+fn assert_streamed_parity(
+    scenario: &str,
+    (normalized, second_record): (StreamFinal, StreamFinal),
+    expected: FinishReason,
+    stop_reason: &str,
+) {
     let typed: anthropic::streaming::StreamingCompletionResponse =
         serde_json::from_value(second_record.raw.clone())
             .expect("the terminal's raw is the provider record");
@@ -372,26 +365,11 @@ async fn streamed_body(
     let first = Reported::from_terminal(&normalized);
     let second = Reported::from_terminal(&second_record);
     assert_route_parity(&first, &second, expected);
-    *sink.lock().expect("sink") = vec![first, second];
-}
 
-fn finish_blocking_cell(scenario: &str, sink: &ReportedSink, stop_reason: &str) {
-    let (ids, output_tokens, stop_reasons) = recorded_blocking_premise(scenario);
-    assert_identity_matches_fixture(
-        scenario,
-        &sink.lock().expect("sink"),
-        ids,
-        output_tokens,
-        &[stop_reason, stop_reason],
-        stop_reasons,
-    );
-}
-
-fn finish_streamed_cell(scenario: &str, sink: &ReportedSink, stop_reason: &str) {
     let (ids, output_tokens, stop_reasons) = recorded_streamed_premise(scenario);
     assert_identity_matches_fixture(
         scenario,
-        &sink.lock().expect("sink"),
+        &[first, second],
         ids,
         output_tokens,
         &[stop_reason, stop_reason],
@@ -401,63 +379,83 @@ fn finish_streamed_cell(scenario: &str, sink: &ReportedSink, stop_reason: &str) 
 
 #[tokio::test]
 async fn text_turn_parity() {
-    let sink = ReportedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette("raw_completion_parity_matrix/text_turn_parity", {
         let sink = sink.clone();
-        move |client| blocking_body(client, text_request, FinishReason::Stop, sink)
+        move |client| async move {
+            capture_completion_pair(
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                text_request,
+                sink,
+            )
+            .await
+            .expect("both `completion` calls should succeed");
+        }
     })
     .await;
-    finish_blocking_cell(
+    assert_blocking_parity(
         "raw_completion_parity_matrix/text_turn_parity",
-        &sink,
+        sink.take(),
+        FinishReason::Stop,
         "end_turn",
     );
 }
 
 #[tokio::test]
 async fn tool_call_turn_parity() {
-    let sink = ReportedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette("raw_completion_parity_matrix/tool_call_turn_parity", {
         let sink = sink.clone();
-        move |client| blocking_body(client, tool_request, FinishReason::ToolCalls, sink)
+        move |client| async move {
+            capture_completion_pair(
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                tool_request,
+                sink,
+            )
+            .await
+            .expect("both `completion` calls should succeed");
+        }
     })
     .await;
-    finish_blocking_cell(
+    assert_blocking_parity(
         "raw_completion_parity_matrix/tool_call_turn_parity",
-        &sink,
+        sink.take(),
+        FinishReason::ToolCalls,
         "tool_use",
     );
 }
 
 #[tokio::test]
 async fn streamed_text_turn_parity() {
-    let sink = ReportedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette("raw_completion_parity_matrix/streamed_text_turn_parity", {
         let sink = sink.clone();
-        move |client| streamed_body(client, text_request, FinishReason::Stop, sink)
+        move |client| capture_terminal_pair(client, text_request, sink)
     })
     .await;
-    finish_streamed_cell(
+    assert_streamed_parity(
         "raw_completion_parity_matrix/streamed_text_turn_parity",
-        &sink,
+        sink.take(),
+        FinishReason::Stop,
         "end_turn",
     );
 }
 
 #[tokio::test]
 async fn streamed_tool_call_turn_parity() {
-    let sink = ReportedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette(
         "raw_completion_parity_matrix/streamed_tool_call_turn_parity",
         {
             let sink = sink.clone();
-            move |client| streamed_body(client, tool_request, FinishReason::ToolCalls, sink)
+            move |client| capture_terminal_pair(client, tool_request, sink)
         },
     )
     .await;
-    finish_streamed_cell(
+    assert_streamed_parity(
         "raw_completion_parity_matrix/streamed_tool_call_turn_parity",
-        &sink,
+        sink.take(),
+        FinishReason::ToolCalls,
         "tool_use",
     );
 }

@@ -7,6 +7,8 @@ use rig_test_support::ecs_agent;
 mod cassette_safety;
 use rig_test_support::cassettes;
 #[cfg(feature = "bedrock")]
+use rig_test_support::raw_capture;
+#[cfg(feature = "bedrock")]
 use rig_test_support::support;
 
 #[cfg(feature = "bedrock")]

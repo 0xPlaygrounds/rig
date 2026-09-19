@@ -49,14 +49,12 @@
 //! `tool_use` block.
 
 use rig::completion::{
-    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason,
-    ResponseIdentity, ToolDefinition, Usage,
+    CompletionModel as _, CompletionResponse as RigCompletionResponse, FinishReason, ToolDefinition,
 };
 use rig::driver::Bound;
 use rig::message::{AssistantContent, ReasoningContent, ToolChoice};
 use rig::providers::anthropic;
 use rig::providers::anthropic::completion::{CompletionResponse, Content};
-use rig::providers::anthropic::wire::Anthropic;
 use rig::providers::anthropic::wire::Messages;
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -65,6 +63,9 @@ use super::super::support::{
     assert_ids_match_recording, recorded_request_id_headers, recorded_response_body,
     with_anthropic_cassette,
 };
+
+use crate::raw_capture::capture_completion;
+use crate::support::{Observed, assistant_text, normalized_without_raw};
 
 const PROMPT: &str = "Reply with exactly: raw capture probe";
 /// From `empty_stop_sequence_matrix.rs`: one word, so the `alpha` sequence
@@ -146,88 +147,12 @@ fn contains_string(value: &Value, needle: &str) -> bool {
     strings.contains(&needle)
 }
 
-/// What a cell observed on the normalized response, kept for the assertions
-/// that run after the wrapper returns.
-#[derive(Debug, Clone, PartialEq)]
-struct Observed {
-    identity: ResponseIdentity,
-    finish_reason: Option<FinishReason>,
-    model: Option<String>,
-    usage: Usage,
-    choice: Vec<AssistantContent>,
-    text: String,
-    raw: Value,
-    /// The normalized response itself, serialized — for asserting what it
-    /// does *not* carry.
-    normalized: Value,
-}
-
-impl Observed {
-    fn from_response(response: &RigCompletionResponse) -> Self {
-        let text = response
-            .choice
-            .iter()
-            .filter_map(|content| match content {
-                AssistantContent::Text(text) => Some(text.text.as_str()),
-                _ => None,
-            })
-            .collect::<Vec<_>>()
-            .join("");
-        Self {
-            identity: response.identity(),
-            finish_reason: response.finish_reason(),
-            model: response.model.clone(),
-            usage: response.usage,
-            choice: response.choice.to_vec(),
-            text,
-            raw: response.raw.clone(),
-            normalized: serde_json::to_value(response).expect("normalized response serializes"),
-        }
-    }
-}
-
-type ObservedSink = std::sync::Arc<std::sync::Mutex<Option<Observed>>>;
-
-/// The body of cells 1 and 3: one probe completion, its normalized view kept
-/// for the assertions that run after the wrapper has written the fixture.
-async fn probe_body(client: Bound<Anthropic>, sink: ObservedSink) {
-    request_body(
-        client,
-        anthropic::completion::CLAUDE_HAIKU_4_5,
-        probe_request,
-        sink,
-    )
-    .await;
-}
-
-/// The body of cells 4 and 5: one completion of the request the cell
-/// describes, on the model the cell names, its normalized view kept for the
-/// assertions that run after the wrapper has written the fixture.
-async fn request_body(
-    client: Bound<Anthropic>,
-    model_name: &str,
-    build: impl FnOnce(&AnthropicModel) -> rig::completion::CompletionRequest,
-    sink: ObservedSink,
-) {
-    let model = client.completion(model_name);
-    let response = model
-        .completion(build(&model))
-        .await
-        .expect("completion should succeed");
-    *sink.lock().expect("sink") = Some(Observed::from_response(&response));
-}
-
-fn take_observed(sink: &ObservedSink) -> Observed {
-    let observed = sink.lock().expect("sink").take();
-    observed.expect("the cell body ran")
-}
-
 /// Pin the normalized fields to the fixture the cell recorded: the wire body
 /// (`id`, `model`, `stop_reason`, `usage`, text) and the `request-id` header.
-fn assert_matches_fixture(scenario: &str, observed: &Observed) {
-    let body = assert_identity_matches_fixture(scenario, observed);
+fn assert_matches_fixture(scenario: &str, response: &RigCompletionResponse) {
+    let body = assert_identity_matches_fixture(scenario, response);
     assert_eq!(body["stop_reason"], "end_turn", "{scenario}: premise");
-    assert_eq!(observed.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
     let recorded_text = body["content"]
         .as_array()
         .expect("content array")
@@ -235,16 +160,17 @@ fn assert_matches_fixture(scenario: &str, observed: &Observed) {
         .filter_map(|block| block["text"].as_str())
         .collect::<Vec<_>>()
         .join("");
-    assert_eq!(observed.text, recorded_text);
+    assert_eq!(assistant_text(&response.choice), recorded_text);
 }
 
 /// The stop-reason-agnostic half of [`assert_matches_fixture`]: identity
 /// (`msg_…` id, `request-id` header), model, and usage totals are the
 /// fixture's. Returns the recorded body for the cell's own premise checks.
-fn assert_identity_matches_fixture(scenario: &str, observed: &Observed) -> Value {
+fn assert_identity_matches_fixture(scenario: &str, response: &RigCompletionResponse) -> Value {
+    let identity = response.identity();
     let body = recorded_response_body(scenario);
     assert_ids_match_recording(
-        std::slice::from_ref(&observed.identity.message_id),
+        std::slice::from_ref(&identity.message_id),
         &[body["id"].as_str().map(str::to_string)],
         scenario,
     );
@@ -255,18 +181,18 @@ fn assert_identity_matches_fixture(scenario: &str, observed: &Observed) -> Value
         "{scenario}: premise — the recorded response carries a `request-id` header"
     );
     assert_ids_match_recording(
-        std::slice::from_ref(&observed.identity.provider_request_id),
+        std::slice::from_ref(&identity.provider_request_id),
         &request_ids,
         scenario,
     );
-    assert_eq!(observed.identity.response_id, None);
-    assert_eq!(observed.model.as_deref(), body["model"].as_str());
+    assert_eq!(identity.response_id, None);
+    assert_eq!(response.model.as_deref(), body["model"].as_str());
     assert_eq!(
-        observed.usage.input_tokens,
+        response.usage.input_tokens,
         body["usage"]["input_tokens"].as_u64()
     );
     assert_eq!(
-        observed.usage.output_tokens,
+        response.usage.output_tokens,
         body["usage"]["output_tokens"].as_u64()
     );
     body
@@ -305,14 +231,22 @@ fn assert_raw_round_trips(raw: &Value) -> CompletionResponse {
 
 #[tokio::test]
 async fn raw_round_trips_into_provider_type() {
-    let sink = ObservedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette("raw_capture_matrix/raw_round_trips_into_provider_type", {
         let sink = sink.clone();
-        move |client| probe_body(client, sink)
+        move |client| async move {
+            capture_completion(
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                probe_request,
+                sink,
+            )
+            .await
+            .expect("completion should succeed");
+        }
     })
     .await;
-    let observed = take_observed(&sink);
-    let raw = &observed.raw;
+    let response = sink.take();
+    let raw = &response.raw;
     let typed = assert_raw_round_trips(raw);
     assert!(
         typed.content.iter().any(|block| matches!(
@@ -348,11 +282,11 @@ async fn raw_round_trips_into_provider_type() {
         "the transport id is a header, not part of the reply document"
     );
     assert!(
-        observed.identity.provider_request_id.is_some(),
+        response.identity().provider_request_id.is_some(),
         "the normalized response carries the transport id instead"
     );
     // And the normalized view beside it reports what the fixture recorded.
-    assert_matches_fixture(ROUND_TRIP_SCENARIO, &observed);
+    assert_matches_fixture(ROUND_TRIP_SCENARIO, &response);
 }
 
 // ---------------------------------------------------------------------------
@@ -361,31 +295,27 @@ async fn raw_round_trips_into_provider_type() {
 
 #[tokio::test]
 async fn raw_exposes_stop_sequence() {
-    let sink: ObservedSink = Default::default();
-    let observed = sink.clone();
-    with_anthropic_cassette(
-        "raw_capture_matrix/raw_exposes_stop_sequence",
+    let sink = Observed::default();
+    with_anthropic_cassette("raw_capture_matrix/raw_exposes_stop_sequence", {
+        let sink = sink.clone();
         move |client| async move {
-            let model = client.completion(anthropic::completion::CLAUDE_HAIKU_4_5);
-            let response = model
-                .completion(
+            capture_completion(
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                |model| {
                     model
                         .completion_request(IMMEDIATE_PROMPT)
                         .max_tokens(32)
                         .additional_params(json!({ "stop_sequences": ["alpha"] }))
-                        .build(),
-                )
-                .await
-                .expect("stop-sequence completion should succeed");
-            *observed.lock().expect("sink") = Some(Observed::from_response(&response));
-        },
-    )
+                        .build()
+                },
+                sink,
+            )
+            .await
+            .expect("stop-sequence completion should succeed");
+        }
+    })
     .await;
-    let observed = sink
-        .lock()
-        .expect("sink")
-        .clone()
-        .expect("the cell body ran");
+    let response = sink.take();
 
     // Premise, from the fixture: the recorded turn stopped on the sequence and
     // named it — the shape `empty_stop_sequence_matrix.rs` established.
@@ -402,14 +332,13 @@ async fn raw_exposes_stop_sequence() {
     // The normalized `CompletionResponse` has no `stop_sequence` field —
     // rig folds the stop into `FinishReason::Stop` and the sequence itself is
     // not part of the normalized vocabulary. Its serialized form proves it.
-    let raw = &observed.raw;
+    let raw = &response.raw;
     assert!(
         !raw.is_null(),
         "every response `completion` returns carries `raw`"
     );
-    assert_eq!(observed.finish_reason, Some(FinishReason::Stop));
-    let normalized_keys: Vec<String> = observed
-        .normalized
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
+    let normalized_keys: Vec<String> = normalized_without_raw(response.clone())
         .as_object()
         .expect("the normalized response serializes as an object")
         .keys()
@@ -439,17 +368,26 @@ async fn raw_exposes_stop_sequence() {
 /// fixture recorded.
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
-    let sink = ObservedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
         {
             let sink = sink.clone();
-            move |client| probe_body(client, sink)
+            move |client| async move {
+                capture_completion(
+                    client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
+                    probe_request,
+                    sink,
+                )
+                .await
+                .expect("completion should succeed");
+            }
         },
     )
     .await;
-    let observed = take_observed(&sink);
-    let raw = &observed.raw;
+    let response = sink.take();
+    let identity = response.identity();
+    let raw = &response.raw;
     assert!(
         !raw.is_null(),
         "every response `completion` returns carries `raw`"
@@ -459,7 +397,7 @@ async fn normalized_fields_match_raw_renormalized() {
         .expect("`raw` is Anthropic's reply document, which the provider type reads");
     assert_eq!(
         Some(typed.id.as_str()),
-        observed.identity.message_id.as_deref(),
+        identity.message_id.as_deref(),
         "the message id the normalized response reports is the document's"
     );
     assert_eq!(
@@ -468,15 +406,15 @@ async fn normalized_fields_match_raw_renormalized() {
         "premise: the recorded turn ended naturally"
     );
     assert_eq!(
-        observed.finish_reason,
+        response.finish_reason(),
         Some(FinishReason::Stop),
         "the decoder maps the document's `end_turn` onto `Stop`"
     );
-    assert_eq!(Some(typed.model.as_str()), observed.model.as_deref());
-    assert_eq!(Some(typed.usage.input_tokens), observed.usage.input_tokens);
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    assert_eq!(Some(typed.usage.input_tokens), response.usage.input_tokens);
     assert_eq!(
         Some(typed.usage.output_tokens),
-        observed.usage.output_tokens
+        response.usage.output_tokens
     );
     let provider_text: String = typed
         .content
@@ -487,12 +425,13 @@ async fn normalized_fields_match_raw_renormalized() {
         })
         .collect();
     assert_eq!(
-        observed.text, provider_text,
+        assistant_text(&response.choice),
+        provider_text,
         "the choice rig delivered is the text the document's blocks carry"
     );
 
     // …and none of that is vacuous: the normalized fields are the fixture's.
-    assert_matches_fixture(RENORMALIZED_SCENARIO, &observed);
+    assert_matches_fixture(RENORMALIZED_SCENARIO, &response);
 }
 
 // ---------------------------------------------------------------------------
@@ -508,29 +447,30 @@ async fn normalized_fields_match_raw_renormalized() {
 /// string `"thinking"` appear.
 #[tokio::test]
 async fn raw_exposes_thinking_block_and_signature() {
-    let sink = ObservedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette(
         "raw_capture_matrix/raw_exposes_thinking_block_and_signature",
         {
             let sink = sink.clone();
-            move |client| {
-                request_body(
-                    client,
-                    anthropic::completion::CLAUDE_SONNET_4_6,
+            move |client| async move {
+                capture_completion(
+                    client.completion(anthropic::completion::CLAUDE_SONNET_4_6),
                     thinking_request,
                     sink,
                 )
+                .await
+                .expect("completion should succeed");
             }
         },
     )
     .await;
-    let observed = take_observed(&sink);
-    let raw = &observed.raw;
+    let response = sink.take();
+    let raw = &response.raw;
     let typed = assert_raw_round_trips(raw);
 
     // Premise, from the fixture: the recorded body carries a `thinking` block
     // with a signature, and the usage breakdown says thinking happened.
-    let body = assert_identity_matches_fixture(THINKING_SCENARIO, &observed);
+    let body = assert_identity_matches_fixture(THINKING_SCENARIO, &response);
     let recorded_blocks = body["content"].as_array().expect("content array");
     let recorded_thinking = recorded_blocks
         .iter()
@@ -554,7 +494,7 @@ async fn raw_exposes_thinking_block_and_signature() {
         "premise: the recorded turn actually spent thinking tokens"
     );
     assert_eq!(body["stop_reason"], "end_turn", "premise");
-    assert_eq!(observed.finish_reason, Some(FinishReason::Stop));
+    assert_eq!(response.finish_reason(), Some(FinishReason::Stop));
 
     // `raw` carries the wire's own spelling of the reasoning, verbatim.
     let raw_blocks = raw["content"].as_array().expect("raw content array");
@@ -599,7 +539,7 @@ async fn raw_exposes_thinking_block_and_signature() {
     // wire's; its usage folds the bucket into `reasoning_tokens`; and the
     // wire spelling `"thinking"` — block type, text key, usage bucket — occurs
     // nowhere in it. Only `raw` speaks it.
-    let normalized_reasoning = observed
+    let normalized_reasoning = response
         .choice
         .iter()
         .find_map(|content| match content {
@@ -616,26 +556,21 @@ async fn raw_exposes_thinking_block_and_signature() {
         "the normalized reasoning is the wire's text and signature, re-spelled"
     );
     assert_eq!(
-        observed.usage.reasoning_tokens,
+        response.usage.reasoning_tokens,
         Some(recorded_thinking_tokens)
     );
-    let mut normalized_without_raw = observed.normalized.clone();
-    normalized_without_raw
-        .as_object_mut()
-        .expect("the normalized response serializes as an object")
-        .remove("raw")
-        .expect("the normalized response carries `raw`");
+    let normalized = normalized_without_raw(response.clone());
     assert!(
-        !contains_string(&normalized_without_raw, "thinking"),
+        !contains_string(&normalized, "thinking"),
         "the normalized response never spells `thinking` — `raw` is the only way to read \
-         the wire's block type, text key and usage bucket: {normalized_without_raw}"
+         the wire's block type, text key and usage bucket: {normalized}"
     );
     assert!(
-        !contains_string(&normalized_without_raw, "thinking_tokens"),
+        !contains_string(&normalized, "thinking_tokens"),
         "the normalized usage says `reasoning_tokens`, not `thinking_tokens`"
     );
     assert!(
-        contains_string(&normalized_without_raw, "reasoning"),
+        contains_string(&normalized, "reasoning"),
         "the normalized response spells the block `reasoning`"
     );
 }
@@ -652,27 +587,28 @@ async fn raw_exposes_thinking_block_and_signature() {
 /// `function.arguments` — the string `"tool_use"` occurs nowhere in it.
 #[tokio::test]
 async fn raw_exposes_tool_use_block() {
-    let sink = ObservedSink::default();
+    let sink = Observed::default();
     with_anthropic_cassette("raw_capture_matrix/raw_exposes_tool_use_block", {
         let sink = sink.clone();
-        move |client| {
-            request_body(
-                client,
-                anthropic::completion::CLAUDE_HAIKU_4_5,
+        move |client| async move {
+            capture_completion(
+                client.completion(anthropic::completion::CLAUDE_HAIKU_4_5),
                 tool_request,
                 sink,
             )
+            .await
+            .expect("completion should succeed");
         }
     })
     .await;
-    let observed = take_observed(&sink);
-    let raw = &observed.raw;
+    let response = sink.take();
+    let raw = &response.raw;
     let typed = assert_raw_round_trips(raw);
 
     // Premise, from the fixture: the recorded turn is a `tool_use` terminal
     // whose body carries a `tool_use` block for the forced tool, with an
     // `input` object naming the city.
-    let body = assert_identity_matches_fixture(TOOL_USE_SCENARIO, &observed);
+    let body = assert_identity_matches_fixture(TOOL_USE_SCENARIO, &response);
     assert_eq!(
         body["stop_reason"], "tool_use",
         "premise: the recorded turn stopped to call a tool"
@@ -700,7 +636,7 @@ async fn raw_exposes_tool_use_block() {
 
     // Normalized: the provider's stop reason maps onto `ToolCalls`; the
     // spelling `tool_use` is only on `raw`.
-    assert_eq!(observed.finish_reason, Some(FinishReason::ToolCalls));
+    assert_eq!(response.finish_reason(), Some(FinishReason::ToolCalls));
     assert_eq!(raw["stop_reason"], "tool_use");
     assert_eq!(typed.stop_reason.as_deref(), Some("tool_use"));
 
@@ -737,7 +673,7 @@ async fn raw_exposes_tool_use_block() {
     // The normalized choice carries the same call, re-spelled: `toolcall`
     // with `function.name` / `function.arguments`, its provider id the wire's
     // — and the string `"tool_use"` occurs nowhere in the normalized response.
-    let normalized_call = observed
+    let normalized_call = response
         .choice
         .iter()
         .find_map(|content| match content {
@@ -758,19 +694,14 @@ async fn raw_exposes_tool_use_block() {
         Some(typed_id),
         "the normalized call's provider id is the wire's `tool_use.id`"
     );
-    let mut normalized_without_raw = observed.normalized.clone();
-    normalized_without_raw
-        .as_object_mut()
-        .expect("the normalized response serializes as an object")
-        .remove("raw")
-        .expect("the normalized response carries `raw`");
+    let normalized = normalized_without_raw(response.clone());
     assert!(
-        !contains_string(&normalized_without_raw, "tool_use"),
+        !contains_string(&normalized, "tool_use"),
         "the normalized response never spells `tool_use` — `raw` is the only way to read \
-         the wire's block type and stop reason: {normalized_without_raw}"
+         the wire's block type and stop reason: {normalized}"
     );
     assert!(
-        contains_string(&normalized_without_raw, "toolcall"),
+        contains_string(&normalized, "toolcall"),
         "the normalized response spells the block `toolcall`"
     );
 }

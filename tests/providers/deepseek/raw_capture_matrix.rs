@@ -29,21 +29,24 @@
 //! Every cell is recorded. Each re-derives its premise from its own fixture
 //! after the wrapper returns: cell 2 reads the miss count out of the recorded
 //! body rather than trusting the number the typed view reports, cell 3
-//! checks the normalized fields against the recorded body before comparing
-//! them with the typed view of `raw`, and cell 4 reads the reasoning string
-//! out of the recorded body (and the `thinking` toggle out of the recorded
-//! request), so a recording that stopped carrying a usage block, a finish
-//! reason, or a reasoning block fails loudly instead of covering nothing.
+//! checks the normalized fields against the recorded body — the shared
+//! chat-completions field set plus DeepSeek's own cache-hit rule — before
+//! comparing them with the typed view of `raw`, and cell 4 reads the
+//! reasoning string out of the recorded body (and the `thinking` toggle out
+//! of the recorded request), so a recording that stopped carrying a usage
+//! block, a finish reason, or a reasoning block fails loudly instead of
+//! covering nothing.
 
-use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse, FinishReason};
+use rig::completion::{CompletionModel, CompletionRequest, CompletionResponse};
 use rig::message::{AssistantContent, ReasoningContent};
 use rig::providers::deepseek;
 use serde::Deserialize;
-use serde_json::{Value, json};
+use serde_json::json;
 
-use super::support::{assert_matches_recorded_token, with_deepseek_cassette_result};
+use super::support::with_deepseek_cassette_result;
 use crate::cassettes::recorded_json_turn;
-use crate::support::{Observed, assistant_text};
+use crate::raw_capture::{assert_no_request_id, capture_completion, chat};
+use crate::support::{Observed, assert_matches_recorded_token, assistant_text, json_contains_key};
 
 const PROVIDER: &str = "deepseek";
 const MODEL: &str = deepseek::DEEPSEEK_V4_FLASH;
@@ -87,86 +90,17 @@ fn reasoning_text_of(choice: &[AssistantContent]) -> String {
         .collect()
 }
 
-/// Whether any object anywhere inside `value` carries `key`.
-fn has_key(value: &Value, key: &str) -> bool {
-    match value {
-        Value::Object(map) => {
-            map.contains_key(key) || map.values().any(|nested| has_key(nested, key))
-        }
-        Value::Array(items) => items.iter().any(|nested| has_key(nested, key)),
-        _ => false,
-    }
-}
-
-/// The normalized reading of a DeepSeek wire finish reason.
-fn finish_reason_of(wire: &str) -> FinishReason {
-    match wire {
-        "stop" => FinishReason::Stop,
-        "length" => FinishReason::Length,
-        other => panic!("recorded turn should finish on stop or length, got {other:?}"),
-    }
-}
-
-fn recorded_finish_reason(body: &Value) -> FinishReason {
-    finish_reason_of(
-        body["choices"][0]["finish_reason"]
-            .as_str()
-            .unwrap_or_default(),
-    )
-}
-
-/// The normalized fields, checked against the wire bytes that produced them.
-fn assert_reproduces_fixture(response: &CompletionResponse, body: &Value) {
-    assert_eq!(response.provider, PROVIDER, "provider");
-    assert_matches_recorded_token(
-        response.response_id.as_deref(),
-        body["id"].as_str(),
-        "response id",
-    );
-    assert_eq!(response.model.as_deref(), body["model"].as_str(), "model");
-    assert_eq!(
-        response.finish_reason(),
-        Some(recorded_finish_reason(body)),
-        "finish reason"
-    );
-    assert_eq!(
-        response.usage.input_tokens,
-        body["usage"]["prompt_tokens"].as_u64(),
-        "input tokens"
-    );
-    assert_eq!(
-        response.usage.output_tokens,
-        body["usage"]["completion_tokens"].as_u64(),
-        "output tokens"
-    );
-    assert_eq!(
-        response.usage.total_tokens,
-        body["usage"]["total_tokens"].as_u64(),
-        "total tokens"
-    );
-    assert_eq!(
-        response.usage.cached_input_tokens,
-        body["usage"]["prompt_cache_hit_tokens"].as_u64(),
-        "cached input tokens come from prompt_cache_hit_tokens"
-    );
-    assert_eq!(
-        assistant_text(&response.choice),
-        body["choices"][0]["message"]["content"]
-            .as_str()
-            .expect("recorded content"),
-        "choice text"
-    );
-    // The transport id is never on DeepSeek's wire: it contracts no
-    // request-id header, so `None` is the documented outcome.
-    assert_eq!(response.provider_request_id, None, "request id");
-}
-
 /// DeepSeek's own view of a reply, checked against the normalized response it
 /// rode on.
 ///
 /// One decoder produces the normalized response, and this is the typed read
 /// of the very document that decoder read, so agreement here pins that
 /// mapping rather than comparing it with a second mapping of the same bytes.
+///
+/// Not [`chat::assert_native_matches_normalized`]: that one reads the shared
+/// [`rig::providers::openai::CompletionResponse`], and the point of this one
+/// is DeepSeek's own type — including the half of its cache split that gets
+/// normalized, which no shared chat type models.
 fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &CompletionResponse) {
     assert_eq!(
         typed.id.as_deref(),
@@ -176,7 +110,7 @@ fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &Co
     assert_eq!(typed.model, response.model, "model");
     let choice = typed.choices.first().expect("a reply carries a choice");
     assert_eq!(
-        Some(finish_reason_of(&choice.finish_reason)),
+        Some(chat::native_finish_reason(&choice.finish_reason)),
         response.finish_reason(),
         "finish reason"
     );
@@ -206,26 +140,25 @@ fn assert_typed_view_matches(typed: &deepseek::CompletionResponse, response: &Co
 #[tokio::test]
 async fn raw_round_trips_deepseek_type() {
     const SCENARIO: &str = "raw_capture_matrix/raw_round_trips_deepseek_type";
+    let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_round_trips_deepseek_type",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let response = model.completion(request(&model)).await?;
-            let typed = deepseek::CompletionResponse::deserialize(&response.raw)
-                .expect("raw reads back as DeepSeek's own CompletionResponse");
-            assert_typed_view_matches(&typed, &response);
-            // And `raw` is the reply document rather than a re-serialization
-            // of that parse, so it keeps what neither view models.
-            assert!(
-                response.raw["usage"]["prompt_cache_miss_tokens"].is_u64(),
-                "the document keeps DeepSeek's miss count: {}",
-                response.raw
-            );
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
     )
     .await
     .expect("raw_round_trips_deepseek_type should replay from its cassette");
+    let response = sink.take();
+
+    let typed = deepseek::CompletionResponse::deserialize(&response.raw)
+        .expect("raw reads back as DeepSeek's own CompletionResponse");
+    assert_typed_view_matches(&typed, &response);
+    // And `raw` is the reply document rather than a re-serialization
+    // of that parse, so it keeps what neither view models.
+    assert!(
+        response.raw["usage"]["prompt_cache_miss_tokens"].is_u64(),
+        "the document keeps DeepSeek's miss count: {}",
+        response.raw
+    );
 
     let (_, response_body) = recorded_json_turn(PROVIDER, SCENARIO);
     assert!(
@@ -241,21 +174,15 @@ async fn raw_round_trips_deepseek_type() {
 #[tokio::test]
 async fn raw_exposes_prompt_cache_miss_tokens() {
     const SCENARIO: &str = "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/raw_exposes_prompt_cache_miss_tokens",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let response = model.completion(request(&model)).await?;
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
     )
     .await
     .expect("raw_exposes_prompt_cache_miss_tokens should replay from its cassette");
+    let response = sink.take();
 
-    let response = observed.take();
     let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
     let recorded_miss = body["usage"]["prompt_cache_miss_tokens"]
         .as_u64()
@@ -292,23 +219,28 @@ async fn raw_exposes_prompt_cache_miss_tokens() {
 #[tokio::test]
 async fn normalized_fields_match_raw_renormalized() {
     const SCENARIO: &str = "raw_capture_matrix/normalized_fields_match_raw_renormalized";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/normalized_fields_match_raw_renormalized",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let response = model.completion(request(&model)).await?;
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(MODEL), request, sink.clone()),
     )
     .await
     .expect("normalized_fields_match_raw_renormalized should replay from its cassette");
+    let response = sink.take();
 
-    let response = observed.take();
     let (_, body) = recorded_json_turn(PROVIDER, SCENARIO);
-    assert_reproduces_fixture(&response, &body);
+    chat::assert_reproduces_body(&response, PROVIDER, &body, "the recorded body");
+    // The shared chat field set stops at the three OpenAI-compatible
+    // counters; DeepSeek's cache split is its own rule, and only the hit
+    // half reaches a normalized slot.
+    assert_eq!(
+        response.usage.cached_input_tokens,
+        body["usage"]["prompt_cache_hit_tokens"].as_u64(),
+        "cached input tokens come from prompt_cache_hit_tokens"
+    );
+    // The transport id is never on DeepSeek's wire: it contracts no
+    // request-id header, so `None` is the documented outcome.
+    assert_no_request_id(response.provider_request_id.as_deref(), PROVIDER);
 
     // One seam, two views: the typed read of the response's own `raw` is the
     // same reply the normalized fields describe. Capture adds a view; there
@@ -326,23 +258,17 @@ async fn normalized_fields_match_raw_renormalized() {
 async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     const SCENARIO: &str =
         "raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content";
-    let observed = Observed::default();
-    let sink = observed.clone();
+    let sink = Observed::default();
     with_deepseek_cassette_result(
         "raw_capture_matrix/reasoning_raw_round_trips_and_exposes_reasoning_content",
-        |client| async move {
-            let model = client.completion(MODEL);
-            let response = model.completion(reasoning_request(&model)).await?;
-            sink.put(response);
-            Ok::<(), anyhow::Error>(())
-        },
+        |client| capture_completion(client.completion(MODEL), reasoning_request, sink.clone()),
     )
     .await
     .expect(
         "reasoning_raw_round_trips_and_exposes_reasoning_content should replay from its cassette",
     );
+    let response = sink.take();
 
-    let response = observed.take();
     let (request_body, body) = recorded_json_turn(PROVIDER, SCENARIO);
     // Premise, from the bytes: thinking was asked for and the recorded turn
     // carries a non-empty reasoning string next to its answer.
@@ -385,7 +311,7 @@ async fn reasoning_raw_round_trips_and_exposes_reasoning_content() {
     );
     let normalized_choice = serde_json::to_value(&response.choice).expect("choice serializes");
     assert!(
-        !has_key(&normalized_choice, "reasoning_content"),
+        !json_contains_key(&normalized_choice, "reasoning_content"),
         "the normalized choice never spells reasoning_content: {normalized_choice}"
     );
 }

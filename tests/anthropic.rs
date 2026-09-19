@@ -19,6 +19,7 @@ mod ecs_observation;
 #[path = "common/ecs_termination.rs"]
 mod ecs_termination;
 use rig_test_support::goldens;
+use rig_test_support::raw_capture;
 use rig_test_support::reasoning;
 use rig_test_support::stream_faults;
 use rig_test_support::support;

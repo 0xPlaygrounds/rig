@@ -14,6 +14,16 @@
 //! the normalized [`rig::completion::CompletionResponse`] has no field for, so
 //! `raw` is the only way a caller can read them without a second request.
 //!
+//! Ollama speaks its own `/api/chat` dialect — `done`/`done_reason`,
+//! `prompt_eval_count`/`eval_count`, no provider-reported total and no
+//! response id — so the shared chat-completions format contract does not
+//! describe this wire. Only the execution layer
+//! ([`capture_completion`](crate::raw_capture::capture_completion)) and the
+//! format-agnostic normalized-surface assertion
+//! ([`assert_normalized_lacks`](crate::raw_capture::assert_normalized_lacks))
+//! are shared; every claim in Ollama's own vocabulary is a visible line in the
+//! cell that makes it.
+//!
 //! # Matrix
 //!
 //! Recorded cells re-derive their premise from their own fixture bytes after
@@ -33,13 +43,13 @@
 //! Re-record with a local Ollama daemon serving `qwen3:4b`:
 //! `RIG_PROVIDER_TEST_MODE=record cargo test -p rig --all-features --test ollama ollama::cassette::raw_capture_matrix -- --nocapture --test-threads=1`
 
-use rig::completion::CompletionModel as _;
 use rig::providers::ollama;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::super::support::with_ollama_cassette;
 use crate::cassettes::recorded_json_turn;
+use crate::raw_capture::{assert_normalized_lacks, capture_completion};
 use crate::support::{Observed, normalized_without_raw};
 
 const OLLAMA_PROVIDER: &str = "ollama";
@@ -85,37 +95,38 @@ fn assert_recorded_completed_with_durations(body: &Value, scenario: &str) {
 #[tokio::test]
 async fn raw_round_trips_provider_type() {
     let scenario = "raw_capture_matrix/raw_round_trips_provider_type";
+    let captured = Observed::default();
+    let sink = captured.clone();
     with_ollama_cassette(
         "raw_capture_matrix/raw_round_trips_provider_type",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-
-            // Typed access is recoverable: the provider's own wire type reads
-            // the captured value back. The capture is the reply *document*, so
-            // it is a superset of what the type models rather than that type's
-            // re-serialization — which is why this asserts the type reads back
-            // and agrees, not that it round-trips byte for byte.
-            let typed = ollama::CompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into ollama::CompletionResponse");
-
-            // The typed view agrees with the normalized one on what the model
-            // said, so raw is a superset, not a divergent copy.
-            assert_eq!(typed.model, MODEL);
-            assert!(typed.done, "raw carries the completed turn");
-            assert_eq!(
-                Some(typed.model.as_str()),
-                response.model.as_deref(),
-                "normalized model equals the raw model"
-            );
         },
     )
     .await;
+    let response = captured.take();
+
+    let raw = &response.raw;
+
+    // Typed access is recoverable: the provider's own wire type reads
+    // the captured value back. The capture is the reply *document*, so
+    // it is a superset of what the type models rather than that type's
+    // re-serialization — which is why this asserts the type reads back
+    // and agrees, not that it round-trips byte for byte.
+    let typed = ollama::CompletionResponse::deserialize(raw)
+        .expect("raw must deserialize into ollama::CompletionResponse");
+
+    // The typed view agrees with the normalized one on what the model
+    // said, so raw is a superset, not a divergent copy.
+    assert_eq!(typed.model, MODEL);
+    assert!(typed.done, "raw carries the completed turn");
+    assert_eq!(
+        Some(typed.model.as_str()),
+        response.model.as_deref(),
+        "normalized model equals the raw model"
+    );
 
     // Premise: what was captured is what the wire carried — the fixture body
     // deserializes into the same provider type.
@@ -137,29 +148,22 @@ async fn raw_exposes_ollama_durations() {
     with_ollama_cassette(
         "raw_capture_matrix/raw_exposes_ollama_durations",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            // The normalized response provably lacks the timings: its serialized
-            // form has no such keys, and `Usage` models tokens only.
-            let normalized = normalized_without_raw(response.clone());
-            for field in ["total_duration", "load_duration", "eval_duration"] {
-                assert!(
-                    normalized.get(field).is_none(),
-                    "normalized CompletionResponse must not grow a `{field}` field"
-                );
-            }
-
-            let raw = response.raw;
-            sink.put(raw);
         },
     )
     .await;
+    let response = captured.take();
 
-    let raw = captured.take();
+    // The normalized response provably lacks the timings: its serialized
+    // form has no such keys, and `Usage` models tokens only.
+    assert_normalized_lacks(
+        &normalized_without_raw(response.clone()),
+        &["total_duration", "load_duration", "eval_duration"],
+    );
+
+    let raw = response.raw;
 
     // Premise + assertion in one: the fixture body reports the durations, and
     // raw carries exactly the values the wire did.
@@ -205,55 +209,51 @@ async fn normalized_fields_equal_raw_renormalized() {
     with_ollama_cassette(
         "raw_capture_matrix/normalized_fields_equal_raw_renormalized",
         |client| async move {
-            let model = client.completion(MODEL);
-            let response = model
-                .completion(request(&model))
+            capture_completion(client.completion(MODEL), request, sink)
                 .await
                 .expect("completion should succeed");
-
-            let raw = &response.raw;
-            let typed = ollama::CompletionResponse::deserialize(raw)
-                .expect("raw must deserialize into ollama::CompletionResponse");
-
-            assert_eq!(response.provider, OLLAMA_PROVIDER);
-            assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
-            // The provider's own vocabulary, paired with what the decoder made
-            // of it. Read from the payload rather than hardcoded, so the cell
-            // pins the mapping for whichever reason the fixture holds and fails
-            // loudly on one this wire has never seen.
-            let expected = match typed.done_reason.as_deref() {
-                Some("stop") => rig::completion::FinishReason::Stop,
-                Some("length") => rig::completion::FinishReason::Length,
-                other => {
-                    panic!("the recorded turn should stop naturally or hit the cap, got {other:?}")
-                }
-            };
-            assert_eq!(
-                response.finish_reason(),
-                Some(expected),
-                "the decoder maps Ollama's `done_reason` onto the normalized vocabulary"
-            );
-            assert_eq!(typed.prompt_eval_count, response.usage.input_tokens);
-            assert_eq!(typed.eval_count, response.usage.output_tokens);
-            assert_eq!(
-                typed
-                    .prompt_eval_count
-                    .zip(typed.eval_count)
-                    .map(|(i, o)| i + o),
-                response.usage.total_tokens,
-                "Ollama reports no total; the decoder derives it from both counts"
-            );
-            // Ollama's chat reply carries no response id, so the normalized
-            // identity reports none — the documented outcome.
-            assert_eq!(response.identity().response_id, None);
-            assert!(!response.choice.is_empty());
-
-            sink.put(response);
         },
     )
     .await;
-
     let response = captured.take();
+
+    let raw = &response.raw;
+    let typed = ollama::CompletionResponse::deserialize(raw)
+        .expect("raw must deserialize into ollama::CompletionResponse");
+
+    assert_eq!(response.provider, OLLAMA_PROVIDER);
+    assert_eq!(Some(typed.model.as_str()), response.model.as_deref());
+    // The provider's own vocabulary, paired with what the decoder made
+    // of it. Read from the payload rather than hardcoded, so the cell
+    // pins the mapping for whichever reason the fixture holds and fails
+    // loudly on one this wire has never seen.
+    let expected = match typed.done_reason.as_deref() {
+        Some("stop") => rig::completion::FinishReason::Stop,
+        Some("length") => rig::completion::FinishReason::Length,
+        other => {
+            panic!("the recorded turn should stop naturally or hit the cap, got {other:?}")
+        }
+    };
+    assert_eq!(
+        response.finish_reason(),
+        Some(expected),
+        "the decoder maps Ollama's `done_reason` onto the normalized vocabulary"
+    );
+    assert_eq!(typed.prompt_eval_count, response.usage.input_tokens);
+    assert_eq!(typed.eval_count, response.usage.output_tokens);
+    assert_eq!(
+        typed
+            .prompt_eval_count
+            .zip(typed.eval_count)
+            .map(|(i, o)| i + o),
+        response.usage.total_tokens,
+        "Ollama reports no total; the decoder derives it from both counts"
+    );
+    // Ollama's chat reply carries no response id, so the normalized
+    // identity reports none — the documented outcome.
+    assert_eq!(response.identity().response_id, None);
+    assert!(!response.choice.is_empty());
+
     let (_, body) = recorded_json_turn(OLLAMA_PROVIDER, scenario);
     assert_recorded_completed_with_durations(&body, scenario);
     let from_wire = ollama::CompletionResponse::deserialize(&body)
