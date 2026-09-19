@@ -10,6 +10,7 @@ and the effect bus's behavioural verification suite.
 | effect-log goldens | `fixtures/effects/<name>.effects.json` | no (`exclude`) |
 | cassette provider suites | `tests/<provider>.rs`, `tests/providers/`, `tests/common/` | no (`exclude`) |
 | effect-bus verification | `tests/verify/`, `tests/world_replay.rs` | no (`exclude`) |
+| minimal verification runner | `tests/minimal/Cargo.toml` (shared test sources) | no (`publish = false`, `exclude`) |
 
 Everything here shares a subject — a recording and the program that replays it
 — not a dependency graph. The engine's normal dependencies are `rig-core` and
@@ -114,9 +115,9 @@ Hooks are program (the header names them; a different stack is refused before
 the first dispatch); tools are record (a replayer answers them); nothing the
 engine mints is random, so the same program produces the same log twice.
 
-The producers live in the root package (`tests/providers/*/cassette/corpus_*.rs`,
-`tests/core/golden_*.rs`) and are paired one-to-one with the goldens by
-`tests/core/golden_pairing.rs`.
+The producers live in this package (`tests/providers/*/cassette/corpus_*.rs`)
+and the root package (`tests/core/golden_*.rs`), and are paired one-to-one with
+the goldens by `tests/core/golden_pairing.rs`.
 
 ## The verification suite
 
@@ -126,6 +127,16 @@ of that target, not a target of its own, so the shared corpus implementation
 an effect trace as a whole) is compiled once. `tests/world_replay.rs` is the one
 separate target, so a lane can select or exclude the world interpreter without
 touching the rest.
+
+The unpublished `rig-cassette-minimal` package in `tests/minimal/Cargo.toml`
+points at these same two entrypoints. It deliberately has no dependency on the
+cassette engine, facade or provider helpers, preserving replay without
+`serde_json/preserve_order` and `serde_json/float_roundtrip`. Selecting
+`rig-cassette` alone cannot provide that configuration: its engine enables both
+features unconditionally. CI runs the nested package separately with zero
+retries, and the shared targets through the default-member graph with two.
+The all-features workspace run excludes the nested package to avoid repeating
+the same sources with unified features.
 
 | matrix | module | subject |
 |---|---|---|
@@ -185,6 +196,7 @@ RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --lib --no-def
 RIG_PROVIDER_TEST_MODE=replay cargo test --locked -p rig-cassette --lib --all-features
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'binary(verify)'
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features -E 'binary(world_replay)'
+RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --all-features --retries 0
 RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette --all-features --test <provider>
 ```
 

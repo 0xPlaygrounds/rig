@@ -321,7 +321,7 @@ checkpointed! {
 /// accepts, hash mode accepts. The count is the corpus's.
 #[tokio::test]
 async fn hash_mode_accepts_every_golden() {
-    let mut fixtures: Vec<_> = std::fs::read_dir(corpus::fixtures_dir())
+    let mut fixtures: Vec<_> = std::fs::read_dir(corpus::fixtures::effects_dir())
         .expect("the fixtures directory")
         .filter_map(|entry| {
             let path = entry.expect("an entry").path();

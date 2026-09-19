@@ -12,6 +12,7 @@ fn metadata() -> Value {
     serde_json::json!({"packages":[
         {"name":"rig","manifest_path":"/repo/Cargo.toml","targets":[{"name":"azure","kind":["test"]},{"name":"core","kind":["test"]}]},
         {"name":"rig-cassette","manifest_path":"/repo/crates/rig-cassette/Cargo.toml","dependencies":[],"targets":[{"name":"anthropic","kind":["test"]},{"name":"openai","kind":["test"]},{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]}]},
+        {"name":"rig-cassette-minimal","manifest_path":"/repo/crates/rig-cassette/tests/minimal/Cargo.toml","dependencies":[],"targets":[{"name":"verify","kind":["test"]},{"name":"world_replay","kind":["test"]}]},
         {"name":"rig-ecs","manifest_path":"/repo/crates/rig-ecs/Cargo.toml","dependencies":[]},
         {"name":"rig-sqlite","manifest_path":"/repo/crates/rig-sqlite/Cargo.toml","dependencies":[]},
         {"name":"example","manifest_path":"/repo/examples/example/Cargo.toml","dependencies":[{"name":"rig-ecs"}]}
@@ -190,6 +191,21 @@ fn a_provider_target_is_run_by_the_package_that_declares_it() {
     let corpus = ids("--changed", &["crates/rig-cassette/tests/corpus_hooks.rs"]);
     assert!(corpus.contains("package-rig-cassette"), "{corpus:?}");
     assert!(!corpus.contains("full-tests"), "{corpus:?}");
+}
+
+#[test]
+fn shared_replay_sources_keep_the_minimal_execution() {
+    for path in [
+        "crates/rig-cassette/tests/corpus_hooks.rs",
+        "crates/rig-cassette/tests/world_replay.rs",
+    ] {
+        let plan = ids("--changed", &[path]);
+        assert!(
+            plan.contains("package-rig-cassette-minimal"),
+            "{path}: {plan:?}"
+        );
+        assert!(!plan.contains("full-tests"), "{path}: {plan:?}");
+    }
 }
 
 #[test]
@@ -855,118 +871,6 @@ fn default_check_compiles_extracted_regressions_without_extra_features() {
     assert!(args.iter().any(|arg| arg == "--tests"));
     for flag in ["--features", "--all-features", "--no-default-features"] {
         assert!(!args.iter().any(|arg| arg == flag), "{flag}");
-    }
-}
-
-#[test]
-fn parity_and_verification_have_explicit_execution_owners() {
-    let all = checks::all();
-    let args = |id: &str| &all.iter().find(|check| check.id == id).unwrap().steps[0].args;
-    let default = args("default-tests");
-    assert!(default.iter().any(|arg| arg == "not binary(macro_hygiene) and not (package(rig-cassette) and (binary(verify) or binary(world_replay) or test(/(^|::)(ecs|corpus)_/))) and not (package(rig) and test(golden_pairing))"));
-    for id in ["default-tests", "ecs-parity"] {
-        assert!(
-            args(id)
-                .windows(2)
-                .any(|pair| pair == ["--features", "bedrock"])
-        );
-        assert!(args(id).windows(2).any(|pair| pair == ["--retries", "2"]));
-    }
-    assert!(
-        args("ecs-parity")
-            .windows(2)
-            .any(|pair| pair == ["-p", "rig-test-support"])
-    );
-    assert!(
-        args("bus-verification")
-            .iter()
-            .any(|arg| arg == "package(rig-cassette) and binary(verify)")
-    );
-    let world = &all
-        .iter()
-        .find(|check| check.id == "ecs-parity")
-        .unwrap()
-        .steps[1]
-        .args;
-    assert!(
-        world
-            .iter()
-            .any(|arg| arg == "package(rig-cassette) and binary(world_replay)")
-    );
-    assert!(world.windows(2).any(|pair| pair == ["--retries", "0"]));
-    // Each absorbed target keeps two executions: a standalone package graph
-    // with zero retries and a default-member graph with two. The absorbed
-    // filters are now identical strings in both, so the graphs are told apart
-    // by package selection, never by the filter.
-    for (owner, filter, standalone) in [
-        (
-            "ecs-parity",
-            "(package(rig-cassette) and test(/(^|::)(ecs|corpus)_/) and not binary(verify) and not binary(world_replay)) or (package(rig) and test(golden_pairing)) or (package(rig-cassette) and binary(world_replay))",
-            "package(rig-cassette) and binary(world_replay)",
-        ),
-        (
-            "bus-verification",
-            "package(rig-cassette) and binary(verify)",
-            "package(rig-cassette) and binary(verify)",
-        ),
-    ] {
-        let steps = &all.iter().find(|check| check.id == owner).unwrap().steps;
-        let selects = |step: &&Step| step.args.windows(2).any(|p| p == ["-p", "rig-cassette"]);
-        let unified = steps
-            .iter()
-            .filter(|step| {
-                !step
-                    .args
-                    .iter()
-                    .any(|arg| arg == "-p" || arg == "--package")
-            })
-            .find(|step| step.args.iter().any(|arg| arg == filter))
-            .expect("default-member configuration has an execution owner");
-        assert!(
-            unified
-                .args
-                .windows(2)
-                .any(|pair| pair == ["--features", "bedrock"])
-        );
-        assert!(
-            unified
-                .args
-                .windows(2)
-                .any(|pair| pair == ["--retries", "2"])
-        );
-        let alone = steps
-            .iter()
-            .filter(selects)
-            .find(|step| step.args.iter().any(|arg| arg == standalone))
-            .expect("standalone configuration has an execution owner");
-        assert!(alone.args.windows(2).any(|pair| pair == ["--retries", "0"]));
-        assert!(alone.args.iter().any(|arg| arg == "--all-features"));
-    }
-}
-
-/// The absorbed suite shares a package with the cassette engine. Only the two
-/// absorbed binaries may be excluded from the default sweep: an exclusion of
-/// the whole package would leave the engine's unit tests with no owner, and a
-/// bare `binary(verify)` in a multi-package selection could be satisfied by an
-/// identically named binary elsewhere.
-#[test]
-fn the_cassette_engine_keeps_its_default_owner() {
-    let all = checks::all();
-    for check in &all {
-        for step in &check.steps {
-            for arg in &step.args {
-                assert!(
-                    !arg.contains("not package(rig-cassette)"),
-                    "{}: {arg}",
-                    check.id
-                );
-                for binary in ["binary(verify)", "binary(world_replay)"] {
-                    if arg.contains(binary) {
-                        assert!(arg.contains("package(rig-cassette)"), "{}: {arg}", check.id);
-                    }
-                }
-            }
-        }
     }
 }
 

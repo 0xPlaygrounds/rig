@@ -26,6 +26,8 @@ use std::path::Path;
 
 use rig_core::test_utils::streaming_conformance::WIRE_FAMILIES;
 
+use super::verification_checks;
+
 use super::{streaming_conformance, streaming_conformance_suites};
 
 /// A wire family whose suite compiles into a different test binary than this
@@ -238,9 +240,3 @@ fn out_of_binary_families_name_a_live_check() {
         }
     }
 }
-
-// Compile the same definitions used by xtask; comments or stale command copies
-// cannot satisfy the live CI selector assertions above.
-#[allow(dead_code)]
-#[path = "../../xtask/src/verify/checks.rs"]
-mod verification_checks;

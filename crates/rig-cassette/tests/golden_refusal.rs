@@ -17,20 +17,13 @@ use rig_core::{
 };
 use rig_effect_log::{EffectLog, EffectLogRecorder, EffectLogReplayer};
 
+use crate::corpus::golden;
+
 /// The root suite's constants, verbatim (`test-support/rig-test-support/src/support.rs`).
 const PREAMBLE: &str = "You are a concise assistant. Answer directly.";
 const PROMPT: &str = "In one or two sentences, explain what Rust programming language is and why memory safety matters.";
 const OWNER: &str = "golden";
 const CONVERSATION: &str = "golden-conversation";
-
-fn golden(fixture: &str) -> EffectLog {
-    let path = format!(
-        "{}/fixtures/effects/{fixture}.effects.json",
-        env!("CARGO_MANIFEST_DIR")
-    );
-    let text = std::fs::read_to_string(&path).expect("the golden fixture is committed");
-    serde_json::from_str(&text).expect("the golden fixture loads")
-}
 
 fn model_key() -> HandlerKey {
     HandlerKey::from(format!("{OWNER}/model:default"))

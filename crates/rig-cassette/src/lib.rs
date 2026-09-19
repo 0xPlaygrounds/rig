@@ -21,12 +21,16 @@
 //! the published tarball; the engine's own unit tests are not.
 //!
 //! - `fixtures/cassettes/<provider>/...yaml` — recorded HTTP interactions,
-//!   replayed by the provider suites in the root `rig` package.
+//!   replayed by the provider suites in this package.
 //! - `fixtures/effects/<name>.effects.json` — golden effect logs, replayed by
 //!   `tests/` here with no provider behind any key.
 //! - `tests/` — the suite: one `verify` target whose modules are the corpus
 //!   matrices, and a separate `world_replay` target for the ECS world
 //!   interpreter.
+//! - `tests/minimal/Cargo.toml` — an unpublished runner selecting those same
+//!   two entrypoints without the engine's `serde_json/preserve_order` and
+//!   `serde_json/float_roundtrip` features. CI executes it separately from
+//!   the unified dependency graph; no test sources or fixtures are duplicated.
 //!
 //! The suite's agent runtimes (`rig-agent`, `rig-ecs`, `rig-effect-log`, the
 //! Bevy crates) are version-less path dev-dependencies: Cargo omits them from
@@ -38,7 +42,7 @@
 //!
 //! Background, not something a verification run performs: recording contacts a
 //! real provider and is a separately authorized act. A golden is produced in
-//! two stages and replayed in a third. The producer test in the root package
+//! two stages and replayed in a third. The producer test in this package
 //! records the HTTP under `RIG_PROVIDER_TEST_MODE=record` (the golden call is
 //! a no-op in that mode), replays that cassette under `RIG_REGENERATE_GOLDEN=1`
 //! so the golden holds the cassette's placeholders rather than live ids, and

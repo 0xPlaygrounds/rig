@@ -124,7 +124,7 @@ both_interpreters! {
 }
 
 fn every_golden() -> Vec<(String, rig_effect_log::EffectLog)> {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures/effects");
+    let dir = corpus::fixtures::effects_dir();
     let mut goldens: Vec<_> = std::fs::read_dir(dir)
         .expect("the fixtures directory")
         .map(|entry| entry.expect("an entry").path())

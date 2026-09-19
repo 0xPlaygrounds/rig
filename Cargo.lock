@@ -10520,6 +10520,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "rig-cassette-minimal"
+version = "0.0.0"
+dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_tasks",
+ "futures",
+ "proptest",
+ "rig-agent",
+ "rig-core",
+ "rig-ecs",
+ "rig-effect-log",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "rig-core"
 version = "0.42.0"
 dependencies = [

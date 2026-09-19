@@ -22,11 +22,18 @@ Provider test targets have two owners:
   there for its maintenance/repair cases, replay and supported resume checks.
   Rig retains its runtime and provider conformance suites.
 
-Cassette suites require a checkout of this repository: their shared engine is
-the unpublished `rig-cassette` workspace crate, and their fixtures are excluded
-from the published `rig` archive. Cargo omits the path-only engine dev-dependency
-when packaging `rig`, so the archive's remaining cassette test sources are not
-standalone test targets. Run these suites from the workspace.
+Cassette suites require a checkout of this repository: `rig-cassette` excludes
+its fixtures and integration tests from the published package. The unpublished
+`rig-cassette-minimal` runner at
+`crates/rig-cassette/tests/minimal/Cargo.toml` executes the same `verify` and
+`world_replay` sources without the engine's JSON features:
+
+```sh
+RIG_PROVIDER_TEST_MODE=replay cargo nextest run --locked -p rig-cassette-minimal --all-features --retries 0
+```
+
+Keep `RIG_REGENERATE_GOLDEN` unset. This execution complements, rather than
+replaces, the unified verification runs through `rig-cassette`.
 
 ## Testing Doctrine
 

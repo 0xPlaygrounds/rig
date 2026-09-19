@@ -21,6 +21,7 @@ rustdoc-args = ["--cfg", "docsrs"]
 resolver = "3"
 members = [
     "crates/*",
+    "crates/rig-cassette/tests/minimal",
     "examples/*",
     "xtask",
     "test-support/service-tests",
@@ -42,6 +43,8 @@ members = [
 # `cargo test -p rig-core --test macro_hygiene` step. Both are required for
 # this exclusion to stay honest: until the first existed, every test in
 # rig-derive ran nowhere.
+# The nested cassette runner is selected separately by bus-verification and
+# ecs-parity: default-member feature unification defeats its minimal JSON graph.
 default-members = [
     ".",
     "crates/rig-core",

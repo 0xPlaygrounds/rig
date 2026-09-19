@@ -1,6 +1,6 @@
 //! Check definitions shared by local plans and CI's independently scheduled jobs.
-//! `tests/core/streaming_conformance_registry.rs` includes this file by path
-//! into the facade's test binary, so it must stay std-only and free of
+//! `tests/core/mod.rs` includes this file by path for its dependency and
+//! conformance guards, so it must stay std-only and free of
 //! `crate::` references.
 use std::collections::BTreeMap;
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -164,17 +164,17 @@ pub(super) fn all() -> Vec<Check> {
                     "--retries",
                     "2",
                     "-E",
-                    "(package(rig-cassette) and test(/(^|::)(ecs|corpus)_/) and not binary(verify) and not binary(world_replay)) or (package(rig) and test(golden_pairing))",
+                    "(package(rig-cassette) and test(/(^|::)(ecs|corpus)_/) and not binary(verify) and not binary(world_replay)) or (package(rig-test-support) and test(/(^|::)(ecs|corpus)_/)) or (package(rig) and test(golden_pairing))",
                 ]),
                 cargo(&[
                     "nextest",
                     "run",
                     "--locked",
                     "-p",
-                    "rig-cassette",
+                    "rig-cassette-minimal",
                     "--all-features",
                     "-E",
-                    "package(rig-cassette) and binary(world_replay)",
+                    "package(rig-cassette-minimal) and binary(world_replay)",
                     "--retries",
                     "0",
                 ]),
@@ -225,19 +225,18 @@ pub(super) fn all() -> Vec<Check> {
                     "run",
                     "--locked",
                     "-p",
-                    "rig-cassette",
+                    "rig-cassette-minimal",
                     "--all-features",
                     "--retries",
                     "0",
                     "-E",
-                    "package(rig-cassette) and binary(verify)",
+                    "package(rig-cassette-minimal) and binary(verify)",
                 ]),
                 // Preserve the former default sweep's dependency graph and
-                // retry policy. It is not equivalent to the standalone
-                // rig-cassette graph: serde_json ordering and float parsing
-                // use different code. Both executions name the absorbed
-                // `verify` binary explicitly, so the cassette engine's own
-                // unit tests keep their default-tests owner.
+                // retry policy. The nested runner above preserves the former
+                // minimal serde_json graph; this execution also exercises
+                // preserve_order/float_roundtrip and the unified allocator.
+                // Only the `verify` binary moves out of the default sweep.
                 cargo(&[
                     "nextest",
                     "run",
@@ -341,6 +340,10 @@ pub(super) fn all() -> Vec<Check> {
                 "run",
                 "--locked",
                 "--workspace",
+                // The same sources run here through rig-cassette. The nested
+                // runner only adds coverage when selected without this graph.
+                "--exclude",
+                "rig-cassette-minimal",
                 "--all-features",
                 "--retries",
                 "2",
@@ -349,11 +352,11 @@ pub(super) fn all() -> Vec<Check> {
             ])],
         ),
         // No separate `cargo check --workspace --all-features --all-targets`:
-        // full-tests compiles every workspace member's lib, bin, test and
-        // example targets under the same feature set (Cargo's default `test`
-        // target selection), clippy checks the default members' `--all-targets`,
-        // and every bench has an explicit locked compile-only owner, enforced
-        // by the verification planner tests.
+        // full-tests compiles workspace lib, bin, test and example targets
+        // under the same feature set (Cargo's default `test` target selection),
+        // except the separately executed minimal replay runner. Clippy checks
+        // the default members' --all-targets, and every bench has an explicit
+        // locked compile-only owner, enforced by the verification planner tests.
         // Existing repository floor checker; new verification tooling is Rust.
         check(
             "dependency-floors",

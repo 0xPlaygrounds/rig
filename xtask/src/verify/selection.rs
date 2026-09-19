@@ -370,6 +370,9 @@ pub(super) fn plan(
         }
         if let Some(name) = provider(path) {
             if let Some(owner) = provider_owner(packages, name) {
+                if owner == "rig-cassette" && matches!(name, "verify" | "world_replay") {
+                    affected.insert("rig-cassette-minimal".to_owned());
+                }
                 let id = format!("provider-{name}");
                 if !out.iter().any(|c| c.id == id) {
                     out.push(provider_check(owner, name,
@@ -389,6 +392,11 @@ pub(super) fn plan(
                     Lanes::ALL,
                 ));
             }
+        }
+        // These modules are shared by path, not a Cargo dependency edge, so
+        // reverse-dependency discovery cannot find the minimal runner.
+        if path.starts_with("crates/rig-cassette/tests/") {
+            affected.insert("rig-cassette-minimal".to_owned());
         }
         if ["README.md", "CONTRIBUTING.md", "AGENTS.md", "DEVELOPING.md"].contains(&path.as_str())
             || path.starts_with("docs/")

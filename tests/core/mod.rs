@@ -31,5 +31,8 @@ mod rig_tool_facade;
 mod streaming_conformance;
 mod streaming_conformance_registry;
 mod streaming_conformance_suites;
+#[allow(dead_code)]
+#[path = "../../xtask/src/verify/checks.rs"]
+mod verification_checks;
 
 mod pull_parser;

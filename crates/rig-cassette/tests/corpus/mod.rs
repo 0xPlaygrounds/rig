@@ -48,6 +48,8 @@
 
 #![allow(dead_code)] // every test target uses a different subset
 
+pub mod fixtures;
+
 use std::time::Duration;
 
 use futures::StreamExt;
@@ -2192,18 +2194,8 @@ pub async fn within<T>(future: impl Future<Output = T>) -> T {
         .expect("a replay never hangs")
 }
 
-/// Where the goldens live.
-pub fn fixtures_dir() -> std::path::PathBuf {
-    // This corpus is compiled by both the facade and verification packages.
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .ancestors()
-        .map(|root| root.join("crates/rig-cassette/fixtures/effects"))
-        .find(|fixtures| fixtures.is_dir())
-        .expect("the package belongs to the Rig workspace")
-}
-
 pub fn golden(fixture: &str) -> EffectLog {
-    let path = fixtures_dir().join(format!("{fixture}.effects.json"));
+    let path = fixtures::effects_dir().join(format!("{fixture}.effects.json"));
     let text = std::fs::read_to_string(&path).expect("the golden fixture is committed");
     serde_json::from_str(&text).expect("the golden fixture loads")
 }
