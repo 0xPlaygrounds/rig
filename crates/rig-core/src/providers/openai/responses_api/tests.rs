@@ -655,6 +655,46 @@ fn responses_request_with_specific_tool_choice_serializes_named_function() {
 }
 
 #[test]
+fn responses_hosted_tools_omit_strict_and_preserve_configuration() {
+    for kind in [
+        "web_search",
+        "file_search",
+        "computer_use",
+        "future_hosted_tool",
+    ] {
+        for strict in [false, true] {
+            let mut tool = ResponsesToolDefinition::hosted(kind)
+                .with_config("custom_setting", json!({"enabled":true}));
+            tool.strict = strict;
+            assert_eq!(
+                serde_json::to_value(&tool).expect("hosted tool serializes"),
+                json!({"type":kind, "custom_setting":{"enabled":true}})
+            );
+        }
+    }
+}
+
+#[test]
+fn responses_function_tools_keep_explicit_strict_and_all_fields() {
+    for strict in [false, true] {
+        let mut tool =
+            ResponsesToolDefinition::function("lookup", "Look up a fact", json!({"type":"object"}))
+                .with_config("custom_setting", json!(1));
+        tool.strict = strict;
+        let encoded = serde_json::to_value(&tool).expect("function serializes");
+        assert_eq!(
+            encoded,
+            json!({"type":"function", "name":"lookup", "description":"Look up a fact",
+            "parameters":{"type":"object"}, "strict":strict, "custom_setting":1})
+        );
+        assert_eq!(
+            serde_json::from_value::<ResponsesToolDefinition>(encoded).expect("roundtrip"),
+            tool
+        );
+    }
+}
+
+#[test]
 fn responses_function_tools_are_non_strict_by_default() {
     let tool = ResponsesToolDefinition::function(
         "get_weather",

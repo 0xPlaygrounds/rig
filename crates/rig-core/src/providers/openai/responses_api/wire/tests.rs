@@ -127,6 +127,17 @@ fn openai() -> Responses {
     OpenAI::new("test-key").responses("gpt-4o")
 }
 
+#[test]
+fn hosted_search_request_never_sends_function_strict_flag() {
+    for mode in [Mode::Unary, Mode::Streaming] {
+        let wire = openai()
+            .with_tool(ResponsesToolDefinition::web_search())
+            .with_strict_tools();
+        let body = encoded_body(&wire, mode);
+        assert_eq!(body["tools"], serde_json::json!([{"type":"web_search"}]));
+    }
+}
+
 // ── the property the model exists for ───────────────────────────────────
 
 /// The recorded stream of one turn and that same turn's unary body — the
