@@ -2041,6 +2041,7 @@ impl UnaryShape {
 /// (`INVALID_ARGS_MIDWAY`), or `fault_reply` inserted before turn
 /// [`FAULT_TURN`]'s reply (`PROVIDER_FAULT_MIDWAY`).
 pub(crate) fn scripted_replies(
+    family: &rig_test_support::provenance::ScriptedFamily,
     thinking: ThinkingWire,
     cell: &Cell,
     fault_reply: Option<rig_agent::test_utils::MockHttpResponse>,
@@ -2048,7 +2049,8 @@ pub(crate) fn scripted_replies(
     use rig_agent::test_utils::MockHttpResponse;
 
     let (provider, scenario) = scenario(thinking, &LONG_UNARY);
-    let recorded = crate::cassettes::recorded_statuses_and_bodies(provider, &scenario);
+    assert_eq!(provider, family.provider());
+    let recorded = family.recorded_statuses_and_bodies(&scenario);
     assert!(
         recorded.len() > FAULT_TURN,
         "{}: the row-1 recording has a turn {FAULT_TURN} to fault",

@@ -7,7 +7,7 @@
 //! frames, assembled from frames a real capture or the adapter's own unit
 //! tests pin; every synthetic frame is a labelled constant beside its cell.
 //! A borrowed recording is reached only through the scripted family the
-//! borrowing module declares in `crates/rig-cassette/fixtures/scenarios.json`
+//! borrowing module declares in `crates/rig-cassette/fixtures/scenarios.yaml`
 //! ([`crate::provenance::ScriptedFamily`]): the helpers that read committed
 //! bytes are crate-private, so a test module cannot read a fixture nobody
 //! declared. The scripted transport replaces the cassette proxy for those

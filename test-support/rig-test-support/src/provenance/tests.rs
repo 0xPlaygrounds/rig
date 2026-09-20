@@ -30,6 +30,11 @@ fn a_declared_spec_carries_its_provenance() {
         "malformed_tool_args_matrix/streaming_malformed_fails_by_default",
     );
     assert_eq!(spec.provenance(), Some(Provenance::Derived));
+    let synthetic = declared_spec(
+        "openai",
+        "openai_compatible/reasoning_content_tool_roundtrip",
+    );
+    assert_eq!(synthetic.provenance(), Some(Provenance::Scripted));
 }
 
 #[test]
@@ -64,6 +69,21 @@ fn an_undeclared_scenario_has_no_provenance() {
 }
 
 #[test]
+fn a_recording_plan_cannot_touch_another_live_scenario() {
+    let scope = Some(std::ffi::OsStr::new("openai/agent/completion_smoke"));
+    assert!(recording_scope_allows(
+        scope,
+        "openai",
+        "agent/completion_smoke"
+    ));
+    assert!(!recording_scope_allows(
+        scope,
+        "openai",
+        "streaming/streaming_smoke"
+    ));
+}
+
+#[test]
 fn a_scripted_family_retains_its_declared_sources() {
     let family = ScriptedFamily::new("openai", "stream_faults");
     assert_eq!(family.provider(), "openai");
@@ -73,8 +93,8 @@ fn a_scripted_family_retains_its_declared_sources() {
 #[test]
 #[should_panic(expected = "not one of its declared sources")]
 fn a_scripted_family_cannot_borrow_an_undeclared_source() {
-    ScriptedFamily::new("openai", "stream_faults")
-        .assert_declared_source("not_a_scenario/never_declared");
+    ScriptedFamily::new("anthropic", "ecs_matrix_long_loop")
+        .recorded_statuses_and_bodies("not_a_scenario/never_declared");
 }
 
 #[test]

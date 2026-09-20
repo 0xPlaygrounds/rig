@@ -34,7 +34,7 @@ use crate::{
 use rig_test_support::provenance::ScriptedFamily;
 
 /// The scripted family declared for this module in
-/// `crates/rig-cassette/fixtures/scenarios.json`: the recordings this
+/// `crates/rig-cassette/fixtures/scenarios.yaml`: the recordings this
 /// module is allowed to borrow bytes from.
 fn script() -> ScriptedFamily {
     ScriptedFamily::new("openai", "stream_faults")
@@ -61,8 +61,8 @@ pub(super) const SCRIPTED_KEY: &str = "sk-scripted-fault-key-7f3a9c";
 
 /// The frames of the recorded text stream up to, not including, the text
 /// item's completion: content deltas, then nothing.
-pub(super) fn text_prefix_frames() -> Vec<String> {
-    SseShape::Responses.text_prefix(&script().recorded_sse_frames(TEXT_STREAM, 0))
+pub(super) fn text_prefix_frames(family: &ScriptedFamily) -> Vec<String> {
+    SseShape::Responses.text_prefix(&family.recorded_sse_frames(TEXT_STREAM, 0))
 }
 
 /// The text the deltas of `frames` carry.
@@ -72,8 +72,8 @@ pub(super) fn delta_text(frames: &[String]) -> String {
 
 /// The frames of the recorded tool-call turn up to, not including, the
 /// response's completion: the whole `subtract` call, then nothing.
-pub(super) fn tool_call_prefix_frames() -> Vec<String> {
-    SseShape::Responses.tool_prefix(&script().recorded_sse_frames(TOOL_STREAM, 0))
+pub(super) fn tool_call_prefix_frames(family: &ScriptedFamily) -> Vec<String> {
+    SseShape::Responses.tool_prefix(&family.recorded_sse_frames(TOOL_STREAM, 0))
 }
 
 /// A client over a transport that answers one streaming request with
@@ -123,7 +123,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 /// is assembled, and the record holds the truncation.
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
-    let frames = text_prefix_frames();
+    let frames = text_prefix_frames(&script());
     let prefix = delta_text(&frames);
     assert!(
         !prefix.is_empty(),
@@ -163,7 +163,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 /// truncation with the one completion recorded.
 #[tokio::test]
 async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
-    let frames = tool_call_prefix_frames();
+    let frames = tool_call_prefix_frames(&script());
     let invocations = Invocations::default();
     let client = scripted_client(vec![sse_bytes(&frames)]);
     let recorder = rig_cassette::effect_log::EffectLogRecorder::keeping_stream_events();
@@ -202,7 +202,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
 /// after the content items.
 #[tokio::test]
 async fn error_event_after_content_fails_with_the_provider_error() {
-    let mut frames = text_prefix_frames();
+    let mut frames = text_prefix_frames(&script());
     let prefix = delta_text(&frames);
     frames.push(ERROR_EVENT.to_owned());
     let client = scripted_client(vec![sse_bytes(&frames)]);

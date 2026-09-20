@@ -144,9 +144,9 @@ provider suites in this package replay. `fixtures/effects/` holds the
 effect-log goldens the verification suite replays. Both are data: they are
 re-recorded by their producer and never regenerated to make a check pass. The
 one exception is the handful of `derived` cassettes, each declared in
-`fixtures/scenarios.json` — the registry of where every scenario's bytes came
-from — with the live recording it was built from and the exact hand edit that
-rebuilds it. `cargo xtask check-cassette-provenance` fails an undeclared
+`fixtures/scenarios.yaml` with its live source and exact rebuild recipe.
+The manifest also authorizes live modules and first captures; see
+[scenario declarations](../../tests/README.md#scenario-provenance). `cargo xtask check-cassette-provenance` fails an undeclared
 fixture or a declaration with nothing behind it. `.gitattributes` exempts the
 cassettes from the blank-at-eof whitespace check because SSE bodies
 legitimately end in a blank line.

@@ -21,7 +21,7 @@ use crate::stream_faults::{
 use rig_test_support::provenance::ScriptedFamily;
 
 /// The scripted family declared for this module in
-/// `crates/rig-cassette/fixtures/scenarios.json`: the recordings this
+/// `crates/rig-cassette/fixtures/scenarios.yaml`: the recordings this
 /// module is allowed to borrow bytes from.
 fn script() -> ScriptedFamily {
     ScriptedFamily::new("gemini", "stream_faults")

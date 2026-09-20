@@ -9,11 +9,13 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-pub(crate) const MANIFEST_PATH: &str = "crates/rig-cassette/fixtures/scenarios.json";
+pub(crate) const MANIFEST_PATH: &str = "crates/rig-cassette/fixtures/scenarios.yaml";
+pub(crate) const RECORD_SCOPE_ENV: &str = "RIG_CASSETTE_SCENARIOS";
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub(crate) enum Category {
     Live,
     Derived,
@@ -39,13 +41,13 @@ impl Category {
     }
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Manifest {
     pub(crate) providers: Vec<ProviderScenarios>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ProviderScenarios {
     pub(crate) provider: String,
@@ -54,6 +56,10 @@ pub(crate) struct ProviderScenarios {
     /// Functions whose first argument names a scenario.
     pub(crate) wrappers: Vec<String>,
     pub(crate) live: Vec<String>,
+    /// Exact files relative to source_dir whose non-ignored literal scenarios
+    /// are explicitly authorized as live. Mixed-provenance files use `live`.
+    #[serde(default)]
+    pub(crate) live_modules: Vec<String>,
     #[serde(default)]
     pub(crate) derived: Vec<DerivedScenario>,
     #[serde(default)]
@@ -63,14 +69,14 @@ pub(crate) struct ProviderScenarios {
     pub(crate) unrecorded: Vec<UnrecordedScenario>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct UnrecordedScenario {
     pub(crate) scenario: String,
     pub(crate) reason: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct DerivedScenario {
     pub(crate) scenario: String,
@@ -80,10 +86,13 @@ pub(crate) struct DerivedScenario {
     pub(crate) rebuild: String,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ScriptedFamilyDecl {
     pub(crate) family: String,
+    /// Optional committed synthetic fixture; never eligible for live capture.
+    #[serde(default)]
+    pub(crate) fixture: Option<String>,
     /// Relative to `crates/rig-cassette/`, like `source_dir`.
     pub(crate) module: String,
     pub(crate) sources: Vec<String>,
@@ -93,8 +102,15 @@ pub(crate) struct ScriptedFamilyDecl {
 
 impl Manifest {
     pub(crate) fn parse(json: &str) -> Result<Self, String> {
+        // Preserve scalar types: YAML's direct String deserializer otherwise
+        // accepts numeric scenario IDs and quietly turns them into strings.
+        let value: serde_json::Value =
+            serde_yaml::from_str(json).map_err(|error| format!("invalid manifest: {error}"))?;
         let manifest: Self =
-            serde_json::from_str(json).map_err(|error| format!("invalid manifest: {error}"))?;
+            serde_json::from_value(value).map_err(|error| format!("invalid manifest: {error}"))?;
+        if manifest.providers.is_empty() {
+            return Err("manifest declares no providers".into());
+        }
         unique(
             manifest.providers.iter().map(|p| p.provider.as_str()),
             "provider",
@@ -124,11 +140,43 @@ impl Manifest {
 }
 
 impl ProviderScenarios {
-    fn validate(&self) -> Result<(), String> {
+    pub(crate) fn recordable(&self, root: &Path, scenario: &str) -> bool {
+        self.unrecorded.iter().any(|s| s.scenario == scenario)
+            || (self.live.iter().any(|s| s == scenario)
+                && root
+                    .join("crates/rig-cassette/fixtures/cassettes")
+                    .join(&self.provider)
+                    .join(format!("{scenario}.yaml"))
+                    .is_file())
+    }
+
+    pub(crate) fn validate(&self) -> Result<(), String> {
         text(&self.provider, "provider", 1)?;
+        if !self
+            .provider
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+        {
+            return Err(format!(
+                "provider {:?} is not a canonical path segment",
+                self.provider
+            ));
+        }
         text(&self.source_dir, "source_dir", 1)?;
         strings(&self.wrappers, "wrappers", true)?;
         strings(&self.live, "live", false)?;
+        unique(self.live_modules.iter().map(String::as_str), "live module")?;
+        for module in &self.live_modules {
+            if Path::new(module).extension().is_none_or(|ext| ext != "rs")
+                || Path::new(module)
+                    .components()
+                    .any(|part| !matches!(part, std::path::Component::Normal(_)))
+            {
+                return Err(format!(
+                    "live module {module:?} must be a relative Rust source file"
+                ));
+            }
+        }
         for entry in &self.derived {
             text(&entry.scenario, "derived.scenario", 1)?;
             strings(&entry.sources, "derived.sources", true)?;
@@ -149,7 +197,8 @@ impl ProviderScenarios {
         unique(
             self.live_scenarios()
                 .into_iter()
-                .chain(self.derived.iter().map(|d| d.scenario.as_str())),
+                .chain(self.derived.iter().map(|d| d.scenario.as_str()))
+                .chain(self.scripted.iter().filter_map(|s| s.fixture.as_deref())),
             "scenario",
         )?;
         unique(
@@ -164,6 +213,7 @@ impl ProviderScenarios {
             .iter()
             .map(String::as_str)
             .chain(self.derived.iter().map(|d| d.scenario.as_str()))
+            .chain(self.scripted.iter().filter_map(|s| s.fixture.as_deref()))
             .collect()
     }
 
@@ -199,6 +249,18 @@ fn strings(values: &[String], field: &str, required: bool) -> Result<(), String>
 fn unique<'a>(values: impl IntoIterator<Item = &'a str>, kind: &str) -> Result<(), String> {
     let mut seen = BTreeSet::new();
     for value in values {
+        if kind == "scenario"
+            && !value.split('/').all(|part| {
+                !part.is_empty()
+                    && part
+                        .chars()
+                        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-'))
+            })
+        {
+            return Err(format!(
+                "scenario {value:?} is not canonical; recording would sanitize its destination"
+            ));
+        }
         if !seen.insert(value) {
             return Err(format!("{kind} {value:?} is declared twice"));
         }

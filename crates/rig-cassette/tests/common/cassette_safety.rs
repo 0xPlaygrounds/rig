@@ -13,7 +13,7 @@
 //! could see.
 //!
 //! The provider list is read from that same manifest,
-//! `crates/rig-cassette/fixtures/scenarios.json`, rather than duplicated as a
+//! `crates/rig-cassette/fixtures/scenarios.yaml`, rather than duplicated as a
 //! constant here. A second copy of the registry is a second place to forget,
 //! and forgetting it *here* means a provider's cassettes are scanned for
 //! secrets by nobody.
@@ -27,52 +27,7 @@ use syn::{Expr, ExprLit, Lit};
 
 const CASSETTE_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/cassettes");
 
-/// Crate-relative path of the declaration manifest: the single registry of
-/// provider suites.
-const MANIFEST: &str = "fixtures/scenarios.json";
-
-/// The provider suites declared in the manifest, in declaration order.
-///
-/// Read straight out of the JSON with `serde_json` rather than through
-/// `rig_test_support::provenance`: this module needs one field off the top of
-/// each provider entry and nothing else, and the strict manifest parser
-/// behind `provenance` is deliberately crate-private. The strict parse still
-/// happens — in the xtask guard and in every test that resolves a scenario's
-/// provenance — so a malformed manifest fails loudly elsewhere; what matters
-/// here is only that the set of provider directories comes from the registry
-/// instead of from a hand-maintained copy of it.
-fn registered_providers() -> Vec<String> {
-    let path = repo_path(MANIFEST);
-    let contents = fs::read_to_string(&path)
-        .expect("crates/rig-cassette/fixtures/scenarios.json should be readable");
-    let manifest: serde_json::Value = serde_json::from_str(&contents)
-        .expect("crates/rig-cassette/fixtures/scenarios.json should be valid JSON");
-    let providers = manifest
-        .get("providers")
-        .and_then(serde_json::Value::as_array)
-        .expect("crates/rig-cassette/fixtures/scenarios.json should have a `providers` array")
-        .iter()
-        .map(|entry| {
-            entry
-                .get("provider")
-                .and_then(serde_json::Value::as_str)
-                .expect("each `providers` entry should carry a string `provider` name")
-                .to_owned()
-        })
-        .collect::<Vec<_>>();
-
-    // An empty registry would make the partition below vacuous for the
-    // per-provider half while still failing the directory half, so it is
-    // rejected outright: the failure should name the cause, not 18 unrelated
-    // "unregistered directory" lines.
-    assert!(
-        !providers.is_empty(),
-        "{} declares no providers, so no cassette directory is registered for scanning",
-        display_repo_path(&path)
-    );
-
-    providers
-}
+use rig_test_support::provenance::registered_providers;
 
 #[test]
 fn cassettes_do_not_contain_obvious_secrets() {
@@ -93,7 +48,7 @@ fn cassettes_do_not_contain_obvious_secrets() {
     // binary, before anything is skipped:
     //
     //   * every top-level entry under `crates/rig-cassette/fixtures/cassettes` must be a directory
-    //     named after a provider declared in `fixtures/scenarios.json` — a
+    //     named after a provider declared in `fixtures/scenarios.yaml` — a
     //     stray file or an undeclared provider directory fails everywhere
     //     rather than silently escaping the scan;
     //   * every declared provider's `tests/<provider>.rs` must include this
@@ -120,7 +75,7 @@ fn cassettes_do_not_contain_obvious_secrets() {
         } else if !registered.contains(name.as_str()) {
             failures.push(format!(
                 "crates/rig-cassette/fixtures/cassettes/{name} has no entry in \
-                 crates/rig-cassette/fixtures/scenarios.json, so no test binary scans it for \
+                 crates/rig-cassette/fixtures/scenarios.yaml, so no test binary scans it for \
                  secrets — declare the provider there"
             ));
         }

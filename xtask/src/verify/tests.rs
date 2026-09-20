@@ -854,7 +854,7 @@ fn the_two_corpora_are_classified_apart() {
 /// which rule claimed it.
 #[test]
 fn the_provenance_ledger_selects_every_suite() {
-    let path = "crates/rig-cassette/fixtures/scenarios.json";
+    let path = "crates/rig-cassette/fixtures/scenarios.yaml";
     assert_eq!(ids("--changed", &[path]), ids("--full", &[]));
     let plan = selection::plan(
         Path::new("/repo"),

@@ -6,11 +6,10 @@
 //! no cassette and no golden; the negative probe mutates the streamed
 //! recording's last tool result and proves the strict matcher refuses it.
 //!
-//! `crates/rig-cassette/fixtures/scenarios.json` declares this module as the
-//! scripted family `ecs_matrix_long_loop` on `anthropic`. It borrows no
-//! recorded bytes of its own: the scripted provider fault answers the
-//! Anthropic error envelope below, and the sequenced replies are the row-1
-//! recording read by `long_loop::scripted_replies`.
+//! `crates/rig-cassette/fixtures/scenarios.yaml` declares this module as the
+//! scripted family `ecs_matrix_long_loop` on `anthropic`. Its long-loop
+//! source is the row-1 recording; the provider fault itself is a pinned
+//! error-envelope shape.
 
 use rig::completion::CompletionModel;
 use rig::driver::{Bind, Bound};
@@ -19,6 +18,11 @@ use rig::test_utils::{MockHttpResponse, SequencedHttpClient};
 
 use super::super::support::with_anthropic_cassette;
 use crate::ecs_matrix::{Wire, cells, long_loop, long_loop_world};
+use rig_test_support::provenance::ScriptedFamily;
+
+fn script() -> ScriptedFamily {
+    ScriptedFamily::new("anthropic", "ecs_matrix_long_loop")
+}
 
 const THINKING: cells::ThinkingWire = cells::ThinkingWire::Anthropic;
 

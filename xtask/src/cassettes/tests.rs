@@ -4,6 +4,8 @@
 
 use super::*;
 
+mod simplification;
+
 use serde_json::{Value, json};
 
 /// A throwaway workspace. Ten providers with a hundred cassettes each, which
@@ -235,6 +237,13 @@ fn schema_validation_rejects_wrong_types_and_nested_unknown_fields() {
 fn semantic_validation_rejects_empty_fields_and_duplicate_owners() {
     for (pointer, value) in [
         ("/providers/0/provider", json!(" ")),
+        ("/providers/0/provider", json!("p.0")),
+        (
+            "/providers/0/unrecorded/0/scenario",
+            json!("edge/object.shape"),
+        ),
+        ("/providers/0/live/0", json!("bulk//s0")),
+        ("/providers/0/live/0", json!("../outside")),
         ("/providers/0/source_dir", json!("")),
         ("/providers/0/wrappers", json!([])),
         ("/providers/0/wrappers/0", json!("")),
@@ -576,15 +585,15 @@ fn a_plan_names_the_test_that_records_each_scenario() {
     let repo = Repo::new();
     repo.scaffold(&base_manifest());
     let manifest = Manifest::load(&repo.0).expect("manifest");
-    let selection = Selection {
-        provider: None,
+    let selection = Options {
         scenario: Some("p0/bulk/s3".to_owned()),
+        ..Options::default()
     };
     let (recordings, _) = resolve(&repo.0, &manifest, &selection).expect("resolve");
     assert_eq!(recordings.len(), 1);
     assert_eq!(
         recordings[0].display(),
-        "RIG_PROVIDER_TEST_MODE=record cargo test -p rig-cassette --all-features --test p0 -- \
+        "RIG_PROVIDER_TEST_MODE=record RIG_CASSETTE_SCENARIOS=p0/bulk/s3 cargo test -p rig-cassette --all-features --test p0 -- \
          --exact p0::cassette::suite::t_bulk_s3 --nocapture --test-threads=1"
     );
 }
@@ -594,9 +603,9 @@ fn recording_an_unrecorded_scenario_asks_for_the_ignored_test() {
     let repo = Repo::new();
     repo.scaffold(&base_manifest());
     let manifest = Manifest::load(&repo.0).expect("manifest");
-    let selection = Selection {
-        provider: None,
+    let selection = Options {
         scenario: Some("p0/pending/first_capture".to_owned()),
+        ..Options::default()
     };
     let (recordings, _) = resolve(&repo.0, &manifest, &selection).expect("resolve");
     assert!(
@@ -611,9 +620,9 @@ fn a_plan_excludes_what_it_must_not_record() {
     let repo = Repo::new();
     repo.scaffold(&base_manifest());
     let manifest = Manifest::load(&repo.0).expect("manifest");
-    let selection = Selection {
+    let selection = Options {
         provider: Some("p0".to_owned()),
-        scenario: None,
+        ..Options::default()
     };
     let (recordings, excluded) = resolve(&repo.0, &manifest, &selection).expect("resolve");
     assert_eq!(recordings.len(), 101, "100 bulk recordings and one pending");
@@ -630,9 +639,9 @@ fn recording_refuses_anything_it_would_have_to_invent() {
         resolve(
             &repo.0,
             &manifest,
-            &Selection {
-                provider: None,
+            &Options {
                 scenario: Some(scenario.to_owned()),
+                ..Options::default()
             },
         )
         .expect_err("recording must be refused")
@@ -694,10 +703,10 @@ fn listing_renders_every_provenance() {
     repo.scaffold(&base_manifest());
     list(
         &repo.0,
-        &ListOptions {
+        &Options {
             provider: Some("p0".to_owned()),
-            provenance: None,
             json: true,
+            ..Options::default()
         },
     )
     .expect("list");

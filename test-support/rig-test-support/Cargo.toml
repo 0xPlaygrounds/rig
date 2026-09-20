@@ -35,3 +35,11 @@ base64.workspace = true
 bytes.workspace = true
 serde_yaml.workspace = true
 reqwest = { workspace = true, features = ["json", "stream"] }
+
+[build-dependencies]
+anyhow.workspace = true
+proc-macro2.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+serde_yaml.workspace = true
+syn = { workspace = true, features = ["full", "visit"] }

@@ -144,7 +144,7 @@ macro_rules! wire_matrix_case {
     ($(#[$attribute:meta])* $name:ident, invalid_args_midway_13) => {
         $(#[$attribute])*
         async fn $name() {
-            let replies = long_loop::scripted_replies(THINKING, &long_loop::INVALID_ARGS_MIDWAY, None);
+            let replies = long_loop::scripted_replies(&script(), THINKING, &long_loop::INVALID_ARGS_MIDWAY, None);
             long_loop::run_scripted(&long_loop::INVALID_ARGS_MIDWAY, || {
                 scripted_unary(replies.clone())
             })
@@ -155,7 +155,7 @@ macro_rules! wire_matrix_case {
         $(#[$attribute])*
         async fn $name() {
             let replies = long_loop::scripted_replies(
-                THINKING,
+                &script(), THINKING,
                 &long_loop::PROVIDER_FAULT_MIDWAY,
                 Some(fault_reply()),
             );

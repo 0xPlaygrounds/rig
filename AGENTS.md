@@ -109,7 +109,7 @@ Provider regressions should usually include cassette-backed tests. Follow
 [tests/README.md](tests/README.md#cassette-provider-tests) for replay/record
 commands and fixture safety review; never record or rewrite fixtures merely
 to make verification pass. Every fabricated fixture is declared in
-`crates/rig-cassette/fixtures/scenarios.json`, and only a scenario declared
+`crates/rig-cassette/fixtures/scenarios.yaml`, and only a scenario declared
 `live` there can be re-recorded.
 
 ## Verification

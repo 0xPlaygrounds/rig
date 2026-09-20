@@ -82,7 +82,7 @@ const TOOL_STREAM: &str = "corpus_matrix_chat/hooks_patch_tool_args_streamed";
 const SETUP_REPLY: &str = "corpus_faults_chat/setup_unary";
 
 /// The scripted family declared for this module in
-/// `crates/rig-cassette/fixtures/scenarios.json`: the recordings this
+/// `crates/rig-cassette/fixtures/scenarios.yaml`: the recordings this
 /// module is allowed to borrow bytes from.
 fn script() -> ScriptedFamily {
     ScriptedFamily::new("openai", "ecs_faults_chat")

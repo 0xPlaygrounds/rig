@@ -173,43 +173,45 @@ cargo test -p rig-cassette --all-features --test gemini \
 
 ### Scenario provenance
 
-`crates/rig-cassette/fixtures/scenarios.json` is the single registry of where
-every cassette scenario's bytes came from. Per provider it carries the suite's
-`source_dir`, the names of its cassette wrapper functions, and four lists.
-Scenario ids inside them are relative to the provider; a `sources` entry is a
-fully qualified `provider/scenario`.
+`crates/rig-cassette/fixtures/scenarios.yaml` explicitly authorizes each
+provider's scenarios. It names the suite's `source_dir` and cassette wrappers.
+IDs are provider-relative; `sources` use fully qualified `provider/scenario`.
 
-- `live` — captured from the real provider and committed. Only a `live`
-  scenario may be re-recorded.
-- `derived` — a committed fixture hand-built from named live `sources`, with a
-  `reason` and a `rebuild` recipe.
-- `scripted` — a fault family that owns no fixture: the named test module
-  injects the behaviour in code, borrowing bytes from its declared `sources`.
-- `unrecorded` — live by intent with no committed capture yet, because the
-  producing cell is `#[ignore]`d; nothing on disk corresponds to it.
+- `live_modules` — exact source files, relative to `source_dir`, authorizing
+  their non-ignored literal wrapper calls and matrix rows as live recordings.
+  Adding a declaration in an approved module changes its inventory; arbitrary
+  runtime IDs and fixture files never authorize themselves.
+- `live` — explicit live IDs for files mixing live and derived scenarios.
+- `derived` — fabricated fixtures with live `sources`, `reason` and `rebuild`.
+  Derived-from-derived chains are deliberately unsupported.
+- `scripted` — fault families with a named module, cases and allowed sources;
+  the runtime `ScriptedFamily` enforces which recordings they may borrow.
+  An optional `fixture` names committed synthetic bytes, also replay-only.
+- `unrecorded` — explicit first-capture approvals, each with a reason and an
+  ignored producer. A missing live fixture cannot be recorded without this
+  approval. After capture, promote the scenario and enable its producer.
 
 Provenance is about how the bytes were obtained, not about whether the call
 succeeded. A provider error the provider really returned is an ordinary live
 recording — the `http_errors/*` scenarios are real 4xx/5xx responses — while
 the many synthetic fault cells exist only in code and own no fixture at all.
 
-`test-support/rig-test-support/src/provenance.rs` resolves the declaration at
-test time. Every provider wrapper goes through `start_provider_cassette{,_via}`
-in `test-support/rig-test-support/src/cassettes.rs`, which calls
-`declared_spec`, so a scenario with no entry panics on the spot in replay as
-well as in record mode. The engine underneath states the weaker rule:
-`ProviderCassette::start_at` replays a `CassetteSpec` carrying no declared
-provenance and refuses to record it. `cargo xtask check-cassette-provenance`
-is the cross-check for drift rather than the first line of defence — it pairs
-every committed fixture with a declaration and every declaration with a
-fixture, resolves `sources`, compares the declaration against the scenarios
-discovered in the test sources, and fails any use of the raw entry points
-(`start`, `start_via`, `start_at`) outside the engine and that one helper.
+`rig-test-support` resolves this inventory at build time using the same scanner
+as xtask, avoiding repeated source parsing in each nextest process. Cargo tracks
+manifest and test-source changes. Every provider wrapper calls `declared_spec`
+through `start_provider_cassette{,_via}`; unknown IDs panic in both modes.
+The portable engine permits undeclared replay but refuses undeclared recording
+at `ProviderCassette::start_at`, before contacting a provider or writing files.
 
-To declare a new scenario, add its id to the owning provider's `live` list (or
-to `derived`/`scripted`/`unrecorded` with the justification that category
-requires), write the cell through that provider's declared wrapper, then run
-the guard:
+The provenance guard pairs fixtures and declarations in both directions,
+checks sources and producers, and checks source conventions for scripted cases
+and raw entry points. These syntactic checks are not Rust name resolution or a
+security sandbox: source permissions are enforced by the runtime resolver.
+Use explicit IDs for mixed-provenance modules; overlapping categories fail.
+IDs must use canonical path segments (ASCII letters, digits, `_`, `-`), so
+sanitization cannot alias a protected fixture. Dynamic wrapper arguments are
+rejected rather than omitted from recording plans. Declare first captures
+under `unrecorded`, then run:
 
 ```bash
 cargo xtask cassettes list [--provider P] [--provenance live|derived|scripted] [--json]
@@ -218,19 +220,20 @@ cargo xtask cassettes record [--provider P] [--scenario provider/scenario]
 cargo xtask check-cassette-provenance
 ```
 
-`list` prints one row per declared scenario — provenance, id, and the fixture
-path or `-`/`- (unrecorded)` where there is none — with indented `sources:`
-and `reason:` continuation lines and a closing count. A scripted family has no
-scenario path, so it is listed as `provider:family`. `plan` is the
-non-recording half of `record`: it resolves the same selection and prints
-`SELECT <id>` with the exact `cargo test` invocation that would record it,
-then `EXCLUDE <id> (derived|scripted): <reason>` for everything the recorder
-must not touch. It contacts nothing and writes nothing. An `unrecorded`
-scenario is selected too, with `--ignored` appended so its `#[ignore]`d
-producer actually runs. `record` runs exactly those invocations with
-`RIG_PROVIDER_TEST_MODE=record`. `--scenario` takes a fully qualified
-`provider/scenario`, and selecting a derived or scripted one is refused
-before any command is built, printing that scenario's `rebuild` recipe.
+`list` shows provenance, fixture presence, sources and reasons; scripted
+families use `provider:family`. `plan` and `record` share a validated plan:
+`SELECT` lists all scenarios each unique command records, and `EXCLUDE` explains
+non-live cases. Selecting only part of a multi-scenario test is refused, as is
+a test mixing live and derived scenarios. Derived selections show the rebuild
+recipe; ignored first-capture producers run with `--ignored`.
+
+Planning reads no provider credentials and makes no network requests. It does
+build selected test targets offline to validate exact names and ignored status
+against libtest; dependencies must already be cached. A renamed or ignored test
+cannot silently turn recording into a successful zero-test run. `record` runs
+exactly the previewed commands with `RIG_PROVIDER_TEST_MODE=record` and the
+printed `RIG_CASSETTE_SCENARIOS` allowlist. The runtime refuses any additional
+scenario, including calls hidden behind helpers the syntactic scan cannot resolve.
 
 A derived case is never refreshed by a live capture. Regenerating one is the
 manual edit written in that scenario's `rebuild` field: copy the named source
@@ -502,7 +505,7 @@ consumer, and scripted faults served by `rig::test_utils`'s sequenced
 transport (`test-support/rig-test-support/src/stream_faults.rs`) — a recording
 cut before its terminal, a Gemini refusal, an in-band error after content.
 Each of those four modules is a declared `scripted` family in
-`crates/rig-cassette/fixtures/scenarios.json`, naming the recordings it borrows
+`crates/rig-cassette/fixtures/scenarios.yaml`, naming the recordings it borrows
 bytes from, the behaviour it injects and its cases; `ScriptedFamily` in
 `test-support/rig-test-support/src/provenance.rs` refuses a family or a source
 recording the declaration does not list. No cassette is hand-edited and no new

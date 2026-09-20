@@ -48,7 +48,7 @@ fn scripted_unary(replies: Vec<MockHttpResponse>) -> Wire<impl CompletionModel +
 const SETUP_REPLY: &str = "corpus_faults_responses/setup_unary";
 
 /// The scripted family declared for this module in
-/// `crates/rig-cassette/fixtures/scenarios.json`: the recordings this
+/// `crates/rig-cassette/fixtures/scenarios.yaml`: the recordings this
 /// module is allowed to borrow bytes from.
 fn script() -> ScriptedFamily {
     ScriptedFamily::new("openai", "ecs_matrix_long_loop_responses")

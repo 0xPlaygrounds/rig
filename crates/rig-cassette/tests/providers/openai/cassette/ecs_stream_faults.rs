@@ -6,10 +6,8 @@
 //! history must not change with it, and the trace carries the bus's facts
 //! beside the Responses adapter's own boundary facts.
 //!
-//! `crates/rig-cassette/fixtures/scenarios.json` declares this module as the
-//! scripted family `ecs_stream_faults` on `openai`. Its frames come from the
-//! funnels of `stream_faults.rs`, so a recording is only ever reached
-//! through that module's own declared family.
+//! Shared frame helpers receive this module's `ecs_stream_faults` family,
+//! so they cannot borrow through the runner's different source allowlist.
 
 use bevy_ecs::prelude::*;
 use bytes::Bytes;
@@ -20,6 +18,11 @@ use rig::providers::openai::{self, GPT_4O};
 use rig::streaming::{Delta, StreamEvent};
 use rig::test_utils::SequencedStreamingHttpClient;
 use rig_cassette::effect_log::EffectLog;
+use rig_test_support::provenance::ScriptedFamily;
+
+fn script() -> ScriptedFamily {
+    ScriptedFamily::new("openai", "ecs_stream_faults")
+}
 use rig_ecs::{
     agent::{Failure, MaxTokens, Preamble, Role},
     bus::{BusSet, EffectOutcome, RigSchedule, Streamed},
@@ -158,7 +161,7 @@ async fn setup_failure_fails_the_run_with_the_recorded_status() {
 /// (CONTRACT §5): this pins the failure, `rig-ecs` pins the retry.
 #[tokio::test]
 async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
-    let frames = text_prefix_frames();
+    let frames = text_prefix_frames(&script());
     let prefix = delta_text(&frames);
     let mut runs = Vec::new();
     for witness in [true, false] {
@@ -212,7 +215,7 @@ async fn truncation_after_content_fails_the_run_and_keeps_the_prefix() {
 /// budget (CONTRACT §5) so the failure, not the retry, is what is pinned.
 #[tokio::test]
 async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
-    let frames = tool_call_prefix_frames();
+    let frames = tool_call_prefix_frames(&script());
     let mut runs = Vec::new();
     for witness in [true, false] {
         let invocations = Invocations::default();
@@ -269,7 +272,7 @@ async fn truncation_after_a_complete_tool_call_never_runs_the_tool() {
 /// item at its position, and history keeps only the prompt.
 #[tokio::test]
 async fn error_event_after_content_fails_with_the_provider_error() {
-    let mut frames = text_prefix_frames();
+    let mut frames = text_prefix_frames(&script());
     let prefix = delta_text(&frames);
     frames.push(ERROR_EVENT.to_owned());
     let mut runs = Vec::new();
