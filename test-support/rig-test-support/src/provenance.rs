@@ -42,8 +42,8 @@ static DECLARATIONS: LazyLock<Declarations> = LazyLock::new(|| {
     let mut scripted: BTreeMap<String, BTreeMap<String, Vec<String>>> = BTreeMap::new();
     for provider in &manifest.providers {
         let declared = scenarios.entry(provider.provider.clone()).or_default();
-        for scenario in &provider.live {
-            declared.insert(scenario.clone(), Provenance::Live);
+        for scenario in provider.live_scenarios() {
+            declared.insert(scenario.to_owned(), Provenance::Live);
         }
         for scenario in &provider.derived {
             declared.insert(scenario.scenario.clone(), Provenance::Derived);

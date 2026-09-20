@@ -33,6 +33,31 @@ fn a_declared_spec_carries_its_provenance() {
 }
 
 #[test]
+fn unrecorded_scenarios_are_authorized_for_their_first_live_capture() {
+    let manifest = manifest::Manifest::load(&crate::cassettes::workspace_root())
+        .unwrap_or_else(|error| panic!("cassette scenario declarations: {error}"));
+    let mut checked = 0;
+    for provider in &manifest.providers {
+        for entry in &provider.unrecorded {
+            assert_eq!(
+                scenario_provenance(&provider.provider, &entry.scenario),
+                Provenance::Live,
+                "{}/{} must allow its first capture",
+                provider.provider,
+                entry.scenario
+            );
+            checked += 1;
+        }
+    }
+    assert!(
+        checked > 0,
+        "the registry must exercise unrecorded scenarios"
+    );
+    let spec = declared_spec("gemini", "stream_faults/multi_frame_stream");
+    assert_eq!(spec.provenance(), Some(Provenance::Live));
+}
+
+#[test]
 #[should_panic(expected = "has no entry in")]
 fn an_undeclared_scenario_has_no_provenance() {
     scenario_provenance("anthropic", "not_a_scenario/never_declared");
