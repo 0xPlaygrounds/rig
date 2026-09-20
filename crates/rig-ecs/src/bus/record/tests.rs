@@ -25,6 +25,7 @@ fn cancellation_and_terminal_observation_have_one_recording_boundary() {
         let final_item = Ok(StreamEvent::Final(rig_core::streaming::StreamFinal::new(
             "test",
             Default::default(),
+            serde_json::json!({}),
         )));
         let answer = rig_core::serve::StreamTap::new()
             .observe(&final_item)

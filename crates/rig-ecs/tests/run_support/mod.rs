@@ -73,6 +73,7 @@ impl Serve for Capturing {
                     vec![AssistantContent::text(&self.answer)],
                     Usage::default(),
                     "capturing",
+                    serde_json::json!({ "provider": "capturing" }),
                 );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
@@ -274,7 +275,12 @@ impl Serve for Scripted {
                     .expect("turns")
                     .pop_front()
                     .unwrap_or_else(|| vec![AssistantContent::text("done")]);
-                let response = CompletionResponse::new(choice, Usage::default(), "scripted");
+                let response = CompletionResponse::new(
+                    choice,
+                    Usage::default(),
+                    "scripted",
+                    serde_json::json!({}),
+                );
                 rig_core::serve::Reply::Outcome(Ok(Outcome::Completion(response)))
             }
             other => rig_core::serve::Reply::Outcome(Err(ErrorReport::new(

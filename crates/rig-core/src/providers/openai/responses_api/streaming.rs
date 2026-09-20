@@ -116,13 +116,12 @@ fn terminal_record(
         .and_then(|status| super::map_finish_reason(status, response.incomplete_details.as_ref()));
 
     Ok(
-        StreamFinal::new(provider, crate::completion::Usage::from(&response))
+        StreamFinal::new(provider, crate::completion::Usage::from(&response), raw)
             .with_optional_finish_reason(finish_reason)
             .with_optional_message_id(response.message_id)
             .with_optional_response_id(response.response_id)
             .with_optional_provider_request_id(response.provider_request_id)
-            .with_optional_model(response.model)
-            .with_raw(raw),
+            .with_optional_model(response.model),
     )
 }
 

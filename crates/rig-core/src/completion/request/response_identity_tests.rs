@@ -1,17 +1,17 @@
 use super::*;
 
-/// Serde compatibility (rig#2265): responses persisted before
-/// `provider_request_id` existed still load, with the field `None`.
+/// `provider_request_id` is skipped when `None`, so a response written
+/// without one loads with the field `None` (rig#2265).
 #[test]
-fn completion_response_without_request_id_still_deserializes() {
+fn completion_response_without_request_id_deserializes() {
     let response: CompletionResponse = serde_json::from_str(
         r#"{"choice": [{"type": "text", "text": "hi"}],
                 "usage": {"input_tokens": 1, "output_tokens": 1, "total_tokens": 2,
                           "cached_input_tokens": 0, "cache_creation_input_tokens": 0,
                           "reasoning_tokens": 0},
-                "provider": "test"}"#,
+                "provider": "test", "raw": null}"#,
     )
-    .expect("pre-identity CompletionResponse JSON should load");
+    .expect("a CompletionResponse without a request id should load");
     assert_eq!(response.provider_request_id, None);
     assert_eq!(response.identity(), ResponseIdentity::default());
 }
@@ -23,6 +23,7 @@ fn identity_accessor_mirrors_flat_fields() {
         vec![crate::completion::AssistantContent::text("hi")],
         Usage::default(),
         "test",
+        serde_json::json!({}),
     )
     .with_message_id("msg_1")
     .with_response_id("resp_1")

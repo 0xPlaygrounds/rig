@@ -371,11 +371,10 @@ impl Decoder<Completion> for InteractionsDecoder {
                     .map(|interaction| interaction.id.as_str())
                     .filter(|id| !id.is_empty());
                 out.final_record(
-                    streaming::StreamFinal::new(PROVIDER_NAME, usage)
+                    streaming::StreamFinal::new(PROVIDER_NAME, usage, raw)
                         .with_optional_finish_reason(finish_reason)
                         .with_optional_response_id(message_id)
-                        .with_optional_model(native.model_version.as_deref())
-                        .with_raw(raw),
+                        .with_optional_model(native.model_version.as_deref()),
                 );
             }
             event @ InteractionSseEvent::Error { .. } => {

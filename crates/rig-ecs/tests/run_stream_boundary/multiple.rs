@@ -110,7 +110,11 @@ fn buffered_names_and_eof_keep_ordered_policy_prefixes() {
                 open(),
                 name("later"),
                 second_close,
-                StreamEvent::Final(StreamFinal::new("boundary", ProviderUsage::default())),
+                StreamEvent::Final(StreamFinal::new(
+                    "boundary",
+                    ProviderUsage::default(),
+                    serde_json::json!({}),
+                )),
             ],
             gate,
         )],

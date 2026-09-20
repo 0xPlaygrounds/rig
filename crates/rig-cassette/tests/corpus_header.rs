@@ -7,20 +7,20 @@
 //! the bus it runs (`EffectRow::is_subset_of` over
 //! `Dispatcher::descriptors()` — the Bevy startup check). Every cell edits
 //! one header field of an existing golden in memory and pins the *text*
-//! of refusals or accepted compatibility cases. A legacy `format` field is
-//! ignored; it is not a current header requirement. No new
+//! of refusals or accepted compatibility cases. A header has no global
+//! format number, and a key it does not know is refused. No new
 //! recordings.
 //!
 //! # Dimensions
 //!
 //! | axis | values |
 //! |---|---|
-//! | field | `required` · `signature` · `bus` · legacy `format` input · the handler table |
-//! | mismatch | missing key · extra key · family change · policy differs · policy absent on one side · ignored legacy format · table entry missing |
+//! | field | `required` · `signature` · `bus` · an unknown key · the handler table |
+//! | mismatch | missing key · extra key · family change · policy differs · policy absent on one side · unknown key refused · table entry missing |
 //! | who checks | `check_replayable` (the agent) · `check_header` / `for_key` (the replayer) · `is_subset_of` over a bare bus (a host) |
 //!
 //! Full cross-product: 5 × 7 × 3 = 105. Recorded: the 12 cells below.
-//! Pruned: a mismatch a field cannot have (a format has no key; a policy
+//! Pruned: a mismatch a field cannot have (an unknown key has no family; a policy
 //! has no family); the replayer's reading of the required row beyond the
 //! table cell (it describes, it does not compare); the host's reading of
 //! the signature and the policy (a host checks the row it needs, the bus
@@ -38,7 +38,7 @@
 //! | `the_agent_names_a_signature_family_the_bus_serves_otherwise` | signature · family change · replayer first (the agent's check begins with `check_header`) |
 //! | `the_agent_names_both_policies` | bus · policy differs · agent |
 //! | `a_policy_absent_on_one_side_is_accepted` | bus · absent on one side · agent |
-//! | `a_log_header_needs_no_global_format_number` | legacy format · ignored · replayer and agent |
+//! | `a_log_header_refuses_an_unknown_key` | an unknown key · refused · the decoder, before any reader |
 //! | `the_replayer_refuses_a_key_nothing_describes_by_name` | table · entry missing · replayer |
 //! | `a_host_checks_its_row_against_the_bus_it_built` | required · missing key and family change · host |
 //! | `a_policy_round_trips_through_the_header` | bus · none · replayer and driver |
@@ -281,16 +281,14 @@ async fn a_policy_absent_on_one_side_is_accepted() {
 }
 
 #[tokio::test]
-async fn a_log_header_needs_no_global_format_number() {
+async fn a_log_header_refuses_an_unknown_key() {
     let log = corpus::golden(TOOLS.fixture);
     let mut json = serde_json::to_value(&log).expect("serializes");
     assert!(json["header"].get("format").is_none());
     json["header"]["format"] = serde_json::json!(999);
-    let log = serde_json::from_value(json).expect("legacy header field is ignored");
-    EffectLogReplayer::check_header(&log).expect("compatible structure");
-    let (_dispatcher, _registrar, mut driver) = rig_agent::bus::Bus::channel();
-    rig_cassette::agent::replay::register_all(&log, &mut driver)
-        .expect("registers without a version gate");
+    let error = serde_json::from_value::<EffectLog>(json)
+        .expect_err("a header key this rig does not know is refused");
+    assert!(error.to_string().contains("format"), "{error}");
 }
 
 #[tokio::test]

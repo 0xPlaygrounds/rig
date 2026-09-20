@@ -38,6 +38,7 @@ fn replay_keeps_recorded_model_semantics_even_when_it_has_records() {
             vec![AssistantContent::text("ok")],
             Usage::default(),
             "composing-model",
+            serde_json::json!({}),
         )));
     }
     log.header.signature = log
@@ -290,6 +291,7 @@ fn effect_record_and_log_round_trip() {
                 vec![AssistantContent::text("hi")],
                 Usage::default(),
                 "mock",
+                serde_json::json!({}),
             ))),
             events: None,
         },
@@ -321,20 +323,16 @@ fn effect_record_and_log_round_trip() {
 }
 
 #[test]
-fn headers_have_no_format_and_unknown_legacy_versions_do_not_gate_replay() {
+fn headers_have_no_format_and_refuse_an_unknown_key() {
     let log = two_records();
     let mut json = serde_json::to_value(&log).expect("serializes");
     assert!(json["header"].get("format").is_none());
-    // Legacy headers may still carry the obsolete field; its value is ignored.
+    // A header key this rig does not know — a retired `format` number
+    // included — is refused on load rather than ignored.
     json["header"]["format"] = serde_json::json!(999);
-    let restored: EffectLog = serde_json::from_value(json).expect("structurally valid");
-    super::EffectLogReplayer::check_header(&restored).expect("no version gate");
-    super::EffectLogReplayer::for_log(&restored).expect("registers");
-    assert!(
-        serde_json::to_value(restored).unwrap()["header"]
-            .get("format")
-            .is_none()
-    );
+    let error =
+        serde_json::from_value::<EffectLog>(json).expect_err("an unknown header key is refused");
+    assert!(error.to_string().contains("format"), "{error}");
 }
 
 #[test]
@@ -737,6 +735,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         choice,
         Usage::default(),
         "test",
+        serde_json::json!({}),
     )));
     records[0].events = Some(events);
     records[1].kind = EffectKind::Completion {
@@ -747,6 +746,7 @@ async fn typed_tool_namespaces_survive_log_roundtrip_and_replay() {
         vec![AssistantContent::text("done")],
         Usage::default(),
         "test",
+        serde_json::json!({}),
     )));
     let log = EffectLog::from_records(records);
     let json = serde_json::to_value(&log).unwrap();

@@ -9,7 +9,10 @@ use crate::{
         Message, PromptError, ToolDefinition,
     },
     run::response::PromptResponse,
-    tool::server::{ToolRegistrySnapshot, ToolServerError, ToolServerHandle},
+    tool::{
+        ToolCatalog,
+        server::{ToolServerError, ToolServerHandle},
+    },
 };
 use rig_core::completion::ModelRef;
 use rig_core::effect::{HandlerDescriptor, HandlerKey, Key, family};
@@ -33,7 +36,7 @@ pub(crate) struct PreparedCompletionRequest {
     /// The typed view the request is dispatched to.
     pub(crate) model: ModelHandle,
     /// Exact implementations behind this turn's provider definitions.
-    pub(crate) tool_snapshot: Arc<ToolRegistrySnapshot>,
+    pub(crate) tool_snapshot: Arc<ToolCatalog>,
     /// The definitions the request carries (executable tools plus, in Tool
     /// output mode, the synthetic output tool), for the run's `TurnTools`.
     pub(crate) advertised_tools: Vec<ToolDefinition>,

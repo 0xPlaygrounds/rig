@@ -156,6 +156,7 @@ impl Serve for MockModel {
                     vec![AssistantContent::text(&self.text)],
                     Usage::default(),
                     "mock",
+                    serde_json::json!({ "provider": "mock" }),
                 ))))
             }
             EffectKind::Completion { stream: true, .. } => {
@@ -174,7 +175,11 @@ impl Serve for MockModel {
                         let sent = counters.stream_sends.fetch_add(1, Ordering::SeqCst) + 1;
                         if sent >= cap {
                             guard.finished = out
-                                .finish(StreamFinal::new("mock", Usage::default()))
+                                .finish(StreamFinal::new(
+                                    "mock",
+                                    Usage::default(),
+                                    serde_json::json!({ "provider": "mock" }),
+                                ))
                                 .await
                                 .is_ok();
                             return;

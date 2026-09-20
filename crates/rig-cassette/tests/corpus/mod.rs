@@ -3881,10 +3881,20 @@ async fn hand_drive(program: &Program, resume: Resume) {
                                 provider_failed,
                                 "the stream fails with the provider's error"
                             );
+                        }
+                        // A stream that failed with the program's ending
+                        // delivered no terminal record: there is no turn to
+                        // build, as the engine treats it.
+                        if provider_failed {
                             drop(stream);
                             break None;
                         }
-                        let usage = stream.usage();
+                        let terminal = stream
+                            .response
+                            .as_ref()
+                            .expect("a stream that reached its end carries its terminal record");
+                        let usage = terminal.usage;
+                        let raw = terminal.raw.clone();
                         let snapshot = stream.snapshot();
                         let streamed = assembler.finish(stream.message_id.clone(), &snapshot);
                         ModelTurn::new(
@@ -3893,6 +3903,7 @@ async fn hand_drive(program: &Program, resume: Resume) {
                             usage,
                             streamed.executable_tool_names,
                             streamed.allowed_tool_names,
+                            raw,
                         )
                     } else {
                         let response = match (within(model.complete(request)).await, program.ending)

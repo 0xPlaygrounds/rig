@@ -51,19 +51,53 @@ pub type CheckpointEntity = serde_json::Map<String, serde_json::Value>;
 /// An entity's reflected components, by type path.
 type Reflected<'a> = Vec<(&'a str, Box<dyn PartialReflect>)>;
 
+/// The [`Checkpoint`] envelope format this crate writes and reads.
+pub const CHECKPOINT_FORMAT: u32 = 1;
+
 /// The world as reflected data.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+///
+/// The envelope is versioned: [`CHECKPOINT_FORMAT`] is written on every
+/// save and checked on every load, and an unknown key is refused. A
+/// checkpoint written by another format is refused by name rather than
+/// loaded with defaults filled in.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Checkpoint {
+    /// The envelope format ([`CHECKPOINT_FORMAT`]).
+    #[serde(deserialize_with = "checkpoint_format")]
+    pub format: u32,
     /// Every entity with a reflected component, parents before children,
     /// siblings in `Children` order.
     pub entities: Vec<CheckpointEntity>,
     /// The world's counters: the next run number (the id and sequence
     /// counters bump themselves from what is loaded).
-    #[serde(default)]
     pub counters: Counters,
     /// The binary store: every retained payload, once per content hash.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub binaries: Vec<crate::agent::content::binary::BinaryRecord>,
+}
+
+impl Default for Checkpoint {
+    fn default() -> Self {
+        Self {
+            format: CHECKPOINT_FORMAT,
+            entities: Vec::new(),
+            counters: Counters::default(),
+            binaries: Vec::new(),
+        }
+    }
+}
+
+/// Deserialize the envelope's `format`, refusing any other than
+/// [`CHECKPOINT_FORMAT`] by name.
+fn checkpoint_format<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u32, D::Error> {
+    let format = u32::deserialize(deserializer)?;
+    if format == CHECKPOINT_FORMAT {
+        Ok(format)
+    } else {
+        Err(serde::de::Error::custom(format!(
+            "load refused: the checkpoint is format {format}, this rig reads format {CHECKPOINT_FORMAT}"
+        )))
+    }
 }
 
 /// The world's counters, so nothing loaded collides with what comes after.
@@ -185,6 +219,7 @@ pub fn save_world(world: &mut World) -> Result<Checkpoint, ErrorReport> {
         entities.push(object);
     }
     Ok(Checkpoint {
+        format: CHECKPOINT_FORMAT,
         entities,
         counters: Counters {
             next_run: world.get_resource::<agent::RunCounter>().map_or(0, |c| c.0),

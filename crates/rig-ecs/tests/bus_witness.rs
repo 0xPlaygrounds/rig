@@ -1202,6 +1202,7 @@ fn answer_open(
                         )],
                         rig_core::completion::Usage::default(),
                         "open",
+                        serde_json::json!({}),
                     ),
                 ))));
         }

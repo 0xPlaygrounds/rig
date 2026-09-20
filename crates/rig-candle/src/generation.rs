@@ -587,12 +587,16 @@ pub(crate) struct InferredCompletion {
 }
 
 impl InferredCompletion {
-    /// Normalize into rig's completion response.
-    pub(crate) fn into_normalized(self) -> CompletionResponse {
+    /// Normalize into rig's completion response, carrying the local
+    /// model's own record — what `raw_completion` returns — as `raw`.
+    pub(crate) fn into_normalized(self) -> Result<CompletionResponse, serde_json::Error> {
         let usage = (&self.response).into();
         let finish_reason = self.response.finish_reason.into();
-        CompletionResponse::new(self.choice, usage, crate::types::PROVIDER_NAME)
-            .with_finish_reason(finish_reason)
+        let raw = serde_json::to_value(&self.response)?;
+        Ok(
+            CompletionResponse::new(self.choice, usage, crate::types::PROVIDER_NAME, raw)
+                .with_finish_reason(finish_reason),
+        )
     }
 }
 

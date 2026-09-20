@@ -125,13 +125,12 @@ pub use crate::run::response::{CompletionCall, MemoryAppend, PromptResponse};
 pub use crate::run::spec::RunSpec;
 pub use builder::{AgentBuilder, NoToolConfig, WithBuilderTools, WithToolServerHandle};
 pub use completion::{Agent, AgentParts};
-pub use hook::CompletionCall as CompletionCallEvent;
 pub use hook::{
-    AgentHook, CompletionCallAction, HookContext, HookStack, InvalidToolCallAction,
-    InvalidToolCallContext, InvalidToolCallReason, ModelSelection, ModelSelectionAction,
-    ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta, RequestPatch,
-    RetryRequest, RunEntry, RunHandle, RunId, RunSettled, RunStart, RunStartAction, Scratchpad,
-    SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
+    AgentHook, CompletionCallAction, CompletionCallEvent, HookContext, HookStack,
+    InvalidToolCallAction, InvalidToolCallContext, InvalidToolCallReason, ModelSelection,
+    ModelSelectionAction, ModelTurnAction, ModelTurnFinished, ObservationAction, ReasoningDelta,
+    RequestPatch, RetryRequest, RunEntry, RunHandle, RunId, RunSettled, RunStart, RunStartAction,
+    Scratchpad, SettledOutcome, StepEventKind, TextDelta, ToolCallDelta,
 };
 pub use hook::{DispatchAction, DispatchEvent, OutcomeAction, OutcomeEvent};
 pub use rig_core::completion::ModelRef;

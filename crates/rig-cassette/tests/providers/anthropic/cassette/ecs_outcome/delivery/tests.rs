@@ -127,9 +127,12 @@ async fn text_boundary_pauses_before_polling_and_release_preserves_every_item() 
             block: None,
         }),
         Ok(StreamEvent::Final(
-            StreamFinal::new("anthropic", Usage::default())
-                .with_message_id("message")
-                .with_raw(serde_json::json!({"stop_reason": "end_turn"})),
+            StreamFinal::new(
+                "anthropic",
+                Usage::default(),
+                serde_json::json!({"stop_reason": "end_turn"}),
+            )
+            .with_message_id("message"),
         )),
     ]);
     let polls = Arc::new(AtomicUsize::new(0));

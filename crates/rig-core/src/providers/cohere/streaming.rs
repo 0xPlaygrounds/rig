@@ -376,10 +376,9 @@ impl ChatDecoder {
         // Cohere's `/v2/chat` reports no model identifier in either mode, so
         // the normalized `model` stays unset.
         out.final_record(
-            StreamFinal::new(PROVIDER_NAME, recorded_usage)
+            StreamFinal::new(PROVIDER_NAME, recorded_usage, raw)
                 .with_optional_finish_reason(native.finish_reason.as_ref().map(map_finish_reason))
-                .with_optional_response_id(native.message_id)
-                .with_raw(raw),
+                .with_optional_response_id(native.message_id),
         );
     }
 }

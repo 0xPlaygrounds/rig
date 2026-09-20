@@ -51,7 +51,6 @@ pub struct InvalidToolCallContext {
     /// Whether the call came from the streaming path.
     pub is_streaming: bool,
     /// Why the call was rejected.
-    #[serde(default)]
     pub reason: InvalidToolCallReason,
 }
 

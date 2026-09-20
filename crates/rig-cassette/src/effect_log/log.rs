@@ -13,7 +13,12 @@ pub const CHECKPOINT_FORMAT: u32 = 6;
 
 /// What a log says about the run it records, so a replay can refuse a log
 /// the program has outgrown before the first dispatch diverges.
+///
+/// Logs have no global format number: a log is checked by its data. A key
+/// this rig does not know is refused rather than ignored, so a header
+/// written under another vocabulary never loads with its meaning dropped.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct LogHeader {
     /// Consumer-visible deliveries, in observation order, when the runtime
     /// records schedule boundaries. `None` supplies no delivery guarantee.
@@ -35,24 +40,20 @@ pub struct LogHeader {
     pub run_spec: Option<u64>,
     /// The handlers registered on the bus when recording began, stamped
     /// with their keys.
-    #[serde(default)]
     pub handlers: Vec<HandlerDescriptor>,
     /// The effect signature: which keys the run performed effects on, and
     /// of which family — the effect row read off the trace.
-    #[serde(default)]
     pub signature: EffectRow,
     /// The program's hook stack at record time: the ordered type names of
     /// every hook (nested stacks flattened). Hooks are program, not record —
     /// a hook's decision is re-made on replay — so a log replayed under
     /// another stack is another program, and the agent refuses it.
-    #[serde(default)]
     pub hooks: Vec<String>,
     /// The program's required effect row at record time: every key it could
     /// dispatch to (its model, its tools, its memory, its retrieval
     /// indexes) with the family it needs. A replay checks this row against
     /// what the log's handlers serve, not only against what happened to be
     /// dispatched.
-    #[serde(default)]
     pub required: EffectRow,
     /// The serving policy the run was recorded under. Per-key order is
     /// dispatch order under either policy; the header says which so a
@@ -71,6 +72,7 @@ pub struct LogHeader {
 /// One program's identity in a shared log: its required effect row and
 /// the stable hash of its policy (what `run_spec` is for a single agent).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct ProgramIdentity {
     /// Every key the program could dispatch to, with the family it needs.
     pub required: EffectRow,
@@ -108,6 +110,7 @@ impl Default for LogHeader {
 /// Derefs to the records, so `log[i]`, `log.len()` and iteration read as
 /// they did when the log was a plain vector.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct EffectLog {
     /// What the log says about the run.
     pub header: LogHeader,

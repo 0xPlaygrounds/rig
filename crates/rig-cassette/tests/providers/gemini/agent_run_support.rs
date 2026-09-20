@@ -240,6 +240,7 @@ pub(crate) async fn call_model(
         response.usage,
         executable.clone(),
         allowed.clone(),
+        response.raw.clone(),
     )
 }
 

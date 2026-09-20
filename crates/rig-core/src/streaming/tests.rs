@@ -24,7 +24,7 @@ fn mock_final_with_total_tokens(total_tokens: u64) -> StreamFinal {
         total_tokens: Some(total_tokens),
         ..Usage::default()
     };
-    StreamFinal::new(TEST_PROVIDER, usage)
+    StreamFinal::new(TEST_PROVIDER, usage, serde_json::json!({}))
 }
 
 #[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
@@ -307,7 +307,9 @@ async fn finish_derives_usage_from_final_response() {
     assert_eq!(stream.usage().total_tokens, Some(15));
 
     // ...and finishing carries it instead of a zero sentinel.
-    let response: CompletionResponse = stream.finish();
+    let response: CompletionResponse = stream
+        .finish()
+        .expect("the stream produced a terminal record");
     assert_eq!(response.usage.total_tokens, Some(15));
     assert_eq!(response.provider, TEST_PROVIDER);
 }
@@ -320,14 +322,16 @@ async fn finish_carries_the_terminal_request_id() {
     let mut stream = scripted(|out| {
         out.text("hi");
         out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default())
+            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
                 .with_response_id("resp_1")
                 .with_provider_request_id("req_transport_1"),
         );
     });
     while stream.next().await.is_some() {}
 
-    let response: CompletionResponse = stream.finish();
+    let response: CompletionResponse = stream
+        .finish()
+        .expect("the stream produced a terminal record");
     assert_eq!(response.response_id.as_deref(), Some("resp_1"));
     assert_eq!(
         response.provider_request_id.as_deref(),
@@ -336,11 +340,11 @@ async fn finish_carries_the_terminal_request_id() {
 }
 
 #[tokio::test]
-async fn a_stream_without_a_terminal_record_still_names_its_provider() {
+async fn a_stream_without_a_terminal_record_names_its_provider_and_refuses_to_fold() {
     // The provider is known when the stream is opened, so a stream that
-    // errors or is truncated before its terminal record must not degrade
-    // `provider` to an empty string — every other missing value has a
-    // documented sentinel (`Usage::new`, `None`) and this one should too.
+    // errors or is truncated before its terminal record still names it.
+    // Folding it into a response is refused: the response carries the
+    // provider's document, and there is none.
     let mut stream = scripted(|out| {
         out.text("truncated");
     });
@@ -348,12 +352,13 @@ async fn a_stream_without_a_terminal_record_still_names_its_provider() {
 
     // No terminal record was ever yielded, so none may be synthesized.
     assert!(stream.response.is_none());
+    assert_eq!(stream.provider(), TEST_PROVIDER);
+    assert_eq!(stream.usage(), Usage::default());
 
-    let response: CompletionResponse = stream.finish();
-    assert_eq!(response.provider, TEST_PROVIDER);
-    assert_eq!(response.usage, Usage::default());
-    assert_eq!(response.finish_reason(), None);
-    assert_eq!(response.model, None);
+    let error = stream
+        .finish()
+        .expect_err("a stream without a terminal record has no response to fold");
+    assert!(error.to_string().contains("truncated"), "{error}");
 }
 
 #[tokio::test]
@@ -394,7 +399,7 @@ async fn a_stop_that_carried_a_tool_call_is_upgraded_to_tool_calls() {
         let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
         out.tool_call(id, end);
         out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default())
+            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
                 .with_finish_reason(FinishReason::Stop),
         );
     });
@@ -414,7 +419,7 @@ async fn a_stop_without_tool_calls_is_left_alone() {
     let mut stream = scripted(|out| {
         out.text("done");
         out.final_record(
-            StreamFinal::new(TEST_PROVIDER, Usage::default())
+            StreamFinal::new(TEST_PROVIDER, Usage::default(), serde_json::json!({}))
                 .with_finish_reason(FinishReason::Stop),
         );
     });
@@ -442,6 +447,7 @@ fn stream_final_round_trips_and_is_distinguishable_from_unknown_content() {
             tool_use_prompt_tokens: Some(3),
             reasoning_tokens: Some(4),
         },
+        serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Other("future_reason".to_owned()))
     .with_message_id("msg_123")
@@ -482,6 +488,7 @@ fn deserializing_stream_final_filters_empty_identifiers() {
         "response_id": "",
         "model": "",
         "provider": "example",
+        "raw": {},
     }))
     .expect("deserialize terminal record");
 
@@ -515,7 +522,7 @@ fn provider_terminal_stream() -> StreamingResult {
     to_stream_result(futures::stream::iter(script(|out| {
         out.text("done");
         let raw = serde_json::to_value(&terminal).expect("serialize terminal");
-        out.final_record(StreamFinal::new(TEST_PROVIDER, terminal.usage).with_raw(raw));
+        out.final_record(StreamFinal::new(TEST_PROVIDER, terminal.usage, raw));
     })))
 }
 
@@ -553,31 +560,33 @@ async fn finish_reason_is_reconciled_with_raw_attached() {
         let (id, end) = whole_call("call_1", "lookup", serde_json::json!({}));
         out.tool_call(id, end);
         let usage = Usage::default();
+        let raw = serde_json::to_value(usage).expect("serialize usage");
         out.final_record(
-            StreamFinal::new(TEST_PROVIDER, usage)
-                .with_finish_reason(FinishReason::Stop)
-                .with_raw(serde_json::to_value(usage).expect("serialize usage")),
+            StreamFinal::new(TEST_PROVIDER, usage, raw.clone())
+                .with_finish_reason(FinishReason::Stop),
         );
     })));
     let final_record = drain(events).await;
     assert_eq!(final_record.finish_reason, Some(FinishReason::ToolCalls));
-    assert!(!final_record.raw.is_null());
+    assert_eq!(
+        final_record.raw,
+        serde_json::to_value(Usage::default()).expect("serialize usage")
+    );
 }
 
 /// The deserialization mirror carries `raw`: a terminal record with a
 /// captured payload survives serialize → deserialize with the payload
 /// intact, both bare and wrapped in `StreamEvent::Final` (the shape the
-/// agent forwards). A record written without the field (what an unset
-/// `raw` serializes to) loads with `raw` unset.
+/// agent forwards). A record written without the field is refused rather
+/// than loaded with `raw` invented.
 #[test]
 fn stream_final_raw_round_trips_through_serde_mirror() {
     let payload = serde_json::json!({
         "usage": {"total_tokens": 8},
         "provider_only": "kept"
     });
-    let final_record = StreamFinal::new("example", Usage::default())
-        .with_message_id("msg_123")
-        .with_raw(payload.clone());
+    let final_record =
+        StreamFinal::new("example", Usage::default(), payload.clone()).with_message_id("msg_123");
 
     let encoded = serde_json::to_value(&final_record).expect("serialize");
     assert_eq!(encoded["raw"], payload);
@@ -594,18 +603,14 @@ fn stream_final_raw_round_trips_through_serde_mirror() {
     let decoded = serde_json::from_value::<StreamEvent>(encoded).expect("deserialize wrapped");
     assert_eq!(decoded, wrapped);
 
-    // No `raw` key: the shape an unset `raw` is written as.
+    // No `raw` key: refused, never loaded with a document invented.
     let without_raw = serde_json::json!({
         "usage": serde_json::to_value(Usage::default()).unwrap(),
         "provider": "example"
     });
-    let decoded = serde_json::from_value::<StreamFinal>(without_raw).expect("loads without `raw`");
-    assert!(decoded.raw.is_null());
-
-    // Unset `raw` is not written, so a record without capture serializes
-    // exactly as it did before the field existed.
-    let bare = serde_json::to_value(StreamFinal::new("example", Usage::default())).unwrap();
-    assert!(bare.get("raw").is_none());
+    let error = serde_json::from_value::<StreamFinal>(without_raw)
+        .expect_err("a terminal record without `raw` is refused");
+    assert!(error.to_string().contains("raw"), "{error}");
 }
 
 /// The deserialization mirror must not change the wire format: a fully
@@ -623,6 +628,7 @@ fn stream_final_serde_round_trip_is_identity() {
             tool_use_prompt_tokens: Some(3),
             reasoning_tokens: Some(4),
         },
+        serde_json::json!({}),
     )
     .with_finish_reason(FinishReason::Stop)
     .with_message_id("msg_123")
@@ -824,7 +830,9 @@ async fn re_polling_a_drained_stream_preserves_the_aggregated_choice() {
     );
 
     // Finishing into a unary response still carries the content.
-    let response: CompletionResponse = stream.finish();
+    let response: CompletionResponse = stream
+        .finish()
+        .expect("the stream produced a terminal record");
     assert_eq!(response.choice.into_iter().collect::<Vec<_>>(), drained);
 }
 

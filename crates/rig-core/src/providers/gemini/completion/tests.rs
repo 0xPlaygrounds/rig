@@ -1840,7 +1840,9 @@ async fn streamed(model: &str, body: &'static str) -> crate::completion::Complet
     while let Some(item) = stream.next().await {
         item.expect("the recorded stream carries no in-band error");
     }
-    stream.finish()
+    stream
+        .finish()
+        .expect("the stream produced a terminal record")
 }
 
 #[tokio::test]

@@ -361,10 +361,10 @@ impl From<&StreamingCompletionResponse> for Usage {
 
 /// The adapter's terminal mapping: Ollama's `done: true` record as a
 /// normalized [`StreamFinal`] (the caller attaches `raw`).
-fn stream_final(response: StreamingCompletionResponse) -> StreamFinal {
+fn stream_final(response: StreamingCompletionResponse, raw: serde_json::Value) -> StreamFinal {
     // Ollama's `/api/chat` stream assigns no message identifier, so the
     // normalized `message_id` stays unset.
-    StreamFinal::new(PROVIDER_NAME, Usage::from(&response))
+    StreamFinal::new(PROVIDER_NAME, Usage::from(&response), raw)
         .with_optional_finish_reason(response.done_reason.as_deref().map(map_done_reason))
         .with_model(response.model)
 }
@@ -488,7 +488,7 @@ impl OllamaDecoder {
                 done_reason: response.done_reason,
             };
             match serde_json::to_value(&native) {
-                Ok(raw) => out.final_record(stream_final(native).with_raw(raw)),
+                Ok(raw) => out.final_record(stream_final(native, raw)),
                 Err(err) => out.error(err.into()),
             }
         }

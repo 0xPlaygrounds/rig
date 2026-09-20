@@ -72,7 +72,11 @@ impl Serve for Streamer {
             writer.text("hel").await.expect("open");
             writer.text("lo").await.expect("open");
             writer
-                .finish(StreamFinal::new("test", Usage::default()))
+                .finish(StreamFinal::new(
+                    "test",
+                    Usage::default(),
+                    serde_json::json!({}),
+                ))
                 .await
                 .expect("open");
         })

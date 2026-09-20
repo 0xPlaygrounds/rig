@@ -574,7 +574,7 @@ pub use crate::run::policy::{
 /// selection entirely and does not advance
 /// [`ModelSelection::previous_model`].
 #[derive(Clone, Copy)]
-pub struct CompletionCall<'a> {
+pub struct CompletionCallEvent<'a> {
     /// Prompt for this turn.
     pub prompt: &'a Message,
     /// History preceding the prompt.
@@ -707,8 +707,8 @@ pub struct ModelTurnFinished<'a> {
     /// payload: the provider's reply document as its decoder parsed it,
     /// serialized. Every provider seam populates it; `Value::Null` only when
     /// the response was built without a provider behind it (a
-    /// hand-constructed model, a record persisted before the field). On a
-    /// retry this is the retried attempt's own, never a previous attempt's.
+    /// hand-constructed model). On a retry this is the retried attempt's own,
+    /// never a previous attempt's.
     ///
     /// Carried here, and not only on the surface-specific events, for the
     /// same reason identity is: this is the medium-neutral event, so a hook
@@ -1317,7 +1317,7 @@ pub trait AgentHook: WasmCompatSend + WasmCompatSync {
     fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        _event: CompletionCall<'_>,
+        _event: CompletionCallEvent<'_>,
     ) -> impl Future<Output = CompletionCallAction> + WasmCompatSend {
         async { CompletionCallAction::Continue }
     }
@@ -1449,7 +1449,7 @@ macro_rules! for_each_boxed_hook_event {
         $m!(
             completion_call,
             on_completion_call,
-            CompletionCall,
+            CompletionCallEvent,
             CompletionCallAction
         );
         $m!(
@@ -1770,7 +1770,7 @@ impl AgentHook for HookStack {
     async fn on_completion_call(
         &self,
         ctx: &HookContext,
-        event: CompletionCall<'_>,
+        event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         let mut merged: Option<RequestPatch> = None;
         for hook in &self.hooks {

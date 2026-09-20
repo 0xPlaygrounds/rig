@@ -976,14 +976,15 @@ fn terminal_record(
     provider: &str,
     response: &StreamingCompletionResponse,
 ) -> Result<StreamFinal, CompletionError> {
-    Ok(
-        StreamFinal::new(provider, crate::completion::Usage::from(&response.usage))
-            .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
-            .with_optional_message_id(response.message_id.clone())
-            .with_optional_provider_request_id(response.provider_request_id.clone())
-            .with_optional_model(response.model.clone())
-            .with_raw(serde_json::to_value(response)?),
+    Ok(StreamFinal::new(
+        provider,
+        crate::completion::Usage::from(&response.usage),
+        serde_json::to_value(response)?,
     )
+    .with_optional_finish_reason(response.stop_reason.as_deref().map(map_finish_reason))
+    .with_optional_message_id(response.message_id.clone())
+    .with_optional_provider_request_id(response.provider_request_id.clone())
+    .with_optional_model(response.model.clone()))
 }
 
 #[cfg(test)]

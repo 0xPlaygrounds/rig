@@ -254,10 +254,13 @@ fn completion_from_script(
     if let Turn::Error(message) = &turn {
         return Err(CompletionError::ProviderError(message.clone()));
     }
-    Ok(
-        CompletionResponse::new(turn.choice(), turn.usage(), script.provider)
-            .with_message_id(turn.message_id()),
+    Ok(CompletionResponse::new(
+        turn.choice(),
+        turn.usage(),
+        script.provider,
+        serde_json::json!({}),
     )
+    .with_message_id(turn.message_id()))
 }
 
 fn stream_from_script(
@@ -341,7 +344,8 @@ fn stream_from_script(
         Turn::Error(_) => return Err(CompletionError::ProviderError("unreachable".to_owned())),
     }
     events.push(Ok(StreamEvent::Final(
-        StreamFinal::new(script.provider, turn.usage()).with_message_id(turn.message_id()),
+        StreamFinal::new(script.provider, turn.usage(), serde_json::json!({}))
+            .with_message_id(turn.message_id()),
     )));
 
     Ok(StreamingCompletionResponse::stream(
@@ -1360,7 +1364,7 @@ impl CompletionModel for GatedToolModel {
         self.release.notified().await;
         let turn = Turn::tool("lookup", 3, "gated-tool-message");
         Ok(
-            CompletionResponse::new(turn.choice(), turn.usage(), "gated")
+            CompletionResponse::new(turn.choice(), turn.usage(), "gated", serde_json::json!({}))
                 .with_message_id(turn.message_id()),
         )
     }
@@ -1376,7 +1380,11 @@ impl CompletionModel for GatedToolModel {
                     MintKind::Text.for_wire_index(0),
                     "unused",
                 )),
-                Ok(StreamEvent::Final(StreamFinal::new("gated", usage(1)))),
+                Ok(StreamEvent::Final(StreamFinal::new(
+                    "gated",
+                    usage(1),
+                    serde_json::json!({}),
+                ))),
             ])),
         ))
     }
@@ -1504,6 +1512,7 @@ impl CompletionModel for PendingStreamingModel {
             vec![AssistantContent::text("unused")],
             Usage::default(),
             "pending",
+            serde_json::json!({}),
         ))
     }
 

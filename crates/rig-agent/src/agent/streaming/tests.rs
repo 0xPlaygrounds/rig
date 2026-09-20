@@ -581,8 +581,11 @@ fn streaming_tool_then_text_model() -> MockCompletionModel {
 /// matches.
 fn streamed_call(call_index: usize, usage: Usage) -> CompletionCall {
     let terminal = mock_final(usage);
-    CompletionCall::new(call_index, usage)
-        .with_raw(serde_json::to_value(&terminal).expect("mock terminal serializes"))
+    CompletionCall::new(
+        call_index,
+        usage,
+        serde_json::to_value(&terminal).expect("mock terminal serializes"),
+    )
 }
 
 fn usage(input_tokens: u64, output_tokens: u64) -> Usage {
@@ -626,6 +629,7 @@ async fn execution_commit_items_are_not_emitted_when_run_commit_fails() {
         Usage::default(),
         advertised.clone(),
         advertised,
+        serde_json::json!({"origin": "hand-built test turn"}),
     );
     assert!(matches!(
         run.model_response(turn)
@@ -1434,8 +1438,11 @@ async fn unary_repaired_message_telemetry_records_canonical_output() {
 
 #[test]
 fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
-    let item: MultiTurnStreamItem =
-        MultiTurnStreamItem::CompletionCall(CompletionCall::new(2, usage(3, 4)));
+    let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
+        2,
+        usage(3, 4),
+        serde_json::json!({"id": "resp_2"}),
+    ));
 
     let value = serde_json::to_value(&item).expect("serialize completion call event");
 
@@ -1448,7 +1455,8 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
                 "input_tokens": 3,
                 "output_tokens": 4,
                 "total_tokens": 7,
-            }
+            },
+            "raw": {"id": "resp_2"}
         })
     );
 
@@ -1456,13 +1464,19 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
         serde_json::from_value(value).expect("deserialize completion call event");
     match item {
         MultiTurnStreamItem::CompletionCall(call_usage) => {
-            assert_eq!(call_usage, CompletionCall::new(2, usage(3, 4)));
+            assert_eq!(
+                call_usage,
+                CompletionCall::new(2, usage(3, 4), serde_json::json!({"id": "resp_2"}))
+            );
         }
         other => panic!("expected completion call event, got {other:?}"),
     }
 
-    let item: MultiTurnStreamItem =
-        MultiTurnStreamItem::CompletionCall(CompletionCall::new(3, Usage::default()));
+    let item: MultiTurnStreamItem = MultiTurnStreamItem::CompletionCall(CompletionCall::new(
+        3,
+        Usage::default(),
+        serde_json::json!({"id": "resp_3"}),
+    ));
     let value = serde_json::to_value(&item).expect("serialize missing usage event");
 
     // Unreported usage serializes as an empty object: every counter is
@@ -1472,7 +1486,8 @@ fn completion_calls_stream_item_serializes_and_deserializes_expected_shape() {
         serde_json::json!({
             "type": "completionCall",
             "call_index": 3,
-            "usage": {}
+            "usage": {},
+            "raw": {"id": "resp_3"}
         })
     );
 }
@@ -1483,8 +1498,8 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
         vec![AssistantContent::text("done")],
         usage(3, 4),
         vec![
-            CompletionCall::new(0, Usage::default()),
-            CompletionCall::new(1, usage(3, 4)),
+            CompletionCall::new(0, Usage::default(), serde_json::json!({"id": "resp_0"})),
+            CompletionCall::new(1, usage(3, 4), serde_json::json!({"id": "resp_1"})),
         ],
         None,
     );
@@ -1500,7 +1515,8 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
         Some(&serde_json::json!([
             {
                 "call_index": 0,
-                "usage": {}
+                "usage": {},
+                "raw": {"id": "resp_0"}
             },
             {
                 "call_index": 1,
@@ -1508,7 +1524,8 @@ fn final_response_serializes_completion_calls_with_missing_usage() {
                     "input_tokens": 3,
                     "output_tokens": 4,
                     "total_tokens": 7,
-                }
+                },
+                "raw": {"id": "resp_1"}
             }
         ]))
     );

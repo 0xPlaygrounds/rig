@@ -6,10 +6,9 @@
 //! Raw capture is always on: the driver puts the provider's reply body,
 //! parsed as JSON, onto [`rig::completion::CompletionResponse::raw`] — here
 //! the API's own [`Interaction`] document, verbatim. There is no opt-in and
-//! nothing about it reaches the wire; `raw` is `Value::Null` only on a
-//! response constructed without a provider payload behind it (hand-built, or
-//! persisted before the field existed), never because capture "was not
-//! requested".
+//! nothing about it reaches the wire; `raw` is required at construction, so
+//! there is no response without the document that produced it and no way
+//! for capture to be "not requested".
 //!
 //! # Matrix
 //!

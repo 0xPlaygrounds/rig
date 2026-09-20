@@ -1270,7 +1270,9 @@ async fn the_unary_resource_and_a_streamed_turn_fold_to_the_same_shape() {
     while let Some(item) = stream.next().await {
         item.expect("the recorded stream carries no in-band error");
     }
-    let streamed = stream.finish();
+    let streamed = stream
+        .finish()
+        .expect("the stream produced a terminal record");
 
     assert_eq!(shape(&buffered), shape(&streamed));
     assert_eq!(

@@ -115,7 +115,20 @@
           "response_id": null,
           "finish_reason": null,
           "provider": "mock",
-          "model": null
+          "model": null,
+          "raw": {
+            "choice": [
+              {
+                "type": "text",
+                "text": "ready"
+              }
+            ],
+            "usage": {},
+            "message_id": null,
+            "response_id": null,
+            "provider_request_id": null,
+            "finish_reason": null
+          }
         }
       }
     }

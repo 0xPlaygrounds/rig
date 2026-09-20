@@ -83,6 +83,7 @@ async fn run_streamed_turn(
                 StreamedTurnEvent::Completed {
                     usage,
                     finish_reason,
+                    raw,
                     ..
                 } => {
                     if !recorded {
@@ -90,7 +91,7 @@ async fn run_streamed_turn(
                             usage,
                             rig::completion::ResponseIdentity::default(),
                             finish_reason,
-                            serde_json::Value::Null,
+                            raw,
                         )
                         .expect("completion call should record while the turn is pending");
                         recorded = true;
@@ -118,9 +119,12 @@ async fn run_streamed_turn(
                                 StreamedResolution::TurnAbandoned {
                                     skipped_tool_result,
                                 } => {
-                                    let drained_usage = drain_stream_usage(&mut stream).await;
+                                    let terminal = drain_stream_terminal(&mut stream).await;
                                     if !recorded {
-                                        run.record_streamed_completion_call(drained_usage, rig::completion::ResponseIdentity::default(), None, serde_json::Value::Null).expect(
+                                        let terminal = terminal.expect(
+                                            "an abandoned turn's stream still reaches its terminal record",
+                                        );
+                                        run.record_streamed_completion_call(terminal.usage, rig::completion::ResponseIdentity::default(), None, terminal.raw).expect(
                                             "abandoned turns may still record their completion call",
                                         );
                                     }
@@ -140,29 +144,24 @@ async fn run_streamed_turn(
         assembler.pending_delta_error().is_none(),
         "the provider stream should end consistently"
     );
-    if !recorded {
-        run.record_streamed_completion_call(
-            Usage::default(),
-            rig::completion::ResponseIdentity::default(),
-            None,
-            serde_json::Value::Null,
-        )
-        .expect("turns without provider usage still record a completion call");
-    }
+    assert!(
+        recorded,
+        "a stream that reached its end delivered its terminal record, which recorded the call"
+    );
     let streamed_turn = assembler.finish(stream.message_id.clone(), &stream.snapshot());
     run.streamed_turn(streamed_turn)?;
     Ok(TurnEnd::Finished)
 }
 
-async fn drain_stream_usage(stream: &mut rig::streaming::StreamingCompletionResponse) -> Usage
-where
-{
+async fn drain_stream_terminal(
+    stream: &mut rig::streaming::StreamingCompletionResponse,
+) -> Option<rig::streaming::StreamFinal> {
     while let Some(item) = stream.next().await {
         if let Ok(StreamEvent::Final(final_response)) = item {
-            return final_response.usage;
+            return Some(final_response);
         }
     }
-    Usage::default()
+    None
 }
 
 #[tokio::test]
@@ -174,7 +173,7 @@ async fn streamed_hand_driven_multi_turn_run_completes() {
             // record against.
             let mut fresh = AgentRun::new("unused");
             assert!(
-                fresh.record_streamed_completion_call(Usage::default(), rig::completion::ResponseIdentity::default(), None, serde_json::Value::Null).is_err(),
+                fresh.record_streamed_completion_call(Usage::default(), rig::completion::ResponseIdentity::default(), None, serde_json::json!({})).is_err(),
                 "a phantom completion call must be rejected on a fresh run"
             );
 

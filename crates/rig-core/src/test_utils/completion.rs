@@ -64,7 +64,11 @@ struct MockTurnResponse {
     response_id: Option<String>,
     provider_request_id: Option<String>,
     finish_reason: Option<crate::completion::FinishReason>,
-    raw: serde_json::Value,
+    /// A scripted provider document, when the test supplies one; otherwise
+    /// the turn itself, serialized, is the mock's document. Not part of the
+    /// serialized turn so the document never nests itself.
+    #[serde(skip)]
+    raw: Option<serde_json::Value>,
 }
 
 impl MockTurn {
@@ -125,7 +129,7 @@ impl MockTurn {
                 response_id: None,
                 provider_request_id: None,
                 finish_reason: None,
-                raw: serde_json::Value::Null,
+                raw: None,
             }),
         }
     }
@@ -143,7 +147,7 @@ impl MockTurn {
                 response_id: None,
                 provider_request_id: None,
                 finish_reason: None,
-                raw: serde_json::Value::Null,
+                raw: None,
             }),
         }
     }
@@ -210,25 +214,42 @@ impl MockTurn {
     /// Script the provider's own response for this turn — what a real seam
     /// would serialize from its raw type. Attached to the response as-is, so
     /// agent tests can prove the payload reaches every observer of the turn
-    /// without a live provider. A turn without a scripted payload reports
-    /// `raw: Value::Null`, so a non-null `raw` in a test means the scripted
-    /// value arrived, never that the mock invented one.
+    /// without a live provider. A turn without a scripted payload carries
+    /// the scripted turn itself, serialized — the mock's own document, the
+    /// same capture every real adapter performs — so a scripted value in a
+    /// test is distinguishable from the mock's default by content.
     pub fn with_raw(mut self, raw: serde_json::Value) -> Self {
         if let Ok(response) = &mut self.response {
-            response.raw = raw;
+            response.raw = Some(raw);
         }
         self
     }
 
+    /// The provider document the mock attaches to this turn's response: the
+    /// scripted payload when one was supplied, otherwise the turn itself,
+    /// serialized. Public so a test can state the expected `raw` of a
+    /// recorded call without repeating the mock's serialization. An error
+    /// turn has no document.
+    pub fn raw(&self) -> Result<serde_json::Value, CompletionError> {
+        let response = self
+            .response
+            .as_ref()
+            .map_err(|error| error.clone().into_completion_error())?;
+        match &response.raw {
+            Some(raw) => Ok(raw.clone()),
+            None => Ok(serde_json::to_value(response)?),
+        }
+    }
+
     fn into_completion_response(self) -> Result<CompletionResponse, CompletionError> {
+        let raw = self.raw()?;
         let response = self.response.map_err(MockError::into_completion_error)?;
         Ok(
-            CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER)
+            CompletionResponse::new(response.choice, response.usage, MOCK_PROVIDER, raw)
                 .with_optional_message_id(response.message_id)
                 .with_optional_response_id(response.response_id)
                 .with_optional_provider_request_id(response.provider_request_id)
-                .with_optional_finish_reason(response.finish_reason)
-                .with_raw(response.raw),
+                .with_optional_finish_reason(response.finish_reason),
         )
     }
 }

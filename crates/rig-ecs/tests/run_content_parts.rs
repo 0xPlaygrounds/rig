@@ -288,6 +288,7 @@ fn a_content_failure_ends_its_run_and_the_next_run_is_read_in_the_same_pass() {
             choice,
             Usage::default(),
             "model",
+            serde_json::json!({}),
         ))))
     };
     let refused = AssistantContent::Image(Image {

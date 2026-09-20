@@ -67,6 +67,7 @@ impl CompletionModel for BudgetedModel {
             vec![AssistantContent::text(text)],
             Usage::default(),
             "budgeted",
+            serde_json::json!({}),
         )
         .with_finish_reason(reason))
     }
@@ -83,7 +84,8 @@ impl CompletionModel for BudgetedModel {
             Box::pin(stream::iter([
                 Ok(StreamEvent::text(BlockId::wire("text-1"), text)),
                 Ok(StreamEvent::Final(
-                    StreamFinal::new("budgeted", Usage::default()).with_finish_reason(reason),
+                    StreamFinal::new("budgeted", Usage::default(), serde_json::json!({}))
+                        .with_finish_reason(reason),
                 )),
             ])),
         ))

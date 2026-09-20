@@ -7,9 +7,8 @@
 //! its inherent `raw_completion` returned — Cohere's own [`CompletionResponse`]
 //! — onto [`rig::completion::CompletionResponse::raw`] before `try_into`
 //! normalizes it. There is no opt-in and nothing about it reaches the wire;
-//! `raw` is `Value::Null` only on a response constructed without a provider
-//! payload behind it (hand-built, or persisted before the field existed),
-//! never because capture "was not requested".
+//! `raw` is required at construction, so there is no response without the
+//! document that produced it and no way for capture to be "not requested".
 //!
 //! # Matrix
 //!

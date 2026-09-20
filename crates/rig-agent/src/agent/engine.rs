@@ -41,7 +41,7 @@ use super::{
     ModelHandle,
     completion::{PreparedCompletionRequest, build_prepared_completion_request},
     hook::{
-        AgentHook, CompletionCall, CompletionCallAction, DispatchAction, DispatchEvent,
+        AgentHook, CompletionCallAction, CompletionCallEvent, DispatchAction, DispatchEvent,
         HookContext, HookStack, InvalidToolCallAction, ModelSelection, ModelSelectionAction,
         ModelTurnAction, ModelTurnFinished, ObservationAction, OutcomeAction, OutcomeEvent,
         ReasoningDelta, RequestPatch, RunSettled, RunStart, RunStartAction, SettledOutcome,
@@ -66,7 +66,7 @@ use crate::{
     completion::{CompletionError, PromptError, Usage},
     json_utils,
     streaming::{Delta, StreamEvent, StreamedUserContent},
-    tool::{ToolResult, server::ToolRegistrySnapshot},
+    tool::{ToolCatalog, ToolResult},
 };
 
 /// A boxed, medium-specific item stream for one engine step (model turn or tool
@@ -136,7 +136,7 @@ pub(crate) trait TurnSource: WasmCompatSend {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_snapshot: Arc<ToolCatalog>,
     ) -> DriveStream<'a>;
 
     /// Record run-level telemetry onto the agent span at `Done`. Gated on
@@ -151,6 +151,17 @@ pub(crate) trait TurnSource: WasmCompatSend {
     /// Build the final stream item surfaced at `Done`, or `None` when the
     /// surface discards it (the blocking fold) so the engine skips the work.
     fn final_item(&self, response: &PromptResponse) -> Option<MultiTurnStreamItem>;
+}
+
+/// The error for a provider stream that ended without its terminal record.
+/// Per the emission contract (`rig_core::streaming`) that absence means
+/// truncation, never a successful zero-usage completion, and a truncated
+/// stream has no document to record a completion call from.
+fn truncated_stream_error() -> CompletionError {
+    CompletionError::ResponseError(
+        "provider stream ended without a terminal record; treating the turn as truncated"
+            .to_string(),
+    )
 }
 
 /// Convert a [`StreamingError`] back into a [`PromptError`] for the blocking
@@ -236,7 +247,7 @@ where
         // Set only after a model turn commits successfully and consumed by its
         // immediately following CallTools step. This keeps the sans-IO run state
         // serializable while pinning execution to the definitions sent that turn.
-        let mut pending_tool_snapshot: Option<Arc<ToolRegistrySnapshot>> = None;
+        let mut pending_tool_snapshot: Option<Arc<ToolCatalog>> = None;
         // Routing state: the model behind the preceding *issued* attempt. It
         // advances immediately before the selected model's unary or streaming
         // operation is invoked, so a completion-call stop, selection stop, or
@@ -579,7 +590,7 @@ pub(crate) fn drive_tool_calls<'a, F>(
     hook_ctx: &'a HookContext,
     run: &'a mut AgentRun,
     calls: Vec<PendingToolCall>,
-    tool_snapshot: Arc<ToolRegistrySnapshot>,
+    tool_snapshot: Arc<ToolCatalog>,
     chain_tool_span: F,
     forward_items: bool,
 ) -> DriveStream<'a>
@@ -958,25 +969,26 @@ impl TurnSource for StreamingTurnSource {
                     last_usage = usage;
                     if !completion_call_emitted {
                         chat_span.record_token_usage(&usage);
-                        // The terminal record (when the provider delivered
-                        // one) carries this attempt's identity metadata — and
-                        // its captured raw payload, read from the same
-                        // terminal so the recorded call carries *this*
-                        // attempt's response, never a previous attempt's.
-                        match run.record_streamed_completion_call(
-                            usage,
-                            stream.identity(),
-                            $finish_reason,
-                            stream
-                                .response
-                                .as_ref()
-                                .map_or(serde_json::Value::Null, |response| response.raw.clone()),
-                        ) {
-                            Ok(call) => {
-                                completion_call_emitted = true;
-                                Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
-                            }
-                            Err(err) => Err(err.into()),
+                        // The terminal record carries this attempt's identity
+                        // metadata and its captured raw payload, read from the
+                        // same terminal so the recorded call carries *this*
+                        // attempt's response, never a previous attempt's. A
+                        // stream that delivered no terminal is truncated per
+                        // the emission contract and has no call to record.
+                        match stream.response.as_ref().map(|response| response.raw.clone()) {
+                            None => Err(truncated_stream_error().into()),
+                            Some(raw) => match run.record_streamed_completion_call(
+                                usage,
+                                stream.identity(),
+                                $finish_reason,
+                                raw,
+                            ) {
+                                Ok(call) => {
+                                    completion_call_emitted = true;
+                                    Ok(Some(MultiTurnStreamItem::CompletionCall(call)))
+                                }
+                                Err(err) => Err(err.into()),
+                            },
                         }
                     } else {
                         Ok(None)
@@ -1154,6 +1166,7 @@ impl TurnSource for StreamingTurnSource {
                             usage,
                             emit_final,
                             finish_reason,
+                            raw: _,
                         } => {
                             match emit_completion_call!(usage, finish_reason) {
                                 Ok(Some(item)) => yield Ok(item),
@@ -1278,14 +1291,13 @@ impl TurnSource for StreamingTurnSource {
             // truncation and must never be treated as a successful zero-usage
             // completion: reject the turn before any usage fallback, assembly,
             // history mutation, or tool dispatch can occur.
-            if !provider_final_seen {
-                yield Err(CompletionError::ResponseError(
-                    "provider stream ended without a terminal record; treating the turn as truncated"
-                        .to_string(),
-                )
-                .into());
+            // The terminal record is this attempt's: its identity, finish
+            // reason and payload are read from it below, never from a
+            // previous attempt's stream.
+            let Some(terminal) = stream.response.clone() else {
+                yield Err(truncated_stream_error().into());
                 return;
-            }
+            };
 
             if let Some(err) = assembler.pending_delta_error() {
                 yield Err(err.into());
@@ -1297,21 +1309,15 @@ impl TurnSource for StreamingTurnSource {
             // and this is the last read of the flag — kept inline (not
             // `emit_completion_call!`) so it doesn't emit a dead
             // `completion_call_emitted = true` write, which `unused_assignments`
-            // rejects. Identity comes from the same accessor the macro uses, so
-            // `completion_calls` and hook observations agree on this path too.
+            // rejects. Identity and payload come from the terminal record the
+            // macro reads too, so `completion_calls` and hook observations
+            // agree on this path.
             if !completion_call_emitted {
-                let fallback_finish_reason = stream
-                    .response
-                    .as_ref()
-                    .and_then(|response| response.finish_reason.clone());
                 match run.record_streamed_completion_call(
                     crate::completion::Usage::default(),
                     stream.identity(),
-                    fallback_finish_reason,
-                    stream
-                        .response
-                        .as_ref()
-                        .map_or(serde_json::Value::Null, |response| response.raw.clone()),
+                    terminal.finish_reason.clone(),
+                    terminal.raw.clone(),
                 ) {
                     Ok(call) => yield Ok(MultiTurnStreamItem::CompletionCall(call)),
                     Err(err) => {
@@ -1334,11 +1340,8 @@ impl TurnSource for StreamingTurnSource {
             };
             // This attempt's raw payload, from the same terminal record as the
             // identity above — so a retry never observes a previous attempt's
-            // response. `Null` when no terminal record arrived.
-            let attempt_raw = stream
-                .response
-                .as_ref()
-                .map_or(&serde_json::Value::Null, |response| &response.raw);
+            // response.
+            let attempt_raw = &terminal.raw;
             self.last_message_id.clone_from(&streamed_turn.message_id);
             // The canonical assistant content: `finish` normalizes
             // reasoning/text/tool ordering, so this can differ from the raw
@@ -1431,7 +1434,7 @@ impl TurnSource for StreamingTurnSource {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_snapshot: Arc<ToolCatalog>,
     ) -> DriveStream<'a> {
         // The streaming surface chains nothing onto its tool spans, and forwards
         // the ToolCall/ToolResult items to the consumer.
@@ -1553,12 +1556,12 @@ pub(crate) async fn settle_model_turn(
         turn.content.clone(),
         turn.usage,
         turn.provider,
+        turn.raw.clone(),
     )
     .with_optional_finish_reason(turn.finish_reason.cloned());
     folded.message_id = turn.identity.message_id.clone();
     folded.response_id = turn.identity.response_id.clone();
     folded.provider_request_id = turn.identity.provider_request_id.clone();
-    folded.raw = turn.raw.clone();
     let outcome: Result<Outcome, ErrorReport> = Ok(Outcome::Completion(folded));
     let mut replaced: Option<Vec<AssistantContent>> = None;
     match hooks
@@ -1615,7 +1618,7 @@ pub(crate) async fn settle_model_turn(
     }
 }
 
-/// Outcome of firing the `CompletionCall` hook for a turn.
+/// Outcome of firing the `CompletionCallEvent` hook for a turn.
 pub(crate) enum CompletionCallOutcome {
     /// Proceed, optionally applying a per-turn request patch (the merged patch
     /// from every hook that contributed one).
@@ -1635,7 +1638,7 @@ pub(crate) async fn resolve_completion_call(
     match hooks
         .on_completion_call(
             ctx,
-            CompletionCall {
+            CompletionCallEvent {
                 prompt,
                 history,
                 turn,
@@ -1794,7 +1797,7 @@ pub(crate) struct ToolCallOutcome {
 pub(crate) async fn run_single_tool(
     runner: &AgentRunner,
     ctx: &HookContext,
-    tool_snapshot: &ToolRegistrySnapshot,
+    tool_snapshot: &ToolCatalog,
     tool_call: &ToolCall,
     block_id: &BlockId,
     error_history: &[Message],
@@ -2082,7 +2085,7 @@ impl TurnSource for UnaryTurnSource {
         hook_ctx: &'a HookContext,
         run: &'a mut AgentRun,
         calls: Vec<PendingToolCall>,
-        tool_snapshot: Arc<ToolRegistrySnapshot>,
+        tool_snapshot: Arc<ToolCatalog>,
     ) -> DriveStream<'a> {
         // The blocking surface chains tool spans into its linear `follows_from`
         // sequence (chat -> tool -> chat), and discards the yielded items, so it
@@ -2275,7 +2278,7 @@ pub(crate) enum ToolDispatchAbort {
 pub(crate) async fn dispatch_tool_call(
     runner: &AgentRunner,
     ctx: &HookContext,
-    tool_snapshot: &ToolRegistrySnapshot,
+    tool_snapshot: &ToolCatalog,
     tool_name: &str,
     args: String,
     block_id: &BlockId,

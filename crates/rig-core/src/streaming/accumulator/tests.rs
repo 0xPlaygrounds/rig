@@ -1346,6 +1346,7 @@ fn scripted_turn() -> Vec<StreamEvent> {
         StreamEvent::Final(crate::streaming::StreamFinal::new(
             "test",
             crate::completion::Usage::default(),
+            serde_json::json!({}),
         )),
     ]
 }

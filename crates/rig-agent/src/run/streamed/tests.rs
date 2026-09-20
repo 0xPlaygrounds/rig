@@ -819,7 +819,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
         usage,
         rig_core::completion::ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        serde_json::json!({}),
     )
     .expect("record should succeed");
     let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
@@ -847,7 +847,7 @@ fn streamed_run_completes_a_tool_roundtrip() {
         Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        serde_json::json!({}),
     )
     .expect("record should succeed");
     let final_choice = vec![AssistantContent::text("done")];
@@ -913,7 +913,7 @@ fn streamed_invalid_tool_call_retry_rolls_back_with_partial_turn() {
         Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        serde_json::json!({}),
     )
     .expect("record after rollback should succeed");
 
@@ -989,7 +989,7 @@ fn streamed_invalid_tool_call_retry_cannot_emit_call_past_total_budget() {
         Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        serde_json::json!({}),
     )
     .expect("completion call should be recorded");
     assert_eq!(run.completion_calls().len(), 1);
@@ -1084,6 +1084,7 @@ fn streamed_invalid_name_delta_repair_replays_buffered_arguments() {
 fn streamed_turn_rejects_unknown_tool_calls_fail_fast() {
     let mut run = AgentRun::new("use the tool");
     run.next_step().expect("next_step");
+    record_terminal(&mut run);
 
     let turn = StreamedTurn {
         message_id: None,
@@ -1112,7 +1113,7 @@ fn streamed_completion_call_record_requires_a_model_call() {
             Usage::default(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            serde_json::Value::Null,
+            serde_json::json!({}),
         )
         .expect_err("recording before any model call must be rejected");
     assert!(matches!(err, PromptError::PromptCancelled { .. }));
@@ -1123,7 +1124,7 @@ fn streamed_completion_call_record_requires_a_model_call() {
         Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        serde_json::json!({}),
     )
     .expect("recording during a pending model call succeeds");
 }
@@ -1142,7 +1143,7 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
         Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        serde_json::json!({}),
     )
     .expect("record should succeed");
 
@@ -1165,20 +1166,37 @@ fn duplicate_tool_call_ids_keep_distinct_internal_ids_through_the_run() {
     assert_eq!(calls[1].block_id, iid_for("b"));
 }
 
+/// Record the turn's completion call the way a driver does from the
+/// stream's terminal record, for tests that feed a hand-assembled turn.
+fn record_terminal(run: &mut AgentRun) {
+    run.record_streamed_completion_call(
+        Usage::default(),
+        Default::default(),
+        None,
+        json!({"origin": "hand-built terminal"}),
+    )
+    .expect("the turn's completion call records while the model call is pending");
+}
+
+/// The payload of a streamed turn lives on the terminal record only the
+/// driver sees, so a turn fed before the driver recorded its completion
+/// call is a protocol violation: nothing is recorded on the run's behalf.
 #[test]
-fn streamed_turn_records_the_completion_call_when_the_driver_did_not() {
+fn streamed_turn_without_a_recorded_completion_call_is_a_protocol_violation() {
     let mut run = AgentRun::new("hello");
     run.next_step().expect("next_step");
 
     let asm = assembler();
     let final_choice = vec![AssistantContent::text("done")];
-    run.streamed_turn(asm.finish(None, &final_choice))
-        .expect("streamed_turn should succeed");
-
-    // Exactly one CompletionCall per model call, even without an explicit
-    // record; usage is simply unreported.
-    assert_eq!(run.completion_calls().len(), 1);
-    assert_eq!(run.completion_calls()[0].usage, Usage::default());
+    let err = run
+        .streamed_turn(asm.finish(None, &final_choice))
+        .expect_err("a turn without its completion call recorded is refused");
+    assert!(
+        matches!(&err, PromptError::PromptCancelled { reason, .. }
+            if reason.contains("record_streamed_completion_call")),
+        "{err:?}"
+    );
+    assert!(run.completion_calls().is_empty());
 }
 
 #[test]
@@ -1190,7 +1208,7 @@ fn streamed_completion_call_is_recorded_once_per_turn() {
         Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        serde_json::json!({}),
     )
     .expect("first record succeeds");
     let err = run
@@ -1198,7 +1216,7 @@ fn streamed_completion_call_is_recorded_once_per_turn() {
             Usage::default(),
             rig_core::completion::ResponseIdentity::default(),
             None,
-            serde_json::Value::Null,
+            serde_json::json!({}),
         )
         .expect_err("second record for the same turn must be rejected");
     assert!(matches!(err, PromptError::PromptCancelled { .. }));
@@ -1217,7 +1235,7 @@ fn streamed_run_serde_round_trips_while_tools_pend() {
         Usage::default(),
         rig_core::completion::ResponseIdentity::default(),
         None,
-        serde_json::Value::Null,
+        serde_json::json!({}),
     )
     .expect("record should succeed");
     let final_choice = vec![AssistantContent::ToolCall(tool_call("tc_1", "add"))];
@@ -1268,6 +1286,7 @@ fn typed_namespaces_survive_pending_tool_checkpoints_and_completed_turn_reuse() 
                     .cloned()
                     .map(AssistantContent::ToolCall)
                     .collect::<Vec<_>>();
+                record_terminal(&mut run);
                 run.streamed_turn(asm.finish(None, &choice)).unwrap();
                 if after_call_tools {
                     run.next_step().unwrap();
@@ -1498,7 +1517,7 @@ fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
                     Usage::default(),
                     Default::default(),
                     None,
-                    serde_json::Value::Null,
+                    serde_json::json!({}),
                 )
                 .unwrap();
                 assert!(matches!(
@@ -1536,6 +1555,7 @@ fn pending_invalid_checkpoint_preserves_typed_namespaces_and_resolution() {
             };
             assert_eq!(turn.choice, expected);
             assert_eq!(turn.block_ids[0], (peer.id.clone(), BlockId::wire("peer")));
+            record_terminal(&mut run);
             run.streamed_turn(turn).unwrap();
             let AgentRunStep::CallTools { calls } = run.next_step().unwrap() else {
                 panic!("surviving tools")

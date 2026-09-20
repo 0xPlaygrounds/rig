@@ -562,7 +562,11 @@ impl Serve for BatchedStream {
                         drop(writer);
                     } else {
                         writer
-                            .finish(StreamFinal::new("batched", Usage::default()))
+                            .finish(StreamFinal::new(
+                                "batched",
+                                Usage::default(),
+                                serde_json::json!({}),
+                            ))
                             .await
                             .unwrap();
                     }
@@ -1241,8 +1245,11 @@ impl Serve for TerminalErrors {
     }
     async fn serve(&self, _kind: EffectKind, _dispatch: Dispatch) -> Reply {
         let error = rig_core::error::ErrorReport::new(self.error_kind, "original error");
-        let terminal =
-            rig_core::streaming::StreamEvent::Final(StreamFinal::new("test", Usage::default()));
+        let terminal = rig_core::streaming::StreamEvent::Final(StreamFinal::new(
+            "test",
+            Usage::default(),
+            serde_json::json!({}),
+        ));
         let first = if self.error_first {
             vec![Err(error), Ok(terminal)]
         } else {
@@ -1743,7 +1750,7 @@ fn cancelled_record_is_immutable_when_an_active_worker_poll_returns() {
                 entered.send(()).unwrap();
                 release.recv_timeout(bus_support::GUARD).unwrap();
                 std::task::Poll::Ready(Some(Ok(rig_core::streaming::StreamEvent::Final(
-                    StreamFinal::new("mock", Usage::default()),
+                    StreamFinal::new("mock", Usage::default(), serde_json::json!({})),
                 ))))
             })))
         }

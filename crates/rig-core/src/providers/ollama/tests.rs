@@ -210,7 +210,9 @@ fn streaming_terminal_record_is_normalized() {
         eval_duration: None,
     };
 
-    let final_record = stream_final(terminal);
+    let raw = serde_json::to_value(&terminal).expect("serialize terminal");
+    let final_record = stream_final(terminal, raw.clone());
+    assert_eq!(final_record.raw, raw);
     assert_eq!(final_record.provider, PROVIDER_NAME);
     assert_eq!(final_record.model.as_deref(), Some("llama3.2"));
     assert_eq!(

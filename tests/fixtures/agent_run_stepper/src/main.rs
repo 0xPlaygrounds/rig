@@ -94,6 +94,7 @@ impl CompletionModel for ScriptedModel {
             choice,
             Usage::default(),
             "fixture",
+            serde_json::json!({ "provider": "fixture" }),
         )))
     }
 
@@ -185,6 +186,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     response.usage,
                     executable,
                     allowed,
+                    response.raw,
                 ))?;
             }
             AgentRunStep::CallTools { calls } => {

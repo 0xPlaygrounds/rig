@@ -116,7 +116,7 @@ impl AgentHook for TemperaturePatcher {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        _event: CompletionCall<'_>,
+        _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         CompletionCallAction::patch(RequestPatch::new().temperature(self.0))
     }
@@ -131,7 +131,7 @@ async fn nested_completion_patches_compose() {
     let action = outer
         .on_completion_call(
             &HookContext::new(false, None, None),
-            CompletionCall {
+            CompletionCallEvent {
                 prompt: &prompt,
                 history: &[],
                 turn: 1,
@@ -729,7 +729,7 @@ impl AgentHook for Patcher {
     async fn on_completion_call(
         &self,
         _ctx: &HookContext,
-        _event: CompletionCall<'_>,
+        _event: CompletionCallEvent<'_>,
     ) -> CompletionCallAction {
         self.log.lock().expect("log").push(self.label);
         if self.stop {
@@ -746,9 +746,9 @@ fn tool_call_kind() -> EffectKind {
         args: "{}".into(),
     }
 }
-fn completion_call_event() -> CompletionCall<'static> {
+fn completion_call_event() -> CompletionCallEvent<'static> {
     static PROMPT: std::sync::OnceLock<rig_core::message::Message> = std::sync::OnceLock::new();
-    CompletionCall {
+    CompletionCallEvent {
         prompt: PROMPT.get_or_init(|| rig_core::message::Message::user("hi")),
         history: &[],
         turn: 1,
