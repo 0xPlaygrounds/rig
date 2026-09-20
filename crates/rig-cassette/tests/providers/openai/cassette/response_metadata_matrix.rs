@@ -184,6 +184,11 @@ async fn numeric_top_p_streaming_terminal_usage() {
 
 #[tokio::test]
 async fn object_top_p_blocking_tool_call() {
+    if crate::cassettes::skip_when_recording(
+        "cell 3 is hand-derived from cell 1: the object-valued top_p is not what the API returns",
+    ) {
+        return;
+    }
     with_openai_cassette(
         "response_metadata_matrix/object_top_p_blocking_tool_call",
         assert_blocking_tool_call,
@@ -194,6 +199,11 @@ async fn object_top_p_blocking_tool_call() {
 
 #[tokio::test]
 async fn object_top_p_streaming_terminal_usage() {
+    if crate::cassettes::skip_when_recording(
+        "cell 4 is hand-derived from cell 2: the object-valued top_p is not what the API returns",
+    ) {
+        return;
+    }
     with_openai_cassette(
         "response_metadata_matrix/object_top_p_streaming_terminal_usage",
         assert_streaming_terminal_usage,

@@ -240,15 +240,15 @@ fn cassette_features_are_isolated_for_downstream_consumers() {
             .current_dir(scratch.path())
             .args([
                 "tree",
-                "--offline",
-                "-e",
-                "normal",
-                "--target",
-                "all",
-                "--prefix",
-                "none",
-                "--format",
-                "{p} {f}",
+                // Neither `--offline` nor `--locked`: `--target all` resolves
+                // the platform-gated crates (Apple's `block2`, the Windows
+                // bindings) that a host build never downloads, so an offline
+                // probe fails on a cache warmed only by this workspace's own
+                // targets; and the seeded lockfile has no entry for the probe
+                // package itself, which `--locked` refuses to add. The seeded
+                // lockfile still pins every version the graph shares with the
+                // workspace.
+                "-e", "normal", "--target", "all", "--prefix", "none", "--format", "{p} {f}",
             ])
             .output()
             .expect("resolve isolated downstream");

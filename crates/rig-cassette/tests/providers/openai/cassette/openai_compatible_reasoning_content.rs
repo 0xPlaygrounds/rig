@@ -177,7 +177,10 @@ fn first_tool_call_response() -> (StatusCode, Json<Value>) {
                             "type": "reasoning_text"
                         }
                     ],
-                    "encrypted_content": "",
+                    // Non-empty so the scrubber writes its placeholder and
+                    // the follow-up request has an opaque blob to echo back;
+                    // an empty value is left as-is and never round-trips.
+                    "encrypted_content": "llamacpp-opaque-reasoning-blob",
                     "status": "completed"
                 },
                 {

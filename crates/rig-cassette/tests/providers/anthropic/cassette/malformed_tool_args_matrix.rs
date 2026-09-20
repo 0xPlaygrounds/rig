@@ -195,6 +195,11 @@ async fn streaming_healthy_control() {
 
 #[tokio::test]
 async fn streaming_malformed_fails_by_default() {
+    if crate::cassettes::skip_when_recording(
+        "cell 3 is hand-derived from cell 2: its tool-input stream carries a control byte no provider emits",
+    ) {
+        return;
+    }
     with_anthropic_cassette(
         "malformed_tool_args_matrix/streaming_malformed_fails_by_default",
         |client| async move {
@@ -234,6 +239,11 @@ async fn streaming_malformed_fails_by_default() {
 
 #[tokio::test]
 async fn streaming_malformed_skip_feeds_result_back() {
+    if crate::cassettes::skip_when_recording(
+        "cell 4 is hand-derived from cell 2, including the recovery follow-up interactions",
+    ) {
+        return;
+    }
     with_anthropic_cassette(
         "malformed_tool_args_matrix/streaming_malformed_skip_feeds_result_back",
         |client| async move {
@@ -276,6 +286,11 @@ async fn streaming_malformed_skip_feeds_result_back() {
 
 #[tokio::test]
 async fn streaming_malformed_retry_reissues_request() {
+    if crate::cassettes::skip_when_recording(
+        "cell 5 is hand-derived from cell 2, including the two retry follow-up interactions",
+    ) {
+        return;
+    }
     with_anthropic_cassette(
         "malformed_tool_args_matrix/streaming_malformed_retry_reissues_request",
         |client| async move {
